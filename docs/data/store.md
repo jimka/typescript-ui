@@ -296,6 +296,12 @@ store.on('sync', e => {
 await store.sync();   // settles even when an op failed
 ```
 
+When the store talks to an [`AjaxProxy`](/api/data/classes/AjaxProxy), `e.error`
+is an [`AjaxError`](/api/data/classes/AjaxError) carrying the HTTP `status` and
+the server's parsed error `body` — narrow it with `instanceof AjaxError` to
+surface the backend's own message. See
+[Error handling](/data/proxy#error-handling).
+
 A record is committed only after **its own** operation succeeds, so a failure
 never leaves a record looking persisted when it isn't. The `syncErrorPolicy`
 option chooses what happens after the first failure:

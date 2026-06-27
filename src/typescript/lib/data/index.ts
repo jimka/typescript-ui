@@ -28,6 +28,7 @@ export { MemoryProxy } from '~/data/proxy/MemoryProxy.js';
 export type { MemoryProxyOptions, MemoryProxyConfig } from '~/data/proxy/MemoryProxy.js';
 export { AjaxProxy } from '~/data/proxy/AjaxProxy.js';
 export type { AjaxProxyOptions, AjaxProxyConfig } from '~/data/proxy/AjaxProxy.js';
+export { AjaxError } from '~/data/proxy/AjaxError.js';
 export { WebStorageProxy } from '~/data/proxy/WebStorageProxy.js';
 export type { WebStorageProxyOptions, WebStorageProxyConfig } from '~/data/proxy/WebStorageProxy.js';
 export { JsonReader } from '~/data/proxy/Reader.js';

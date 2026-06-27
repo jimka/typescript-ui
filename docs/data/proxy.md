@@ -111,6 +111,31 @@ read. A response whose load has been superseded is discarded — so a slow earli
 fetch can never overwrite a newer result — and the aborted HTTP request is
 cancelled rather than merely ignored.
 
+### Error handling
+
+When the server responds with a non-OK status, every CRUD method (and its batch
+variant) throws an [`AjaxError`](/api/data/classes/AjaxError). It extends `Error`
+— so existing `catch`/rethrow paths and `err.message` logging keep working — and
+adds the HTTP `status`, `statusText`, the parsed error `body` (JSON when
+parseable, else the raw text, else `undefined`), the failing `operation`, and the
+request `url`. The body is read best-effort; a body-read failure degrades the
+detail but never masks the HTTP error.
+
+The thrown error flows unchanged through the store, arriving on the `'exception'`
+event (and the `'sync'` payload's `failures`) as `error`. Narrow it to recover
+the server's message:
+
+```typescript
+import { AjaxError } from '@jimka/typescript-ui/data';
+
+store.on('exception', ({ error }) => {
+    if (error instanceof AjaxError) {
+        // e.g. a FastAPI { detail: "duplicate key on email" } on a 409
+        console.error(error.status, error.body);
+    }
+});
+```
+
 ## WebStorageProxy
 
 Persists its record array to the browser's `localStorage` (default) or

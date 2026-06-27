@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { AjaxProxy } from '~/data/proxy/AjaxProxy';
+import { AjaxError } from '~/data/proxy/AjaxError';
 import type { Reader, ReadResult } from '~/data/proxy/Reader';
 import type { Writer } from '~/data/proxy/Writer';
 import { Model } from '~/data/Model';
@@ -9,6 +10,21 @@ const MODEL = new Model([{ name: 'id' }, { name: 'name' }], 'id');
 
 function okResponse(body: unknown): { ok: boolean; status: number; json: () => Promise<unknown> } {
     return { ok: true, status: 200, json: async (): Promise<unknown> => body };
+}
+
+function errorResponse(opts: {
+    status?: number;
+    statusText?: string;
+    json?: () => Promise<unknown>;
+    text?: () => Promise<string>;
+}): Response {
+    return {
+        ok        : false,
+        status    : opts.status ?? 500,
+        statusText: opts.statusText ?? '',
+        json      : opts.json ?? ((): Promise<unknown> => Promise.reject(new Error('no json'))),
+        text      : opts.text ?? ((): Promise<string> => Promise.reject(new Error('no text'))),
+    } as unknown as Response;
 }
 
 describe('AjaxProxy', () => {
@@ -207,5 +223,103 @@ describe('AjaxProxy', () => {
         await proxy.create(record);
 
         expect(fetchMock).toHaveBeenCalledWith('/api/users', expect.objectContaining({ body: 'CUSTOM' }));
+    });
+
+    describe('error detail', () => {
+        it('throws an AjaxError carrying the parsed JSON error body', async () => {
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorResponse({
+                status    : 409,
+                statusText: 'Conflict',
+                json      : async (): Promise<unknown> => ({ detail: 'duplicate key on email' }),
+            })));
+
+            const proxy  = new AjaxProxy({ url: '/api/users' });
+            const record = new ModelRecord(MODEL, { name: 'Zoe' });
+            const err    = await proxy.create(record).catch((e: unknown) => e);
+
+            expect(err).toBeInstanceOf(AjaxError);
+            expect(err).toBeInstanceOf(Error);
+            expect(err).toMatchObject({
+                status    : 409,
+                statusText: 'Conflict',
+                body      : { detail: 'duplicate key on email' },
+                operation : 'create',
+                url       : '/api/users',
+            });
+        });
+
+        it('falls back to text when the error body is not JSON', async () => {
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorResponse({
+                status: 500,
+                json  : (): Promise<unknown> => Promise.reject(new Error('not json')),
+                text  : async (): Promise<string> => '<html>500</html>',
+            })));
+
+            const proxy = new AjaxProxy({ url: '/api/users' });
+            const err   = await proxy.read().catch((e: unknown) => e) as AjaxError;
+
+            expect(err).toBeInstanceOf(AjaxError);
+            expect(err.body).toBe('<html>500</html>');
+            expect(err.status).toBe(500);
+        });
+
+        it('still throws an AjaxError with undefined body when both json and text fail', async () => {
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorResponse({
+                status    : 503,
+                statusText: 'Service Unavailable',
+                json      : (): Promise<unknown> => Promise.reject(new Error('no json')),
+                text      : (): Promise<string> => Promise.reject(new Error('no text')),
+            })));
+
+            const proxy = new AjaxProxy({ url: '/api/users' });
+            const err   = await proxy.read().catch((e: unknown) => e) as AjaxError;
+
+            expect(err).toBeInstanceOf(AjaxError);
+            expect(err.body).toBeUndefined();
+            expect(err.status).toBe(503);
+            expect(err.statusText).toBe('Service Unavailable');
+        });
+
+        it('sets the operation name and a plain useful message', async () => {
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorResponse({
+                status: 400,
+                json  : async (): Promise<unknown> => ({}),
+            })));
+
+            const proxy = new AjaxProxy({ url: '/api/users' });
+            const err   = await proxy.read().catch((e: unknown) => e) as AjaxError;
+
+            expect(err.name).toBe('AjaxError');
+            expect(err.message).toBe('AjaxProxy: read failed with status 400');
+        });
+
+        it('every operation throws an AjaxError with the right operation and url', async () => {
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorResponse({
+                status    : 409,
+                statusText: 'Conflict',
+                json      : async (): Promise<unknown> => ({ detail: 'x' }),
+            })));
+
+            const proxy = new AjaxProxy({ url: '/api/users' });
+            const rec   = new ModelRecord(MODEL, { id: 5, name: 'A' });
+
+            const cases: Array<[() => Promise<unknown>, string, string]> = [
+                [(): Promise<unknown> => proxy.read(),              'read',    '/api/users'],
+                [(): Promise<unknown> => proxy.create(rec),         'create',  '/api/users'],
+                [(): Promise<unknown> => proxy.update(rec),         'update',  '/api/users/5'],
+                [(): Promise<unknown> => proxy.destroy(rec),        'destroy', '/api/users/5'],
+                [(): Promise<unknown> => proxy.createBatch([rec]),  'create',  '/api/users'],
+                [(): Promise<unknown> => proxy.updateBatch([rec]),  'update',  '/api/users'],
+                [(): Promise<unknown> => proxy.destroyBatch([rec]), 'destroy', '/api/users'],
+            ];
+
+            for (const [run, operation, url] of cases) {
+                const err = await run().catch((e: unknown) => e) as AjaxError;
+
+                expect(err, `operation ${operation}`).toBeInstanceOf(AjaxError);
+                expect(err.operation).toBe(operation);
+                expect(err.url).toBe(url);
+            }
+        });
     });
 });

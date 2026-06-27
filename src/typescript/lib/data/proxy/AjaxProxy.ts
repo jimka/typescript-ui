@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { ModelRecord } from '~/data/ModelRecord.js';
+import { StoreOperation } from '~/data/AbstractStore.js';
 import { Proxy, ReadParams } from '~/data/proxy/Proxy.js';
+import { AjaxError } from '~/data/proxy/AjaxError.js';
 import { Reader, JsonReader } from '~/data/proxy/Reader.js';
 import { Writer, JsonWriter } from '~/data/proxy/Writer.js';
 
@@ -32,8 +34,10 @@ export type AjaxProxyConfig = AjaxProxyOptions;
  *
  * @remarks
  * Update and destroy requests are sent to `{url}/{id}` where `id` is the record's
- * primary key value. All four CRUD methods throw an `Error` when the server responds
- * with a non-OK status code.
+ * primary key value. Every CRUD method (and its batch variant) throws an
+ * {@link AjaxError} when the server responds with a non-OK status code; the
+ * `AjaxError` carries the parsed error body so the server's own message is
+ * recoverable.
  *
  * @category Data
  */
@@ -79,8 +83,8 @@ export class AjaxProxy extends Proxy {
      *
      * @remarks
      * Unpaginated mode: when `params` is omitted, the response JSON is read as a
-     * top-level array, or unwrapped via `root` if configured. An `Error` is thrown
-     * for non-OK responses or unexpected response shapes.
+     * top-level array, or unwrapped via `root` if configured. An {@link AjaxError}
+     * is thrown for non-OK responses, and an `Error` for unexpected response shapes.
      *
      * Paginated mode: when `params` carries `page` or `pageSize`, the request URL is
      * extended with `?page=N&pageSize=M`. The response is parsed by the configured
@@ -103,7 +107,7 @@ export class AjaxProxy extends Proxy {
         });
 
         if (!response.ok) {
-            throw new Error(`AjaxProxy: request failed with status ${response.status}`);
+            await this.throwHttpError(response, 'read', url);
         }
 
         const json = await response.json();
@@ -184,7 +188,7 @@ export class AjaxProxy extends Proxy {
         });
 
         if (!response.ok) {
-            throw new Error(`AjaxProxy: create failed with status ${response.status}`);
+            await this.throwHttpError(response, 'create', this._url);
         }
 
         const json = await response.json();
@@ -208,7 +212,7 @@ export class AjaxProxy extends Proxy {
         });
 
         if (!response.ok) {
-            throw new Error(`AjaxProxy: update failed with status ${response.status}`);
+            await this.throwHttpError(response, 'update', `${this._url}/${record.getId()}`);
         }
 
         const json = await response.json();
@@ -230,7 +234,7 @@ export class AjaxProxy extends Proxy {
         });
 
         if (!response.ok) {
-            throw new Error(`AjaxProxy: destroy failed with status ${response.status}`);
+            await this.throwHttpError(response, 'destroy', `${this._url}/${record.getId()}`);
         }
     }
 
@@ -254,7 +258,7 @@ export class AjaxProxy extends Proxy {
         });
 
         if (!response.ok) {
-            throw new Error(`AjaxProxy: createBatch failed with status ${response.status}`);
+            await this.throwHttpError(response, 'create', this._url);
         }
 
         return this.readBatchResponse(response);
@@ -276,7 +280,7 @@ export class AjaxProxy extends Proxy {
         });
 
         if (!response.ok) {
-            throw new Error(`AjaxProxy: updateBatch failed with status ${response.status}`);
+            await this.throwHttpError(response, 'update', this._url);
         }
 
         return this.readBatchResponse(response);
@@ -297,7 +301,7 @@ export class AjaxProxy extends Proxy {
         });
 
         if (!response.ok) {
-            throw new Error(`AjaxProxy: destroyBatch failed with status ${response.status}`);
+            await this.throwHttpError(response, 'destroy', this._url);
         }
     }
 
@@ -313,5 +317,36 @@ export class AjaxProxy extends Proxy {
         const json = await response.json();
 
         return this._root ? json[this._root] : json;
+    }
+
+    /**
+     * Reads the error body off a non-OK response and throws an {@link AjaxError}
+     * carrying it. The body is read best-effort — JSON first, plain text as a
+     * fallback — and a body-read failure never masks the original HTTP error:
+     * the error is still thrown with `body` left undefined. Always throws.
+     *
+     * @param response - The non-OK fetch response whose body is read.
+     * @param operation - The proxy operation that failed.
+     * @param url - The request URL that produced the failure.
+     *
+     * @returns Never — the method always throws.
+     */
+    private async throwHttpError(response: Response, operation: StoreOperation, url: string): Promise<never> {
+        let body: unknown;
+
+        try {
+            body = await response.json();
+        } catch {
+            // Non-JSON body — fall back to text. A second failure (body already
+            // consumed or a stream error) leaves body undefined; the HTTP error
+            // is still reported by the throw below.
+            try {
+                body = await response.text();
+            } catch {
+                body = undefined;
+            }
+        }
+
+        throw new AjaxError(operation, url, response, body);
     }
 }
