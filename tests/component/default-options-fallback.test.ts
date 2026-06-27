@@ -14,6 +14,9 @@ import { TabCloseButton } from '~/component/button/TabCloseButton';
 import { Button } from '~/component/button/Button';
 import { Drawer } from '~/overlay/Drawer';
 import { Popover } from '~/overlay/Popover';
+import { AnimatedDropdown } from '~/core/AnimatedDropdown';
+import { Insets } from '~/primitive/Insets';
+import { Size } from '~/primitive/Size';
 
 // Subclass that seeds class-level defaults the way real subclasses do — through
 // `subclassDefaults`, which land in `_defaultOptions`, never via a setter.
@@ -136,88 +139,61 @@ describe('default options as pure fallback', () => {
     });
 });
 
-describe('subclass defaults resolve as pure fallback', () => {
-    it('BulletedList resolves its DISC default without writing _options', () => {
-        const list = new BulletedList() as any;
-        expect(list.getStyle()).toBe(BulletedListItemStyle.DISC);
-        expect(list._options.itemStyle).toBeUndefined();
-        list.getElement(true);
-        expect(list.getStyle()).toBe(BulletedListItemStyle.DISC);
-    });
+// Default-resolution registry. Every class that seeds a `_default*Options`
+// field gets a row asserting that a bare construction (no caller options) still
+// resolves the default through its getter. This is the mechanical guard for the
+// "Class-level defaults must survive the getter" rule in ARCHITECTURE.md — a
+// dropped default fails here even though it is invisible to the offline harness.
+// Add a row when you add a defaulted field.
+const insetsTuple = (i: Insets | null) => i && [i.getTop(), i.getRight(), i.getBottom(), i.getLeft()];
+const sizeTuple   = (s: Size | null)   => s && [s.width, s.height];
 
-    it('BulletedList honors an explicit itemStyle as explicit state', () => {
+const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expected: unknown }> = [
+    { label: 'Component cursor',             resolve: () => new Component({}).getCursor(),                              expected: 'default' },
+    { label: 'Component overflow',           resolve: () => new Component({}).getOverflowX(),                           expected: 'hidden' },
+    { label: 'TextField padding',            resolve: () => insetsTuple(new TextField().getPadding()),                  expected: [3, 3, 3, 3] },
+    { label: 'ToolBar orientation',          resolve: () => new ToolBar().getOrientation(),                             expected: 'horizontal' },
+    { label: 'ToolBar compact',              resolve: () => new ToolBar().isCompact(),                                  expected: true },
+    { label: 'ToolBar backgroundColor',      resolve: () => new ToolBar().getBackgroundColor(),                         expected: 'var(--ts-ui-toolbar-bg, rgb(245, 245, 245))' },
+    { label: 'SplitGutter collapsible',      resolve: () => new SplitGutter('horizontal').isCollapsible(),              expected: true },
+    { label: 'SplitGutter movable',          resolve: () => new SplitGutter('horizontal').isMovable(),                  expected: true },
+    { label: 'BulletedList itemStyle',       resolve: () => new BulletedList().getStyle(),                              expected: BulletedListItemStyle.DISC },
+    { label: 'NumberedList itemStyle',       resolve: () => new NumberedList().getStyle(),                              expected: NumberedListItemStyle.DECIMAL },
+    { label: 'IconText gap',                 resolve: () => (new IconText('unicode-arrow-up', 'x').getLayoutManager() as HBox).getComponentSpacing(), expected: 2 },
+    { label: 'Popover placement',            resolve: () => new Popover().getPlacement(),                               expected: 'auto' },
+    { label: 'Drawer edge',                  resolve: () => new Drawer().getEdge(),                                     expected: 'west' },
+    { label: 'Button flat',                  resolve: () => new Button({ text: 'x' }).isFlat(),                         expected: false },
+    { label: 'TabCloseButton glyph',         resolve: () => new TabCloseButton().getGlyph()?.getGlyphName(),            expected: 'xmark' },
+    { label: 'TabCloseButton preferredSize', resolve: () => sizeTuple(new TabCloseButton().getPreferredSize()),         expected: [16, 16] },
+    { label: 'AnimatedDropdown visible',     resolve: () => new AnimatedDropdown().isVisible(),                         expected: false },
+];
+
+describe('default-resolution registry: a bare construction resolves every class default', () => {
+    for (const { label, resolve, expected } of DEFAULT_RESOLUTION) {
+        it(label, () => {
+            expect(resolve()).toEqual(expected);
+        });
+    }
+});
+
+describe('an explicit value wins over a class default', () => {
+    it('BulletedList itemStyle', () => {
         const list = new BulletedList({ itemStyle: BulletedListItemStyle.SQUARE }) as any;
         expect(list.getStyle()).toBe(BulletedListItemStyle.SQUARE);
-        // itemStyle is backed by the declare'd `_style` field, not `_options`.
-        expect(list._style).toBe(BulletedListItemStyle.SQUARE);
+        expect(list._style).toBe(BulletedListItemStyle.SQUARE); // backed by declare'd _style, not _options
     });
 
-    it('IconText applies the default gap (2) without writing _options.gap', () => {
-        const row = new IconText('unicode-arrow-up', 'hi') as any;
-        expect(row._options.gap).toBeUndefined();
-        expect((row.getLayoutManager() as HBox).getComponentSpacing()).toBe(2);
-    });
-
-    it('IconText honors an explicit gap', () => {
+    it('IconText gap', () => {
         const row = new IconText('unicode-arrow-up', 'hi', { gap: 8 }) as any;
         expect(row._options.gap).toBe(8);
         expect((row.getLayoutManager() as HBox).getComponentSpacing()).toBe(8);
     });
 
-    it('ToolBar seeds its orientation/compact defaults and resolves its bg color, bag clean', () => {
+    it('default-resolved fields do not pollute the explicit bag (getter-folded fields)', () => {
         const tb = new ToolBar() as any;
-        expect(tb.getOrientation()).toBe('horizontal');
-        expect(tb.isCompact()).toBe(true);
-        expect(tb.getBackgroundColor()).toBe('var(--ts-ui-toolbar-bg, rgb(245, 245, 245))');
-        expect(tb._options.orientation).toBeUndefined();
-        expect(tb._options.compact).toBeUndefined();
-    });
-
-    it('SplitGutter seeds its collapsible/movable defaults with a clean bag', () => {
-        const gutter = new SplitGutter('horizontal') as any;
-        expect(gutter.isCollapsible()).toBe(true);
-        expect(gutter.isMovable()).toBe(true);
-        expect(gutter._options.collapsible).toBeUndefined();
-        expect(gutter._options.movable).toBeUndefined();
-    });
-});
-
-describe('more subclass defaults resolve as pure fallback', () => {
-    it('NumberedList resolves its DECIMAL default with a clean bag', () => {
-        const list = new NumberedList() as any;
-        expect(list.getStyle()).toBe(NumberedListItemStyle.DECIMAL);
-        expect(list._options.itemStyle).toBeUndefined();
-    });
-
-    it('TabCloseButton resolves its xmark glyph and 16x16 preferred size', () => {
-        const btn = new TabCloseButton() as any;
-        expect(btn.getGlyph()).not.toBeNull();
-        expect(btn.getGlyph().getGlyphName()).toBe('xmark');
-        const pref = btn.getPreferredSize();
-        expect([pref.width, pref.height]).toEqual([16, 16]);
-    });
-
-    it('Button defaults flat off with a clean bag, and resolves anchor/fill', () => {
-        const b = new Button({ text: 'x' }) as any;
-        expect(b.isFlat()).toBe(false);
-        expect(b._options.flat).toBeUndefined();
-        expect(b.getAnchor()).toBeTruthy();
-        expect(b.getFill()).toBeTruthy();
-    });
-
-    it('Drawer resolves its edge/modal/size/duration defaults', () => {
-        // edge is _options-backed and always-dispatched, so the default is
-        // written by setEdge; the contract is that getEdge resolves it.
-        const d = new Drawer() as any;
-        expect(d.getEdge()).toBeTruthy();
-        expect(typeof d.getDrawerSize()).toBe('number');
-        expect(typeof d.isModal()).toBe('boolean');
-    });
-
-    it('Popover resolves its placement default with a clean bag', () => {
-        const p = new Popover() as any;
-        expect(p.getPlacement()).toBe('auto');
-        expect(p._options.placement).toBeUndefined();
+        const list = new BulletedList() as any;
+        expect(list._options.itemStyle).toBeUndefined();   // resolved via getStyle fold, never stored
+        expect(tb._options.backgroundColor).toBeUndefined(); // resolved via getBackgroundColor fold
     });
 });
 
