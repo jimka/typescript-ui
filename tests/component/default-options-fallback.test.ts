@@ -221,6 +221,25 @@ describe('more subclass defaults resolve as pure fallback', () => {
     });
 });
 
+describe('isVisible folds a subclass visible default', () => {
+    class HiddenByDefault extends Component {
+        constructor(options?: ComponentOptions) {
+            super(options, { visible: false } as Partial<ComponentOptions>);
+        }
+    }
+
+    it('a subclass defaulting visible:false reports false (not null) when never set', () => {
+        expect(new HiddenByDefault().isVisible()).toBe(false);
+    });
+
+    it('a plain Component is null (inherit); an explicit value still wins', () => {
+        expect(new Component({}).isVisible()).toBeNull();
+        const h = new HiddenByDefault();
+        h.setVisible(true);
+        expect(h.isVisible()).toBe(true);
+    });
+});
+
 describe('clear*() suppresses a class-level default (does not revert to it)', () => {
     it('clearPadding suppresses a subclass padding default', () => {
         const field = new TextField() as any;

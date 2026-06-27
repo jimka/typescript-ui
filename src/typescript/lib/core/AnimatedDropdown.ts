@@ -52,8 +52,10 @@ export interface FadeOptions {
 
 /**
  * User-overridable visual defaults forwarded to `super` via the options bag.
- * The cascade in `Component`'s constructor dispatches each present setter once
- * with the final value, so any field the caller supplied wins.
+ * These are a pure fallback: a caller value wins, otherwise the getters
+ * (`isVisible`, `isAnimated`, `getDurationMs`, `getTranslatePx`) resolve the
+ * default — `visible: false` is folded by `Component.isVisible`, the rest are
+ * dispatched from `applyOptions` as `options.X ?? this.getX()`.
  */
 const _defaultAnimatedDropdownOptions: Partial<AnimatedDropdownOptions> = {
     visible:     false,

@@ -1332,7 +1332,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns True if explicitly visible, false if explicitly hidden, null if inheriting from the parent.
      */
     isVisible(): Boolean | null {
-        return this._options.visible ?? null;
+        // Key-presence so a never-set component folds the class default (e.g.
+        // AnimatedDropdown's `visible: false`), while an explicit
+        // `setVisible(false)`/inherit still wins — mirrors getCursor/getPadding.
+        return "visible" in this._options
+            ? (this._options.visible ?? null)
+            : (this._defaultOptions.visible ?? null);
     }
 
     /**
