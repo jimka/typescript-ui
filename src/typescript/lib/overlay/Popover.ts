@@ -3,6 +3,7 @@
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
+import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
 import type { Edge } from "~/primitive/Edge.js";
@@ -471,6 +472,10 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
             DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
         }
 
+        // Trap wheels no inner scroller claimed so they cannot fall through to
+        // scrollable content behind the popover.
+        trapWheel(this);
+
         this.ensureArrow();
         this.setVisible(true);
 
@@ -502,6 +507,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         this.detachRepositionListeners();
 
         LayerManager.unregister(this);
+        untrapWheel(this);
 
         fadeHideAndDetach(this, { durationMs: POPOVER_FADE_DURATION_MS });
 

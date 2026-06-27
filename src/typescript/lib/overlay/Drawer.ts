@@ -7,6 +7,7 @@ import { Animation } from "~/core/Animation.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
+import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
 import { Position } from "~/primitive/Position.js";
 import { Placement } from "~/primitive/Placement.js";
 import { DialogBackdrop } from "~/component/container/DialogBackdrop.js";
@@ -346,6 +347,11 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         this.applyRestingGeometry();
 
         DOM.sink.appendChild(DOM.source.getDocumentElement(), this.getElement(true)!);
+
+        // Trap wheels no inner scroller claimed so they cannot fall through to
+        // scrollable content behind the drawer panel.
+        trapWheel(this);
+
         this.scheduleLayout();
 
         this.animateIn();
@@ -540,6 +546,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
             this.removeElement();
             this.teardownBackdrop();
             LayerManager.unregister(this);
+            untrapWheel(this);
 
             this._open    = false;
             this._closing = false;
