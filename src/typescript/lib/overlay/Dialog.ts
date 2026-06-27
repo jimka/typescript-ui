@@ -4,6 +4,7 @@ import { Component } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
 import { Event } from "~/core/Event.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
+import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
 import { Position } from "~/primitive/Position.js";
 import { Text } from "~/component/input/Text.js";
 import { Button } from "~/component/button/Button.js";
@@ -644,6 +645,10 @@ class Dialog extends Component implements DismissableLayer {
         const dialogEl = this.getElement(true)!;
         DOM.sink.appendChild(DOM.source.getDocumentElement(), dialogEl);
 
+        // Trap wheels no inner scroller claimed so the content behind a modal
+        // dialog stays inert, matching modality.
+        trapWheel(this);
+
         this.scheduleLayout();
         this.center();
         this.animateIn();
@@ -792,6 +797,7 @@ class Dialog extends Component implements DismissableLayer {
             this.destructor();
 
             LayerManager.unregister(this);
+            untrapWheel(this);
 
             if (this._previousFocus !== null) {
                 DOM.sink.focus(this._previousFocus);

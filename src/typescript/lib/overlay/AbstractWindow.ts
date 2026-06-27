@@ -7,6 +7,7 @@ import { WindowBorder, Direction } from "~/component/container/WindowBorder.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
+import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
 import { Fit } from "~/layout/Fit.js";
 import { FillType } from "~/layout/FillType.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
@@ -599,6 +600,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // registers as the window's child and stacks above it.
         LayerManager.register(this);
 
+        // Trap wheels no inner scroller claimed so they cannot fall through to
+        // scrollable content behind the floating window.
+        trapWheel(this);
+
         this.doLayout();
         this.bringToFront();
 
@@ -836,6 +841,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.clearSnapTargetBorder();
 
         LayerManager.unregister(this);
+        untrapWheel(this);
 
         AbstractWindow.openWindows.delete(this);
 
