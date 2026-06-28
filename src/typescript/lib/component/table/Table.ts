@@ -16,7 +16,11 @@ import { ColumnSpec } from "~/component/table/ColumnConfig.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { TableExporter, ExportOptions } from "~/component/table/TableExporter.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
+
+/** Events emitted by {@link Table}. */
+export type TableEvent = "selectionchange";
 
 /**
  * Construction-time options for {@link Table}.
@@ -86,6 +90,7 @@ class Table extends Component<TableOptions> {
     private _savedColumnWidths: Map<string, number> = new Map();
     private _columnConfigs    : Map<string, ColumnConfig> = new Map();
     private _exportMenuEnabled: boolean = false;
+    private _listeners        : ListenerBag<TableEvent> = new ListenerBag<TableEvent>();
 
     /**
      * Constructs a Table bound to the given store, optionally constrained by a
@@ -168,6 +173,51 @@ class Table extends Component<TableOptions> {
             this._header.getParentRow().setTranslate(-scrollLeft, 0);
             this._header.getComponents()[1].setTranslate(-scrollLeft, 0);
         });
+
+        // Surface the body's selection changes on the Table's own event so
+        // consumers can react (e.g. enabling a delete action) without reaching
+        // into the private body.
+        this._body.on("selectionchange", records => this.emit("selectionchange", records));
+    }
+
+    /**
+     * Registers a listener for one of this table's events.
+     *
+     * @param event - `"selectionchange"` fires whenever the selected-record set
+     *   changes, receiving the current selection.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This table, for method chaining.
+     */
+    on(event: "selectionchange", listener: (records: ModelRecord[]) => void): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match the one passed to {@link on}.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This table, for method chaining.
+     */
+    off(event: TableEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event`, in registration order.
+     *
+     * @param event - The event to emit.
+     * @param records - The current selection forwarded to each listener.
+     */
+    protected emit(event: "selectionchange", records: ModelRecord[]): void {
+        this._listeners.fire(event, records);
     }
 
     /**

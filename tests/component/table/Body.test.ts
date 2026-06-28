@@ -98,3 +98,23 @@ describe('Body.scrollColumnIntoView', () => {
         expect(scrollX(b)).toBe(0);
     });
 });
+
+describe('Body selectionchange event', () => {
+    it('emits the current selection on select / set / clear', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1' }, { a: '2' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const recs = store.getAll();
+        const seen: number[] = [];
+        b.on('selectionchange', (records) => seen.push(records.length));
+
+        b.selectRecord(recs[0]);
+        b.setSelectedRecords([recs[0], recs[1]]);
+        b.selectRecord(null);
+
+        expect(seen).toEqual([1, 2, 0]);
+    });
+});
