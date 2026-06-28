@@ -649,3 +649,47 @@ describe('Dock off()', () => {
         expect(detachSpy).not.toHaveBeenCalled();
     });
 });
+
+describe('Dock addPanel — focus and closeable', () => {
+    it('activates a freshly added panel (the newly opened tab is shown)', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        // Opening a second panel switches the active tab to it, rather than
+        // leaving the first one active.
+        expect(rootTab(dock).getActiveContent()?.getId()).toBe('b');
+    });
+
+    it('makes dock tabs closeable by default', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        expect(rootTab(dock).getLayoutConstraints(frameOf(dock, 'a'))?.closeable).toBe(true);
+    });
+
+    it('honors closeable: false on a panel spec', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}), closeable: false });
+        dock.doLayout();
+        flush();
+
+        expect(rootTab(dock).getLayoutConstraints(frameOf(dock, 'a'))?.closeable).toBe(false);
+    });
+});
