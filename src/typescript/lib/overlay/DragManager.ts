@@ -66,6 +66,21 @@ export interface TabDragData {
 export const tabDragRegistry: Map<string, Component> = new Map<string, Component>();
 
 /**
+ * Dwell, in milliseconds, before a tab held over a drop target spring-loads a
+ * raise of that target's host window — surfacing a backgrounded float so the user
+ * can aim the drop. Shared by the two dock drop surfaces so a region body
+ * ([`DockRegion`](/api/layout/classes/DockRegion)) and a tab bar
+ * ([`TabBar`](/api/component/container/classes/TabBar)) raise on the same cadence.
+ *
+ * Long enough that brushing a drag across a background window in transit does not
+ * raise it, short enough that a deliberate hover surfaces the target. Set above a
+ * `MenuItem` submenu's 150ms hover delay because raising a whole window is a
+ * heavier, more disruptive action than opening a submenu, so it should demand a
+ * clearly deliberate pause.
+ */
+export const SPRING_RAISE_DELAY_MS = 1000;
+
+/**
  * Construction-time options accepted by {@link DragManager.makeDragSource}.
  *
  * @category Core

@@ -43,6 +43,7 @@ The bar emits framework-custom semantic events (`on` / `off`); it never reaches 
 | `"tabdragstart"` | `(id)` | A cell's drag committed — register the live content so a foreign strip's drop can resolve it. |
 | `"tearoffrequested"` | `(id, clientX, clientY, forceBare)` | A cell was released over empty space — tear it off (e.g. into a window). |
 | `"detached"` | `(id)` | A cell's drag was released onto a target — drop the cell **iff** the content left this container. |
+| `"dockhover"` | `()` | A foreign tab has dwelt over the strip long enough to spring-load a raise — surface the strip's window so a backgrounded float can be aimed at. |
 
 The `"tearoffrequested"` / `"detached"` pair is driven purely by whether the drag landed on a registered drop target; the *owner* applies the content guards (is the content ready? did it actually move out?) because only the owner knows the content state.
 

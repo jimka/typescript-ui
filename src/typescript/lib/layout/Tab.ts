@@ -838,6 +838,7 @@ class Tab extends LayoutManager {
         this._bar.on("tabdragstart",     this._onBarTabDragStart);
         this._bar.on("tearoffrequested", this._onBarTearOffRequested);
         this._bar.on("detached",         this._onBarDetached);
+        this._bar.on("dockhover",        this._onBarDockHover);
 
         return this;
     }
@@ -861,6 +862,7 @@ class Tab extends LayoutManager {
         this._bar.off("tabdragstart",     this._onBarTabDragStart);
         this._bar.off("tearoffrequested", this._onBarTearOffRequested);
         this._bar.off("detached",         this._onBarDetached);
+        this._bar.off("dockhover",        this._onBarDockHover);
 
         this._bar.dispose();
 
@@ -1017,16 +1019,28 @@ class Tab extends LayoutManager {
         if (content) {
             this.dockComponent(content, slot);
 
-            // A panel docked into this strip should bring the strip's host window
-            // (if any) to the front and focus it — a no-op for an in-document
-            // strip, which has no host window.
-            this.hostWindow()?.bringToFront();
+            // A panel docked into this strip should bring the strip's window (if
+            // any) to the front and focus it — a no-op for an in-document strip.
+            // Resolves the full ancestor window, not just a tear-off strip's
+            // window, so a re-dock into a tiled dock raises the dock's window too
+            // (mirroring the region-body drop's raise in DockRegion).
+            this.ancestorWindow()?.bringToFront();
 
             // Announce the merge so a tree owner can react to a tab-bar dock the
             // same way it reacts to a tear-off. The structural counterpart of
             // "detached": a tab arrived by drop rather than leaving by tear-off.
             this.emit("docked", content);
         }
+    };
+
+    /**
+     * Strip `"dockhover"` handler: a foreign tab has dwelt over this strip long
+     * enough to spring-load a raise. Surfaces the strip's window so a backgrounded
+     * float can be aimed at, mirroring the dwell-raise a dock region performs over
+     * its body — a no-op for an in-document strip or a window already frontmost.
+     */
+    private _onBarDockHover = (): void => {
+        this.ancestorWindow()?.bringToFront();
     };
 
     /**
@@ -1872,6 +1886,27 @@ class Tab extends LayoutManager {
         }
 
         return ancestor instanceof AbstractWindow ? ancestor : null;
+    }
+
+    /**
+     * The nearest [`AbstractWindow`](/api/overlay/classes/AbstractWindow) ancestor
+     * of this strip, or `null` when it sits directly in the document. Unlike
+     * {@link Tab.hostWindow} — which resolves only the auto-created tear-off window
+     * a `"strip"` detach builds — this walks the full container chain, so it also
+     * finds the ordinary `Window` a tiled dock lives in. Used to raise whichever
+     * window a cross-window dock or dock-hover lands in, mirroring the dock
+     * region's host-window raise (a no-op for an in-document strip).
+     *
+     * @returns The owning window, or `null`.
+     */
+    private ancestorWindow(): AbstractWindow | null {
+        for (let node: Component | null = this.getContainer(); node; node = node.getParentComponent()) {
+            if (node instanceof AbstractWindow) {
+                return node;
+            }
+        }
+
+        return null;
     }
 
     /**
