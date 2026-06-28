@@ -181,6 +181,39 @@ class Tree extends Component<TreeOptions> {
     }
 
     /**
+     * Programmatically selects a single node, replacing any existing selection
+     * and scrolling it into view.
+     *
+     * Unlike a user click this does **not** emit the `"selection"` event: it is a
+     * state setter for syncing the tree to an external source of truth (e.g. the
+     * active dock tab), so it must not re-trigger selection-driven side effects.
+     * No-op when the node is not in the currently visible (flattened) set — e.g.
+     * an ancestor is collapsed.
+     *
+     * @param node - A node currently held by this tree.
+     *
+     * @returns This tree, for method chaining.
+     */
+    selectNode(node: TreeNode): this {
+        const index = this._flatRows.findIndex(r => r.node === node);
+        if (index < 0) {
+            return this;
+        }
+
+        this._selectedNodes.clear();
+        this._selectedNodes.add(node);
+        this._anchorNode = node;
+        this._focusNode = node;
+
+        this._updateSelectionStyle();
+        this._scrollIntoView(index);
+        this._renderWindow();
+        this._updateActiveDescendant();
+
+        return this;
+    }
+
+    /**
      * Registers a listener for one of this tree's events.
      *
      * @param event - `"selection"` fires whenever the selection changes,

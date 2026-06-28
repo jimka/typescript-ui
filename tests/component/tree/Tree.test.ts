@@ -159,6 +159,30 @@ describe('Tree — listener bag', () => {
         expect(seen).toEqual([[node, event]]);
     });
 
+    it('selectNode selects a node and does not emit selection', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+
+        let emitted = 0;
+        tree.on('selection', () => { emitted += 1; });
+
+        tree.selectNode(nodes[1]);
+
+        expect(tree.getSelectedNodes()).toEqual([nodes[1]]);
+        expect(tree.getSelectedNode()).toBe(nodes[1]);
+        expect(emitted).toBe(0);
+    });
+
+    it('selectNode is a no-op for a node not in the visible set', () => {
+        const tree = new _Tree();
+        tree.setNodes(fruitTree());
+
+        tree.selectNode({ label: 'ghost' });
+
+        expect(tree.getSelectedNodes()).toEqual([]);
+    });
+
     it('off removes a previously registered listener', () => {
         const tree = new TestTree();
         let count = 0;
