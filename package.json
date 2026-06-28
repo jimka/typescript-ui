@@ -95,6 +95,7 @@
     "build:lib": "tsc -p tsconfig.lib.json && vite build --config vite.lib.config.ts",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.lib.json --noEmit",
+    "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "doc": "typedoc --out dist/docs src/typescript",
     "docs:api": "typedoc",
     "docs:dev": "vitepress dev docs",
@@ -106,7 +107,7 @@
     "lint:baseline": "node scripts/eslint/update-baseline.mjs",
     "lint:dom-audit": "node scripts/eslint/dom-audit.mjs",
     "test:lint": "node scripts/eslint/forward-super-options.test.mjs && node scripts/eslint/no-element-style.test.mjs && node scripts/eslint/no-raw-dom.test.mjs",
-    "test": "vitest run",
+    "test": "npm run typecheck:test && vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "cloc": "cloc src/typescript/lib --include-lang=TypeScript"

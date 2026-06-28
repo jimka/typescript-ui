@@ -852,6 +852,13 @@ class MiscPanel extends Panel {
                 },
             });
 
+            // Log the panel lifecycle so the events are observable from the
+            // console while dragging, tearing off, focusing, and closing panels.
+            dock.on("attach", e => console.log(`[Dock] attach: ${e.id}`));
+            dock.on("detach", e => console.log(`[Dock] detach: ${e.id}`));
+            dock.on("focus",  e => console.log(`[Dock] focus: ${e ? e.id : "(none)"}`));
+            dock.on("close",  e => console.log(`[Dock] close: ${e.id}`));
+
             let savedLayout: LayoutState | null = null;
             const toolbar = new ToolBar();
 

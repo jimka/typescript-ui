@@ -63,6 +63,47 @@ Once a panel is docked, the gestures come from the composed primitives:
 
 `Dock` guarantees the regions these gestures create are themselves dockable: after any structural change it runs an idempotent, animation-frame-coalesced sweep that gives every region a `DockRegion` drop target and makes every `Tab` reorderable. A torn-off tab lands in an ordinary header [`Window`](/components/Window) whose content the sweep **adopts** into a wired region tree — so the float is a *mini-dock* you can edge-split, arrange into multiple panes, and re-dock against the main dock in both directions, not a tab-only strip.
 
+## Panel lifecycle
+
+A panel is always in one of three states: **docked** (a tab in the in-dock tiled tree), **floating** (in a tear-off [`Window`](/components/Window)), or **gone** (destroyed). `Dock` emits four events — typed as [`DockEvent`](/api/overlay/type-aliases/DockEvent) with a [`DockPanelEvent`](/api/overlay/interfaces/DockPanelEvent) payload — naming the transitions between them:
+
+| Event | Fires when | Payload |
+| --- | --- | --- |
+| `attach` | a panel enters the tiled tree — a fresh `addPanel`, or a re-dock dragged back from a float | `{ id, content }` |
+| `detach` | a panel leaves the tiled tree into a float but stays alive (a tear-off) | `{ id, content }` |
+| `focus` | the dock-wide active panel changes, across tiled tabs **and** floats | `{ id, content }` or `null` |
+| `close` | a panel is genuinely destroyed — a tab ✕, `removePanel`, or a float window's chrome ✕ | `{ id, content }` |
+
+```typescript
+dock.on('close', ({ id }) => controller.disposeStore(id));
+dock.on('focus', panel => statusBar.setText(panel ? panel.id : 'no panel'));
+```
+
+The `content` in every payload is the panel's stable Dock-owned identity frame — `content.getId()` is the `id` you registered.
+
+A few rules make the events predictable:
+
+- **`detach` and `close` are mutually exclusive.** A tear-off fires `detach`, never `close`; a torn-off panel later destroyed fires `close` at that point. A panel torn off then closed produces `detach` then `close` — two real transitions.
+- **An internal move is silent.** Dragging a panel between `Split` panes or between two in-dock `Tab` regions never left the tiled tree, so it fires no `attach` / `detach`. `attach` is derived from a *floating → docked* transition, not from every re-parent.
+- **`focus` is one nullable event — there is no `blur`.** The previously-focused panel is whatever the last non-null `focus` named; the `null` payload covers "nothing focused now" (e.g. the last panel closed). Re-activating the already-focused panel is silent.
+- **Re-dock and layout restore fire `focus` too.** A re-dock and a `setLayoutState` both genuinely change the active panel, so each fires a `focus` for the now-active panel in addition to whatever `attach` a re-dock derives.
+- **`Split` generates no events.** It is structural — it holds regions, never a panel directly.
+
+## Programmatic control
+
+Two methods drive the lifecycle from code, each returning whether it found the panel:
+
+```typescript
+if (dock.focusPanel('search')) {
+    return; // already open — activated its tab and surfaced its float
+}
+
+dock.removePanel('editor'); // closes through the user-close path -> fires `close`
+```
+
+- **`focusPanel(id)`** activates the host tab and raises the host float when the panel is floated, so a buried panel surfaces. A successful activation naturally produces a `focus`. Returns `false` for an unknown id or one registered but never docked.
+- **`removePanel(id)`** closes the panel through the same path a tab ✕ takes, firing exactly one `close`. Returns `false` for an unknown id or one in no region. The cached frame is evicted (a later `addPanel` rebuilds it from the registered factory) while the registration is kept.
+
 ## Saving and restoring
 
 `getLayoutState()` captures the whole arrangement — split ratios, tab order, the active tab, and every torn-off window *including its internal split/tab tree* — as a plain serializable [`LayoutState`](/api/layout/interfaces/LayoutState). Each float is stored as a [`WindowNode`](/api/layout/interfaces/WindowNode) carrying a `content` region tree, so a multi-pane float round-trips with its splits and active tabs intact (a legacy single-panel `panelId` state still restores through a fallback). `setLayoutState(state)` rebuilds it, sourcing each panel from the registry by `id`:
