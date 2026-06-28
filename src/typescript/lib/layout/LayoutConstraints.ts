@@ -21,6 +21,13 @@ export class LayoutConstraints {
      */
     glyph?: string | null = null;
     /**
+     * Optional hover-tooltip text for a tab button. Read by the
+     * [`Tab`](/api/layout/classes/Tab) manager (via
+     * [`TabBar`](/api/component/container/classes/TabBar)) and attached to the
+     * tab button; ignored by other layout managers.
+     */
+    tooltip?: string | null = null;
+    /**
      * How the component fills its allocated cell. Beyond the grid-style managers,
      * [`HBox`](/api/layout/classes/HBox) and [`VBox`](/api/layout/classes/VBox)
      * read the **cross-axis** component as per-child align-self in both

@@ -37,6 +37,8 @@ export interface DockPanelSpec {
     title:    string;
     /** Optional registry glyph name shown leading the tab label. */
     glyph?:   string;
+    /** Optional hover-tooltip text shown over the tab button. */
+    tooltip?: string;
     /** Whether the tab shows a close button. Defaults to `true`. */
     closeable?: boolean;
     /** The content: a live component, or a lazy factory built on first resolve. It is placed inside the identity frame, never mutated. */
@@ -390,6 +392,10 @@ class Dock extends Container<DockOptions> {
 
         if (spec.glyph) {
             constraints.glyph = spec.glyph;
+        }
+
+        if (spec.tooltip) {
+            constraints.tooltip = spec.tooltip;
         }
 
         return constraints;

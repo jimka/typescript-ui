@@ -18,6 +18,7 @@ import { Component } from '~/core/Component';
 import { Dock, DockPanelEvent } from '~/overlay/Dock';
 import { Tab } from '~/layout/Tab';
 import { Window } from '~/overlay/Window';
+import { Tooltip } from '~/overlay/Tooltip';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -691,6 +692,36 @@ describe('Dock addPanel — focus and closeable', () => {
         flush();
 
         expect(rootTab(dock).getLayoutConstraints(frameOf(dock, 'a'))?.closeable).toBe(false);
+    });
+});
+
+describe('Dock addPanel — tooltip', () => {
+    it('stores the tooltip on the tab constraints', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}), tooltip: 'customers\nDatabase: sqladmin' });
+        dock.doLayout();
+        flush();
+
+        expect(rootTab(dock).getLayoutConstraints(frameOf(dock, 'a'))?.tooltip).toBe('customers\nDatabase: sqladmin');
+    });
+
+    it('attaches the tooltip to the tab button', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const attachSpy = vi.spyOn(Tooltip, 'attach');
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}), tooltip: 'TT-text' });
+        dock.doLayout();
+        flush();
+
+        expect(attachSpy).toHaveBeenCalledWith(expect.anything(), 'TT-text');
     });
 });
 
