@@ -65,17 +65,27 @@ Once a panel is docked, the gestures come from the composed primitives:
 
 ## Panel lifecycle
 
-A panel is always in one of three states: **docked** (a tab in the in-dock tiled tree), **floating** (in a tear-off [`Window`](/components/Window)), or **gone** (destroyed). `Dock` emits four events — typed as [`DockEvent`](/api/overlay/type-aliases/DockEvent) with a [`DockPanelEvent`](/api/overlay/interfaces/DockPanelEvent) payload — naming the transitions between them:
+The model is **host-centric**: a live panel always occupies one Dock-managed **host** — the **tiled tree** (the main dock) or a **float** [`Window`](/components/Window) — and a destroyed panel is **gone**. `Dock` emits four events — typed as [`DockEvent`](/api/overlay/type-aliases/DockEvent) with a [`DockPanelEvent`](/api/overlay/interfaces/DockPanelEvent) payload — naming the host transitions:
 
 | Event | Fires when | Payload |
 | --- | --- | --- |
-| `attach` | a panel enters the tiled tree — a fresh `addPanel`, or a re-dock dragged back from a float | `{ id, content }` |
-| `detach` | a panel leaves the tiled tree into a float but stays alive (a tear-off) | `{ id, content }` |
-| `focus` | the dock-wide active panel changes, across tiled tabs **and** floats | `{ id, content }` or `null` |
-| `close` | a panel is genuinely destroyed — a tab ✕, `removePanel`, or a float window's chrome ✕ | `{ id, content }` |
+| `attach` | a panel **enters** a host — a fresh `addPanel`/restore into the tiled tree, or a tear-off into a fresh float | `{ id, content, window }` |
+| `detach` | a panel **leaves** a host while staying alive | `{ id, content, window }` |
+| `focus` | the dock-wide active panel changes, across tiled tabs **and** floats | `{ id, content, window }` or `null` |
+| `close` | a panel is genuinely destroyed — a tab ✕, `removePanel`, or a float window's chrome ✕ | `{ id, content, window: null }` |
+
+The payload's **`window`** names which host the event concerns: `null` for the tiled tree, otherwise the float [`Window`](/components/Window). A move is a **pair** of events — a panel leaves one host and enters another:
+
+| Gesture | Events |
+| --- | --- |
+| Tear off a tab into a float | `detach`(`window: null`) then `attach`(*float*) |
+| Re-dock a float — *whether* dropped on a region body/edge **or** merged onto a tab bar | `detach`(*float*) then `attach`(`window: null`) |
+| Internal move within one host (reorder, region move) | *(silent)* |
 
 ```typescript
 dock.on('close', ({ id }) => controller.disposeStore(id));
+dock.on('attach', ({ id, window }) =>
+    console.log(`${id} now in ${window ? window.getTitle() : 'the main dock'}`));
 dock.on('focus', panel => statusBar.setText(panel ? panel.id : 'no panel'));
 ```
 
@@ -83,10 +93,11 @@ The `content` in every payload is the panel's stable Dock-owned identity frame �
 
 A few rules make the events predictable:
 
-- **`detach` and `close` are mutually exclusive.** A tear-off fires `detach`, never `close`; a torn-off panel later destroyed fires `close` at that point. A panel torn off then closed produces `detach` then `close` — two real transitions.
-- **An internal move is silent.** Dragging a panel between `Split` panes or between two in-dock `Tab` regions never left the tiled tree, so it fires no `attach` / `detach`. `attach` is derived from a *floating → docked* transition, not from every re-parent.
-- **`focus` is one nullable event — there is no `blur`.** The previously-focused panel is whatever the last non-null `focus` named; the `null` payload covers "nothing focused now" (e.g. the last panel closed). Re-activating the already-focused panel is silent.
-- **Re-dock and layout restore fire `focus` too.** A re-dock and a `setLayoutState` both genuinely change the active panel, so each fires a `focus` for the now-active panel in addition to whatever `attach` a re-dock derives.
+- **A move is `detach` then `attach`.** Leaving one host and entering another is two real transitions, in that order — so a tear-off is `detach`(tiled) + `attach`(float), and a re-dock is `detach`(float) + `attach`(tiled). The `window` field tells the two apart.
+- **`close` is never paired with a `detach`.** A destroy (tab ✕, `removePanel`, float ✕) fires `close` alone — the frame is gone, so no phantom host-leave is emitted. A panel torn off and *then* closed produces the tear-off pair first, then `close` when destroyed.
+- **An internal move is silent.** Dragging a panel between `Split` panes or between two `Tab` regions *inside the same host* never changes its host, so it fires nothing. Events are derived from a host **change**, not from every re-parent.
+- **`focus` is one nullable event — there is no `blur`.** The previously-focused panel is whatever the last non-null `focus` named; the `null` payload covers "nothing focused now" (e.g. the last panel closed). Re-activating the already-focused panel is silent. A non-null `focus` payload's `window` names the focused panel's current host.
+- **Re-dock and layout restore fire `focus` too.** A re-dock and a `setLayoutState` both genuinely change the active panel, so each fires a `focus` for the now-active panel in addition to the host-transition events.
 - **`Split` generates no events.** It is structural — it holds regions, never a panel directly.
 
 ## Programmatic control
