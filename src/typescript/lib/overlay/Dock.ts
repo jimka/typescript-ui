@@ -869,6 +869,13 @@ class Dock extends Container<DockOptions> {
             return;
         }
 
+        // Keep an emptied root region (its parent is the dock) as the dock's
+        // add/drop target — removing it would leave the dock with no region and
+        // crash the next addPanel.
+        if (parent === this) {
+            return;
+        }
+
         parent.removeComponent(region);
         this.collapseSinglePaneSplit(parent);
         this.closeFloatIfEmpty(parent);

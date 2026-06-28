@@ -693,3 +693,28 @@ describe('Dock addPanel — focus and closeable', () => {
         expect(rootTab(dock).getLayoutConstraints(frameOf(dock, 'a'))?.closeable).toBe(false);
     });
 });
+
+describe('Dock addPanel — empty dock', () => {
+    it('can open a panel again after the last one was closed', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        // Close the only panel — the root region empties.
+        expect(dock.removePanel('a')).toBe(true);
+        dock.doLayout();
+        flush();
+
+        // Re-adding must not throw on the emptied dock, and must register + show.
+        expect(() => dock.addPanel({ id: 'b', title: 'B', content: new Component({}) })).not.toThrow();
+        dock.doLayout();
+        flush();
+
+        expect(rootTab(dock).getActiveContent()?.getId()).toBe('b');
+    });
+});
