@@ -6,18 +6,8 @@ import { DOM } from "~/core/DOM.js";
 import { AbstractWindow } from "~/overlay/AbstractWindow.js";
 import { Split } from "~/layout/Split.js";
 import { Tab } from "~/layout/Tab.js";
-import { DragManager, DragEventDetail, tabDragRegistry } from "~/overlay/DragManager.js";
+import { DragManager, DragEventDetail, tabDragRegistry, SPRING_RAISE_DELAY_MS } from "~/overlay/DragManager.js";
 import { DropZone, DropZoneOverlay, EDGE_BAND_FRACTION } from "~/overlay/DropZoneOverlay.js";
-
-/**
- * Dwell, in milliseconds, before a tab held over a region raises that region's
- * host window. Long enough that brushing a drag across a background window in
- * transit does not raise it, short enough that a deliberate hover surfaces the
- * target so the user can aim the drop. Set above a `MenuItem` submenu's 150ms
- * hover delay because raising a whole window is a heavier, more disruptive action
- * than opening a submenu, so it should demand a clearly deliberate pause.
- */
-const SPRING_RAISE_DELAY_MS = 1000;
 
 /**
  * Coordinator that turns an edge/center drop onto a region into a structural

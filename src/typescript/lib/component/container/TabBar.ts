@@ -21,7 +21,7 @@ import { BoxLayout } from "~/layout/BoxLayout.js";
 import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
-import { DragManager, DragEventDetail, DragData, TabDragData } from "~/overlay/DragManager.js";
+import { DragManager, DragEventDetail, DragData, TabDragData, SPRING_RAISE_DELAY_MS } from "~/overlay/DragManager.js";
 import { callable } from "~/core/Callable.js";
 import type { TabWidthMode, TabSide, TabOrientation } from "~/layout/Tab.js";
 import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
@@ -85,11 +85,14 @@ const SCROLL_ARROW_STEP = 80;
  * - `"detached"(id)` — a cell's drag was released onto a target; the owner drops
  *   the cell only if the content left its container (a within-strip reorder is a
  *   no-op for the owner).
+ * - `"dockhover"()` — a foreign tab has dwelt over this strip long enough to
+ *   spring-load a raise; the owner surfaces the strip's window so a backgrounded
+ *   float can be aimed at.
  *
  * @category Components
  */
 export type TabBarEvent =
-    "tabpressed" | "reordered" | "tabclose" | "dockrequested" | "tabdragstart" | "tearoffrequested" | "detached";
+    "tabpressed" | "reordered" | "tabclose" | "dockrequested" | "tabdragstart" | "tearoffrequested" | "detached" | "dockhover";
 
 /**
  * Construction-time options for {@link TabBar} — the bar-only subset of the
@@ -107,6 +110,7 @@ export interface TabBarOptions extends ContainerOptions {
         tabdragstart?:     (id: string) => void;
         tearoffrequested?: (id: string, clientX: number, clientY: number, forceBare: boolean) => void;
         detached?:         (id: string) => void;
+        dockhover?:        () => void;
     };
 
     /** Tab-button width strategy; defaults to `"equal"`. */
@@ -527,6 +531,11 @@ class TabBar extends Container<TabBarOptions> {
     private _dragShiftHeld: boolean = false;
     private _dragInsertIndex: number = -1;
 
+    // Pending spring-loaded host-window raise while a foreign tab dwells over the
+    // strip; armed once per dwell in onDragOver and cleared the moment the cursor
+    // leaves or drops. Fires "dockhover" so the owner raises the strip's window.
+    private _springRaiseTimer: ReturnType<typeof setTimeout> | null = null;
+
     /**
      * Creates a tab strip with an empty toolbar.
      *
@@ -737,6 +746,7 @@ class TabBar extends Container<TabBarOptions> {
         }
 
         this.teardownTabDnD();
+        this.clearSpringRaise();
         this._moveTriggerTeardown?.();
         this._moveTriggerTeardown = null;
 
@@ -2563,15 +2573,56 @@ class TabBar extends Container<TabBarOptions> {
                 this._dropTint.showOver(this._tabClip);
                 this.updateReorderSlot(detail);
 
+                // Spring-load a host-window raise only for a foreign dock — a
+                // within-strip reorder is already in the frontmost window, so its
+                // raise would be a needless re-stamp.
+                if (detail.dragData["sourceTabId"] !== this.stripId()) {
+                    this.scheduleSpringRaise();
+                }
+
                 return null;
             },
             onDragLeave: (): void => {
+                this.clearSpringRaise();
                 this.hideDropAffordance();
             },
             onDrop: (detail: DragEventDetail): void => {
+                this.clearSpringRaise();
                 this.dropTabHeader(detail);
             },
         });
+    }
+
+    /**
+     * Arms the spring-loaded host-window raise if one is not already pending, so a
+     * foreign tab dwelling over the strip surfaces its window after
+     * {@link SPRING_RAISE_DELAY_MS}. Idempotent across the repeated `onDragOver`
+     * calls a single hover produces. Fires `"dockhover"` (gated on the drag still
+     * being live) for the owner to act on — the bar itself never touches a window.
+     */
+    private scheduleSpringRaise(): void {
+        if (this._springRaiseTimer !== null) {
+            return;
+        }
+
+        this._springRaiseTimer = setTimeout(() => {
+            this._springRaiseTimer = null;
+
+            if (DragManager.isDragging()) {
+                this.emit("dockhover");
+            }
+        }, SPRING_RAISE_DELAY_MS);
+    }
+
+    /**
+     * Cancels a pending spring-loaded raise — the cursor left or dropped before the
+     * dwell elapsed.
+     */
+    private clearSpringRaise(): void {
+        if (this._springRaiseTimer !== null) {
+            clearTimeout(this._springRaiseTimer);
+            this._springRaiseTimer = null;
+        }
     }
 
     /**
@@ -2835,6 +2886,7 @@ class TabBar extends Container<TabBarOptions> {
     on(event: "tabdragstart",     listener: (id: string) => void): this;
     on(event: "tearoffrequested", listener: (id: string, clientX: number, clientY: number, forceBare: boolean) => void): this;
     on(event: "detached",         listener: (id: string) => void): this;
+    on(event: "dockhover",        listener: () => void): this;
     on(event: TabBarEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -2870,6 +2922,7 @@ class TabBar extends Container<TabBarOptions> {
     protected emit(event: "tabdragstart",     id: string): void;
     protected emit(event: "tearoffrequested", id: string, clientX: number, clientY: number, forceBare: boolean): void;
     protected emit(event: "detached",         id: string): void;
+    protected emit(event: "dockhover"): void;
     protected emit(event: TabBarEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
