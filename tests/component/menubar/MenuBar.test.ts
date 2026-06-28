@@ -89,6 +89,29 @@ describe('MenuBar open / close index tracking', () => {
     });
 });
 
+describe('MenuBar outside-click exclusion', () => {
+    it('excludes only the opener button, not the whole bar, so empty-bar clicks dismiss', () => {
+        const bar = new MenuBar();
+
+        bar.setMenus(MENUS);
+        bar.getElement(true);
+
+        bar.openMenu(0);
+
+        const priv = bar as unknown as {
+            _panels: Array<{ getExcludedElement(): unknown }>;
+            _buttons: Component[];
+        };
+        const excluded = priv._panels[0].getExcludedElement();
+
+        // The opener button is excluded so its own mousedown does not self-close
+        // the menu; the bar as a whole is NOT excluded, so a mousedown on empty
+        // bar space falls through to the menu's outside-click dismissal.
+        expect(excluded).toBe(priv._buttons[0].getElement());
+        expect(excluded).not.toBe(bar.getElement());
+    });
+});
+
 describe('MenuBar ARIA', () => {
     it('reports role="menubar"', () => {
         expect(new MenuBar().getAria().getRole()).toBe('menubar');
