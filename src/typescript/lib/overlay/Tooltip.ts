@@ -3,6 +3,7 @@
 import { Component } from "~/core/Component.js";
 import { DOM, type Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
+import { LayerManager } from "~/core/LayerManager.js";
 import { Util } from "~/core/Util.js";
 import { Animation } from "~/core/Animation.js";
 import { Text } from "~/component/input/Text.js";
@@ -67,6 +68,23 @@ export class Tooltip extends Component {
     private static elementAttachments: Map<Handle, ElementTooltipAttachment> = new Map();
     private static activeElement: Handle | null = null;
 
+    // True while the anchor-watch viewport listener is installed (only while a
+    // tooltip is shown). See _onAnchorWatch.
+    private static watching: boolean = false;
+
+    /**
+     * Hides the tooltip when its anchor element has left the DOM. The browser
+     * fires no `mouseout` when an element is removed under a stationary pointer,
+     * so a tooltip whose anchor vanishes would otherwise linger; this runs on
+     * pointer movement while a tooltip is shown and dismisses it once the anchor
+     * is no longer connected.
+     */
+    private static readonly _onAnchorWatch = (): void => {
+        if (Tooltip.activeElement !== null && !DOM.source.isConnected(Tooltip.activeElement)) {
+            Tooltip.hide();
+        }
+    };
+
     // Set true while a fade-out is in flight; reset to false when the fade-out
     // completes (so the deferred removeElement fires) or when a fresh `show()`
     // re-displays the tooltip mid-fade (the deferred removeElement is then
@@ -98,7 +116,9 @@ export class Tooltip extends Component {
         super();
 
         this.setVisible(false);
-        this.setZIndex(10001);
+        // Above every managed layer (incl. a modal Dialog and its backdrop) so a
+        // hover tooltip is never occluded.
+        this.setZIndex(LayerManager.Band.Tooltip);
         this.setBackgroundColor("var(--ts-ui-tooltip-bg, rgb(255, 255, 240))");
         this.setForegroundColor("var(--ts-ui-tooltip-color, rgb(0, 0, 0))");
         this.setBorder({ border: "1px solid var(--ts-ui-tooltip-border, rgb(180, 180, 100))" });
@@ -201,6 +221,14 @@ export class Tooltip extends Component {
 
         inst.setVisible(true);
 
+        // Watch for the anchor leaving the DOM while the tooltip is up (a removed
+        // element fires no mouseout), so an orphaned tooltip dismisses on the next
+        // pointer move instead of lingering.
+        if (!Tooltip.watching) {
+            Event.addViewportListener(inst, "mousemove", Tooltip._onAnchorWatch);
+            Tooltip.watching = true;
+        }
+
         // Cancel a pending fade-out's removeElement so a fresh show during the
         // outgoing transition keeps the element in the DOM.
         Tooltip.dismissing = false;
@@ -226,6 +254,14 @@ export class Tooltip extends Component {
 
         const inst = Tooltip.getInstance();
         const el   = inst.getElement();
+
+        // The tooltip is going away; stop watching the (now-irrelevant) anchor
+        // and forget it.
+        if (Tooltip.watching) {
+            Event.removeViewportListener(inst, "mousemove", Tooltip._onAnchorWatch);
+            Tooltip.watching = false;
+        }
+        Tooltip.activeElement = null;
 
         if (!el) {
             return;
@@ -281,6 +317,9 @@ export class Tooltip extends Component {
 
             Tooltip.showTimer = setTimeout(() => {
                 Tooltip._applyColors(colors);
+                // Record the anchor so the anchor-watch dismisses the tooltip if
+                // this component is later removed from the DOM.
+                Tooltip.activeElement = component.getElement() ?? null;
                 Tooltip.show(text, cursorX, cursorY);
                 Tooltip.showTimer = null;
             }, 500);

@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Tooltip } from '~/overlay/Tooltip';
+import { LayerManager } from '~/core/LayerManager';
+import { Component } from '~/core/Component';
 import { Util } from '~/core/Util';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
@@ -46,6 +48,8 @@ describe('Tooltip.show', () => {
         }
 
         (Tooltip as any).instance = null;
+        (Tooltip as any).watching = false;
+        (Tooltip as any).activeElement = null;
 
         DOM.reset();
     });
@@ -101,6 +105,50 @@ describe('Tooltip.show', () => {
         Tooltip.show(text, 100, 100);
 
         expect(inst().getWidth()).toBe(MAX_WIDTH);
+    });
+
+    it('renders above the Dialog layer band so it shows over a modal', () => {
+        installTestDOM(CONFIG);
+
+        Tooltip.show('Hello', 100, 100);
+
+        // A tooltip is a transient, non-interactive affordance that must float
+        // over every managed layer — including a modal Dialog and its backdrop.
+        expect((inst() as { getZIndex(): number }).getZIndex()).toBeGreaterThan(LayerManager.Band.Dialog);
+    });
+
+    it('dismisses when its anchor element leaves the DOM', () => {
+        installTestDOM(CONFIG);
+
+        Tooltip.show('Hello', 100, 100);
+
+        // An anchor that was never appended to the document is disconnected.
+        const orphan = new Component({});
+        const el = orphan.getElement(true)!;
+        (Tooltip as { activeElement: unknown }).activeElement = el;
+
+        expect(DOM.source.isConnected(el)).toBe(false);
+
+        // Simulate the pointer-move anchor watch firing.
+        (Tooltip as unknown as { _onAnchorWatch(): void })._onAnchorWatch();
+
+        // hide() ran: the active anchor is forgotten.
+        expect((Tooltip as { activeElement: unknown }).activeElement).toBeNull();
+    });
+
+    it('does not dismiss a tooltip that has no tracked anchor', () => {
+        installTestDOM(CONFIG);
+
+        Tooltip.show('Hello', 100, 100);
+        // show() installs the anchor watch.
+        expect((Tooltip as { watching: boolean }).watching).toBe(true);
+
+        (Tooltip as { activeElement: unknown }).activeElement = null;
+
+        (Tooltip as unknown as { _onAnchorWatch(): void })._onAnchorWatch();
+
+        // No anchor to check → no hide; the watch stays installed.
+        expect((Tooltip as { watching: boolean }).watching).toBe(true);
     });
 
     it('clamps x and y to >= 0 for negative coordinates', () => {
