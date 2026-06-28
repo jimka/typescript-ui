@@ -27,7 +27,7 @@ Root-cause first, fix second. Read the actual call chain. Don't propose a fix un
 
 ## Fixing: test-first
 
-Once you've named the root cause, fix it **test-first** — the same discipline the [`implement`](../implement/SKILL.md) skill applies to new functionality, framed for a bug:
+Once you've named the root cause, fix it **test-first** — the same discipline the [`implement`](~/.claude/skills/implement/SKILL.md) skill applies to new functionality, framed for a bug:
 
 - Write a **regression test that reproduces the bug** before you touch the fix. It must fail against the current code, and fail for the *right reason* — it pins the **correct expected behaviour** (from the contract: JSDoc, signatures, how callers use it), never the buggy output the code currently emits. A test that passes before your fix is testing the wrong thing; watch it go red first.
 - Then implement the fix until it goes green. One root cause at a time: red → green → next.
