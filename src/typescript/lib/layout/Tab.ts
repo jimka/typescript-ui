@@ -27,14 +27,16 @@ import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
  * `"empty"` fires when the strip loses its last tab by any path — close,
  * tear-off, or re-dock — and carries no payload; `"detached"` fires when a tab
  * is torn off into a new floating window (carrying that window), the one
- * structural change that does *not* always empty the source strip;
+ * structural change that does *not* always empty the source strip; `"docked"`
+ * fires when a foreign tab is dropped onto this strip (carrying the docked
+ * content), the structural counterpart of `"detached"` — a tab arrived by drop;
  * `"activated"` fires when the active tab changes via a click or
  * {@link Tab.setActiveTabIndex} (carrying the now-active content and its index),
  * but *not* on the silent post-close re-selection of a surviving sibling.
  *
  * @category Layouts
  */
-export type TabEvent = "tabclose" | "empty" | "detached" | "activated";
+export type TabEvent = "tabclose" | "empty" | "detached" | "activated" | "docked";
 
 /**
  * How a torn-off tab's floating window hosts its content.
@@ -1019,6 +1021,11 @@ class Tab extends LayoutManager {
             // (if any) to the front and focus it — a no-op for an in-document
             // strip, which has no host window.
             this.hostWindow()?.bringToFront();
+
+            // Announce the merge so a tree owner can react to a tab-bar dock the
+            // same way it reacts to a tear-off. The structural counterpart of
+            // "detached": a tab arrived by drop rather than leaving by tear-off.
+            this.emit("docked", content);
         }
     };
 
@@ -1978,6 +1985,20 @@ class Tab extends LayoutManager {
      * @returns This tab layout, for method chaining.
      */
     on(event: "activated", listener: (content: Component, index: number) => void): this;
+    /**
+     * Registers a listener for the `"docked"` event, which fires after a foreign
+     * tab is dropped onto this strip, carrying the docked content. It is the
+     * structural counterpart of `"detached"` (a tab arrived by drop, vs. a tab
+     * left by tear-off), so a tree owner such as
+     * [`Dock`](/api/overlay/classes/Dock) can react to a tab-bar merge the same
+     * way it reacts to a tear-off.
+     *
+     * @param event - The `"docked"` event.
+     * @param listener - Invoked with the docked content.
+     *
+     * @returns This tab layout, for method chaining.
+     */
+    on(event: "docked", listener: (content: Component) => void): this;
     on(event: TabEvent,   listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -2010,6 +2031,7 @@ class Tab extends LayoutManager {
     protected emit(event: "empty"): void;
     protected emit(event: "detached", window: AbstractWindow): void;
     protected emit(event: "activated", content: Component, index: number): void;
+    protected emit(event: "docked",   content: Component): void;
     protected emit(event: TabEvent,   ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }

@@ -24,7 +24,7 @@ import {
     Window
 } from '@jimka/typescript-ui/overlay';
 import type { AutoScrollMode } from '@jimka/typescript-ui/core';
-import type { DrawerEdge } from '@jimka/typescript-ui/overlay';
+import type { DockPanelEvent, DrawerEdge } from '@jimka/typescript-ui/overlay';
 import { Insets, Placement } from '@jimka/typescript-ui/primitive';
 import {
     Absolute,
@@ -854,9 +854,15 @@ class MiscPanel extends Panel {
 
             // Log the panel lifecycle so the events are observable from the
             // console while dragging, tearing off, focusing, and closing panels.
-            dock.on("attach", e => console.log(`[Dock] attach: ${e.id}`));
-            dock.on("detach", e => console.log(`[Dock] detach: ${e.id}`));
-            dock.on("focus",  e => console.log(`[Dock] focus: ${e ? e.id : "(none)"}`));
+            // The host annotation names which host the event concerns: the float
+            // window title, or "(tiled)" for the main dock. A detach can name a
+            // float the panel just emptied (its title is then ""), so fall back to
+            // "(window)" to keep the line readable.
+            const host = (e: DockPanelEvent | null): string => e?.window ? (e.window.getTitle() || "(window)") : "(tiled)";
+
+            dock.on("attach", e => console.log(`[Dock] attach: ${e.id} -> ${host(e)}`));
+            dock.on("detach", e => console.log(`[Dock] detach: ${e.id} -> ${host(e)}`));
+            dock.on("focus",  e => console.log(`[Dock] focus: ${e ? `${e.id} -> ${host(e)}` : "(none)"}`));
             dock.on("close",  e => console.log(`[Dock] close: ${e.id}`));
 
             let savedLayout: LayoutState | null = null;
