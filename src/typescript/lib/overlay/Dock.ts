@@ -37,6 +37,10 @@ export interface DockPanelSpec {
     title:    string;
     /** Optional registry glyph name shown leading the tab label. */
     glyph?:   string;
+    /** Optional hover-tooltip text shown over the tab button. */
+    tooltip?: string;
+    /** Whether the tab shows a close button. Defaults to `true`. */
+    closeable?: boolean;
     /** The content: a live component, or a lazy factory built on first resolve. It is placed inside the identity frame, never mutated. */
     content:  Component | (() => Component);
 }
@@ -269,6 +273,11 @@ class Dock extends Container<DockOptions> {
 
             region.moveComponent(content, undefined, this.leafConstraints(spec));
 
+            // Activate the freshly added panel so opening it shows it. The tab
+            // cell is created lazily on the region's next doLayout, so this may
+            // defer (Tab.setActiveContent) until that pass.
+            (region.getLayoutManager() as Tab).setActiveContent(content);
+
             // The panel just entered the tiled tree. The ledger is left without an
             // entry for this id so the next sweep's host diff sees a first
             // appearance and emits attach(tiled) — the same reconcile path a
@@ -375,13 +384,19 @@ class Dock extends Container<DockOptions> {
      *
      * @returns The constraints, or `undefined`.
      */
-    private leafConstraints(spec: DockPanelSpec): LayoutConstraints | undefined {
-        if (!spec.glyph) {
-            return undefined;
+    private leafConstraints(spec: DockPanelSpec): LayoutConstraints {
+        const constraints = new LayoutConstraints();
+
+        // Dock tabs are closeable by default; a spec may opt out.
+        constraints.closeable = spec.closeable ?? true;
+
+        if (spec.glyph) {
+            constraints.glyph = spec.glyph;
         }
 
-        const constraints = new LayoutConstraints();
-        constraints.glyph = spec.glyph;
+        if (spec.tooltip) {
+            constraints.tooltip = spec.tooltip;
+        }
 
         return constraints;
     }
@@ -857,6 +872,13 @@ class Dock extends Container<DockOptions> {
         const parent = region.getParentComponent();
 
         if (!parent || region.getComponents().length > 0) {
+            return;
+        }
+
+        // Keep an emptied root region (its parent is the dock) as the dock's
+        // add/drop target — removing it would leave the dock with no region and
+        // crash the next addPanel.
+        if (parent === this) {
             return;
         }
 

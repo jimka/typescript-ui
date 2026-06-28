@@ -257,6 +257,10 @@ class Tab extends LayoutManager {
     private _contents: Array<ContentEntry> = [];
 
     private _selectedTabIndex: number = 0;
+
+    // A setActiveContent request for a child whose tab cell does not exist yet
+    // (added but not laid out). doLayout applies it once it creates the cell.
+    private _pendingActiveContent: Component | null = null;
     // Last tab index that was faded in during a doLayout pass. Compared
     // against `_selectedTabIndex` so the cross-tab fade fires only on actual
     // selection changes (not on every relayout, e.g. window resize).
@@ -1475,6 +1479,17 @@ class Tab extends LayoutManager {
             }
         }
 
+        // Apply a deferred setActiveContent now that this pass has created the
+        // freshly-added child's tab cell, so a programmatic add can focus it.
+        if (this._pendingActiveContent) {
+            const pendingIndex = this.indexOfContent(this._pendingActiveContent);
+
+            if (pendingIndex >= 0) {
+                this._pendingActiveContent = null;
+                this.setActiveTabIndex(pendingIndex);
+            }
+        }
+
         // The initial tab is never explicitly clicked, so its factory has to
         // be kicked off the first time we lay the container out. Subsequent
         // selections route through the strip's "tabpressed" event.
@@ -1708,6 +1723,28 @@ class Tab extends LayoutManager {
      * @param index - Zero-based tab index; clamped to `[0, tabCount - 1]`.
      * @returns This layout manager, for method chaining.
      */
+    /**
+     * Activates the tab hosting `content`. If its tab cell does not exist yet —
+     * a child added but not laid out, whose tab {@link doLayout} creates lazily —
+     * the request is deferred and applied on the next layout pass. Lets a
+     * programmatic add focus the panel it just added.
+     *
+     * @param content - The content component whose tab should become active.
+     * @returns This layout manager, for method chaining.
+     */
+    setActiveContent(content: Component): this {
+        const index = this.indexOfContent(content);
+
+        if (index >= 0) {
+            this._pendingActiveContent = null;
+            this.setActiveTabIndex(index);
+        } else {
+            this._pendingActiveContent = content;
+        }
+
+        return this;
+    }
+
     setActiveTabIndex(index: number): this {
         if (this._contents.length === 0) {
             return this;

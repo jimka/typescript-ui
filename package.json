@@ -49,6 +49,10 @@
       "import": "./dist/lib/glyphs/solid/index.es.js",
       "types": "./dist/lib/types/glyphs/solid/index.d.ts"
     },
+    "./glyphs/solid/*": {
+      "import": "./dist/lib/glyphs/solid/*.es.js",
+      "types": "./dist/lib/types/glyphs/solid/*.d.ts"
+    },
     "./glyphs/regular": {
       "import": "./dist/lib/glyphs/regular/index.es.js",
       "types": "./dist/lib/types/glyphs/regular/index.d.ts"

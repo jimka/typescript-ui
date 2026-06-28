@@ -18,6 +18,7 @@ import { Component } from '~/core/Component';
 import { Dock, DockPanelEvent } from '~/overlay/Dock';
 import { Tab } from '~/layout/Tab';
 import { Window } from '~/overlay/Window';
+import { Tooltip } from '~/overlay/Tooltip';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -647,5 +648,104 @@ describe('Dock off()', () => {
         expect(focusSpy).not.toHaveBeenCalled();
         expect(closeSpy).not.toHaveBeenCalled();
         expect(detachSpy).not.toHaveBeenCalled();
+    });
+});
+
+describe('Dock addPanel — focus and closeable', () => {
+    it('activates a freshly added panel (the newly opened tab is shown)', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        // Opening a second panel switches the active tab to it, rather than
+        // leaving the first one active.
+        expect(rootTab(dock).getActiveContent()?.getId()).toBe('b');
+    });
+
+    it('makes dock tabs closeable by default', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        expect(rootTab(dock).getLayoutConstraints(frameOf(dock, 'a'))?.closeable).toBe(true);
+    });
+
+    it('honors closeable: false on a panel spec', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}), closeable: false });
+        dock.doLayout();
+        flush();
+
+        expect(rootTab(dock).getLayoutConstraints(frameOf(dock, 'a'))?.closeable).toBe(false);
+    });
+});
+
+describe('Dock addPanel — tooltip', () => {
+    it('stores the tooltip on the tab constraints', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}), tooltip: 'customers\nDatabase: sqladmin' });
+        dock.doLayout();
+        flush();
+
+        expect(rootTab(dock).getLayoutConstraints(frameOf(dock, 'a'))?.tooltip).toBe('customers\nDatabase: sqladmin');
+    });
+
+    it('attaches the tooltip to the tab button', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const attachSpy = vi.spyOn(Tooltip, 'attach');
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}), tooltip: 'TT-text' });
+        dock.doLayout();
+        flush();
+
+        expect(attachSpy).toHaveBeenCalledWith(expect.anything(), 'TT-text');
+    });
+});
+
+describe('Dock addPanel — empty dock', () => {
+    it('can open a panel again after the last one was closed', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        // Close the only panel — the root region empties.
+        expect(dock.removePanel('a')).toBe(true);
+        dock.doLayout();
+        flush();
+
+        // Re-adding must not throw on the emptied dock, and must register + show.
+        expect(() => dock.addPanel({ id: 'b', title: 'B', content: new Component({}) })).not.toThrow();
+        dock.doLayout();
+        flush();
+
+        expect(rootTab(dock).getActiveContent()?.getId()).toBe('b');
     });
 });

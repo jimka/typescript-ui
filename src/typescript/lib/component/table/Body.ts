@@ -27,7 +27,7 @@ const SCROLL_BUFFER = 2;
  * `"verticalscroll"` / `"horizontalscroll"` fire after the body's virtual
  * scroll position changes, carrying the new pixel offset.
  */
-export type BodyEvent = "verticalscroll" | "horizontalscroll";
+export type BodyEvent = "verticalscroll" | "horizontalscroll" | "selectionchange";
 
 function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
     if (!b) return a.length === 0;
@@ -962,6 +962,8 @@ class Body extends Component {
             if (dataIdx !== -1) this.updateRowVisualState(i);
         });
 
+        this.notifySelectionChange();
+
         // Determine which column was clicked and update focused cell
         const targetHandle = e.target === null ? null : DOM.source.intern(e.target);
         const cells = row.getComponents();
@@ -1001,6 +1003,8 @@ class Body extends Component {
         this._boundIndices.forEach((dataIdx, i) => {
             if (dataIdx !== -1) this.updateRowVisualState(i);
         });
+
+        this.notifySelectionChange();
     }
 
     /**
@@ -1041,6 +1045,8 @@ class Body extends Component {
         this._boundIndices.forEach((dataIdx, i) => {
             if (dataIdx !== -1) this.updateRowVisualState(i);
         });
+
+        this.notifySelectionChange();
     }
 
     /**
@@ -1065,6 +1071,7 @@ class Body extends Component {
      */
     on(event: "verticalscroll",   listener: (scrollTop: number) => void): this;
     on(event: "horizontalscroll", listener: (scrollLeft: number) => void): this;
+    on(event: "selectionchange",  listener: (records: ModelRecord[]) => void): this;
     on(event: BodyEvent,          listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -1091,10 +1098,18 @@ class Body extends Component {
      * offset, in registration order.
      *
      * @param event - The event to emit.
-     * @param offset - The new pixel offset along the scroll axis.
+     * @param payload - The scroll offset (scroll events) or the selected
+     *   records (`"selectionchange"`).
      */
-    protected emit(event: BodyEvent, offset: number): void {
-        this._listeners.fire(event, offset);
+    protected emit(event: "verticalscroll" | "horizontalscroll", offset: number): void;
+    protected emit(event: "selectionchange", records: ModelRecord[]): void;
+    protected emit(event: BodyEvent, payload: number | ModelRecord[]): void {
+        this._listeners.fire(event, payload);
+    }
+
+    /** Fire `"selectionchange"` with the current selection. */
+    private notifySelectionChange(): void {
+        this.emit("selectionchange", this.getSelectedRecords());
     }
 
     /**

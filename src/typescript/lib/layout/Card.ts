@@ -181,6 +181,12 @@ class Card extends LayoutManager {
         this._visibleComponentId = id;
         this.syncVisible();
 
+        // Schedule a layout so a child first shown here gets sized: doLayout only
+        // ever lays out the visible child, so a sibling that was hidden during
+        // the initial pass has never been laid out and would render blank until
+        // an unrelated relayout. No-op before the manager is attached.
+        this.getContainer()?.scheduleLayout();
+
         return this;
     }
 

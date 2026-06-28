@@ -86,9 +86,35 @@ class BooleanCell extends Cell<Boolean | null> {
     }
 
     /**
-     * Toggles the checkbox value and fires the commit callback.
+     * Marks the cell read-only and propagates the flag to the checkbox so it
+     * rejects user toggles. The base {@link Cell.setReadOnly} only handles the
+     * cell chrome and the pooled-editor lifecycle; a BooleanCell's checkbox is
+     * its always-on renderer, so it must be disabled explicitly or it would
+     * stay interactive in a read-only column.
+     *
+     * @param value - `true` to lock the checkbox, `false` to restore it.
+     *
+     * @returns This cell, for method chaining.
+     */
+    setReadOnly(value: boolean): this {
+        super.setReadOnly(value);
+        this._checkbox.setReadOnly(value);
+
+        return this;
+    }
+
+    /**
+     * Toggles the checkbox value and fires the commit callback. A no-op when
+     * the cell is read-only — the base {@link Cell.startEdit} self-guards on
+     * `isReadOnly`, and this override (reached via the renderer's dblclick and
+     * the body's keyboard activation) must do the same so a locked column never
+     * toggles.
      */
     startEdit() {
+        if (this.isReadOnly()) {
+            return;
+        }
+
         this._checkbox.toggle();
     }
 

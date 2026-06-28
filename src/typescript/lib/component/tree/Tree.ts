@@ -17,7 +17,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export type TreeEvent = "selection" | "loaderror";
+export type TreeEvent = "selection" | "loaderror" | "contextmenu";
 
 /** Pixels of indentation added per depth level. */
 const INDENT_PX = 16;
@@ -57,6 +57,7 @@ export interface TreeOptions extends ComponentOptions {
     listeners?: {
         selection?: (nodes: TreeNode[]) => void;
         loaderror?: (node: TreeNode, error: unknown) => void;
+        contextmenu?: (node: TreeNode, event: MouseEvent) => void;
     };
 }
 
@@ -180,6 +181,39 @@ class Tree extends Component<TreeOptions> {
     }
 
     /**
+     * Programmatically selects a single node, replacing any existing selection
+     * and scrolling it into view.
+     *
+     * Unlike a user click this does **not** emit the `"selection"` event: it is a
+     * state setter for syncing the tree to an external source of truth (e.g. the
+     * active dock tab), so it must not re-trigger selection-driven side effects.
+     * No-op when the node is not in the currently visible (flattened) set — e.g.
+     * an ancestor is collapsed.
+     *
+     * @param node - A node currently held by this tree.
+     *
+     * @returns This tree, for method chaining.
+     */
+    selectNode(node: TreeNode): this {
+        const index = this._flatRows.findIndex(r => r.node === node);
+        if (index < 0) {
+            return this;
+        }
+
+        this._selectedNodes.clear();
+        this._selectedNodes.add(node);
+        this._anchorNode = node;
+        this._focusNode = node;
+
+        this._updateSelectionStyle();
+        this._scrollIntoView(index);
+        this._renderWindow();
+        this._updateActiveDescendant();
+
+        return this;
+    }
+
+    /**
      * Registers a listener for one of this tree's events.
      *
      * @param event - `"selection"` fires whenever the selection changes,
@@ -201,6 +235,20 @@ class Tree extends Component<TreeOptions> {
      * @returns This tree, for method chaining.
      */
     on(event: "loaderror", listener: (node: TreeNode, error: unknown) => void): this;
+
+    /**
+     * Registers a listener for a right-click on a node.
+     *
+     * @param event - `"contextmenu"` fires when a node row is right-clicked,
+     *   receiving the {@link TreeNode} under the cursor and the originating
+     *   `MouseEvent` (its `clientX`/`clientY` position a context menu). The
+     *   default browser menu is suppressed and the tree's selection is left
+     *   unchanged, so a right-click never opens a node the way a left-click does.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This tree, for method chaining.
+     */
+    on(event: "contextmenu", listener: (node: TreeNode, event: MouseEvent) => void): this;
     on(event: TreeEvent,   listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -231,6 +279,7 @@ class Tree extends Component<TreeOptions> {
      */
     protected emit(event: "selection", nodes: TreeNode[]): void;
     protected emit(event: "loaderror", node: TreeNode, error: unknown): void;
+    protected emit(event: "contextmenu", node: TreeNode, event_: MouseEvent): void;
     protected emit(event: TreeEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
@@ -675,6 +724,40 @@ class Tree extends Component<TreeOptions> {
     }
 
     /**
+     * Resolves the node under a right-click and emits the `"contextmenu"` event.
+     *
+     * @remarks
+     * Mirrors {@link _handleClick}'s row-matching but deliberately does not change
+     * the selection: a right-click positions a context menu over a node without
+     * triggering the selection-driven side effects (e.g. opening the node) that a
+     * left-click would. When a node row is hit the browser's native menu is
+     * suppressed via `preventDefault` and `"contextmenu"` fires with the node and
+     * the originating event; a right-click on empty space is left to the browser.
+     *
+     * @param e - The contextmenu event whose target is inside the tree's subtree.
+     */
+    private _handleContextMenu(e: MouseEvent): void {
+        const target = e.target === null ? null : DOM.source.intern(e.target);
+
+        for (const row of this._rowPool) {
+            const node = row.getNode();
+            if (!node) {
+                continue;
+            }
+
+            const rowEl = row.getElement();
+            if (!rowEl || (!DOM.source.contains(rowEl, target) && target !== rowEl)) {
+                continue;
+            }
+
+            e.preventDefault();
+            this.emit("contextmenu", node, e);
+
+            return;
+        }
+    }
+
+    /**
      * Applies or removes the selection highlight, focus ring, and aria-selected on all bound pool rows.
      */
     private _updateSelectionStyle(): void {
@@ -978,6 +1061,10 @@ class Tree extends Component<TreeOptions> {
 
         Event.addSubtreeListener(this, "click", (e: MouseEvent) => {
             this._handleClick(e);
+        });
+
+        Event.addSubtreeListener(this, "contextmenu", (e: MouseEvent) => {
+            this._handleContextMenu(e);
         });
 
         Event.addListener(this, "keydown", (e: KeyboardEvent) => {

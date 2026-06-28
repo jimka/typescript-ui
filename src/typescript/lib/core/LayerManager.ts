@@ -122,6 +122,11 @@ const Z_BAND_WINDOW:   number = 9000;
 const Z_BAND_POPOVER:  number = 9800;
 const Z_BAND_DROPDOWN: number = 10000;
 const Z_BAND_DIALOG:   number = 11000;
+// Above every managed layer: a tooltip is a transient, non-interactive
+// affordance that must float over even a modal Dialog and its backdrop. Not a
+// registered layer band — exposed so the Tooltip singleton stamps itself here
+// rather than carrying a magic number that could fall below the Dialog band.
+const Z_BAND_TOOLTIP:  number = 12000;
 
 /**
  * Sentinel `Component` used as the registration key for the manager's three
@@ -179,6 +184,7 @@ export namespace LayerManager {
         Popover:  Z_BAND_POPOVER,
         Dropdown: Z_BAND_DROPDOWN,
         Dialog:   Z_BAND_DIALOG,
+        Tooltip:  Z_BAND_TOOLTIP,
     } as const;
 
     /**

@@ -194,7 +194,11 @@ class MenuBar extends Component {
         this._quickSwitchActive = true;
 
         this._buttons[index].setActive(true);
-        this._panels[index].setExcludedElement(this.getElement(true)!);
+        // Exclude only the opener button from the panel's outside-click dismissal
+        // (so its own mousedown does not self-close before the click toggles it),
+        // not the whole bar — otherwise a click on empty bar space would be
+        // treated as inside and never close the menu.
+        this._panels[index].setExcludedElement(this._buttons[index].getElement(true)!);
         this._panels[index].open(this._buttons[index].getElement(true)!);
 
         if (!this._keydownListening) {

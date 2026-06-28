@@ -19,6 +19,7 @@ import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { BoxLayout } from "~/layout/BoxLayout.js";
 import { Menu } from "~/overlay/Menu.js";
+import { Tooltip } from "~/overlay/Tooltip.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { DragManager, DragEventDetail, DragData, TabDragData, SPRING_RAISE_DELAY_MS } from "~/overlay/DragManager.js";
@@ -1413,6 +1414,10 @@ class TabBar extends Container<TabBarOptions> {
 
         tabButton.setInsets(this.computeTabButtonInsets(constraints));
 
+        if (constraints?.tooltip) {
+            Tooltip.attach(tabButton, constraints.tooltip);
+        }
+
         tabButton.on("action", () => this.onTabPressed(tabButton));
 
         const closeButton = tabButton.getCloseButton() ?? undefined;
@@ -1497,6 +1502,11 @@ class TabBar extends Container<TabBarOptions> {
         // removing the wrapper's element does not purge it, so tear it down or it
         // (and the entry it closes over) leaks.
         Event.removeSubtreeListener(entry.button, "contextmenu", entry.contextMenuListener);
+
+        // The tooltip attachment is keyed by the button's id in a static map and
+        // holds a reference to it; detach so a removed tab does not leak (a no-op
+        // when no tooltip was attached).
+        Tooltip.detach(entry.button);
 
         if (this._activeId === id) {
             this._activeId = null;

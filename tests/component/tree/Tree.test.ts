@@ -35,6 +35,10 @@ class TestTree extends _Tree {
     public fire(nodes: TreeNode[]): void {
         this.emit('selection', nodes);
     }
+
+    public fireContextMenu(node: TreeNode, event: MouseEvent): void {
+        this.emit('contextmenu', node, event);
+    }
 }
 
 // Labels drawn from the baked font's char set (H e l o W r d x X + space) so
@@ -138,6 +142,45 @@ describe('Tree — listener bag', () => {
         const payload = [{ label: 'A' }];
         tree.fire(payload);
         expect(seen).toEqual([payload]);
+    });
+
+    it('emit dispatches the contextmenu payload (node + event) to a listener', () => {
+        const tree = new TestTree();
+        const seen: Array<[TreeNode, MouseEvent]> = [];
+
+        tree.on('contextmenu', (node: TreeNode, event: MouseEvent) => {
+            seen.push([node, event]);
+        });
+
+        const node = { label: 'A' };
+        const event = { clientX: 10, clientY: 20 } as MouseEvent;
+        tree.fireContextMenu(node, event);
+
+        expect(seen).toEqual([[node, event]]);
+    });
+
+    it('selectNode selects a node and does not emit selection', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+
+        let emitted = 0;
+        tree.on('selection', () => { emitted += 1; });
+
+        tree.selectNode(nodes[1]);
+
+        expect(tree.getSelectedNodes()).toEqual([nodes[1]]);
+        expect(tree.getSelectedNode()).toBe(nodes[1]);
+        expect(emitted).toBe(0);
+    });
+
+    it('selectNode is a no-op for a node not in the visible set', () => {
+        const tree = new _Tree();
+        tree.setNodes(fruitTree());
+
+        tree.selectNode({ label: 'ghost' });
+
+        expect(tree.getSelectedNodes()).toEqual([]);
     });
 
     it('off removes a previously registered listener', () => {
