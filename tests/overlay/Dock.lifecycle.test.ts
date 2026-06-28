@@ -80,20 +80,37 @@ function frameOf(dock: Dock, id: string): Component {
 
 afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
 
+// Records every attach/detach as a {type, id, window} tuple so a test can assert
+// the exact paired sequence and host of a transition.
+function recordHostEvents(dock: Dock): Array<{ type: 'attach' | 'detach'; id: string; window: unknown }> {
+    const log: Array<{ type: 'attach' | 'detach'; id: string; window: unknown }> = [];
+
+    dock.on('detach', e => log.push({ type: 'detach', id: e.id, window: e.window }));
+    dock.on('attach', e => log.push({ type: 'attach', id: e.id, window: e.window }));
+
+    return log;
+}
+
 describe('Dock attach', () => {
-    it('emits one attach for addPanel carrying the docked frame', () => {
+    it('emits one attach with a null host for addPanel, via the sweep, with no detach', () => {
         installTestDOM(CONFIG);
         captureRaf();
 
         const dock = mountDock();
         const events: DockPanelEvent[] = [];
+        const detachSpy = vi.fn();
 
         dock.on('attach', e => events.push(e));
+        dock.on('detach', detachSpy);
         dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        flush(); // addPanel's attach is now produced by the sweep, not synchronously
 
         expect(events).toHaveLength(1);
         expect(events[0].id).toBe('a');
         expect(events[0].content.getId()).toBe('a');
+        // A first appearance enters a host (the tiled tree) with no host to leave.
+        expect(events[0].window).toBeNull();
+        expect(detachSpy).not.toHaveBeenCalled();
     });
 
     it('is silent for a sweep over an unchanged tiled tree', () => {
@@ -111,13 +128,13 @@ describe('Dock attach', () => {
 
         dock.on('attach', e => events.push(e));
 
-        // Every panel stays "docked" — no floating -> docked flip, no attach.
+        // Every panel keeps the same host — no host change, no attach/detach.
         priv(dock).runSweep();
 
         expect(events).toHaveLength(0);
     });
 
-    it('emits attach on a re-dock from a float (floating -> docked)', () => {
+    it('emits detach(float) then attach(tiled) on a re-dock dropped on a region body', () => {
         installTestDOM(CONFIG);
         captureRaf();
 
@@ -133,23 +150,59 @@ describe('Dock attach', () => {
         win.show();
         win.moveComponent(frameA);
         priv(dock).scheduleSweep();
-        flush(); // location ledger flips 'a' to floating
+        flush(); // host ledger flips 'a' to the float
 
-        const events: DockPanelEvent[] = [];
+        const log = recordHostEvents(dock);
 
-        dock.on('attach', e => events.push(e));
-
-        // Move the frame back into the tiled root region, then sweep.
+        // A DockRegion body/edge drop moves the frame back and schedules a sweep.
         dock.getRootRegion().moveComponent(frameA);
         priv(dock).scheduleSweep();
         flush();
 
-        expect(events.map(e => e.id)).toContain('a');
+        expect(log).toEqual([
+            { type: 'detach', id: 'a', window: win },
+            { type: 'attach', id: 'a', window: null },
+        ]);
+        expect(priv(dock)._panelHost.get('a')).toBeNull();
+    });
+
+    it('emits detach(float) then attach(tiled) when a tab-bar merge fires the Tab "docked" event', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const frameA = frameOf(dock, 'a');
+        const win = new Window('Float');
+
+        win.show();
+        win.moveComponent(frameA);
+        priv(dock).scheduleSweep();
+        flush(); // 'a' is now floating
+
+        const log = recordHostEvents(dock);
+
+        // The tab-bar merge path (Tab._onBarDockRequested) moves the frame into the
+        // destination strip and fires "docked" — it never calls DockRegion, so the
+        // "docked" -> requestSweep wiring is the only thing that lands the sweep.
+        // Without that wiring this emits nothing (the regression this pins).
+        dock.getRootRegion().moveComponent(frameA);
+        (rootTab(dock) as any).emit('docked', frameA);
+        flush();
+
+        expect(log).toEqual([
+            { type: 'detach', id: 'a', window: win },
+            { type: 'attach', id: 'a', window: null },
+        ]);
     });
 });
 
 describe('Dock detach', () => {
-    it('emits detach and flips the ledger on a region "detached"', () => {
+    it('emits detach(tiled) then attach(float) and updates the ledger on a tear-off', () => {
         installTestDOM(CONFIG);
         captureRaf();
 
@@ -165,20 +218,22 @@ describe('Dock detach', () => {
         win.show();
         win.moveComponent(frameA);
 
-        const detached: DockPanelEvent[] = [];
+        const log = recordHostEvents(dock);
         const closed: DockPanelEvent[] = [];
 
-        dock.on('detach', e => detached.push(e));
         dock.on('close', e => closed.push(e));
 
-        // The torn-off frame's host window carries the registered frame; driving
-        // the source region's "detached" resolves it and flips the ledger.
+        // The torn-off frame already sits in its float window; driving the source
+        // region's "detached" lands a sweep whose host diff emits the pair.
         (rootTab(dock) as any).emit('detached', win);
         flush();
 
-        expect(detached.map(e => e.id)).toEqual(['a']);
+        expect(log).toEqual([
+            { type: 'detach', id: 'a', window: null },
+            { type: 'attach', id: 'a', window: win },
+        ]);
         expect(closed).toHaveLength(0);
-        expect(priv(dock)._panelLocation.get('a')).toBe('floating');
+        expect(priv(dock)._panelHost.get('a')).toBe(win);
     });
 });
 
@@ -203,6 +258,8 @@ describe('Dock focus', () => {
 
         expect(events).toHaveLength(1);
         expect(events[0]?.id).toBe('b');
+        // The focused panel is tiled, so its host is null.
+        expect(events[0]?.window).toBeNull();
     });
 
     it('emits focus for a float\'s active panel on window activation', () => {
@@ -238,6 +295,8 @@ describe('Dock focus', () => {
         win.onActivate(true);
 
         expect(events.at(-1)?.id).toBe('a');
+        // The focused panel lives in the float, so its host names that window.
+        expect(events.at(-1)?.window).toBe(win);
     });
 });
 
@@ -263,9 +322,35 @@ describe('Dock close', () => {
 
         expect(removed).toBe(true);
         expect(events.map(e => e.id)).toEqual(['a']);
+        // A close is a destroy, not a host transition, so its host is always null.
+        expect(events[0].window).toBeNull();
         expect(priv(dock)._frames.has('a')).toBe(false);
         // The registration is retained so a re-addPanel rebuilds via the factory.
         expect(priv(dock)._panels.has('a')).toBe(true);
+    });
+
+    it('emits no phantom detach when a panel closes (close only)', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const detachSpy = vi.fn();
+        const closed: DockPanelEvent[] = [];
+
+        dock.on('detach', detachSpy);
+        dock.on('close', e => closed.push(e));
+
+        dock.removePanel('a');
+        flush(); // the frame is gone from _frames, so the sweep never visits it
+
+        expect(closed.map(e => e.id)).toEqual(['a']);
+        expect(detachSpy).not.toHaveBeenCalled();
     });
 
     it('emits one close per frame on a float window chrome ✕', () => {

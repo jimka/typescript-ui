@@ -66,14 +66,19 @@ export interface DockOptions extends ContainerOptions {
  * String-literal union of the events a {@link Dock} emits across a panel's
  * lifecycle.
  *
- * A panel is always in one of three states — *docked* (a tab in the in-dock
- * tiled tree), *floating* (in a tear-off window), or *gone* (destroyed) — and
- * the four events name the transitions between them: `"attach"` when a panel
- * enters the tiled tree (a fresh dock or a re-dock from a float), `"detach"`
- * when it leaves the tiled tree into a float but stays alive, `"focus"` when
- * the dock-wide active panel changes (across tiled tabs and floats; `null` when
- * nothing is focused), and `"close"` when a panel is destroyed. See
- * {@link DockPanelEvent} for the payload shape.
+ * The model is *host-centric*: a live panel always occupies one Dock-managed
+ * *host* — the *tiled tree* (the main dock) or a *float window* — and the events
+ * name the host transitions. `"attach"` fires when a panel **enters** a host (a
+ * fresh `addPanel`/restore into the tiled tree, or a tear-off into a fresh
+ * float); `"detach"` fires when it **leaves** a host while staying alive. The
+ * two pair up across a move: a tear-off is `"detach"`(tiled) then
+ * `"attach"`(float), and a re-dock — whether dropped on a region body/edge or
+ * merged onto an existing tab bar — is `"detach"`(float) then `"attach"`(tiled).
+ * A move *within* one host (an internal reorder or region move) is silent.
+ * `"focus"` fires when the dock-wide active panel changes (across tiled tabs and
+ * floats; `null` when nothing is focused), and `"close"` when a panel is
+ * destroyed. The {@link DockPanelEvent.window} field names *which* host the
+ * panel entered, left, or occupies. See {@link DockPanelEvent} for the payload.
  *
  * @category Core
  */
@@ -81,7 +86,8 @@ export type DockEvent = "attach" | "detach" | "focus" | "close";
 
 /**
  * Payload for a {@link Dock} lifecycle event, identifying the panel by its
- * stable {@link DockPanelSpec.id} and carrying its Dock-owned identity frame.
+ * stable {@link DockPanelSpec.id}, carrying its Dock-owned identity frame, and
+ * naming the host the event concerns.
  *
  * @category Core
  */
@@ -90,6 +96,13 @@ export interface DockPanelEvent {
     id:      string;
     /** The panel's Dock-owned identity frame. */
     content: Component;
+    /**
+     * The host the panel entered (`"attach"`), left (`"detach"`), or currently
+     * occupies (`"focus"`): `null` denotes the tiled tree / main dock, otherwise
+     * the float window. Always `null` for `"close"` — a destroy is not a host
+     * transition, but the field is always present so the payload stays flat.
+     */
+    window:  AbstractWindow | null;
 }
 
 /**
@@ -143,9 +156,10 @@ class Dock extends Container<DockOptions> {
     // The dock-wide focused panel id, or null when nothing is focused. The single
     // source of truth gating every "focus" emit so a re-activation is silent.
     private _focusedPanelId: string | null = null;
-    // panelId -> last-observed location; the source of the attach diff. A
-    // floating -> docked flip across a sweep emits "attach".
-    private _panelLocation:  Map<string, "docked" | "floating"> = new Map<string, "docked" | "floating">();
+    // panelId -> last-observed host (null = tiled tree, else the float window);
+    // the source of the attach/detach diff. A host change across a sweep emits
+    // detach(old host) then attach(new host); a first appearance emits attach only.
+    private _panelHost:      Map<string, AbstractWindow | null> = new Map<string, AbstractWindow | null>();
     // panelId -> the Tab region last observed hosting it; lets a close recompute
     // the surviving sibling's focus after the region re-selects.
     private _frameRegion:    Map<string, Component> = new Map<string, Component>();
@@ -161,6 +175,15 @@ class Dock extends Container<DockOptions> {
     // routing through one removable handler that coalesces via scheduleSweep.
     private requestSweep: () => void = (): void => {
         this.scheduleSweep();
+    };
+
+    // Named, bound "docked" handler for every wired Tab: a foreign tab was merged
+    // into a region's strip. The merge bypasses DockRegion, so it lands a sweep
+    // here — the host-diff reconcile then emits the attach. The content arg is
+    // unused (the reconcile re-derives every frame's host) but matches the
+    // listener signature.
+    private onPanelDocked: (content: Component) => void = (_content: Component): void => {
+        this.requestSweep();
     };
 
     /**
@@ -241,12 +264,12 @@ class Dock extends Container<DockOptions> {
 
             region.moveComponent(content, undefined, this.leafConstraints(spec));
 
-            // Direct, synchronous attach: the panel just entered the tiled tree.
-            // Seed the ledger "docked" so the next sweep's location diff sees no
-            // floating -> docked flip and does not re-emit.
-            this._panelLocation.set(spec.id, "docked");
+            // The panel just entered the tiled tree. The ledger is left without an
+            // entry for this id so the next sweep's host diff sees a first
+            // appearance and emits attach(tiled) — the same reconcile path a
+            // dragged-in dock flows through, so a programmatic add and a drop
+            // produce the event from identical code.
             this._frameRegion.set(spec.id, region);
-            this.emit("attach", { id: spec.id, content });
 
             this.scheduleSweep();
         }
@@ -481,9 +504,10 @@ class Dock extends Container<DockOptions> {
             if (content) {
                 region.addComponent(content, this.leafConstraints(spec));
 
-                // A compiled panel starts docked; seed the ledger so the first
-                // sweep's location diff is silent (it never floated to attach from).
-                this._panelLocation.set(spec.id, "docked");
+                // A compiled panel starts tiled; seed the host ledger with null
+                // so the first sweep's host diff is silent (no transition to
+                // attach from). Construction therefore emits nothing.
+                this._panelHost.set(spec.id, null);
                 this._frameRegion.set(spec.id, region);
             }
         }
@@ -531,7 +555,7 @@ class Dock extends Container<DockOptions> {
         }
 
         this.subscribeFloatWindows();
-        this.reconcileLocations(root);
+        this.reconcileHosts(root);
         this.teardownVanished(root, floatRegions);
     }
 
@@ -540,9 +564,10 @@ class Dock extends Container<DockOptions> {
      * currently hosts one of this dock's frames — both the adopted bare
      * `Window` mini-docks and the self-contained `TabWindow` tear-offs the sweep
      * does not adopt. A `TabWindow`'s internal `Tab` is never wired by
-     * `wireRegion`, so its `"activated"` / `"tabclose"` / `"detached"` are
-     * subscribed here explicitly; both float kinds get the window's `"activate"`
-     * / `"close"`. The tracked set stops a re-sweep stacking duplicate listeners.
+     * `wireRegion`, so its `"activated"` / `"tabclose"` / `"detached"` /
+     * `"docked"` are subscribed here explicitly; both float kinds get the
+     * window's `"activate"` / `"close"`. The tracked set stops a re-sweep
+     * stacking duplicate listeners.
      */
     private subscribeFloatWindows(): void {
         for (const win of this.floatWindowsHoldingFrames()) {
@@ -562,6 +587,7 @@ class Dock extends Container<DockOptions> {
                 tab.on("activated", this.onPanelFocused);
                 tab.on("tabclose",  this.onPanelClosed);
                 tab.on("detached",  this.onPanelDetached);
+                tab.on("docked",    this.onPanelDocked);
             }
 
             this._floatSubscribed.add(win);
@@ -602,30 +628,39 @@ class Dock extends Container<DockOptions> {
     }
 
     /**
-     * Recomputes each registered frame's location (`"docked"` when it sits under
-     * the in-dock tiled tree, else `"floating"`) and updates the host-region
-     * ledger, emitting `"attach"` on a `floating -> docked` transition — the
-     * re-dock of a panel dragged from a float back into the tiled tree. An
-     * internal move within the tiled tree keeps the location `"docked"`, so it is
-     * silent.
+     * Recomputes each registered frame's host (`null` when it sits under the
+     * in-dock tiled tree, else the float window holding it) and diffs it against
+     * the host ledger, emitting the lifecycle events a host change implies: a
+     * first appearance (no ledger entry — a fresh `addPanel` or a restore) emits
+     * `"attach"` alone; a change from one host to another (a tear-off, a re-dock
+     * by either drop path, a float-to-float move) emits `"detach"`(old host) then
+     * `"attach"`(new host); an unchanged host (an internal move within one host)
+     * is silent. This is the single source of every `"attach"`/`"detach"`, so the
+     * events are identical regardless of which DnD path landed the sweep.
+     *
+     * Only frames still registered and still cached are visited, so a panel whose
+     * frame a close handler already evicted produces no phantom `"detach"`.
      *
      * @param root - The current root region.
      */
-    private reconcileLocations(root: Component): void {
+    private reconcileHosts(root: Component): void {
         for (const [id, frame] of this._frames) {
             if (!this._panels.has(id)) {
                 continue;
             }
 
-            const docked   = this.isUnder(root, frame);
-            const location = docked ? "docked" : "floating";
-            const previous = this._panelLocation.get(id) ?? null;
+            const host = this.hostForFrame(frame, root);
+            const had  = this._panelHost.has(id);
+            const prev = this._panelHost.get(id) ?? null;
 
-            if (location === "docked" && previous === "floating") {
-                this.emit("attach", { id, content: frame });
+            if (!had) {
+                this.emit("attach", { id, content: frame, window: host });
+            } else if (host !== prev) {
+                this.emit("detach", { id, content: frame, window: prev });
+                this.emit("attach", { id, content: frame, window: host });
             }
 
-            this._panelLocation.set(id, location);
+            this._panelHost.set(id, host);
 
             const region = this.regionForFrame(frame);
 
@@ -633,6 +668,21 @@ class Dock extends Container<DockOptions> {
                 this._frameRegion.set(id, region);
             }
         }
+    }
+
+    /**
+     * The host a frame currently occupies: `null` when it sits under the tiled
+     * tree (the main dock), otherwise the float window holding it. Reuses the
+     * existing tiled test and float lookup so the reconcile and the
+     * focus-payload construction derive the host the same way.
+     *
+     * @param frame - The identity frame to locate.
+     * @param root - The current root region.
+     *
+     * @returns The host window, or `null` for the tiled tree.
+     */
+    private hostForFrame(frame: Component, root: Component): AbstractWindow | null {
+        return this.isUnder(root, frame) ? null : this.floatForFrame(frame);
     }
 
     /**
@@ -760,6 +810,7 @@ class Dock extends Container<DockOptions> {
             tab.on("tabclose",  this.onPanelClosed);
             tab.on("activated", this.onPanelFocused);
             tab.on("detached",  this.onPanelDetached);
+            tab.on("docked",    this.onPanelDocked);
 
             wiring.tabWired = true;
         }
@@ -959,10 +1010,10 @@ class Dock extends Container<DockOptions> {
         const region = this._frameRegion.get(id) ?? null;
 
         this._frames.delete(id);
-        this._panelLocation.delete(id);
+        this._panelHost.delete(id);
         this._frameRegion.delete(id);
 
-        this.emit("close", { id, content });
+        this.emit("close", { id, content, window: null });
 
         if (this._focusedPanelId === id) {
             this.scheduleFocusRecompute(region);
@@ -988,20 +1039,16 @@ class Dock extends Container<DockOptions> {
 
     /**
      * `"detached"` handler for every wired `Tab`: a tab was torn off into a new
-     * float window. Flips the torn-off frame's location ledger to `"floating"`,
-     * emits `"detach"`, and schedules a sweep so the new float is wired (and any
-     * Shift-torn bare `Window` adopted).
+     * float window. Schedules a sweep so the new float is wired (and any
+     * Shift-torn bare `Window` adopted); the sweep's host-diff reconcile observes
+     * the torn-off frame's tiled -> float transition and emits the
+     * `"detach"`(tiled) + `"attach"`(float) pair itself, so this handler emits
+     * nothing directly — the reconcile is the single source of those events.
      *
-     * @param window - The float window the tab was torn off into.
+     * @param _window - The float window the tab was torn off into (unused; the
+     *   reconcile re-derives every frame's host).
      */
-    private onPanelDetached = (window: AbstractWindow): void => {
-        for (const frame of this.framesInWindow(window)) {
-            const id = frame.getId();
-
-            this._panelLocation.set(id, "floating");
-            this.emit("detach", { id, content: frame });
-        }
-
+    private onPanelDetached = (_window: AbstractWindow): void => {
         this.scheduleSweep();
     };
 
@@ -1035,10 +1082,10 @@ class Dock extends Container<DockOptions> {
             const id = frame.getId();
 
             this._frames.delete(id);
-            this._panelLocation.delete(id);
+            this._panelHost.delete(id);
             this._frameRegion.delete(id);
 
-            this.emit("close", { id, content: frame });
+            this.emit("close", { id, content: frame, window: null });
 
             if (this._focusedPanelId === id) {
                 focusLost = true;
@@ -1073,7 +1120,9 @@ class Dock extends Container<DockOptions> {
         const frame = this._frames.get(id);
 
         if (frame) {
-            this.emit("focus", { id, content: frame });
+            const host = this.hostForFrame(frame, this.getRootRegion());
+
+            this.emit("focus", { id, content: frame, window: host });
         }
     }
 
@@ -1320,6 +1369,9 @@ class Dock extends Container<DockOptions> {
      * Registers a listener for a panel-lifecycle event. The `"attach"`,
      * `"detach"`, and `"close"` events always carry a {@link DockPanelEvent};
      * `"focus"` carries a `DockPanelEvent` or `null` when nothing is focused.
+     * The payload's `window` field names the host: `null` for the tiled tree,
+     * otherwise the float window the panel entered (`"attach"`) or left
+     * (`"detach"`); it is always `null` for `"close"`.
      *
      * @param event - `"attach"` / `"detach"` / `"close"`.
      * @param listener - Invoked with the affected panel.
