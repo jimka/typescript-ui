@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
 import { Card } from '~/layout/Card';
@@ -100,5 +100,30 @@ describe('Card visibility switching', () => {
         expect(a.getHeight()).toBe(inner.height);
         expect(a.getX()).toBe(0);
         expect(a.getY()).toBe(0);
+    });
+
+    it('schedules a layout when switching, so a child first shown here is sized', () => {
+        installTestDOM(CONFIG);
+
+        const card = new Card();
+        const host = hostCard(200, 150, card);
+        const a = new Component({ preferredSize: { width: 10, height: 10 } });
+        const b = new Component({ preferredSize: { width: 10, height: 10 } });
+
+        host.addComponent(a);
+        host.addComponent(b);
+
+        // `doLayout` only ever lays out the visible child, so a sibling hidden
+        // during the initial pass is never sized. Switching to it must schedule
+        // a container layout, else it renders blank until an unrelated relayout
+        // (e.g. a dock tab switch) happens to lay the whole subtree out again.
+        card.setVisibleComponentId(a.getId());
+
+        const scheduled = vi.spyOn(host, 'scheduleLayout');
+
+        card.setVisibleComponentId(b.getId());
+
+        expect(b.isVisible()).toBe(true);
+        expect(scheduled).toHaveBeenCalled();
     });
 });
