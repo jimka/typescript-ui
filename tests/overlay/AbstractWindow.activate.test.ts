@@ -22,7 +22,7 @@ describe('AbstractWindow "activate" event', () => {
     it('fires once from onActivate(true)', () => {
         installTestDOM(CONFIG);
 
-        const win = new Window({ title: 'W' });
+        const win = new Window('W');
         const spy = vi.fn();
 
         win.on('activate', spy);
@@ -34,7 +34,7 @@ describe('AbstractWindow "activate" event', () => {
     it('does not fire from onActivate(false)', () => {
         installTestDOM(CONFIG);
 
-        const win = new Window({ title: 'W' });
+        const win = new Window('W');
         const spy = vi.fn();
 
         win.on('activate', spy);

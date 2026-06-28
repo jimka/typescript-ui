@@ -128,7 +128,7 @@ describe('Dock attach', () => {
         flush();
 
         const frameA = frameOf(dock, 'a');
-        const win = new Window({ title: 'Float' });
+        const win = new Window('Float');
 
         win.show();
         win.moveComponent(frameA);
@@ -160,7 +160,7 @@ describe('Dock detach', () => {
         flush();
 
         const frameA = frameOf(dock, 'a');
-        const win = new Window({ title: 'Float' });
+        const win = new Window('Float');
 
         win.show();
         win.moveComponent(frameA);
@@ -173,7 +173,7 @@ describe('Dock detach', () => {
 
         // The torn-off frame's host window carries the registered frame; driving
         // the source region's "detached" resolves it and flips the ledger.
-        rootTab(dock).emit('detached' as never, win as never);
+        (rootTab(dock) as any).emit('detached', win);
         flush();
 
         expect(detached.map(e => e.id)).toEqual(['a']);
@@ -216,7 +216,7 @@ describe('Dock focus', () => {
         flush();
 
         const frameA = frameOf(dock, 'a');
-        const win = new Window({ title: 'Float' });
+        const win = new Window('Float');
 
         win.show();
         win.moveComponent(frameA);
@@ -279,7 +279,7 @@ describe('Dock close', () => {
         flush();
 
         const frameA = frameOf(dock, 'a');
-        const win = new Window({ title: 'Float' });
+        const win = new Window('Float');
 
         win.show();
         win.moveComponent(frameA);
