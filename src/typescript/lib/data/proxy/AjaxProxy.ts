@@ -21,6 +21,15 @@ export interface AjaxProxyOptions {
     headers?: Record<string, string>;
     reader?: Reader;
     writer?: Writer;
+
+    /**
+     * Whether to advertise the batch hooks (`createBatch`/`updateBatch`/`destroyBatch`).
+     * Defaults to `true`. When `false`, the hooks are hidden so
+     * {@link AbstractStore.sync} issues one request per record against the
+     * per-record endpoints (`POST {url}` with a single object, `PUT`/`DELETE
+     * {url}/{id}`) instead of a single batch request to the collection URL.
+     */
+    batch?: boolean;
 }
 
 /**
@@ -70,6 +79,22 @@ export class AjaxProxy extends Proxy {
         this._headers = options.headers ?? {};
         this._reader = options.reader ?? new JsonReader({ root: options.root });
         this._writer = options.writer ?? new JsonWriter();
+
+        if (options.batch === false) {
+            this.disableBatch();
+        }
+    }
+
+    /**
+     * Hides the batch hooks on this instance so {@link AbstractStore.sync} falls
+     * back to one create/update/destroy request per record. The prototype
+     * methods stay defined; only this instance's view of them is cleared.
+     */
+    private disableBatch(): void {
+        const self = this as Partial<Pick<AjaxProxy, 'createBatch' | 'updateBatch' | 'destroyBatch'>>;
+        self.createBatch = undefined;
+        self.updateBatch = undefined;
+        self.destroyBatch = undefined;
     }
 
     /**

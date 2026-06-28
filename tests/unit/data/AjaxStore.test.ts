@@ -74,6 +74,24 @@ describe('AjaxStore', () => {
         expect((captured as AjaxError).operation).toBe('read');
     });
 
+    it('batch:false syncs new records one per request (single-object body)', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: 1 }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const store = new AjaxStore({ model: MODEL, proxy: { url: '/api/users', batch: false } });
+        store.add({ name: 'Ann' });
+        store.add({ name: 'Bo' });
+
+        await store.sync();
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        for (const call of fetchMock.mock.calls) {
+            expect(call[0]).toBe('/api/users');
+            // Per-record create POSTs a single object, never a JSON array.
+            expect((call[1] as { body: string }).body).not.toMatch(/^\[/);
+        }
+    });
+
     it('surfaces an AjaxError in the sync failures payload', async () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok        : false,

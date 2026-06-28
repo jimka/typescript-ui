@@ -225,6 +225,46 @@ describe('AjaxProxy', () => {
         expect(fetchMock).toHaveBeenCalledWith('/api/users', expect.objectContaining({ body: 'CUSTOM' }));
     });
 
+    describe('batch opt-out', () => {
+        it('advertises the batch hooks by default', () => {
+            const proxy = new AjaxProxy({ url: '/api/users' });
+
+            expect(typeof proxy.createBatch).toBe('function');
+            expect(typeof proxy.updateBatch).toBe('function');
+            expect(typeof proxy.destroyBatch).toBe('function');
+        });
+
+        it('hides the batch hooks when batch is disabled', () => {
+            const proxy = new AjaxProxy({ url: '/api/users', batch: false });
+
+            // AbstractStore.sync uses the per-record path whenever the hook is
+            // absent, so removing them is what opts the store into per-record writes.
+            expect(proxy.createBatch).toBeUndefined();
+            expect(proxy.updateBatch).toBeUndefined();
+            expect(proxy.destroyBatch).toBeUndefined();
+        });
+
+        it('still performs per-record create/update/destroy when batch is disabled', async () => {
+            const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: 5 }));
+            vi.stubGlobal('fetch', fetchMock);
+
+            const proxy  = new AjaxProxy({ url: '/api/users', batch: false });
+            const record = new ModelRecord(MODEL, { id: 5, name: 'Ann' });
+
+            await proxy.create(record);
+            expect(fetchMock).toHaveBeenLastCalledWith('/api/users', expect.objectContaining({
+                method: 'POST',
+                body  : JSON.stringify(record.getData()),
+            }));
+
+            await proxy.update(record);
+            expect(fetchMock).toHaveBeenLastCalledWith('/api/users/5', expect.objectContaining({ method: 'PUT' }));
+
+            await proxy.destroy(record);
+            expect(fetchMock).toHaveBeenLastCalledWith('/api/users/5', expect.objectContaining({ method: 'DELETE' }));
+        });
+    });
+
     describe('error detail', () => {
         it('throws an AjaxError carrying the parsed JSON error body', async () => {
             vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorResponse({
