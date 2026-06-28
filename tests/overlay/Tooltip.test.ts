@@ -114,7 +114,7 @@ describe('Tooltip.show', () => {
 
         // A tooltip is a transient, non-interactive affordance that must float
         // over every managed layer — including a modal Dialog and its backdrop.
-        expect((inst() as { getZIndex(): number }).getZIndex()).toBeGreaterThan(LayerManager.Band.Dialog);
+        expect((inst() as any).getZIndex()).toBeGreaterThan(LayerManager.Band.Dialog);
     });
 
     it('dismisses when its anchor element leaves the DOM', () => {
@@ -125,15 +125,15 @@ describe('Tooltip.show', () => {
         // An anchor that was never appended to the document is disconnected.
         const orphan = new Component({});
         const el = orphan.getElement(true)!;
-        (Tooltip as { activeElement: unknown }).activeElement = el;
+        (Tooltip as any).activeElement = el;
 
         expect(DOM.source.isConnected(el)).toBe(false);
 
         // Simulate the pointer-move anchor watch firing.
-        (Tooltip as unknown as { _onAnchorWatch(): void })._onAnchorWatch();
+        (Tooltip as any)._onAnchorWatch();
 
         // hide() ran: the active anchor is forgotten.
-        expect((Tooltip as { activeElement: unknown }).activeElement).toBeNull();
+        expect((Tooltip as any).activeElement).toBeNull();
     });
 
     it('does not dismiss a tooltip that has no tracked anchor', () => {
@@ -141,14 +141,14 @@ describe('Tooltip.show', () => {
 
         Tooltip.show('Hello', 100, 100);
         // show() installs the anchor watch.
-        expect((Tooltip as { watching: boolean }).watching).toBe(true);
+        expect((Tooltip as any).watching).toBe(true);
 
-        (Tooltip as { activeElement: unknown }).activeElement = null;
+        (Tooltip as any).activeElement = null;
 
-        (Tooltip as unknown as { _onAnchorWatch(): void })._onAnchorWatch();
+        (Tooltip as any)._onAnchorWatch();
 
         // No anchor to check → no hide; the watch stays installed.
-        expect((Tooltip as { watching: boolean }).watching).toBe(true);
+        expect((Tooltip as any).watching).toBe(true);
     });
 
     it('clamps x and y to >= 0 for negative coordinates', () => {
