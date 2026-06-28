@@ -12,6 +12,7 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { serializeLayout, restoreLayout, LayoutState } from "~/layout/LayoutSerialization.js";
 import { DragManager, DragEventDetail, tabDragRegistry } from "~/overlay/DragManager.js";
 import { DropZoneOverlay } from "~/overlay/DropZoneOverlay.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import type { AxisOrientation } from "~/primitive/Axis.js";
@@ -62,6 +63,36 @@ export interface DockOptions extends ContainerOptions {
 }
 
 /**
+ * String-literal union of the events a {@link Dock} emits across a panel's
+ * lifecycle.
+ *
+ * A panel is always in one of three states — *docked* (a tab in the in-dock
+ * tiled tree), *floating* (in a tear-off window), or *gone* (destroyed) — and
+ * the four events name the transitions between them: `"attach"` when a panel
+ * enters the tiled tree (a fresh dock or a re-dock from a float), `"detach"`
+ * when it leaves the tiled tree into a float but stays alive, `"focus"` when
+ * the dock-wide active panel changes (across tiled tabs and floats; `null` when
+ * nothing is focused), and `"close"` when a panel is destroyed. See
+ * {@link DockPanelEvent} for the payload shape.
+ *
+ * @category Core
+ */
+export type DockEvent = "attach" | "detach" | "focus" | "close";
+
+/**
+ * Payload for a {@link Dock} lifecycle event, identifying the panel by its
+ * stable {@link DockPanelSpec.id} and carrying its Dock-owned identity frame.
+ *
+ * @category Core
+ */
+export interface DockPanelEvent {
+    /** The stable id of the panel (its {@link DockPanelSpec.id}). */
+    id:      string;
+    /** The panel's Dock-owned identity frame. */
+    content: Component;
+}
+
+/**
  * Per-region drag-and-drop wiring tracked by the re-wire sweep.
  */
 interface RegionWiring {
@@ -102,6 +133,25 @@ class Dock extends Container<DockOptions> {
     private _wiring:         Map<Component, RegionWiring> = new Map<Component, RegionWiring>();
     // rAF coalescing latch so a burst of moves in one gesture yields one sweep.
     private _sweepScheduled: boolean = false;
+
+    // Panel-lifecycle event bag. A field initialiser is safe here: no
+    // cascade-dispatched setter touches it, and Dock exposes no construction-time
+    // `listeners` option (no DockEvent is a build-time gesture — addPanel /
+    // compileLayout run after super()), so it is never dispatched from
+    // applyOptions. Consumers wire post-construction via on(...).
+    private _listeners:      ListenerBag<DockEvent> = new ListenerBag<DockEvent>();
+    // The dock-wide focused panel id, or null when nothing is focused. The single
+    // source of truth gating every "focus" emit so a re-activation is silent.
+    private _focusedPanelId: string | null = null;
+    // panelId -> last-observed location; the source of the attach diff. A
+    // floating -> docked flip across a sweep emits "attach".
+    private _panelLocation:  Map<string, "docked" | "floating"> = new Map<string, "docked" | "floating">();
+    // panelId -> the Tab region last observed hosting it; lets a close recompute
+    // the surviving sibling's focus after the region re-selects.
+    private _frameRegion:    Map<string, Component> = new Map<string, Component>();
+    // Float windows whose lifecycle events are already subscribed; the tracked-set
+    // guard that stops a re-sweep stacking duplicate listeners.
+    private _floatSubscribed: Set<AbstractWindow> = new Set<AbstractWindow>();
 
     // Overlay highlighting the dock as a drop target while it is empty (every
     // panel torn off) and a tab is dragged over it.
@@ -187,7 +237,17 @@ class Dock extends Container<DockOptions> {
         const content = this.resolvePanel(spec.id);
 
         if (content) {
-            this.activeTabRegion().moveComponent(content, undefined, this.leafConstraints(spec));
+            const region = this.activeTabRegion();
+
+            region.moveComponent(content, undefined, this.leafConstraints(spec));
+
+            // Direct, synchronous attach: the panel just entered the tiled tree.
+            // Seed the ledger "docked" so the next sweep's location diff sees no
+            // floating -> docked flip and does not re-emit.
+            this._panelLocation.set(spec.id, "docked");
+            this._frameRegion.set(spec.id, region);
+            this.emit("attach", { id: spec.id, content });
+
             this.scheduleSweep();
         }
 
@@ -420,6 +480,11 @@ class Dock extends Container<DockOptions> {
 
             if (content) {
                 region.addComponent(content, this.leafConstraints(spec));
+
+                // A compiled panel starts docked; seed the ledger so the first
+                // sweep's location diff is silent (it never floated to attach from).
+                this._panelLocation.set(spec.id, "docked");
+                this._frameRegion.set(spec.id, region);
             }
         }
 
@@ -465,7 +530,109 @@ class Dock extends Container<DockOptions> {
             this.wireRegion(region);
         }
 
+        this.subscribeFloatWindows();
+        this.reconcileLocations(root);
         this.teardownVanished(root, floatRegions);
+    }
+
+    /**
+     * Idempotently subscribes the lifecycle events of every float window that
+     * currently hosts one of this dock's frames — both the adopted bare
+     * `Window` mini-docks and the self-contained `TabWindow` tear-offs the sweep
+     * does not adopt. A `TabWindow`'s internal `Tab` is never wired by
+     * `wireRegion`, so its `"activated"` / `"tabclose"` / `"detached"` are
+     * subscribed here explicitly; both float kinds get the window's `"activate"`
+     * / `"close"`. The tracked set stops a re-sweep stacking duplicate listeners.
+     */
+    private subscribeFloatWindows(): void {
+        for (const win of this.floatWindowsHoldingFrames()) {
+            if (this._floatSubscribed.has(win)) {
+                continue;
+            }
+
+            const onFloatActivate: () => void = (): void => { this.onFloatActivated(win); };
+            const onFloatClose:    () => void = (): void => { this.onFloatClosed(win); };
+
+            win.on("activate", onFloatActivate);
+            win.on("close",    onFloatClose);
+
+            if (win instanceof TabWindow) {
+                const tab = win.getLayoutManager() as Tab;
+
+                tab.on("activated", this.onPanelFocused);
+                tab.on("tabclose",  this.onPanelClosed);
+                tab.on("detached",  this.onPanelDetached);
+            }
+
+            this._floatSubscribed.add(win);
+        }
+
+        this.pruneClosedFloatSubscriptions();
+    }
+
+    /**
+     * Drops closed windows from the float-subscription tracking set so a future
+     * window object never collides with a stale entry. The listeners themselves
+     * die with the closed window, so only the set bookkeeping is needed.
+     */
+    private pruneClosedFloatSubscriptions(): void {
+        const open = new Set<AbstractWindow>(AbstractWindow.getOpenWindows());
+
+        for (const win of this._floatSubscribed) {
+            if (!open.has(win)) {
+                this._floatSubscribed.delete(win);
+            }
+        }
+    }
+
+    /**
+     * Open float windows hosting one of this dock's frames, including the
+     * self-contained `TabWindow` tear-offs (which `ownedFloatWindows` excludes
+     * because the sweep does not adopt them), and excluding the window the dock
+     * itself lives in. The subscription targets for the panel lifecycle.
+     *
+     * @returns The float windows holding this dock's frames.
+     */
+    private floatWindowsHoldingFrames(): AbstractWindow[] {
+        const frames = [...this._frames.values()];
+
+        return AbstractWindow.getOpenWindows().filter(win =>
+            !this.windowContains(win, this) &&
+            frames.some(frame => this.windowContains(win, frame)));
+    }
+
+    /**
+     * Recomputes each registered frame's location (`"docked"` when it sits under
+     * the in-dock tiled tree, else `"floating"`) and updates the host-region
+     * ledger, emitting `"attach"` on a `floating -> docked` transition — the
+     * re-dock of a panel dragged from a float back into the tiled tree. An
+     * internal move within the tiled tree keeps the location `"docked"`, so it is
+     * silent.
+     *
+     * @param root - The current root region.
+     */
+    private reconcileLocations(root: Component): void {
+        for (const [id, frame] of this._frames) {
+            if (!this._panels.has(id)) {
+                continue;
+            }
+
+            const docked   = this.isUnder(root, frame);
+            const location = docked ? "docked" : "floating";
+            const previous = this._panelLocation.get(id) ?? null;
+
+            if (location === "docked" && previous === "floating") {
+                this.emit("attach", { id, content: frame });
+            }
+
+            this._panelLocation.set(id, location);
+
+            const region = this.regionForFrame(frame);
+
+            if (region) {
+                this._frameRegion.set(id, region);
+            }
+        }
     }
 
     /**
@@ -578,14 +745,21 @@ class Dock extends Container<DockOptions> {
         const manager = region.getLayoutManager();
 
         if (this.isTab(region) && !wiring.tabWired) {
-            (manager as Tab).setReorderable(true);
-            (manager as Tab).on("empty", () => this.pruneRegion(region));
-            // Sweep after the source strip loses a tab by tear-off. "empty" only
-            // covers a tear-off that drains the strip; "detached" fires for every
-            // tear-off, so the sweep also runs when the strip keeps siblings —
-            // pruning the source side and adopting any Shift-torn bare Window
-            // float (a default TabWindow float is self-contained and skipped).
-            (manager as Tab).on("detached", () => this.scheduleSweep());
+            const tab: Tab = manager as Tab;
+
+            tab.setReorderable(true);
+            // Per-region prune; the named const carries the region the shared
+            // handler set otherwise could not (ARCHITECTURE: a listener is a named
+            // reference, never an inline arrow).
+            const onEmpty: () => void = (): void => { this.pruneRegion(region); };
+
+            tab.on("empty", onEmpty);
+            // The lifecycle handlers are shared bound methods: their payloads (the
+            // closed/activated content, the torn-off window) carry the identity
+            // they need, so no per-region capture is required.
+            tab.on("tabclose",  this.onPanelClosed);
+            tab.on("activated", this.onPanelFocused);
+            tab.on("detached",  this.onPanelDetached);
 
             wiring.tabWired = true;
         }
@@ -762,6 +936,450 @@ class Dock extends Container<DockOptions> {
         const manager = component.getLayoutManager() as (Tab | Split | undefined);
 
         return manager ? manager.getClassName().replace(/^_/, "") : "";
+    }
+
+    // ----- panel lifecycle -----
+
+    /**
+     * `"tabclose"` handler for every wired `Tab` (tiled or float): a registered
+     * panel was genuinely closed. Emits `"close"`, evicts the cached frame so a
+     * re-`addPanel` rebuilds it via the lazy factory (keeping the `_panels`
+     * registration), and — when the closed panel was the dock-wide focused one —
+     * recomputes focus once the source `Tab` has re-selected a survivor.
+     *
+     * @param content - The closed tab's content (a Dock identity frame).
+     */
+    private onPanelClosed = (content: Component): void => {
+        const id = content.getId();
+
+        if (this._frames.get(id) !== content) {
+            return;
+        }
+
+        const region = this._frameRegion.get(id) ?? null;
+
+        this._frames.delete(id);
+        this._panelLocation.delete(id);
+        this._frameRegion.delete(id);
+
+        this.emit("close", { id, content });
+
+        if (this._focusedPanelId === id) {
+            this.scheduleFocusRecompute(region);
+        }
+    };
+
+    /**
+     * `"activated"` handler for every wired `Tab`: the active tab changed via a
+     * click or `setActiveTabIndex`. Emits `"focus"` for the now-active panel,
+     * gated on a genuine focused-panel change.
+     *
+     * @param content - The now-active tab's content (a Dock identity frame).
+     */
+    private onPanelFocused = (content: Component): void => {
+        const id = content.getId();
+
+        if (this._frames.get(id) !== content) {
+            return;
+        }
+
+        this.setFocus(id);
+    };
+
+    /**
+     * `"detached"` handler for every wired `Tab`: a tab was torn off into a new
+     * float window. Flips the torn-off frame's location ledger to `"floating"`,
+     * emits `"detach"`, and schedules a sweep so the new float is wired (and any
+     * Shift-torn bare `Window` adopted).
+     *
+     * @param window - The float window the tab was torn off into.
+     */
+    private onPanelDetached = (window: AbstractWindow): void => {
+        for (const frame of this.framesInWindow(window)) {
+            const id = frame.getId();
+
+            this._panelLocation.set(id, "floating");
+            this.emit("detach", { id, content: frame });
+        }
+
+        this.scheduleSweep();
+    };
+
+    /**
+     * Window `"activate"` handler for an owned float: the float became the active
+     * layer. Emits `"focus"` for the float's active panel, gated on a genuine
+     * focused-panel change.
+     *
+     * @param window - The float window that was activated.
+     */
+    private onFloatActivated(window: AbstractWindow): void {
+        const frame = this.activeFrameInFloat(window);
+
+        if (frame) {
+            this.setFocus(frame.getId());
+        }
+    }
+
+    /**
+     * Window `"close"` handler for an owned float: the float's chrome ✕ closed
+     * it. Emits one `"close"` per registered frame the float held (a bare-`Window`
+     * mini-dock can hold several) — read before the window tears down — and
+     * recomputes focus when a closed frame was the focused panel.
+     *
+     * @param window - The float window being closed.
+     */
+    private onFloatClosed(window: AbstractWindow): void {
+        let focusLost = false;
+
+        for (const frame of this.framesInWindow(window)) {
+            const id = frame.getId();
+
+            this._frames.delete(id);
+            this._panelLocation.delete(id);
+            this._frameRegion.delete(id);
+
+            this.emit("close", { id, content: frame });
+
+            if (this._focusedPanelId === id) {
+                focusLost = true;
+            }
+        }
+
+        if (focusLost) {
+            this.scheduleFocusRecompute(null);
+        }
+    }
+
+    /**
+     * Sets the dock-wide focused panel and emits `"focus"` only on a genuine
+     * change, so re-activating the already-focused panel is silent. A `null` id
+     * clears focus and emits `focus(null)`.
+     *
+     * @param id - The newly-focused panel id, or `null` when none is focused.
+     */
+    private setFocus(id: string | null): void {
+        if (id === this._focusedPanelId) {
+            return;
+        }
+
+        this._focusedPanelId = id;
+
+        if (id === null) {
+            this.emit("focus", null);
+
+            return;
+        }
+
+        const frame = this._frames.get(id);
+
+        if (frame) {
+            this.emit("focus", { id, content: frame });
+        }
+    }
+
+    /**
+     * Schedules a deferred focus recompute after a close. The source `Tab`
+     * re-selects a survivor (visually, with no event) *after* its `"tabclose"`
+     * fires, so the new active tab is only readable on the next frame.
+     *
+     * @param region - The region the closed frame was hosted in, or `null`.
+     */
+    private scheduleFocusRecompute(region: Component | null): void {
+        DOM.sink.requestAnimationFrame(() => this.recomputeFocusAfterClose(region));
+    }
+
+    /**
+     * Recomputes the dock-wide focus after the focused panel was closed: when
+     * panels remain in `region`, focus the survivor the region re-selected; when
+     * no panel remains anywhere, emit `focus(null)`.
+     *
+     * @param region - The region the closed frame was hosted in, or `null`.
+     */
+    private recomputeFocusAfterClose(region: Component | null): void {
+        if (this._frames.size === 0) {
+            this.setFocus(null);
+
+            return;
+        }
+
+        if (!region || !this.isTab(region) || region.getComponents().length === 0) {
+            this.setFocus(null);
+
+            return;
+        }
+
+        const frame = (region.getLayoutManager() as Tab).getActiveContent();
+
+        this.setFocus(frame ? frame.getId() : null);
+    }
+
+    /**
+     * Activates the tab hosting `id` and raises its host float when it lives in
+     * one, so a buried floated panel surfaces. A successful activation drives the
+     * host `Tab`'s active-tab change and the float raise, each of which emits a
+     * `"focus"`.
+     *
+     * @param id - The panel id to focus.
+     *
+     * @returns `true` when the panel was found and activated, `false` for an
+     *   unknown id or one in no `Tab` region (registered but never docked).
+     */
+    focusPanel(id: string): boolean {
+        const frame = this._frames.get(id);
+
+        if (!frame) {
+            return false;
+        }
+
+        const region = this.regionForFrame(frame);
+
+        if (!region) {
+            return false;
+        }
+
+        const index = (region.getLayoutManager() as Tab).indexOfContent(frame);
+
+        if (index < 0) {
+            return false;
+        }
+
+        this.floatForFrame(frame)?.bringToFront();
+        (region.getLayoutManager() as Tab).setActiveTabIndex(index);
+
+        return true;
+    }
+
+    /**
+     * Closes the panel `id` through the same user-close path a tab ✕ takes, so it
+     * emits exactly one `"close"` through the shared `"tabclose"` subscription.
+     *
+     * @param id - The panel id to close.
+     *
+     * @returns `true` when the panel was found and closed, `false` for an unknown
+     *   id or one in no `Tab` region.
+     */
+    removePanel(id: string): boolean {
+        const frame = this._frames.get(id);
+
+        if (!frame) {
+            return false;
+        }
+
+        const region = this.regionForFrame(frame);
+
+        if (!region) {
+            return false;
+        }
+
+        return (region.getLayoutManager() as Tab).closeTab(frame);
+    }
+
+    /**
+     * The `Tab` region currently hosting `frame` — searched across the in-dock
+     * tiled tree and every float window's region tree — or `null` when no `Tab`
+     * region holds it (registered but never docked, or mid-teardown).
+     *
+     * @param frame - The identity frame to locate.
+     *
+     * @returns The host `Tab` region, or `null`.
+     */
+    private regionForFrame(frame: Component): Component | null {
+        for (const region of this.allTabRegions()) {
+            if ((region.getLayoutManager() as Tab).indexOfContent(frame) >= 0) {
+                return region;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The float window currently hosting `frame`, or `null` when it lives in the
+     * in-dock tiled tree (or nowhere). Used to raise a buried float on focus.
+     *
+     * @param frame - The identity frame to locate.
+     *
+     * @returns The host float window, or `null`.
+     */
+    private floatForFrame(frame: Component): AbstractWindow | null {
+        return this.floatWindowsHoldingFrames().find(win => this.windowContains(win, frame)) ?? null;
+    }
+
+    /**
+     * Every `Tab` region across the combined live tree: the in-dock root plus
+     * each float window (an adopted bare-`Window` mini-dock's region tree, and a
+     * `TabWindow` whose own layout manager is the `Tab`).
+     *
+     * @returns The live `Tab` regions.
+     */
+    private allTabRegions(): Component[] {
+        const regions: Component[] = [];
+        const root = this.getRootRegion();
+
+        if (root) {
+            this.collectTabRegions(root, regions);
+        }
+
+        for (const win of this.floatWindowsHoldingFrames()) {
+            if (win instanceof TabWindow) {
+                regions.push(win as unknown as Component);
+
+                continue;
+            }
+
+            const content = this.windowContent(win);
+
+            if (content) {
+                this.collectTabRegions(content, regions);
+            }
+        }
+
+        return regions;
+    }
+
+    /**
+     * Collects every `Tab` region at or under `region` into `into`.
+     *
+     * @param region - The region to collect from.
+     * @param into - The array to populate.
+     */
+    private collectTabRegions(region: Component, into: Component[]): void {
+        if (this.isTab(region)) {
+            into.push(region);
+        }
+
+        for (const child of region.getComponents()) {
+            if (this.isRegionContainer(child)) {
+                this.collectTabRegions(child, into);
+            }
+        }
+    }
+
+    /**
+     * The registered frames of this dock that lie within `window`'s subtree — the
+     * panels a float holds. Read at float-close time to fan out one `"close"` per
+     * frame.
+     *
+     * @param window - The float window to inspect.
+     *
+     * @returns The registered frames inside the window.
+     */
+    private framesInWindow(window: AbstractWindow): Component[] {
+        return [...this._frames.values()].filter(frame => this.windowContains(window, frame));
+    }
+
+    /**
+     * The active panel frame inside a float window: a `TabWindow`'s own active
+     * tab, or the active tab of the first `Tab` region inside a bare-`Window`
+     * mini-dock. `null` when none resolves to a registered frame.
+     *
+     * @param window - The float window to inspect.
+     *
+     * @returns The active registered frame, or `null`.
+     */
+    private activeFrameInFloat(window: AbstractWindow): Component | null {
+        let tab: Tab | null = null;
+
+        if (window instanceof TabWindow) {
+            tab = window.getLayoutManager() as Tab;
+        } else {
+            const content = this.windowContent(window);
+            const regions: Component[] = [];
+
+            if (content) {
+                this.collectTabRegions(content, regions);
+            }
+
+            tab = regions.length > 0 ? (regions[0].getLayoutManager() as Tab) : null;
+        }
+
+        const frame = tab ? tab.getActiveContent() : null;
+
+        return frame && this._frames.get(frame.getId()) === frame ? frame : null;
+    }
+
+    /**
+     * Whether `node` lies at or under `ancestor`'s component subtree.
+     *
+     * @param ancestor - The candidate ancestor component.
+     * @param node - The component whose ancestor chain to walk.
+     *
+     * @returns `true` when `ancestor` is `node` or one of its ancestors.
+     */
+    private isUnder(ancestor: Component, node: Component): boolean {
+        for (let current: Component | null = node; current; current = current.getParentComponent()) {
+            if (current === ancestor) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Registers a listener for a panel-lifecycle event. The `"attach"`,
+     * `"detach"`, and `"close"` events always carry a {@link DockPanelEvent};
+     * `"focus"` carries a `DockPanelEvent` or `null` when nothing is focused.
+     *
+     * @param event - `"attach"` / `"detach"` / `"close"`.
+     * @param listener - Invoked with the affected panel.
+     *
+     * @returns This dock, for method chaining.
+     */
+    on(event: "attach" | "detach" | "close", listener: (event: DockPanelEvent) => void): this;
+    /**
+     * Registers a listener for the `"focus"` event, which fires when the
+     * dock-wide active panel changes, carrying the now-focused panel or `null`
+     * when nothing is focused (e.g. the last panel closed).
+     *
+     * @param event - The `"focus"` event.
+     * @param listener - Invoked with the now-focused panel, or `null`.
+     *
+     * @returns This dock, for method chaining.
+     */
+    on(event: "focus", listener: (event: DockPanelEvent | null) => void): this;
+    on(event: DockEvent, listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This dock, for method chaining.
+     */
+    off(event: "attach" | "detach" | "close", listener: (event: DockPanelEvent) => void): this;
+    /**
+     * Removes a previously registered `"focus"` listener.
+     *
+     * @param event - The `"focus"` event.
+     * @param listener - The callback to remove.
+     *
+     * @returns This dock, for method chaining.
+     */
+    off(event: "focus", listener: (event: DockPanelEvent | null) => void): this;
+    off(event: DockEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
+     *
+     * @param event - The event to emit.
+     * @param payload - The lifecycle payload (`null` only for `"focus"`).
+     */
+    protected emit(event: "attach" | "detach" | "close", payload: DockPanelEvent): void;
+    protected emit(event: "focus", payload: DockPanelEvent | null): void;
+    protected emit(event: DockEvent, payload: DockPanelEvent | null): void {
+        this._listeners.fire(event, payload);
     }
 }
 

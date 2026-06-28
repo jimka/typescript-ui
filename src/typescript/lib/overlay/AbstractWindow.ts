@@ -58,13 +58,16 @@ export type WindowState = "normal" | "minimized" | "maximized";
 
 /**
  * Typed events an {@link AbstractWindow} emits. `"minimize"` fires when the
- * window enters `"minimized"`, `"restore"` when it leaves it, and `"close"`
- * when the window is closed. A [`Rail`](/api/overlay/classes/Rail) subscribes to
- * these to mirror a window minimized into it as a launcher handle.
+ * window enters `"minimized"`, `"restore"` when it leaves it, `"close"` when
+ * the window is closed, and `"activate"` when the window becomes the active
+ * layer (a raise / focus). A [`Rail`](/api/overlay/classes/Rail) subscribes to
+ * the first three to mirror a window minimized into it as a launcher handle; a
+ * [`Dock`](/api/overlay/classes/Dock) subscribes to `"activate"` to track which
+ * floated panel is focused.
  *
  * @category Core
  */
-export type WindowEvent = "minimize" | "restore" | "close";
+export type WindowEvent = "minimize" | "restore" | "close" | "activate";
 
 /**
  * Snap-resize modifier key. Matches the matching property names exposed by
@@ -752,6 +755,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         if (active) {
             this.focusSelf();
+            this.emit("activate");
         }
     }
 
@@ -1154,7 +1158,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     /**
      * Registers a listener for one of the window's lifecycle events.
      *
-     * @param event - `"minimize"` / `"restore"` / `"close"`.
+     * @param event - `"minimize"` / `"restore"` / `"close"` / `"activate"`.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This window, for method chaining.

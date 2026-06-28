@@ -27,11 +27,14 @@ import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
  * `"empty"` fires when the strip loses its last tab by any path — close,
  * tear-off, or re-dock — and carries no payload; `"detached"` fires when a tab
  * is torn off into a new floating window (carrying that window), the one
- * structural change that does *not* always empty the source strip.
+ * structural change that does *not* always empty the source strip;
+ * `"activated"` fires when the active tab changes via a click or
+ * {@link Tab.setActiveTabIndex} (carrying the now-active content and its index),
+ * but *not* on the silent post-close re-selection of a surviving sibling.
  *
  * @category Layouts
  */
-export type TabEvent = "tabclose" | "empty" | "detached";
+export type TabEvent = "tabclose" | "empty" | "detached" | "activated";
 
 /**
  * How a torn-off tab's floating window hosts its content.
@@ -881,6 +884,14 @@ class Tab extends LayoutManager {
             if (entry.state === "lazy") {
                 this.materializeAsync(idx);
             }
+
+            // Fires for both a user tab-click (bar "tabpressed" → here) and a
+            // programmatic setActiveTabIndex (→ setActiveEntry → "tabpressed" →
+            // here). The post-close re-selection uses setActiveVisual, which does
+            // not route through here, so a close never emits a spurious activation.
+            if (entry.component) {
+                this.emit("activated", entry.component, idx);
+            }
         }
 
         this.getContainer()?.scheduleLayout();
@@ -918,6 +929,20 @@ class Tab extends LayoutManager {
      * @param id - The cell id to close.
      */
     private _onBarTabClose = (id: string): void => {
+        this.closeEntry(id);
+    };
+
+    /**
+     * Tears down the tab with cell id `id` — the single close implementation
+     * shared by the user-✕ click ({@link Tab._onBarTabClose}) and the public
+     * {@link closeTab}. Removes the cell and its content component, emits
+     * `"tabclose"`, selects the next tab, re-lays out, syncs the host window's
+     * closeable state, closes an emptied strip-mode tear-off window, and emits
+     * `"empty"` once the strip is drained.
+     *
+     * @param id - The cell id to close.
+     */
+    private closeEntry(id: string): void {
         const container = this.getContainer();
         if (!container) {
             return;
@@ -952,7 +977,30 @@ class Tab extends LayoutManager {
         if (this._contents.length === 0) {
             this.emit("empty");
         }
-    };
+    }
+
+    /**
+     * Closes the tab hosting `content` through the same teardown a user ✕ click
+     * performs — removes the cell and content, emits `"tabclose"`, selects the
+     * next tab, and emits `"empty"` when the strip drains. The programmatic
+     * entry point for a tree owner such as [`Dock`](/api/overlay/classes/Dock)
+     * to close a panel by its content component.
+     *
+     * @param content - The content component whose tab to close.
+     *
+     * @returns `true` when a matching tab was closed, `false` when none matched.
+     */
+    closeTab(content: Component): boolean {
+        const entry = this._contents.find(e => e.component === content);
+
+        if (!entry) {
+            return false;
+        }
+
+        this.closeEntry(entry.id);
+
+        return true;
+    }
 
     /**
      * Strip `"dockrequested"` handler: a foreign tab was dropped here. Resolves the
@@ -1591,6 +1639,32 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Returns the content component of the currently active tab, or `null` when
+     * the strip is empty or the active tab is a not-yet-materialized lazy entry.
+     * Resolves through the active entry's stored component rather than indexing
+     * the container (lazy tabs materialize out of order, so the two index spaces
+     * do not stay aligned).
+     *
+     * @returns The active tab's content component, or `null`.
+     */
+    getActiveContent(): Component | null {
+        return this._contents[this._selectedTabIndex]?.component ?? null;
+    }
+
+    /**
+     * Returns the zero-based index of the tab hosting `content`, or `-1` when no
+     * tab does. The index space is the one {@link setActiveTabIndex} and
+     * {@link getActiveTabIndex} use.
+     *
+     * @param content - The content component to locate.
+     *
+     * @returns The tab index, or `-1` when not found.
+     */
+    indexOfContent(content: Component): number {
+        return this._contents.findIndex(entry => entry.component === content);
+    }
+
+    /**
      * Returns the display label of the currently active tab, or `null` when the
      * strip is empty. A read-only accessor over the bar's active cell, used by a
      * host [`AbstractWindow`](/api/overlay/classes/AbstractWindow) to derive its title from the active tab.
@@ -1889,6 +1963,21 @@ class Tab extends LayoutManager {
      * @returns This tab layout, for method chaining.
      */
     on(event: "detached", listener: (window: AbstractWindow) => void): this;
+    /**
+     * Registers a listener for the `"activated"` event, which fires when the
+     * active tab changes via a click or {@link setActiveTabIndex}, carrying the
+     * now-active content component and its zero-based index. It does *not* fire
+     * on the post-close re-selection of a surviving sibling (that re-selection
+     * is visual-only), so a tree owner such as
+     * [`Dock`](/api/overlay/classes/Dock) can treat it as a genuine
+     * active-tab-change signal.
+     *
+     * @param event - The `"activated"` event.
+     * @param listener - Invoked with the now-active content and its index.
+     *
+     * @returns This tab layout, for method chaining.
+     */
+    on(event: "activated", listener: (content: Component, index: number) => void): this;
     on(event: TabEvent,   listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -1920,6 +2009,7 @@ class Tab extends LayoutManager {
     protected emit(event: "tabclose", component: Component): void;
     protected emit(event: "empty"): void;
     protected emit(event: "detached", window: AbstractWindow): void;
+    protected emit(event: "activated", content: Component, index: number): void;
     protected emit(event: TabEvent,   ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
