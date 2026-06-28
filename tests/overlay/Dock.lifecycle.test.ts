@@ -33,7 +33,12 @@ const CONFIG = {
 let rafQueue: FrameRequestCallback[] = [];
 
 // Queues every scheduled rAF callback instead of firing it; flush() drains them
-// (re-draining a few times to settle cascades a sweep schedules).
+// (re-draining a few times to settle cascades a sweep schedules). Also swallows
+// the global setTimeout the entrance/exit animations a shown Window schedules:
+// its fallback `finish` writes to the element, so a real timer firing after the
+// test's DOM.reset() touches a released handle and throws an unhandled error.
+// The tests never depend on an animation completing, so dropping the timer is
+// safe — the same reason rAF is captured rather than run.
 function captureRaf(): void {
     rafQueue = [];
 
@@ -42,6 +47,8 @@ function captureRaf(): void {
 
         return rafQueue.length;
     });
+
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((): number => 0) as typeof setTimeout);
 }
 
 function flush(): void {
@@ -153,6 +160,9 @@ describe('Dock attach', () => {
         flush(); // host ledger flips 'a' to the float
 
         const log = recordHostEvents(dock);
+        const movedSpy = vi.fn();
+
+        dock.on('moved', movedSpy);
 
         // A DockRegion body/edge drop moves the frame back and schedules a sweep.
         dock.getRootRegion().moveComponent(frameA);
@@ -164,6 +174,8 @@ describe('Dock attach', () => {
             { type: 'attach', id: 'a', window: null },
         ]);
         expect(priv(dock)._panelHost.get('a')).toBeNull();
+        // A host change is detach+attach — never moved.
+        expect(movedSpy).not.toHaveBeenCalled();
     });
 
     it('emits detach(float) then attach(tiled) when a tab-bar merge fires the Tab "docked" event', () => {
@@ -220,8 +232,10 @@ describe('Dock detach', () => {
 
         const log = recordHostEvents(dock);
         const closed: DockPanelEvent[] = [];
+        const movedSpy = vi.fn();
 
         dock.on('close', e => closed.push(e));
+        dock.on('moved', movedSpy);
 
         // The torn-off frame already sits in its float window; driving the source
         // region's "detached" lands a sweep whose host diff emits the pair.
@@ -234,6 +248,123 @@ describe('Dock detach', () => {
         ]);
         expect(closed).toHaveLength(0);
         expect(priv(dock)._panelHost.get('a')).toBe(win);
+        // A host change is detach+attach — never moved.
+        expect(movedSpy).not.toHaveBeenCalled();
+    });
+});
+
+// A dock with two side-by-side tiled regions ('a' in one, 'b' in the other) so a
+// test can relocate a frame between regions within the same (tiled) host.
+function twoRegionDock(): Dock {
+    const dock = new Dock({
+        layout: {
+            split:    'horizontal',
+            children: [
+                { tabs: [{ id: 'a', title: 'A', content: new Component({}) }] },
+                { tabs: [{ id: 'b', title: 'B', content: new Component({}) }] },
+            ],
+        },
+    });
+
+    dock.getElement(true);
+    dock.setWidth(800);
+    dock.setHeight(600);
+    dock.doLayout();
+
+    return dock;
+}
+
+describe('Dock moved', () => {
+    it('emits one moved (host null) and no attach/detach on a same-host region-to-region move', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = twoRegionDock();
+
+        flush();
+
+        const frameA  = frameOf(dock, 'a');
+        const regionA = priv(dock).regionForFrame(frameA);
+        const regionB = priv(dock).regionForFrame(frameOf(dock, 'b'));
+
+        const moved:   DockPanelEvent[] = [];
+        const hostLog = recordHostEvents(dock);
+
+        dock.on('moved', e => moved.push(e));
+
+        // Relocate 'a' into 'b''s region — same host (tiled tree), new region.
+        // A real cross-region drag purges the source region's tab registry and
+        // prunes the emptied region before the sweep; raw moveComponent does not,
+        // so mimic that with doLayout (registers 'a' in regionB) + pruneRegion
+        // (the emptied regionA leaves the tree, as its "empty" handler would do).
+        regionB.moveComponent(frameA);
+        dock.doLayout();
+        priv(dock).pruneRegion(regionA);
+        priv(dock).scheduleSweep();
+        flush();
+
+        // Exactly one moved, for the relocated frame only — the neighbour 'b',
+        // whose region object the move left untouched, must not false-fire.
+        expect(moved.map(e => ({ id: e.id, window: e.window }))).toEqual([{ id: 'a', window: null }]);
+        expect(hostLog).toHaveLength(0);
+        expect(priv(dock)._frameRegion.get('a')).toBe(regionB);
+    });
+
+    // Note: "a host change fires no moved" is asserted inside the existing
+    // tear-off and re-dock tests above (each adds a moved spy) rather than in a
+    // separate window-creating test here, so this block opens no float windows
+    // and leaves no Window.show() animation timers to leak into later tests.
+
+    it('fires no moved on addPanel (first appearance)', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+        const movedSpy = vi.fn();
+
+        dock.on('moved', movedSpy);
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        flush();
+
+        expect(movedSpy).not.toHaveBeenCalled();
+    });
+
+    it('fires no moved on a no-op sweep', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = twoRegionDock();
+
+        flush();
+
+        const movedSpy = vi.fn();
+
+        dock.on('moved', movedSpy);
+        priv(dock).runSweep();
+
+        expect(movedSpy).not.toHaveBeenCalled();
+    });
+
+    it('fires no moved for surviving panels on a setLayoutState restore', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = twoRegionDock();
+
+        flush();
+
+        // A restore tears down and rebuilds the region tree, so surviving panels
+        // land in fresh region objects — without clearing the region ledger this
+        // would spuriously fire moved for every panel. The restore is not a
+        // user-visible relocation, so it must stay silent for moved.
+        const state = dock.getLayoutState();
+        const movedSpy = vi.fn();
+
+        dock.on('moved', movedSpy);
+        dock.setLayoutState(state);
+        flush();
+
+        expect(movedSpy).not.toHaveBeenCalled();
     });
 });
 

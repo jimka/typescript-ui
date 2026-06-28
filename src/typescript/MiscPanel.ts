@@ -862,6 +862,7 @@ class MiscPanel extends Panel {
 
             dock.on("attach", e => console.log(`[Dock] attach: ${e.id} -> ${host(e)}`));
             dock.on("detach", e => console.log(`[Dock] detach: ${e.id} -> ${host(e)}`));
+            dock.on("moved",  e => console.log(`[Dock] moved: ${e.id} -> ${host(e)}`));
             dock.on("focus",  e => console.log(`[Dock] focus: ${e ? `${e.id} -> ${host(e)}` : "(none)"}`));
             dock.on("close",  e => console.log(`[Dock] close: ${e.id}`));
 
