@@ -145,6 +145,30 @@ class BooleanEditor extends CellEditor<Boolean | null> {
     }
 
     /**
+     * Marks the checkbox read-only (or restores it). A read-only checkbox
+     * ignores user clicks and keyboard toggles, so a read-only boolean cell
+     * stops accepting edits; programmatic {@link setValue} is unaffected.
+     *
+     * @param value - `true` to make the checkbox read-only, `false` to restore.
+     *
+     * @returns This editor, for method chaining.
+     */
+    setReadOnly(value: boolean): this {
+        this._checkBox.setReadOnly(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the checkbox is currently read-only.
+     *
+     * @returns `true` when the checkbox rejects user interaction.
+     */
+    isReadOnly(): boolean {
+        return this._checkBox.isReadOnly();
+    }
+
+    /**
      * Toggles the checkbox and fires the onChange callback. Clears the
      * indeterminate state if it was set, so the toggled value is always
      * a concrete boolean.
