@@ -678,7 +678,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     protected createStyleRule(selectorSuffix: string): StyleRule {
         let rule = this._deferredStyleRules.get(selectorSuffix);
         if (!rule) {
-            rule = new StyleRule({ scope: "component", name: this.getId() + selectorSuffix, materialize: false });
+            rule = new StyleRule({ scope: "component", name: this.getId(), suffix: selectorSuffix, materialize: false });
             this._deferredStyleRules.set(selectorSuffix, rule);
         }
 

@@ -1397,7 +1397,14 @@ export class ProductionDOMSource implements DOMSource {
 
     /** @inheritDoc */
     escapeSelector(value: string): string {
-        return CSS.escape(value);
+        // Real browsers always ship `CSS.escape`; guard for environments that
+        // don't (jsdom, some SSR contexts) with an equivalent backslash escape
+        // of every non-identifier character.
+        if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+            return CSS.escape(value);
+        }
+
+        return value.replace(/[^\w-]/g, ch => "\\" + ch);
     }
 
     /** @inheritDoc */
