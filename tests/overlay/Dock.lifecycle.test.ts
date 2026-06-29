@@ -749,3 +749,41 @@ describe('Dock addPanel — empty dock', () => {
         expect(rootTab(dock).getActiveContent()?.getId()).toBe('b');
     });
 });
+
+describe('Dock addLazyPanel', () => {
+    it('defers the content factory at add time but creates the frame for dedup', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+        let built = 0;
+
+        dock.addLazyPanel({ id: 'a', title: 'A', content: () => { built++; return new Component({}); } });
+
+        // The content factory is NOT run on add — that is the whole point of lazy.
+        expect(built).toBe(0);
+        // The identity frame still exists, so the tab shows and a re-open dedups.
+        expect(frameOf(dock, 'a')).toBeDefined();
+        expect(priv(dock)._lazyFactories.has('a')).toBe(true);
+    });
+
+    it('materializes the content on first activation, once', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+        let built = 0;
+        const content = new Component({});
+
+        dock.addLazyPanel({ id: 'a', title: 'A', content: () => { built++; return content; } });
+        flush();           // run the sweep so the region's "activated" listener is wired
+        dock.doLayout();   // realize the deferred active-set -> fires "activated"
+        flush();           // drain materialize's two-rAF yield so the factory runs
+
+        // Activation ran the factory exactly once and placed its output in the frame.
+        expect(built).toBe(1);
+        expect(frameOf(dock, 'a').getComponents()).toContain(content);
+        // The factory is dropped once realized, so a re-activation never rebuilds.
+        expect(priv(dock)._lazyFactories.has('a')).toBe(false);
+    });
+});
