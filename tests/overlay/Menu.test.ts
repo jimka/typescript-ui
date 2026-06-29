@@ -165,16 +165,20 @@ describe('Menu focus navigation (persistent)', () => {
         expect(menu.getFocusedIndex()).toBe(0);
     });
 
-    it('activateFocused fires the activation callback for an enabled leaf', () => {
+    it('activateFocused fires the item action and then closes for an enabled leaf', () => {
         installTestDOM(CONFIG);
 
-        const { menu, onClose } = buildMenu(() => {});
+        const action = vi.fn();
+        const { menu, onClose } = buildMenu(action);
 
         menu.focusItem(0);
         menu.activateFocused();
 
-        // In persistent mode a leaf's activation routes to the panel's onClose
-        // (the wired onActivate), not the config.action.
+        // A persistent-mode (MenuBar dropdown) leaf activation runs the
+        // config.action (the menu command) and then closes the menu via onClose,
+        // mirroring the rebuild-mode show() path. MenuItemConfig.action is
+        // documented as "called when the item is activated".
+        expect(action).toHaveBeenCalledOnce();
         expect(onClose).toHaveBeenCalledOnce();
     });
 
@@ -198,5 +202,23 @@ describe('Menu focus navigation (persistent)', () => {
         menu.activateFocused();
 
         expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('close clears a hover highlight left on an item (persistent reuse)', () => {
+        installTestDOM(CONFIG);
+
+        const { menu } = buildMenu(() => {});
+        const first = (menu as any)._menuItems[0];
+
+        // A click dismissal detaches the panel under the pointer, so no mouseout
+        // clears the hovered item — simulate that leftover focused state.
+        first.setFocused(true);
+        expect(first.getBackgroundColor()).not.toBe('transparent');
+
+        menu.close();
+
+        // Persistent menus reuse this element; close() must reset its highlight
+        // so it does not reappear on the next open.
+        expect(first.getBackgroundColor()).toBe('transparent');
     });
 });

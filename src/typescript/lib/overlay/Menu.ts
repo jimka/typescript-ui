@@ -406,6 +406,7 @@ class Menu extends Component {
         }
 
         this.setFocusedIndex(-1);
+        this.clearItemHighlights();
 
         Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
         Event.removeViewportListener(this, "blur", this._onWindowBlur);
@@ -413,6 +414,24 @@ class Menu extends Component {
         this.fadeOutAndDetach();
 
         return this;
+    }
+
+    /**
+     * Clears the hover highlight from every item. A click that activates an item
+     * dismisses the menu, detaching the panel from the DOM under the pointer; the
+     * browser fires no `mouseout` for an element removed under a stationary
+     * pointer, so the hovered item's `setFocused(true)` is never undone by
+     * `_onMouseOut`. `setFocusedIndex(-1)` only resets the keyboard-tracked item,
+     * not one highlighted purely by hover. Persistent-mode menus reuse these item
+     * elements across open/close, so without this sweep the stale highlight
+     * reappears the next time the menu opens.
+     */
+    private clearItemHighlights(): void {
+        for (const item of this._menuItems) {
+            if (item instanceof MenuItem) {
+                item.setFocused(false);
+            }
+        }
     }
 
     /**
@@ -680,7 +699,7 @@ class Menu extends Component {
         for (const config of items) {
             const item = new MenuItem(
                 config,
-                () => { this._onClose!(); },
+                () => { config.action?.(); this._onClose!(); },
                 (hoveredItem) => { this.handleItemOpenSubmenu(hoveredItem); }
             );
 
