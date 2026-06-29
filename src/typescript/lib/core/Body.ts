@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { ThemeManager, ModernTheme } from "~/core/Theme.js";
@@ -26,6 +26,24 @@ export class Body extends Component {
      * @returns The single shared Body component for this page.
      */
     static getInstance() {
+        return this.INSTANCE;
+    }
+
+    /**
+     * Applies an options bag to the singleton Body and returns it — the
+     * ergonomic entry point for mounting a top-level layout in one call:
+     * `Body.init({ layoutManager: Fit(), components: [shell] })`. Only the
+     * supplied fields are dispatched (it delegates to
+     * {@link Component.applyOptions}), so the body's viewport-size tracking and
+     * theme set up at construction are preserved.
+     *
+     * @param options - Component options to apply (layout manager, children, …).
+     *
+     * @returns The singleton Body instance, for chaining.
+     */
+    static init(options: ComponentOptions = {}): Body {
+        this.INSTANCE.applyOptions(options);
+
         return this.INSTANCE;
     }
 
