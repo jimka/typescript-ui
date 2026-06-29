@@ -680,7 +680,7 @@ class Menu extends Component {
         for (const config of items) {
             const item = new MenuItem(
                 config,
-                () => { this._onClose!(); },
+                () => { config.action?.(); this._onClose!(); },
                 (hoveredItem) => { this.handleItemOpenSubmenu(hoveredItem); }
             );
 
