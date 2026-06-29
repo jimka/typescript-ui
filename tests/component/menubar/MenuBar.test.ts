@@ -41,6 +41,11 @@ describe('MenuBar setMenus registration', () => {
 
         expect(childCount(bar)).toBe(MENUS.length);
     });
+    it('populates from the menus option (options-bag equivalent of setMenus)', () => {
+        const bar = new MenuBar({ menus: MENUS });
+
+        expect(childCount(bar)).toBe(MENUS.length);
+    });
     it('disposes and rebuilds so the child count tracks the new descriptor list', () => {
         const bar = new MenuBar();
 

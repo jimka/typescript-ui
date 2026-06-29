@@ -15,6 +15,9 @@ import { DropZoneOverlay } from "~/overlay/DropZoneOverlay.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import { Animation } from "~/core/Animation.js";
+import { FillType } from "~/layout/FillType.js";
+import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import type { AxisOrientation } from "~/primitive/Axis.js";
 
 /**
@@ -151,6 +154,10 @@ class Dock extends Container<DockOptions> {
     // panelId -> the Dock-owned identity frame built for that spec (cached so a
     // lazy factory runs once and every resolve returns the same instance).
     private _frames:         Map<string, Component> = new Map<string, Component>();
+    // panelId -> deferred content factory for a lazy panel (see addLazyPanel),
+    // present only until the panel is first activated and its content realized.
+    // Its presence is also what tells resolvePanel to build the frame empty.
+    private _lazyFactories:  Map<string, () => Component> = new Map<string, () => Component>();
     // region container -> its DnD wiring; the sweep's idempotence + teardown ledger.
     private _wiring:         Map<Component, RegionWiring> = new Map<Component, RegionWiring>();
     // rAF coalescing latch so a burst of moves in one gesture yields one sweep.
@@ -292,6 +299,47 @@ class Dock extends Container<DockOptions> {
     }
 
     /**
+     * Adds a panel whose content is built lazily — on first activation — instead
+     * of up front. The tab appears immediately (the identity frame is created
+     * empty, so re-open dedup via {@link focusPanel} and layout serialization keep
+     * working); on first activation a centred spinner shows while the spec's
+     * `content` factory runs, then the built content fades in. This is the
+     * panel-level analogue of {@link Tab.addLazyTab}: use it for panels whose
+     * content is expensive to build or fetches data, so opening one never blocks
+     * the tab from appearing.
+     *
+     * @param spec - The panel to register and dock; `content` is treated as the
+     *   lazy factory (a live component is wrapped in one).
+     *
+     * @returns This dock, for chaining.
+     */
+    addLazyPanel(spec: DockPanelSpec): this {
+        this._panels.set(spec.id, spec);
+        this._lazyFactories.set(
+            spec.id,
+            typeof spec.content === "function" ? spec.content : () => spec.content as Component
+        );
+
+        const frame = this.resolvePanel(spec.id);
+
+        if (frame) {
+            const region = this.activeTabRegion();
+
+            region.moveComponent(frame, undefined, this.leafConstraints(spec));
+
+            // Activate it so the tab shows; activation drives realizeLazyContent
+            // (via the region's "activated" -> onPanelFocused) to materialize the
+            // deferred content behind a spinner.
+            (region.getLayoutManager() as Tab).setActiveContent(frame);
+            this._frameRegion.set(spec.id, region);
+
+            this.scheduleSweep();
+        }
+
+        return this;
+    }
+
+    /**
      * Returns the root region container (a `Container` carrying a `Split`/`Tab`
      * manager). Derived live as the sole `Fit` child rather than cached, because
      * an edge drop onto the root swaps that child for a fresh `Split` wrapper.
@@ -364,10 +412,17 @@ class Dock extends Container<DockOptions> {
         let frame = this._frames.get(id);
 
         if (!frame) {
-            const content = typeof spec.content === "function" ? spec.content() : spec.content;
-
             frame = new Container({ id: spec.id, name: spec.title, layoutManager: new Fit() });
-            frame.addComponent(content);
+
+            // A lazy panel (see addLazyPanel) builds its frame empty — its content
+            // is deferred to first activation (realizeLazyContent). A normal panel
+            // builds its content now. Either way the frame exists, so the tab shows
+            // and the id dedups / serializes like any other.
+            if (!this._lazyFactories.has(id)) {
+                const content = typeof spec.content === "function" ? spec.content() : spec.content;
+
+                frame.addComponent(content);
+            }
 
             this._frames.set(id, frame);
         }
@@ -1076,8 +1131,48 @@ class Dock extends Container<DockOptions> {
             return;
         }
 
+        this.realizeLazyContent(id, content);
         this.setFocus(id);
     };
+
+    /**
+     * Materializes a lazy panel's deferred content the first time its tab is
+     * activated: a spinner shows during a two-frame yield, then the spec's
+     * factory runs and its output fades in over the spinner (via
+     * {@link Animation.materialize}). The factory is dropped from the lazy
+     * registry before it runs, so this is a no-op for a normal panel or one
+     * already realized — the content never rebuilds.
+     *
+     * @param id - The activated panel's id.
+     * @param frame - The panel's identity frame; the materialize host.
+     */
+    private realizeLazyContent(id: string, frame: Component): void {
+        const factory = this._lazyFactories.get(id);
+
+        if (!factory) {
+            return;
+        }
+
+        this._lazyFactories.delete(id);
+
+        Animation.materialize({ host: frame, factory, spinnerComponent: this.createSpinnerWrap() });
+    }
+
+    /**
+     * Builds the centred spinner shown while a lazy panel materializes — a fixed
+     * 24px {@link ProgressSpinner} (matching `Tab`/`TablePanel`) in a non-filling
+     * `Fit` so it sits in the frame's centre.
+     *
+     * @returns A component owning a single centred ProgressSpinner.
+     */
+    private createSpinnerWrap(): Component {
+        const wrap = new Component();
+
+        wrap.setLayoutManager(new Fit({ fill: FillType.NONE }));
+        wrap.addComponent(new ProgressSpinner(24));
+
+        return wrap;
+    }
 
     /**
      * `"detached"` handler for every wired `Tab`: a tab was torn off into a new
