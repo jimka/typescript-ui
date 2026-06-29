@@ -1,12 +1,22 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
 import { MenuBarButton, MENU_BAR_BUTTON_HEIGHT } from "~/component/menubar/MenuBarButton.js";
 import { Menu } from "~/overlay/Menu.js";
 import { MenuConfig } from "~/component/container/MenuItem.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * Construction-time options for {@link MenuBar}.
+ *
+ * @category Components
+ */
+export interface MenuBarOptions extends ComponentOptions {
+    /** Top-level menus to populate the bar with, equivalent to a tail `setMenus()`. */
+    menus?: MenuConfig[];
+}
 
 /**
  * A persistent horizontal menu bar that hosts top-level dropdown menus.
@@ -46,10 +56,13 @@ class MenuBar extends Component {
     private readonly _onKeyDown: (e: KeyboardEvent) => void;
 
     /**
-     * Constructs an empty `MenuBar`. Call `setMenus()` to populate it.
+     * Constructs a `MenuBar`, optionally populated from `options.menus` (the
+     * options-bag equivalent of a tail `setMenus()` call).
+     *
+     * @param options - Optional construction-time options; `menus` populates the bar.
      */
-    constructor() {
-        super();
+    constructor(options?: MenuBarOptions) {
+        super(options);
 
         const hbox = new HBox();
         hbox.setComponentSpacing(0);
@@ -112,6 +125,10 @@ class MenuBar extends Component {
                     break;
             }
         };
+
+        if (options?.menus) {
+            this.setMenus(options.menus);
+        }
     }
 
     /**
