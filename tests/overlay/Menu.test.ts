@@ -203,4 +203,22 @@ describe('Menu focus navigation (persistent)', () => {
 
         expect(onClose).not.toHaveBeenCalled();
     });
+
+    it('close clears a hover highlight left on an item (persistent reuse)', () => {
+        installTestDOM(CONFIG);
+
+        const { menu } = buildMenu(() => {});
+        const first = (menu as any)._menuItems[0];
+
+        // A click dismissal detaches the panel under the pointer, so no mouseout
+        // clears the hovered item — simulate that leftover focused state.
+        first.setFocused(true);
+        expect(first.getBackgroundColor()).not.toBe('transparent');
+
+        menu.close();
+
+        // Persistent menus reuse this element; close() must reset its highlight
+        // so it does not reappear on the next open.
+        expect(first.getBackgroundColor()).toBe('transparent');
+    });
 });
