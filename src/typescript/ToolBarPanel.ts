@@ -21,7 +21,8 @@ Glyph.register(scissors, copyGlyph, pasteGlyph);
  *
  * Demonstrates: a flat (default) horizontal toolbar with a Bold/Italic/Underline
  * `ButtonGroup` whose selected button reads depressed, a separator, glyph-only
- * Cut/Copy/Paste buttons that render as compact squares, a `SplitButton` whose
+ * Cut/Copy/Paste buttons that render as compact squares yet keep a hover
+ * tooltip and accessible name via `showText: false`, a `SplitButton` whose
  * main face fires the primary action while its trailing chevron opens a
  * dropdown, a `Spacer.flex()` that pushes a trailing zoom `ComboBox` to the
  * right edge, and a status text area below that reflects the last action. A
@@ -60,9 +61,11 @@ class ToolBarPanel extends Panel {
         italic.on("action", () => { status("Toggle Italic"); });
         underline.on("action", () => { status("Toggle Underline"); });
 
-        const cut   = new Button({ glyph: "scissors" });
-        const copy  = new Button({ glyph: "copy" });
-        const paste = new Button({ glyph: "paste" });
+        // Glyph-only faces, but `showText: false` keeps each title alive to drive
+        // a hover tooltip and the accessible name (aria-label) — hover to see it.
+        const cut   = new Button({ glyph: "scissors", text: "Cut",   showText: false });
+        const copy  = new Button({ glyph: "copy",     text: "Copy",  showText: false });
+        const paste = new Button({ glyph: "paste",    text: "Paste", showText: false });
 
         cut.on("action", () => { status("Cut"); });
         copy.on("action", () => { status("Copy"); });
