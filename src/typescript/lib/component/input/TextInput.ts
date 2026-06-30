@@ -169,9 +169,11 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
     /**
      * Registers a listener for one of this text input's events. `"action"`
      * is a typed semantic shorthand over {@link Event.addListener} for the
-     * native `input` DOM event (fired on every keystroke); `"change"` and
-     * `"binding"` are the inherited {@link AbstractInput} value-change
-     * events dispatched through the listener bag.
+     * native `input` DOM event (fired on every keystroke); `"keydown"` is the
+     * same shorthand for the native `keydown` DOM event (so a consumer can wire
+     * keyboard shortcuts without reaching for the raw {@link Event} API);
+     * `"change"` and `"binding"` are the inherited {@link AbstractInput}
+     * value-change events dispatched through the listener bag.
      *
      * @param event - The event name.
      * @param listener - The callback to invoke when the event fires.
@@ -179,11 +181,18 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
      * @returns This component, for method chaining.
      */
     on(event: "action",  listener: Function): this;
+    on(event: "keydown", listener: (e: KeyboardEvent) => void): this;
     on(event: "change",  listener: (value: string) => void): this;
     on(event: "binding", listener: () => void): this;
-    on(event: "action" | "change" | "binding", listener: Function): this {
+    on(event: "action" | "keydown" | "change" | "binding", listener: Function): this {
         if (event === "action") {
             Event.addListener(this, "input", listener);
+
+            return this;
+        }
+
+        if (event === "keydown") {
+            Event.addListener(this, "keydown", listener);
 
             return this;
         }
@@ -200,9 +209,15 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
      *
      * @returns This component, for method chaining.
      */
-    off(event: "action" | "change" | "binding", listener: Function): this {
+    off(event: "action" | "keydown" | "change" | "binding", listener: Function): this {
         if (event === "action") {
             Event.removeListener(this, "input", listener);
+
+            return this;
+        }
+
+        if (event === "keydown") {
+            Event.removeListener(this, "keydown", listener);
 
             return this;
         }
