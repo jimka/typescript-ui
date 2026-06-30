@@ -684,17 +684,16 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setText(text: string): this {
-        this._text.setText(text);
+        this._options.text = text;
+
+        // `_text` is the on-face renderer. The title string lives in
+        // `_options.text`; `_text` shows it only when `showText` is true, and
+        // renders blank when hidden so the button stays metrically a glyph-only
+        // button while the tooltip and accessible name still carry the title.
+        this._text.setText(this._isShowText() ? text : "");
         this.recomputePreferredSize();
         this._rebuildTooltip();
-
-        // When the title is hidden it is not on the face but drives the
-        // reflected `aria-label`; re-run the row build so the accessible name
-        // tracks the new string. A visible title needs no rebuild — its Text
-        // node already shows the new string and is the accessible name.
-        if (!this._isShowText()) {
-            this._rebuildContentRow();
-        }
+        this._reflectAccessibleName();
 
         return this;
     }
@@ -708,7 +707,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The current title string, or `""` if none is set.
      */
     getText(): string {
-        return this._text.getText().valueOf();
+        return this._options.text ?? "";
     }
 
     /**
@@ -911,7 +910,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * `\n` breaks across multiple lines.
      */
     private _rebuildTooltip(): void {
-        const title = this._text.getText().valueOf();
+        const title = this._options.text ?? "";
         const desc  = this._description?.getText().valueOf() ?? "";
 
         let str: string;
@@ -925,6 +924,24 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             Tooltip.attach(this, str);
         } else {
             Tooltip.detach(this);
+        }
+    }
+
+    /**
+     * Reflects the title into the accessible name exactly when it is hidden from
+     * the button face (`showText:false`). A glyph-only face renders the title
+     * blank, so without this the button would have no accessible name; the
+     * stored title (`_options.text`) is mirrored into `aria-label`. When the
+     * title is visible the rendered text already supplies the accessible name,
+     * so any previously reflected label is cleared (e.g. after `setShowText(true)`).
+     */
+    private _reflectAccessibleName(): void {
+        const title = this._options.text ?? "";
+
+        if (!this._isShowText() && title !== "") {
+            this.getAria().setLabel(title);
+        } else {
+            this.getAria().clearLabel();
         }
     }
 
@@ -1049,9 +1066,13 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // stays alive for the tooltip.
         const renderDesc = this._description !== null && this._isShowDescription();
 
-        // A hidden title is likewise dropped from every topology — `_text` is
-        // never parented onto the face — while the instance stays alive so the
-        // tooltip and the reflected `aria-label` below can still read it.
+        // A hidden title (`showText:false`) is rendered blank rather than
+        // unparented: `_text` keeps its place in the no-description topology so
+        // its line box still drives the button height (exactly like a genuinely
+        // empty label), and the title string lives in `_options.text` to feed
+        // the tooltip and the reflected `aria-label`. In the description
+        // topologies the description drives the height, so a hidden title is
+        // dropped outright to avoid reserving a blank title line.
         const renderText = this._isShowText();
 
         // The label's writing mode rotates both the inline (glyph→text) and the
@@ -1112,14 +1133,13 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             // off centre (the visible "hugs the left edge" on icon buttons). The
             // empty `_text` stays in the row so its line box still drives the
             // button height — dropping it shrinks the button vertically. A hidden
-            // title (`showText:false`) is the one case `_text` *is* dropped: the
-            // glyph then drives the height and the spacing collapses as for a
-            // genuinely empty label.
-            const hasText = renderText && this._text.getText().valueOf() !== "";
+            // title renders blank (`_text.getText() === ""`), so it takes this
+            // same glyph-only path: still parented to drive the height, spacing
+            // collapsed, no title shown.
+            const hasText = this._text.getText().valueOf() !== "";
             this._orientBox(this._content, inlineAxis, this._glyph && !hasText ? 0 : 2);
 
-            const titleChildren  = renderText ? [this._text] : [];
-            const inlineChildren = this._glyph ? [this._glyph, ...titleChildren] : titleChildren;
+            const inlineChildren = this._glyph ? [this._glyph, this._text] : [this._text];
             this._addContentChildren(this._content, inlineChildren, inlineReversed);
         }
 
@@ -1131,21 +1151,11 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // horizontal label: a two-line title+description block centres as a
         // block (offset 0), a glyph-only button (empty `_text`) is already
         // box-centred, and a rotated label has no horizontal descender band.
-        const opticalOffset = (!vertical && !renderDesc && renderText && this._text.getText().valueOf() !== "") ? Util.opticalCenterOffset() : 0;
+        const opticalOffset = (!vertical && !renderDesc && this._text.getText().valueOf() !== "") ? Util.opticalCenterOffset() : 0;
 
         this._content.setInsets(new Insets(opticalOffset, 0, 0, 0));
 
-        // Reflect the title into the accessible name exactly when it is hidden
-        // from the face: with no on-face Text node the button would otherwise
-        // have no accessible name. When the title is visible the rendered Text
-        // *is* the accessible name, so an `aria-label` would be redundant —
-        // clear any previously reflected one (e.g. after `setShowText(true)`).
-        const title = this._text.getText().valueOf();
-        if (!renderText && title !== "") {
-            this.getAria().setLabel(title);
-        } else {
-            this.getAria().clearLabel();
-        }
+        this._reflectAccessibleName();
 
         this._afterRebuildContentRow();
     }
@@ -2362,7 +2372,12 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     setShowText(value: boolean): this {
         this._options.showText = value;
 
+        // Re-render `_text` to the title or blank, then rebuild the row and
+        // re-resolve insets — hiding the title flips the button to glyph-only,
+        // which changes both the inset perimeter and the glyph-only spacing.
+        this._text.setText(value ? (this._options.text ?? "") : "");
         this._rebuildContentRow();
+        this._resolveInsets();
         this.recomputePreferredSize();
 
         return this;
