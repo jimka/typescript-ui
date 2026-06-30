@@ -210,16 +210,23 @@ describe('Button showText', () => {
         expect(btn.isShowText()).toBe(true);
     });
 
-    it('keeps the title off the face but alive when hidden', () => {
-        const btn = new Button({ glyph: 'unicode-arrow-up', text: 'Run', showText: false });
-        const content = (btn as any)._content;
-        const text    = (btn as any)._text;
+    it('renders the title blank on the face but preserves it when hidden', () => {
+        const btn  = new Button({ glyph: 'unicode-arrow-up', text: 'Run', showText: false });
+        const text = (btn as any)._text;
 
-        // The glyph is the row's only laid-out child; the title Text is detached.
-        expect(content.getComponents()).not.toContain(text);
-        expect(content.getComponents().length).toBe(1);
+        // The on-face renderer shows nothing (so the button is metrically a
+        // glyph-only button), while the title string is preserved for getText().
+        expect(text.getText().valueOf()).toBe('');
+        expect(btn.getText()).toBe('Run');
+    });
 
-        // The Text instance stays alive — getText() still returns the title.
+    it('shows the title on the face again after setShowText(true)', () => {
+        const btn  = new Button({ glyph: 'unicode-arrow-up', text: 'Run', showText: false });
+        const text = (btn as any)._text;
+
+        btn.setShowText(true);
+
+        expect(text.getText().valueOf()).toBe('Run');
         expect(btn.getText()).toBe('Run');
     });
 
@@ -272,5 +279,20 @@ describe('Button showText', () => {
 
         expect(btn.getAria().getLabel()).toBe(null);
         expect(tooltipText(btn)).toBeUndefined();
+    });
+
+    it('keeps the same preferred height whether the title is shown or hidden', () => {
+        // Hiding the title must not change the button's vertical metrics: the
+        // glyph still sizes to the title's line height and the box keeps its
+        // height. Regression — detaching `_text` starved the glyph line-height
+        // sync (an unmeasured Text reports a null line height) and flipped the
+        // glyph-only inset heuristic, shrinking the button / top-aligning it.
+        const shown  = new Button({ glyph: 'unicode-arrow-up', text: 'Cut', compact: true });
+        const hidden = new Button({ glyph: 'unicode-arrow-up', text: 'Cut', compact: true, showText: false });
+
+        shown.getElement(true);
+        hidden.getElement(true);
+
+        expect(hidden.getPreferredSize()!.height).toBe(shown.getPreferredSize()!.height);
     });
 });
