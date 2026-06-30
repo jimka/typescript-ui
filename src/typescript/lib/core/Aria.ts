@@ -728,6 +728,21 @@ export class Aria {
     }
 
     /**
+     * Removes `aria-label`, clearing any accessible label previously set with
+     * {@link setLabel}. The null companion to `setLabel` — distinct from
+     * `setLabel("")`, which would leave an empty `aria-label` that can suppress
+     * the element's accessible name rather than fall back to its content.
+     *
+     * @returns This Aria helper, for method chaining.
+     */
+    clearLabel(): this {
+        this._attributes.delete("label");
+        this._component.applyAriaAttribute("aria-label", null);
+
+        return this;
+    }
+
+    /**
      * Sets `aria-orientation`, indicating whether a composite widget (toolbar,
      * separator, scrollbar, slider, tablist) is laid out horizontally or
      * vertically.

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Button } from '~/component/button/Button';
+import { Tooltip } from '~/overlay/Tooltip';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -182,5 +183,94 @@ describe('Button listeners option', () => {
         // event tree; Event keeps module state across DOM.reset). The observable
         // contract is that constructing with the bag routes through on() cleanly.
         expect(() => new Button('Save', { listeners: { action: () => {} } })).not.toThrow();
+    });
+});
+
+describe('Button showText', () => {
+    /** The TooltipAttachment body for a button, or undefined when not attached. */
+    function tooltipText(btn: Button): string | undefined {
+        return (Tooltip as any).attachments.get(btn.getId())?.text;
+    }
+
+    it('defaults to true', () => {
+        expect(new Button({ text: 'Save' }).isShowText()).toBe(true);
+    });
+
+    it('round-trips the { showText: false } option', () => {
+        expect(new Button({ text: 'Save', showText: false }).isShowText()).toBe(false);
+    });
+
+    it('round-trips setShowText and is chainable', () => {
+        const btn = new Button({ text: 'Save' });
+
+        expect(btn.setShowText(false)).toBe(btn);
+        expect(btn.isShowText()).toBe(false);
+
+        btn.setShowText(true);
+        expect(btn.isShowText()).toBe(true);
+    });
+
+    it('keeps the title off the face but alive when hidden', () => {
+        const btn = new Button({ glyph: 'unicode-arrow-up', text: 'Run', showText: false });
+        const content = (btn as any)._content;
+        const text    = (btn as any)._text;
+
+        // The glyph is the row's only laid-out child; the title Text is detached.
+        expect(content.getComponents()).not.toContain(text);
+        expect(content.getComponents().length).toBe(1);
+
+        // The Text instance stays alive — getText() still returns the title.
+        expect(btn.getText()).toBe('Run');
+    });
+
+    it('composes the hover tooltip from the hidden title', () => {
+        const btn = new Button({ glyph: 'unicode-arrow-up', text: 'Save', showText: false });
+
+        expect(tooltipText(btn)).toBe('Save');
+    });
+
+    it('composes a two-line tooltip from hidden title + hidden description', () => {
+        const btn = new Button({
+            glyph:           'unicode-arrow-up',
+            text:            'Save',
+            description:     'This action cannot be undone',
+            showText:        false,
+            showDescription: false,
+        });
+
+        expect(tooltipText(btn)).toBe('Save\n\nThis action cannot be undone');
+    });
+
+    it('reflects the hidden title into aria-label', () => {
+        expect(new Button({ text: 'Run', showText: false }).getAria().getLabel()).toBe('Run');
+    });
+
+    it('does not set aria-label when the title is visible', () => {
+        expect(new Button({ text: 'Run' }).getAria().getLabel()).toBe(null);
+    });
+
+    it('clears the reflected aria-label when the title is shown again', () => {
+        const btn = new Button({ text: 'Run' });
+
+        btn.setShowText(false);
+        btn.setShowText(true);
+
+        expect(btn.getAria().getLabel()).toBe(null);
+    });
+
+    it('tracks setText on a hidden title (tooltip + aria-label)', () => {
+        const btn = new Button({ glyph: 'unicode-arrow-up', text: 'Save', showText: false });
+
+        btn.setText('Refresh');
+
+        expect(tooltipText(btn)).toBe('Refresh');
+        expect(btn.getAria().getLabel()).toBe('Refresh');
+    });
+
+    it('sets neither aria-label nor tooltip for an empty hidden title', () => {
+        const btn = new Button({ glyph: 'unicode-arrow-up', showText: false });
+
+        expect(btn.getAria().getLabel()).toBe(null);
+        expect(tooltipText(btn)).toBeUndefined();
     });
 });

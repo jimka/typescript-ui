@@ -70,6 +70,17 @@ export interface ButtonOptions extends ComponentOptions {
      * without a description. Runtime counterpart: `setShowDescription`.
      */
     showDescription?:        boolean;
+
+    /**
+     * When `false`, the title is *not* rendered on the button face — the
+     * button shows only its glyph — but the title still drives the hover
+     * tooltip (`{title}\n\n{description}`) and is reflected into `aria-label`
+     * as the accessible name. Default `true`. The title is always stored; only
+     * its on-button render is suppressed. Pairs with `showDescription` to give
+     * a glyph-only button a tooltip + accessible name without an on-face label.
+     * Runtime counterpart: `setShowText`.
+     */
+    showText?:               boolean;
     glyph?:                  string;
     enabled?:                boolean;
     pressedBackgroundColor?: string;
@@ -561,6 +572,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // class field, so the super-cascade class-field trap does not apply.
         if (options.descriptionUnderGlyph !== undefined) this._options.descriptionUnderGlyph = options.descriptionUnderGlyph;
         if (options.showDescription       !== undefined) this._options.showDescription       = options.showDescription;
+        if (options.showText              !== undefined) this._options.showText              = options.showText;
 
         if (options.enabled      !== undefined) this.setEnabled(options.enabled);
 
@@ -675,6 +687,14 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this._text.setText(text);
         this.recomputePreferredSize();
         this._rebuildTooltip();
+
+        // When the title is hidden it is not on the face but drives the
+        // reflected `aria-label`; re-run the row build so the accessible name
+        // tracks the new string. A visible title needs no rebuild — its Text
+        // node already shows the new string and is the accessible name.
+        if (!this._isShowText()) {
+            this._rebuildContentRow();
+        }
 
         return this;
     }
@@ -928,6 +948,15 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
+     * Resolves the `showText` flag with its `true` default.
+     *
+     * @returns Whether the title is rendered on the button face.
+     */
+    private _isShowText(): boolean {
+        return this._options.showText ?? true;
+    }
+
+    /**
      * Classifies the active writing mode into the orientation the content row
      * must follow. The Tab strip rotates west/east labels with `sideways-rl`
      * (clockwise, reads top→bottom) and `sideways-lr` (counter-clockwise, reads
@@ -1020,6 +1049,11 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // stays alive for the tooltip.
         const renderDesc = this._description !== null && this._isShowDescription();
 
+        // A hidden title is likewise dropped from every topology — `_text` is
+        // never parented onto the face — while the instance stays alive so the
+        // tooltip and the reflected `aria-label` below can still read it.
+        const renderText = this._isShowText();
+
         // The label's writing mode rotates both the inline (glyph→text) and the
         // block (title→description) reading directions; the content boxes have
         // to follow it, or a leading glyph lands beside vertical text instead of
@@ -1051,7 +1085,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this._orientBox(this._innerRow,    inlineAxis, 2);
             this._orientBox(this._outerColumn, blockAxis,  0);
 
-            this._addContentChildren(this._innerRow,    [this._glyph, this._text],            inlineReversed);
+            this._addContentChildren(this._innerRow,    renderText ? [this._glyph, this._text] : [this._glyph], inlineReversed);
             this._addContentChildren(this._outerColumn, [this._innerRow, this._description!], blockReversed);
             this._content.addComponent(this._outerColumn);
         } else if (renderDesc) {
@@ -1061,7 +1095,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this._orientBox(this._content,     inlineAxis, 2);
             this._orientBox(this._titleColumn, blockAxis,  0);
 
-            this._addContentChildren(this._titleColumn, [this._text, this._description!], blockReversed);
+            this._addContentChildren(this._titleColumn, renderText ? [this._text, this._description!] : [this._description!], blockReversed);
 
             const inlineChildren = this._glyph ? [this._glyph, this._titleColumn] : [this._titleColumn];
             this._addContentChildren(this._content, inlineChildren, inlineReversed);
@@ -1077,11 +1111,15 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             // the glyph and a zero-width label pads one side and pushes the glyph
             // off centre (the visible "hugs the left edge" on icon buttons). The
             // empty `_text` stays in the row so its line box still drives the
-            // button height — dropping it shrinks the button vertically.
-            const hasText = this._text.getText().valueOf() !== "";
+            // button height — dropping it shrinks the button vertically. A hidden
+            // title (`showText:false`) is the one case `_text` *is* dropped: the
+            // glyph then drives the height and the spacing collapses as for a
+            // genuinely empty label.
+            const hasText = renderText && this._text.getText().valueOf() !== "";
             this._orientBox(this._content, inlineAxis, this._glyph && !hasText ? 0 : 2);
 
-            const inlineChildren = this._glyph ? [this._glyph, this._text] : [this._text];
+            const titleChildren  = renderText ? [this._text] : [];
+            const inlineChildren = this._glyph ? [this._glyph, ...titleChildren] : titleChildren;
             this._addContentChildren(this._content, inlineChildren, inlineReversed);
         }
 
@@ -1093,9 +1131,21 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // horizontal label: a two-line title+description block centres as a
         // block (offset 0), a glyph-only button (empty `_text`) is already
         // box-centred, and a rotated label has no horizontal descender band.
-        const opticalOffset = (!vertical && !renderDesc && this._text.getText().valueOf() !== "") ? Util.opticalCenterOffset() : 0;
+        const opticalOffset = (!vertical && !renderDesc && renderText && this._text.getText().valueOf() !== "") ? Util.opticalCenterOffset() : 0;
 
         this._content.setInsets(new Insets(opticalOffset, 0, 0, 0));
+
+        // Reflect the title into the accessible name exactly when it is hidden
+        // from the face: with no on-face Text node the button would otherwise
+        // have no accessible name. When the title is visible the rendered Text
+        // *is* the accessible name, so an `aria-label` would be redundant —
+        // clear any previously reflected one (e.g. after `setShowText(true)`).
+        const title = this._text.getText().valueOf();
+        if (!renderText && title !== "") {
+            this.getAria().setLabel(title);
+        } else {
+            this.getAria().clearLabel();
+        }
 
         this._afterRebuildContentRow();
     }
@@ -2296,6 +2346,35 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     isShowDescription(): boolean {
         return this._isShowDescription();
+    }
+
+    /**
+     * Sets whether the title is rendered on the button face. When `false`, the
+     * button shows only its glyph, but the title still drives the hover tooltip
+     * and is reflected into `aria-label` as the accessible name — the title is
+     * stored either way. Toggling back to `true` restores the on-face label and
+     * clears the reflected `aria-label`.
+     *
+     * @param value - `true` (default) to show the title on the button, `false` to hide it.
+     *
+     * @returns This component, for method chaining.
+     */
+    setShowText(value: boolean): this {
+        this._options.showText = value;
+
+        this._rebuildContentRow();
+        this.recomputePreferredSize();
+
+        return this;
+    }
+
+    /**
+     * Returns whether the title is rendered on the button face.
+     *
+     * @returns `true` when the title shows on the button (the default), `false` when it is tooltip-only.
+     */
+    isShowText(): boolean {
+        return this._isShowText();
     }
 }
 
