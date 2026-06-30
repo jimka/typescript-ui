@@ -179,6 +179,11 @@ class Dock extends Container<DockOptions> {
     // panelId -> the Tab region last observed hosting it; lets a close recompute
     // the surviving sibling's focus after the region re-selects.
     private _frameRegion:    Map<string, Component> = new Map<string, Component>();
+    // The Tab region the user most recently focused (or that last received a
+    // programmatic add). `addPanel` docks new panels here when it is still a live
+    // region, so a new tab opens beside whatever tab-bar the user last worked in
+    // rather than always the first/primary region. Null until the first add.
+    private _lastActiveRegion: Component | null = null;
     // Float windows whose lifecycle events are already subscribed; the tracked-set
     // guard that stops a re-sweep stacking duplicate listeners.
     private _floatSubscribed: Set<AbstractWindow> = new Set<AbstractWindow>();
@@ -278,6 +283,7 @@ class Dock extends Container<DockOptions> {
         if (content) {
             const region = this.activeTabRegion();
 
+            this._lastActiveRegion = region;
             region.moveComponent(content, undefined, this.leafConstraints(spec));
 
             // Activate the freshly added panel so opening it shows it. The tab
@@ -325,6 +331,7 @@ class Dock extends Container<DockOptions> {
         if (frame) {
             const region = this.activeTabRegion();
 
+            this._lastActiveRegion = region;
             region.moveComponent(frame, undefined, this.leafConstraints(spec));
 
             // Activate it so the tab shows; activation drives realizeLazyContent
@@ -467,11 +474,43 @@ class Dock extends Container<DockOptions> {
     private activeTabRegion(): Component {
         const root = this.getRootRegion();
 
+        // Prefer the region the user last focused, when it is still a live Tab in
+        // the current tree, so a new panel opens beside the last-used tab-bar.
+        const last = this._lastActiveRegion;
+        if (last && this.isTab(last) && this.containsRegion(root, last)) {
+            return last;
+        }
+
         if (this.isTab(root)) {
             return root;
         }
 
         return this.firstTabRegion(root) ?? this.wrapRootInTab();
+    }
+
+    /**
+     * Depth-first membership test: whether `target` is `region` or nested under
+     * it. Used to confirm `_lastActiveRegion` still lives in the dock's tree
+     * before docking into it (a collapsed split or a layout restore can retire a
+     * region object).
+     *
+     * @param region - The subtree root to search.
+     * @param target - The region to find.
+     *
+     * @returns `true` when `target` is within `region`.
+     */
+    private containsRegion(region: Component, target: Component): boolean {
+        if (region === target) {
+            return true;
+        }
+
+        for (const child of region.getComponents()) {
+            if (this.isRegionContainer(child) && this.containsRegion(child, target)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1129,6 +1168,13 @@ class Dock extends Container<DockOptions> {
 
         if (this._frames.get(id) !== content) {
             return;
+        }
+
+        // Remember the focused panel's region so the next add docks beside the
+        // tab-bar the user just worked in (see activeTabRegion).
+        const region = this._frameRegion.get(id);
+        if (region) {
+            this._lastActiveRegion = region;
         }
 
         this.realizeLazyContent(id, content);

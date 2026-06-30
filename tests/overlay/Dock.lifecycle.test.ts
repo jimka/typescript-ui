@@ -750,6 +750,59 @@ describe('Dock addPanel — empty dock', () => {
     });
 });
 
+describe('Dock addPanel — last-active region', () => {
+    it('docks a new panel into the region the user last focused, not the first', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = twoRegionDock();
+
+        flush();
+
+        const regionA = priv(dock).regionForFrame(frameOf(dock, 'a'));
+        const regionB = priv(dock).regionForFrame(frameOf(dock, 'b'));
+
+        expect(regionA).not.toBe(regionB);
+
+        // Simulate the user focusing the second tab-bar (its "activated" handler).
+        priv(dock).onPanelFocused(frameOf(dock, 'b'));
+
+        dock.addPanel({ id: 'c', title: 'C', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        // The new panel opens in region B (last focused), not region A (first).
+        expect(priv(dock)._frameRegion.get('c')).toBe(regionB);
+    });
+
+    it('retargets to whichever region was focused most recently', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = twoRegionDock();
+
+        flush();
+
+        const regionA = priv(dock).regionForFrame(frameOf(dock, 'a'));
+        const regionB = priv(dock).regionForFrame(frameOf(dock, 'b'));
+
+        priv(dock).onPanelFocused(frameOf(dock, 'b'));
+        dock.addPanel({ id: 'c', title: 'C', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        expect(priv(dock)._frameRegion.get('c')).toBe(regionB);
+
+        // Focus moves back to region A — the next add follows it.
+        priv(dock).onPanelFocused(frameOf(dock, 'a'));
+        dock.addPanel({ id: 'd', title: 'D', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        expect(priv(dock)._frameRegion.get('d')).toBe(regionA);
+    });
+});
+
 describe('Dock addLazyPanel', () => {
     it('defers the content factory at add time but creates the frame for dedup', () => {
         installTestDOM(CONFIG);
