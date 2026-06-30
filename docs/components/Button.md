@@ -50,9 +50,23 @@ Button({ text: 'Delete', description: 'This action cannot be undone', showDescri
 
 The button renders compact (glyph + title), but hovering shows `Delete` / `This action cannot be undone`. Toggle at runtime with `setShowDescription(value)` / `isShowDescription()`. When `false`, the `descriptionUnderGlyph` alignment has no visible effect.
 
+### Showing the title in the tooltip only
+
+`showText: false` hides the title on the button face — the button shows only its glyph — while still driving the hover tooltip *and* the accessible name. It is the title-side twin of `showDescription`, ideal for an icon-only toolbar button that still needs a label for hover and screen readers:
+
+```typescript
+Button({ glyph: 'play', text: 'Run', showText: false });
+```
+
+The button renders glyph-only, but hovering shows `Run` and assistive tech reads `Run` from the reflected `aria-label`. Toggle at runtime with `setShowText(value)` / `isShowText()`. Pair it with `description` + `showDescription: false` for a second tooltip line — e.g. a keyboard-shortcut hint — without putting any text on the face:
+
+```typescript
+Button({ glyph: 'play', text: 'Run', description: 'Ctrl+Enter', showText: false, showDescription: false });
+```
+
 ### Tooltip
 
-Setting a title and/or description also auto-attaches a hover [`Tooltip`](/components/Tooltip): the title alone when there is no description, or the title and description on separate lines when both are present. The tooltip stays in sync as `setText` / `setDescription` / `clearDescription` change the text — and reflects the description even when `showDescription` is `false`.
+Setting a title and/or description also auto-attaches a hover [`Tooltip`](/components/Tooltip): the title alone when there is no description, or the title and description on separate lines when both are present. The tooltip stays in sync as `setText` / `setDescription` / `clearDescription` change the text — and reflects the title even when `showText` is `false` and the description even when `showDescription` is `false`. When the title is hidden (`showText: false`) it is also reflected into the button's `aria-label`, so a glyph-only button keeps an accessible name; the label is removed again when the title becomes visible.
 
 The subtitle's size, colour, and weight come from the `button.description.*` theme tokens — see [Theming](#theming). A leading glyph is auto-sized so its box height matches the title's line height; override it by sizing the glyph explicitly via `getGlyph().setPreferredSize(...)`.
 
