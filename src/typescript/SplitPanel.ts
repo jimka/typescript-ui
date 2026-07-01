@@ -32,7 +32,11 @@ class SplitPanel extends Panel {
         mainSplit.addComponent(southComponent);
 
         let list = new List();
-        southComponent.addComponent(list);
+        // Pin the list to a fixed width (resize weight 0): when the window (and
+        // so this split's container) grows or shrinks, the list keeps its px size
+        // and the text area / slider absorb the delta — a fixed sidebar beside
+        // absorbing content. A user gutter-drag still resizes the list normally.
+        southComponent.addComponent(list, { weight: 0 });
 
         list.addItem("One");
         list.addItem("Two");
