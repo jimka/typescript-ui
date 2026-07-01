@@ -1,13 +1,18 @@
 // Split is heavily DOM-coupled; this file scopes to the ratio / collapse STATE
 // surface that LayoutSerialization depends on (orientation, pane ratios with
 // normalisation, per-pane collapse). Deeper gutter geometry is a Non-Goal here.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
 import { Split } from '~/layout/Split';
+import { TextArea } from '~/component/input/TextArea';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
+
+// A large finite max for the cross axis (or an unconstrained main axis) in tests
+// that only constrain one dimension.
+const BIG = 100000;
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -27,6 +32,19 @@ function hostSplit(split: Split, paneCount: number): { host: Container; split: S
     for (let i = 0; i < paneCount; i += 1) {
         host.addComponent(new Component({ preferredSize: { width: 50, height: 50 } }));
     }
+
+    return { host, split };
+}
+
+// A host with the given size and no panes yet, so a test can add panes with
+// bespoke preferred / min / max / weight constraints.
+function emptyHost(width: number, height: number): { host: Container; split: Split } {
+    const split = new Split();
+    const host = new Container({ layoutManager: split });
+
+    host.getElement(true);
+    host.setWidth(width);
+    host.setHeight(height);
 
     return { host, split };
 }
@@ -359,6 +377,235 @@ describe('Split resize weights', () => {
 
         expect(split.getPaneSize(a)!).toBeCloseTo(a0 + 40, 4);
         expect(split.getPaneSize(b)!).toBeCloseTo(b0 + 40, 4);
+    });
+});
+
+describe('Split preferred seeding + live min/max', () => {
+    afterEach(() => DOM.reset());
+
+    it('seeds each pane from its explicit preferred (ratio, not equal)', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const p0 = new Component({ preferredSize: { width: 240, height: 50 } });
+        const p1 = new Component({ preferredSize: { width: 80, height: 50 } });
+        host.addComponent(p0);
+        host.addComponent(p1);
+        host.doLayout();
+
+        // 240:80 = 3:1 preserved (both seeded; the refill scales both to fill).
+        expect(split.getPaneSize(p0)! / split.getPaneSize(p1)!).toBeCloseTo(3, 4);
+    });
+
+    it('ignores a preferred change after the pane is seeded (one-time hint)', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const p0 = new Component({ preferredSize: { width: 240, height: 50 } });
+        const p1 = new Component({ preferredSize: { width: 80, height: 50 } });
+        host.addComponent(p0);
+        host.addComponent(p1);
+        host.doLayout();
+        const a0 = split.getPaneSize(p0)!;
+
+        p0.setPreferredSize(400, 50);
+        host.doLayout();
+
+        expect(split.getPaneSize(p0)!).toBeCloseTo(a0, 4);   // unchanged — seed does not re-fire
+    });
+
+    it('clamps the seed to the pane max', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const p0 = new Component({ preferredSize: { width: 500, height: 50 }, maxSize: { width: 200, height: BIG } });
+        const p1 = new Component({ preferredSize: { width: 100, height: 50 } });
+        host.addComponent(p0);
+        host.addComponent(p1);
+        host.doLayout();
+
+        expect(split.getPaneSize(p0)! / split.getPaneSize(p1)!).toBeCloseTo(2, 4);   // 200:100
+    });
+
+    it('clamps the seed to the pane min', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const p0 = new Component({ preferredSize: { width: 10, height: 50 }, minSize: { width: 150, height: 0 } });
+        const p1 = new Component({ preferredSize: { width: 100, height: 50 } });
+        host.addComponent(p0);
+        host.addComponent(p1);
+        host.doLayout();
+
+        expect(split.getPaneSize(p0)! / split.getPaneSize(p1)!).toBeCloseTo(1.5, 4);   // 150:100
+    });
+
+    it('degrades a null-preferred pane to equal division', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const p0 = new Component();   // no explicit or class-default preferred → null constraint
+        const p1 = new Component();
+        host.addComponent(p0);
+        host.addComponent(p1);
+        host.doLayout();
+
+        expect(split.getPaneSize(p0)!).toBeCloseTo(split.getPaneSize(p1)!, 4);
+    });
+
+    it('seeds a class-default preferred and keeps it beside a weighted absorber', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(600, 300);
+        const ta   = new TextArea();      // class-default preferredSize 200×200 → seeds
+        const dock = new Component();      // null preferred, weighted absorber
+        host.addComponent(ta);
+        host.addComponent(dock);
+        split.setPaneResizeWeight(dock, 1);
+        host.doLayout();
+
+        // The TextArea keeps its class-default seed (200); the weighted dock takes
+        // the leftover. (A *bare*, unweighted sibling would instead steal the seed
+        // back to equal — the box-layout convention that an absorber carries weight.)
+        expect(split.getPaneSize(ta)!).toBeCloseTo(200, 3);
+    });
+
+    it('a seeded fixed pane keeps its width beside a weighted absorber, and survives a resize (sidebar pattern)', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const side = new Component({ preferredSize: { width: 280, height: 50 } });
+        const main = new Component();
+        host.addComponent(side);
+        host.addComponent(main);
+        split.setPaneResizeWeight(side, 0);   // fixed on viewport resize
+        split.setPaneResizeWeight(main, 1);   // absorbs
+        host.doLayout();
+
+        expect(split.getPaneSize(side)!).toBeCloseTo(280, 3);      // seed sticks
+        const mainBefore = split.getPaneSize(main)!;
+
+        host.setWidth(500); // +100
+        host.doLayout();
+
+        expect(split.getPaneSize(side)!).toBeCloseTo(280, 3);              // still pinned by weight 0
+        expect(split.getPaneSize(main)!).toBeCloseTo(mainBefore + 100, 3); // absorbs the growth
+    });
+
+    it('first-layout slack is weight-influenced for a positive-weight config', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const p0 = new Component({ preferredSize: { width: 50, height: 50 } });
+        const p1 = new Component({ preferredSize: { width: 50, height: 50 } });
+        host.addComponent(p0);
+        host.addComponent(p1);
+        split.setPaneResizeWeight(p0, 1);
+        split.setPaneResizeWeight(p1, 3);
+        host.doLayout();
+
+        const a0 = split.getPaneSize(p0)!;
+        const b0 = split.getPaneSize(p1)!;
+        expect(b0).toBeGreaterThan(a0);   // slack shared 1:3 → not equal on first layout
+
+        host.setWidth(480); // +80 → resize block splits 1:3
+        host.doLayout();
+        expect(split.getPaneSize(p0)!).toBeCloseTo(a0 + 20, 3);
+        expect(split.getPaneSize(p1)!).toBeCloseTo(b0 + 60, 3);
+    });
+
+    it('weight 0 keeps its seed while a positive-weight sibling absorbs the slack', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const p0 = new Component({ preferredSize: { width: 100, height: 50 } });
+        const p1 = new Component({ preferredSize: { width: 100, height: 50 } });
+        host.addComponent(p0);
+        host.addComponent(p1);
+        split.setPaneResizeWeight(p0, 0);
+        split.setPaneResizeWeight(p1, 1);
+        host.doLayout();
+
+        expect(split.getPaneSize(p0)!).toBeCloseTo(100, 3);   // seed kept, no slack share
+    });
+
+    it('a min/max change on a pane notifies the parent (schedules a layout)', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const p0 = new Component({ preferredSize: { width: 100, height: 50 } });
+        const p1 = new Component({ preferredSize: { width: 100, height: 50 } });
+        host.addComponent(p0);
+        host.addComponent(p1);
+        host.doLayout();
+        void split;
+
+        const spy = vi.spyOn(host, 'scheduleLayout');
+        p0.setMaxSize(60, BIG);
+        expect(spy).toHaveBeenCalled();
+
+        spy.mockClear();
+        p0.setMinSize(40, 0);
+        expect(spy).toHaveBeenCalled();
+    });
+
+    it('a live min = max collapse holds the pin while a flexible neighbour absorbs', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const p0 = new Component({ preferredSize: { width: 100, height: 50 } });
+        const p1 = new Component({ preferredSize: { width: 100, height: 50 } });
+        host.addComponent(p0);
+        host.addComponent(p1);
+        host.doLayout();
+        const sumBefore = split.getPaneSize(p0)! + split.getPaneSize(p1)!;
+
+        p0.setMinSize(40, 0);
+        p0.setMaxSize(40, BIG);
+        host.doLayout();
+
+        expect(split.getPaneSize(p0)!).toBeCloseTo(40, 4);                       // pin held in _sizes
+        expect(split.getPaneSize(p1)!).toBeCloseTo(sumBefore - 40, 3);           // neighbour absorbed the freed space
+    });
+
+    it('caps a gutter-drag at the pane max and pins it when min == max', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        // p1 large so the seed refill leaves p0 well under its 180 max to start.
+        const p0 = new Component({ preferredSize: { width: 100, height: 50 }, maxSize: { width: 180, height: BIG } });
+        const p1 = new Component({ preferredSize: { width: 300, height: 50 } });
+        host.addComponent(p0);
+        host.addComponent(p1);
+        host.doLayout();
+
+        const gutter = (split as any)._gutters[0];
+        const total  = split.getPaneSize(p0)! + split.getPaneSize(p1)!;
+
+        // Drag far right: p0 wants to grow past its 180 max → capped at 180.
+        (split as any).onDragStart(host, gutter, 0);
+        (split as any).onDrag(host, gutter, 1000);
+
+        expect(split.getPaneSize(p0)!).toBeCloseTo(180, 4);
+        expect(split.getPaneSize(p0)! + split.getPaneSize(p1)!).toBeCloseTo(total, 4);
+    });
+
+    it('a gutter-drag cannot move a min == max pinned pane', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const p0 = new Component({ preferredSize: { width: 100, height: 50 }, minSize: { width: 120, height: 0 }, maxSize: { width: 120, height: BIG } });
+        const p1 = new Component({ preferredSize: { width: 100, height: 50 } });
+        host.addComponent(p0);
+        host.addComponent(p1);
+        host.doLayout();
+
+        const gutter = (split as any)._gutters[0];
+
+        (split as any).onDragStart(host, gutter, 0);
+        (split as any).onDrag(host, gutter, 500);
+
+        expect(split.getPaneSize(p0)!).toBeCloseTo(120, 4);   // pinned; drag is a no-op
     });
 });
 

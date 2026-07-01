@@ -39,7 +39,7 @@ workspace.addComponent(properties); // right
 
 ## Per-child constraints
 
-The constraint object can carry a `weight` to specify the initial size ratio. Without weights, panels start at equal size.
+Each panel starts at its **preferred size** (explicit or class-default), clamped to its min/max — the same base-plus-weight model as [`HBox`](/layouts/HBox) / [`VBox`](/layouts/VBox). The `weight` constraint distributes the leftover space among the weighted panels, so a fixed panel sits beside a `weight: 1` panel that absorbs the remainder; a panel with neither a preferred size nor a weight falls back to an equal share. A later change to a panel's preferred size is ignored (the seed is a one-time hint), but **min/max are enforced live** — setting `min == max` pins a panel to that width (a collapse), and the other panels reflow to fill.
 
 ## Collapsible panels
 

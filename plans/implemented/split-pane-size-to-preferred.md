@@ -46,7 +46,9 @@ Per ARCHITECTURE *Size constraints* rules 1/5/6, a layout manager must never siz
 
 2. **Clamp.** Split clamps each pane's assigned main size to `[min, max]` at the two write sites that set a pane's committed size: the **seed** (already `clamp` per the HBox model above) and the **drag** ([`onDrag`](src/typescript/lib/layout/Split.ts#L628), whose current `Math.max(minLhs, Math.min(total − minRhs, newLhs))` gains a max cap per pane). The resize-redistribution and refill operate on already-clamped stored values and rescale to fill the container; a hard per-pane max there could break the `Σ == available` fill invariant when a maxed pane cannot absorb its share, so the enforced clamp is applied where a pane's size is *chosen* (seed, drag), and the constraint-change hook re-runs the seed-time clamp on the current stored value when min/max moves (see *Implementation*). This matches the framework's existing defence-in-depth: [`clampWidth`](src/typescript/lib/core/Component.ts#L2795) / [`clampHeight`](src/typescript/lib/core/Component.ts#L2858) already re-clamp the committed DOM size to the merged `[min,max]`, so even a redistribution overshoot is corrected at commit — the Split-level clamp keeps `_sizes` bookkeeping honest so the *next* layout starts from an in-range value.
 
-**Constraint-change re-clamp.** When the hook fires, `recalculateSizes` re-clamps every pane's existing `_sizes` entry to its current `[min, max]` before the redistribution pass. A `min = max = W` collapse therefore snaps the stored size to `W`; the freed slack flows to the other panes via the existing refill. This is the piece that makes "min/max is the live constraint" real without a preferred write-back.
+**Constraint-change re-clamp.** When the hook fires, `recalculateSizes` re-clamps every pane's existing `_sizes` entry to its current `[min, max]` before the redistribution pass. A `min = max = W` collapse therefore snaps the stored size to `W`. This is the piece that makes "min/max is the live constraint" real without a preferred write-back.
+
+**Pin-aware refill (revision — the refill is NOT untouched after all).** The re-clamp alone is not enough, and this corrects the earlier claim that the `Σ==available` refill stays untouched. A pure min/max change does **not** change `available`, so the resize-redistribution block is skipped (its guard is `available !== _lastAvailableMain`), and the *existing uniform* refill would then rescale **every** pane by `available/Σ` — including the just-pinned pane — scaling `_sizes[pinned]` right back off `W` (only the committed-size `clampWidth`/`clampHeight` backstop would cap the *display*, leaving `_sizes` wrong and the panes not summing to `available` — a visible gap). So the refill is made **pin-aware**: a pane pinned to a single main-axis point (`min == max`, an immovable pane) is *held* at that value, and only the **flexible** panes are rescaled to fill `available − Σpinned`. A `min = max = W` collapse then holds the pinned pane at `W` while the flexible neighbour(s) absorb the freed space exactly — `_sizes` and display agree, sum is exact. **Backward-compatible:** with no pinned pane (every existing consumer — Dock, `SplitPanel`, the tests), `Σpinned = 0`, the flexible set is all panes, and `flexTarget / flexibleTotal = available / Σ` — byte-for-byte the original uniform refill.
 
 ### Sequence the layout pipeline so the weight-slack pass never double-distributes
 
@@ -62,7 +64,7 @@ prune _sizes/_collapsed → prune _weights → compute available
      • resize-redistribution        guard: _lastAvailableMain  >  0   (EXISTING, unmoved)
      • first-layout weight-slack     guard: _lastAvailableMain === 0 && positive weight exists  (NEW)
 → equal-division / proportional-steal fallback   (sizeless panes; EXISTING, unmoved)
-→ uniform Σ==available refill      (trailing reconciler; ALWAYS runs; EXISTING, unmoved)
+→ pin-aware Σ==available refill    (trailing reconciler; ALWAYS runs; holds min==max panes, rescales the rest — REVISED)
 → update _lastAvailableMain (available > 0)
 ```
 
@@ -95,7 +97,8 @@ Backward-compat sweep — components that carry a class-default preferred and ar
 
 Actual `Split`/`SplitPanel` consumers in `src/typescript/`, enumerated:
 
-- **`SplitPanel` demo** ([`src/typescript/SplitPanel.ts`](src/typescript/SplitPanel.ts)). Three nested Splits. `mainSplit` (vertical) holds `northComponent` and `southComponent` (bare `Component`, no default preferred → degrade). `northComponent` (Split) holds a `Button` and a `Text` (both no default preferred → degrade, equal). `southComponent` (Split) holds `list` (`List`, `weight: 0`, no preferred → pinned/degrade), a bare `new TextArea()` ([`SplitPanel.ts:55`](src/typescript/SplitPanel.ts#L55)), and a `Slider` (no preferred → degrade). **The `TextArea` pane now seeds to `clamp(200, minWidth, ∞)`** because `TextArea` defaults `preferredSize { 200, 200 }` ([`TextArea.ts:31`](src/typescript/lib/component/input/TextArea.ts#L31)). This is the one visible change across the whole demo set — an accepted, intended change; the demo is **not** byte-identical. All other demo panes carry no `getPreferredSizeConstraint()` and stay equal-division.
+- **A seed only *sticks* beside seeded or weighted siblings — the box-layout convention (discovered during implementation).** The seed writes `_sizes[pane] = clamp(preferred, min, max)`, but a **sizeless** sibling (null preferred *and* no positive weight) still runs the existing proportional-steal fallback ([`Split.ts:1202`](src/typescript/lib/layout/Split.ts#L1202)), which takes a share *from* the seeded pane — equalising them. So a seed is preserved when the other panes are (a) also seeded (each keeps its own preferred → the ratio holds, e.g. 240:80 stays 3:1), or (b) weighted absorbers (the first-layout weight-slack pass gives the absorber the leftover, so the seeded pane keeps its full width — the sidebar's `[fixed-preferred, weight:1 dock]` shape). A seed *beside a bare, unweighted sibling* is stolen back toward equal. This is the same convention as [`HBox`](src/typescript/lib/layout/HBox.ts)/[`VBox`](src/typescript/lib/layout/VBox.ts): a flexible absorber carries a `weight`. **Consequence for the sidebar adoption (downstream): the dock pane must carry a positive `weight`** for the sidebar's preferred width to stick.
+- **`SplitPanel` demo** ([`src/typescript/SplitPanel.ts`](src/typescript/SplitPanel.ts)) — **byte-identical (empirically confirmed).** Three nested Splits. `mainSplit` (vertical) holds two bare `Component`s (degrade). `northComponent` holds a `Button` and a `Text` (both degrade → equal). `southComponent` holds `list` (`List`, `weight: 0`, no preferred), a bare `new TextArea()` ([`SplitPanel.ts:55`](src/typescript/SplitPanel.ts#L55), class-default `preferredSize {200,200}`), and a `Slider` (no preferred). The TextArea's 200 seed *does* fire, but its `list`/`slider` siblings are sizeless with no positive weight (`list` is `weight: 0`, not positive), so the proportional-steal fallback equalises all three to `available/3` — exactly the old equal-seed result. The demo is unchanged; the earlier claim that the TextArea "seeds to 200 as the one visible change" was wrong (it is stolen back).
 - **`MiscPanel` / `TabDemoPanel`** — no `new Split(...)` at the demo level; their splits are created inside `Dock`/`DockRegion` (see below). The `preferredSize`/`weight` literals in those files are dock-spec and table configs, not direct Split pane constraints, so they are unaffected by the seed gate.
 - **`main.ts` / `ToolBarPanel`** — no direct Split use (`main.ts` only lazy-tabs `SplitPanel`; `ToolBarPanel` uses `SplitButton`, unrelated).
 
@@ -246,6 +249,56 @@ if (this._lastAvailableMain === 0 && available > 0 && this._sizes.size > 0) {
 
 Note the `0` fallback passed to `effectiveResizeWeight` here (not the pane's stored size): first-layout slack must go **only** to panes that carry an *actual* positive weight, so an unset-weight pane is not treated as weight-bearing at seed time. This differs from the resize block, which deliberately falls back to stored size for proportional rescale — the two passes have different fallbacks by design. Whatever this branch leaves unreconciled (or when it is skipped) is finished by the existing uniform refill.
 
+### Pin-aware refill
+
+The trailing `Σ==available` refill ([`Split.ts:1248`](src/typescript/lib/layout/Split.ts#L1248)) is revised to hold immovable (`min == max`) panes and rescale only the flexible ones, so a live `min=max` collapse lands the pin exactly (the resize block is skipped on a constraint change, so the refill is the only pass that runs). A pane is immovable on the main axis when its clamp range is a single point — reuse `clampMain`'s bound computation:
+
+```typescript
+// True when the pane cannot move on the main axis (min == max) — a collapsed pin.
+private isPinnedMain(pane: Component, horizontal: boolean): boolean {
+    const min = pane.getMinSize();
+    const max = pane.getMaxSize();
+    const lo  = min ? (horizontal ? min.width : min.height) : 0;
+    const hi  = max ? (horizontal ? max.width : max.height) : Number.POSITIVE_INFINITY;
+
+    return lo === hi;   // single-point range; hi is finite here (an unset max is MAX_SAFE_INTEGER ≠ lo)
+}
+```
+
+The refill (replacing the uniform loop):
+
+```typescript
+let pinnedTotal   = 0;
+let flexibleTotal = 0;
+for (const component of components) {
+    const stored = this._sizes.get(component) ?? 0;
+    if (this.isPinnedMain(component, horizontal)) { pinnedTotal += stored; }
+    else { flexibleTotal += stored; }
+}
+
+if (flexibleTotal > 0 && available > 0) {
+    // Hold pinned panes; rescale the flexible ones to fill the remainder. `max(0,…)`
+    // squeezes the flexible panes to 0 when the pins alone exceed `available`
+    // (committed clampWidth/Height then caps the pins' display).
+    const refill = Math.max(0, available - pinnedTotal) / flexibleTotal;
+    for (const component of components) {
+        if (this.isPinnedMain(component, horizontal)) { continue; }   // held at its pin
+        const stored = this._sizes.get(component);
+        if (stored != undefined) { this._sizes.set(component, stored * refill); }
+    }
+} else if (pinnedTotal > 0 && available > 0) {
+    // No flexible mass (every pane pinned): fall back to the uniform fill — the only
+    // sane outcome when nothing can flex.
+    const refill = available / pinnedTotal;
+    for (const component of components) {
+        const stored = this._sizes.get(component);
+        if (stored != undefined) { this._sizes.set(component, stored * refill); }
+    }
+}
+```
+
+With no pinned pane, `pinnedTotal = 0`, `flexibleTotal = Σ`, and `refill = available/Σ` — the original uniform refill, byte-for-byte. The `storedTotal` accumulation the old refill did is subsumed by `pinnedTotal + flexibleTotal`.
+
 ### Drag max-clamp
 
 `onDrag`'s clamp gains a per-pane max cap. Today ([`Split.ts:644`](src/typescript/lib/layout/Split.ts#L644)):
@@ -281,9 +334,10 @@ This makes `min = max = W` on a pane pin the gutter (it cannot be dragged off `W
 6. **`Split.ts` — `clampMain` helper.** Add the private per-pane axis clamp. → verify: `npx tsc --noEmit`.
 7. **`Split.ts` — `seedFromPreferred` pass.** Add the method; call it in `recalculateSizes` right after the `_weights` prune ([`:1147`](src/typescript/lib/layout/Split.ts#L1147)) and the `available` computation, computing `horizontal = this._orientation === "horizontal"`. → verify: seed fires for a pane with a non-null `getPreferredSizeConstraint()` (explicit or class-default) and no stored size; a null-constraint pane stays sizeless.
 8. **`Split.ts` — constraint re-clamp loop.** Add the "re-clamp every stored size" loop after `seedFromPreferred`. → verify: a `setMaxSize` shrinking a stored pane clamps it on the next layout.
-9. **`Split.ts` — first-layout weight-slack pass.** Add the `_lastAvailableMain === 0`-guarded branch (per *First-layout weight-slack pass*): when a positive effective weight exists, share `(available − Σseed)` over the positively-weighted panes as `seed + (w/Σw)·slack`, each re-clamped via `clampMain`. It is mutually exclusive with the existing `_lastAvailableMain > 0` resize block ([`:1170`](src/typescript/lib/layout/Split.ts#L1170)); when no positive weight exists it is skipped and the existing uniform `Σ==available` refill ([`:1248`](src/typescript/lib/layout/Split.ts#L1248)) reconciles the sum. Do **not** modify the resize block or the refill. → verify: no-positive-weight path byte-identical to today (existing tests green); a first-layout positive-weight pane absorbs the slack; the resize block never co-fires (it is guarded `_lastAvailableMain > 0`).
-10. **`Split.ts` — drag max-clamp.** Extend `onDrag`'s clamp ([`:644`](src/typescript/lib/layout/Split.ts#L644)) to read each pane's max and apply the paired `[min,max]` clamp above. → verify: `min = max = W` pins the gutter.
-11. **Backward-compat grep + tests.** `npx vitest run tests/component/layout/Split.test.ts` — all existing cases green (the delta-relative weight assertions hold against their captured first-layout baseline). Add the new cases from *Expected Behaviour*.
+9. **`Split.ts` — first-layout weight-slack pass.** Add the `_lastAvailableMain === 0`-guarded branch (per *First-layout weight-slack pass*): when a positive effective weight exists, share `(available − Σseed)` over the positively-weighted panes as `seed + (w/Σw)·slack`, each re-clamped via `clampMain`. It is mutually exclusive with the existing `_lastAvailableMain > 0` resize block ([`:1170`](src/typescript/lib/layout/Split.ts#L1170)); when no positive weight exists it is skipped and the pin-aware refill reconciles the sum. Do **not** modify the resize block. → verify: no-positive-weight path byte-identical to today (existing tests green); a first-layout positive-weight pane absorbs the slack; the resize block never co-fires (it is guarded `_lastAvailableMain > 0`).
+10. **`Split.ts` — `isPinnedMain` helper + pin-aware refill.** Add `isPinnedMain`; replace the uniform `Σ==available` refill ([`:1248`](src/typescript/lib/layout/Split.ts#L1248)) with the pin-aware version (hold `min==max` panes, rescale the flexible ones to fill `available − Σpinned`; all-pinned falls back to uniform). → verify: a `min=max=W` pane with a flexible neighbour holds `getPaneSize == W` after layout and after a live constraint change (the neighbour absorbs); with **no** pinned pane the refill is byte-identical to today (existing tests green).
+11. **`Split.ts` — drag max-clamp.** Extend `onDrag`'s clamp ([`:644`](src/typescript/lib/layout/Split.ts#L644)) to read each pane's max and apply the paired `[min,max]` clamp above. → verify: `min = max = W` pins the gutter.
+12. **Backward-compat grep + tests.** `npx vitest run tests/component/layout/Split.test.ts` — all existing cases green (the delta-relative weight assertions hold against their captured first-layout baseline). Add the new cases from *Expected Behaviour*.
 
 ---
 
@@ -292,8 +346,9 @@ This makes `min = max = W` on a pane pin the gutter (it cannot be dragged off `W
 | Action | File |
 |---|---|
 | Modify | `src/typescript/lib/core/Component.ts` — `_onConstraintSizeChange` field, fire in `setMinSize`/`setMaxSize`, bind in `addComponent`/`insertComponent`, null in `removeComponent`/`removeAllComponents` (`getPreferredSizeConstraint` already exists — read-only) |
-| Modify | `src/typescript/lib/layout/Split.ts` — `clampMain`, `seedFromPreferred`, constraint re-clamp loop, first-layout weight-slack pass, drag max-clamp |
+| Modify | `src/typescript/lib/layout/Split.ts` — `clampMain`, `isPinnedMain`, `seedFromPreferred`, constraint re-clamp loop, first-layout weight-slack pass, pin-aware refill, drag max-clamp |
 | Modify | `tests/component/layout/Split.test.ts` — new seed / clamp / reactivity cases |
+| Modify | `docs/layouts/Split.md` — per-child-constraints section (preferred seeding + live min/max) |
 
 ---
 
@@ -311,13 +366,13 @@ Horizontal split unless noted; `available` = inner width − gutters.
 6. **Backward-compat: no positive weight ⇒ first-layout is byte-identical to the old equal seed** (offline, the existing-test guarantee). Two panes each `preferredSize 50×50`, **no weight set**. Seed 50/50; no positive weight, so the first-layout weight-slack branch is skipped and the uniform refill scales both to `available/2` — identical to the old equal seed. This is the ratio/`getPaneRatios` case and the `no weights set` / `all weights 0` regression cases: first-layout stays equal only *because there is no positive weight*.
 6a. **First-layout with a positive weight is weight-influenced, not equal** (offline, corrects the old draft's case-6 claim). Two panes each `preferredSize 50×50`, `weight 1:3`. Seed 50/50, then the first-layout weight-slack pass shares `(available − 100)` as 1:3, so after the **first** `doLayout` the panes are **not** equal — pane[1] is larger. The existing weight tests capture `a0 = getPaneSize(p0)` / `b0 = getPaneSize(p1)` at exactly this point and assert every later delta (`a0 + 20`, `b0 + 60` after +80) relative to that captured baseline, so they pass regardless of the skew. Assert here that `b0 > a0` on first layout (pinning the weight-influenced seed) and that a subsequent +80 resize splits the delta 1:3 against the captured baseline.
 7. **Min/max change triggers relayout (reactivity)** (offline). Seed pane[0] to 240 (ratio-scaled). Then `pane[0].setMinSize(300, 0)` and `setMaxSize(300, UNBOUNDED)` (pin). Without an explicit `doLayout`, the hook schedules a layout; drive it (or `host.doLayout()`) and assert `getPaneSize(p0)` re-clamps toward 300 and the sibling shrinks. Assert the hook is wired: a `setMaxSize` on a mounted pane calls the parent's `scheduleLayout` (spy/observe a layout occurred).
-8. **Live min = max pins — `_sizes` guaranteed only with an absorber; committed geometry always** (offline). Which layer guarantees the pin matters: `getPaneSize()` reads `_sizes` ([`Split.ts:306`](src/typescript/lib/layout/Split.ts#L306)), which the uniform refill can scale off the pin; the committed-size `clampWidth`/`clampHeight` backstop ([`Component.ts:2795`](src/typescript/lib/core/Component.ts#L2795)/[`:2858`](src/typescript/lib/core/Component.ts#L2858)) re-corrects the *displayed* width. Two sub-cases:
-    - **8a — absorbing neighbor (both layers agree):** pane[0] `min = max = 40`; pane[1] is a positive-weight (or otherwise free) absorber. After the constraint re-clamp, `Σ == available` because the absorber takes the whole delta, so the uniform refill is a **no-op** — then `getPaneSize(p0) == 40` holds and is a valid `_sizes` assertion. Grow the host by +90; pane[0] stays `40`, pane[1] absorbs +90.
-    - **8b — no absorber (degenerate):** pane[0] `min = max = 40`, pane[1] also constrained/pinned so nothing can absorb. `Σ` may not equal `available`, so the uniform refill can scale `_sizes[p0]` off 40 — `getPaneSize(p0)` is **not** guaranteed to read 40. The pin is guaranteed only at committed geometry: assert `pane[0].getWidth() == 40` (the `clampWidth` backstop), **not** `getPaneSize(p0)`.
+8. **Live min = max pins — held by the pin-aware refill whenever a flexible neighbour exists** (offline). The pin-aware refill holds a `min==max` pane at its value and rescales only the flexible panes, so the pin holds in **both** `_sizes` and committed geometry as long as at least one neighbour can flex. Two sub-cases:
+    - **8a — flexible neighbour (the normal case):** pane[0] `min = max = 40`; pane[1] is any flexible pane (no `min==max`). Seed/layout: `getPaneSize(p0) == 40` and pane[1] fills `available − 40`. Then a **live** `pane[0].setMinSize/​setMaxSize` collapse (e.g. from an earlier expanded width to `40`) re-clamps and the refill holds it: `getPaneSize(p0) == 40`, pane[1] absorbs the freed space — no gap. Grow the host by +90; pane[0] stays `40`, pane[1] absorbs +90. This is the sidebar-collapse mechanism, offline-verified in `_sizes`.
+    - **8b — no flexible neighbour (degenerate, all panes pinned):** every pane is `min==max` and their pins don't sum to `available`. The refill falls back to a uniform scale (nothing can flex), so `getPaneSize` can read off the pins; the pin is then guaranteed only at committed geometry — assert `pane[0].getWidth()` via the `clampWidth`/`clampHeight` backstop ([`Component.ts:2795`](src/typescript/lib/core/Component.ts#L2795)/[`:2858`](src/typescript/lib/core/Component.ts#L2858)), not `getPaneSize`.
 9. **Drag respects max** (offline, math). `onDrag` dragging pane[0]'s gutter past `maxSize.width` caps `getPaneSize(p0)` at its max; dragging below `minSize.width` floors it (existing). The paired clamp keeps `p0 + p1` constant.
 10. **Drag with min = max is a no-op** (offline, math). pane[0] `min = max = W`; a synthetic `onDrag` cannot move the gutter off `W`.
 11. **Weight distributes leftover slack** (offline). pane[0] `preferredSize.width = 100` `weight: 0`, pane[1] `preferredSize.width = 100` `weight: 1`. Seed 100/100; the slack `(available − 200)` goes entirely to pane[1] (the only positive-weight pane), so `getPaneSize(p1) − getPaneSize(p0) ≈ available − 200`. Confirms seed (base) + weighted slack compose HBox-*inspired* (base kept, slack shared by weight — not the raw HBox cell formula).
-11a. **Class-default preferred seeds** (offline, advisory-pinned). A pane that is a bare instance of a class carrying `_defaultOptions.preferredSize` (e.g. `new TextArea()`, default `200×200`) — with **no** explicit `setPreferredSize` — seeds to `clamp(200, min, max)` along the split axis, not equal division. Assert `getPaneSize(textAreaPane)` reflects a 200-based seed relative to a null-constraint sibling (which stays on the equal-division fallback). This pins the SplitPanel-demo behaviour change ([`SplitPanel.ts:55`](src/typescript/SplitPanel.ts#L55)).
+11a. **Class-default preferred seeds and sticks beside a weighted absorber** (offline). A bare instance of a class carrying `_defaultOptions.preferredSize` (e.g. `new TextArea()`, default `200×200`) — no explicit `setPreferredSize` — seeds to `clamp(200, min, max)`. Beside a **weighted** absorber sibling the seed is preserved: assert `getPaneSize(textAreaPane) ≈ 200`. (Beside a *bare, unweighted* sibling it would be stolen back to equal by the proportional-steal fallback — the box-layout convention that an absorber carries weight; this is why the SplitPanel demo stays byte-identical.)
 12. **`weight: 0` still pins on viewport resize** (offline, regression). The existing `weight 0 pins…` cases pass unchanged — the resize block is untouched.
 13. **Serialization round-trip unchanged** (offline). `applyPaneRatios([1, 3])` after seeding overwrites `_sizes`; `getPaneRatios()` returns `0.25 / 0.75` — the seed does not interfere with the ratio surface.
 14. **Real gutter drag + paint** (**manual-verify**). In the app, drag a Split gutter where one pane has a `max`; confirm it stops at the max edge and the cursor re-couples on reversal. Seed-from-preferred visible width is eyeballed in the `SplitPanel` demo: the bare `TextArea` pane (class-default `200×200`) now starts wider than it did under equal division; a pane given an explicit preferred likewise seeds to it.
@@ -361,7 +416,7 @@ No public API changes — `_onConstraintSizeChange` is private and `getPreferred
 - [`plans/implemented/size-constraint-invariant.md`](plans/implemented/size-constraint-invariant.md) — the merged invariant work; this plan closes the Split-shaped gap it left.
 - [`src/typescript/lib/overlay/Dock.ts`](src/typescript/lib/overlay/Dock.ts) / [`src/typescript/lib/layout/DockRegion.ts`](src/typescript/lib/layout/DockRegion.ts) — `leafConstraints` ([Dock.ts:449](src/typescript/lib/overlay/Dock.ts#L449)), the Split-of-Tabs construction in `compileLayout` ([Dock.ts:578](src/typescript/lib/overlay/Dock.ts#L578)), `transferPaneSize` — the byte-identical consumers the null-constraint gate protects (dock `Container` panes carry no `_defaultOptions.preferredSize`).
 - [`src/typescript/lib/component/input/TextArea.ts`](src/typescript/lib/component/input/TextArea.ts) ([:31](src/typescript/lib/component/input/TextArea.ts#L31)) / [`FieldSet.ts`](src/typescript/lib/component/container/FieldSet.ts) ([:35](src/typescript/lib/component/container/FieldSet.ts#L35)) / [`display/Glyph.ts`](src/typescript/lib/component/display/Glyph.ts) ([:171](src/typescript/lib/component/display/Glyph.ts#L171)) — the class-default-preferred components that now seed when used as a bare Split pane.
-- [`src/typescript/SplitPanel.ts`](src/typescript/SplitPanel.ts) ([:55](src/typescript/SplitPanel.ts#L55)) — the demo whose bare `TextArea` pane is the one visible seed change.
+- [`src/typescript/SplitPanel.ts`](src/typescript/SplitPanel.ts) ([:55](src/typescript/SplitPanel.ts#L55)) — the demo whose bare `TextArea` pane seeds but is stolen back to equal by its bare siblings (demo stays byte-identical).
 
 ---
 
@@ -369,6 +424,6 @@ No public API changes — `_onConstraintSizeChange` is private and `getPreferred
 
 - **A `sizeToPreferred`/`setPaneTrackPreferred` opt-in, preferred-tracking-every-layout, or drag-write-back to preferred.** The rejected earlier model. Preferred is a one-time seed hint, gated by a non-null `getPreferredSizeConstraint()` (explicit *or* class-default preferred).
 - **Changing the resize-weight *behaviour*.** `effectiveResizeWeight` and the weighted-redistribution block are read-only here; unset-weight proportional rescale, `weight: 0` pinning, and the all-zero uniform refill all stay exactly as merged.
-- **Seeding docks from content preferred.** The constraint gate reads `getPreferredSizeConstraint()`, which is null for dock `Container` panes, so dock tiling and serialization stay byte-identical. (`SplitPanel` is **not** a Non-Goal here — its bare `TextArea` pane does seed from the class-default preferred; that is an accepted behaviour change, not a preserved one.)
+- **Seeding docks from content preferred.** The constraint gate reads `getPreferredSizeConstraint()`, which is null for dock `Container` panes, so dock tiling and serialization stay byte-identical. The `SplitPanel` demo also stays byte-identical: its bare `TextArea` pane's class-default seed is stolen back to equal by its bare, unweighted siblings.
 - **sqladmin `ActivityBar` adoption.** Downstream; this plan ships only the library primitives (seed, min/max clamp + reactivity) the sidebar needs.
 - **A hard max clamp inside the proportional redistribution/refill.** Enforced at the seed and drag choice-sites plus the committed-size backstop instead, to preserve the `Σ == available` fill invariant.
