@@ -346,8 +346,9 @@ This makes `min = max = W` on a pane pin the gutter (it cannot be dragged off `W
 | Action | File |
 |---|---|
 | Modify | `src/typescript/lib/core/Component.ts` — `_onConstraintSizeChange` field, fire in `setMinSize`/`setMaxSize`, bind in `addComponent`/`insertComponent`, null in `removeComponent`/`removeAllComponents` (`getPreferredSizeConstraint` already exists — read-only) |
-| Modify | `src/typescript/lib/layout/Split.ts` — `clampMain`, `seedFromPreferred`, constraint re-clamp loop, first-layout weight-slack pass, drag max-clamp |
+| Modify | `src/typescript/lib/layout/Split.ts` — `clampMain`, `isPinnedMain`, `seedFromPreferred`, constraint re-clamp loop, first-layout weight-slack pass, pin-aware refill, drag max-clamp |
 | Modify | `tests/component/layout/Split.test.ts` — new seed / clamp / reactivity cases |
+| Modify | `docs/layouts/Split.md` — per-child-constraints section (preferred seeding + live min/max) |
 
 ---
 
