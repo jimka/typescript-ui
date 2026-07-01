@@ -224,6 +224,57 @@ describe('Split resize weights', () => {
         expect(ratios[1]).toBeCloseTo(2 / 3, 5);
     });
 
+    it('shrinking past a pinned pane clamps to >= 0 and refills to the exact extent', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = hostSplit(new Split(), 2);
+        const panes = host.getComponents();
+
+        // Pin a large pane (weight 0) beside an absorbing one, seeded 3:1 so the
+        // baseline `_lastAvailableMain` is set and the pinned pane starts large.
+        split.applyPaneRatios([3, 1]);
+        split.setPaneResizeWeight(panes[0], 0);
+        split.setPaneResizeWeight(panes[1], 1);
+
+        const sum0 = split.getPaneSize(panes[0])! + split.getPaneSize(panes[1])!;
+
+        host.setWidth(100); // shrink by 300 — far below the pinned pane's room
+        host.doLayout();
+
+        const a1 = split.getPaneSize(panes[0])!;
+        const b1 = split.getPaneSize(panes[1])!;
+
+        // No negative size; the absorbing pane bottoms out; the pinned pane gives
+        // up its px (geometry must fill the container) and the `Σ == available`
+        // refill restores the invariant — sum tracks the net extent change exactly.
+        expect(a1).toBeGreaterThanOrEqual(0);
+        expect(b1).toBeGreaterThanOrEqual(0);
+        expect(b1).toBeCloseTo(0, 4);
+        expect(a1 + b1).toBeCloseTo(sum0 - 300, 4);
+    });
+
+    it('a resize preserves collapse state and the expanded panes still fill', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = hostSplit(new Split(), 3);
+
+        split.applyPaneRatios([1, 1, 2]);   // panes 0:1:2 sized 1:1:2
+        split.setPaneCollapsedImmediate(1, true);
+
+        host.setWidth(490); // grow by 90
+        host.doLayout();
+
+        // Collapse survives the weighted redistribution untouched...
+        expect(split.isPaneCollapsed(0)).toBe(false);
+        expect(split.isPaneCollapsed(1)).toBe(true);
+        expect(split.isPaneCollapsed(2)).toBe(false);
+
+        // ...and the expanded panes keep their mutual proportion (2:1) filling
+        // the extent — the collapsed pane's frozen size does not distort them.
+        const ratios = split.getPaneRatios();
+        expect(ratios[2] / ratios[0]).toBeCloseTo(2, 5);
+    });
+
     it('transferPaneSize moves the resize weight to the new slot occupant', () => {
         installTestDOM(CONFIG);
 
