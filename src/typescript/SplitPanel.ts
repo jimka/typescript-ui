@@ -28,12 +28,15 @@ class SplitPanel extends Panel {
         northComponent.addComponent(sliderText);
 
         let southComponent = new Component();
-        let southSplit = new Split();
-        southComponent.setLayoutManager(southSplit);
+        southComponent.setLayoutManager(new Split());
         mainSplit.addComponent(southComponent);
 
         let list = new List();
-        southComponent.addComponent(list);
+        // Pin the list to a fixed width (resize weight 0): when the window (and
+        // so this split's container) grows or shrinks, the list keeps its px size
+        // and the text area / slider absorb the delta — a fixed sidebar beside
+        // absorbing content. A user gutter-drag still resizes the list normally.
+        southComponent.addComponent(list, { weight: 0 });
 
         list.addItem("One");
         list.addItem("Two");
@@ -60,12 +63,6 @@ class SplitPanel extends Panel {
         // The slider is the last pane, so it has no trailing gutter; collapsing
         // it toward the end (east) lets it tuck into its leading gutter's strip.
         southComponent.addComponent(slider, { collapseDirection: "east" });
-
-        // Pin the list to a fixed width (resize weight 0): when the window (and
-        // so this split's container) grows or shrinks, the list keeps its px size
-        // and the text area / slider absorb the delta — a fixed sidebar beside
-        // absorbing content. A user gutter-drag still resizes the list normally.
-        southSplit.setPaneResizeWeight(list, 0);
     }
 }
 

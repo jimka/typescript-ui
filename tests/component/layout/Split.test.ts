@@ -305,6 +305,61 @@ describe('Split resize weights', () => {
 
         expect(split.getPaneResizeWeight(panes[0])).toBeUndefined();
     });
+
+    it('a weight-0 layout constraint pins a pane on resize (declarative surface)', () => {
+        installTestDOM(CONFIG);
+
+        const split = new Split();
+        const host = new Container({ layoutManager: split });
+        host.getElement(true);
+        host.setWidth(400);
+        host.setHeight(300);
+
+        const pinned = new Component({ preferredSize: { width: 50, height: 50 } });
+        const grower = new Component({ preferredSize: { width: 50, height: 50 } });
+        host.addComponent(pinned, { weight: 0 }); // declarative pin via constraint
+        host.addComponent(grower, { weight: 1 });
+
+        host.doLayout();
+        const a0 = split.getPaneSize(pinned)!;
+        const b0 = split.getPaneSize(grower)!;
+
+        host.setWidth(490); // +90
+        host.doLayout();
+
+        expect(split.getPaneSize(pinned)!).toBeCloseTo(a0, 4);        // pinned by constraint
+        expect(split.getPaneSize(grower)!).toBeCloseTo(b0 + 90, 4);   // absorbed all
+    });
+
+    it('setPaneResizeWeight overrides a weight layout constraint', () => {
+        installTestDOM(CONFIG);
+
+        const split = new Split();
+        const host = new Container({ layoutManager: split });
+        host.getElement(true);
+        host.setWidth(400);
+        host.setHeight(300);
+
+        const a = new Component({ preferredSize: { width: 50, height: 50 } });
+        const b = new Component({ preferredSize: { width: 50, height: 50 } });
+        host.addComponent(a, { weight: 0 }); // constraint says pin
+        host.addComponent(b, { weight: 1 });
+
+        // Runtime override: the imperative setter wins over the constraint, so
+        // the delta splits evenly instead of pinning `a`.
+        split.setPaneResizeWeight(a, 1);
+        split.setPaneResizeWeight(b, 1);
+
+        host.doLayout();
+        const a0 = split.getPaneSize(a)!;
+        const b0 = split.getPaneSize(b)!;
+
+        host.setWidth(480); // +80
+        host.doLayout();
+
+        expect(split.getPaneSize(a)!).toBeCloseTo(a0 + 40, 4);
+        expect(split.getPaneSize(b)!).toBeCloseTo(b0 + 40, 4);
+    });
 });
 
 describe('Split collapse state', () => {

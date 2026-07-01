@@ -319,6 +319,10 @@ class Split extends LayoutManager {
      * size the pane cannot keep its full extent — geometry must fill the
      * container — so pure pinning holds only while the container is large enough.
      *
+     * This is the runtime override of the pane's `weight` layout constraint: a
+     * pane added with `addComponent(pane, { weight: 0 })` is pinned declaratively
+     * at construction, and this setter takes precedence over that constraint.
+     *
      * @param pane - The pane whose resize weight to set.
      * @param weight - The resize weight; `0` pins, positive absorbs.
      * @returns This layout manager, for method chaining.
@@ -339,6 +343,24 @@ class Split extends LayoutManager {
      */
     getPaneResizeWeight(pane: Component): number | undefined {
         return this._weights.get(pane);
+    }
+
+    /**
+     * Resolves a pane's effective container-resize weight, in precedence order:
+     * an imperative {@link setPaneResizeWeight} entry (runtime override), else
+     * the pane's `weight` layout constraint (declarative, construction-time),
+     * else the fallback (its current stored size, so an unset pane behaves as a
+     * proportional rescale). Reads the raw constraint — unset is `undefined`, not
+     * the box managers' `?? 0` — so an unset pane falls through to the fallback
+     * rather than being pinned.
+     *
+     * @param pane - The pane whose resize weight to resolve.
+     * @param fallback - The weight to use when neither an explicit weight nor a
+     *   `weight` constraint is set.
+     * @returns The effective resize weight.
+     */
+    private effectiveResizeWeight(pane: Component, fallback: number): number {
+        return this._weights.get(pane) ?? this.getLayoutConstraints(pane)?.weight ?? fallback;
     }
 
     /**
@@ -1135,22 +1157,23 @@ class Split extends LayoutManager {
 
         // Distribute the extent change across the panes by resize weight so they
         // keep filling the container. Each pane's effective weight is its
-        // explicit `_weights` entry, else its current stored size — so an
-        // all-unset Split splits the delta proportionally to size, which is
-        // algebraically identical to the old uniform-factor rescale
-        // (`old·(Σ+Δ)/Σ`) and preserves any split the user dragged. A weight-0
-        // pane keeps its px size (the delta bypasses it). Skipped on the first
-        // connected layout (`_lastAvailableMain` is still 0) and when nothing
-        // changed. `weightSum === 0` (every pane pinned) leaves the sizes
-        // untouched and lets the `Σ == available` refill below fill uniformly —
-        // the only sane outcome when the delta has nowhere to go.
+        // explicit `setPaneResizeWeight` entry, else its `weight` layout
+        // constraint, else its current stored size — so an all-unset Split splits
+        // the delta proportionally to size, which is algebraically identical to
+        // the old uniform-factor rescale (`old·(Σ+Δ)/Σ`) and preserves any split
+        // the user dragged. A weight-0 pane keeps its px size (the delta bypasses
+        // it). Skipped on the first connected layout (`_lastAvailableMain` is
+        // still 0) and when nothing changed. `weightSum === 0` (every pane
+        // pinned) leaves the sizes untouched and lets the `Σ == available` refill
+        // below fill uniformly — the only sane outcome when the delta has nowhere
+        // to go.
         if (this._lastAvailableMain > 0 && available > 0 && available !== this._lastAvailableMain && this._sizes.size > 0) {
             let delta = available - this._lastAvailableMain;
 
             let weightSum = 0;
             for (let idx = 0; idx < components.length; idx += 1) {
                 let component = components[idx];
-                weightSum += this._weights.get(component) ?? (this._sizes.get(component) ?? 0);
+                weightSum += this.effectiveResizeWeight(component, this._sizes.get(component) ?? 0);
             }
 
             if (weightSum > 0) {
@@ -1159,7 +1182,7 @@ class Split extends LayoutManager {
                     let stored = this._sizes.get(component);
 
                     if (stored != undefined) {
-                        let weight = this._weights.get(component) ?? stored;
+                        let weight = this.effectiveResizeWeight(component, stored);
                         this._sizes.set(component, Math.max(0, stored + delta * (weight / weightSum)));
                     }
                 }

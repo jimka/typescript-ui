@@ -53,6 +53,18 @@ export class LayoutConstraints {
     ignoreParentInsets?: boolean = false;
     data?: any;
     closeable?: boolean;
+    /**
+     * A per-component distribution weight, read differently by two managers.
+     * [`HBox`](/api/layout/classes/HBox) and [`VBox`](/api/layout/classes/VBox)
+     * use it to share **extra main-axis space** among children (unset is treated
+     * as `0` — no share). [`Split`](/api/layout/classes/Split) uses it as the
+     * pane's **container-resize weight**: on a container resize the extent delta
+     * is split across panes in proportion to this weight, so `0` pins a pane's px
+     * size and a positive weight absorbs the change. Split reads the raw value,
+     * so an unset weight there means "default to the pane's current size" (a
+     * proportional rescale), not `0`. `Split.setPaneResizeWeight` overrides it at
+     * runtime. Ignored by other layout managers.
+     */
     weight?: number;
     /**
      * Whether a [`Border`](/api/layout/classes/Border) region may be collapsed.
