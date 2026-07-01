@@ -99,6 +99,8 @@ sidebar.addComponent(prefs, new AccordionConstraints('Preferences', false, 'gear
 
 > **Single-instance constraint.** A global tool is a single `Component` — one DOM node — so it **cannot appear in every header at once**. It is re-parented into whichever header is currently hovered, so a global tool *follows the cursor* across headers rather than showing in all of them. If you need a tool present on every header simultaneously, give each section its own per-section instance.
 
+> **Flat appearance is enforced.** A [`Button`](/api/component/button/classes/Button) tool is forced into `flat` mode when added, so header tools read as flat icons regardless of how the caller configured them. Non-`Button` tools are left untouched.
+
 ## Fill mode
 
 By default every open section sits at its preferred height. With `fillHeight` on, the **bottommost open section grows to absorb the container's leftover height** (IDE/dock-panel style) — useful when the host stretches the accordion taller than its preferred height (e.g. inside a [`VBox`](/api/layout/classes/VBox) with `stretching`). Fill is the underflow counterpart to the shrink behaviour described under [Sizing](#sizing): when the content already overflows there is no leftover, so fill is a no-op and the two never both apply. When several sections are open, only the bottommost fills; the rest take their preferred height.

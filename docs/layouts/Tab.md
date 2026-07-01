@@ -166,6 +166,10 @@ tabs, so they move to the leading edge when the tabs are `"end"`-aligned.
 [`removeTool`](/api/layout/classes/Tab#removetool) takes one back out, or
 pass an initial set via the `tools` option.
 
+A [`Button`](/api/component/button/classes/Button) tool is forced into `flat`
+mode when added, so strip tools read as flat icons regardless of how the caller
+configured them. Non-`Button` tools are left untouched.
+
 ## Overflow scrolling
 
 By default a strip with more tabs than fit compresses them to share the space.

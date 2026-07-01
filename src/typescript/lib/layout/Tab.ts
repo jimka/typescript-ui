@@ -13,6 +13,7 @@ import { Animation } from "~/core/Animation.js";
 import { FillType } from "~/layout/FillType.js";
 import { Fit } from "~/layout/Fit.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
+import { Button } from "~/component/button/Button.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { tabDragRegistry } from "~/overlay/DragManager.js";
 import { TabBar } from "~/component/container/TabBar.js";
@@ -736,11 +737,18 @@ class Tab extends LayoutManager {
     /**
      * Adds a tool button at the far end of the strip, opposite the tab buttons.
      *
+     * A {@link Button} tool is forced into `flat` appearance so strip tools read
+     * as flat icons regardless of how the caller configured them.
+     *
      * @param button - The tool component to add.
      *
      * @returns This layout manager, for chaining.
      */
     addTool(button: Component): this {
+        if (button instanceof Button) {
+            button.setFlat(true);
+        }
+
         this._bar.addTool(button);
 
         this.getContainer()?.scheduleLayout();

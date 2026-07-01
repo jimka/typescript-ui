@@ -250,11 +250,20 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
      * trailing chevron). Used both for per-section tools and for the manager's
      * re-parented global tool. A no-op if the tool is already present.
      *
+     * A {@link Button} tool is forced into `flat` appearance so header tools read
+     * as flat icons regardless of how the caller configured them. Re-applied on
+     * every add because `setFlat` is idempotent and a re-parented global tool
+     * flows back through here on each header it lands on.
+     *
      * @param tool - The tool component to add.
      *
      * @returns This header, for method chaining.
      */
     addTool(tool: Component): this {
+        if (tool instanceof Button) {
+            tool.setFlat(true);
+        }
+
         if (this._tools.includes(tool)) {
             return this;
         }
