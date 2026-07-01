@@ -82,6 +82,21 @@ carried by the [`SplitGutter`](/api/component/container/classes/SplitGutter); th
 strip fill and chevron colour are themed via the `collapse` tokens — see
 [Theming](/concepts/theming#theme-keys).
 
+### Resizable but not collapsible
+
+Set `collapsible: false` on a pane's constraint to keep its gutter a plain
+**draggable divider** — it still resizes, but shows no chevron and cannot be
+collapsed by double-click, `setPaneCollapsed`/`setPaneCollapsedImmediate`, or the
+`collapsedPanes` option. Panes are collapsible by default; this is the opt-out.
+
+```typescript
+split.addComponent(content, { collapsible: false }); // drag to resize, never collapses
+```
+
+Note the default is the **opposite** of [`Border`](/layouts/Border), where a
+region is non-collapsible until it opts in with `collapsible: true`; the two
+managers read the same constraint field with opposite defaults.
+
 ## Common methods
 
 | Method | Purpose |

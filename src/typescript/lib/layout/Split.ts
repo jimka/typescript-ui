@@ -152,6 +152,22 @@ class Split extends LayoutManager {
     }
 
     /**
+     * Whether the pane opts into collapsing. Split is opt-**out**: a pane is
+     * collapsible unless its constraint sets `collapsible: false`. (Border reads
+     * the same {@link LayoutConstraints.collapsible} field opt-**in** —
+     * `collapsible ?? false` — so the two managers default `undefined`
+     * differently by design.) A non-collapsible pane reports no serving gutter,
+     * which suppresses its chevron and every collapse path while leaving the
+     * gutter a draggable divider.
+     *
+     * @param pane - The pane whose collapsibility to resolve.
+     * @returns True unless the pane's constraint sets `collapsible: false`.
+     */
+    private paneCollapsible(pane: Component): boolean {
+        return this.getLayoutConstraints(pane)?.collapsible !== false;
+    }
+
+    /**
      * Returns the index of the pane that gutter `gutterIndex` collapses, or
      * `-1` when it collapses neither neighbour (a plain divider with no
      * chevron). The trailing pane claims the gutter when it opts to collapse
@@ -164,12 +180,12 @@ class Split extends LayoutManager {
      */
     private gutterTargetPane(gutterIndex: number, components: Array<Component>): number {
         const next = components[gutterIndex + 1];
-        if (next && !this.collapsesTowardStart(this.paneDirection(next))) {
+        if (next && this.paneCollapsible(next) && !this.collapsesTowardStart(this.paneDirection(next))) {
             return gutterIndex + 1;
         }
 
         const lead = components[gutterIndex];
-        if (lead && this.collapsesTowardStart(this.paneDirection(lead))) {
+        if (lead && this.paneCollapsible(lead) && this.collapsesTowardStart(this.paneDirection(lead))) {
             return gutterIndex;
         }
 
@@ -633,8 +649,19 @@ class Split extends LayoutManager {
             return this;
         }
 
-        const pane = container.getLaidOutComponents()[index];
+        const components = container.getLaidOutComponents();
+        const pane = components[index];
         if (!pane) {
+            return this;
+        }
+
+        // A pane with no serving gutter cannot collapse (geometry, or
+        // `collapsible: false`). Restoring (collapsed === false) is always
+        // allowed so a pane can be reopened even if its flag later changed.
+        // This is the one collapse path that bypasses `gutterTargetPane`, so it
+        // needs the guard explicitly; the chevron, the gutter "collapse" event,
+        // and `setPaneCollapsed` all funnel through `gutterTargetPane` already.
+        if (collapsed && this.paneServingGutter(index, components) < 0) {
             return this;
         }
 
