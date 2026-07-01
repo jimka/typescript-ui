@@ -67,10 +67,21 @@ export class LayoutConstraints {
      */
     weight?: number;
     /**
-     * Whether a [`Border`](/api/layout/classes/Border) region may be collapsed.
-     * Read by `Border` into its per-region collapsible flag; collapsing is
-     * opt-in, so this is treated as `false` when unset. Ignored by other layout
-     * managers and for the center region.
+     * Whether a region/pane may be collapsed. Read by two managers with
+     * **opposite defaults**:
+     *
+     * - [`Border`](/api/layout/classes/Border) — collapsing is opt-**in**
+     *   (`collapsible ?? false`): an edge region is fixed unless it sets
+     *   `collapsible: true`. Ignored for the center region.
+     * - [`Split`](/api/layout/classes/Split) — collapsing is opt-**out**
+     *   (`collapsible !== false`): a pane is collapsible unless it sets
+     *   `collapsible: false`. A `collapsible: false` pane keeps a draggable
+     *   gutter (it still resizes) but loses its collapse chevron and cannot be
+     *   collapsed by double-click, `setPaneCollapsed`, `setPaneCollapsedImmediate`,
+     *   or the `collapsedPanes` option. Restoring an already-collapsed such pane
+     *   is still allowed.
+     *
+     * Ignored by other layout managers.
      */
     collapsible?: boolean;
     /**

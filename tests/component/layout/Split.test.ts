@@ -633,3 +633,117 @@ describe('Split collapse state', () => {
         expect(split.isPaneCollapsed(5)).toBe(false);
     });
 });
+
+describe('Split non-collapsible pane (collapsible: false)', () => {
+    afterEach(() => DOM.reset());
+
+    // In a 2-pane horizontal split the single gutter serves the LEADING pane
+    // (pane 0, default "west"): so pane 0's collapsibility governs that gutter's
+    // chevron, while pane 1 is the collapsible-neighbour case.
+
+    it('reports no serving gutter and suppresses the chevron for a collapsible:false pane', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }), { collapsible: false });
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.doLayout();
+
+        expect((split as any).paneServingGutter(0, (host as any).getLaidOutComponents())).toBe(-1);
+        expect((split as any)._gutters[0].isCollapsible()).toBe(false);
+    });
+
+    it('keeps the gutter draggable so a collapsible:false pane still resizes', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const p0 = new Component({ preferredSize: { width: 100, height: 50 } });
+        const p1 = new Component({ preferredSize: { width: 100, height: 50 } });
+        host.addComponent(p0, { collapsible: false });
+        host.addComponent(p1);
+        host.doLayout();
+
+        const gutter = (split as any)._gutters[0];
+        expect(gutter.isMovable()).toBe(true);
+
+        const total  = split.getPaneSize(p0)! + split.getPaneSize(p1)!;
+        const before = split.getPaneSize(p0)!;
+
+        (split as any).onDragStart(host, gutter, 0);
+        (split as any).onDrag(host, gutter, 40);   // drag right grows the leading pane
+
+        expect(split.getPaneSize(p0)!).toBeGreaterThan(before);
+        expect(split.getPaneSize(p0)! + split.getPaneSize(p1)!).toBeCloseTo(total, 4);
+    });
+
+    it('makes setPaneCollapsed a no-op on a collapsible:false pane', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }), { collapsible: false });
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.doLayout();
+
+        split.setPaneCollapsed(0, true);
+
+        expect(split.isPaneCollapsed(0)).toBe(false);
+    });
+
+    it('makes setPaneCollapsedImmediate a no-op on a collapsible:false pane', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }), { collapsible: false });
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.doLayout();
+
+        split.setPaneCollapsedImmediate(0, true);
+
+        expect(split.isPaneCollapsed(0)).toBe(false);
+    });
+
+    it('leaves a collapsible:false pane expanded when named in collapsedPanes', () => {
+        installTestDOM(CONFIG);
+
+        const split = new Split({ orientation: 'horizontal', collapsedPanes: [0] });
+        const host  = new Container({ layoutManager: split });
+        host.getElement(true);
+        host.setWidth(400);
+        host.setHeight(300);
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }), { collapsible: false });
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.doLayout();
+
+        expect(split.isPaneCollapsed(0)).toBe(false);
+    });
+
+    it('leaves the collapsible neighbour of a collapsible:false pane collapsible', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));                          // A: collapsible (default)
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }), { collapsible: false });  // B: not
+        host.doLayout();
+
+        // The single gutter still serves A (pane 0), so A can still collapse.
+        expect((split as any).gutterTargetPane(0, (host as any).getLaidOutComponents())).toBe(0);
+        expect((split as any)._gutters[0].isCollapsible()).toBe(true);
+
+        split.setPaneCollapsed(0, true);
+        expect(split.isPaneCollapsed(0)).toBe(true);
+    });
+
+    it('leaves default and collapsible:true panes fully collapsible', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }), { collapsible: true });
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.doLayout();
+
+        expect((split as any)._gutters[0].isCollapsible()).toBe(true);
+
+        split.setPaneCollapsed(0, true);
+        expect(split.isPaneCollapsed(0)).toBe(true);
+    });
+});
