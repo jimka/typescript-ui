@@ -254,6 +254,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // post-`super()`. Public callers cannot reach it.
     private _position             : Position                = Position.ABSOLUTE;
     private _onPreferredSizeChange: (() => void) | null     = null;
+    // Fired when this component's min/max constraint changes, so the parent
+    // layout manager can re-clamp/relayout. Parallels `_onPreferredSizeChange`;
+    // bound by the parent in add/insert, nulled on remove. `setMinSize`/
+    // `setMaxSize` (not `applyOptions`) write it, so no `declare` is needed.
+    private _onConstraintSizeChange: (() => void) | null    = null;
     private _overflowX            : string | null           = null;
     private _overflowY            : string | null           = null;
     // Eased wheel-scroll controller, lazily attached while an overflow axis is
@@ -2351,6 +2356,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         this.setDataAttribute("minSize", (isUnbounded(next.width) ? "inf" : (Math.round(next.width) + "px")) + " " + (isUnbounded(next.width) ? "inf" : (Math.round(next.height) + "px")));
 
+        this._onConstraintSizeChange?.();
+
         return this;
     }
 
@@ -2423,6 +2430,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         });
 
         this.setDataAttribute("maxSize", (isUnbounded(next.width) ? "inf" : (Math.round(next.width) + "px")) + " " + (isUnbounded(next.width) ? "inf" : (Math.round(next.height) + "px")));
+
+        this._onConstraintSizeChange?.();
 
         return this;
     }
@@ -4162,6 +4171,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
             this._onPreferredSizeChange?.();
         };
+        component._onConstraintSizeChange = () => {
+            this.scheduleLayout();
+
+            this._onConstraintSizeChange?.();
+        };
 
         let element = this.getElement();
         if (!element) {
@@ -4214,6 +4228,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this.scheduleLayout();
 
             this._onPreferredSizeChange?.();
+        };
+        component._onConstraintSizeChange = () => {
+            this.scheduleLayout();
+
+            this._onConstraintSizeChange?.();
         };
 
         let element = this.getElement();
@@ -4319,6 +4338,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         component._parent = null;
         component._onPreferredSizeChange = null;
+        component._onConstraintSizeChange = null;
         component.removeElement();
         this.scheduleLayout();
 

@@ -364,6 +364,71 @@ class Split extends LayoutManager {
     }
 
     /**
+     * Clamps a candidate main-axis px to the pane's `[min, max]` along the split
+     * axis. Min wins if a contradictory `min > max` is set.
+     *
+     * @param pane - The pane whose bounds constrain the value.
+     * @param value - The candidate main-axis extent in px.
+     * @param horizontal - True when the split's main axis is width.
+     * @returns The clamped main-axis extent.
+     */
+    private clampMain(pane: Component, value: number, horizontal: boolean): number {
+        const min = pane.getMinSize();
+        const max = pane.getMaxSize();
+        const lo  = min ? (horizontal ? min.width : min.height) : 0;
+        const hi  = max ? (horizontal ? max.width : max.height) : Number.POSITIVE_INFINITY;
+
+        return Math.min(Math.max(value, lo), hi);
+    }
+
+    /**
+     * True when the pane cannot move on the main axis — its `[min, max]` range is
+     * a single point (`min == max`), the collapsed-pin state. An unset max reads
+     * as `MAX_SAFE_INTEGER`, never equal to a real min, so an unconstrained pane
+     * is never reported pinned.
+     *
+     * @param pane - The pane to test.
+     * @param horizontal - True when the split's main axis is width.
+     * @returns True when the pane is pinned to a single main-axis extent.
+     */
+    private isPinnedMain(pane: Component, horizontal: boolean): boolean {
+        const min = pane.getMinSize();
+        const max = pane.getMaxSize();
+        const lo  = min ? (horizontal ? min.width : min.height) : 0;
+        const hi  = max ? (horizontal ? max.width : max.height) : Number.POSITIVE_INFINITY;
+
+        return lo === hi;
+    }
+
+    /**
+     * Seeds a first-layout pane (one with no stored size) from its preferred main
+     * extent, clamped to `[min, max]` — the HBox/VBox model. Reads the preferred
+     * *constraint* (explicit or class-default), so a content-only pane with no
+     * constraint (e.g. a bare dock `Container`) is left unseeded and picks up the
+     * equal-division fallback, keeping docks unchanged. Runs once per pane: a
+     * pane that already has a stored size is skipped, so a later `setPreferredSize`
+     * never re-seeds it.
+     *
+     * @param components - The container's current panes.
+     * @param horizontal - True when the split's main axis is width.
+     */
+    private seedFromPreferred(components: Array<Component>, horizontal: boolean): void {
+        for (const component of components) {
+            if (this._sizes.has(component)) {
+                continue;
+            }
+
+            const preferred = component.getPreferredSizeConstraint();
+            if (!preferred) {
+                continue;
+            }
+
+            const main = horizontal ? preferred.width : preferred.height;
+            this._sizes.set(component, this.clampMain(component, main, horizontal));
+        }
+    }
+
+    /**
      * Moves a pane's stored size (and collapsed state) onto another component,
      * for when a structural change swaps one child for another in the *same* pane
      * slot — a pane wrapped in a nested `Split`, or a single-pane `Split`'s lone
@@ -635,13 +700,23 @@ class Split extends LayoutManager {
 
         const lhsMin = lhs.getMinSize();
         const rhsMin = rhs.getMinSize();
+        const lhsMax = lhs.getMaxSize();
+        const rhsMax = rhs.getMaxSize();
         const minLhs = lhsMin ? (horizontal ? lhsMin.width : lhsMin.height) : 0;
         const minRhs = rhsMin ? (horizontal ? rhsMin.width : rhsMin.height) : 0;
+        const maxLhs = lhsMax ? (horizontal ? lhsMax.width : lhsMax.height) : Number.POSITIVE_INFINITY;
+        const maxRhs = rhsMax ? (horizontal ? rhsMax.width : rhsMax.height) : Number.POSITIVE_INFINITY;
 
         const offset = position - this._dragOriginPointer;
 
+        // Clamp the new lhs size to its own [min, max] AND to the room the
+        // partner's [min, max] leaves, keeping the pair's combined size (`total`)
+        // constant. `min = max` on either pane pins the gutter.
+        const loLhs = Math.max(minLhs, total - maxRhs);
+        const hiLhs = Math.min(maxLhs, total - minRhs);
+
         let newLhs = this._dragOriginLhsSize + offset;
-        newLhs = Math.max(minLhs, Math.min(total - minRhs, newLhs));
+        newLhs = Math.max(loLhs, Math.min(hiLhs, newLhs));
 
         const newRhs    = total - newLhs;
         const dragAmount = newLhs - (horizontal ? lhs.getWidth() : lhs.getHeight());
@@ -1155,6 +1230,21 @@ class Split extends LayoutManager {
         let main = this._orientation === "horizontal" ? containerSize.width : containerSize.height;
         let available = Math.max(0, main - this.gutterTotal(components.length));
 
+        const horizontal = this._orientation === "horizontal";
+
+        // Seed first-layout panes from their preferred constraint (HBox model),
+        // then re-clamp every stored size to its current [min, max] so a live
+        // min/max change (which does not change `available`, so the resize block
+        // below is skipped) still snaps the pane into range.
+        this.seedFromPreferred(components, horizontal);
+
+        for (const component of components) {
+            const stored = this._sizes.get(component);
+            if (stored !== undefined) {
+                this._sizes.set(component, this.clampMain(component, stored, horizontal));
+            }
+        }
+
         // Distribute the extent change across the panes by resize weight so they
         // keep filling the container. Each pane's effective weight is its
         // explicit `setPaneResizeWeight` entry, else its `weight` layout
@@ -1184,6 +1274,47 @@ class Split extends LayoutManager {
                     if (stored != undefined) {
                         let weight = this.effectiveResizeWeight(component, stored);
                         this._sizes.set(component, Math.max(0, stored + delta * (weight / weightSum)));
+                    }
+                }
+            }
+        }
+
+        // First-layout slack: after seeding, hand the leftover `available − Σseed`
+        // to the positively-weighted panes as `seed + (w/Σw)·slack` (base kept,
+        // slack shared by weight — HBox-inspired). Runs only on the first connected
+        // layout (`_lastAvailableMain === 0`); the resize block above owns every
+        // later layout, so the two never co-fire. The `0` fallback means only
+        // panes with an actual positive weight absorb slack here (an unset-weight
+        // pane is not treated as weight-bearing at seed time — unlike the resize
+        // block, which falls back to stored size for proportional rescale). A
+        // weighted pane with no seed (a null-preferred absorber like a dock) is
+        // given a size here, so it no longer steals from a seeded sibling in the
+        // fallback below. When no pane has a positive weight this is skipped and
+        // the pin-aware refill reconciles the sum.
+        if (this._lastAvailableMain === 0 && available > 0 && this._sizes.size > 0) {
+            let weightSum = 0;
+            for (let idx = 0; idx < components.length; idx += 1) {
+                let weight = this.effectiveResizeWeight(components[idx], 0);
+                if (weight > 0) {
+                    weightSum += weight;
+                }
+            }
+
+            if (weightSum > 0) {
+                let seedTotal = 0;
+                for (let idx = 0; idx < components.length; idx += 1) {
+                    seedTotal += this._sizes.get(components[idx]) ?? 0;
+                }
+
+                let slack = available - seedTotal;
+
+                for (let idx = 0; idx < components.length; idx += 1) {
+                    let component = components[idx];
+                    let weight = this.effectiveResizeWeight(component, 0);
+
+                    if (weight > 0) {
+                        let seed = this._sizes.get(component) ?? 0;
+                        this._sizes.set(component, this.clampMain(component, seed + slack * (weight / weightSum), horizontal));
                     }
                 }
             }
@@ -1233,20 +1364,51 @@ class Split extends LayoutManager {
         // After the steps above every live pane has a stored size, but their
         // sum can fall short of `available` when a pane was *removed* since the
         // last layout (its slot freed but no survivor reclaimed it — e.g. a tab
-        // torn off, or a pane moved out while being wrapped in a nested Split).
-        // `computeMainAxisSizes`/`doLayout` place panes at their raw stored
-        // sizes, so a short sum strands a trailing gap. Normalise back to the
-        // `Σ == available` invariant; a uniform scale preserves any ratio the
-        // user dragged. Additions already keep the sum constant via the
-        // proportional steal above, so this is a no-op for them.
-        let storedTotal = 0;
+        // torn off, or a pane moved out while being wrapped in a nested Split), or
+        // when a live min/max change re-clamped a pane (the resize block is skipped
+        // then, because `available` is unchanged). `computeMainAxisSizes`/`doLayout`
+        // place panes at their raw stored sizes, so a short sum strands a trailing
+        // gap. Normalise back to the `Σ == available` invariant — but hold panes
+        // pinned to a single point (`min == max`, a collapsed pane) at that value
+        // and rescale only the flexible panes to fill `available − Σpinned`, so a
+        // min=max collapse lands exactly instead of being scaled off its pin. With
+        // no pinned pane this is the original uniform refill, byte-for-byte.
+        let pinnedTotal   = 0;
+        let flexibleTotal = 0;
 
         for (let idx = 0; idx < components.length; idx += 1) {
-            storedTotal += this._sizes.get(components[idx]) ?? 0;
+            let stored = this._sizes.get(components[idx]) ?? 0;
+
+            if (this.isPinnedMain(components[idx], horizontal)) {
+                pinnedTotal += stored;
+            } else {
+                flexibleTotal += stored;
+            }
         }
 
-        if (storedTotal > 0 && available > 0) {
-            let refill = available / storedTotal;
+        if (flexibleTotal > 0 && available > 0) {
+            // `max(0, …)` squeezes the flexible panes to 0 when the pins alone
+            // exceed `available`; the committed `clampWidth`/`clampHeight` backstop
+            // then caps the pins' display.
+            let refill = Math.max(0, available - pinnedTotal) / flexibleTotal;
+
+            for (let idx = 0; idx < components.length; idx += 1) {
+                let component = components[idx];
+
+                if (this.isPinnedMain(component, horizontal)) {
+                    continue;
+                }
+
+                let stored = this._sizes.get(component);
+
+                if (stored != undefined) {
+                    this._sizes.set(component, stored * refill);
+                }
+            }
+        } else if (pinnedTotal > 0 && available > 0) {
+            // No flexible mass (every pane pinned): fall back to a uniform fill —
+            // the only sane outcome when nothing can flex.
+            let refill = available / pinnedTotal;
 
             for (let idx = 0; idx < components.length; idx += 1) {
                 let component = components[idx];
