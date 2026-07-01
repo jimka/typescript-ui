@@ -526,6 +526,17 @@ export class DockRegion {
             return;
         }
 
+        // Only a stack sitting in a `Split` is removed here (and the Split then
+        // collapses). A stack whose parent is not a Split is the sole content of
+        // its container — the dock's own root container, or a float window. It
+        // must be kept: removing a promoted-to-root stack would leave the dock
+        // with no region and crash the next `addPanel` (the same invariant
+        // `Dock.pruneRegion` guards with `parent === this`); an emptied float is
+        // closed by the dock's own `pruneRegion` -> `closeFloatIfEmpty` path.
+        if (!(parent.getLayoutManager() instanceof Split)) {
+            return;
+        }
+
         parent.removeComponent(stack);
         this.collapseIfSinglePaneSplit(parent);
     }

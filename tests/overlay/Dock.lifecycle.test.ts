@@ -748,6 +748,50 @@ describe('Dock addPanel — empty dock', () => {
 
         expect(rootTab(dock).getActiveContent()?.getId()).toBe('b');
     });
+
+    it('can open a panel again after closing a dragged-then-promoted last region', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        // Drag 'b' to the SOUTH edge: the structural path a drop takes
+        // (splitOnEdge -> newStack) mints a self-pruning DockRegion stack for 'b'
+        // — the crux a compiled split misses, since compiled regions prune via the
+        // guarded Dock.pruneRegion, not DockRegion.pruneEmptyStack.
+        const rootDockRegion = priv(dock)._wiring.get(dock.getRootRegion()).dockRegion;
+        priv(rootDockRegion).splitOnEdge(frameOf(dock, 'b'), 'bottom');
+        dock.doLayout();
+        flush();
+
+        // Close the NORTH tab and promote the south (DockRegion) stack to the sole
+        // root. Force the prune (as the 'moved' test does) so the offline harness
+        // runs the close -> prune -> collapse an X-click drives in the app.
+        const northRegion = priv(dock).regionForFrame(frameOf(dock, 'a'));
+        (northRegion.getLayoutManager() as Tab).closeTab(frameOf(dock, 'a'));
+        priv(dock).pruneRegion(northRegion);
+        dock.doLayout();
+        flush();
+
+        // Close the promoted last region's remaining tab. Its self-pruning stack
+        // must NOT remove the sole root (the regression: it did, emptying the dock).
+        dock.removePanel('b');
+        dock.doLayout();
+        flush();
+
+        expect(dock.getRootRegion()).toBeTruthy();
+
+        // Opening a new panel must not throw on the emptied-but-kept root.
+        expect(() => dock.addPanel({ id: 'c', title: 'C', content: new Component({}) })).not.toThrow();
+        dock.doLayout();
+        flush();
+
+        expect(rootTab(dock).getActiveContent()?.getId()).toBe('c');
+    });
 });
 
 describe('Dock addPanel — last-active region', () => {
