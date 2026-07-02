@@ -116,6 +116,40 @@ const table = Table(store, {
 - Right-click a column header to toggle column visibility via a context menu.
 - `table.getSelectedRecord()` / `getSelectedRecords()` return the user's selection.
 
+## Events
+
+`table.on("selectionchange", records => …)` fires whenever the selected-record
+set changes, receiving the current selection array.
+
+`table.on("cellclick", e => …)` fires when the user clicks a data cell,
+carrying the record and the exact column that was hit — so you can react to a
+click on a specific cell without inferring the column from a selection change.
+It is purely additive: the row still selects and `"selectionchange"` still
+fires, a single click does **not** open the inline editor, and clicking inside
+an active editor does not steal its focus.
+
+The payload object carries:
+
+| Field | Meaning |
+| --- | --- |
+| `record` | The clicked row's bound record. |
+| `field` | The clicked column's model field name (the stable column identity). |
+| `columnIndex` | The column's index in visible-column order. |
+| `value` | `record.get(field)` read at click time. |
+| `rowIndex` | The record's index in the filtered + sorted view. |
+| `event` | The raw DOM `MouseEvent`. |
+
+A common use is foreign-key navigation — opening the record a clicked cell
+points at:
+
+```typescript
+table.on("cellclick", e => {
+    if (e.field === "managerId") {
+        openRecord(managerStore.getById(e.value));
+    }
+});
+```
+
 ## Common methods
 
 | Method | Purpose |
