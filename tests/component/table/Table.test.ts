@@ -3,9 +3,10 @@
 // private body.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
+import type { CellClickEvent } from '~/component/table/Body';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ModelRecord } from '~/data/ModelRecord';
@@ -41,5 +42,29 @@ describe('Table selectionchange event', () => {
         priv._body.selectRecord(null);
 
         expect(seen).toEqual([1, 0]);
+    });
+});
+
+describe('Table cellclick event', () => {
+    it('forwards the body cellclick on its own event', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1' }]);
+        await store.load();
+
+        const table = new Table(store);
+        table.getElement(true);
+
+        const seen: CellClickEvent[] = [];
+        table.on('cellclick', (e) => seen.push(e));
+
+        // Drive the body's cellclick through its white-box row-click path; the
+        // Table constructor subscribes to it and must re-emit its own.
+        const priv  = table as any;
+        const row   = priv._body.getRowPool()[0];
+        const cells = row.getComponents();
+        priv._body.onRowClick(row, makeEvent(cells[0].getElement(), 'click'));
+
+        expect(seen).toHaveLength(1);
+        expect(seen[0].field).toBe('a');
+        expect(seen[0].record).toBe(store.getAll()[0]);
     });
 });

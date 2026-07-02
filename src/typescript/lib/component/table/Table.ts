@@ -4,6 +4,7 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Table as TableLayout } from "~/layout/Table.js";
 import { Header } from "~/component/table/Header.js";
 import { Body } from "~/component/table/Body.js";
+import type { CellClickEvent } from "~/component/table/Body.js";
 import { FooterRow } from "~/component/table/Footer.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
@@ -20,7 +21,7 @@ import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 
 /** Events emitted by {@link Table}. */
-export type TableEvent = "selectionchange";
+export type TableEvent = "selectionchange" | "cellclick";
 
 /**
  * Construction-time options for {@link Table}.
@@ -178,18 +179,29 @@ class Table extends Component<TableOptions> {
         // consumers can react (e.g. enabling a delete action) without reaching
         // into the private body.
         this._body.on("selectionchange", records => this.emit("selectionchange", records));
+
+        // Forward the body's column-aware cell-click on the Table's own event,
+        // mirroring the selection forward above so consumers can react to a
+        // click on a specific cell (record + column) without inferring the
+        // column from a selection change.
+        this._body.on("cellclick", e => this.emit("cellclick", e));
     }
 
     /**
      * Registers a listener for one of this table's events.
      *
      * @param event - `"selectionchange"` fires whenever the selected-record set
-     *   changes, receiving the current selection.
+     *   changes, receiving the current selection; `"cellclick"` fires when a
+     *   data cell is clicked, carrying the clicked record, the column's field
+     *   name and visible index, the cell value, the record's row index in the
+     *   visible-records view, and the raw mouse event.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This table, for method chaining.
      */
-    on(event: "selectionchange", listener: (records: ModelRecord[]) => void): this {
+    on(event: "selectionchange", listener: (records: ModelRecord[]) => void): this;
+    on(event: "cellclick",       listener: (e: CellClickEvent) => void): this;
+    on(event: TableEvent,        listener: Function): this {
         this._listeners.add(event, listener);
 
         return this;
@@ -214,10 +226,13 @@ class Table extends Component<TableOptions> {
      * Fires every listener registered for `event`, in registration order.
      *
      * @param event - The event to emit.
-     * @param records - The current selection forwarded to each listener.
+     * @param payload - The current selection (`"selectionchange"`) or the
+     *   cell-click detail (`"cellclick"`) forwarded to each listener.
      */
-    protected emit(event: "selectionchange", records: ModelRecord[]): void {
-        this._listeners.fire(event, records);
+    protected emit(event: "selectionchange", records: ModelRecord[]): void;
+    protected emit(event: "cellclick", detail: CellClickEvent): void;
+    protected emit(event: TableEvent, payload: ModelRecord[] | CellClickEvent): void {
+        this._listeners.fire(event, payload);
     }
 
     /**
