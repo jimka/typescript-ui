@@ -25,9 +25,59 @@ const SCROLL_BUFFER = 2;
 /**
  * String-literal union of the events emitted by the table {@link Body}.
  * `"verticalscroll"` / `"horizontalscroll"` fire after the body's virtual
- * scroll position changes, carrying the new pixel offset.
+ * scroll position changes, carrying the new pixel offset. `"selectionchange"`
+ * fires when the selected-record set changes; `"cellclick"` fires when a data
+ * cell is clicked.
  */
-export type BodyEvent = "verticalscroll" | "horizontalscroll" | "selectionchange";
+export type BodyEvent = "verticalscroll" | "horizontalscroll" | "selectionchange" | "cellclick";
+
+/**
+ * Payload delivered to a `"cellclick"` listener when a data cell is clicked.
+ *
+ * `field` (the model field name) is the stable column identity; `columnIndex`
+ * matches the visible-column order the body exposes via a row's cells and the
+ * keyboard-focused column. `rowIndex` is the record's position in the filtered +
+ * sorted view (`getVisibleRecords()`), the same basis selection uses — never a
+ * pool-slot index. `value` is read live from the record at click time.
+ */
+export interface CellClickEvent {
+    /** The clicked row's bound record. */
+    record: ModelRecord;
+    /** The clicked column's model field name. */
+    field: string;
+    /** The clicked column's index in visible-column order. */
+    columnIndex: number;
+    /** `record.get(field)` at click time. */
+    value: unknown;
+    /** The record's index into the body's visible-records list. */
+    rowIndex: number;
+    /** The raw DOM mouse event that triggered the click. */
+    event: MouseEvent;
+}
+
+/**
+ * Returns the index of the cell in `cells` whose element is, or contains, the
+ * clicked `target` handle; `-1` when the target lies outside every cell (or is
+ * null). Pure with respect to the interned handles — no component state.
+ *
+ * @param cells - The clicked row's cells, in visible-column order.
+ * @param target - The interned click-target handle, or null.
+ *
+ * @returns The matching cell index, or `-1`.
+ *
+ * @internal
+ */
+export function resolveClickedColumn(cells: Component[], target: Handle | null): number {
+    for (let ci = 0; ci < cells.length; ci++) {
+        const cellEl = cells[ci].getElement();
+
+        if (cellEl && (cellEl === target || DOM.source.contains(cellEl, target))) {
+            return ci;
+        }
+    }
+
+    return -1;
+}
 
 function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
     if (!b) return a.length === 0;
@@ -966,15 +1016,11 @@ class Body extends Component {
 
         // Determine which column was clicked and update focused cell
         const targetHandle = e.target === null ? null : DOM.source.intern(e.target);
-        const cells = row.getComponents();
+        const cells        = row.getComponents();
+        const columnIndex  = resolveClickedColumn(cells, targetHandle);
 
-        for (let ci = 0; ci < cells.length; ci++) {
-            const cellEl = cells[ci].getElement();
-
-            if (cellEl && (cellEl === targetHandle || DOM.source.contains(cellEl, targetHandle))) {
-                this._focusedColIndex = ci;
-                break;
-            }
+        if (columnIndex >= 0) {
+            this._focusedColIndex = columnIndex;
         }
 
         // Don't steal focus from an active cell editor (e.g. <input type="date">).
@@ -985,6 +1031,23 @@ class Body extends Component {
 
         this._updateFocusStyle();
         this._updateActiveDescendant();
+
+        // Fire the column-aware cell-click event last, after selection and
+        // focus have settled, so it is purely additive. Skip clicks that land
+        // inside the row but outside any cell (should not happen for a <td>
+        // grid, but keeps the emit total).
+        if (columnIndex >= 0) {
+            const field = row.getFieldNames()[columnIndex];
+
+            this.emit("cellclick", {
+                record,
+                field,
+                columnIndex,
+                value:    record.get(field),
+                rowIndex: this.getVisibleRecords().indexOf(record),
+                event:    e,
+            });
+        }
     }
 
     /**
@@ -1050,13 +1113,19 @@ class Body extends Component {
     }
 
     /**
-     * Registers a listener for one of this body's virtual-scroll events.
+     * Registers a listener for one of this body's events.
      * `"verticalscroll"` fires after the body scrolls vertically with the
      * new `scrollY`; `"horizontalscroll"` fires after a horizontal scroll
-     * with the new `scrollX`.
+     * with the new `scrollX`; `"selectionchange"` fires with the current
+     * selected-record array; `"cellclick"` fires when a data cell is clicked,
+     * carrying the clicked record, the column's field name and visible index,
+     * the cell value, the record's row index in the visible-records view, and
+     * the raw mouse event.
      *
      * @param event - The event name.
-     * @param listener - Receives the new pixel offset along the scroll axis.
+     * @param listener - Receives the new pixel offset along the scroll axis
+     *   (scroll events), the selected records (`"selectionchange"`), or the
+     *   cell-click payload (`"cellclick"`).
      *
      * @returns This body, for method chaining.
      *
@@ -1072,6 +1141,7 @@ class Body extends Component {
     on(event: "verticalscroll",   listener: (scrollTop: number) => void): this;
     on(event: "horizontalscroll", listener: (scrollLeft: number) => void): this;
     on(event: "selectionchange",  listener: (records: ModelRecord[]) => void): this;
+    on(event: "cellclick",        listener: (e: CellClickEvent) => void): this;
     on(event: BodyEvent,          listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -1103,7 +1173,8 @@ class Body extends Component {
      */
     protected emit(event: "verticalscroll" | "horizontalscroll", offset: number): void;
     protected emit(event: "selectionchange", records: ModelRecord[]): void;
-    protected emit(event: BodyEvent, payload: number | ModelRecord[]): void {
+    protected emit(event: "cellclick", detail: CellClickEvent): void;
+    protected emit(event: BodyEvent, payload: number | ModelRecord[] | CellClickEvent): void {
         this._listeners.fire(event, payload);
     }
 

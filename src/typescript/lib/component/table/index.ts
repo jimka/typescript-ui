@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 export { Table } from '~/component/table/Table.js';
+export type { TableEvent } from '~/component/table/Table.js';
 export { TablePanel } from '~/component/table/TablePanel.js';
 export { TreeTable } from '~/component/table/TreeTable.js';
 export type { RowReparentDetail } from '~/component/table/TreeTable.js';
@@ -13,7 +14,7 @@ export type { ExportOptions } from '~/component/table/TableExporter.js';
 export { Header } from '~/component/table/Header.js';
 export type { HeaderEvent } from '~/component/table/Header.js';
 export { Body } from '~/component/table/Body.js';
-export type { BodyEvent } from '~/component/table/Body.js';
+export type { BodyEvent, CellClickEvent } from '~/component/table/Body.js';
 export { TreeBody } from '~/component/table/TreeBody.js';
 export type { FlatRecord, TreeBodySpec } from '~/component/table/TreeBody.js';
 export { FooterRow } from '~/component/table/Footer.js';

@@ -12,9 +12,10 @@
 // editor.test pattern of poking a private to exercise a real contract.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
-import { Body } from '~/component/table/Body';
+import { Body, resolveClickedColumn } from '~/component/table/Body';
+import type { CellClickEvent } from '~/component/table/Body';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 
@@ -116,5 +117,152 @@ describe('Body selectionchange event', () => {
         b.selectRecord(null);
 
         expect(seen).toEqual([1, 2, 0]);
+    });
+});
+
+describe('resolveClickedColumn', () => {
+    it('returns the index of a cell whose element is the target', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const row   = (b as any).getRowPool()[0];
+        const cells = row.getComponents();
+
+        expect(resolveClickedColumn(cells, cells[1].getElement())).toBe(1);
+    });
+
+    it('returns the cell index when the target is a descendant of the cell', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const row   = (b as any).getRowPool()[0];
+        const cells = row.getComponents();
+        // The renderer element lives inside the cell — a click on it must
+        // resolve to that cell's column via DOM.source.contains.
+        const inner = cells[2].getComponents()[0].getElement();
+
+        expect(resolveClickedColumn(cells, inner)).toBe(2);
+    });
+
+    it('returns -1 when the target is outside every cell', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const row   = (b as any).getRowPool()[0];
+        const cells = row.getComponents();
+
+        // The row element itself is not one of its cells.
+        expect(resolveClickedColumn(cells, row.getElement())).toBe(-1);
+    });
+
+    it('returns -1 for a null target', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const row   = (b as any).getRowPool()[0];
+        const cells = row.getComponents();
+
+        expect(resolveClickedColumn(cells, null)).toBe(-1);
+    });
+});
+
+describe('Body cellclick event', () => {
+    it('emits a payload matching the clicked cell', async () => {
+        const store = new MemoryStore(MODEL, [{ a: 'x', b: 'y', c: 'z' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const row   = (b as any).getRowPool()[0];
+        const cells = row.getComponents();
+        const rec   = row.getData();
+
+        const seen: CellClickEvent[] = [];
+        b.on('cellclick', (e) => seen.push(e));
+
+        // Click column index 1 (field "b").
+        (b as any).onRowClick(row, makeEvent(cells[1].getElement(), 'click'));
+
+        expect(seen).toHaveLength(1);
+        expect(seen[0].columnIndex).toBe(1);
+        expect(seen[0].field).toBe('b');
+        expect(seen[0].record).toBe(rec);
+        expect(seen[0].value).toBe(rec.get('b'));
+        expect(seen[0].rowIndex).toBe((b as any).getVisibleRecords().indexOf(rec));
+    });
+
+    it('fires alongside selectionchange, with selection settled first', async () => {
+        const store = new MemoryStore(MODEL, [{ a: 'x', b: 'y', c: 'z' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const row   = (b as any).getRowPool()[0];
+        const cells = row.getComponents();
+        const rec   = row.getData();
+
+        const order: string[] = [];
+        b.on('selectionchange', () => order.push('selection'));
+        b.on('cellclick',       () => order.push('cellclick'));
+
+        (b as any).onRowClick(row, makeEvent(cells[0].getElement(), 'click'));
+
+        expect(order).toEqual(['selection', 'cellclick']);
+        expect(b.getSelectedRecords()).toContain(rec);
+    });
+
+    it('reports the live binding after a pool row is rebound to another record', async () => {
+        const store = new MemoryStore(MODEL, [{ a: 'first' }, { a: 'second' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const recs  = store.getAll();
+        const row   = (b as any).getRowPool()[0];
+        const cells = row.getComponents();
+
+        // Rebind the pool slot to the second record, as a scroll recycle would.
+        row.setData(recs[1]);
+
+        const seen: CellClickEvent[] = [];
+        b.on('cellclick', (e) => seen.push(e));
+
+        (b as any).onRowClick(row, makeEvent(cells[0].getElement(), 'click'));
+
+        expect(seen[0].record).toBe(recs[1]);
+        expect(seen[0].rowIndex).toBe((b as any).getVisibleRecords().indexOf(recs[1]));
+    });
+
+    it('does not emit when the click lands outside every cell', async () => {
+        const store = new MemoryStore(MODEL, [{ a: 'x' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const row = (b as any).getRowPool()[0];
+
+        const seen: CellClickEvent[] = [];
+        b.on('cellclick', (e) => seen.push(e));
+
+        // Target is the row element, not a cell.
+        (b as any).onRowClick(row, makeEvent(row.getElement(), 'click'));
+
+        expect(seen).toHaveLength(0);
     });
 });

@@ -477,6 +477,14 @@ class MiscPanel extends Panel {
                     defaultMessage: `${specStore.getCount()} rows · avg Score ${specStore.average('Score').toFixed(1)} · max ${specStore.max('Score')} · ${groupCounts}`,
                 });
 
+                // Demo the column-aware "cellclick" event: a single click on any
+                // data cell reports which column + record was hit (without
+                // inferring the column from a selection change), while row
+                // selection still works normally.
+                specTable.on("cellclick", function (e) {
+                    statusBar.setMessage(`clicked ${e.field} = ${String(e.value)} (row ${e.rowIndex}, col ${e.columnIndex})`);
+                });
+
                 const wrapper = Panel({
                     layoutManager: new VBox({ stretching: true }),
                     components: [
