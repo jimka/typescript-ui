@@ -18,6 +18,7 @@ import { Component } from '~/core/Component';
 import { Dock, DockPanelEvent } from '~/overlay/Dock';
 import { Tab } from '~/layout/Tab';
 import { Window } from '~/overlay/Window';
+import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { Tooltip } from '~/overlay/Tooltip';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
@@ -86,7 +87,15 @@ function frameOf(dock: Dock, id: string): Component {
     return priv(dock)._frames.get(id) as Component;
 }
 
-afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+// Drop any window a test left open from the global registry before the DOM is
+// reset: the reset releases their handles, and a later test's serializeLayout /
+// restoreLayout iterates getOpenWindows() and would touch a dead handle. The
+// listeners die with the reset DOM, so only the registry bookkeeping is cleared.
+afterEach(() => {
+    (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
+    vi.restoreAllMocks();
+    DOM.reset();
+});
 
 // Records every attach/detach as a {type, id, window} tuple so a test can assert
 // the exact paired sequence and host of a transition.
@@ -882,5 +891,328 @@ describe('Dock addLazyPanel', () => {
         expect(frameOf(dock, 'a').getComponents()).toContain(content);
         // The factory is dropped once realized, so a re-activation never rebuilds.
         expect(priv(dock)._lazyFactories.has('a')).toBe(false);
+    });
+});
+
+// A dock with a placeholder so the empty-state tests can assert the raw-append.
+function mountDockWithPlaceholder(placeholder: Component): Dock {
+    const dock = new Dock({ emptyContent: placeholder });
+
+    dock.getElement(true);
+    dock.setWidth(800);
+    dock.setHeight(600);
+
+    return dock;
+}
+
+// The parent element of a placeholder, resolved through the recording source, or
+// null when it is not attached to the DOM.
+function parentElementOf(component: Component): unknown {
+    const el = component.getElement(true);
+
+    return el ? DOM.source.getParentElement(el) : null;
+}
+
+describe('Dock empty-state', () => {
+    it('reports isEmpty() true for a fresh empty dock', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        flush();
+
+        expect(dock.isEmpty()).toBe(true);
+    });
+
+    it('flips to populated and emits emptychange(false) once on addPanel', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+        const events: Array<{ empty: boolean }> = [];
+
+        dock.on('emptychange', e => events.push(e));
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        flush();
+
+        expect(dock.isEmpty()).toBe(false);
+        expect(events).toEqual([{ empty: false }]);
+
+        // A subsequent no-op sweep must not re-emit.
+        priv(dock).scheduleSweep();
+        flush();
+
+        expect(events).toEqual([{ empty: false }]);
+    });
+
+    it('flips to empty and emits emptychange(true) once when the last tiled panel closes', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const events: Array<{ empty: boolean }> = [];
+
+        dock.on('emptychange', e => events.push(e));
+        dock.removePanel('a');
+        dock.doLayout();
+        flush();
+
+        expect(dock.isEmpty()).toBe(true);
+        expect(events).toEqual([{ empty: true }]);
+    });
+
+    it('flips to empty and emits emptychange(true) once when the last floated panel closes', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const frameA = frameOf(dock, 'a');
+        const win = new Window('Float');
+
+        win.show();
+        win.moveComponent(frameA);
+        (rootTab(dock) as any).emit('detached', win);
+        flush();
+
+        expect(dock.isEmpty()).toBe(false);
+
+        const events: Array<{ empty: boolean }> = [];
+
+        dock.on('emptychange', e => events.push(e));
+        win.requestClose();
+        flush();
+
+        expect(dock.isEmpty()).toBe(true);
+        expect(events).toEqual([{ empty: true }]);
+    });
+
+    it('is NOT empty and emits nothing when every panel is floated', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const events: Array<{ empty: boolean }> = [];
+
+        dock.on('emptychange', e => events.push(e));
+
+        const frameA = frameOf(dock, 'a');
+        const win = new Window('Float');
+
+        win.show();
+        win.moveComponent(frameA);
+        (rootTab(dock) as any).emit('detached', win);
+        flush();
+
+        expect(dock.isEmpty()).toBe(false);
+        expect(events).toEqual([]);
+
+        // Close the leaked float so its window does not persist in the global
+        // open-window registry into a later restore test.
+        win.requestClose();
+        flush();
+    });
+
+    it('attaches / detaches the placeholder across the state machine, never as a region child', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const placeholder = new Component({});
+        const dock = mountDockWithPlaceholder(placeholder);
+
+        dock.doLayout();
+        flush();
+
+        const rootEl = dock.getRootRegion().getElement(true);
+
+        // Empty on construction -> placeholder attached into the root region element.
+        expect(parentElementOf(placeholder)).toBe(rootEl);
+        expect(dock.getRootRegion().getComponents()).not.toContain(placeholder);
+
+        // Populate -> placeholder detached.
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        expect(parentElementOf(placeholder)).toBeNull();
+        expect(dock.getRootRegion().getComponents()).not.toContain(placeholder);
+
+        // Close last -> placeholder re-attached.
+        dock.removePanel('a');
+        dock.doLayout();
+        flush();
+
+        expect(parentElementOf(placeholder)).toBe(dock.getRootRegion().getElement(true));
+        expect(dock.getRootRegion().getComponents()).not.toContain(placeholder);
+    });
+
+    it('emits emptychange with no emptyContent supplied', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        expect(dock.getEmptyContent()).toBeNull();
+
+        const events: Array<{ empty: boolean }> = [];
+
+        dock.on('emptychange', e => events.push(e));
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        dock.removePanel('a');
+        dock.doLayout();
+        flush();
+
+        expect(events).toEqual([{ empty: false }, { empty: true }]);
+    });
+
+    it('emits no emptychange for a no-op sweep over an unchanged tree', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const events: Array<{ empty: boolean }> = [];
+
+        dock.on('emptychange', e => events.push(e));
+        priv(dock).scheduleSweep();
+        flush();
+
+        expect(events).toEqual([]);
+    });
+
+    it('reconciles emptiness on a setLayoutState restore into an empty dock', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        // The restore factory resolves leaves from this dock's own panel registry,
+        // so the spec must be registered here (restore is a round-trip). Capture a
+        // populated state, then return the dock to empty by capturing/replaying an
+        // empty state up front.
+        const dock = mountDock();
+
+        dock.doLayout();
+        flush();
+
+        // Use a factory spec: removePanel evicts the cached frame, so a later
+        // restore rebuilds it — a factory yields fresh content each rebuild (a
+        // live-component spec would orphan its already-parented content).
+        dock.addPanel({ id: 'a', title: 'A', content: () => new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const populatedState = dock.getLayoutState();
+
+        // Return to empty via removePanel (the spec stays registered), then restore
+        // the populated state into the empty dock -> one emptychange(false).
+        dock.removePanel('a');
+        dock.doLayout();
+        flush();
+
+        expect(dock.isEmpty()).toBe(true);
+
+        const events: Array<{ empty: boolean }> = [];
+
+        dock.on('emptychange', e => events.push(e));
+        dock.setLayoutState(populatedState);
+        dock.doLayout();
+        flush();
+
+        expect(dock.isEmpty()).toBe(false);
+        expect(events).toEqual([{ empty: false }]);
+
+        // A surviving-panel restore that stays populated emits nothing.
+        dock.setLayoutState(populatedState);
+        dock.doLayout();
+        flush();
+
+        expect(dock.isEmpty()).toBe(false);
+        expect(events).toEqual([{ empty: false }]);
+    });
+
+    it('does not serialize the placeholder', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const placeholder = new Component({});
+        const dock = mountDockWithPlaceholder(placeholder);
+
+        dock.doLayout();
+        flush();
+
+        // Placeholder is attached (empty dock) but must be absent from the state.
+        expect(parentElementOf(placeholder)).toBe(dock.getRootRegion().getElement(true));
+
+        const state = dock.getLayoutState();
+
+        expect(state.root.kind).toBe('tab');
+        expect((state.root as any).children).toEqual([]);
+    });
+
+    it('keeps the empty root region a live drop target and detaches the placeholder on re-add', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const placeholder = new Component({});
+        const dock = mountDockWithPlaceholder(placeholder);
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        dock.removePanel('a');
+        dock.doLayout();
+        flush();
+
+        // The root region survived, still carries its DockRegion wiring, and shows
+        // the placeholder.
+        const root = dock.getRootRegion();
+
+        expect(root).toBeTruthy();
+        expect(priv(dock)._wiring.get(root)).toBeTruthy();
+        expect(parentElementOf(placeholder)).toBe(root.getElement(true));
+
+        // Re-adding docks a tab and detaches the placeholder.
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        expect(rootTab(dock).getActiveContent()?.getId()).toBe('b');
+        expect(parentElementOf(placeholder)).toBeNull();
+    });
+
+    it('routes emptyContent through the options bag and setter/accessor', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const c1 = new Component({});
+        const c2 = new Component({});
+        const dock = new Dock({ emptyContent: c1 });
+
+        expect(dock.getEmptyContent()).toBe(c1);
+        expect(dock.setEmptyContent(c2)).toBe(dock);
+        expect(dock.getEmptyContent()).toBe(c2);
+        expect(dock.setEmptyContent(null).getEmptyContent()).toBeNull();
     });
 });

@@ -67,6 +67,12 @@ export type DockLayoutSpec =
 export interface DockOptions extends ContainerOptions {
     /** Initial arrangement, compiled to the region tree at construction. Omit for an empty dock. */
     layout?: DockLayoutSpec;
+    /**
+     * Placeholder shown only while the dock holds no live panel (tiled or
+     * floated) — a start-page for an empty dock. It is chrome, not a panel: it
+     * never becomes a tab and is never serialized. See {@link Dock.setEmptyContent}.
+     */
+    emptyContent?: Component;
 }
 
 /**
@@ -91,9 +97,13 @@ export interface DockOptions extends ContainerOptions {
  * {@link DockPanelEvent.window} field names *which* host the panel entered,
  * left, occupies, or moved within. See {@link DockPanelEvent} for the payload.
  *
+ * A separate `"emptychange"` event is a *dock-wide aggregate*, not a per-panel
+ * event: it fires once each time the dock transitions between holding no live
+ * panel anywhere and holding at least one, carrying a {@link DockEmptyEvent}.
+ *
  * @category Core
  */
-export type DockEvent = "attach" | "detach" | "moved" | "focus" | "close";
+export type DockEvent = "attach" | "detach" | "moved" | "focus" | "close" | "emptychange";
 
 /**
  * Payload for a {@link Dock} lifecycle event, identifying the panel by its
@@ -115,6 +125,17 @@ export interface DockPanelEvent {
      * but the field is always present so the payload stays flat.
      */
     window:  AbstractWindow | null;
+}
+
+/**
+ * Payload for a {@link Dock} `"emptychange"` event, reporting whether the dock
+ * just became empty. Emitted once per real transition, not per panel.
+ *
+ * @category Core
+ */
+export interface DockEmptyEvent {
+    /** `true` when the dock just became empty (no live panels anywhere), `false` when it became populated. */
+    empty: boolean;
 }
 
 /**
@@ -192,6 +213,19 @@ class Dock extends Container<DockOptions> {
     // panel torn off) and a tab is dragged over it.
     private _emptyDropOverlay: DropZoneOverlay = new DropZoneOverlay();
 
+    // Empty-state latch: whether the dock currently holds no live panel. Gates
+    // the "emptychange" emit and the placeholder attach/detach so both fire only
+    // on a real transition. Seeded true because a dock is born empty: the first
+    // reconcile on a still-empty dock then finds no transition (silent), while a
+    // dock born with a layout — or the first addPanel — correctly flips it to
+    // false and emits emptychange(false). A plain initializer is safe — no
+    // cascade-dispatched setter writes it.
+    private _empty: boolean = true;
+    // Whether reconcileEmptyState has run at least once. The first run syncs the
+    // placeholder to the born state (attaching it when the dock is born empty)
+    // without an emit, since being born empty is not a transition.
+    private _emptyReconciled: boolean = false;
+
     // Named, bound listener reference for the DockRegion post-drop callback,
     // routing through one removable handler that coalesces via scheduleSweep.
     private requestSweep: () => void = (): void => {
@@ -222,6 +256,91 @@ class Dock extends Container<DockOptions> {
         this.addComponent(root);
         this.scheduleSweep();
         this.wireEmptyDropTarget();
+    }
+
+    /**
+     * Applies inherited options first, then routes the `emptyContent` placeholder
+     * through its setter. The setter only caches (no DOM work) because it is
+     * dispatched from within `super()`; the placeholder attaches from the first
+     * post-construction reconcile.
+     *
+     * @param options - The construction options.
+     *
+     * @returns This dock.
+     */
+    protected applyOptions(options: DockOptions): this {
+        super.applyOptions(options);
+
+        if (options.emptyContent !== undefined) {
+            this.setEmptyContent(options.emptyContent);
+        }
+
+        return this;
+    }
+
+    /**
+     * Sets (or clears, with `null`) the placeholder shown while the dock holds no
+     * live panel — a start-page for an empty dock. The placeholder is chrome: it
+     * never becomes a tab and is never serialized. It attaches the instant the
+     * dock becomes empty and detaches the instant a panel appears; a `null`
+     * placeholder still lets the dock report emptiness and fire `"emptychange"`,
+     * it simply shows nothing.
+     *
+     * @param component - The placeholder component, or `null` to clear it.
+     *
+     * @returns This dock, for chaining.
+     */
+    setEmptyContent(component: Component | null): this {
+        this._options.emptyContent = component ?? undefined;
+
+        return this;
+    }
+
+    /**
+     * The placeholder shown while the dock is empty, or `null` when none is set.
+     *
+     * @returns The placeholder component, or `null`.
+     */
+    getEmptyContent(): Component | null {
+        return this._options.emptyContent ?? null;
+    }
+
+    /**
+     * Whether the dock holds no live panel anywhere — tiled or floated. A dock
+     * whose only panels are torn off into floats is *not* empty (the floats are
+     * still live panels of this dock), so this reports `false` for it. Saves a
+     * consumer the manual panel-count bookkeeping and is the public read side of
+     * the placeholder state machine.
+     *
+     * @returns `true` when no live panel exists.
+     */
+    isEmpty(): boolean {
+        return this._frames.size === 0;
+    }
+
+    /**
+     * Lays out the region tree, then — while empty and a placeholder is attached —
+     * sizes the placeholder to the root region's box (the full dock bounds, since
+     * the sole `Fit` child fills the dock), so it re-fits on every layout pass and
+     * tracks arbitrary dock resizes. Mirrors the explicit-size discipline the
+     * drop-zone overlay uses.
+     *
+     * @returns This dock.
+     */
+    doLayout(): this {
+        super.doLayout();
+
+        const placeholder = this.getEmptyContent();
+        const root        = this.getRootRegion();
+
+        if (this._empty && placeholder && root) {
+            placeholder.setX(0);
+            placeholder.setY(0);
+            placeholder.setWidth(root.getWidth());
+            placeholder.setHeight(root.getHeight());
+        }
+
+        return this;
     }
 
     /**
@@ -679,6 +798,80 @@ class Dock extends Container<DockOptions> {
         this.subscribeFloatWindows();
         this.reconcileHosts(root);
         this.teardownVanished(root, floatRegions);
+        this.reconcileEmptyState();
+    }
+
+    /**
+     * Diffs the dock's current emptiness against the cached latch, and on a real
+     * transition toggles the placeholder and emits `"emptychange"` exactly once.
+     * A no-op sweep (unchanged latch) is silent. Called at the end of every sweep
+     * and reached from every close via {@link scheduleSweep}, so the emit is once
+     * per settled transition, never per frame.
+     */
+    private reconcileEmptyState(): void {
+        const empty = this.isEmpty();
+
+        // First reconcile: sync the placeholder to the born state without an emit
+        // (being born empty or populated is not a transition). A born-empty dock
+        // attaches its placeholder here; a born-with-layout dock falls through to
+        // the transition branch below and emits emptychange(false) once.
+        if (!this._emptyReconciled) {
+            this._emptyReconciled = true;
+
+            if (empty === this._empty) {
+                if (empty) {
+                    this.attachEmptyContent();
+                }
+
+                return;
+            }
+        }
+
+        if (empty === this._empty) {
+            return;
+        }
+
+        this._empty = empty;
+
+        if (empty) {
+            this.attachEmptyContent();
+        } else {
+            this.detachEmptyContent();
+        }
+
+        this.emit("emptychange", { empty });
+    }
+
+    /**
+     * Raw-appends the placeholder into the root region's element (never as a
+     * region child, so it stays invisible to the region's `Tab` and to
+     * serialization), marking it `pointer-events: none` so a drop passes through
+     * to the region/dock underneath. Idempotent and a no-op when no placeholder
+     * is set or no root region exists. Sizing is deferred to {@link doLayout}.
+     */
+    private attachEmptyContent(): void {
+        const placeholder = this.getEmptyContent();
+        const root        = this.getRootRegion();
+
+        if (!placeholder || !root) {
+            return;
+        }
+
+        const placeholderEl = placeholder.getElement(true)!;
+        const rootEl        = root.getElement(true)!;
+
+        placeholder.setPointerEvents("none");
+
+        if (DOM.source.getParentElement(placeholderEl) !== rootEl) {
+            DOM.sink.appendChild(rootEl, placeholderEl);
+        }
+    }
+
+    /**
+     * Removes the placeholder from the DOM. A no-op when no placeholder is set.
+     */
+    private detachEmptyContent(): void {
+        this.getEmptyContent()?.removeElement();
     }
 
     /**
@@ -1151,6 +1344,12 @@ class Dock extends Container<DockOptions> {
 
         this.emit("close", { id, content, window: null });
 
+        // Route the close through the one reconcile site so "emptychange" fires
+        // even when no structural prune scheduled a sweep. The latch-diff makes a
+        // second reconcile in the same settled state a no-op, so this cannot
+        // double-fire alongside pruneRegion's own scheduleSweep.
+        this.scheduleSweep();
+
         if (this._focusedPanelId === id) {
             this.scheduleFocusRecompute(region);
         }
@@ -1274,6 +1473,11 @@ class Dock extends Container<DockOptions> {
                 focusLost = true;
             }
         }
+
+        // Route the close through the reconcile so a last-float close flips the
+        // empty latch and fires "emptychange" (a float close schedules no
+        // structural sweep of its own).
+        this.scheduleSweep();
 
         if (focusLost) {
             this.scheduleFocusRecompute(null);
@@ -1574,6 +1778,17 @@ class Dock extends Container<DockOptions> {
      * @returns This dock, for method chaining.
      */
     on(event: "focus", listener: (event: DockPanelEvent | null) => void): this;
+    /**
+     * Registers a listener for the `"emptychange"` event, which fires once each
+     * time the dock transitions between empty (no live panel anywhere) and
+     * populated, carrying `{ empty }`.
+     *
+     * @param event - The `"emptychange"` event.
+     * @param listener - Invoked with the new emptiness state.
+     *
+     * @returns This dock, for method chaining.
+     */
+    on(event: "emptychange", listener: (event: DockEmptyEvent) => void): this;
     on(event: DockEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -1599,6 +1814,15 @@ class Dock extends Container<DockOptions> {
      * @returns This dock, for method chaining.
      */
     off(event: "focus", listener: (event: DockPanelEvent | null) => void): this;
+    /**
+     * Removes a previously registered `"emptychange"` listener.
+     *
+     * @param event - The `"emptychange"` event.
+     * @param listener - The callback to remove.
+     *
+     * @returns This dock, for method chaining.
+     */
+    off(event: "emptychange", listener: (event: DockEmptyEvent) => void): this;
     off(event: DockEvent, listener: Function): this {
         this._listeners.remove(event, listener);
 
@@ -1614,7 +1838,8 @@ class Dock extends Container<DockOptions> {
      */
     protected emit(event: "attach" | "detach" | "moved" | "close", payload: DockPanelEvent): void;
     protected emit(event: "focus", payload: DockPanelEvent | null): void;
-    protected emit(event: DockEvent, payload: DockPanelEvent | null): void {
+    protected emit(event: "emptychange", payload: DockEmptyEvent): void;
+    protected emit(event: DockEvent, payload: DockPanelEvent | DockEmptyEvent | null): void {
         this._listeners.fire(event, payload);
     }
 }

@@ -838,7 +838,14 @@ class MiscPanel extends Panel {
                 return host;
             };
 
+            // A start-page placeholder shown only while the dock holds no panel:
+            // close every tab to see it, open one to hide it again. It is chrome —
+            // never a tab, never serialized.
+            const emptyState = new Panel({ layoutManager: new Fit() });
+            emptyState.addComponent(new Text("No panels open — close all tabs to see this start page."));
+
             const dock = new Dock({
+                emptyContent: emptyState,
                 layout: {
                     split: "horizontal",
                     children: [
@@ -865,6 +872,7 @@ class MiscPanel extends Panel {
             dock.on("moved",  e => console.log(`[Dock] moved: ${e.id} -> ${host(e)}`));
             dock.on("focus",  e => console.log(`[Dock] focus: ${e ? `${e.id} -> ${host(e)}` : "(none)"}`));
             dock.on("close",  e => console.log(`[Dock] close: ${e.id}`));
+            dock.on("emptychange", e => console.log(`[Dock] emptychange: empty=${e.empty}`));
 
             let savedLayout: LayoutState | null = null;
             const toolbar = new ToolBar();
