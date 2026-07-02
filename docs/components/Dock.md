@@ -36,6 +36,19 @@ dock.addPanel({ id: 'console', title: 'Console', content: consolePanel });
 
 `addPanel` docks into the active region: the root if it is a `Tab`, otherwise the first `Tab` region found depth-first.
 
+## Empty-state placeholder
+
+`DockOptions.emptyContent` is a start-page shown only while the dock holds **no live panel anywhere** — every tab closed, with nothing torn off into a float either. It appears the instant the dock becomes empty and disappears the instant a panel opens:
+
+```typescript
+const dock = Dock({
+    emptyContent: startPage,   // shown while the dock is empty
+    layout:       { tabs: [ /* … */ ] },
+});
+```
+
+The placeholder is **chrome, not a panel**: it never becomes a tab, is never serialized, and the empty region stays a live drop target underneath it — dragging a tab onto an empty dock still lands. Set or clear it at runtime with `setEmptyContent(component)` / `setEmptyContent(null)`, read it back with `getEmptyContent()`, and ask whether the dock currently holds any panel with `isEmpty()`. A dock whose only panels are torn off into floats is **not** empty — those floats are still live panels — so the placeholder shows only when nothing is open at all.
+
 ## id vs. title
 
 The two are deliberately separate channels:
@@ -65,7 +78,7 @@ Once a panel is docked, the gestures come from the composed primitives:
 
 ## Panel lifecycle
 
-The model is **host-centric**: a live panel always occupies one Dock-managed **host** — the **tiled tree** (the main dock) or a **float** [`Window`](/components/Window) — and a destroyed panel is **gone**. `Dock` emits five events — typed as [`DockEvent`](/api/overlay/type-aliases/DockEvent) with a [`DockPanelEvent`](/api/overlay/interfaces/DockPanelEvent) payload — naming the host transitions and intra-host relocations:
+The model is **host-centric**: a live panel always occupies one Dock-managed **host** — the **tiled tree** (the main dock) or a **float** [`Window`](/components/Window) — and a destroyed panel is **gone**. `Dock` emits five per-panel events — typed as [`DockEvent`](/api/overlay/type-aliases/DockEvent) with a [`DockPanelEvent`](/api/overlay/interfaces/DockPanelEvent) payload — naming the host transitions and intra-host relocations:
 
 | Event | Fires when | Payload |
 | --- | --- | --- |
@@ -102,6 +115,18 @@ A few rules make the events predictable:
 - **`focus` is one nullable event — there is no `blur`.** The previously-focused panel is whatever the last non-null `focus` named; the `null` payload covers "nothing focused now" (e.g. the last panel closed). Re-activating the already-focused panel is silent. A non-null `focus` payload's `window` names the focused panel's current host.
 - **Re-dock and layout restore fire `focus` too.** A re-dock and a `setLayoutState` both genuinely change the active panel, so each fires a `focus` for the now-active panel in addition to the host-transition events.
 - **`Split` generates no events.** It is structural — it holds regions, never a panel directly.
+
+Alongside the per-panel events, one **dock-wide aggregate** event fires as the dock crosses between holding panels and holding none:
+
+| Event | Fires when | Payload |
+| --- | --- | --- |
+| `emptychange` | the dock transitions between empty (no live panel anywhere) and populated | `{ empty }` |
+
+`emptychange` carries a [`DockEmptyEvent`](/api/overlay/interfaces/DockEmptyEvent) (`{ empty: boolean }`) and fires **once per real transition**, not once per panel — so a consumer can toggle a start page without re-deriving the aggregate on every panel event. It fires whether or not an `emptyContent` placeholder is supplied.
+
+```typescript
+dock.on('emptychange', ({ empty }) => startPage.setVisible(empty));
+```
 
 ## Programmatic control
 
