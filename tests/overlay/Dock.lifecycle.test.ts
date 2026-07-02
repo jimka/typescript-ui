@@ -894,7 +894,8 @@ describe('Dock addLazyPanel', () => {
     });
 });
 
-// A dock with a placeholder so the empty-state tests can assert the raw-append.
+// A dock with a placeholder so the empty-state tests can assert the placeholder
+// tab.
 function mountDockWithPlaceholder(placeholder: Component): Dock {
     const dock = new Dock({ emptyContent: placeholder });
 
@@ -903,14 +904,6 @@ function mountDockWithPlaceholder(placeholder: Component): Dock {
     dock.setHeight(600);
 
     return dock;
-}
-
-// The parent element of a placeholder, resolved through the recording source, or
-// null when it is not attached to the DOM.
-function parentElementOf(component: Component): unknown {
-    const el = component.getElement(true);
-
-    return el ? DOM.source.getParentElement(el) : null;
 }
 
 describe('Dock empty-state', () => {
@@ -1028,7 +1021,7 @@ describe('Dock empty-state', () => {
         flush();
     });
 
-    it('attaches / detaches the placeholder across the state machine, never as a region child', () => {
+    it('shows / hides the placeholder as a non-closeable tab across the state machine', () => {
         installTestDOM(CONFIG);
         captureRaf();
 
@@ -1038,27 +1031,126 @@ describe('Dock empty-state', () => {
         dock.doLayout();
         flush();
 
-        const rootEl = dock.getRootRegion().getElement(true);
+        const region = dock.getRootRegion();
 
-        // Empty on construction -> placeholder attached into the root region element.
-        expect(parentElementOf(placeholder)).toBe(rootEl);
-        expect(dock.getRootRegion().getComponents()).not.toContain(placeholder);
+        // Empty on construction -> placeholder shown as a region tab, docked
+        // non-closeable and transient (chrome, excluded from serialization).
+        expect(placeholder.getParentComponent()).toBe(region);
+        expect(region.getComponents()).toContain(placeholder);
+        expect(region.getLayoutConstraints(placeholder)?.closeable).toBe(false);
+        expect(region.getLayoutConstraints(placeholder)?.transient).toBe(true);
 
-        // Populate -> placeholder detached.
+        // Populate -> placeholder removed.
         dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
         dock.doLayout();
         flush();
 
-        expect(parentElementOf(placeholder)).toBeNull();
+        expect(placeholder.getParentComponent()).toBeNull();
         expect(dock.getRootRegion().getComponents()).not.toContain(placeholder);
 
-        // Close last -> placeholder re-attached.
+        // Close last -> placeholder re-shown.
         dock.removePanel('a');
         dock.doLayout();
         flush();
 
-        expect(parentElementOf(placeholder)).toBe(dock.getRootRegion().getElement(true));
+        expect(placeholder.getParentComponent()).toBe(dock.getRootRegion());
+        expect(dock.getRootRegion().getComponents()).toContain(placeholder);
+    });
+
+    it('hides the empty region tab strip when no placeholder is set', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        flush();
+
+        // Empty with no placeholder -> the root region's strip is hidden so no
+        // dangling empty tab bar shows.
+        expect(rootTab(dock).isBarVisible()).toBe(false);
+
+        // Populating restores the strip.
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        expect(rootTab(dock).isBarVisible()).toBe(true);
+
+        // Emptying again re-hides it.
+        dock.removePanel('a');
+        dock.doLayout();
+        flush();
+
+        expect(rootTab(dock).isBarVisible()).toBe(false);
+    });
+
+    it('shows the placeholder when the main region empties by tearing every tab off into a float', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const placeholder = new Component({});
+        const dock = mountDockWithPlaceholder(placeholder);
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        // Populated -> placeholder hidden.
+        expect(placeholder.getParentComponent()).toBeNull();
+
+        // Tear the only tab off into a float, emptying the main region.
+        const frameA = frameOf(dock, 'a');
+        const win = new Window('Float');
+
+        win.show();
+        win.moveComponent(frameA);
+        (rootTab(dock) as any).emit('detached', win);
+        flush();
+
+        // The dock still owns the (now floated) panel, so it is NOT empty...
+        expect(dock.isEmpty()).toBe(false);
+        // ...but the main region is empty, so the placeholder shows there.
+        expect(placeholder.getParentComponent()).toBe(dock.getRootRegion());
+
+        win.requestClose();
+        flush();
+    });
+
+    it('removes the placeholder when a torn-off tab is re-docked into the main region', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const placeholder = new Component({});
+        const dock = mountDockWithPlaceholder(placeholder);
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        // Tear the only tab off, then re-dock it into the (placeholder-showing) main region.
+        const frameA = frameOf(dock, 'a');
+        const win = new Window('Float');
+
+        win.show();
+        win.moveComponent(frameA);
+        (rootTab(dock) as any).emit('detached', win);
+        flush();
+
+        expect(placeholder.getParentComponent()).toBe(dock.getRootRegion());
+
+        // Re-dock: a body drop moves the frame back and schedules a sweep.
+        dock.getRootRegion().moveComponent(frameA);
+        priv(dock).scheduleSweep();
+        flush();
+
+        expect(placeholder.getParentComponent()).toBeNull();
         expect(dock.getRootRegion().getComponents()).not.toContain(placeholder);
+
+        // The strip cell must be gone too, not just the content component: a bare
+        // removeComponent would orphan the cell and leave a stale placeholder tab.
+        const contents = (rootTab(dock) as any)._contents as Array<{ component: Component | null }>;
+        expect(contents.length).toBe(1);
+        expect(contents.some(entry => entry.component === placeholder)).toBe(false);
     });
 
     it('emits emptychange with no emptyContent supplied', () => {
@@ -1161,8 +1253,10 @@ describe('Dock empty-state', () => {
         dock.doLayout();
         flush();
 
-        // Placeholder is attached (empty dock) but must be absent from the state.
-        expect(parentElementOf(placeholder)).toBe(dock.getRootRegion().getElement(true));
+        // Placeholder is shown as a region tab (empty dock) but, being transient,
+        // must be absent from the serialized state.
+        expect(placeholder.getParentComponent()).toBe(dock.getRootRegion());
+        expect(dock.getRootRegion().getComponents()).toContain(placeholder);
 
         const state = dock.getLayoutState();
 
@@ -1191,15 +1285,15 @@ describe('Dock empty-state', () => {
 
         expect(root).toBeTruthy();
         expect(priv(dock)._wiring.get(root)).toBeTruthy();
-        expect(parentElementOf(placeholder)).toBe(root.getElement(true));
+        expect(placeholder.getParentComponent()).toBe(root);
 
-        // Re-adding docks a tab and detaches the placeholder.
+        // Re-adding docks a tab and removes the placeholder.
         dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
         dock.doLayout();
         flush();
 
         expect(rootTab(dock).getActiveContent()?.getId()).toBe('b');
-        expect(parentElementOf(placeholder)).toBeNull();
+        expect(placeholder.getParentComponent()).toBeNull();
     });
 
     it('routes emptyContent through the options bag and setter/accessor', () => {
@@ -1227,21 +1321,21 @@ describe('Dock empty-state', () => {
         dock.doLayout();
         flush();
 
-        const rootEl = dock.getRootRegion().getElement(true);
+        const region = dock.getRootRegion();
 
-        // c1 is the shown placeholder on the born-empty dock.
-        expect(parentElementOf(c1)).toBe(rootEl);
+        // c1 is the shown placeholder tab on the born-empty dock.
+        expect(c1.getParentComponent()).toBe(region);
 
-        // A swap while already empty replaces the DOM element immediately — not on
-        // the next empty transition — and fires no emptychange (still empty).
+        // A swap while already empty replaces the tab immediately — not on the next
+        // empty transition — and fires no emptychange (still empty).
         const events: Array<{ empty: boolean }> = [];
 
         dock.on('emptychange', e => events.push(e));
         dock.setEmptyContent(c2);
 
-        expect(parentElementOf(c1)).toBeNull();
-        expect(parentElementOf(c2)).toBe(rootEl);
-        expect(dock.getRootRegion().getComponents()).not.toContain(c2);
+        expect(c1.getParentComponent()).toBeNull();
+        expect(c2.getParentComponent()).toBe(region);
+        expect(region.getComponents()).toContain(c2);
         expect(events).toEqual([]);
     });
 
@@ -1255,12 +1349,15 @@ describe('Dock empty-state', () => {
         dock.doLayout();
         flush();
 
-        expect(parentElementOf(c1)).toBe(dock.getRootRegion().getElement(true));
+        expect(c1.getParentComponent()).toBe(dock.getRootRegion());
 
         dock.setEmptyContent(null);
 
-        expect(parentElementOf(c1)).toBeNull();
+        // The placeholder tab is removed and, with no placeholder left, the strip
+        // is hidden.
+        expect(c1.getParentComponent()).toBeNull();
         expect(dock.getEmptyContent()).toBeNull();
+        expect(rootTab(dock).isBarVisible()).toBe(false);
     });
 
     it('does not attach a placeholder set via setEmptyContent while populated', () => {
@@ -1279,14 +1376,14 @@ describe('Dock empty-state', () => {
 
         dock.setEmptyContent(late);
 
-        expect(parentElementOf(late)).toBeNull();
+        expect(late.getParentComponent()).toBeNull();
         expect(dock.getEmptyContent()).toBe(late);
 
-        // When the last panel closes, the cached placeholder attaches.
+        // When the last panel closes, the cached placeholder is shown as a tab.
         dock.removePanel('a');
         dock.doLayout();
         flush();
 
-        expect(parentElementOf(late)).toBe(dock.getRootRegion().getElement(true));
+        expect(late.getParentComponent()).toBe(dock.getRootRegion());
     });
 });

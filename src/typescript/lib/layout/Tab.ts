@@ -253,6 +253,11 @@ class Tab extends LayoutManager {
     // children, never enrolled in the bar.
     private _bar: TabBar = new TabBar();
 
+    // Whether the tab strip is shown. When false, doLayout hides the bar element
+    // and reserves zero strip thickness so the active content fills the whole
+    // region — used to drop the dangling empty strip of a tab-less region.
+    private _barVisible: boolean = true;
+
     // Content records, keyed by the same stable id as the bar cells. Holds the
     // lazy-load state machine and the live content — never any bar/DOM state.
     private _contents: Array<ContentEntry> = [];
@@ -664,6 +669,47 @@ class Tab extends LayoutManager {
      */
     isReorderable(): boolean {
         return this._bar.isReorderable();
+    }
+
+    /**
+     * Shows or hides the tab strip and re-lays out. When hidden, the strip is
+     * removed from view and reserves no thickness, so the active content fills the
+     * whole region — the way to drop a tab-less region's dangling empty strip
+     * without destroying the region. The content and its selection are untouched.
+     *
+     * @param value - `true` to show the strip, `false` to hide it.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setBarVisible(value: boolean): this {
+        if (this._barVisible === value) {
+            return this;
+        }
+
+        this._barVisible = value;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns whether the tab strip is shown.
+     *
+     * @returns `true` when the strip is visible.
+     */
+    isBarVisible(): boolean {
+        return this._barVisible;
+    }
+
+    /**
+     * Whether the tab holds no tabs of its own — concerned only with this tab's
+     * content, not with anything the tabs may reference elsewhere.
+     *
+     * @returns `true` when the tab has no tabs.
+     */
+    isEmpty(): boolean {
+        return this._contents.length === 0;
     }
 
     /**
@@ -1519,13 +1565,18 @@ class Tab extends LayoutManager {
         }
 
         // Prepare the strip for measurement (box orientation, button styles, ARIA)
-        // before reading its thickness, then position it.
-        this._bar.prepareStrip();
+        // before reading its thickness, then position it. A hidden strip reserves
+        // no thickness (content fills the region) and is not placed below.
+        this._bar.setVisible(this._barVisible);
+
+        if (this._barVisible) {
+            this._bar.prepareStrip();
+        }
 
         const cs = containerSize ?? { width: 0, height: 0 };
         const baseX = containerInsets.getLeft();
         const baseY = containerInsets.getTop();
-        const thickness = this._bar.stripThickness();
+        const thickness = this._barVisible ? this._bar.stripThickness() : 0;
 
         // Toolbar + content rectangles per side: the strip occupies a
         // `thickness`-deep band on the chosen edge; the content fills the rest.
@@ -1613,7 +1664,10 @@ class Tab extends LayoutManager {
             this._bar.clearInsets();
         }
 
-        this._bar.placeStrip(toolbarX, toolbarY, toolbarW, toolbarH);
+        // A hidden strip is already hidden and reserves no thickness; skip placing it.
+        if (this._barVisible) {
+            this._bar.placeStrip(toolbarX, toolbarY, toolbarW, toolbarH);
+        }
 
         if (!component) {
             return;

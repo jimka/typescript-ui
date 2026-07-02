@@ -54,6 +54,16 @@ export class LayoutConstraints {
     data?: any;
     closeable?: boolean;
     /**
+     * Marks a child as chrome that participates in layout but is excluded from
+     * layout serialization. A `transient` child is laid out normally (it can be a
+     * real tab or pane), but [`serializeLayout`](/api/layout/functions/serializeLayout)
+     * skips it — so it is never captured in a saved arrangement nor parked/rebuilt
+     * on restore. Used for placeholder chrome such as a [`Dock`](/api/overlay/classes/Dock)
+     * empty-state start page shown as a non-closeable tab. Ignored by layout
+     * managers themselves.
+     */
+    transient?: boolean;
+    /**
      * A per-component distribution weight, read differently by two managers.
      * [`HBox`](/api/layout/classes/HBox) and [`VBox`](/api/layout/classes/VBox)
      * use it to share **extra main-axis space** among children (unset is treated

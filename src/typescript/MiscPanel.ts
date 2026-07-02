@@ -840,8 +840,9 @@ class MiscPanel extends Panel {
 
             // A start-page placeholder shown only while the dock holds no panel:
             // close every tab to see it, open one to hide it again. It is chrome —
-            // never a tab, never serialized.
-            const emptyState = new Panel({ layoutManager: new Fit() });
+            // shown as a single non-closeable tab (labelled by its name), never
+            // serialized.
+            const emptyState = new Panel({ layoutManager: new Fit(), name: "Welcome" });
             emptyState.addComponent(new Text("No panels open — close all tabs to see this start page."));
 
             const dock = new Dock({
