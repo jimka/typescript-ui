@@ -47,7 +47,7 @@ const dock = Dock({
 });
 ```
 
-The placeholder is **chrome, not a panel**: it never becomes a tab, is never serialized, and the empty region stays a live drop target underneath it — dragging a tab onto an empty dock still lands. Set or clear it at runtime with `setEmptyContent(component)` / `setEmptyContent(null)`, read it back with `getEmptyContent()`, and ask whether the dock currently holds any panel with `isEmpty()`. A dock whose only panels are torn off into floats is **not** empty — those floats are still live panels — so the placeholder shows only when nothing is open at all.
+The placeholder is **chrome, not a panel**: it never becomes a tab, is never serialized, and the empty region stays a live drop target underneath it — dragging a tab onto an empty dock still lands. Set or clear it at runtime with `setEmptyContent(component)` / `setEmptyContent(null)`, read it back with `getEmptyContent()`, and ask whether the dock currently holds any panel with `isEmpty()`. Setting it while the dock is already empty swaps the shown placeholder immediately; otherwise the new value simply waits and attaches on the next empty transition. A dock whose only panels are torn off into floats is **not** empty — those floats are still live panels — so the placeholder shows only when nothing is open at all.
 
 ## id vs. title
 
