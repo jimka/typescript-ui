@@ -1215,4 +1215,78 @@ describe('Dock empty-state', () => {
         expect(dock.getEmptyContent()).toBe(c2);
         expect(dock.setEmptyContent(null).getEmptyContent()).toBeNull();
     });
+
+    it('hot-swaps the shown placeholder when setEmptyContent runs while already empty', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const c1 = new Component({});
+        const c2 = new Component({});
+        const dock = mountDockWithPlaceholder(c1);
+
+        dock.doLayout();
+        flush();
+
+        const rootEl = dock.getRootRegion().getElement(true);
+
+        // c1 is the shown placeholder on the born-empty dock.
+        expect(parentElementOf(c1)).toBe(rootEl);
+
+        // A swap while already empty replaces the DOM element immediately — not on
+        // the next empty transition — and fires no emptychange (still empty).
+        const events: Array<{ empty: boolean }> = [];
+
+        dock.on('emptychange', e => events.push(e));
+        dock.setEmptyContent(c2);
+
+        expect(parentElementOf(c1)).toBeNull();
+        expect(parentElementOf(c2)).toBe(rootEl);
+        expect(dock.getRootRegion().getComponents()).not.toContain(c2);
+        expect(events).toEqual([]);
+    });
+
+    it('clears the shown placeholder when setEmptyContent(null) runs while already empty', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const c1 = new Component({});
+        const dock = mountDockWithPlaceholder(c1);
+
+        dock.doLayout();
+        flush();
+
+        expect(parentElementOf(c1)).toBe(dock.getRootRegion().getElement(true));
+
+        dock.setEmptyContent(null);
+
+        expect(parentElementOf(c1)).toBeNull();
+        expect(dock.getEmptyContent()).toBeNull();
+    });
+
+    it('does not attach a placeholder set via setEmptyContent while populated', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        // Setting a placeholder on a populated dock only caches it; nothing shows
+        // until the dock next becomes empty.
+        const late = new Component({});
+
+        dock.setEmptyContent(late);
+
+        expect(parentElementOf(late)).toBeNull();
+        expect(dock.getEmptyContent()).toBe(late);
+
+        // When the last panel closes, the cached placeholder attaches.
+        dock.removePanel('a');
+        dock.doLayout();
+        flush();
+
+        expect(parentElementOf(late)).toBe(dock.getRootRegion().getElement(true));
+    });
 });

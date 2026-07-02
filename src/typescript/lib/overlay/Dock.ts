@@ -286,12 +286,30 @@ class Dock extends Container<DockOptions> {
      * placeholder still lets the dock report emptiness and fire `"emptychange"`,
      * it simply shows nothing.
      *
+     * When the dock is already empty and the placeholder is live, the shown
+     * element is swapped immediately; otherwise the value is only cached and
+     * attaches on the next empty transition.
+     *
      * @param component - The placeholder component, or `null` to clear it.
      *
      * @returns This dock, for chaining.
      */
     setEmptyContent(component: Component | null): this {
+        // Hot-swap only once the state machine is live (first reconcile has run):
+        // during the super()/applyOptions cascade _emptyReconciled is still false,
+        // keeping the setter cache-only so no DOM work happens at construction.
+        const showing = this._empty && this._emptyReconciled;
+
+        if (showing) {
+            this.detachEmptyContent();          // removes the outgoing placeholder
+        }
+
         this._options.emptyContent = component ?? undefined;
+
+        if (showing) {
+            this.attachEmptyContent();          // attaches the incoming placeholder
+            this.doLayout();                    // size it to the root region now
+        }
 
         return this;
     }
