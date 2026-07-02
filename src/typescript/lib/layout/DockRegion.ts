@@ -67,7 +67,7 @@ export class DockRegion {
             suppressValidityTint: true,
             onDragOver: (detail: DragEventDetail): null => {
                 const componentId = detail.dragData["componentId"] as string;
-                const zone        = this.computeZone(detail.clientX, detail.clientY);
+                const zone        = this.dropZone(detail.clientX, detail.clientY);
 
                 this._overlay.attachTo(this._region);
                 this._overlay.setHighlight(zone, this.isLegalDrop(componentId, zone));
@@ -86,7 +86,7 @@ export class DockRegion {
             },
             onDrop: (detail: DragEventDetail): boolean | void => {
                 const componentId = detail.dragData["componentId"] as string;
-                const zone        = this.computeZone(detail.clientX, detail.clientY);
+                const zone        = this.dropZone(detail.clientX, detail.clientY);
 
                 this._overlay.detach();
                 this.clearSpringRaise();
@@ -186,6 +186,37 @@ export class DockRegion {
             clearTimeout(this._raiseTimer);
             this._raiseTimer = null;
         }
+    }
+
+    /**
+     * The drop zone for a cursor position, forcing a centre merge on a seed
+     * region (see {@link isSeedRegion}) and otherwise delegating to the geometric
+     * {@link computeZone}. Used by both the hover overlay and the commit guard so
+     * feedback and behaviour agree.
+     *
+     * @param x - Viewport-relative pointer X.
+     * @param y - Viewport-relative pointer Y.
+     * @returns The resolved drop zone.
+     */
+    private dropZone(x: number, y: number): DropZone {
+        // A seed region — one holding no real content, either genuinely empty or
+        // carrying only transient chrome such as a Dock start-page placeholder —
+        // has nothing to split around. Every drop resolves to a centre merge that
+        // seeds the region (and, for a placeholder, replaces it) rather than a
+        // nonsensical split into `[chrome | panel]`.
+        return this.isSeedRegion() ? "center" : this.computeZone(x, y);
+    }
+
+    /**
+     * Whether the region holds no real content — genuinely empty, or carrying
+     * only transient chrome (a `Dock` placeholder). Such a region is a drop seed:
+     * a drop merges in rather than splitting.
+     *
+     * @returns `true` when every child (if any) is transient chrome.
+     */
+    private isSeedRegion(): boolean {
+        return this._region.getComponents()
+            .every(child => this._region.getLayoutConstraints(child)?.transient === true);
     }
 
     /**

@@ -184,6 +184,20 @@ function panelIdOf(component: Component): string {
  * @param component - The component to capture.
  * @returns The arrangement node.
  */
+/**
+ * The children of a container that participate in serialization: every child
+ * except those marked `transient` in their layout constraints. A transient child
+ * is chrome laid out like any other (e.g. a `Dock` empty-state placeholder shown
+ * as a non-closeable tab) but is never captured in a saved arrangement.
+ *
+ * @param component - The container whose children to filter.
+ * @returns The serializable children, in order.
+ */
+function serializableChildren(component: Component): Component[] {
+    return component.getComponents()
+        .filter(child => component.getLayoutConstraints(child)?.transient !== true);
+}
+
 function nodeFor(component: Component): LayoutNode {
     const kind = managerKind(component);
 
@@ -205,7 +219,7 @@ function nodeFor(component: Component): LayoutNode {
 
         return {
             kind:        "tab",
-            children:    component.getComponents().map(nodeFor),
+            children:    serializableChildren(component).map(nodeFor),
             activeIndex: manager.getActiveTabIndex(),
         };
     }
@@ -284,7 +298,7 @@ export function serializeLayout(root: Component): LayoutState {
  * @param into - The accumulator the leaves are pushed onto.
  */
 function collectLeaves(component: Component, into: Component[]): void {
-    component.getComponents().forEach(child => {
+    serializableChildren(component).forEach(child => {
         const kind = managerKind(child);
 
         if (kind === "Split" || kind === "Tab") {

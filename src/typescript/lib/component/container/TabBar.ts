@@ -2528,6 +2528,14 @@ class TabBar extends Container<TabBarOptions> {
      * @returns The source teardown closure.
      */
     private makeTabDragSource(entry: BarEntry): () => void {
+        // Chrome entries (transient, e.g. a Dock start-page placeholder) are inert:
+        // never a drag source, so they cannot be reordered, torn off, or dropped
+        // elsewhere. Both wiring paths (createBarEntry and installTabDnD) route
+        // through here, so this one guard covers them.
+        if (entry.constraints?.transient) {
+            return () => {};
+        }
+
         return DragManager.makeDragSource(entry.button, {
             dragData: (): DragData => {
                 const data: TabDragData = {
