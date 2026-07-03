@@ -889,8 +889,11 @@ describe('Dock addLazyPanel', () => {
         // Activation ran the factory exactly once and placed its output in the frame.
         expect(built).toBe(1);
         expect(frameOf(dock, 'a').getComponents()).toContain(content);
-        // The factory is dropped once realized, so a re-activation never rebuilds.
-        expect(priv(dock)._lazyFactories.has('a')).toBe(false);
+        // The frame's Tab realizes its lazy tab once (its entry latches out of the
+        // "lazy" state), so laying the dock out again never re-runs the factory.
+        dock.doLayout();
+        flush();
+        expect(built).toBe(1);
     });
 });
 
