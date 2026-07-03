@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Button } from '~/component/button/Button';
+import { Glyph } from '~/component/display/Glyph';
+import { xmark } from '~/glyphs/solid/xmark';
 import { Tooltip } from '~/overlay/Tooltip';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
@@ -17,9 +19,39 @@ let sink: RecordingDOMSink;
 
 beforeEach(() => {
     sink = installTestDOM(CONFIG);
+    Glyph.register(xmark);
 });
 
 afterEach(() => DOM.reset());
+
+describe('Button glyphColor', () => {
+    const GREEN = 'rgb(46, 125, 50)';
+
+    it('tints the glyph from the options bag without colouring the button', () => {
+        const btn = new Button({ glyph: 'xmark', text: 'Add', glyphColor: GREEN });
+
+        expect(btn.getGlyph()?.getForegroundColor()).toBe(GREEN);
+        // The tint is glyph-local: the button's own colour is unchanged (its
+        // default), so the title is not dragged to the glyph colour.
+        expect(btn.getForegroundColor()).not.toBe(GREEN);
+    });
+
+    it('re-applies the tint when the glyph is swapped', () => {
+        const btn = new Button({ glyph: 'xmark', glyphColor: GREEN });
+
+        btn.setGlyph('xmark');
+
+        expect(btn.getGlyph()?.getForegroundColor()).toBe(GREEN);
+    });
+
+    it('setGlyphColor tints an already-built glyph', () => {
+        const btn = new Button({ glyph: 'xmark' });
+
+        btn.setGlyphColor(GREEN);
+
+        expect(btn.getGlyph()?.getForegroundColor()).toBe(GREEN);
+    });
+});
 
 /** Counts recording-sink writes of `op` whose first recorded arg is `type`. */
 function countWrites(op: string, type: string): number {
