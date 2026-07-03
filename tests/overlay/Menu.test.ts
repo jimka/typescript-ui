@@ -104,6 +104,52 @@ describe('Menu rebuild-mode submenus', () => {
         openItem._onOpenSubmenu(openItem);
         expect((menu as any)._openSubmenuPanel).toBeNull();
     });
+
+    it('does not open a disabled item\'s submenu on hover', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.show(0, 0, [
+            { text: 'Export', enabled: false, submenu: { label: 'Export', items: [{ text: 'CSV' }] } },
+        ]);
+
+        const exportItem = submenuItem(menu);
+        expect(exportItem).toBeDefined();
+
+        // Hovering the disabled item signals open-submenu, but no child opens.
+        exportItem._onOpenSubmenu(exportItem);
+        expect((menu as any)._openSubmenuPanel).toBeNull();
+    });
+
+    it('resolves a submenu items provider each time the submenu opens', () => {
+        installTestDOM(CONFIG);
+
+        // A provider (not a fixed array) supplies the submenu's items; a submenu is
+        // rebuilt per open, so the provider must run afresh each open — letting its
+        // labels track current state.
+        const provider = vi.fn(() => [{ text: 'Dynamic', action: () => {} }]);
+        const menu = new Menu();
+
+        menu.show(0, 0, [
+            { text: 'Open', action: () => {} },
+            { text: 'Export', submenu: { label: 'Export', items: provider } },
+        ]);
+
+        const openItem = (menu as any)._menuItems[0];
+        const exportItem = submenuItem(menu);
+
+        // First open: the provider runs and the child panel is built from its result.
+        exportItem._onOpenSubmenu(exportItem);
+        expect(provider).toHaveBeenCalledTimes(1);
+        expect((menu as any)._openSubmenuPanel).toBeInstanceOf(Menu);
+        expect((menu as any)._openSubmenuPanel._menuItems).toHaveLength(1);
+
+        // Close (hover a plain item), then reopen: the provider runs again.
+        openItem._onOpenSubmenu(openItem);
+        exportItem._onOpenSubmenu(exportItem);
+        expect(provider).toHaveBeenCalledTimes(2);
+    });
 });
 
 describe('Menu content-based width', () => {

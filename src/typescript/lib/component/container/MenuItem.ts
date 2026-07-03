@@ -73,8 +73,14 @@ export interface MenuItemConfig {
 export interface MenuConfig {
     /** Label shown in the bar button (e.g. `"File"`). */
     label: string;
-    /** Ordered list of items in the dropdown panel. */
-    items: MenuItemConfig[];
+    /**
+     * The items in the dropdown panel: either a fixed array, or a provider called
+     * to produce them when the panel is built. A submenu panel is (re)built each
+     * time it opens, so a provider on a submenu's `items` is re-invoked on every
+     * open — letting the submenu reflect current state (e.g. an export chooser
+     * whose labels track the active tab) without the parent menu rebuilding.
+     */
+    items: MenuItemConfig[] | (() => MenuItemConfig[]);
     /**
      * Optional registry glyph name displayed to the left of the bar button's
      * label (e.g. `"file"`, `"eye"`, `"info-circle"`). Omit for a text-only
@@ -249,7 +255,9 @@ class MenuItem extends Component {
         this._onMouseOver = () => {
             this.setFocused(true);
 
-            if (this.hasSubmenu()) {
+            // A disabled item never opens its own submenu; it still signals the
+            // parent (the else branch) so hovering it closes any sibling submenu.
+            if (enabled && this.hasSubmenu()) {
                 this._submenuTimer = setTimeout(() => {
                     this._submenuTimer = null;
                     this._onOpenSubmenu(this);

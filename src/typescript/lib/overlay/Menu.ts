@@ -66,6 +66,9 @@ const VIEWPORT_MARGIN = 4;
 class Menu extends Component {
 
     private readonly _persistent: boolean;
+    // A persistent menu's items provider, kept so each open() re-resolves it —
+    // null when the items were passed as a fixed array (built once, never rebuilt).
+    private readonly _itemsProvider: (() => MenuItemConfig[]) | null;
     private readonly _onClose: (() => void) | null;
     private _menuItems: Array<MenuItem | MenuSeparator> = [];
     private _focusedIndex: number = -1;
@@ -88,14 +91,17 @@ class Menu extends Component {
      * Constructs a persistent-mode ([`MenuBar`](/api/component/menubar/classes/MenuBar) dropdown) menu. Items are built immediately
      * and reused across `open()` / `close()` cycles.
      *
-     * @param items - The menu item configurations.
+     * @param items - The menu item configurations, or a provider called once now
+     *   to produce them. A submenu is rebuilt on each open, so a provider passed
+     *   for a submenu's items is re-invoked every time that submenu opens.
      * @param onClose - Callback invoked when the panel should close (item activated or outside click).
      */
-    constructor(items: MenuItemConfig[], onClose: () => void);
-    constructor(items?: MenuItemConfig[], onClose?: () => void) {
+    constructor(items: MenuItemConfig[] | (() => MenuItemConfig[]), onClose: () => void);
+    constructor(items?: MenuItemConfig[] | (() => MenuItemConfig[]), onClose?: () => void) {
         super();
 
         this._persistent = items !== undefined;
+        this._itemsProvider = typeof items === "function" ? items : null;
         this._onClose = onClose ?? null;
 
         const vbox = new VBox();
@@ -107,7 +113,11 @@ class Menu extends Component {
 
         if (this._persistent) {
             this.applyPersistentChrome();
-            this.buildPersistentItems(items!);
+            // Fixed array: build once now. A provider defers to open(), which
+            // re-resolves it on every open (so the sole resolution is per-open).
+            if (this._itemsProvider === null) {
+                this.buildPersistentItems(items as MenuItemConfig[]);
+            }
         } else {
             this.applyRebuildChrome();
         }
@@ -375,6 +385,13 @@ class Menu extends Component {
      */
     open(anchorEl: Handle, parentPanel?: Menu): this {
         this.assertPersistentMode("open");
+
+        // A provider-sourced menu re-resolves its items on every open, so labels
+        // and enabled state reflect current state each time it is shown (a submenu
+        // is a fresh panel per open, but a reused top-level dropdown is not).
+        if (this._itemsProvider) {
+            this.rebuildPersistentItems(this._itemsProvider());
+        }
 
         const totalHeight = this.getPreferredSize()?.height ?? (this._menuItems.length * MenuItem.HEIGHT + 8);
         const width       = this.getWidth();
@@ -737,6 +754,30 @@ class Menu extends Component {
      *
      * @param items - The item configs from the constructor.
      */
+    /**
+     * Tear down the current persistent items and rebuild them from `configs`.
+     * Used by `open()` to re-resolve a provider-sourced dropdown each time it
+     * shows, so its labels / enabled state track current state. Mirrors the
+     * rebuild-mode `show()` teardown, then defers to {@link buildPersistentItems}.
+     *
+     * @param configs - The freshly-resolved item configurations.
+     */
+    private rebuildPersistentItems(configs: MenuItemConfig[]): void {
+        this.closeOpenSubmenu();
+
+        for (const item of this._menuItems) {
+            if (item instanceof MenuItem) {
+                item.dispose();
+            }
+        }
+
+        this._menuItems = [];
+        this._focusedIndex = -1;
+        this.removeAllComponents();
+
+        this.buildPersistentItems(configs);
+    }
+
     private buildPersistentItems(items: MenuItemConfig[]): void {
         this.pauseLayout();
 
@@ -852,13 +893,15 @@ class Menu extends Component {
     /**
      * Handles the open-submenu signal from a hovered or activated [`MenuItem`](/api/component/container/classes/MenuItem).
      *
-     * Closes any existing child submenu when the item has no submenu; opens or
-     * switches to the child panel when it does.
+     * Closes any existing child submenu when the item has no submenu (or is
+     * disabled); opens or switches to the child panel when it does.
      *
      * @param item - The [`MenuItem`](/api/component/container/classes/MenuItem) that triggered the signal.
      */
     private handleItemOpenSubmenu(item: MenuItem): void {
-        if (!item.hasSubmenu()) {
+        // A disabled item opens no submenu (even though it has one); like a plain
+        // item, hovering it just closes any sibling submenu that is open.
+        if (!item.hasSubmenu() || !item.isEnabled()) {
             this.closeOpenSubmenu();
 
             return;

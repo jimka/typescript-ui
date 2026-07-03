@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MenuBar } from '~/component/menubar/MenuBar';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
@@ -91,6 +91,34 @@ describe('MenuBar open / close index tracking', () => {
         bar.closeMenu();
 
         expect(bar.getOpenIndex()).toBe(-1);
+    });
+    it('re-resolves a provider-sourced dropdown on each open, tracking current state', () => {
+        const bar = new MenuBar();
+
+        // A provider (not a fixed array) supplies the dropdown's items; the label
+        // and enabled state flip between opens to mimic app state changing.
+        let ready = false;
+        const provider = vi.fn(() => [{ text: ready ? 'Export' : 'Nothing', enabled: ready }]);
+
+        bar.setMenus([{ label: 'Tools', items: provider }]);
+        bar.getElement(true);
+
+        // A provider defers its build to open() — nothing runs at setMenus time.
+        expect(provider).not.toHaveBeenCalled();
+
+        bar.openMenu(0);
+        expect(provider).toHaveBeenCalledTimes(1);
+        const firstItem = (bar as any)._panels[0]._menuItems[0];
+        expect(firstItem._config.text).toBe('Nothing');
+        expect(firstItem._config.enabled).toBe(false);
+
+        bar.closeMenu();
+        ready = true;
+        bar.openMenu(0);
+        expect(provider).toHaveBeenCalledTimes(2);
+        const rebuiltItem = (bar as any)._panels[0]._menuItems[0];
+        expect(rebuiltItem._config.text).toBe('Export');
+        expect(rebuiltItem._config.enabled).toBe(true);
     });
 });
 
