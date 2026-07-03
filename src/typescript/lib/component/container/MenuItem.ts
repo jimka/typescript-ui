@@ -101,10 +101,19 @@ class MenuItem extends Component {
     static readonly HEIGHT: number = 24;
 
     private static readonly SEPARATOR_HEIGHT: number = 9;
-    private static readonly ICON_ZONE: number = 24;
-    private static readonly SHORTCUT_ZONE: number = 80;
-    private static readonly CHEVRON_ZONE: number = 16;
-    private static readonly RIGHT_PAD: number = 8;
+    /** Title left inset when the menu reserves no icon column. */
+    static readonly TEXT_INSET: number = 8;
+    /** Title left offset when the menu reserves an icon column. */
+    static readonly ICON_ZONE: number = 24;
+    /** Width reserved for a submenu chevron in the right zone. */
+    static readonly CHEVRON_ZONE: number = 16;
+    /** Padding after the right zone, at the panel's inner edge. */
+    static readonly RIGHT_PAD: number = 8;
+    /**
+     * Gap between the title column and the shortcut/chevron right zone, so a
+     * content-sized menu never butts the label against them.
+     */
+    static readonly TEXT_GAP: number = 10;
 
     private readonly _config: MenuItemConfig;
     private readonly _onActivate: () => void;
@@ -116,6 +125,13 @@ class MenuItem extends Component {
     private _titleText: Text | null = null;
     private _shortcutText: Text | null = null;
     private _chevronText: Text | null = null;
+
+    // Column geometry applied by the parent Menu so every item lines up: the
+    // title's left offset and the shared title-column width the right zone begins
+    // after. Null until the menu sets them (a standalone item falls back to its
+    // own natural metrics).
+    private _iconStart: number | null = null;
+    private _titleColumn: number | null = null;
 
     private _submenuTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -210,7 +226,7 @@ class MenuItem extends Component {
             this._shortcutText = new Text(config.shortcut);
             this._shortcutText.setPointerEvents("none");
             this._shortcutText.centerInHeight(MenuItem.HEIGHT);
-            this._shortcutText.setTextAlign("right");
+            this._shortcutText.setTextAlign("left");
             this._shortcutText.setForegroundColor(
                 `var(--ts-ui-${cssVarPrefix}-item-shortcut-color, rgb(140, 140, 140))`
             );
@@ -299,6 +315,40 @@ class MenuItem extends Component {
      */
     hasSubmenu(): boolean {
         return !!this._config.submenu;
+    }
+
+    /** True when the item reserves an icon column (has a glyph or icon slot). */
+    hasIcon(): boolean {
+        return !!this._config.icon || !!this._config.glyph;
+    }
+
+    /** The item's measured title width, feeding the menu's shared title column. */
+    titleTextWidth(): number {
+        return Math.ceil(this._titleText?.getPreferredSize()?.width ?? 0);
+    }
+
+    /** The item's measured shortcut width, or 0 when it has no shortcut. */
+    shortcutTextWidth(): number {
+        if (!this._config.shortcut || this._shortcutText === null) {
+            return 0;
+        }
+
+        return Math.ceil(this._shortcutText.getPreferredSize()?.width ?? 0);
+    }
+
+    /**
+     * Applies the menu-computed column geometry so every item lines up: the title
+     * left offset (icon column, or the bare inset) and the shared title-column
+     * width the shortcut/chevron right zone begins after.
+     *
+     * @param iconStart - The title's left offset in pixels.
+     * @param titleColumn - The shared title-column width across the menu's items.
+     */
+    setColumns(iconStart: number, titleColumn: number): void {
+        this._iconStart = iconStart;
+        this._titleColumn = titleColumn;
+
+        this.scheduleLayout();
     }
 
     /**
@@ -403,17 +453,13 @@ class MenuItem extends Component {
 
         const H = MenuItem.HEIGHT;
         const totalWidth = this.getWidth();
-        const hasIcon = !!this._config.icon || !!this._config.glyph;
         const hasShortcut = !!this._config.shortcut && this._shortcutText !== null;
         const hasSub = this.hasSubmenu();
 
-        const textStart = hasIcon ? MenuItem.ICON_ZONE : 8;
-        const chevronReserve = hasSub ? MenuItem.CHEVRON_ZONE : 0;
-        const shortcutReserve = hasShortcut ? MenuItem.SHORTCUT_ZONE + 4 : 0;
-        const textWidth = Math.max(
-            0,
-            totalWidth - textStart - MenuItem.RIGHT_PAD - chevronReserve - shortcutReserve
-        );
+        // The menu aligns every item into shared columns; a standalone item falls
+        // back to its own icon offset and natural title width.
+        const iconStart   = this._iconStart ?? (this.hasIcon() ? MenuItem.ICON_ZONE : MenuItem.TEXT_INSET);
+        const titleColumn = this._titleColumn ?? this.titleTextWidth();
 
         if (this._iconGlyph) {
             const size  = this._iconGlyph.getPreferredSize() ?? { width: 16, height: 16 };
@@ -430,13 +476,15 @@ class MenuItem extends Component {
             this._iconText.setHeight(H);
         }
 
+        // Title fills the shared title column, left-aligned from the icon offset.
         if (this._titleText) {
-            this._titleText.setX(textStart);
+            this._titleText.setX(iconStart);
             this._titleText.setY(0);
-            this._titleText.setWidth(textWidth);
+            this._titleText.setWidth(titleColumn);
             this._titleText.setHeight(H);
         }
 
+        // Chevron: right-justified at the panel's inner edge.
         if (hasSub && this._chevronText) {
             this._chevronText.setX(totalWidth - MenuItem.RIGHT_PAD - MenuItem.CHEVRON_ZONE);
             this._chevronText.setY(0);
@@ -444,17 +492,11 @@ class MenuItem extends Component {
             this._chevronText.setHeight(H);
         }
 
+        // Shortcut: left-justified in the right zone, one gap past the title column.
         if (hasShortcut && this._shortcutText) {
-            const shortcutX =
-                totalWidth
-                - MenuItem.RIGHT_PAD
-                - chevronReserve
-                - (hasSub ? 4 : 0)
-                - MenuItem.SHORTCUT_ZONE;
-
-            this._shortcutText.setX(shortcutX);
+            this._shortcutText.setX(iconStart + titleColumn + MenuItem.TEXT_GAP);
             this._shortcutText.setY(0);
-            this._shortcutText.setWidth(MenuItem.SHORTCUT_ZONE);
+            this._shortcutText.setWidth(this.shortcutTextWidth());
             this._shortcutText.setHeight(H);
         }
 

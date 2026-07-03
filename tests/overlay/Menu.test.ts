@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Menu } from '~/overlay/Menu';
-import { MenuItemConfig } from '~/component/container/MenuItem';
+import { MenuItem, MenuItemConfig } from '~/component/container/MenuItem';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -45,6 +45,109 @@ describe('Menu mode guards', () => {
         expect(() => menu.hide()).toThrow(/rebuild mode/);
         expect(() => menu.setMenuWidth(100)).toThrow(/rebuild mode/);
         expect(() => menu.toggleFor(DOM.sink.createElement('div'), 0, 0, [])).toThrow(/rebuild mode/);
+    });
+});
+
+describe('Menu rebuild-mode submenus', () => {
+    afterEach(() => DOM.reset());
+
+    /** The submenu MenuItem built by a rebuild-mode show(). */
+    function submenuItem(menu: Menu): any {
+        return (menu as any)._menuItems.find(
+            (i: any) => typeof i.hasSubmenu === 'function' && i.hasSubmenu()
+        );
+    }
+
+    it('opens a child submenu from a submenu item and tears it down on hide', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        const items: MenuItemConfig[] = [
+            { text: 'Open', action: () => {} },
+            { text: 'Export', submenu: { label: 'Export', items: [{ text: 'CSV', action: () => {} }] } },
+        ];
+
+        menu.show(0, 0, items);
+
+        const exportItem = submenuItem(menu);
+        expect(exportItem).toBeDefined();
+
+        // The submenu item's hover signal opens a child Menu. Rebuild-mode show()
+        // used to stub this callback as a no-op, so no child ever opened.
+        exportItem._onOpenSubmenu(exportItem);
+        expect((menu as any)._openSubmenuPanel).toBeInstanceOf(Menu);
+
+        // Selecting a child leaf dismisses the whole chain (dismissAll -> hide in
+        // rebuild mode), which also tears the child submenu down.
+        (menu as any)._openSubmenuPanel._onClose();
+        expect((menu as any)._openSubmenuPanel).toBeNull();
+    });
+
+    it('closes the open child submenu when a plain item is hovered', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.show(0, 0, [
+            { text: 'Open', action: () => {} },
+            { text: 'Export', submenu: { label: 'Export', items: [{ text: 'CSV' }] } },
+        ]);
+
+        const openItem = (menu as any)._menuItems[0];
+        const exportItem = submenuItem(menu);
+
+        exportItem._onOpenSubmenu(exportItem);
+        expect((menu as any)._openSubmenuPanel).toBeInstanceOf(Menu);
+
+        // Moving to a submenu-less item signals open-submenu with no submenu, which
+        // closes the currently-open child.
+        openItem._onOpenSubmenu(openItem);
+        expect((menu as any)._openSubmenuPanel).toBeNull();
+    });
+});
+
+describe('Menu content-based width', () => {
+    afterEach(() => DOM.reset());
+
+    it('a MenuItem measures a wider title for a longer label', () => {
+        installTestDOM(CONFIG);
+
+        const short = new MenuItem({ text: 'A' }, () => {}, () => {});
+        const long  = new MenuItem({ text: 'A considerably longer menu item label' }, () => {}, () => {});
+
+        expect(long.titleTextWidth()).toBeGreaterThan(short.titleTextWidth());
+    });
+
+    it('lines up a menu whose items mix titles, shortcuts and a submenu', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(0, 0, [
+            { text: 'Short', shortcut: 'Ctrl+S' },
+            { text: 'A much longer item', shortcut: 'F2' },
+            { text: 'Submenu', submenu: { label: 'Submenu', items: [{ text: 'One' }] } },
+        ]);
+
+        const items = (menu as any)._menuItems.filter((i: any) => i.hasIcon || i.titleTextWidth);
+        // Every item shares one title-column width, so shortcuts start at a common x.
+        const columns = items.map((i: any) => i._titleColumn);
+        expect(new Set(columns).size).toBe(1);
+        expect(columns[0]).toBeGreaterThan(0);
+    });
+
+    it('sizes a rebuild menu to its content, clamped to the min/max bounds', () => {
+        installTestDOM(CONFIG);
+
+        const tiny = new Menu();
+        tiny.show(0, 0, [{ text: 'A' }, { text: 'B' }]);
+
+        const wide = new Menu();
+        wide.show(0, 0, [{ text: 'X'.repeat(200) }]);
+
+        // Tiny content clamps up to the floor; a very long label clamps to the ceiling.
+        expect(tiny.getMenuWidth()).toBe(120);
+        expect(wide.getMenuWidth()).toBeGreaterThan(120);
+        expect(wide.getMenuWidth()).toBeLessThanOrEqual(360);
     });
 });
 

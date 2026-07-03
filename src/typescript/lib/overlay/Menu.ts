@@ -11,11 +11,14 @@ import { MenuItem, MenuItemConfig } from "~/component/container/MenuItem.js";
 import { MenuSeparator } from "~/component/container/MenuSeparator.js";
 import { callable } from "~/core/Callable.js";
 
-/** Pixel width used for every persistent-mode `Menu` panel. */
-const PANEL_WIDTH = 220;
-
-/** Default pixel width used for rebuild-mode (right-click) `Menu` panels. */
-const DEFAULT_REBUILD_WIDTH = 180;
+/**
+ * Pixel bounds a content-sized menu panel clamps to. Menus size to their widest
+ * item (via the layout manager's preferred width); the floor keeps a short menu
+ * from looking cramped, and the ceiling stops a very long label running off-screen
+ * (the item's title ellipsizes past it).
+ */
+const MIN_MENU_WIDTH = 120;
+const MAX_MENU_WIDTH = 360;
 
 /** Duration (ms) of the fade-in / fade-out transitions on every menu panel. */
 const MENU_ANIM_DURATION_MS = 120;
@@ -69,7 +72,9 @@ class Menu extends Component {
     private _openSubmenuPanel: Menu | null = null;
     private _openSubmenuItem: MenuItem | null = null;
     private _excludedEl: Handle | null = null;
-    private _menuWidth: number = DEFAULT_REBUILD_WIDTH;
+    // An explicit rebuild-mode width set via setMenuWidth; null means size to
+    // content (the widest item, clamped to [MIN_MENU_WIDTH, MAX_MENU_WIDTH]).
+    private _menuWidth: number | null = null;
     private _rebuildOnClose: (() => void) | null = null;
     private _currentOpener: Handle | null = null;
     private readonly _onViewportMouseDown: (e: MouseEvent) => void;
@@ -115,8 +120,7 @@ class Menu extends Component {
                     this._onClose!();
                 }
             } else {
-                const menuEl = this.getElement();
-                if (!(menuEl != null && DOM.source.contains(menuEl, target)) && !(this._excludedEl != null && DOM.source.contains(this._excludedEl, target))) {
+                if (!this.containsTarget(target) && !(this._excludedEl != null && DOM.source.contains(this._excludedEl, target))) {
                     this.hide();
                 }
             }
@@ -138,6 +142,43 @@ class Menu extends Component {
                 this.hide();
             }
         };
+    }
+
+    /**
+     * Lays the menu's items into aligned columns and returns the panel width.
+     * Every title shares one column sized to the widest title; the shortcut/chevron
+     * right zone is the widest of the shortcut column and a submenu chevron, so
+     * shortcuts left-justify in a column and chevrons right-justify at the edge.
+     * The width is clamped to `[MIN_MENU_WIDTH, MAX_MENU_WIDTH]`; when the ceiling
+     * bites, the title column shrinks and its titles ellipsize. Measured from the
+     * items directly so a menu reused across shows re-measures its new content.
+     *
+     * @returns The clamped panel width in pixels.
+     */
+    private layOutColumns(): number {
+        const items = this._menuItems.filter(
+            (i): i is MenuItem => i instanceof MenuItem && !i.isSeparator()
+        );
+
+        const iconStart    = items.some(i => i.hasIcon()) ? MenuItem.ICON_ZONE : MenuItem.TEXT_INSET;
+        const maxTitle     = items.reduce((m, i) => Math.max(m, i.titleTextWidth()), 0);
+        const maxShortcut  = items.reduce((m, i) => Math.max(m, i.shortcutTextWidth()), 0);
+        const hasChevron   = items.some(i => i.hasSubmenu());
+        const rightZone    = Math.max(maxShortcut, hasChevron ? MenuItem.CHEVRON_ZONE : 0);
+        const rightReserve = rightZone > 0 ? MenuItem.TEXT_GAP + rightZone : 0;
+
+        const natural = iconStart + maxTitle + rightReserve + MenuItem.RIGHT_PAD;
+        const width   = Math.min(MAX_MENU_WIDTH, Math.max(MIN_MENU_WIDTH, natural));
+
+        // When the ceiling bites, the title column absorbs the shortfall (titles
+        // ellipsize); otherwise it is the full widest-title width.
+        const titleColumn = Math.min(maxTitle, width - iconStart - rightReserve - MenuItem.RIGHT_PAD);
+
+        for (const item of items) {
+            item.setColumns(iconStart, titleColumn);
+        }
+
+        return width;
     }
 
     /**
@@ -185,7 +226,7 @@ class Menu extends Component {
                         config.action?.();
                         this.hide();
                     },
-                    () => {},
+                    (hoveredItem) => { this.handleItemOpenSubmenu(hoveredItem); },
                     "context-menu"
                 );
 
@@ -195,8 +236,11 @@ class Menu extends Component {
 
         this.resumeLayout();
 
-        this.setWidth(this._menuWidth);
+        const contentWidth = this.layOutColumns();
 
+        this.setWidth(this._menuWidth ?? contentWidth);
+
+        const width       = this.getWidth();
         const totalHeight = this.getPreferredSize()?.height ?? 0;
 
         const el = this.getElement(true)!;
@@ -208,7 +252,7 @@ class Menu extends Component {
         // `totalHeight` exactly and no spurious scrollbar appears. `show()` only
         // ever grows the menu downward from `top` (never flipped above the
         // cursor), so the room below `top` is the correct available height.
-        const left = Math.max(VIEWPORT_MARGIN, Math.min(x, vp.width - this._menuWidth - VIEWPORT_MARGIN));
+        const left = Math.max(VIEWPORT_MARGIN, Math.min(x, vp.width - width - VIEWPORT_MARGIN));
         const top = Math.max(VIEWPORT_MARGIN, Math.min(y, vp.height - totalHeight - VIEWPORT_MARGIN));
         const available = vp.height - top - VIEWPORT_MARGIN;
 
@@ -277,6 +321,8 @@ class Menu extends Component {
     hide(): this {
         this.assertRebuildMode("hide");
 
+        this.closeOpenSubmenu();
+
         Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
         Event.removeViewportListener(this, "blur", this._onWindowBlur);
 
@@ -296,18 +342,20 @@ class Menu extends Component {
     }
 
     /**
-     * Returns the pixel width of the rebuild-mode menu panel.
+     * Returns the current pixel width of the rebuild-mode menu panel (the
+     * content-fit width, or an explicit override set via {@link setMenuWidth}).
      *
      * @returns The current panel width in pixels.
      */
     getMenuWidth(): number {
-        return this._menuWidth;
+        return this.getWidth();
     }
 
     /**
-     * Sets the pixel width of the rebuild-mode menu panel. **Rebuild-mode only.**
+     * Pins the rebuild-mode menu panel to an explicit width, overriding the
+     * default content-fit sizing. **Rebuild-mode only.**
      *
-     * @param width - Width in pixels. Defaults to 180.
+     * @param width - Width in pixels.
      */
     setMenuWidth(width: number): this {
         this.assertRebuildMode("setMenuWidth");
@@ -329,6 +377,7 @@ class Menu extends Component {
         this.assertPersistentMode("open");
 
         const totalHeight = this.getPreferredSize()?.height ?? (this._menuItems.length * MenuItem.HEIGHT + 8);
+        const width       = this.getWidth();
 
         const el = this.getElement(true)!;
         DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
@@ -344,8 +393,8 @@ class Menu extends Component {
 
             let x = parentRect.right;
 
-            if (x + PANEL_WIDTH > vp.width) {
-                x = parentRect.left - PANEL_WIDTH;
+            if (x + width > vp.width) {
+                x = parentRect.left - width;
             }
 
             // A submenu grows down from the anchor item's top, and flips up
@@ -361,8 +410,8 @@ class Menu extends Component {
 
             let x = anchorRect.left;
 
-            if (x + PANEL_WIDTH > vp.width) {
-                x = vp.width - PANEL_WIDTH;
+            if (x + width > vp.width) {
+                x = vp.width - width;
             }
 
             // A top-level dropdown grows down from the anchor's bottom, and
@@ -398,12 +447,7 @@ class Menu extends Component {
     close(): this {
         this.assertPersistentMode("close");
 
-        if (this._openSubmenuPanel) {
-            this._openSubmenuPanel.close();
-            this._openSubmenuItem?.getAria().setExpanded(false);
-            this._openSubmenuPanel = null;
-            this._openSubmenuItem = null;
-        }
+        this.closeOpenSubmenu();
 
         this.setFocusedIndex(-1);
         this.clearItemHighlights();
@@ -709,7 +753,7 @@ class Menu extends Component {
 
         this.resumeLayout();
 
-        this.setWidth(PANEL_WIDTH);
+        this.setWidth(this.layOutColumns());
     }
 
     /**
@@ -777,6 +821,35 @@ class Menu extends Component {
     }
 
     /**
+     * Closes and forgets this menu's open child submenu, if any. Shared by the
+     * teardown paths (`hide` / `close`) and by the submenu switch in
+     * `handleItemOpenSubmenu` when a different item takes the child slot.
+     */
+    private closeOpenSubmenu(): void {
+        if (this._openSubmenuPanel) {
+            this._openSubmenuPanel.close();
+            this._openSubmenuItem?.getAria().setExpanded(false);
+            this._openSubmenuPanel = null;
+            this._openSubmenuItem = null;
+        }
+    }
+
+    /**
+     * Closes the whole menu chain through the current mode's close path: the
+     * persistent-mode `onClose` callback (a menubar dropdown), or `hide()` for a
+     * rebuild-mode context menu — which also tears down any open child submenu.
+     * Used by an activated submenu leaf and the outside-click / window-blur
+     * dismissals, so a submenu selection closes the parent context menu too.
+     */
+    private dismissAll(): void {
+        if (this._persistent) {
+            this._onClose!();
+        } else {
+            this.hide();
+        }
+    }
+
+    /**
      * Handles the open-submenu signal from a hovered or activated [`MenuItem`](/api/component/container/classes/MenuItem).
      *
      * Closes any existing child submenu when the item has no submenu; opens or
@@ -786,11 +859,7 @@ class Menu extends Component {
      */
     private handleItemOpenSubmenu(item: MenuItem): void {
         if (!item.hasSubmenu()) {
-            if (this._openSubmenuPanel) {
-                this._openSubmenuPanel.close();
-                this._openSubmenuPanel = null;
-                this._openSubmenuItem = null;
-            }
+            this.closeOpenSubmenu();
 
             return;
         }
@@ -799,14 +868,11 @@ class Menu extends Component {
             return;
         }
 
-        if (this._openSubmenuPanel) {
-            this._openSubmenuPanel.close();
-            this._openSubmenuItem?.getAria().setExpanded(false);
-        }
+        this.closeOpenSubmenu();
 
         const submenuPanel = new Menu(
             item.getSubmenuConfig()!.items,
-            () => { this._onClose!(); }
+            () => { this.dismissAll(); }
         );
 
         this._openSubmenuPanel = submenuPanel;
