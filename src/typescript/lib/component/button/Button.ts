@@ -531,10 +531,13 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * fields cascade through their own setters (the lazy `pressedStyleRule`
      * and `hoverStyleRule` getters make them safe to fire during the
      * super-time cascade). `text`, `description`, and `glyph` are written pure
-     * into `_options` here and dispatched from the constructor body once
-     * children exist; the `descriptionUnderGlyph` / `showDescription` flags are
-     * also pure-written and consumed live by the content-row rebuild those
-     * dispatches trigger.
+     * into `_options` during the super-time cascade (before the content row
+     * exists) and dispatched from the constructor body once children exist —
+     * but a *post-construction* call (a subclass's tail `applyOptions`, or a
+     * runtime re-apply) dispatches the setters directly, so an option supplied
+     * after the constructor's late dispatch still renders. The
+     * `descriptionUnderGlyph` / `showDescription` flags are always pure-written
+     * and consumed live by the content-row rebuild those dispatches trigger.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -558,21 +561,37 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this.setLayoutManager(structuralLayout);
         }
 
-        // Dispatch only caller-supplied options. None of these subclass fields
-        // is set in a Button-subclass `_defaultOptions` (SpinButton's glyph
-        // rides `options`), and anchor/fill are read back with a
-        // `_defaultOptions` fallback below, so raw dispatch loses no default.
-        if (options.text         !== undefined) this._options.text         = options.text;
-        if (options.description  !== undefined) this._options.description  = options.description;
-        if (options.glyph        !== undefined) this._options.glyph        = options.glyph;
-
-        // Pure writes — consumed live by `_rebuildContentRow` (which the
-        // late-dispatched setGlyph/setDescription already trigger), so no
-        // setter dispatch is needed here. They ride the options bag, not a
-        // class field, so the super-cascade class-field trap does not apply.
+        // Content-row flags first (pure writes): a dispatched
+        // setText/setGlyph/setDescription below reads them (via `_isShowText()`
+        // and the content-row rebuild). They ride the options bag, not a class
+        // field, so the super-cascade class-field trap does not apply.
         if (options.descriptionUnderGlyph !== undefined) this._options.descriptionUnderGlyph = options.descriptionUnderGlyph;
         if (options.showDescription       !== undefined) this._options.showDescription       = options.showDescription;
         if (options.showText              !== undefined) this._options.showText              = options.showText;
+
+        // text / glyph / description. Before the content row exists — the
+        // super-time cascade, where `_text` is unassigned — write pure and let
+        // the constructor body dispatch the setters once children are wired.
+        // After construction the row is built, so dispatch the setters to
+        // rebuild the content: a subclass that forwards only `text` to super and
+        // hands its bag to a tail `applyOptions` (ToggleButton / TabButton) has
+        // already missed the constructor dispatch, so a pure write would record
+        // the glyph/description but never render it. Instance-identity guard
+        // (`_text`), so raw dispatch loses no `_defaultOptions` default (folded
+        // by the constructor's own late dispatch for the cascade path).
+        const contentBuilt = this._text !== undefined;
+
+        if (options.text !== undefined) {
+            if (contentBuilt) this.setText(options.text); else this._options.text = options.text;
+        }
+
+        if (options.description !== undefined) {
+            if (contentBuilt) this.setDescription(options.description); else this._options.description = options.description;
+        }
+
+        if (options.glyph !== undefined) {
+            if (contentBuilt) this.setGlyph(options.glyph); else this._options.glyph = options.glyph;
+        }
 
         if (options.enabled      !== undefined) this.setEnabled(options.enabled);
 

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ToggleButton } from '~/component/button/ToggleButton';
+import { Glyph } from '~/component/display/Glyph';
+import { xmark } from '~/glyphs/solid/xmark';
 import { Fit } from '~/layout/Fit';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
@@ -17,6 +19,7 @@ let sink: RecordingDOMSink;
 
 beforeEach(() => {
     sink = installTestDOM(CONFIG);
+    Glyph.register(xmark);
 });
 
 afterEach(() => DOM.reset());
@@ -100,6 +103,20 @@ describe('ToggleButton flat state', () => {
         btn.setFlat(true);
 
         expect(btn.isFlat()).toBe(true);
+    });
+});
+
+describe('ToggleButton glyph option (regression)', () => {
+    // ToggleButton forwards only `text` to super and hands its bag to a tail
+    // applyOptions — which runs after Button's constructor already late-dispatched
+    // the (then-undefined) glyph. applyOptions must dispatch setGlyph itself once
+    // the content row is built, or the `glyph` option is silently dropped and the
+    // rail icons render blank.
+    it('renders the glyph passed in the options bag', () => {
+        expect(new ToggleButton('', { glyph: 'xmark' }).getGlyph()).not.toBeNull();
+    });
+    it('has no glyph when none is supplied', () => {
+        expect(new ToggleButton('Bold').getGlyph()).toBeNull();
     });
 });
 
