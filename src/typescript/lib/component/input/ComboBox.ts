@@ -671,7 +671,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         // `_options` by the super-time cascade. Dispatch them now that the
         // dropdown's inner list is initialised.
         if (this._options.store !== undefined && this._options.displayField !== undefined) {
-            this.setStore(this._options.store, this._options.displayField, this._options.valueField);
+            this.setStore(this._options.store, this._options.displayField, this._options.valueField, this._options.glyphField);
         }
 
         if (this._options.items !== undefined) {

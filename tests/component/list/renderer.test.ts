@@ -239,4 +239,26 @@ describe('ComboBox renderer forwarding', () => {
         combo.setSelectedIndex(2, false);
         expect(rendererText((combo as any)._label._renderer)).toBe('Cherry');
     });
+
+    it('a construction-time store glyphField forwards to the embedded list', () => {
+        const MODEL = new Model([{ name: 'id' }, { name: 'name' }, { name: 'icon' }], 'id');
+        const store = new MemoryStore(MODEL, []);
+
+        store.loadData([{ id: 1, name: 'Alpha', icon: UP }, { id: 2, name: 'Beta', icon: DOWN }]);
+
+        // The glyph source is supplied purely through the options bag — the same
+        // path the docs promise — so this catches a constructor that drops the
+        // glyphField before reaching the embedded list.
+        const combo = new _ComboBox({
+            store,
+            displayField:    'name',
+            valueField:      'id',
+            glyphField:      'icon',
+            rendererFactory: () => new GlyphListItemRenderer(),
+        });
+
+        expect(combo.getItems().map(i => i.glyph)).toEqual([UP, DOWN]);
+        // The auto-selected first row renders its glyph on the collapsed control.
+        expect((combo as any)._label._renderer._currentGlyph).toBe(UP);
+    });
 });
