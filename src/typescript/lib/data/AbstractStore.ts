@@ -167,6 +167,11 @@ export abstract class AbstractStore {
 
     private _allRecords: ModelRecord[] = [];
     private _records: ModelRecord[] = [];
+    // Whether the most recent applyView() offloaded to the worker (so `_records`
+    // is populated only when its promise resolves, not synchronously). Read right
+    // after an ingestRaw() to decide whether the 'load' emit must wait for the
+    // view. See applyView / loadData.
+    private _viewAsync: boolean = false;
     private _pendingRemoved: ModelRecord[] = [];
     private _activeFilters: FilterDescriptor[] = [];
     private _activeSorters: SortDescriptor[] = [];
@@ -330,7 +335,11 @@ export abstract class AbstractStore {
                 return;
             }
 
-            this.ingestRaw(raw);
+            // Await the view build so a worker-offloaded sort/filter has
+            // populated `_records` before 'load' fires; below the worker
+            // threshold this resolves synchronously. load() is already async, so
+            // there is no caller-visible timing change.
+            await this.ingestRaw(raw);
 
             this._totalCount = this.proxy.getLastTotalCount();
 
@@ -418,8 +427,18 @@ export abstract class AbstractStore {
      * @param data - An array of plain objects to convert into ModelRecords.
      */
     loadData(data: any[]): void {
-        this.ingestRaw(data);
-        this.emit('load', { records: this._records });
+        const pending = this.ingestRaw(data);
+
+        // When applyView built the view synchronously (below the worker
+        // threshold, or no worker available) `_records` is already populated, so
+        // emit 'load' synchronously — consumers and tests rely on that timing.
+        // When it offloaded to the worker, `_records` is not ready yet; defer the
+        // emit until the worker resolves so listeners never render an empty view.
+        if (this._viewAsync) {
+            void pending.then(() => this.emit('load', { records: this._records }));
+        } else {
+            this.emit('load', { records: this._records });
+        }
     }
 
     // ── Pagination ───────────────────────────────────────────────────────────
@@ -576,12 +595,13 @@ export abstract class AbstractStore {
      *
      * @param data - An array of plain objects to convert via the model's `createRecord`.
      */
-    private ingestRaw(data: any[]): void {
+    private ingestRaw(data: any[]): Promise<void> {
         this.setOwnership(this._allRecords, false);
         this._allRecords = data.map(item => this.model.createRecord(item));
         this.setOwnership(this._allRecords, true);
         this._snapshotDirty = true;
-        this.applyView();
+
+        return this.applyView();
     }
 
     // ── Access ───────────────────────────────────────────────────────────────
@@ -1791,8 +1811,12 @@ export abstract class AbstractStore {
         this.rebuildIdIndex();
 
         if (this._allRecords.length >= WORKER_THRESHOLD && StoreWorkerClient.isAvailable() && !this.hasCustomSorter()) {
+            this._viewAsync = true;
+
             return this.applyViewOnWorker();
         }
+
+        this._viewAsync = false;
 
         let view = this._allRecords.slice();
 
