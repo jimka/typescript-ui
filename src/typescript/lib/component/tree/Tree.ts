@@ -214,6 +214,124 @@ class Tree extends Component<TreeOptions> {
     }
 
     /**
+     * Finds the first node whose payload satisfies `predicate`, expanding every
+     * ancestor on the path (loading lazy branches as needed) so the node becomes
+     * visible, then scrolls it into view. Returns the node, or `null` when no
+     * node matches.
+     *
+     * Unlike {@link selectNode} — which no-ops when the target sits under a
+     * collapsed or not-yet-loaded ancestor — this walks the whole tree,
+     * awaiting each lazy branch's `loadChildren` on the way down, so it can
+     * reveal a node the user has never manually expanded to. Because it may
+     * load every branch it visits, it is O(nodes) and issues one `loadChildren`
+     * per unloaded branch it descends; call it for a deliberate "jump to this
+     * object" action, not on a hot path.
+     *
+     * Revealing is not selecting: this method does not change the selection or
+     * emit `"selection"`. Select the returned node with {@link selectNode} if the
+     * reveal should also highlight it.
+     *
+     * The search is depth-first in root-then-child order and stops at the first
+     * match. A lazy branch whose `loadChildren` rejects is skipped (its subtree
+     * is treated as empty) and the walk continues; the failure is not surfaced
+     * here (no `"loaderror"` is emitted for a reveal-driven load).
+     *
+     * @param predicate - Tested against each node's `data` payload (and the node
+     *   itself); return `true` for the node to reveal.
+     *
+     * @returns A promise resolving to the revealed {@link TreeNode}, or `null`.
+     */
+    async revealByPredicate(predicate: (data: unknown, node: TreeNode) => boolean): Promise<TreeNode | null> {
+        const path = await this._findPath(this._nodes, predicate, []);
+        if (path === null) {
+            return null;
+        }
+
+        // Expand every ancestor (all but the target itself) so the target's row
+        // enters the flattened set; the target's own children stay as they are.
+        for (let i = 0; i < path.length - 1; i++) {
+            this._expandedNodes.add(path[i]);
+        }
+        this._reflattenAndRender();
+
+        const target = path[path.length - 1];
+        const index  = this._flatRows.findIndex(r => r.node === target);
+        if (index >= 0) {
+            this._scrollIntoView(index);
+        }
+
+        return target;
+    }
+
+    /**
+     * Depth-first search for the first node satisfying `predicate`, returning
+     * the full root-to-match path (inclusive) or `null`. Awaits and caches each
+     * visited branch's lazy children so the walk can descend into unloaded
+     * subtrees.
+     *
+     * @param nodes - The sibling nodes to search at this level.
+     * @param predicate - The match test (see {@link revealByPredicate}).
+     * @param prefix - The ancestor path leading to `nodes`.
+     *
+     * @returns The path from a root to the matching node, or `null`.
+     */
+    private async _findPath(
+        nodes: TreeNode[],
+        predicate: (data: unknown, node: TreeNode) => boolean,
+        prefix: TreeNode[],
+    ): Promise<TreeNode[] | null> {
+        for (const node of nodes) {
+            const here = [...prefix, node];
+
+            if (predicate(node.data, node)) {
+                return here;
+            }
+
+            const children = await this._ensureChildrenLoaded(node);
+            if (children.length > 0) {
+                const found = await this._findPath(children, predicate, here);
+                if (found !== null) {
+                    return found;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Returns a node's children, loading and caching them from `loadChildren`
+     * first when the node is lazy and unloaded. Mirrors {@link _loadAndExpand}'s
+     * cache writes (`children` + `_loadedNodes`) but does not expand the node —
+     * a reveal only expands the ancestors on the path to its match. A rejected
+     * load is swallowed and treated as an empty subtree.
+     *
+     * @param node - The node whose children are needed.
+     *
+     * @returns The node's children (possibly empty).
+     */
+    private async _ensureChildrenLoaded(node: TreeNode): Promise<TreeNode[]> {
+        if (node.children && node.children.length > 0) {
+            return node.children;
+        }
+
+        if (node.loadChildren !== undefined && !this._loadedNodes.has(node)) {
+            try {
+                const children = await node.loadChildren();
+
+                node.children = children;
+                this._loadedNodes.add(node);
+
+                return children;
+            } catch {
+                return [];
+            }
+        }
+
+        return node.children ?? [];
+    }
+
+    /**
      * Registers a listener for one of this tree's events.
      *
      * @param event - `"selection"` fires whenever the selection changes,
