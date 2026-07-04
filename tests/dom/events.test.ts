@@ -258,3 +258,48 @@ describe('Modelled event delivery — exact-target routing', () => {
         expect(seenKey).toBe('Enter');
     });
 });
+
+describe('Modelled event delivery — polite propagation', () => {
+    afterEach(() => DOM.reset());
+
+    // The dispatcher must not stop native propagation on a component's behalf:
+    // an event a component handled but did not consume keeps bubbling, so a
+    // document-level accelerator still fires while a library component is
+    // focused. Counted by swapping the event's native stopPropagation for a spy
+    // before dispatch — baseListener binds that as its `originalStop`.
+    it('does not stop native propagation when the exact-target handler does not consume', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let nativeStops = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { nativeStops += 1; };
+
+        Event.addListener(comp, type, () => { /* handles, does not consume */ });
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(nativeStops).toBe(0);
+    });
+
+    it('stops native propagation when a handler explicitly consumes the event', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let nativeStops = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { nativeStops += 1; };
+
+        Event.addListener(comp, type, (e: globalThis.Event) => e.stopPropagation());
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(nativeStops).toBe(1);
+    });
+});
