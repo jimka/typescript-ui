@@ -603,16 +603,17 @@ abstract class AbstractCustomList<
 
     /**
      * Replaces all items with the given specs. Each entry is either a plain
-     * string — auto-keyed by its array position (`{ key: String(i), label }`),
-     * matching the historical behaviour — or a pre-formed
-     * {@link CustomListItem} whose explicit key is kept verbatim. Selection and
-     * focus are reset; the row pool is reconciled against the new length.
+     * string — keyed by the string itself (`{ key: label }`), so `getValue` /
+     * `setValue` round-trip the visible text for the common "list of names"
+     * case — or a pre-formed {@link CustomListItem} whose explicit key is kept
+     * verbatim. Selection and focus are reset; the row pool is reconciled
+     * against the new length.
      *
      * @param items - A single spec or an array of specs. Each spec is a string
-     *   (auto-keyed by position) or a `{ key, label }` object (explicit key).
+     *   (keyed by its own value) or a `{ key, label }` object (explicit key).
      *
-     * @remarks The caller owns key uniqueness across explicit keys and across
-     *   any collision between an explicit key and a string's auto-index:
+     * @remarks The caller owns key uniqueness — repeated strings, or an explicit
+     *   key colliding with a string value, produce duplicate keys, and
      *   `getValue` / `setValue` resolve to the first row whose `key` matches, so
      *   a duplicate key is merely addressed by its lowest matching row.
      *
@@ -626,12 +627,10 @@ abstract class AbstractCustomList<
         const list = items as Array<CustomListItemSpec>;
         const built: Array<CustomListItem> = [];
 
-        for (let i = 0; i < list.length; i++) {
-            const entry = list[i];
-
+        for (const entry of list) {
             built.push(
                 typeof entry === "string"
-                    ? { key: String(i), label: entry }
+                    ? { key: entry, label: entry }
                     : { key: (entry as CustomListItem).key, label: (entry as CustomListItem).label },
             );
         }
@@ -672,25 +671,24 @@ abstract class AbstractCustomList<
     }
 
     /**
-     * Appends a new item to the end of the list. A plain string is auto-keyed
-     * by the appended position (`{ key: String(this._items.length), label }`),
-     * matching the historical behaviour; a pre-formed {@link CustomListItem}
-     * keeps its explicit key verbatim.
+     * Appends a new item to the end of the list. A plain string is keyed by the
+     * string itself (`{ key: label }`), so `getValue` / `setValue` round-trip the
+     * visible text; a pre-formed {@link CustomListItem} keeps its explicit key
+     * verbatim.
      *
-     * @param item - A string (auto-keyed by final position) or a `{ key, label }`
+     * @param item - A string (keyed by its own value) or a `{ key, label }`
      *   object (explicit key).
      *
-     * @remarks The caller owns key uniqueness — appending a string after
-     *   explicit-keyed items index-keys by final position, which can collide
-     *   with an earlier explicit key. `getValue` / `setValue` resolve to the
-     *   first matching row.
+     * @remarks The caller owns key uniqueness — appending a string equal to an
+     *   earlier string or explicit key produces a duplicate key, and `getValue` /
+     *   `setValue` resolve to the first matching row.
      *
      * @returns This component, for method chaining.
      */
     addItem(item: CustomListItemSpec): this {
         this._items.push(
             typeof item === "string"
-                ? { key: String(this._items.length), label: item }
+                ? { key: item, label: item }
                 : { key: (item as CustomListItem).key, label: (item as CustomListItem).label },
         );
 

@@ -23,15 +23,15 @@ describe('MultiSelectList — construction + selectedIndices option', () => {
     it('selects the rows named by selectedIndices', () => {
         const list = new _MultiSelectList({ items: FRUITS, selectedIndices: [1, 3] });
 
-        // Rows are auto-keyed by position, so the keys are the stringified indices.
-        expect(list.getValue()).toEqual(['1', '3']);
+        // Rows are keyed by their string value; getValue returns the selected keys.
+        expect(list.getValue()).toEqual(['Banana', 'Date']);
     });
 
     it('drops out-of-range indices in the selectedIndices option', () => {
         const list = new _MultiSelectList({ items: FRUITS, selectedIndices: [1, 99, -1] });
 
         // Bounds guard in applyInitialSelection silently ignores 99 and -1.
-        expect(list.getValue()).toEqual(['1']);
+        expect(list.getValue()).toEqual(['Banana']);
     });
 
     it('parks the anchor at the max applied index (observable via getSelectedIndex)', () => {
@@ -47,26 +47,26 @@ describe('MultiSelectList — setValues replace semantics', () => {
     it('replaces the prior selection with the rows whose key matches', () => {
         const list = new _MultiSelectList({ items: FRUITS });
 
-        list.setValues(['0', '2']);
-        expect(list.getValue()).toEqual(['0', '2']);
+        list.setValues(['Apple', 'Cherry']);
+        expect(list.getValue()).toEqual(['Apple', 'Cherry']);
 
-        list.setValues(['4']);
+        list.setValues(['Elder']);
         // Replace, not union: row 4 only.
-        expect(list.getValue()).toEqual(['4']);
+        expect(list.getValue()).toEqual(['Elder']);
     });
 
     it('returns getValue() sorted by row index even when keys arrive out of order', () => {
         const list = new _MultiSelectList({ items: FRUITS });
 
-        list.setValues(['4', '1', '2']);
+        list.setValues(['Elder', 'Banana', 'Cherry']);
         // Contract (MultiSelectList.ts:127): keys returned sorted by row order.
-        expect(list.getValue()).toEqual(['1', '2', '4']);
+        expect(list.getValue()).toEqual(['Banana', 'Cherry', 'Elder']);
     });
 
     it('parks the anchor at the max selected index', () => {
         const list = new _MultiSelectList({ items: FRUITS });
 
-        list.setValues(['4', '1']);
+        list.setValues(['Elder', 'Banana']);
         // anchor = Math.max(1, 4) = 4; getSelectedIndex returns it (in set).
         expect(list.getSelectedIndex()).toBe(4);
     });
@@ -91,8 +91,8 @@ describe('MultiSelectList — setValues replace semantics', () => {
     it('setValue delegates to setValues (Bindable alias)', () => {
         const list = new _MultiSelectList({ items: FRUITS });
 
-        list.setValue(['2', '0']);
-        expect(list.getValue()).toEqual(['0', '2']);
+        list.setValue(['Cherry', 'Apple']);
+        expect(list.getValue()).toEqual(['Apple', 'Cherry']);
     });
 });
 
@@ -104,7 +104,7 @@ describe('MultiSelectList — reduceSelection plain', () => {
         list.reduce(2, { ctrl: false, shift: false });
 
         // Plain replaces — only row 2 remains.
-        expect(list.getValue()).toEqual(['2']);
+        expect(list.getValue()).toEqual(['Cherry']);
         expect(list.getSelectedIndex()).toBe(2);
         expect(list.getFocusedIndex()).toBe(2);
     });
@@ -116,13 +116,13 @@ describe('MultiSelectList — reduceSelection ctrl-toggle', () => {
 
         list.reduce(1, { ctrl: true, shift: false });
         list.reduce(3, { ctrl: true, shift: false });
-        expect(list.getValue()).toEqual(['1', '3']);
+        expect(list.getValue()).toEqual(['Banana', 'Date']);
         // Anchor moved to the most recently toggled row.
         expect(list.getSelectedIndex()).toBe(3);
 
         // Toggling an already-selected row removes it.
         list.reduce(1, { ctrl: true, shift: false });
-        expect(list.getValue()).toEqual(['3']);
+        expect(list.getValue()).toEqual(['Date']);
         // Anchor still moves to idx even on removal.
         expect(list.getFocusedIndex()).toBe(1);
     });
@@ -137,7 +137,7 @@ describe('MultiSelectList — reduceSelection shift-range', () => {
         // Shift across a gap to row 4 selects {1,2,3,4} exactly.
         list.reduce(4, { ctrl: false, shift: true });
 
-        expect(list.getValue()).toEqual(['1', '2', '3', '4']);
+        expect(list.getValue()).toEqual(['Banana', 'Cherry', 'Date', 'Elder']);
     });
 
     it('shift-range fills downward too (anchor above idx)', () => {
@@ -146,7 +146,7 @@ describe('MultiSelectList — reduceSelection shift-range', () => {
         list.reduce(4, { ctrl: false, shift: false });
         list.reduce(1, { ctrl: false, shift: true });
 
-        expect(list.getValue()).toEqual(['1', '2', '3', '4']);
+        expect(list.getValue()).toEqual(['Banana', 'Cherry', 'Date', 'Elder']);
     });
 
     it('shift+ctrl unions the range onto the existing set', () => {
@@ -158,7 +158,7 @@ describe('MultiSelectList — reduceSelection shift-range', () => {
         list.reduce(4, { ctrl: true, shift: true });
 
         // Union: {0} ∪ {2,3,4}.
-        expect(list.getValue()).toEqual(['0', '2', '3', '4']);
+        expect(list.getValue()).toEqual(['Apple', 'Cherry', 'Date', 'Elder']);
     });
 
     it('shift with no anchor falls through to plain single-select', () => {
@@ -167,7 +167,7 @@ describe('MultiSelectList — reduceSelection shift-range', () => {
         // No prior gesture → _anchorIndex is null → the shift branch is skipped.
         list.reduce(3, { ctrl: false, shift: true });
 
-        expect(list.getValue()).toEqual(['3']);
+        expect(list.getValue()).toEqual(['Date']);
     });
 });
 
@@ -176,7 +176,7 @@ describe('MultiSelectList — selectAll', () => {
         const list = new TestMultiSelectList({ items: FRUITS });
 
         list.all();
-        expect(list.getValue()).toEqual(['0', '1', '2', '3', '4', '5']);
+        expect(list.getValue()).toEqual(['Apple', 'Banana', 'Cherry', 'Date', 'Elder', 'Fig']);
         // anchor 0 ∈ set → getSelectedIndex returns 0.
         expect(list.getSelectedIndex()).toBe(0);
         expect(list.getFocusedIndex()).toBe(FRUITS.length - 1);
@@ -239,7 +239,7 @@ describe('MultiSelectList — store round-trip', () => {
     it('getSelectedRecords returns [] when no store is bound', () => {
         const list = new _MultiSelectList({ items: FRUITS });
 
-        list.setValues(['1']);
+        list.setValues(['Banana']);
         expect(list.getSelectedRecords()).toEqual([]);
     });
 });
