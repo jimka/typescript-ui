@@ -2,7 +2,8 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Menu } from '~/overlay/Menu';
 import { MenuItem, MenuItemConfig } from '~/component/container/MenuItem';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../dom/TestDOM';
+import { Event } from '~/core/Event';
+import { installTestDOM, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -369,5 +370,63 @@ describe('Menu focus navigation (persistent)', () => {
         // Persistent menus reuse this element; close() must reset its highlight
         // so it does not reappear on the next open.
         expect(first.getBackgroundColor()).toBe('transparent');
+    });
+});
+
+describe('Menu rebuild-mode light dismiss (pointerdown)', () => {
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    /**
+     * The outside-press dismissal listener show() registers. Captured by type off
+     * a spy rather than dispatched through the window, because Event's viewport
+     * map is module-level and binds its base window listener only on the first
+     * registration per type — an earlier show() in this file already bound
+     * "pointerdown" to a stale window handle, so a real window dispatch here would
+     * miss. Spying on the registration sidesteps that and pins the exact type.
+     */
+    function captureDismiss(menu: Menu, onClose: () => void): (e: unknown) => void {
+        const spy = vi.spyOn(Event, 'addViewportListener');
+
+        menu.show(100, 100, [{ text: 'A', action: () => {} }], onClose);
+
+        // The fix: the light dismiss registers on "pointerdown", never "mousedown".
+        const types = spy.mock.calls.map((c) => c[1]);
+        expect(types).toContain('pointerdown');
+        expect(types).not.toContain('mousedown');
+
+        const call = spy.mock.calls.find((c) => c[1] === 'pointerdown');
+        return call![2] as (e: unknown) => void;
+    }
+
+    it('registers the dismiss on pointerdown and closes on an outside press', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        let closed = 0;
+        const dismiss = captureDismiss(menu, () => { closed++; });
+
+        // pointerdown, not the compatibility mousedown: a preventDefaulted
+        // pointerdown (every CustomListRow does that on a row press) suppresses
+        // the follow-up mousedown, so a mousedown-only dismissal missed those
+        // targets. An outside press closes the menu.
+        const outside = DOM.sink.createElement('div');
+        dismiss(makeEvent(outside, 'pointerdown'));
+
+        expect(closed).toBe(1);
+    });
+
+    it('ignores a pointerdown inside the menu surface', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        let closed = 0;
+        const dismiss = captureDismiss(menu, () => { closed++; });
+
+        // A press on the menu's own subtree is not an outside click — the item
+        // action closes it, not the light-dismiss listener.
+        dismiss(makeEvent(menu.getElement()!, 'pointerdown'));
+
+        expect(closed).toBe(0);
+        expect(menu.isVisible()).toBe(true);
     });
 });

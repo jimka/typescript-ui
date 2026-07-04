@@ -80,7 +80,7 @@ class Menu extends Component {
     private _menuWidth: number | null = null;
     private _rebuildOnClose: (() => void) | null = null;
     private _currentOpener: Handle | null = null;
-    private readonly _onViewportMouseDown: (e: MouseEvent) => void;
+    private readonly _onViewportPointerDown: (e: PointerEvent) => void;
     private readonly _onWindowBlur: (e: FocusEvent) => void;
 
     /**
@@ -122,7 +122,17 @@ class Menu extends Component {
             this.applyRebuildChrome();
         }
 
-        this._onViewportMouseDown = (e: MouseEvent) => {
+        // Light dismiss on pointerdown, not mousedown. `mousedown` is a
+        // compatibility mouse event the browser suppresses whenever the preceding
+        // `pointerdown` was `preventDefault`ed — which `CustomListRow` does on
+        // every row press (to keep a click from blurring the list). A mousedown
+        // dismissal therefore never fired when the outside press landed on such a
+        // target (another list row, a tree item, a tab), leaving the menu open.
+        // `pointerdown` is the real event and always fires. It reaches this
+        // window-capture viewport listener even for targets that consume it,
+        // because `baseViewportListener` calls `stopPropagation()` (not
+        // `stopImmediatePropagation()`), so same-node same-phase listeners survive.
+        this._onViewportPointerDown = (e: PointerEvent) => {
             const target = DOM.source.intern(e.target as EventTarget);
 
             if (this._persistent) {
@@ -137,7 +147,7 @@ class Menu extends Component {
         };
 
         // Closing the whole browser window's focus (clicking another app or
-        // alt-tabbing) fires no in-page mousedown, so the mousedown dismissal
+        // alt-tabbing) fires no in-page pointerdown, so the pointerdown dismissal
         // above never runs and the menu would stay open. A window blur closes
         // it. Viewport listeners are capture-phase, so element blurs from within
         // the menu surface here too; act only on a genuine window blur.
@@ -206,7 +216,7 @@ class Menu extends Component {
      * @param excludeEl - Optional element whose subtree is exempt from the
      *   outside-click-to-close check. Pass the trigger that opened the menu (e.g.
      *   a [`SplitButton`](/api/component/button/classes/SplitButton) chevron) so a
-     *   mousedown on it does not self-close the menu before the trigger's own
+     *   pointerdown on it does not self-close the menu before the trigger's own
      *   click can toggle it shut — mirroring [`MenuBar`](/api/component/menubar/classes/MenuBar)'s
      *   dropdown-button exclusion.
      */
@@ -277,7 +287,7 @@ class Menu extends Component {
         this.setVisible(true);
         this.fadeIn(el);
 
-        Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
+        Event.addViewportListener(this, "pointerdown", this._onViewportPointerDown);
         Event.addViewportListener(this, "blur", this._onWindowBlur);
 
         return this;
@@ -290,7 +300,7 @@ class Menu extends Component {
      * (e.g. a [`SplitButton`](/api/component/button/classes/SplitButton) chevron
      * or a [`ToolBar`](/api/component/menubar/classes/ToolBar) overflow button):
      * the opener is excluded from the outside-click dismissal (so its own
-     * mousedown does not self-close the menu) and remembered, so a second press
+     * pointerdown does not self-close the menu) and remembered, so a second press
      * of the *same* opener closes the menu instead of reopening it. Pressing a
      * *different* opener while the menu is open switches it to that opener. Plain
      * {@link show} stays the right call for right-click context menus, which
@@ -308,7 +318,7 @@ class Menu extends Component {
     toggleFor(openerEl: Handle, x: number, y: number, configs: MenuItemConfig[], onClose?: () => void): this {
         this.assertRebuildMode("toggleFor");
 
-        // Same opener fired again while its menu is open: close it. Its mousedown
+        // Same opener fired again while its menu is open: close it. Its pointerdown
         // was excluded from the dismissal above, so this click is the toggle-shut.
         if (this._currentOpener === openerEl) {
             this.hide();
@@ -333,7 +343,7 @@ class Menu extends Component {
 
         this.closeOpenSubmenu();
 
-        Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
+        Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
         Event.removeViewportListener(this, "blur", this._onWindowBlur);
 
         this.fadeOutAndDetach();
@@ -451,7 +461,7 @@ class Menu extends Component {
         this.doLayout();
         this.fadeIn(this.getElement(true)!);
 
-        Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
+        Event.addViewportListener(this, "pointerdown", this._onViewportPointerDown);
         Event.addViewportListener(this, "blur", this._onWindowBlur);
 
         return this;
@@ -469,7 +479,7 @@ class Menu extends Component {
         this.setFocusedIndex(-1);
         this.clearItemHighlights();
 
-        Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
+        Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
         Event.removeViewportListener(this, "blur", this._onWindowBlur);
 
         this.fadeOutAndDetach();
@@ -614,7 +624,7 @@ class Menu extends Component {
      * Sets an element whose subtree is excluded from the outside-click-to-close check.
      * **Persistent-mode only.**
      *
-     * Used by [`MenuBar`](/api/component/menubar/classes/MenuBar) to prevent a mousedown on its own buttons from closing the panel
+     * Used by [`MenuBar`](/api/component/menubar/classes/MenuBar) to prevent a pointerdown on its own buttons from closing the panel
      * before the button's click handler has a chance to toggle the menu.
      *
      * @param el - The element to exclude, or `null` to clear.
