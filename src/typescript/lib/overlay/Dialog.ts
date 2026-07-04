@@ -94,6 +94,9 @@ const TITLE_H_PAD   : number = 12;
 const MIN_DIALOG_WIDTH : number = 320;
 const MIN_DIALOG_HEIGHT: number = 160;
 const MIN_CONTENT_HEIGHT: number = 80;
+// Minimum gap kept between a content-resized dialog and each viewport edge, so a
+// dialog grown to tall content never runs flush to the top/bottom of the screen.
+const DIALOG_VIEWPORT_MARGIN: number = 24;
 
 /**
  * Shared duration (ms) for the dialog entrance/exit transition. The backdrop
@@ -618,6 +621,43 @@ class Dialog extends Component implements DismissableLayer {
             this._resolvePromise = resolve;
             this.open();
         });
+    }
+
+    /**
+     * Re-fits the dialog's height to its content's current preferred size and
+     * re-centres it. A dialog's height is otherwise fixed at construction, so a
+     * form whose content grows or shrinks after `show()` (e.g. add/remove rows)
+     * is stretched or clipped to the original box; call this after mutating the
+     * content so the dialog tracks it.
+     *
+     * The new height is `TITLE_HEIGHT + content + BUTTON_HEIGHT`, floored at the
+     * dialog minimum and capped so the panel keeps a margin from the top and
+     * bottom viewport edges — past that cap the content area scrolls (its
+     * container is already `overflow-y: auto`). No-op before `show()` (nothing to
+     * re-centre) and when the height is unchanged. Width is untouched.
+     *
+     * @returns This dialog, for method chaining.
+     */
+    resizeToContent(): this {
+        if (!this.getElement()) {
+            return this;
+        }
+
+        const contentHeight = Math.max(MIN_CONTENT_HEIGHT, this.computeContentHeight(this._config));
+        const target        = Math.max(MIN_DIALOG_HEIGHT, TITLE_HEIGHT + contentHeight + BUTTON_HEIGHT);
+
+        const vp     = DOM.source.getViewportSize();
+        const capped = Math.min(target, Math.max(MIN_DIALOG_HEIGHT, vp.height - DIALOG_VIEWPORT_MARGIN * 2));
+
+        if (capped === this.getHeight()) {
+            return this;
+        }
+
+        this.setHeight(capped);
+        this.scheduleLayout();
+        this.center();
+
+        return this;
     }
 
     /**
