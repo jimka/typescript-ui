@@ -56,4 +56,6 @@ export { TimeRenderer } from '~/component/table/cell/renderer/Time.js';
 export { DateTimeRenderer } from '~/component/table/cell/renderer/DateTime.js';
 export { GlyphRenderer } from '~/component/table/cell/renderer/Glyph.js';
 export { ComboRenderer } from '~/component/table/cell/renderer/Combo.js';
+export { LinkCellRenderer } from '~/component/table/cell/renderer/Link.js';
+export type { LinkCellRendererOptions } from '~/component/table/cell/renderer/Link.js';
 export { TreeCellRenderer } from '~/component/table/cell/renderer/TreeCell.js';

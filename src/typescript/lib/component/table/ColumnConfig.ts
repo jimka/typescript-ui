@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import type { ModelRecord } from "~/data/ModelRecord.js";
+import type { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 
 /**
  * One selectable option for a constrained-choice (combo-box) column.
@@ -126,6 +127,27 @@ export interface ColumnConfig {
      * leaves the column on its field-type-driven cell.
      */
     values      ?: Array<ComboOption | string>;
+    /**
+     * Custom cell-renderer factory for this column. When present it overrides
+     * both the `values` (combo) routing and the field-type-driven cell: every
+     * cell in the column is built display-only (no inline editor) around a
+     * fresh {@link CellRenderer} from this factory, so the column shows
+     * computed or styled content — a link, a badge, an icon beside text —
+     * instead of an editable value.
+     *
+     * The factory runs once per rendered cell (one per row in the visible
+     * window; cells are reused as the window scrolls). Each cell's value is
+     * pushed to the renderer through `setValue` on every rebind, exactly like
+     * the built-in typed renderers, so keep the renderer O(1) and pure. A
+     * custom-rendered cell never enters edit mode; wire the {@link Table}
+     * `"cellclick"` event for click behaviour.
+     *
+     * The library ships
+     * [`LinkCellRenderer`](/api/component/table/classes/LinkCellRenderer) for the
+     * common "clickable link cell" case — pass `renderer: () => new
+     * LinkCellRenderer()` and handle `"cellclick"`.
+     */
+    renderer    ?: () => CellRenderer<any>;
     /**
      * Registry glyph name shown to the left of the header text.
      * Omit for no glyph; no left-side gap is reserved when absent.
