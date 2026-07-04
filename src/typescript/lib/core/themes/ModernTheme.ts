@@ -201,7 +201,7 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
         separatorColor: 'rgb(220, 220, 220)',
     },
     statusBar: {
-        background: 'transparent',
+        background: 'rgb(245, 245, 245)',
         color     : 'rgb(60, 60, 60)',
         border    : 'rgb(220, 220, 220)',
     },

@@ -186,7 +186,7 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
         separatorColor: 'rgb(70, 70, 70)',
     },
     statusBar: {
-        background: 'transparent',
+        background: 'rgb(45, 45, 45)',
         color     : 'rgb(200, 200, 200)',
         border    : 'rgb(70, 70, 70)',
     },
