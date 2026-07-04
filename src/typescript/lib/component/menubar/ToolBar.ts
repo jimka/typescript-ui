@@ -92,8 +92,8 @@ const _defaultToolBarOptions: Partial<ToolBarOptions> = {
  * / Underline in a text editor, or Cut / Copy / Paste in a file manager.
  *
  * `ToolBar` extends [`Container`](/api/core/classes/Container) and defaults to
- * compact mode (`compact: true`), so at construction it tightens its own panel
- * insets to 2 pixels and renders its `Button` / `ToggleButton` children compact;
+ * compact mode (`compact: true`), so at construction it drops its own panel
+ * insets to zero and renders its `Button` / `ToggleButton` children compact;
  * `setCompact(false)` restores the 4-pixel panel insets and the children's
  * default rendering. Layout defaults to a horizontal
  * [`HBox`](/api/layout/classes/HBox); pass `orientation: "vertical"` (or call
@@ -255,7 +255,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
 
     /**
      * Toggles compact mode. In compact mode the bar's own panel insets shrink
-     * from `(4, 4, 4, 4)` to `(2, 2, 2, 2)` and every `Button` / `ToggleButton`
+     * from `(4, 4, 4, 4)` to `(0, 0, 0, 0)` and every `Button` / `ToggleButton`
      * child is switched to compact rendering (tighter button insets), the same
      * way {@link setFlat} drives the flat appearance onto its button children.
      * Child spacing is left untouched — the bar packs its children flush and the
@@ -272,7 +272,11 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
 
         this._compact = value;
 
-        const inset = value ? 2 : 4;
+        // Compact packs flush to its edges (zero inset) so a toolbar sits tight
+        // against the surrounding chrome; the density between children still
+        // comes from the buttons' own compact insets. Non-compact restores the
+        // roomy 4px panel insets.
+        const inset = value ? 0 : 4;
 
         this.setInsets(new Insets(inset, inset, inset, inset));
 
