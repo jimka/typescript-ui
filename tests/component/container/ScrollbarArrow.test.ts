@@ -12,14 +12,15 @@ const CONFIG = {
     themeVars:       {},
 };
 
-// Real-event delivery lives in its OWN file on purpose. The Event namespace's
-// base window listener install is refcounted at module scope, but `DOM.reset()`
-// wipes the modelled window's listeners without decrementing that count — so a
-// second test in the same file that constructs a Scrollbar never re-installs the
-// `mousedown` base listener into the fresh sink, and a dispatch reaches nothing.
-// Vitest isolates module state per file, so a single delivery test here always
-// runs against a freshly-installed base listener. (events.test.ts sidesteps the
-// same limitation by minting a unique event type per test.)
+// Real-event delivery lives in its OWN file on purpose. The Event namespace
+// installs its base window listener once per type, guarded by a module-scoped
+// Set that survives `DOM.reset()`; reset installs a fresh sink whose window
+// listeners start empty but leaves that guard set — so a second test in the same
+// file that constructs a Scrollbar never re-installs the `mousedown` base
+// listener into the fresh sink, and a dispatch reaches nothing. Vitest isolates
+// module state per file, so a single delivery test here always runs against a
+// freshly-installed base listener. (events.test.ts sidesteps the same limitation
+// by minting a unique event type per test.)
 describe('Scrollbar arrow mousedown drives a scroll step', () => {
     afterEach(() => DOM.reset());
 
