@@ -165,7 +165,8 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
         separatorColor: 'rgb(70, 70, 70)',
     },
     menuBar: {
-        background    : 'transparent',
+        // Menu bars share the tool bar's background by default (see toolBar below).
+        background    : 'rgb(45, 45, 45)',
         border        : 'rgb(70, 70, 70)',
         button        : {
             background     : 'transparent',

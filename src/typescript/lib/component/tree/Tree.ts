@@ -17,7 +17,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export type TreeEvent = "selection" | "loaderror" | "contextmenu";
+export type TreeEvent = "selection" | "loaderror" | "contextmenu" | "dblclick";
 
 /** Pixels of indentation added per depth level. */
 const INDENT_PX = 16;
@@ -58,6 +58,7 @@ export interface TreeOptions extends ComponentOptions {
         selection?: (nodes: TreeNode[]) => void;
         loaderror?: (node: TreeNode, error: unknown) => void;
         contextmenu?: (node: TreeNode, event: MouseEvent) => void;
+        dblclick?: (node: TreeNode) => void;
     };
 }
 
@@ -367,6 +368,20 @@ class Tree extends Component<TreeOptions> {
      * @returns This tree, for method chaining.
      */
     on(event: "contextmenu", listener: (node: TreeNode, event: MouseEvent) => void): this;
+
+    /**
+     * Registers a listener for a double-click (activation) on a node.
+     *
+     * @param event - `"dblclick"` fires when a node row is double-clicked,
+     *   receiving the {@link TreeNode} under the cursor. The first click of the
+     *   pair still emits `"selection"` as usual, so `"dblclick"` is an
+     *   activation signal layered on top of selection — consumers typically use
+     *   `"selection"` to preview a node and `"dblclick"` to open it.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This tree, for method chaining.
+     */
+    on(event: "dblclick", listener: (node: TreeNode) => void): this;
     on(event: TreeEvent,   listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -398,6 +413,7 @@ class Tree extends Component<TreeOptions> {
     protected emit(event: "selection", nodes: TreeNode[]): void;
     protected emit(event: "loaderror", node: TreeNode, error: unknown): void;
     protected emit(event: "contextmenu", node: TreeNode, event_: MouseEvent): void;
+    protected emit(event: "dblclick", node: TreeNode): void;
     protected emit(event: TreeEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
@@ -876,6 +892,39 @@ class Tree extends Component<TreeOptions> {
     }
 
     /**
+     * Resolves the node under a double-click and emits the `"dblclick"` event.
+     *
+     * @remarks
+     * Mirrors {@link _handleContextMenu}'s row-matching. The first click of the
+     * pair has already run through {@link _handleClick} and set the selection, so
+     * this only layers an activation signal on top — it does not re-select.
+     * `preventDefault` suppresses the browser's double-click text selection of the
+     * row label.
+     *
+     * @param e - The dblclick event whose target is inside the tree's subtree.
+     */
+    private _handleDblClick(e: MouseEvent): void {
+        const target = e.target === null ? null : DOM.source.intern(e.target);
+
+        for (const row of this._rowPool) {
+            const node = row.getNode();
+            if (!node) {
+                continue;
+            }
+
+            const rowEl = row.getElement();
+            if (!rowEl || (!DOM.source.contains(rowEl, target) && target !== rowEl)) {
+                continue;
+            }
+
+            e.preventDefault();
+            this.emit("dblclick", node);
+
+            return;
+        }
+    }
+
+    /**
      * Applies or removes the selection highlight, focus ring, and aria-selected on all bound pool rows.
      */
     private _updateSelectionStyle(): void {
@@ -1183,6 +1232,10 @@ class Tree extends Component<TreeOptions> {
 
         Event.addSubtreeListener(this, "contextmenu", (e: MouseEvent) => {
             this._handleContextMenu(e);
+        });
+
+        Event.addSubtreeListener(this, "dblclick", (e: MouseEvent) => {
+            this._handleDblClick(e);
         });
 
         Event.addListener(this, "keydown", (e: KeyboardEvent) => {

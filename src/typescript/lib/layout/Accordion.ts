@@ -1092,6 +1092,15 @@ class Accordion extends LayoutManager {
         // Reparent content element into wrapper so overflow:hidden clips it during animation.
         DOM.sink.appendChild(wrapper.getElement()!, component.getElement()!);
 
+        // The content animates its own height in lockstep with the wrapper.
+        // Without this the content height is written instantly (see doLayout), so
+        // an open section that must *shrink* — e.g. a fill-mode sibling giving
+        // back its leftover height when a lower section opens — snaps to its final
+        // height while only the wrapper's `overflow: hidden` clip animates, which
+        // reads as the panel above the toggled one jumping. `primeWrapper`
+        // suppresses this transition under reduced motion alongside the wrapper's.
+        component.setTransition(this.buildContentTransition());
+
         this._openState.push(initiallyOpen);
         this._headers.push(header);
         this._panelWrappers.push(wrapper);
@@ -1258,8 +1267,32 @@ class Accordion extends LayoutManager {
             component.setX(0);
             component.setY(0);
             component.setWidth(containerWidth);
+
+            // A shrinking open section keeps its interior laid out at the current
+            // (larger) height for the duration of the shrink — the wrapper's
+            // overflow:hidden clip covers it — and reflows to the smaller height only
+            // once the height transition ends. Reflowing now would snap a
+            // height-driven interior (a Tree/Table sizes its scroll viewport to the
+            // height it is given) even though the content box itself animates via its
+            // own height transition. Growing, closing, and reduced motion all take
+            // the immediate path so newly revealed space fills at once.
+            const shrinking = isOpen
+                && !Animation.isReducedMotion()
+                && contentHeight < component.getHeight();
+
             component.setHeight(contentHeight);
-            component.doLayout();
+
+            if (shrinking) {
+                Animation.afterTransition({
+                    component:        wrapper,
+                    property:         "height",
+                    durationMs:       this._animationDuration,
+                    fallbackBufferMs: 40,
+                    onComplete:       () => component.doLayout(),
+                });
+            } else {
+                component.doLayout();
+            }
 
             y += panelHeight;
         }
@@ -1484,17 +1517,22 @@ class Accordion extends LayoutManager {
 
         if (Animation.isReducedMotion()) {
             // A toggle moves this wrapper's height AND the top of every header
-            // + wrapper below it, so all of those transitions need suppressing
-            // for the upcoming doLayout writes to land instantly.
+            // + wrapper below it, plus each open section's content height, so all
+            // of those transitions need suppressing for the upcoming doLayout
+            // writes to land instantly.
+            const components = this.getContainer()?.getComponents() ?? [];
+
             for (let i = 0; i < this._headers.length; i++) {
                 this._headers[i].setTransition("none");
                 this._panelWrappers[i].setTransition("none");
+                components[i]?.setTransition("none");
             }
 
             DOM.sink.requestAnimationFrame(() => {
                 for (let i = 0; i < this._headers.length; i++) {
                     this._headers[i].setTransition(this.buildHeaderTransition());
                     this._panelWrappers[i].setTransition(this.buildWrapperTransition());
+                    components[i]?.setTransition(this.buildContentTransition());
                 }
             });
 
@@ -1544,6 +1582,17 @@ class Accordion extends LayoutManager {
      */
     private buildWrapperTransition(): string {
         return `height ${this._animationDuration}ms ${ACCORDION_EASING}, top ${this._animationDuration}ms ${ACCORDION_EASING}`;
+    }
+
+    /**
+     * Builds the `height`-only transition applied to every section's content
+     * component so it grows and shrinks in lockstep with its wrapper. The content
+     * sits at `top: 0` inside the wrapper, so only its height ever animates.
+     * Centralised so `createSection` and `primeWrapper`'s reduced-motion restore
+     * path stay in sync.
+     */
+    private buildContentTransition(): string {
+        return `height ${this._animationDuration}ms ${ACCORDION_EASING}`;
     }
 }
 
