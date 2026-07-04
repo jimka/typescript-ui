@@ -82,6 +82,23 @@ export interface ButtonOptions extends ComponentOptions {
      */
     showText?:               boolean;
     glyph?:                  string;
+
+    /**
+     * Tints the leading glyph independently of the button's `foregroundColor`,
+     * which colours the whole face (title *and* glyph). Sets the glyph
+     * element's own `color`, picked up by its `currentColor` SVG fill — so a
+     * button can render, say, a green glyph beside default-coloured text.
+     * Survives a later `setGlyph`. Runtime counterpart: `setGlyphColor`.
+     */
+    glyphColor?:             string;
+
+    /**
+     * Tints the description subtitle independently of the button's
+     * `foregroundColor`, overriding the default dim description colour.
+     * Runtime counterpart: `setDescriptionColor`.
+     */
+    descriptionColor?:       string;
+
     enabled?:                boolean;
     pressedBackgroundColor?: string;
     pressedBackgroundImage?: string;
@@ -581,6 +598,19 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // by the constructor's own late dispatch for the cascade path).
         const contentBuilt = this._text !== undefined;
 
+        // Glyph / description tints are stored before the glyph / description
+        // dispatch below, so a `setGlyph` / `setDescription` fired here (or by the
+        // constructor's late dispatch) re-reads and re-applies them to the fresh
+        // element. A post-construction call with only the colour (the element
+        // already built) tints it directly via the setter.
+        if (options.glyphColor !== undefined) {
+            if (contentBuilt) this.setGlyphColor(options.glyphColor); else this._options.glyphColor = options.glyphColor;
+        }
+
+        if (options.descriptionColor !== undefined) {
+            if (contentBuilt) this.setDescriptionColor(options.descriptionColor); else this._options.descriptionColor = options.descriptionColor;
+        }
+
         if (options.text !== undefined) {
             if (contentBuilt) this.setText(options.text); else this._options.text = options.text;
         }
@@ -877,7 +907,9 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this._description.setTextAlign("center");
             this._description.setFontSize("--ts-ui-button-description-font-size");
             this._description.setFontWeight("var(--ts-ui-button-description-weight, normal)");
-            this._description.setForegroundColor("var(--ts-ui-button-description-fg, rgb(110, 110, 110))");
+            this._description.setForegroundColor(
+                this._options.descriptionColor ?? "var(--ts-ui-button-description-fg, rgb(110, 110, 110))"
+            );
         }
 
         // The instance is created above unconditionally so `_rebuildTooltip`
@@ -1263,6 +1295,11 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // so `_syncGlyphSize` (via recomputePreferredSize) sizes it.
         this._glyphSyncedSize = null;
 
+        // Re-apply an instance glyph tint so it survives a glyph swap.
+        if (this._options.glyphColor !== undefined) {
+            glyph.setForegroundColor(this._options.glyphColor);
+        }
+
         this._rebuildContentRow();
 
         // The content row's preferred size shifted — re-sync the button's
@@ -1295,6 +1332,43 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     getGlyph(): Glyph | null {
         return this._glyph;
+    }
+
+    /**
+     * Tints the leading glyph independently of the button's `foregroundColor`.
+     * `foregroundColor` sets `color` on the whole button, which both the title
+     * and the glyph (via its `currentColor` SVG fill) inherit; this sets `color`
+     * on the glyph element alone, so the glyph can be tinted while the title
+     * keeps the button's own colour. Stored so a later {@link setGlyph} re-applies
+     * it. A no-op on the element until a glyph exists; the colour still takes
+     * effect once one is set.
+     *
+     * @param color - A CSS color string.
+     *
+     * @returns This component, for method chaining.
+     */
+    setGlyphColor(color: string): this {
+        this._options.glyphColor = color;
+        this._glyph?.setForegroundColor(color);
+
+        return this;
+    }
+
+    /**
+     * Tints the description subtitle independently of the button's
+     * `foregroundColor`, overriding the default dim description colour. Stored so
+     * a lazily-created description ({@link setDescription}) picks it up. A no-op on
+     * the element until a description exists.
+     *
+     * @param color - A CSS color string.
+     *
+     * @returns This component, for method chaining.
+     */
+    setDescriptionColor(color: string): this {
+        this._options.descriptionColor = color;
+        this._description?.setForegroundColor(color);
+
+        return this;
     }
 
     /**
