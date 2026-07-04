@@ -290,6 +290,16 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     private _description: Text | null = null;
 
     /**
+     * When `true`, {@link _rebuildTooltip} detaches the hover tooltip instead of
+     * attaching it, regardless of the title/description text. Lets a subclass
+     * silence the tooltip while the button is showing its own popup — e.g. a
+     * [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton) whose
+     * dropdown is open, where the tooltip would otherwise float over the menu.
+     * Toggled via {@link setTooltipSuppressed}.
+     */
+    private _tooltipSuppressed: boolean = false;
+
+    /**
      * Lazy containers used only by the "under glyph" (full-width) description
      * topology: `_outerColumn` (VBox) holds `[_innerRow, _description]` and
      * `_innerRow` (HBox) holds `[glyph?, _text]`. Created on first entry into
@@ -961,6 +971,14 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * `\n` breaks across multiple lines.
      */
     private _rebuildTooltip(): void {
+        // A suppressed tooltip stays detached whatever the text — the button is
+        // showing its own popup and a hover hint would occlude it.
+        if (this._tooltipSuppressed) {
+            Tooltip.detach(this);
+
+            return;
+        }
+
         const title = this._options.text ?? "";
         const desc  = this._description?.getText().valueOf() ?? "";
 
@@ -976,6 +994,29 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         } else {
             Tooltip.detach(this);
         }
+    }
+
+    /**
+     * Suppresses or restores this button's hover tooltip. While suppressed the
+     * tooltip is detached (and any visible/pending one dismissed) and stays off
+     * across `setText`/`setDescription` rebuilds; restoring re-composes it from
+     * the current title and description. Intended for a subclass that opens its
+     * own popup — see {@link _tooltipSuppressed}.
+     *
+     * @param value - `true` to detach the tooltip, `false` to restore it.
+     *
+     * @returns This button, for method chaining.
+     */
+    protected setTooltipSuppressed(value: boolean): this {
+        if (value === this._tooltipSuppressed) {
+            return this;
+        }
+
+        this._tooltipSuppressed = value;
+
+        this._rebuildTooltip();
+
+        return this;
     }
 
     /**
