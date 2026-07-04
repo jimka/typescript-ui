@@ -82,11 +82,17 @@ export namespace Event {
     }
 
     let baseListener = function (evnt: Event) {
-        // Wrap stopPropagation so the dispatcher can tell user-issued cancels
-        // (which must skip the subtree walk that runs after the exact-target
-        // dispatch) apart from its own native-bubble suppression call below
-        // (which must not). Both invoke the native method; only the
-        // user-issued one flips `propagationStopped`.
+        // Wrap stopPropagation so a handler that consumes the event both
+        // suppresses native propagation (via the original method) and signals
+        // the dispatcher to skip the subtree walk below (`propagationStopped`).
+        //
+        // The dispatcher does NOT stop propagation on a component's behalf: an
+        // event is halted only when a handler explicitly consumes it. An
+        // unconsumed event therefore keeps propagating — through the bubble
+        // phase and on to any `document`-level listener (e.g. a consumer's
+        // global keyboard accelerator), which a proactive stop here used to
+        // swallow whenever the focused element happened to carry a library
+        // listener.
         let propagationStopped = false;
 
         const originalStop = evnt.stopPropagation.bind(evnt);
@@ -106,8 +112,6 @@ export namespace Event {
             let compFunc = listeners.get(elementId);
 
             if (compFunc) {
-                originalStop();
-
                 for (let listener of compFunc.listeners) {
                     listener.apply(compFunc.component, [evnt]);
                 }
