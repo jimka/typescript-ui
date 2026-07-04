@@ -1024,8 +1024,14 @@ class Tree extends Component<TreeOptions> {
         const { reboundFlags, maxContentWidth } =
             this._bindAndMeasure(win.firstRow, win.windowSize);
 
-        const treeWidth = this.getWidth() || 0;
-        const rowWidth  = Math.max(treeWidth, maxContentWidth);
+        // Fill to the effective viewport width (owner width minus the vertical
+        // scrollbar's reservation when that bar is visible), not the raw owner
+        // width. Sizing rows to the full width would push their trailing edge
+        // under the vertical bar, and handing that full width to
+        // `layoutScrollbars` as the content width forces a spurious horizontal
+        // bar for the reserved band. `clampToContent` above has already refreshed
+        // the scroller's content metrics this pass.
+        const rowWidth = Math.max(scroller.getViewportWidth(), maxContentWidth);
         if (rowWidth !== this._lastRowWidth) {
             this._lastRowWidth = rowWidth;
             this._invalidateGeom();
