@@ -223,6 +223,25 @@ describe('Scrollbar horizontal orientation', () => {
     });
 });
 
+describe('Scrollbar arrow glyph is non-interactive', () => {
+    afterEach(() => DOM.reset());
+
+    // The arrow's clickable face is a Glyph child that fills the whole button.
+    // The Event system routes `addListener` callbacks only to the exact target
+    // element's id, so an interactive glyph would swallow the click and the
+    // arrow's mousedown/hover handlers would never fire. `pointer-events: none`
+    // makes the glyph fall through to the arrow element.
+    it('marks each arrow glyph pointer-events:none so clicks reach the arrow', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical', { arrowsEnabled: true });
+        const [, arrowStart, arrowEnd] = bar.getComponents();
+
+        expect(arrowStart.getComponents()[0].getPointerEvents()).toBe('none');
+        expect(arrowEnd.getComponents()[0].getPointerEvents()).toBe('none');
+    });
+});
+
 describe('Scrollbar arrow tick emits scroll on change', () => {
     afterEach(() => DOM.reset());
 

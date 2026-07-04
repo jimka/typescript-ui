@@ -142,6 +142,12 @@ class ScrollArrowButton extends Component {
         this._glyph = new Glyph("unicode-arrow-" + direction);
         this._glyph.setPreferredSize(TRACK_WIDTH, TRACK_WIDTH);
         this._glyph.setFontSize(ARROW_GLYPH_FONT_SIZE);
+        // The glyph fills the whole button, so without this a click's target is
+        // the glyph element. The Event system routes `addListener` callbacks only
+        // to the exact target id (no bubbling), so the arrow's own
+        // mousedown/mouseover/mouseout handlers below would never fire. Making
+        // the glyph non-interactive lets pointer events fall through to the arrow.
+        this._glyph.setPointerEvents("none");
 
         super.addComponent(this._glyph);
 
