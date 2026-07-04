@@ -166,7 +166,8 @@ export const ClassicTheme: Theme = defineTheme(BaseTheme, {
         separatorColor: 'rgb(220, 220, 220)',
     },
     menuBar: {
-        background    : 'transparent',
+        // Menu bars share the tool bar's background by default (see toolBar below).
+        background    : 'rgb(245, 245, 245)',
         border        : 'rgb(220, 220, 220)',
         button        : {
             background     : 'transparent',

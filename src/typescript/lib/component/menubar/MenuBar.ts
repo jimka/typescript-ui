@@ -69,7 +69,10 @@ class MenuBar extends Component {
         hbox.setStretching(true);
         this.setLayoutManager(hbox);
 
-        this.setBackgroundColor("var(--ts-ui-menu-bar-bg, transparent)");
+        // Default to the tool bar's background so menu bars and tool bars read as
+        // one surface; the shipped themes set --ts-ui-menu-bar-bg to their
+        // toolBar.background, and this untokened fallback matches ToolBar's own.
+        this.setBackgroundColor("var(--ts-ui-menu-bar-bg, rgb(245, 245, 245))");
         this.setElementCSSRule(
             "borderBottom",
             "1px solid var(--ts-ui-menu-bar-border, rgb(220, 220, 220))"
