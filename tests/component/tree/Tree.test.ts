@@ -219,6 +219,7 @@ interface TreePrivate {
     _isExpandable(node: TreeNode): boolean;
     _flatRows: FlatRow[];
     _expandedNodes: Set<TreeNode>;
+    _loadedNodes: Set<TreeNode>;
 }
 
 function asPrivate(tree: _Tree): TreePrivate {
@@ -363,6 +364,91 @@ describe('TreeNode — data payload slot', () => {
         (tree as unknown as { _selectedNodes: Set<TreeNode> })._selectedNodes.add(a);
         expect(tree.getSelectedNodes()).toContain(a);
         expect(tree.getSelectedNodes()).not.toContain(b);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// revealByPredicate — expand-to-node search. Offline: the reveal path only
+// touches the flatten / expand model (no DOM), like the _onToggle block above.
+// ---------------------------------------------------------------------------
+describe('Tree — revealByPredicate', () => {
+    const named = (d: unknown, name: string): boolean =>
+        typeof d === 'object' && d !== null && (d as { name?: string }).name === name;
+
+    it('expands the ancestor path to reveal an eager node under a collapsed parent', async () => {
+        const tree = new _Tree();
+        const target: TreeNode = { label: 'orders', data: { name: 'orders' } };
+        const nodes: TreeNode[] = [{ label: 'public', children: [target] }];
+        tree.setNodes(nodes);
+        const priv = asPrivate(tree);
+
+        // Collapsed: only the root is flattened, so a plain selectNode would no-op.
+        expect(priv._flatRows.map(r => r.node.label)).toEqual(['public']);
+
+        const found = await tree.revealByPredicate(d => named(d, 'orders'));
+
+        expect(found).toBe(target);
+        expect(priv._expandedNodes.has(nodes[0])).toBe(true);
+        expect(priv._flatRows.map(r => r.node.label)).toContain('orders');
+    });
+
+    it('loads a lazy branch to reveal a node the user never expanded to', async () => {
+        const tree = new _Tree();
+        const target: TreeNode = { label: 'orders', data: { name: 'orders' } };
+        const schema: TreeNode = {
+            label:        'public',
+            hasChildren:  true,
+            loadChildren: () => Promise.resolve([target]),
+        };
+        tree.setNodes([schema]);
+        const priv = asPrivate(tree);
+
+        const found = await tree.revealByPredicate(d => named(d, 'orders'));
+
+        expect(found).toBe(target);
+        // Children were loaded and cached, the branch expanded, the node visible.
+        expect(schema.children).toEqual([target]);
+        expect(priv._loadedNodes.has(schema)).toBe(true);
+        expect(priv._expandedNodes.has(schema)).toBe(true);
+        expect(priv._flatRows.map(r => r.node.label)).toContain('orders');
+    });
+
+    it('returns null and leaves the tree collapsed when nothing matches', async () => {
+        const tree = new _Tree();
+        tree.setNodes([{ label: 'public', children: [{ label: 'orders', data: { name: 'orders' } }] }]);
+        const priv = asPrivate(tree);
+
+        const found = await tree.revealByPredicate(() => false);
+
+        expect(found).toBe(null);
+        expect(priv._flatRows.map(r => r.node.label)).toEqual(['public']);
+    });
+
+    it('reveals without selecting or emitting selection', async () => {
+        const tree = new _Tree();
+        const target: TreeNode = { label: 'orders', data: { name: 'orders' } };
+        tree.setNodes([{ label: 'public', children: [target] }]);
+        let emitted = 0;
+        tree.on('selection', () => { emitted += 1; });
+
+        await tree.revealByPredicate(d => named(d, 'orders'));
+
+        expect(emitted).toBe(0);
+        expect(tree.getSelectedNodes()).toEqual([]);
+    });
+
+    it('skips a lazy branch whose load rejects and continues to a later match', async () => {
+        const tree = new _Tree();
+        const target: TreeNode = { label: 'orders', data: { name: 'orders' } };
+        const broken: TreeNode = { label: 'broken', hasChildren: true, loadChildren: () => Promise.reject(new Error('nope')) };
+        const good:   TreeNode = { label: 'good', children: [target] };
+        tree.setNodes([broken, good]);
+        const priv = asPrivate(tree);
+
+        const found = await tree.revealByPredicate(d => named(d, 'orders'));
+
+        expect(found).toBe(target);
+        expect(priv._expandedNodes.has(good)).toBe(true);
     });
 });
 
