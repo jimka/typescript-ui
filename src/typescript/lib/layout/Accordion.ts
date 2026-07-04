@@ -1267,8 +1267,32 @@ class Accordion extends LayoutManager {
             component.setX(0);
             component.setY(0);
             component.setWidth(containerWidth);
+
+            // A shrinking open section keeps its interior laid out at the current
+            // (larger) height for the duration of the shrink — the wrapper's
+            // overflow:hidden clip covers it — and reflows to the smaller height only
+            // once the height transition ends. Reflowing now would snap a
+            // height-driven interior (a Tree/Table sizes its scroll viewport to the
+            // height it is given) even though the content box itself animates via its
+            // own height transition. Growing, closing, and reduced motion all take
+            // the immediate path so newly revealed space fills at once.
+            const shrinking = isOpen
+                && !Animation.isReducedMotion()
+                && contentHeight < component.getHeight();
+
             component.setHeight(contentHeight);
-            component.doLayout();
+
+            if (shrinking) {
+                Animation.afterTransition({
+                    component:        wrapper,
+                    property:         "height",
+                    durationMs:       this._animationDuration,
+                    fallbackBufferMs: 40,
+                    onComplete:       () => component.doLayout(),
+                });
+            } else {
+                component.doLayout();
+            }
 
             y += panelHeight;
         }
