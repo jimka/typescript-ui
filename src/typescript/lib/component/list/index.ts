@@ -15,3 +15,7 @@ export type { NumberedListOptions } from '~/component/list/NumberedList.js';
 export { NumberedListItemStyle } from '~/component/list/NumberedListItemStyle.js';
 export { ListItem } from '~/component/list/ListItem.js';
 export type { ListItemOptions } from '~/component/list/ListItem.js';
+export { ListItemRenderer } from '~/component/list/ListItemRenderer.js';
+export type { ListItemRenderContext } from '~/component/list/ListItemRenderContext.js';
+export { LabelListItemRenderer } from '~/component/list/renderer/Label.js';
+export { GlyphListItemRenderer } from '~/component/list/renderer/Glyph.js';

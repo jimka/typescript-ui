@@ -11,6 +11,8 @@ import { Util } from "~/core/Util.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { CustomListItem, CustomListItemSpec } from "~/component/list/AbstractCustomList.js";
+import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
+import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
 import { List } from "~/component/list/List.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -31,6 +33,19 @@ export interface ComboBoxOptions extends AbstractInputOptions {
     store?:             AbstractStore;
     displayField?:      string;
     valueField?:        string;
+    /**
+     * Record field whose value becomes each store-bound option's `glyph`, read
+     * by [`GlyphListItemRenderer`](/api/component/list/classes/GlyphListItemRenderer).
+     * Forwarded to the embedded list's `glyphField`.
+     */
+    glyphField?:        string;
+    /**
+     * Zero-argument factory producing the renderer for each dropdown row and
+     * the collapsed control. Defaults to a label renderer. Supply
+     * `() => new GlyphListItemRenderer()` to show each option's `glyph` in both
+     * the open dropdown and on the closed combo box.
+     */
+    rendererFactory?:   () => ListItemRenderer;
     selectedIndex?:     number;
     value?:             string;
     selectedItem?:      string;
@@ -346,42 +361,83 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 })();
 
 /**
- * The visible label `<span>` inside a {@link ComboBox}. Holds a typed
- * `setLabel` setter so call sites never write `element.textContent` directly.
- * Positioned by the parent `ComboBox`'s `doLayout` (flush left, taking the
- * row's remaining width after the fixed-size caret).
+ * The visible label `<span>` inside a {@link ComboBox}. Hosts one
+ * {@link ListItemRenderer} — built from the ComboBox's renderer factory — so
+ * the collapsed control renders the selected entry exactly as the dropdown row
+ * does (a glyph renderer shows the selected option's glyph here too). Positioned
+ * by the parent `ComboBox`'s `doLayout` (flush left, taking the row's remaining
+ * width after the fixed-size caret); the label's own `doLayout` forwards its box
+ * to the renderer. Rendered `pointer-events: none` so clicks fall through to the
+ * ComboBox surface that toggles the dropdown.
  */
 class ComboBoxLabel extends Component {
-    // Cached so `setLabel` calls made before the element renders (e.g. from
-    // the ComboBox constructor) survive to be applied at render time.
-    private _text:       string = "";
     private _lineHeight: string | null = null;
+    /** The renderer painting the selected entry on the collapsed control. */
+    private _renderer:   ListItemRenderer;
 
-    constructor() {
+    /**
+     * @param rendererFactory - Zero-argument factory producing this label's
+     *   content renderer, shared with the dropdown list.
+     */
+    constructor(rendererFactory: () => ListItemRenderer) {
         super({ tag: "span" });
         this.setPointerEvents("none");
+
+        this._renderer = rendererFactory();
     }
 
     /**
-     * Updates the rendered label text.
+     * Rebinds the hosted renderer to the selected item. The empty /
+     * no-selection state passes a blank item (`{ key: "", label: "" }`) at
+     * index `-1`, so the label renders empty and a glyph renderer shows no
+     * glyph.
      *
-     * @param text - The text to display.
+     * @param item - The selected item, or the blank item when nothing is
+     *   selected.
+     * @param index - The selected index, or `-1`.
+     *
+     * @returns This component, for method chaining.
      */
-    setLabel(text: string): this {
-        this._text = text;
+    setItem(item: CustomListItem, index: number): this {
+        this._renderer.update({ item, index });
 
+        return this;
+    }
+
+    /**
+     * Swaps in a new content renderer, re-skinning the collapsed control in
+     * step with the dropdown when the ComboBox's renderer factory changes.
+     *
+     * @param renderer - The replacement renderer.
+     *
+     * @returns This component, for method chaining.
+     */
+    setRenderer(renderer: ListItemRenderer): this {
         const el = this.getElement();
+
         if (el) {
-            DOM.sink.apply(el, { text });
+            const oldEl = this._renderer.getElement();
+            if (oldEl && DOM.source.getParentNode(oldEl) === el) {
+                DOM.sink.removeChild(el, oldEl);
+            }
+        }
+
+        this._renderer = renderer;
+
+        if (el) {
+            DOM.sink.appendChild(el, this._renderer.getElement(true)!);
         }
 
         return this;
     }
 
     /**
-     * Sets the CSS `line-height` so the single line of label text vertically
+     * Sets the CSS `line-height` so a single line of label text vertically
      * centers within the label's allocated height. Numeric values are stored
-     * with a `"px"` suffix; string values pass through unchanged.
+     * with a `"px"` suffix; string values pass through unchanged. Retained
+     * because `ComboBox.doLayout` still drives it; the hosted label renderer
+     * also matches its own line-height to the box in `layoutChildren`, so the
+     * collapsed line stays centred either way.
      *
      * @param value - A pixel count (number) or a CSS line-height string.
      *
@@ -404,11 +460,48 @@ class ComboBoxLabel extends Component {
         return this._lineHeight;
     }
 
-    protected render(): Handle {
-        const element = super.render();
-        DOM.sink.apply(element, { text: this._text });
+    /**
+     * Appends the renderer's element to the label DOM. The renderer's own
+     * children (label, optional glyph) are appended by the renderer's `init`.
+     *
+     * @param element - Optional element passed by the rendering pipeline; falls
+     *   back to getElement().
+     *
+     * @returns This component, for method chaining.
+     */
+    protected init(element?: Handle): this {
+        super.init(element);
 
-        return element;
+        const el = element || this.getElement();
+        if (el) {
+            DOM.sink.appendChild(el, this._renderer.getElement(true)!);
+        }
+
+        return this;
+    }
+
+    /**
+     * Sizes the renderer to fill the label box, then lets it lay out its own
+     * children. Only writes setters (no geometry reads).
+     *
+     * @returns This component, for method chaining.
+     */
+    doLayout(): this {
+        super.doLayout();
+
+        const width  = this.getWidth();
+        const height = this.getHeight();
+
+        this._renderer.setAutoCommitStyle(false);
+        this._renderer.setX(0);
+        this._renderer.setY(0);
+        this._renderer.setWidth(width);
+        this._renderer.setHeight(height);
+        this._renderer.setAutoCommitStyle(true);
+
+        this._renderer.layoutChildren(width, height);
+
+        return this;
     }
 }
 
@@ -517,7 +610,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         this.getAria().setExpanded(false);
         this.getAria().setTabIndex(0);
 
-        this._label = new ComboBoxLabel();
+        this._label = new ComboBoxLabel(this._options.rendererFactory ?? (() => new LabelListItemRenderer()));
         this._caret = new ComboBoxCaret();
         this.addComponent(this._label);
         this.addComponent(this._caret);
@@ -541,7 +634,15 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
             this._dropdown.setMinWidth(this._options.dropdownMinWidth);
         }
 
-        this._label.setLabel(this.computeLabel());
+        // Forward the renderer factory onto the embedded list before the
+        // items / store late-dispatch so the first row build already paints
+        // through it. The collapsed `_label` was constructed with the same
+        // factory above.
+        if (this._options.rendererFactory !== undefined) {
+            this._dropdown.getList().setRendererFactory(this._options.rendererFactory);
+        }
+
+        this.refreshLabel();
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
@@ -613,6 +714,8 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         if (options.store            !== undefined) this._options.store            = options.store;
         if (options.displayField     !== undefined) this._options.displayField     = options.displayField;
         if (options.valueField       !== undefined) this._options.valueField       = options.valueField;
+        if (options.glyphField       !== undefined) this._options.glyphField       = options.glyphField;
+        if (options.rendererFactory  !== undefined) this._options.rendererFactory  = options.rendererFactory;
         if (options.selectedIndex    !== undefined) this._options.selectedIndex    = options.selectedIndex;
         if (options.value            !== undefined) this._options.value            = options.value;
         if (options.selectedItem     !== undefined) this._options.selectedItem     = options.selectedItem;
@@ -682,6 +785,8 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         // `lineHeight` equals the label's height so the single line of label
         // text vertically centers without `display: flex` on the parent.
         this._label.setLineHeight(inner.height);
+        // Position the label's hosted renderer now that its box is sized.
+        this._label.doLayout();
 
         this._caret.setX(caretX);
         this._caret.setY(caretY);
@@ -824,27 +929,31 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Returns the display label for the active selection.
+     * Returns the selected item and its index for the collapsed control to
+     * render. Falls back to a blank item at index `-1` when nothing is
+     * selected, so the label renders empty and a glyph renderer shows no glyph.
      *
-     * @returns The label to render, or an empty string when nothing is selected.
+     * @returns The selected `{ item, index }`, or the blank item at `-1`.
      */
-    private computeLabel(): string {
+    private computeSelectedItem(): { item: CustomListItem; index: number } {
         const list  = this._dropdown.getList();
         const idx   = list.getSelectedIndex();
         const items = list.getItems();
 
         if (idx >= 0 && idx < items.length) {
-            return items[idx].label;
+            return { item: items[idx], index: idx };
         }
 
-        return "";
+        return { item: { key: "", label: "" }, index: -1 };
     }
 
     /**
-     * Refreshes the rendered label after a value or selection change.
+     * Refreshes the collapsed control after a value or selection change by
+     * rebinding the label's renderer to the selected item.
      */
     private refreshLabel(): void {
-        this._label.setLabel(this.computeLabel());
+        const { item, index } = this.computeSelectedItem();
+        this._label.setItem(item, index);
     }
 
     /**
@@ -1005,15 +1114,18 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @param store - The store to bind to.
      * @param displayField - The record field whose value is shown as the option label.
      * @param valueField - Optional. The record field used as the option value; defaults to the record's primary key.
+     * @param glyphField - Optional. The record field whose value becomes each
+     *   option's `glyph`; forwarded to the embedded list.
      */
-    setStore(store: AbstractStore, displayField: string, valueField?: string): this {
-        // Keep `_options.store` / `displayField` / `valueField` in sync so
-        // anything still inspecting them (constructor-time dispatch on
-        // re-entry, future option-bag introspection) reads the current
+    setStore(store: AbstractStore, displayField: string, valueField?: string, glyphField?: string): this {
+        // Keep `_options.store` / `displayField` / `valueField` / `glyphField`
+        // in sync so anything still inspecting them (constructor-time dispatch
+        // on re-entry, future option-bag introspection) reads the current
         // binding.
         this._options.store        = store;
         this._options.displayField = displayField;
         this._options.valueField   = valueField;
+        this._options.glyphField   = glyphField;
 
         if (this._boundStore) {
             (['load', 'add', 'remove', 'datachanged'] as const).forEach(e =>
@@ -1024,7 +1136,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         // Bind the inner list first so its own store handler is registered —
         // and therefore fires — before the combo's `_onStoreRefresh`, which
         // relies on the list having already rebuilt its rows.
-        this._dropdown.getList().setStore(store, displayField, valueField);
+        this._dropdown.getList().setStore(store, displayField, valueField, glyphField);
 
         this._boundStore = store;
 
@@ -1046,6 +1158,34 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      */
     getStore(): AbstractStore | null {
         return this._dropdown.getList().getStore();
+    }
+
+    /**
+     * Replaces the renderer factory for both the dropdown rows and the
+     * collapsed control, then rebinds the collapsed control so the selected
+     * entry renders through the new renderer immediately.
+     *
+     * @param factory - Zero-argument factory producing a renderer per row.
+     *
+     * @returns This component, for method chaining.
+     */
+    setRendererFactory(factory: () => ListItemRenderer): this {
+        this._options.rendererFactory = factory;
+        this._dropdown.getList().setRendererFactory(factory);
+        this._label.setRenderer(factory());
+        this.refreshLabel();
+
+        return this;
+    }
+
+    /**
+     * Returns the renderer factory currently in use by the embedded list (and
+     * mirrored on the collapsed control).
+     *
+     * @returns The zero-argument renderer factory.
+     */
+    getRendererFactory(): () => ListItemRenderer {
+        return this._dropdown.getList().getRendererFactory();
     }
 
     /**
