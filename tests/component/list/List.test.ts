@@ -19,16 +19,26 @@ class TestList extends _List {
 
 const FRUITS = ['Apple', 'Banana', 'Cherry', 'Date'];
 
-describe('List — setItems auto-keying', () => {
-    it('auto-keys a string array by array position', () => {
+describe('List — setItems string keying', () => {
+    it('keys a string array by the string value', () => {
         const list = new _List({ items: FRUITS });
 
         expect(list.getItems()).toEqual([
-            { key: '0', label: 'Apple' },
-            { key: '1', label: 'Banana' },
-            { key: '2', label: 'Cherry' },
-            { key: '3', label: 'Date' },
+            { key: 'Apple',  label: 'Apple' },
+            { key: 'Banana', label: 'Banana' },
+            { key: 'Cherry', label: 'Cherry' },
+            { key: 'Date',   label: 'Date' },
         ]);
+    });
+
+    it('round-trips the visible string through setValue/getValue, not an index', () => {
+        // Regression for the ComboBox footgun: a "list of names" built from a
+        // plain-string array must return the chosen string from getValue, not its
+        // positional index (which the backend would reject as an unknown value).
+        const list = new _List({ items: FRUITS });
+
+        list.setSelectedIndex(1, false);
+        expect(list.getValue()).toBe('Banana');
     });
 
     it('setItemsArray keeps explicit keys verbatim (no index clobber)', () => {
@@ -43,34 +53,33 @@ describe('List — setItems auto-keying', () => {
 });
 
 describe('List — addItem', () => {
-    it('appends with key = String(length-at-append)', () => {
+    it('appends a string keyed by its own value', () => {
         const list = new _List({ items: ['One', 'Two'] });
 
         list.addItem('Three');
         expect(list.getItems()).toEqual([
-            { key: '0', label: 'One' },
-            { key: '1', label: 'Two' },
-            { key: '2', label: 'Three' },
+            { key: 'One',   label: 'One' },
+            { key: 'Two',   label: 'Two' },
+            { key: 'Three', label: 'Three' },
         ]);
     });
 
-    it('appending a string after explicit-keyed items index-keys by position', () => {
+    it('appends a string keyed by its value alongside explicit-keyed items', () => {
         const list = new _List();
 
         list.setItemsArray([{ key: '0', label: 'Zero' }]);
-        // Documented collision (AbstractCustomList.ts:670): the appended string
-        // is keyed by its final position. Here length is 1 → key "1".
+        // A plain string is keyed by its own value, independent of position.
         list.addItem('Next');
-        expect(list.getItems().map(i => i.key)).toEqual(['0', '1']);
+        expect(list.getItems().map(i => i.key)).toEqual(['0', 'Next']);
     });
 
-    it('addItem collision resolves setValue to the first matching row', () => {
+    it('a duplicate key resolves setValue to the first matching row', () => {
         const list = new _List();
 
-        // Two rows that collide on key "1": an explicit "1" at row 0 and a
-        // string appended at position 1.
+        // Two rows that collide on key "1": an explicit "1" at row 0 and an
+        // explicit-keyed append at row 1.
         list.setItemsArray([{ key: '1', label: 'First' }]);
-        list.addItem('Second');
+        list.addItem({ key: '1', label: 'Second' });
         list.setValue('1');
         // findIndex resolves to the lowest matching row → row 0.
         expect(list.getSelectedIndex()).toBe(0);
@@ -81,9 +90,9 @@ describe('List — setValue / getValue', () => {
     it('setValue selects the first row whose key matches', () => {
         const list = new _List({ items: FRUITS });
 
-        list.setValue('2');
+        list.setValue('Cherry');
         expect(list.getSelectedIndex()).toBe(2);
-        expect(list.getValue()).toBe('2');
+        expect(list.getValue()).toBe('Cherry');
     });
 
     it('setValue with an unknown key clears the selection (mirrors native select)', () => {
@@ -126,12 +135,12 @@ describe('List — reduceSelection ignores modifiers', () => {
         const list = new TestList({ items: FRUITS });
 
         list.reduce(1, { ctrl: true, shift: true });
-        expect(list.getValue()).toBe('1');
+        expect(list.getValue()).toBe('Banana');
         expect(list.getFocusedIndex()).toBe(1);
 
         list.reduce(3, { ctrl: false, shift: true });
         // Still single-select: only row 3.
-        expect(list.getValue()).toBe('3');
+        expect(list.getValue()).toBe('Date');
     });
 });
 
@@ -139,17 +148,17 @@ describe('List — construction option dispatch', () => {
     it('selectedIndex selects the row at construction', () => {
         const list = new _List({ items: FRUITS, selectedIndex: 2 });
 
-        expect(list.getValue()).toBe('2');
+        expect(list.getValue()).toBe('Cherry');
     });
 
     it('value option resolves by key at construction', () => {
-        const list = new _List({ items: FRUITS, value: '1' });
+        const list = new _List({ items: FRUITS, value: 'Banana' });
 
         expect(list.getSelectedIndex()).toBe(1);
     });
 
     it('selectedItem option resolves by key at construction', () => {
-        const list = new _List({ items: FRUITS, selectedItem: '3' });
+        const list = new _List({ items: FRUITS, selectedItem: 'Date' });
 
         expect(list.getSelectedIndex()).toBe(3);
     });
@@ -236,7 +245,7 @@ describe('AbstractCustomList (via List) — type-ahead with a deterministic cloc
         expect(list.getFocusedIndex()).toBe(1);
         // Selection unchanged.
         expect(list.getSelectedIndex()).toBe(0);
-        expect(list.getValue()).toBe('0');
+        expect(list.getValue()).toBe('Apple');
     });
 });
 
