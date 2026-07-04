@@ -388,7 +388,18 @@ class Row extends Component {
      * @returns A new typed cell matching `field.getType()`.
      */
     private static createCellForField(field: Field, columnConfigs: Map<string, ColumnConfig>): Cell<any> {
-        const values = columnConfigs.get(field.getName())?.values;
+        const config = columnConfigs.get(field.getName());
+
+        // A custom renderer wins over both the combo (`values`) routing and the
+        // field-type switch. The cell is built with no editor, so it stays
+        // display-only — a click never enters edit mode (Cell.startEdit bails
+        // with no editor and no pool key). The base Cell.setValue forwards each
+        // rebind to the renderer.
+        if (config?.renderer) {
+            return new Cell("td", config.renderer());
+        }
+
+        const values = config?.values;
 
         if (values && values.length > 0) {
             return new ComboCell(field.getName(), values);
