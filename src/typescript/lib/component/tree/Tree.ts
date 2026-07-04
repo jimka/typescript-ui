@@ -920,6 +920,21 @@ class Tree extends Component<TreeOptions> {
             e.preventDefault();
             this.emit("dblclick", node);
 
+            // Double-clicking a parent row toggles its expansion, the
+            // file-explorer convention. A double-click on the toggle caret is
+            // skipped: `_handleClick` already fired `_onToggle` on each of the
+            // two clicks, so its net state is unchanged and toggling again here
+            // would flip it a third time. Leaf nodes have nothing to expand, so
+            // their `"dblclick"` stays a pure activation signal.
+            const toggle   = row.getToggle();
+            const toggleEl = toggle ? toggle.getElement() : undefined;
+            const onToggle = !!toggleEl
+                && (target === toggleEl || DOM.source.contains(toggleEl, target));
+
+            if (!onToggle && this._isExpandable(node)) {
+                this._onToggle(node);
+            }
+
             return;
         }
     }
