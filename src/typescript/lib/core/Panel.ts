@@ -137,6 +137,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     // exists post-render), so a plain initialiser is safe here.
     private _shadowOverlayStyle: InlineStyle       = new InlineStyle();
     private _shadowEdges:        ScrollShadowEdges = { top: 0, bottom: 0, left: 0, right: 0 };
+    // Child count observed on the previous layout pass, so a shrink (removed
+    // children) can force one follow-up gutter/shadow re-measure. See
+    // `scheduleGutterSettleOnShrink`.
+    private _lastChildCount:     number            = 0;
 
     /**
      * Creates a panel with 4-pixel insets on all sides by default.
@@ -373,7 +377,39 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // guarantees the reads see this frame's dimensions.
         this.updateScrollShadows();
 
+        this.scheduleGutterSettleOnShrink();
+
         return this;
+    }
+
+    /**
+     * Forces one follow-up layout pass after this panel's child count drops,
+     * so a shrink that brings overflowing content back within the viewport
+     * re-clears the reserved scrollbar gutter and scroll shadow.
+     *
+     * `measureScrollbarGutter` only reschedules a pass when the gutter *value*
+     * it reads changes. When children are removed, the overflow→fit transition
+     * often has not settled on the pass that runs immediately after the
+     * removal — the gutter reads its old (overflowing) value, sees no change,
+     * and schedules nothing, so the stale gutter and shadow linger until some
+     * later unrelated layout re-measures. A child-count decrease is a reliable
+     * "content may have shrunk" signal available at layout time, so schedule
+     * one more pass; the next frame re-measures against the settled content and
+     * clears anything no longer needed.
+     *
+     * Bounded and non-looping: it fires only on the pass *after* a decrease
+     * (the follow-up pass sees an unchanged count), and never for a `"none"`
+     * panel, which reserves no gutter and paints no shadow.
+     */
+    private scheduleGutterSettleOnShrink(): void {
+        const count  = this.getComponents().length;
+        const shrank = count < this._lastChildCount;
+
+        this._lastChildCount = count;
+
+        if (shrank && this._autoScroll !== "none") {
+            this.scheduleLayout();
+        }
     }
 
     /**
