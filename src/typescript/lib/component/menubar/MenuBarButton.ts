@@ -151,6 +151,11 @@ class MenuBarButton extends Button<MenuBarButtonOptions> {
         );
         this.getAria().setExpanded(active);
 
+        // While this button's dropdown is open, silence its hover tooltip — the
+        // title tooltip would otherwise pop over the open menu (and re-arm on a
+        // quick-switch re-hover). Restored when the menu closes.
+        this.setTooltipSuppressed(active);
+
         return this;
     }
 

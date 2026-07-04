@@ -29,22 +29,24 @@ export interface TooltipColors {
 
 /** Internal record of a component's tooltip attachment. */
 interface TooltipAttachment {
-    text       : string;
-    colors     : TooltipColors | undefined;
-    mouseoverFn: Function;
-    mousemoveFn: Function;
-    mouseoutFn : Function;
+    text        : string;
+    colors      : TooltipColors | undefined;
+    mouseoverFn : Function;
+    mousemoveFn : Function;
+    mouseoutFn  : Function;
+    mousedownFn : Function;
 }
 
 /** Internal record of a raw-element tooltip attachment. */
 interface ElementTooltipAttachment {
-    text       : string;
-    mouseoverFn: (e: MouseEvent) => void;
-    mousemoveFn: (e: MouseEvent) => void;
-    mouseoutFn : () => void;
-    showTimer  : ReturnType<typeof setTimeout> | null;
-    lastX      : number;
-    lastY      : number;
+    text        : string;
+    mouseoverFn : (e: MouseEvent) => void;
+    mousemoveFn : (e: MouseEvent) => void;
+    mouseoutFn  : () => void;
+    mousedownFn : () => void;
+    showTimer   : ReturnType<typeof setTimeout> | null;
+    lastX       : number;
+    lastY       : number;
 }
 
 /**
@@ -334,12 +336,24 @@ export class Tooltip extends Component {
             Tooltip.hide();
         };
 
+        // Acting on the component (a click, or the start of a drag) dismisses
+        // its tooltip: once the pointer is pressed the hover hint has served its
+        // purpose and would only obscure the result of the action. `hide` also
+        // cancels a still-pending show timer, so a press during the hover delay
+        // suppresses the tooltip entirely. It stays hidden until the pointer
+        // leaves and re-enters, since no fresh `mouseover` fires under a
+        // stationary cursor.
+        const mousedownFn = () => {
+            Tooltip.hide();
+        };
+
         Event.addListener(component, "mouseover", mouseoverFn);
         Event.addListener(component, "mousemove", mousemoveFn);
         Event.addListener(component, "mouseout", mouseoutFn);
+        Event.addListener(component, "mousedown", mousedownFn);
 
         Tooltip.attachments.set(component.getId(), {
-            text, colors, mouseoverFn, mousemoveFn, mouseoutFn,
+            text, colors, mouseoverFn, mousemoveFn, mouseoutFn, mousedownFn,
         });
     }
 
@@ -360,6 +374,7 @@ export class Tooltip extends Component {
         Event.removeListener(component, "mouseover", att.mouseoverFn);
         Event.removeListener(component, "mousemove", att.mousemoveFn);
         Event.removeListener(component, "mouseout",  att.mouseoutFn);
+        Event.removeListener(component, "mousedown", att.mousedownFn);
 
         Tooltip.attachments.delete(id);
         Tooltip.hide();
@@ -448,11 +463,22 @@ export class Tooltip extends Component {
 
                 Tooltip.hide();
             },
+            // Pressing the element (click or drag start) dismisses its tooltip
+            // and cancels any pending show — see the `attach` counterpart.
+            mousedownFn: function onTooltipMouseDown(): void {
+                if (att.showTimer !== null) {
+                    clearTimeout(att.showTimer);
+                    att.showTimer = null;
+                }
+
+                Tooltip.hide();
+            },
         };
 
         DOM.sink.addListener(element, "mouseover", att.mouseoverFn);
         DOM.sink.addListener(element, "mousemove", att.mousemoveFn);
         DOM.sink.addListener(element, "mouseout",  att.mouseoutFn);
+        DOM.sink.addListener(element, "mousedown", att.mousedownFn);
 
         Tooltip.elementAttachments.set(element, att);
 
@@ -484,6 +510,7 @@ export class Tooltip extends Component {
         DOM.sink.removeListener(element, "mouseover", att.mouseoverFn);
         DOM.sink.removeListener(element, "mousemove", att.mousemoveFn);
         DOM.sink.removeListener(element, "mouseout",  att.mouseoutFn);
+        DOM.sink.removeListener(element, "mousedown", att.mousedownFn);
 
         if (att.showTimer !== null) {
             clearTimeout(att.showTimer);

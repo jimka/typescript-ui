@@ -1,8 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MenuBarButton } from '~/component/menubar/MenuBarButton';
+import { Tooltip } from '~/overlay/Tooltip';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
+
+// Reads Tooltip's private attachment registry — the same `(Tooltip as any)`
+// escape hatch its own suite uses — to assert whether a component carries a hint.
+function hasTooltip(id: string): boolean {
+    return (Tooltip as any).attachments.has(id);
+}
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -55,6 +62,21 @@ describe('MenuBarButton active state', () => {
         const inactiveBg = btn.getBackgroundColor();
 
         expect(activeBg).not.toBe(inactiveBg);
+    });
+
+    it('suppresses the hover tooltip while its menu is open, restoring it on close', () => {
+        const btn = new MenuBarButton('File', NOOP, NOOP);
+
+        // The title drives a tooltip by default.
+        expect(hasTooltip(btn.getId())).toBe(true);
+
+        // Opening the menu (active) detaches it so it can't float over the menu.
+        btn.setActive(true);
+        expect(hasTooltip(btn.getId())).toBe(false);
+
+        // Closing restores it.
+        btn.setActive(false);
+        expect(hasTooltip(btn.getId())).toBe(true);
     });
 });
 
