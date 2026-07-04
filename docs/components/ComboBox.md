@@ -60,6 +60,24 @@ role.setDisplayField('name');
 
 The combo refreshes automatically on store `datachanged` events.
 
+## Item renderers
+
+The dropdown rows — and the collapsed control itself — render through a [`ListItemRenderer`](/api/component/list/classes/ListItemRenderer) supplied via the `rendererFactory` option (or `setRendererFactory` at runtime). The default renders the label as plain text; [`GlyphListItemRenderer`](/api/component/list/classes/GlyphListItemRenderer) shows each option's `glyph` beside its label — in the open dropdown **and** on the closed combo box, so the selected entry's icon stays visible after the dropdown closes:
+
+```typescript
+import { ComboBox } from '@jimka/typescript-ui/component/input';
+import { GlyphListItemRenderer } from '@jimka/typescript-ui/component/list';
+import { Glyph } from '@jimka/typescript-ui/component/display';
+import { folder } from '@jimka/typescript-ui/glyphs/solid/folder';
+
+Glyph.register(folder);
+
+const combo = ComboBox({ rendererFactory: () => new GlyphListItemRenderer() });
+combo.setItems([{ key: 'docs', label: 'Documents', glyph: 'folder' }]);
+```
+
+When nothing is selected the collapsed control renders blank. A store-bound combo sources each option's glyph from a record field named by the fourth [`setStore`](/api/component/input/classes/ComboBox#setstore) argument (or the `glyphField` option), mirroring [`List`](/components/List#item-renderers).
+
 ## Common methods
 
 | Method | Purpose |
