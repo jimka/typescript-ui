@@ -290,6 +290,24 @@ export class VirtualScroller {
     }
 
     /**
+     * Effective viewport width for the last-known content metrics — the owner
+     * width minus the vertical scrollbar's track reservation when that bar is
+     * visible. Owners that size fill-width rows (e.g. the
+     * [`Tree`](/api/component/tree/classes/Tree)) base their row width on this so
+     * content does not run under the vertical bar, which would otherwise force a
+     * spurious horizontal bar for the reserved band. Reads the current
+     * `_contentWidth` / `_contentHeight`; callers refresh those via
+     * {@link clampToContent} at the top of their render pass before querying.
+     * The public face of {@link effectiveViewportW} (same value; that stays the
+     * internal clamp helper).
+     *
+     * @returns The effective viewport width in pixels.
+     */
+    getViewportWidth(): number {
+        return this.effectiveViewportW();
+    }
+
+    /**
      * Clamps the current `scrollX` / `scrollY` against the new content size
      * and the *effective* viewport on each axis (which subtracts the
      * cross-axis scrollbar's track-width when that bar is visible). Call at

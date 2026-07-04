@@ -7,6 +7,7 @@ import { TreeNodeRenderer } from '~/component/tree/TreeNodeRenderer';
 import { LabelTreeNodeRenderer } from '~/component/tree/renderer/Label';
 import { IconLabelTreeNodeRenderer } from '~/component/tree/renderer/IconLabel';
 import { Glyph } from '~/component/display/Glyph';
+import { Scrollbar } from '~/component/container/Scrollbar';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -518,5 +519,44 @@ describe('Tree renderers — content width', () => {
         const ICON_WIDTH = 20;
         const expected = ICON_WIDTH + DOM.source.measureText('World').width;
         expect(renderer.getContentWidth()).toBe(expected);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Mounted block: wiring the VirtualScroller requires a real element, so these
+// mount the tree (getElement(true)) and inspect the recycled pool rows.
+// ---------------------------------------------------------------------------
+describe('Tree — rows fill the effective viewport width', () => {
+    afterEach(() => DOM.reset());
+
+    it('sizes rows to owner width minus the vertical track and shows no horizontal bar', () => {
+        installTestDOM(CONFIG);
+
+        const TRACK_WIDTH = new Scrollbar('vertical').getTrackWidth();
+
+        const tree = new _Tree();
+        tree.getElement(true);   // wires the VirtualScroller
+        tree.setWidth(200);
+        tree.setHeight(120);     // 5 rows visible at ROW_HEIGHT 24
+
+        // Ten short-label roots overflow vertically (10 × 24 = 240 > 120) but
+        // not horizontally, so only the vertical bar should appear. Labels are
+        // single chars from the baked font so the measured content width stays
+        // well under the effective width.
+        const labels = ['H', 'e', 'l', 'o', 'W', 'r', 'd', 'x', 'X', 'o'];
+        tree.setNodes(labels.map(label => ({ label })));
+
+        const priv = tree as unknown as {
+            _rowPool:  Array<{ getWidth(): number }>;
+            _scroller: { getScrollX(): number; setScrollX(x: number): void };
+        };
+
+        // The first visible pool row fills the effective width (owner − track),
+        // not the full owner width — so content never runs under the vertical bar.
+        expect(priv._rowPool[0].getWidth()).toBe(200 - TRACK_WIDTH);
+
+        // No horizontal range: the horizontal bar stays hidden (scrollX pinned).
+        priv._scroller.setScrollX(99999);
+        expect(priv._scroller.getScrollX()).toBe(0);
     });
 });

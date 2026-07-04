@@ -128,6 +128,41 @@ describe('VirtualScroller scroll position', () => {
     });
 });
 
+describe('VirtualScroller getViewportWidth', () => {
+    afterEach(() => DOM.reset());
+
+    it('reserves the vertical track width when the vertical bar is visible', () => {
+        installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+
+        // Content taller than the owner (vertical bar shows) but narrower than
+        // the effective width (100 < 200 - track), so no horizontal bar. Owners
+        // size fill-width rows against this reduced width so content never runs
+        // under the vertical bar.
+        scroller.layoutScrollbars(100, 1000);
+
+        expect(scroller.getViewportWidth()).toBe(200 - TRACK_WIDTH);
+
+        // Because rows would fill effW (not the full width), there is no
+        // horizontal range: setScrollX cannot move off 0.
+        scroller.setScrollX(99999);
+
+        expect(scroller.getScrollX()).toBe(0);
+    });
+
+    it('returns the full owner width when no vertical bar is needed', () => {
+        installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+
+        // Content fits vertically → no vertical bar → no width reservation.
+        scroller.layoutScrollbars(100, 300);
+
+        expect(scroller.getViewportWidth()).toBe(200);
+    });
+});
+
 describe('VirtualScroller clampToContent', () => {
     afterEach(() => DOM.reset());
 
