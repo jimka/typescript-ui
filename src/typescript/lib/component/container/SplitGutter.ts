@@ -213,6 +213,17 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
         this._collapseButton?.setVisible(value);
 
+        // Keep the hover hint in step with collapsibility: a non-collapsible
+        // gutter (a plain draggable divider whose neighbour opted out of
+        // collapse) must not advertise a double-click-to-collapse action.
+        // Guarded on `_collapseButton` so the construction-time cascade — which
+        // runs this setter from `super()` before the button and the
+        // `_tooltipText` field exist — defers to the constructor's own
+        // `updateTooltip` call.
+        if (this._collapseButton) {
+            this.updateTooltip();
+        }
+
         return this;
     }
 
@@ -345,6 +356,24 @@ class SplitGutter extends Component<SplitGutterOptions> {
      * unchanged so repeated layouts don't re-wire the hover listeners.
      */
     private updateTooltip(): void {
+        // A non-collapsible gutter carries no chevron and cannot collapse, so it
+        // gets no hint at all — dropping any hint a prior collapsible state left
+        // attached. `_tooltipText === ""` marks the already-detached state, so a
+        // repeated layout doesn't re-detach (and re-`hide`) every pass.
+        if (!this._collapsible) {
+            if (this._tooltipText !== "") {
+                Tooltip.detach(this);
+
+                if (this._collapseButton) {
+                    Tooltip.detach(this._collapseButton);
+                }
+
+                this._tooltipText = "";
+            }
+
+            return;
+        }
+
         const action    = this._opaque ? "expand" : "collapse";
         const direction = this._opaque ? OPPOSITE_DIRECTION[this._collapseDirection] : this._collapseDirection;
         const text      = `Double-click to ${action} ${direction}ward`;
