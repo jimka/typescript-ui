@@ -6,7 +6,7 @@ import { CollapseDirection } from "~/component/container/CollapseButton.js";
 import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { FillType } from "~/layout/FillType.js";
-import { Size } from "~/primitive/Size.js";
+import { Size, UNBOUNDED } from "~/primitive/Size.js";
 import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
@@ -539,6 +539,22 @@ class Split extends LayoutManager {
     }
 
     /**
+     * The split's maximum size: deliberately unbounded on both axes. A
+     * user-resizable split absorbs arbitrary slack — its panes are dragged, so
+     * there is no meaningful ceiling. This is *not* derived from the panes'
+     * `getMaxSize` by summing their extents: that summation lacks the
+     * unbounded-saturation the box managers apply, so a pane
+     * reporting an unbounded max would sum to a large *finite* number rather
+     * than saturating — a subtly wrong report. Returning unbounded directly is
+     * both correct and honest for a container whose purpose is to absorb space.
+     *
+     * @returns `{ width: UNBOUNDED, height: UNBOUNDED }`.
+     */
+    getMaxSize(): Size | null {
+        return { width: UNBOUNDED, height: UNBOUNDED };
+    }
+
+    /**
      * Shared core of {@link getPreferredSize} / {@link getMinSize}: sums the
      * panes' sizes (selected by `sizeOf`) along the split axis together with the
      * gutter footprint, takes the largest across it, and adds the container
@@ -774,9 +790,7 @@ class Split extends LayoutManager {
     detach() : this {
         super.detach();
 
-        for (let idx in this._gutters) {
-            let gutter = this._gutters[idx];
-
+        for (const gutter of this._gutters) {
             let gutterElement = gutter.getElement()!;
             DOM.sink.removeChild(DOM.source.getParentNode(gutterElement)!, gutterElement);
             gutter.destroy();
@@ -891,13 +905,7 @@ class Split extends LayoutManager {
         // working size past the host's inner rect so trailing panes land
         // past `innerSize` and the host's CSS `overflow: auto` produces a
         // scrollbar.
-        if (this.isOverflowingX() || this.isOverflowingY()) {
-            const totalMin = this.computeTotalMinSize();
-            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
-            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
-
-            containerSize = { width: w, height: h };
-        }
+        containerSize = this.inflateForOverflow(containerSize);
 
         let element = container.getElement()!;
         // The visible layout is driven by the displayed panes: a non-displayed

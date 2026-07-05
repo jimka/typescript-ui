@@ -134,6 +134,42 @@ export abstract class LayoutManager extends BaseObject {
     }
 
     /**
+     * Computes the children's combined minSize along this manager's geometry.
+     * The default is a no-op (`{ width: 0, height: 0 }`); managers that support
+     * host-driven overflow scrolling override it to report the min the working
+     * size must inflate to. Consumed by {@link LayoutManager.inflateForOverflow}.
+     *
+     * @returns The total min-size of the children.
+     */
+    protected computeTotalMinSize(): Size {
+        return { width: 0, height: 0 };
+    }
+
+    /**
+     * Inflates a working container size to the children's combined minSize on
+     * whichever axes the host has marked as overflowing (`Panel.setAutoScroll`),
+     * so trailing children land past the host's inner rect and its CSS
+     * `overflow: auto` produces the scrollbar. Axes the host has not opted into
+     * keep the original extent and clamp as before.
+     *
+     * @param containerSize - The host's real inner size.
+     * @returns The working size to lay out against — the original when neither
+     *   axis overflows, otherwise inflated to the min total on the active axes.
+     */
+    protected inflateForOverflow(containerSize: Size): Size {
+        if (!this.isOverflowingX() && !this.isOverflowingY()) {
+            return containerSize;
+        }
+
+        const totalMin = this.computeTotalMinSize();
+
+        return {
+            width:  this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width,
+            height: this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height,
+        };
+    }
+
+    /**
      * Sets the per-axis overflow flags. Called by the host `Panel` whenever
      * its `autoScroll` mode changes; subclasses read the resulting state via
      * `isOverflowingX` / `isOverflowingY` in their `doLayout`. Triggers a

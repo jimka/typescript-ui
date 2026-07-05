@@ -93,6 +93,6 @@ describe('Fit doLayout geometry', () => {
         host.addComponent(new Component({ preferredSize: { width: 10, height: 10 } }));
 
         // Contract: Fit expects exactly one child; doLayout throws on two.
-        expect(() => host.doLayout()).toThrow(/more then one component/);
+        expect(() => host.doLayout()).toThrow(/more than one component/);
     });
 });

@@ -5,6 +5,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
 import { Split } from '~/layout/Split';
+import { UNBOUNDED } from '~/primitive/Size';
 import { TextArea } from '~/component/input/TextArea';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
@@ -745,5 +746,21 @@ describe('Split non-collapsible pane (collapsible: false)', () => {
 
         split.setPaneCollapsed(0, true);
         expect(split.isPaneCollapsed(0)).toBe(true);
+    });
+});
+
+describe('Split getMaxSize', () => {
+    afterEach(() => DOM.reset());
+
+    it('reports unbounded on both axes with no container', () => {
+        // A user-resizable split absorbs arbitrary slack; its ceiling is
+        // deliberately unbounded rather than derived from the panes.
+        expect(new Split().getMaxSize()).toEqual({ width: UNBOUNDED, height: UNBOUNDED });
+    });
+
+    it('reports unbounded on both axes regardless of the panes present', () => {
+        installTestDOM(CONFIG);
+        const { split } = hostSplit(new Split(), 2);
+        expect(split.getMaxSize()).toEqual({ width: UNBOUNDED, height: UNBOUNDED });
     });
 });

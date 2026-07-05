@@ -278,15 +278,6 @@ export abstract class BoxLayout extends LayoutManager {
     }
 
     /**
-     * Computes the children's combined minSize along this manager's geometry.
-     * Implemented per-axis by each subclass; consumed here by
-     * {@link BoxLayout.inflateForOverflow}.
-     *
-     * @returns The total min-size of the children.
-     */
-    protected abstract computeTotalMinSize(): Size;
-
-    /**
      * Aggregates the children's maximum sizes per the box contract: main axis =
      * sum of child maxima (+ spacing; in `"equal"` mode count * widest-child-max),
      * cross axis = max of child maxima, a null or unbounded child max making that
@@ -357,30 +348,6 @@ export abstract class BoxLayout extends LayoutManager {
         return {
             width:  horizontal ? mainValue  : crossValue,
             height: horizontal ? crossValue : mainValue
-        };
-    }
-
-    /**
-     * Inflates a working container size to the children's combined minSize on
-     * whichever axes the host has marked as overflowing (`Panel.setAutoScroll`),
-     * so trailing children land past the host's inner rect and its CSS
-     * `overflow: auto` produces the scrollbar. Axes the host has not opted into
-     * keep the original extent and clamp as before.
-     *
-     * @param containerSize - The host's real inner size.
-     * @returns The working size to lay out against — the original when neither
-     *   axis overflows, otherwise inflated to the min total on the active axes.
-     */
-    protected inflateForOverflow(containerSize: Size): Size {
-        if (!this.isOverflowingX() && !this.isOverflowingY()) {
-            return containerSize;
-        }
-
-        const totalMin = this.computeTotalMinSize();
-
-        return {
-            width:  this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width,
-            height: this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height,
         };
     }
 

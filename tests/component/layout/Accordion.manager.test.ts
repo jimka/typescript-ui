@@ -3,6 +3,7 @@ import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
 import { Accordion } from '~/layout/Accordion';
 import { AccordionConstraints } from '~/layout/AccordionConstraints';
+import { UNBOUNDED } from '~/primitive/Size';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -323,5 +324,19 @@ describe('Accordion manager — X-only overflow', () => {
         acc.setOverflowing(false, false);
         acc.getContainer()!.doLayout();
         expect(observed.getWidth()).toBe(100); // container width, not the 300 totalMin
+    });
+});
+
+describe('Accordion getMaxSize', () => {
+    it('reports unbounded on both axes', () => {
+        // A height-animated vertical stack has no meaningful static ceiling; the
+        // max is deliberately unbounded, keeping min ≤ preferred ≤ max trivially
+        // satisfied against the finite min/preferred reports.
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        const host = hostAccordion(400, 600, acc);
+        host.addComponent(content({ width: 120, height: 100 }), constraints('A', true));
+
+        expect(acc.getMaxSize()).toEqual({ width: UNBOUNDED, height: UNBOUNDED });
     });
 });
