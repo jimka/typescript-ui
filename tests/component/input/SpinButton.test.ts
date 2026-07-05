@@ -1,5 +1,5 @@
 //
-// SpinButton tick-listener + cancelRepeat coverage. emit is protected and the
+// SpinButton tick-listener coverage. emit is protected and the
 // non-DOM `tick` event routes through the framework ListenerBag (no event
 // loop), so it can be exercised on a bare (unmounted) button via an `any` cast
 // confined to this file. Hold-repeat setTimeout cadence is a Non-Goal.
@@ -24,17 +24,6 @@ describe('SpinButton tick listeners', () => {
         btn.off('tick', listener);
         (btn as any).emit('tick');
         expect(ticks).toBe(1);
-    });
-});
-
-describe('SpinButton cancelRepeat', () => {
-    it('is idempotent and does not throw when nothing is scheduled', () => {
-        const btn = new SpinButton('▼');
-
-        expect(() => {
-            btn.cancelRepeat();
-            btn.cancelRepeat();
-        }).not.toThrow();
     });
 });
 

@@ -5,6 +5,7 @@ import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
+import { AutoRepeat } from "~/core/AutoRepeat.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import type { HorizontalSide } from "~/primitive/Edge.js";
 import { callable } from "~/core/Callable.js";
@@ -114,8 +115,7 @@ class ScrollArrowButton extends Component {
     private _glyph:         Glyph;
     private _disabled:      boolean                              = false;
     private _listeners:     ListenerBag<ScrollArrowEvent>        = new ListenerBag<ScrollArrowEvent>();
-    private _repeatHandle:  ReturnType<typeof setTimeout> | null = null;
-    private _repeatDelay:   number                               = ARROW_REPEAT_INITIAL_MS;
+    private _repeat:        AutoRepeat;
 
     /**
      * Constructs a square TRACK_WIDTH × TRACK_WIDTH arrow button pointing in
@@ -150,6 +150,13 @@ class ScrollArrowButton extends Component {
         this._glyph.setPointerEvents("none");
 
         super.addComponent(this._glyph);
+
+        this._repeat = new AutoRepeat({
+            initialDelay: ARROW_REPEAT_INITIAL_MS,
+            decay:        ARROW_REPEAT_DECAY,
+            floor:        ARROW_REPEAT_FLOOR_MS,
+            onTick:       () => this.emit("tick"),
+        });
 
         Event.addListener(this, "mousedown",  this._onMouseDown);
         Event.addListener(this, "mouseover",  this._onMouseOver);
@@ -223,24 +230,11 @@ class ScrollArrowButton extends Component {
         this._disabled = disabled;
 
         if (disabled) {
-            this.cancelRepeat();
+            this._repeat.stop();
             this.setForegroundColor("var(--ts-ui-scrollbar-arrow-disabled-color, rgba(0, 0, 0, 0.18))");
         } else {
             this.setForegroundColor("var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))");
         }
-    }
-
-    /**
-     * Cancels any in-progress hold-repeat schedule and resets the tick delay
-     * to its initial value.
-     */
-    private cancelRepeat(): void {
-        if (this._repeatHandle !== null) {
-            clearTimeout(this._repeatHandle);
-            this._repeatHandle = null;
-        }
-
-        this._repeatDelay = ARROW_REPEAT_INITIAL_MS;
     }
 
     /**
@@ -258,8 +252,7 @@ class ScrollArrowButton extends Component {
             return;
         }
 
-        this.emit("tick");
-        this.scheduleNext();
+        this._repeat.start();
     };
 
     /**
@@ -267,11 +260,11 @@ class ScrollArrowButton extends Component {
      * the viewport.
      */
     private _onMouseUp = (): void => {
-        if (this._repeatHandle === null) {
+        if (!this._repeat.isRunning()) {
             return;
         }
 
-        this.cancelRepeat();
+        this._repeat.stop();
     };
 
     /**
@@ -291,18 +284,6 @@ class ScrollArrowButton extends Component {
     private _onMouseOut = (): void => {
         this.setBackgroundColor("var(--ts-ui-scrollbar-arrow-bg, transparent)");
     };
-
-    /**
-     * Schedules the next hold-repeat tick using the current `_repeatDelay`,
-     * then decays the delay (×0.75, floored at 40 ms) for the following tick.
-     */
-    private scheduleNext(): void {
-        this._repeatHandle = setTimeout((): void => {
-            this.emit("tick");
-            this._repeatDelay = Math.max(ARROW_REPEAT_FLOOR_MS, this._repeatDelay * ARROW_REPEAT_DECAY);
-            this.scheduleNext();
-        }, this._repeatDelay);
-    }
 
 }
 

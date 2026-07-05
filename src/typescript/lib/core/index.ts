@@ -3,6 +3,8 @@
 export { BaseObject } from '~/core/BaseObject.js';
 export { Event } from '~/core/Event.js';
 export { ListenerBag } from '~/core/ListenerBag.js';
+export { AutoRepeat } from '~/core/AutoRepeat.js';
+export type { AutoRepeatOptions } from '~/core/AutoRepeat.js';
 export { Animation } from '~/core/Animation.js';
 export { SmoothScroller } from '~/core/SmoothScroller.js';
 export type { SmoothScrollTarget, ScrollAxis } from '~/core/SmoothScroller.js';
