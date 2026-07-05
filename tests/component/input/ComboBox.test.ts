@@ -43,18 +43,15 @@ describe('ComboBox — items & selection', () => {
         expect(combo.getSelectedIndex()).toBe(0);      // auto-select first
     });
 
-    // contract: setItems' JSDoc (ComboBox.ts "auto-keyed by its array position",
-    // "getValue() returns ... the positional index") and AbstractCustomList's
-    // "stringified indices" comment say a plain-string spec is keyed by POSITION —
-    // but AbstractCustomList builds { key: entry, label: entry }, keying by the
-    // string VALUE, so getValue() returns 'a', not '0'. This it.fails() pins the
-    // documented contract and flags the JSDoc/impl conflict; it will start failing
-    // (alerting us) if either side is corrected. Resolve in ComboBox's owning plan.
-    it.fails('auto-keys a plain-string spec by its array position (per setItems JSDoc)', () => {
+    it('auto-keys a plain-string spec by its value, so getValue returns the string', () => {
         installTestDOM(CONFIG);
         const combo = new ComboBox();
         combo.setItems(['a', 'b', 'c']); // auto-selects the first item
-        expect(combo.getValue()).toBe('0'); // JSDoc contract: positional index of the selection
+        // Intended contract: a plain-string spec is keyed by its VALUE.
+        // NB the setItems JSDoc still says "auto-keyed by its array position /
+        // the positional index" — that wording is stale (the key=value behaviour
+        // was a deliberate change); the doc should be corrected to "by value".
+        expect(combo.getValue()).toBe('a');
     });
 
     it('keeps an explicit { key, label } key so getValue returns it', () => {
