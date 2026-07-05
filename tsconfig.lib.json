@@ -4,7 +4,12 @@
     "declaration": true,
     "declarationDir": "dist/lib/types",
     "emitDeclarationOnly": true,
-    "rootDir": "src/typescript/lib"
+    "rootDir": "src/typescript/lib",
+    // outDir mirrors declarationDir so the post-emit `tsc-alias` pass knows where
+    // the .d.ts live and can rewrite the `~/*` path-alias imports to relative
+    // paths. Nothing is emitted here (emitDeclarationOnly), so it only locates
+    // the declarations; without it tsc-alias errors "outDir is not set".
+    "outDir": "dist/lib/types"
   },
   "include": ["src/typescript/lib/**/*"]
 }
