@@ -7,6 +7,8 @@ import type { Handle } from "~/core/DOM.js";
 import { Panel } from "~/core/Panel.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
+import { Tooltip } from "~/overlay/Tooltip.js";
 import { Type } from "~/core/Type.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Fit } from "~/layout/Fit.js";
@@ -36,6 +38,14 @@ export interface CustomListItem {
      * resolve it from the record field named by the list's `glyphField`.
      */
     glyph?: string;
+    /**
+     * Optional hover-tooltip text for the row, shown after the standard hover
+     * delay via [`Tooltip`](/api/overlay/classes/Tooltip). Lets a host surface
+     * the full value behind a truncated label without reaching into the row DOM.
+     * Array-supplied items carry it directly; store-bound items resolve it from
+     * the record field named by the list's `tooltipField`.
+     */
+    tooltip?: string;
 }
 
 /**
@@ -81,6 +91,11 @@ export interface AbstractCustomListOptions extends AbstractInputOptions {
      * Array-supplied items carry their glyph on the item instead.
      */
     glyphField?:   string;
+    /**
+     * Record field whose value becomes each store-bound item's `tooltip` (the
+     * hover text). Array-supplied items carry their tooltip on the item instead.
+     */
+    tooltipField?: string;
     /**
      * Zero-argument factory producing the renderer for each row. Defaults to a
      * label renderer reproducing the plain-text rows. Supply
@@ -225,10 +240,12 @@ class CustomListRow extends Component {
     // be applied at render time.
     private _selected: boolean = false;
     private _focused:  boolean = false;
-    /** Zero-based index in the row pool; forwarded to `_onClick` on click. */
+    /** Zero-based index in the row pool; forwarded to the handlers on a gesture. */
     private _index:    number;
-    /** Owner-supplied click handler invoked with this row's `_index`. */
-    private readonly _onClick: (index: number, event: MouseEvent) => void;
+    /** Owner-supplied gesture handlers, each invoked with this row's `_index`. */
+    private readonly _handlers: RowHandlers;
+    /** Whether a tooltip is currently attached, so `updateItem` can detach it. */
+    private _tooltipAttached: boolean = false;
     /**
      * The renderer owning this row's content (label, optional glyph). Built
      * from the owning list's factory, appended straight into the row DOM in
@@ -239,16 +256,16 @@ class CustomListRow extends Component {
     private _renderer: ListItemRenderer;
 
     /**
-     * @param onClick - Called with the row's index and the raw mouse event
-     *   when the row is clicked.
+     * @param handlers - Owner-supplied gesture callbacks (click, contextmenu,
+     *   dblclick), each invoked with the row's index and the raw mouse event.
      * @param index - Initial pool index.
      * @param rendererFactory - Zero-argument factory producing this row's
      *   content renderer.
      */
-    constructor(onClick: (index: number, event: MouseEvent) => void, index: number, rendererFactory: () => ListItemRenderer) {
+    constructor(handlers: RowHandlers, index: number, rendererFactory: () => ListItemRenderer) {
         super({ tag: "div" });
 
-        this._onClick  = onClick;
+        this._handlers = handlers;
         this._index    = index;
         this._renderer = rendererFactory();
         this._renderer.setPointerEvents("none");
@@ -265,6 +282,8 @@ class CustomListRow extends Component {
 
         Event.addListener(this, "pointerdown", this.onPointerDown);
         Event.addListener(this, "click",       this.onClick);
+        Event.addListener(this, "contextmenu", this.onContextMenu);
+        Event.addListener(this, "dblclick",    this.onDblClick);
     }
 
     /**
@@ -278,8 +297,30 @@ class CustomListRow extends Component {
      */
     updateItem(item: CustomListItem, index: number): this {
         this._renderer.update({ item, index });
+        this.applyTooltip(item.tooltip);
 
         return this;
+    }
+
+    /**
+     * Attaches (or detaches) the row's hover tooltip to match the item. Called
+     * from {@link updateItem} so a pooled row reused for a different item tracks
+     * the new item's `tooltip` — attaching when set, detaching when cleared.
+     *
+     * @param text - The item's tooltip text, or `undefined` for no tooltip.
+     */
+    private applyTooltip(text: string | undefined): void {
+        if (text) {
+            // Tooltip.attach replaces any prior attachment, so re-attaching with
+            // new text on pool reuse is safe. The renderer is pointer-events:none,
+            // so hover events target the row element and the component-level
+            // attach matches (no need to reach the label child).
+            Tooltip.attach(this, text);
+            this._tooltipAttached = true;
+        } else if (this._tooltipAttached) {
+            Tooltip.detach(this);
+            this._tooltipAttached = false;
+        }
     }
 
     /**
@@ -487,8 +528,42 @@ class CustomListRow extends Component {
      * @param e - The click event.
      */
     private onClick(e: MouseEvent): void {
-        this._onClick(this._index, e);
+        this._handlers.onClick(this._index, e);
     }
+
+    /**
+     * Forwards the row's index and the raw mouse event to the owner-supplied
+     * context-menu callback.
+     *
+     * @param e - The contextmenu event.
+     */
+    private onContextMenu(e: MouseEvent): void {
+        this._handlers.onContextMenu(this._index, e);
+    }
+
+    /**
+     * Forwards the row's index and the raw mouse event to the owner-supplied
+     * double-click callback.
+     *
+     * @param e - The dblclick event.
+     */
+    private onDblClick(e: MouseEvent): void {
+        this._handlers.onDblClick(this._index, e);
+    }
+}
+
+/**
+ * Owner-supplied gesture callbacks for a {@link CustomListRow}, each invoked
+ * with the row's current pool index and the originating mouse event. The row
+ * owns no selection or event-dispatch logic itself — it forwards to the list.
+ */
+interface RowHandlers {
+    /** Invoked on a left-click of the row. */
+    onClick:       (index: number, event: MouseEvent) => void;
+    /** Invoked on a right-click of the row (before the list suppresses the native menu). */
+    onContextMenu: (index: number, event: MouseEvent) => void;
+    /** Invoked on a double-click of the row. */
+    onDblClick:    (index: number, event: MouseEvent) => void;
 }
 
 /**
@@ -556,6 +631,14 @@ abstract class AbstractCustomList<
      * `declare`.
      */
     private _rendererFactory: () => ListItemRenderer = () => new LabelListItemRenderer();
+    /**
+     * Listeners for the row-gesture events that carry a row index payload
+     * (`contextmenu`, `dblclick`) — kept off the DOM `Event` bus, which fires
+     * bare DOM events without the index. `change` / `action` stay on the DOM
+     * bus via {@link on}. Mirrors [`Tree`](/api/component/tree/classes/Tree)'s
+     * `contextmenu` / `dblclick` wiring.
+     */
+    private _rowListeners: ListenerBag<"contextmenu" | "dblclick"> = new ListenerBag();
 
     /**
      * @param options - Caller-supplied options bag.
@@ -611,7 +694,7 @@ abstract class AbstractCustomList<
         }
 
         if (this._options.store !== undefined && this._options.displayField !== undefined) {
-            this.setStore(this._options.store, this._options.displayField, this._options.valueField, this._options.glyphField);
+            this.setStore(this._options.store, this._options.displayField, this._options.valueField, this._options.glyphField, this._options.tooltipField);
         }
 
         if (this._options.items !== undefined) {
@@ -693,6 +776,7 @@ abstract class AbstractCustomList<
         if (options.displayField    !== undefined) this._options.displayField    = options.displayField;
         if (options.valueField      !== undefined) this._options.valueField      = options.valueField;
         if (options.glyphField      !== undefined) this._options.glyphField      = options.glyphField;
+        if (options.tooltipField    !== undefined) this._options.tooltipField    = options.tooltipField;
         if (options.rendererFactory !== undefined) this._options.rendererFactory = options.rendererFactory;
 
         return this;
@@ -748,7 +832,7 @@ abstract class AbstractCustomList<
             built.push(
                 typeof entry === "string"
                     ? { key: entry, label: entry }
-                    : { key: (entry as CustomListItem).key, label: (entry as CustomListItem).label, glyph: (entry as CustomListItem).glyph },
+                    : { key: (entry as CustomListItem).key, label: (entry as CustomListItem).label, glyph: (entry as CustomListItem).glyph, tooltip: (entry as CustomListItem).tooltip },
             );
         }
 
@@ -806,7 +890,7 @@ abstract class AbstractCustomList<
         this._items.push(
             typeof item === "string"
                 ? { key: item, label: item }
-                : { key: (item as CustomListItem).key, label: (item as CustomListItem).label, glyph: (item as CustomListItem).glyph },
+                : { key: (item as CustomListItem).key, label: (item as CustomListItem).label, glyph: (item as CustomListItem).glyph, tooltip: (item as CustomListItem).tooltip },
         );
 
         this.pauseLayout();
@@ -829,10 +913,12 @@ abstract class AbstractCustomList<
      * @param glyphField - Optional. The record field whose value becomes each
      *   item's `glyph` (read by the glyph renderer); omitted leaves items
      *   glyph-less.
+     * @param tooltipField - Optional. The record field whose value becomes each
+     *   item's hover `tooltip`; omitted leaves items tooltip-less.
      *
      * @returns This component, for method chaining.
      */
-    setStore(store: AbstractStore, displayField: string, valueField?: string, glyphField?: string): this {
+    setStore(store: AbstractStore, displayField: string, valueField?: string, glyphField?: string, tooltipField?: string): this {
         const oldStore = this._options.store;
 
         if (this._storeRefresh && oldStore) {
@@ -844,6 +930,7 @@ abstract class AbstractCustomList<
         this._options.displayField = displayField;
         this._options.valueField   = valueField;
         this._options.glyphField   = glyphField;
+        this._options.tooltipField = tooltipField;
 
         const refresh = (): void => this.refreshFromStore();
         this._storeRefresh = refresh;
@@ -990,17 +1077,30 @@ abstract class AbstractCustomList<
      * prior native `<select>`-backed semantics. `"change"` and `"binding"`
      * are the inherited {@link AbstractInput} listener-bag events.
      *
+     * `"contextmenu"` fires when a row is right-clicked, with the row index and
+     * the raw {@link MouseEvent} (the native menu is suppressed); `"dblclick"`
+     * fires on a row double-click with the same payload. Both carry the row
+     * index directly, so hosts need not walk the row DOM to resolve it.
+     *
      * @param event - The event name.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This component, for method chaining.
      */
-    on(event: "action",  listener: Function): this;
-    on(event: "change",  listener: (value: TValue) => void): this;
-    on(event: "binding", listener: () => void): this;
-    on(event: "action" | "change" | "binding", listener: Function): this {
+    on(event: "action",      listener: Function): this;
+    on(event: "change",      listener: (value: TValue) => void): this;
+    on(event: "binding",     listener: () => void): this;
+    on(event: "contextmenu", listener: (index: number, event: MouseEvent) => void): this;
+    on(event: "dblclick",    listener: (index: number, event: MouseEvent) => void): this;
+    on(event: "action" | "change" | "binding" | "contextmenu" | "dblclick", listener: Function): this {
         if (event === "action") {
             Event.addListener(this, "change", listener);
+
+            return this;
+        }
+
+        if (event === "contextmenu" || event === "dblclick") {
+            this._rowListeners.add(event, listener);
 
             return this;
         }
@@ -1017,14 +1117,20 @@ abstract class AbstractCustomList<
      *
      * @returns This component, for method chaining.
      */
-    off(event: "action" | "change" | "binding", listener: Function): this {
+    off(event: "action" | "change" | "binding" | "contextmenu" | "dblclick", listener: Function): this {
         if (event === "action") {
             Event.removeListener(this, "change", listener);
 
             return this;
         }
 
-        return super.off(event, listener);
+        if (event === "contextmenu" || event === "dblclick") {
+            this._rowListeners.remove(event, listener);
+
+            return this;
+        }
+
+        return super.off(event as "change" | "binding", listener);
     }
 
     /**
@@ -1058,6 +1164,7 @@ abstract class AbstractCustomList<
         const displayField = this._options.displayField;
         const valueField   = this._options.valueField;
         const glyphField   = this._options.glyphField;
+        const tooltipField = this._options.tooltipField;
 
         if (!store || !displayField) {
             return;
@@ -1083,8 +1190,9 @@ abstract class AbstractCustomList<
                                ? String(record.get(valueField))
                                : String(record.getId());
             const glyph  = glyphField ? String(record.get(glyphField)) : undefined;
+            const tooltip = tooltipField ? String(record.get(tooltipField)) : undefined;
 
-            this._items.push({ key, label, glyph });
+            this._items.push({ key, label, glyph, tooltip });
 
             if (previousAnchorKey !== null && key === previousAnchorKey) {
                 restoredAnchor = i;
@@ -1125,7 +1233,15 @@ abstract class AbstractCustomList<
 
         if (newLen > oldLen) {
             for (let i = oldLen; i < newLen; i++) {
-                const row = new CustomListRow((idx, e) => this.handleRowClick(idx, e), i, this._rendererFactory);
+                const row = new CustomListRow(
+                    {
+                        onClick:       (idx, e) => this.handleRowClick(idx, e),
+                        onContextMenu: (idx, e) => this.handleRowContextMenu(idx, e),
+                        onDblClick:    (idx, e) => this.handleRowDblClick(idx, e),
+                    },
+                    i,
+                    this._rendererFactory,
+                );
                 row.updateItem(this._items[i], i);
                 row.setSelected(this._selectedSet.has(i));
                 row.setFocused(i === this._focusedIndex);
@@ -1134,6 +1250,9 @@ abstract class AbstractCustomList<
             }
         } else if (newLen < oldLen) {
             for (let i = newLen; i < oldLen; i++) {
+                // Drop the row's tooltip attachment (a static id-keyed map) before
+                // discarding the row, so a shrinking pool doesn't leak entries.
+                Tooltip.detach(this._rowPool[i]);
                 this._innerPanel.removeComponent(this._rowPool[i]);
             }
             this._rowPool.splice(newLen);
@@ -1222,6 +1341,43 @@ abstract class AbstractCustomList<
         }
 
         this.notifyUserChange();
+    }
+
+    /**
+     * Handles a right-click on a pool row: suppresses the browser's native
+     * context menu and fires the `"contextmenu"` event with the row index and
+     * the raw event. Deliberately does not change the selection — a host that
+     * wants the right-clicked row highlighted calls {@link setSelectedIndex}
+     * from its listener (mirrors [`Tree`](/api/component/tree/classes/Tree)'s
+     * contextmenu contract). Out-of-range indices are ignored.
+     *
+     * @param idx - The row index that was right-clicked.
+     * @param e - The original contextmenu event.
+     */
+    protected handleRowContextMenu(idx: number, e: MouseEvent): void {
+        if (idx < 0 || idx >= this._items.length) {
+            return;
+        }
+
+        e.preventDefault();
+        this._rowListeners.fire("contextmenu", idx, e);
+    }
+
+    /**
+     * Handles a double-click on a pool row: fires the `"dblclick"` event with
+     * the row index and the raw event. The first click of the pair already ran
+     * through {@link handleRowClick} and set the selection, so this only layers
+     * an activation signal on top. Out-of-range indices are ignored.
+     *
+     * @param idx - The row index that was double-clicked.
+     * @param e - The original dblclick event.
+     */
+    protected handleRowDblClick(idx: number, e: MouseEvent): void {
+        if (idx < 0 || idx >= this._items.length) {
+            return;
+        }
+
+        this._rowListeners.fire("dblclick", idx, e);
     }
 
     /**

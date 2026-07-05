@@ -129,6 +129,78 @@ describe('ButtonGroup selection model', () => {
         expect(group.getButtons()).toEqual([a]);
     });
 
+    it('default: clicking the selected button off re-selects it (one always selected)', () => {
+        installTestDOM(CONFIG);
+
+        const a = new ToggleButton('A');
+        const b = new ToggleButton('B');
+        const group = new ButtonGroup({ buttons: [a, b] });
+
+        b.setSelected(true);
+        selectVia(group, b);
+
+        // A click on the active button toggles it off, then updateButtonStates
+        // runs — the radio invariant snaps it back on.
+        b.setSelected(false);
+        selectVia(group, b);
+
+        expect(b.isSelected()).toBe(true);
+    });
+
+    it('allowDeselect: clicking the selected button off leaves the group with nothing selected', () => {
+        installTestDOM(CONFIG);
+
+        const a = new ToggleButton('A');
+        const b = new ToggleButton('B');
+        const group = new ButtonGroup({ buttons: [a, b], allowDeselect: true });
+        const onSelection = vi.fn();
+        group.on('selection', onSelection);
+
+        b.setSelected(true);
+        selectVia(group, b);            // select b (deselects a)
+        expect(b.isSelected()).toBe(true);
+
+        b.setSelected(false);
+        selectVia(group, b);            // click b off — stays off
+
+        expect(b.isSelected()).toBe(false);
+        expect(a.isSelected()).toBe(false);
+        // selection still fires, carrying the now-deselected initiator.
+        expect(onSelection).toHaveBeenLastCalledWith(b);
+    });
+
+    it('allowDeselect still enforces mutual exclusivity on select', () => {
+        installTestDOM(CONFIG);
+
+        const a = new ToggleButton('A');
+        const b = new ToggleButton('B');
+        const group = new ButtonGroup({ buttons: [a, b], allowDeselect: true });
+
+        a.setSelected(true);
+        selectVia(group, a);
+        b.setSelected(true);
+        selectVia(group, b);            // choosing b deselects a
+
+        expect(b.isSelected()).toBe(true);
+        expect(a.isSelected()).toBe(false);
+    });
+
+    it('setAllowDeselect toggles the behaviour at runtime', () => {
+        installTestDOM(CONFIG);
+
+        const a = new ToggleButton('A');
+        const group = new ButtonGroup({ buttons: [a] });
+
+        group.setAllowDeselect(true);
+
+        a.setSelected(true);
+        selectVia(group, a);
+        a.setSelected(false);
+        selectVia(group, a);
+
+        expect(a.isSelected()).toBe(false);
+    });
+
     it('RadioButton members receive the shared radioName (the group id)', () => {
         installTestDOM(CONFIG);
 

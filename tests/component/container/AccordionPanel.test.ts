@@ -182,3 +182,47 @@ describe('AccordionPanel sectiontoggle event', () => {
         expect(events).toContainEqual([2, true]);
     });
 });
+
+describe('AccordionPanel per-section fill weights', () => {
+    afterEach(() => DOM.reset());
+
+    /** An open section whose content has a small fixed preferred height. */
+    function section(label: string, fillWeight?: number): AccordionSectionConfig {
+        const component = new Component();
+        component.setPreferredSize(0, PREF);
+
+        return { label, component, initiallyOpen: true, fillWeight };
+    }
+
+    // The fixed preferred height each section's content starts at, before fill.
+    const PREF = 40;
+
+    it('fills a non-bottommost weighted section, leaving an unweighted one at preferred', () => {
+        installTestDOM(CONFIG);
+
+        const top    = section('Top', 1);
+        const bottom = section('Bottom');
+        realise(new AccordionPanel({ sections: [top, bottom] }));
+
+        // The weighted top section (index 0) absorbs the slack; the bottommost,
+        // unweighted section stays at its preferred height — proving fill follows
+        // the weight, not position (the legacy bottommost-fills rule).
+        expect(bottom.component.getHeight()).toBe(PREF);
+        expect(top.component.getHeight()).toBeGreaterThan(PREF * 3);
+    });
+
+    it('splits the leftover between sections in proportion to their weights', () => {
+        installTestDOM(CONFIG);
+
+        const a = section('A', 1);
+        const b = section('B', 3);
+        realise(new AccordionPanel({ sections: [a, b] }));
+
+        // Both grew past preferred, and B's extra is 3× A's extra.
+        const extraA = a.component.getHeight() - PREF;
+        const extraB = b.component.getHeight() - PREF;
+
+        expect(extraA).toBeGreaterThan(0);
+        expect(extraB).toBeCloseTo(extraA * 3, 5);
+    });
+});

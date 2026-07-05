@@ -105,6 +105,13 @@ const DIALOG_VIEWPORT_MARGIN: number = 24;
 const DIALOG_ANIM_DURATION_MS: number = 150;
 
 /**
+ * CSS selector matching the focusable elements inside a dialog — the Tab
+ * focus-trap boundary set, the initial-focus candidates, and the primary-button
+ * lookup all share it so the notion of "focusable" stays single-sourced.
+ */
+const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+/**
  * Vertical breathing room reserved above and below the title text inside the
  * `TITLE_HEIGHT` row. 4 px on each side: keeps the bold label off the divider
  * border and gives a balanced visual cap height. Used both for the text's
@@ -756,20 +763,59 @@ class Dialog extends Component implements DismissableLayer {
     }
 
     /**
-     * Focuses the first focusable descendant inside the dialog.
+     * Moves initial focus into the dialog. Prefers the first focusable element
+     * in the content region, so a form field — not the title-bar close button,
+     * which is first in DOM order — receives focus on open. Falls back to the
+     * primary action button, then to the first focusable element anywhere in the
+     * dialog.
      */
     private focusFirst(): void {
-        const el        = this.getElement();
-        const focusable = el
-            ? DOM.source.querySelectorAll(
-                el,
-                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-            )
-            : undefined;
+        const contentEl = this._contentContainer.getElement();
+        const inContent = contentEl ? DOM.source.querySelectorAll(contentEl, FOCUSABLE_SELECTOR) : [];
 
-        if (focusable && focusable.length > 0) {
+        if (inContent.length > 0) {
+            DOM.sink.focus(inContent[0]);
+
+            return;
+        }
+
+        const primary = this.primaryButtonElement();
+
+        if (primary) {
+            DOM.sink.focus(primary);
+
+            return;
+        }
+
+        const el        = this.getElement();
+        const focusable = el ? DOM.source.querySelectorAll(el, FOCUSABLE_SELECTOR) : [];
+
+        if (focusable.length > 0) {
             DOM.sink.focus(focusable[0]);
         }
+    }
+
+    /**
+     * Returns the DOM element of the primary action button, used as the initial
+     * focus target when the content region has nothing focusable. Resolves by
+     * position: the index of the `primary` entry in the resolved button set maps
+     * to the same-indexed focusable in the button row.
+     *
+     * @returns The primary button element, or `null` when none is primary or the
+     *   row is not yet rendered.
+     */
+    private primaryButtonElement(): Handle | null {
+        const buttons = this._config.buttons ?? DEFAULT_BUTTONS;
+        const index   = buttons.findIndex(b => b.primary);
+
+        if (index < 0) {
+            return null;
+        }
+
+        const rowEl = this._buttonRow.getElement();
+        const focusable = rowEl ? DOM.source.querySelectorAll(rowEl, FOCUSABLE_SELECTOR) : [];
+
+        return focusable[index] ?? null;
     }
 
     /**
@@ -784,10 +830,8 @@ class Dialog extends Component implements DismissableLayer {
             return [];
         }
 
-        return DOM.source.querySelectorAll(
-            el,
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        ).filter(el => !DOM.source.hasAttribute(el, 'disabled'));
+        return DOM.source.querySelectorAll(el, FOCUSABLE_SELECTOR)
+            .filter(el => !DOM.source.hasAttribute(el, 'disabled'));
     }
 
     /**
@@ -798,7 +842,14 @@ class Dialog extends Component implements DismissableLayer {
     private onKeyDown(e: KeyboardEvent): void {
         // Escape is owned by LayerManager's keydown handler, which closes the
         // topmost non-manual layer (this dialog when it is on top). The dialog
-        // keeps only the Tab focus-trap here.
+        // keeps only the Tab focus-trap and the Enter-confirms-the-primary
+        // shortcut here.
+        if (e.key === 'Enter') {
+            this.onEnter(e);
+
+            return;
+        }
+
         if (e.key === 'Tab') {
             const focusable = this.getFocusable();
 
@@ -822,6 +873,49 @@ class Dialog extends Component implements DismissableLayer {
                 }
             }
         }
+    }
+
+    /**
+     * Confirms the dialog on Enter by resolving the primary button's result,
+     * so a simple form submits like one without the caller wiring Enter itself.
+     *
+     * @remarks Deliberately inert when focus is on a `<textarea>` (Enter inserts
+     * a newline) or on a `<button>` (the button activates itself on Enter, and
+     * hijacking it would fire the wrong action). No-op when no button is marked
+     * `primary`, so a dialog with no clear default action does not submit blind.
+     *
+     * @param e - The keydown event for the Enter press.
+     */
+    private onEnter(e: KeyboardEvent): void {
+        const active = DOM.source.getActiveElement();
+        const tag    = active ? DOM.source.getTagName(active).toLowerCase() : null;
+
+        if (tag === 'textarea' || tag === 'button') {
+            return;
+        }
+
+        const result = this.primaryResult();
+
+        if (result === null) {
+            return;
+        }
+
+        e.preventDefault();
+        this.hide(result);
+    }
+
+    /**
+     * Returns the result of the button marked `primary` in this dialog's
+     * resolved button set — the action Enter confirms — or `null` when none is
+     * primary.
+     *
+     * @returns The primary button's [`DialogResult`](/api/overlay/type-aliases/DialogResult), or `null`.
+     */
+    private primaryResult(): DialogResult | null {
+        const buttons = this._config.buttons ?? DEFAULT_BUTTONS;
+        const primary = buttons.find(b => b.primary);
+
+        return primary ? (primary.result ?? 'cancel') : null;
     }
 
     /**

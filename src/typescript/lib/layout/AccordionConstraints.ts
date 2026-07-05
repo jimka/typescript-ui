@@ -21,6 +21,17 @@ export class AccordionConstraints extends LayoutConstraints {
     tools?: Component[];
 
     /**
+     * Share of the container's leftover height this section absorbs when the open
+     * sections underflow. `0` (the default) sits at preferred height; a positive
+     * weight grows the section by its fraction of the total fill weight, so a
+     * single weighted section fills all the slack and equal weights split it. Lets
+     * a section other than the bottommost fill — the general form of
+     * {@link Accordion.setFillHeight}, and the reason a filling section no longer
+     * needs an outsized preferred height to win the shrink.
+     */
+    fillWeight?: number;
+
+    /**
      * @param label - Text displayed in the section header.
      * @param initiallyOpen - Whether the section starts expanded. Defaults to false.
      * @param glyph - Optional registry glyph name shown leading the header

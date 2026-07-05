@@ -23,6 +23,14 @@ export type ButtonGroupEvent = "selection";
 export interface ButtonGroupOptions {
     buttons?: Array<RadioButton | ToggleButton>;
     /**
+     * When `true`, clicking the currently-selected button leaves it deselected
+     * instead of re-selecting it — so the group can hold **nothing** selected.
+     * Defaults to `false` (the classic radio invariant: exactly one selected once
+     * a choice is made). Use `true` for a toggle rail where re-clicking the active
+     * item is a meaningful "turn it off" gesture (e.g. a collapsible view switch).
+     */
+    allowDeselect?: boolean;
+    /**
      * Multi-event listener bag dispatched to {@link ButtonGroup.on} at
      * construction time.
      */
@@ -45,6 +53,7 @@ class ButtonGroup {
     buttons: Array<RadioButton | ToggleButton> = new Array<RadioButton | ToggleButton>();
 
     private _groupId: string = 'bg-' + Math.random().toString(36).slice(2, 10);
+    private _allowDeselect: boolean = false;
     private _rovingTabIndex: RovingTabIndex | null = null;
     private _listeners: ListenerBag<ButtonGroupEvent> = new ListenerBag<ButtonGroupEvent>();
 
@@ -55,6 +64,8 @@ class ButtonGroup {
      *   the given buttons via {@link addButtons}.
      */
     constructor(options?: ButtonGroupOptions) {
+        if (options?.allowDeselect !== undefined) this._allowDeselect = options.allowDeselect;
+
         if (options?.buttons !== undefined) this.addButtons(options.buttons);
 
         if (options?.listeners !== undefined) {
@@ -71,13 +82,25 @@ class ButtonGroup {
     }
 
     /**
-     * Deselects all buttons in the group except the one that just became selected.
+     * Reconciles the group after a member's click. When the initiator is now
+     * selected, every other button is deselected (mutual exclusivity). When the
+     * initiator was toggled off by its own click, the group re-selects it to keep
+     * exactly one selected — unless {@link ButtonGroupOptions.allowDeselect} is
+     * set, in which case the group is left with nothing selected. Either way the
+     * `"selection"` event fires with the initiator (which may be deselected under
+     * `allowDeselect`, so listeners should read its `isSelected()`).
      *
-     * @param initiatorButton - The button whose selection triggered the update.
+     * @param initiatorButton - The button whose click triggered the update.
      */
     private updateButtonStates(initiatorButton: RadioButton | ToggleButton): void {
         if (!initiatorButton.isSelected()) {
-            initiatorButton.setSelected(true);
+            // The initiator's own click toggled it off. Radio groups snap it back
+            // on to preserve the one-always-selected invariant; a deselectable
+            // group lets it stay off (nothing selected). Its siblings were already
+            // deselected when it was first chosen, so no further sweep is needed.
+            if (!this._allowDeselect) {
+                initiatorButton.setSelected(true);
+            }
         } else {
             this.buttons.forEach((button) => {
                 if (button !== initiatorButton) {
@@ -90,10 +113,27 @@ class ButtonGroup {
     }
 
     /**
+     * Toggles whether a click on the selected button may leave the group with
+     * nothing selected. See {@link ButtonGroupOptions.allowDeselect}.
+     *
+     * @param value - `true` to allow deselect-to-none; `false` for the classic
+     *   one-always-selected radio invariant.
+     *
+     * @returns This group, for method chaining.
+     */
+    setAllowDeselect(value: boolean): this {
+        this._allowDeselect = value;
+
+        return this;
+    }
+
+    /**
      * Registers a listener for one of this group's events.
      *
-     * @param event - `"selection"` fires whenever the selected button in the
-     *   group changes, receiving the newly selected button.
+     * @param event - `"selection"` fires whenever the group's selection changes,
+     *   receiving the button that was clicked. With `allowDeselect` that button
+     *   may now be deselected (the group holds nothing), so read its
+     *   `isSelected()` to tell a select from a deselect.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This group, for method chaining.
