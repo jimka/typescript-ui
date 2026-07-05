@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { DOM } from "~/core/DOM.js";
-
 /**
  * Runtime type-checking and assertion utilities.
  * Each type provides `is*`, `if*`, and `require*` variants.
@@ -26,50 +24,6 @@ export namespace Type {
     }
 
     /**
-     * Returns true if value is a DOM Element instance.
-     *
-     * @param value - The value to test.
-     *
-     * @returns `true` if `value` is an instance of `Element`, `false` otherwise.
-     */
-    export function isElement(value: object) {
-        return DOM.source.isElement(value);
-    }
-
-    /**
-     * Calls trueFunc if value is a DOM Element, otherwise calls falseFunc.
-     *
-     * @param value - The value to test.
-     * @param trueFunc - The function to call when `value` is a DOM Element.
-     * @param falseFunc - The function to call when `value` is not a DOM Element.
-     */
-    export function ifElement(value: object, trueFunc: Function, falseFunc: Function) {
-        if (Type.isElement(value) && Type.isFunction(trueFunc)) {
-            trueFunc();
-        } else if (Type.isFunction(falseFunc)) {
-            falseFunc();
-        }
-    }
-
-    /**
-     * Throws if value is not a DOM Element.
-     *
-     * @param value - The value to test.
-     * @param msg - The error message to use if the check fails. Defaults to "Argument must be a DOM element."
-     */
-    export function requireElement(value: object, msg: string) {
-        if (Type.isElement(value)) {
-            return;
-        }
-
-        if (!msg) {
-            msg = "Argument must be a DOM element.";
-        }
-
-        throw new Error(msg);
-    }
-
-    /**
      * Returns true if value is a Boolean object or primitive.
      *
      * @param value - The value to test.
@@ -78,21 +32,6 @@ export namespace Type {
      */
     export function isBoolean(value: object) {
         return toString.call(value) === '[object Boolean]';
-    }
-
-    /**
-     * Calls trueFunc if value is a boolean, otherwise calls falseFunc.
-     *
-     * @param value - The value to test.
-     * @param trueFunc - The function to call when `value` is a boolean.
-     * @param falseFunc - The function to call when `value` is not a boolean.
-     */
-    export function ifBoolean(value: object, trueFunc: Function, falseFunc: Function) {
-        if (Type.isBoolean(value) && Type.isFunction(trueFunc)) {
-            trueFunc();
-        } else if (Type.isFunction(falseFunc)) {
-            falseFunc();
-        }
     }
 
     /**
@@ -114,50 +53,6 @@ export namespace Type {
     }
 
     /**
-     * Returns true if value is an arguments object.
-     *
-     * @param value - The value to test.
-     *
-     * @returns `true` if `value` is an `arguments` object, `false` otherwise.
-     */
-    export function isArguments(value: object) {
-        return value && value.toString() === "[object Arguments]";
-    }
-
-    /**
-     * Calls trueFunc if value is an arguments object, otherwise calls falseFunc.
-     *
-     * @param value - The value to test.
-     * @param trueFunc - The function to call when `value` is an arguments object.
-     * @param falseFunc - The function to call when `value` is not an arguments object.
-     */
-    export function ifArguments(value: object, trueFunc: Function, falseFunc: Function) {
-        if (Type.isArguments(value) && Type.isFunction(trueFunc)) {
-            trueFunc();
-        } else if (Type.isFunction(falseFunc)) {
-            falseFunc();
-        }
-    }
-
-    /**
-     * Throws if value is not an arguments object.
-     *
-     * @param value - The value to test.
-     * @param msg - The error message to use if the check fails. Defaults to "Argument must be an arguments-object."
-     */
-    export function requireArguments(value: object, msg: string) {
-        if (Type.isArguments(value)) {
-            return;
-        }
-
-        if (!msg) {
-            msg = "Argument must be an arguments-object.";
-        }
-
-        throw new Error(msg);
-    }
-
-    /**
      * Returns true if value is an array.
      *
      * @param value - The value to test.
@@ -166,21 +61,6 @@ export namespace Type {
      */
     export function isArray(value: object) {
         return value && Array.isArray(value);
-    }
-
-    /**
-     * Calls trueFunc if value is an array, otherwise calls falseFunc.
-     *
-     * @param value - The value to test.
-     * @param trueFunc - The function to call when `value` is an array.
-     * @param falseFunc - The function to call when `value` is not an array.
-     */
-    export function ifArray(value: object, trueFunc: Function, falseFunc: Function) {
-        if (Type.isArray(value) && Type.isFunction(trueFunc)) {
-            trueFunc();
-        } else if (Type.isFunction(falseFunc)) {
-            falseFunc();
-        }
     }
 
     /**
@@ -213,21 +93,6 @@ export namespace Type {
     }
 
     /**
-     * Calls trueFunc if value is an object, otherwise calls falseFunc.
-     *
-     * @param value - The value to test.
-     * @param trueFunc - The function to call when `value` is an object.
-     * @param falseFunc - The function to call when `value` is not an object.
-     */
-    export function ifObject(value: object, trueFunc: Function, falseFunc: Function) {
-        if (Type.isObject(value) && Type.isFunction(trueFunc)) {
-            trueFunc();
-        } else if (Type.isFunction(falseFunc)) {
-            falseFunc();
-        }
-    }
-
-    /**
      * Throws if value is not an object.
      *
      * @param value - The value to test.
@@ -254,21 +119,6 @@ export namespace Type {
      */
     export function isFunction(value: object) {
         return value && {}.toString.call(value) === '[object Function]';
-    }
-
-    /**
-     * Calls trueFunc if value is a function, otherwise calls falseFunc.
-     *
-     * @param value - The value to test.
-     * @param trueFunc - The function to call when `value` is a function.
-     * @param falseFunc - The function to call when `value` is not a function.
-     */
-    export function ifFunction(value: object, trueFunc: Function, falseFunc: Function) {
-        if (Type.isFunction(value) && Type.isFunction(trueFunc)) {
-            trueFunc();
-        } else if (Type.isFunction(falseFunc)) {
-            falseFunc();
-        }
     }
 
     /**
@@ -303,21 +153,6 @@ export namespace Type {
         }
 
         return typeof value === "string";
-    }
-
-    /**
-     * Calls trueFunc if value is a string, otherwise calls falseFunc.
-     *
-     * @param value - The value to test.
-     * @param trueFunc - The function to call when `value` is a string.
-     * @param falseFunc - The function to call when `value` is not a string.
-     */
-    export function ifString(value: object, trueFunc: Function, falseFunc: Function) {
-        if (Type.isString(value) && Type.isFunction(trueFunc)) {
-            trueFunc();
-        } else if (Type.isFunction(falseFunc)) {
-            falseFunc();
-        }
     }
 
     /**
@@ -356,39 +191,6 @@ export namespace Type {
     }
 
     /**
-     * Calls trueFunc if value is a float, otherwise calls falseFunc.
-     *
-     * @param value - The value to test.
-     * @param trueFunc - The function to call when `value` is a float.
-     * @param falseFunc - The function to call when `value` is not a float.
-     */
-    export function ifFloat(value: object, trueFunc: Function, falseFunc: Function) {
-        if (Type.isFloat(value) && Type.isFunction(trueFunc)) {
-            trueFunc();
-        } else if (Type.isFunction(falseFunc)) {
-            falseFunc();
-        }
-    }
-
-    /**
-     * Throws if value is not a float.
-     *
-     * @param value - The value to test.
-     * @param msg - The error message to use if the check fails. Defaults to "Argument must be a float."
-     */
-    export function requireFloat(value: object, msg: string) {
-        if (Type.isFloat(value)) {
-            return;
-        }
-
-        if (!msg) {
-            msg = "Argument must be a float.";
-        }
-
-        throw new Error(msg);
-    }
-
-    /**
      * Returns true if value is a whole-number integer; also accepts null/0 when allowNull is true.
      *
      * @param value - The value to test.
@@ -407,21 +209,6 @@ export namespace Type {
 
         let n: number = (value as Number).valueOf();
         return n === +n && n === (n | 0);
-    }
-
-    /**
-     * Calls trueFunc if value is an integer, otherwise calls falseFunc.
-     *
-     * @param value - The value to test.
-     * @param trueFunc - The function to call when `value` is an integer.
-     * @param falseFunc - The function to call when `value` is not an integer.
-     */
-    export function ifInteger(value: object, trueFunc: Function, falseFunc: Function) {
-        if (Type.isInteger(value) && Type.isFunction(trueFunc)) {
-            trueFunc();
-        } else if (Type.isFunction(falseFunc)) {
-            falseFunc();
-        }
     }
 
     /**
@@ -452,21 +239,6 @@ export namespace Type {
      */
     export function isNumber(value: object) {
         return typeof value == 'number';
-    }
-
-    /**
-     * Calls trueFunc if value is a number, otherwise calls falseFunc.
-     *
-     * @param value - The value to test.
-     * @param trueFunc - The function to call when `value` is a number.
-     * @param falseFunc - The function to call when `value` is not a number.
-     */
-    export function ifNumber(value: object, trueFunc: Function, falseFunc: Function) {
-        if (Type.isNumber(value) && Type.isFunction(trueFunc)) {
-            trueFunc();
-        } else if (Type.isFunction(falseFunc)) {
-            falseFunc();
-        }
     }
 
     /**

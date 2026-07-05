@@ -11,7 +11,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export interface DialogBackdropOptions extends ComponentOptions {
+interface DialogBackdropOptions extends ComponentOptions {
 }
 
 /**

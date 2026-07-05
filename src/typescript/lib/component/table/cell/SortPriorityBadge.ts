@@ -11,7 +11,7 @@ import type { Handle } from "~/core/DOM.js";
  *
  * @category Components
  */
-export interface SortPriorityBadgeOptions extends ComponentOptions {
+interface SortPriorityBadgeOptions extends ComponentOptions {
     priority?: number | null;
 }
 

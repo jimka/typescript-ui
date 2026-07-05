@@ -15,7 +15,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Layouts
  */
-export interface TableLayoutOptions extends LayoutManagerOptions {
+interface TableLayoutOptions extends LayoutManagerOptions {
 }
 
 const BOOLEAN_WIDTH = 60;

@@ -16,13 +16,13 @@ export const COLLAPSE_STRIP_SIZE = 18;
 // Accordion's 200ms default so the two surfaces share one motion personality;
 // kept as a code constant (not a theme token) for the same reason Accordion's
 // duration is — motion belongs to the layout, not the theme.
-export const COLLAPSE_DURATION = 200;
+const COLLAPSE_DURATION = 200;
 
 // Symmetric easing curve, identical to the Accordion's, so a collapse reads as
 // a time-reverse of a restore. A symmetric curve (`easing(t) + easing(1-t) = 1`)
 // avoids the "content vanished, then nothing happened" feel of asymmetric
 // material curves. Shared with Accordion deliberately for a consistent feel.
-export const COLLAPSE_EASING = "cubic-bezier(0.4, 0, 0.6, 1)";
+const COLLAPSE_EASING = "cubic-bezier(0.4, 0, 0.6, 1)";
 
 /**
  * Primes a collapse/restore animation: installs a multi-property geometry
