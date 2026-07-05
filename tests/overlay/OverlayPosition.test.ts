@@ -117,6 +117,17 @@ describe('positionAnchored — horizontal axis', () => {
         // y clamped to viewport.height - size.height - margin = 400 - 150 - 4 = 246.
         expect(p.y).toBe(246);
     });
+
+    it('pins the cross axis to margin when the element is wider than the viewport', () => {
+        const vp     = size(300, 800);
+        const anchor = rect(100, 100, 260, 130);
+        const el     = size(400, 100); // wider than the viewport
+
+        const p = positionAnchored(anchor, el, vp, { axis: 'vertical', margin: 4 });
+
+        // Cross-axis upper bound is below the margin; pin to margin, not negative.
+        expect(p.x).toBe(4);
+    });
 });
 
 describe('clampIntoViewport', () => {
@@ -141,6 +152,20 @@ describe('clampIntoViewport', () => {
 
         expect(p.x).toBe(1000 - 100 - 8);
         expect(p.y).toBe(800 - 50 - 8);
+    });
+
+    it('pins the top-left to margin when the element is larger than the viewport', () => {
+        const vp = size(1000, 800);
+        // Element taller than the viewport minus margins: the naive upper bound
+        // (viewport - size - margin) falls below the margin. A raw clamp whose
+        // min > max would return that negative bound and push the element
+        // off-screen; the primitive must instead pin the top-left at the margin
+        // (top-aligned) and let the caller's height-cap / scroll carry the
+        // overflow — matching the bespoke Menu.show clamp it replaced.
+        const p = clampIntoViewport(200, 500, size(100, 968), vp, 4);
+
+        expect(p.y).toBe(4);
+        expect(p.x).toBe(200);
     });
 });
 

@@ -65,6 +65,25 @@ function flipAxis(nearEdge: number, farEdge: number, extent: number, viewportExt
 }
 
 /**
+ * Clamps a top-left coordinate into `[margin, extent - size - margin]`, pinning
+ * to `margin` (top-aligned) when the element is larger than the available span
+ * so the coordinate never goes below `margin` and off-screen. The upper bound is
+ * floored to `margin` before clamping, because `Util.clamp` resolves a `min >
+ * max` range to the max — the opposite of the `Math.max(margin, Math.min(...))`
+ * this replaces; flooring keeps `min <= max`, so an over-large element pins to
+ * `margin` and the caller's height-cap / scroll carries the overflow.
+ *
+ * @param value - The proposed coordinate.
+ * @param size - The element's extent on this axis.
+ * @param extent - The viewport's extent on this axis.
+ * @param margin - Viewport-edge margin kept on this axis.
+ * @returns The clamped coordinate.
+ */
+function clampAxis(value: number, size: number, extent: number, margin: number): number {
+    return Util.clamp(value, margin, Math.max(margin, extent - size - margin));
+}
+
+/**
  * Places an element of `size` against `anchorRect` inside `viewport`. On the
  * primary axis it grows past the anchor's far edge (below / right), flipping to
  * the near edge (above / left) only when the far side lacks room AND the near
@@ -86,21 +105,24 @@ export function positionAnchored(anchorRect: Rect, size: Size, viewport: Size, o
 
     if (opts.axis === "vertical") {
         const y = flipAxis(anchorRect.top, anchorRect.bottom, size.height, viewport.height, gap);
-        const x = Util.clamp(anchorRect.left, margin, viewport.width - size.width - margin);
+        const x = clampAxis(anchorRect.left, size.width, viewport.width, margin);
 
         return { x, y };
     }
 
     const x = flipAxis(anchorRect.left, anchorRect.right, size.width, viewport.width, gap);
-    const y = Util.clamp(anchorRect.top, margin, viewport.height - size.height - margin);
+    const y = clampAxis(anchorRect.top, size.height, viewport.height, margin);
 
     return { x, y };
 }
 
 /**
  * Clamps a top-left point so an element of `size` stays within
- * `[margin, extent - size - margin]` on both axes. Used by cursor-anchored
- * overlays (context menu, tooltip) that clamp without flipping. Pure — no DOM.
+ * `[margin, extent - size - margin]` on both axes; when the element is larger
+ * than that span the coordinate pins to `margin` (top-left-aligned) rather than
+ * overflowing off-screen, leaving the caller's height-cap / scroll to carry the
+ * overflow. Used by cursor-anchored overlays (context menu, tooltip) that clamp
+ * without flipping. Pure — no DOM.
  *
  * @param x - The proposed left coordinate.
  * @param y - The proposed top coordinate.
@@ -113,7 +135,7 @@ export function positionAnchored(anchorRect: Rect, size: Size, viewport: Size, o
  */
 export function clampIntoViewport(x: number, y: number, size: Size, viewport: Size, margin: number = 0): { x: number; y: number } {
     return {
-        x: Util.clamp(x, margin, viewport.width  - size.width  - margin),
-        y: Util.clamp(y, margin, viewport.height - size.height - margin),
+        x: clampAxis(x, size.width,  viewport.width,  margin),
+        y: clampAxis(y, size.height, viewport.height, margin),
     };
 }

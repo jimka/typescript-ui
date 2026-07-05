@@ -196,6 +196,26 @@ describe('Menu content-based width', () => {
         expect(wide.getMenuWidth()).toBeGreaterThan(120);
         expect(wide.getMenuWidth()).toBeLessThanOrEqual(360);
     });
+
+    it('pins a viewport-overflowing menu at the margin and caps its height to scroll', () => {
+        installTestDOM(CONFIG);
+
+        // 60 items far exceed the 800px viewport, so the menu cannot fit.
+        const menu  = new Menu();
+        const items = Array.from({ length: 60 }, (_, i) => ({ text: `Item ${i}` }));
+
+        menu.show(100, 100, items);
+
+        // The top pins at the margin (never off-screen negative), and the height
+        // is capped below the viewport so the overflow scrolls rather than
+        // spilling past the top edge with unreachable items.
+        expect(menu.getY()).toBe(VIEWPORT_MARGIN);
+
+        const maxHeight = menu.getMaxSize()!.height;
+
+        expect(maxHeight).toBeLessThan(800);
+        expect(menu.getHeight()).toBeLessThanOrEqual(maxHeight);
+    });
 });
 
 describe('Menu.placeVertically', () => {
