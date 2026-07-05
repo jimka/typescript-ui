@@ -1,0 +1,193 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { ComboBox } from '~/component/input/ComboBox';
+import { MemoryStore } from '~/data/MemoryStore';
+import { Model } from '~/data/Model';
+import { DOM } from '~/core/DOM';
+import { Event } from '~/core/Event';
+import { installTestDOM } from '../../dom/TestDOM';
+import fontMetrics from '../../dom/font-metrics.test-font.json';
+
+const CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
+
+// A minimal KeyboardEvent-shaped object for the reducer-forwarding test; the
+// real window-capture keydown → onKeyDown route is manual-verify.
+function key(name: string): KeyboardEvent {
+    return { key: name, preventDefault() {}, stopPropagation() {} } as unknown as KeyboardEvent;
+}
+
+const MODEL = new Model([{ name: 'id' }, { name: 'name' }, { name: 'icon' }], 'id');
+function makeStore(rows: any[]): MemoryStore {
+    const store = new MemoryStore(MODEL, rows);
+    store.loadData(rows);
+    return store;
+}
+
+afterEach(() => DOM.reset());
+
+describe('ComboBox — items & selection', () => {
+    it('setItems populates, returns a defensive copy, and auto-selects the first item', () => {
+        installTestDOM(CONFIG);
+        const combo = new ComboBox();
+        combo.setItems(['a', 'b', 'c']);
+
+        const items = combo.getItems();
+        expect(items).toHaveLength(3);
+        items.push({} as never);                       // mutating the copy…
+        expect(combo.getItems()).toHaveLength(3);      // …must not affect the combo
+        expect(combo.getSelectedIndex()).toBe(0);      // auto-select first
+    });
+
+    it('keeps an explicit { key, label } key so getValue returns it', () => {
+        installTestDOM(CONFIG);
+        const combo = new ComboBox();
+        combo.setItems([{ key: 'x', label: 'X' }, { key: 'y', label: 'Y' }]);
+        expect(combo.getValue()).toBe('x');            // first item's explicit key
+    });
+
+    it('addItem appends while preserving the existing selection', () => {
+        installTestDOM(CONFIG);
+        const combo = new ComboBox();
+        combo.setItems([{ key: 'x', label: 'X' }]);
+        combo.setSelectedIndex(0, false);
+        combo.addItem({ key: 'y', label: 'Y' });
+
+        expect(combo.getItems()).toHaveLength(2);
+        expect(combo.getSelectedIndex()).toBe(0);      // selection unchanged
+        expect(combo.getValue()).toBe('x');
+    });
+
+    it('setSelectedIndex updates value/selection and dispatches a change on the ComboBox by default', () => {
+        installTestDOM(CONFIG);
+        const combo = new ComboBox();
+        combo.setItems([{ key: 'x', label: 'X' }, { key: 'y', label: 'Y' }]);
+        // The change fires through Event.fireEvent(this, "change"); assert the
+        // dispatch directly — DOM-bridge listener delivery is test-ordering
+        // sensitive offline and exercised end-to-end by the Button suites.
+        const fire = vi.spyOn(Event, 'fireEvent').mockImplementation(() => {});
+
+        combo.setSelectedIndex(1);
+
+        expect(combo.getSelectedIndex()).toBe(1);
+        expect(combo.getValue()).toBe('y');
+        expect((fire.mock.calls as unknown[][]).some(c => c[0] === combo && c[1] === 'change')).toBe(true);
+        fire.mockRestore();
+    });
+
+    it('setSelectedIndex with fireEvent=false does not dispatch change', () => {
+        installTestDOM(CONFIG);
+        const combo = new ComboBox();
+        combo.setItems([{ key: 'x', label: 'X' }, { key: 'y', label: 'Y' }]);
+        const fire = vi.spyOn(Event, 'fireEvent').mockImplementation(() => {});
+
+        combo.setSelectedIndex(1, false);
+
+        expect(combo.getSelectedIndex()).toBe(1);
+        expect((fire.mock.calls as unknown[][]).some(c => c[0] === combo && c[1] === 'change')).toBe(false);
+        fire.mockRestore();
+    });
+});
+
+describe('ComboBox — pending value', () => {
+    it('caches a pre-items setValue and surfaces it through getValue until items land', () => {
+        installTestDOM(CONFIG);
+        const combo = new ComboBox();
+        combo.setValue('y');                           // before any items exist
+        expect(combo.getValue()).toBe('y');            // pending value surfaced
+    });
+
+    it('resolves the pending value to a real selection once a matching item arrives', () => {
+        installTestDOM(CONFIG);
+        const combo = new ComboBox();
+        combo.setValue('y');
+        combo.setItems([{ key: 'x', label: 'X' }, { key: 'y', label: 'Y' }]);
+
+        expect(combo.getValue()).toBe('y');
+        expect(combo.getSelectedIndex()).toBe(1);      // resolved to y's row
+    });
+
+    it('keeps an unmatched pending value alive until a matching item is added later', () => {
+        installTestDOM(CONFIG);
+        const combo = new ComboBox();
+        combo.setValue('z');                           // no such key yet
+        combo.setItems([{ key: 'x', label: 'X' }, { key: 'y', label: 'Y' }]); // z absent
+        // (auto-select masks getValue with the first item here — the contract under
+        // test is that the pending 'z' survives the intermediate load, below.)
+        combo.addItem({ key: 'z', label: 'Z' });
+
+        expect(combo.getValue()).toBe('z');
+        expect(combo.getSelectedIndex()).toBe(2);
+    });
+});
+
+describe('ComboBox — store binding', () => {
+    it('populates options from a bound store and exposes it via getStore', () => {
+        installTestDOM(CONFIG);
+        const store = makeStore([{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }]);
+        const combo = new ComboBox();
+        combo.setStore(store, 'name');
+
+        expect(combo.getStore()).toBe(store);
+        expect(combo.getItems()).toHaveLength(2);
+        expect(combo.getSelectedRecord()?.get('name')).toBe('Alice'); // auto-selected first record
+    });
+
+    it('getSelectedRecord is undefined when no store is bound', () => {
+        installTestDOM(CONFIG);
+        const combo = new ComboBox();
+        combo.setItems(['a', 'b']);
+        expect(combo.getSelectedRecord()).toBeUndefined();
+    });
+
+    it('rebinding detaches the previous store and attaches the new one', () => {
+        installTestDOM(CONFIG);
+        const first  = makeStore([{ id: 1, name: 'Alice' }]);
+        const second = makeStore([{ id: 9, name: 'Zoe' }]);
+        const combo  = new ComboBox();
+
+        combo.setStore(first, 'name');
+        combo.setStore(second, 'name');
+        expect(combo.getStore()).toBe(second);
+        expect(combo.getItems()).toHaveLength(1);
+        expect(combo.getSelectedRecord()?.get('name')).toBe('Zoe');
+
+        // A change on the *old* store must no longer refresh the combo's options.
+        first.add({ id: 2, name: 'Bob' });
+        expect(combo.getItems()).toHaveLength(1);       // still just the new store's row
+
+        // A change on the *new* store does refresh.
+        second.add({ id: 10, name: 'Xan' });
+        expect(combo.getItems()).toHaveLength(2);
+    });
+
+    it('refreshes options when the bound store fires datachanged (add)', () => {
+        installTestDOM(CONFIG);
+        const store = makeStore([{ id: 1, name: 'Alice' }]);
+        const combo = new ComboBox();
+        combo.setStore(store, 'name');
+
+        store.add({ id: 2, name: 'Bob' });
+        expect(combo.getItems()).toHaveLength(2);
+    });
+});
+
+describe('ComboBox — keyboard reducer forwarding', () => {
+    it('forwards a key through the dropdown to the inner list, advancing its selection', () => {
+        installTestDOM(CONFIG);
+        const combo = new ComboBox();
+        combo.setItems(['a', 'b', 'c']);               // auto-select index 0
+        expect(combo.getSelectedIndex()).toBe(0);
+
+        // onKeyDown forwards to the dropdown's handleKey; reach it via the
+        // documented any-cast (no public list accessor on ComboBox itself).
+        (combo as unknown as { _dropdown: { handleKey(e: KeyboardEvent): boolean } })
+            ._dropdown.handleKey(key('ArrowDown'));
+
+        expect(combo.getSelectedIndex()).toBe(1);      // observed through the public delegate
+    });
+});
