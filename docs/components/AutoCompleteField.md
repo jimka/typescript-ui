@@ -56,9 +56,10 @@ See [`AutoCompleteFieldConfig`](/api/component/input/type-aliases/AutoCompleteFi
 | --- | --- |
 | `on("change", fn)` | Every value change — keystroke **and** suggestion pick. |
 | `on("binding", fn)` | Same as `on("change", fn)`; used by [`Binding`](/data/binding). |
-| `addSelectListener(fn)` | Only when a suggestion is picked from the dropdown. |
+| `on("select", fn)` | Only when a suggestion is picked from the dropdown. |
+| `addSelectListener(fn)` | Retained alias of `on("select", fn)`. |
 
-A suggestion-select fires `addSelectListener` and, through the underlying value change, also fires `on("change", fn)`.
+A suggestion-select fires `on("select", fn)` (and its `addSelectListener` alias) and, through the underlying value change, also fires `on("change", fn)`.
 
 ## Notes
 
