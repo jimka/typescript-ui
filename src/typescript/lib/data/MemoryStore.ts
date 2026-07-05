@@ -1,6 +1,8 @@
-import { AbstractStore, AbstractStoreOptions } from "~/data/AbstractStore";
-import { Model } from "~/data/Model";
-import { MemoryProxy } from "~/data/proxy/MemoryProxy";
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+import { AbstractStore, AbstractStoreOptions } from '~/data/AbstractStore.js';
+import { Model } from '~/data/Model.js';
+import { MemoryProxy } from '~/data/proxy/MemoryProxy.js';
 
 /**
  * Construction-time options for {@link MemoryStore}.

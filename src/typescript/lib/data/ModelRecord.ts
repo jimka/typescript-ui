@@ -289,8 +289,8 @@ export class ModelRecord {
         if (this._editSnapshot !== null) {
             this._data = { ...this._editSnapshot };
             this._editSnapshot = null;
-            this._dirty = this._isNew || Object.keys(this._original)
-                                              .some(k => !ModelRecord.isEqual(this._data[k], this._original[k]));
+
+            this.recomputeDirty();
         }
 
         return this;
@@ -318,10 +318,25 @@ export class ModelRecord {
         }
 
         this._data[field] = converted;
-        this._dirty = this._isNew || Object.keys(this._original)
-                                          .some(k => !ModelRecord.isEqual(this._data[k], this._original[k]));
+
+        this.recomputeDirty();
 
         return true;
+    }
+
+    /**
+     * Recomputes `_dirty` by comparing every current field against its committed
+     * baseline. A new record is always dirty; otherwise any field whose value
+     * differs from the original marks the record dirty.
+     *
+     * @remarks
+     * Iterates `_data` keys — a superset of `_original` keys — so a field added
+     * after construction (e.g. `set('newField', v)`) counts as a change, keeping
+     * dirty tracking in agreement with `getChanges`.
+     */
+    private recomputeDirty(): void {
+        this._dirty = this._isNew || Object.keys(this._data)
+                                          .some(k => !ModelRecord.isEqual(this._data[k], this._original[k]));
     }
 
     /**

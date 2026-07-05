@@ -1,6 +1,8 @@
-import { AbstractStore, AbstractStoreOptions } from "~/data/AbstractStore";
-import { Model } from "~/data/Model";
-import { AjaxProxy, AjaxProxyOptions } from "~/data/proxy/AjaxProxy";
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+import { AbstractStore, AbstractStoreOptions } from '~/data/AbstractStore.js';
+import { Model } from '~/data/Model.js';
+import { AjaxProxy, AjaxProxyOptions } from '~/data/proxy/AjaxProxy.js';
 
 /**
  * Construction-time options for {@link AjaxStore}. Combines store-level options

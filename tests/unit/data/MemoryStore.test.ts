@@ -236,4 +236,88 @@ describe('MemoryStore auto-notify', () => {
         created.set('name', 'Dropped');                           // dropped -> released -> silent
         expect(updateSpy).not.toHaveBeenCalled();
     });
+
+    it('getById returns undefined after removeAll', () => {
+        const store = makeStore(SAMPLE);
+
+        store.removeAll();
+
+        expect(store.getById(1)).toBeUndefined();
+        expect(store.getById(2)).toBeUndefined();
+        expect(store.getById(3)).toBeUndefined();
+        expect(store.getCount()).toBe(0);
+        expect(store.getAll()).toHaveLength(0);
+    });
+
+    it('removeAll still fires clear and datachanged with every prior record', () => {
+        const store = makeStore(SAMPLE);
+        const clearSpy = vi.fn();
+        const changedSpy = vi.fn();
+
+        store.on('clear', clearSpy);
+        store.on('datachanged', changedSpy);
+        store.removeAll();
+
+        expect(clearSpy).toHaveBeenCalledOnce();
+        expect(clearSpy.mock.calls[0][0].removed).toHaveLength(3);
+        expect(changedSpy).toHaveBeenCalledOnce();
+    });
+
+    it('loadData discards removals queued before the reload', () => {
+        const store = makeStore(SAMPLE);
+
+        store.remove(store.getById(1)!);          // persisted -> queued for delete
+        expect(store.hasPendingChanges()).toBe(true);
+
+        store.loadData([{ id: 5, name: 'Zoe', score: 50 }]);
+
+        expect(store.hasPendingChanges()).toBe(false);
+        expect(store.getById(1)).toBeUndefined();
+        expect(store.getById(5)?.get('name')).toBe('Zoe');
+    });
+
+    it('insert splices at the given index and marks the record new', () => {
+        const store = makeStore(SAMPLE);
+
+        const added = store.insert(1, { id: 9, name: 'Eve', score: 55 });
+
+        expect(added).toHaveLength(1);
+        expect(added[0].isNew()).toBe(true);
+        expect(store.getAt(1)?.get('name')).toBe('Eve');
+        expect(store.getCount()).toBe(4);
+    });
+
+    it('insert clamps an out-of-range index like add appends', () => {
+        const store = makeStore(SAMPLE);
+
+        store.insert(-5, { id: 8, name: 'Front', score: 1 });     // clamps to 0
+        store.insert(999, { id: 7, name: 'Back', score: 2 });     // clamps to length
+
+        expect(store.getAt(0)?.get('name')).toBe('Front');
+        expect(store.getAt(store.getCount() - 1)?.get('name')).toBe('Back');
+    });
+
+    it('insert accepts an array, preserving order at the insertion point', () => {
+        const store = makeStore(SAMPLE);
+
+        const added = store.insert(0, [
+            { id: 10, name: 'X', score: 0 },
+            { id: 11, name: 'Y', score: 0 },
+        ]);
+
+        expect(added).toHaveLength(2);
+        expect(store.getAt(0)?.get('name')).toBe('X');
+        expect(store.getAt(1)?.get('name')).toBe('Y');
+    });
+
+    it('insert fires exactly one add followed by one datachanged', () => {
+        const store = makeStore([]);
+        const events: string[] = [];
+
+        store.on('add', () => events.push('add'));
+        store.on('datachanged', () => events.push('datachanged'));
+        store.insert(0, { id: 1, name: 'A', score: 0 });
+
+        expect(events).toEqual(['add', 'datachanged']);
+    });
 });

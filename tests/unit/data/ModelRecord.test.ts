@@ -195,6 +195,42 @@ describe('ModelRecord', () => {
             r.set('tags', ['a', 'b']);
             expect(r.getChanges()).toEqual({});
         });
+        it('agrees between isDirty() and getChanges() for a field absent from the original data', () => {
+            const r = makeRecord({ name: 'Alice' });   // no 'age' in the construction data
+
+            r.set('age', 30);
+
+            expect(r.isDirty()).toBe(true);
+            expect(r.getChanges()).toEqual({ age: { old: undefined, new: 30 } });
+        });
+        it('clears both isDirty() and getChanges() when a new field reverts to its original absence', () => {
+            const r = makeRecord({ name: 'Alice' });
+
+            r.set('age', 30);
+            r.set('age', undefined);
+
+            expect(r.isDirty()).toBe(false);
+            expect(r.getChanges()).toEqual({});
+        });
+        it('keeps a new record dirty even when a field is set back to its original value', () => {
+            const r = makeRecord({ name: 'Alice' });
+
+            r.markAsNew();
+            r.set('name', 'Bob');
+            r.set('name', 'Alice');   // reverted; the `_isNew ||` short-circuit keeps it dirty
+
+            expect(r.isDirty()).toBe(true);
+        });
+        it('recomputes dirty consistently with getChanges after cancelEdit reverts a new field', () => {
+            const r = makeRecord({ name: 'Alice' });
+
+            r.beginEdit();
+            r.set('age', 30);
+            r.cancelEdit();
+
+            expect(r.isDirty()).toBe(false);
+            expect(r.getChanges()).toEqual({});
+        });
     });
 
     describe('getInternalId', () => {

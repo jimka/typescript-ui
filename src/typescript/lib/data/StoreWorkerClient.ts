@@ -87,21 +87,6 @@ export const StoreWorkerClient = {
     },
 
     /**
-     * Asks the worker to sort the snapshot for storeId by the given field, returning
-     * the sorted indices into the snapshot.
-     */
-    sort(storeId: string, field: string, direction: Direction): Promise<number[]> {
-        return send({ type: "sort", storeId, field, direction }).then(idx => idx ?? []);
-    },
-
-    /**
-     * Asks the worker to filter the snapshot, returning indices of records that match.
-     */
-    filter(storeId: string, descriptor: FilterDescriptor): Promise<number[]> {
-        return send({ type: "filter", storeId, descriptor }).then(idx => idx ?? []);
-    },
-
-    /**
      * Combined filter + sort in a single round-trip. Either spec may be omitted.
      * The sort spec carries the field's `fieldType` so the worker's comparator
      * stays in parity with the main thread's (locale-aware strings, timestamp

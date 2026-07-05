@@ -33,8 +33,6 @@ describe('StoreWorkerClient fallback (no Worker global)', () => {
         const client = await freshClient();
 
         await expect(client.snapshot('s', [])).rejects.toThrow('Worker unavailable');
-        await expect(client.sort('s', 'name', 'asc')).rejects.toThrow('Worker unavailable');
-        await expect(client.filter('s', FILTER)).rejects.toThrow('Worker unavailable');
         await expect(client.sortFilter('s')).rejects.toThrow('Worker unavailable');
     });
 });
@@ -95,24 +93,27 @@ describe('StoreWorkerClient happy path (faked Worker)', () => {
         await expect(promise).resolves.toBeUndefined();
     });
 
-    it('sort resolves to the indices the worker returns', async () => {
-        const promise = client.sort('store-1', 'name', 'asc');
+    it('sortFilter posts the documented shape and resolves to the indices the worker returns', async () => {
+        const promise = client.sortFilter('store-1', { field: 'name', direction: 'asc' }, FILTER);
         const worker = FakeWorker.instances[0];
         const message = worker.posted.at(-1);
 
-        expect(message).toMatchObject({ type: 'sort', storeId: 'store-1', field: 'name', direction: 'asc' });
+        expect(message).toMatchObject({
+            type: 'sortFilter',
+            storeId: 'store-1',
+            sort: { field: 'name', direction: 'asc' },
+            filter: FILTER,
+        });
 
         worker.reply({ requestId: message.requestId, indices: [2, 0, 1] });
 
         await expect(promise).resolves.toEqual([2, 0, 1]);
     });
 
-    it('filter coerces a missing indices reply to an empty array', async () => {
-        const promise = client.filter('store-1', FILTER);
+    it('sortFilter coerces a missing indices reply to an empty array', async () => {
+        const promise = client.sortFilter('store-1', undefined, FILTER);
         const worker = FakeWorker.instances[0];
         const message = worker.posted.at(-1);
-
-        expect(message).toMatchObject({ type: 'filter', storeId: 'store-1', descriptor: FILTER });
 
         worker.reply({ requestId: message.requestId });
 
@@ -120,8 +121,8 @@ describe('StoreWorkerClient happy path (faked Worker)', () => {
     });
 
     it('routes concurrent requests by requestId without crosstalk', async () => {
-        const first = client.sort('store-1', 'name', 'asc');
-        const second = client.filter('store-2', FILTER);
+        const first = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
+        const second = client.sortFilter('store-2', undefined, FILTER);
         const worker = FakeWorker.instances[0];
 
         const [firstMsg, secondMsg] = worker.posted.slice(-2);
@@ -135,7 +136,7 @@ describe('StoreWorkerClient happy path (faked Worker)', () => {
     });
 
     it('rejects the matching promise when the reply carries an error', async () => {
-        const promise = client.sort('store-1', 'name', 'asc');
+        const promise = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
         const worker = FakeWorker.instances[0];
         const message = worker.posted.at(-1);
 
@@ -145,7 +146,7 @@ describe('StoreWorkerClient happy path (faked Worker)', () => {
     });
 
     it('ignores a reply whose requestId is not pending', async () => {
-        const promise = client.sort('store-1', 'name', 'asc');
+        const promise = client.sortFilter('store-1', { field: 'name', direction: 'asc' });
         const worker = FakeWorker.instances[0];
         const message = worker.posted.at(-1);
 
