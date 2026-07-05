@@ -1133,20 +1133,6 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
-     * No-op; column order is fixed by field order in renderWindow.
-     */
-    sortColumns() {
-        // No longer applicable — column order is fixed by field order in renderWindow
-    }
-
-    /**
-     * Not yet implemented; throws an error if called.
-     */
-    sortRows() {
-        throw Error("Not implemented yet.");
-    }
-
-    /**
      * Internal wiring called by [`Table`](/api/component/table/classes/Table) —
      * not for consumer use. Hands the Body a reference to its sibling Header so
      * `_updateFocusStyle` can mirror the focused column index onto the header
