@@ -12,6 +12,7 @@ import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js"
 import { ComboEditor } from "~/component/table/cell/editor/Combo.js";
 import { Event } from "~/core/Event.js";
 import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
+import { reduceModifierSelection } from "~/component/shared/reduceModifierSelection.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Util } from "~/core/Util.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
@@ -857,34 +858,14 @@ class Body extends VirtualRowView<Row> {
 
         const records = this.getVisibleRecords();
 
-        if (e.shiftKey && this._anchorRecord) {
-            // Range select from anchor to clicked record
-            const anchorIdx = records.indexOf(this._anchorRecord);
-            const clickIdx  = records.indexOf(record);
-            const lo = Math.min(anchorIdx, clickIdx);
-            const hi = Math.max(anchorIdx, clickIdx);
-
-            if (!e.ctrlKey && !e.metaKey) {
-                this._selectedRecords.clear();
-            }
-
-            for (let i = lo; i <= hi; i++) {
-                this._selectedRecords.add(records[i]);
-            }
-        } else if (e.ctrlKey || e.metaKey) {
-            // Toggle individual record
-            if (this._selectedRecords.has(record)) {
-                this._selectedRecords.delete(record);
-            } else {
-                this._selectedRecords.add(record);
-            }
-            this._anchorRecord = record;
-        } else {
-            // Plain click — replace selection
-            this._selectedRecords.clear();
-            this._selectedRecords.add(record);
-            this._anchorRecord = record;
-        }
+        this._anchorRecord = reduceModifierSelection(
+            this._selectedRecords,
+            this._anchorRecord,
+            record,
+            r => records.indexOf(r),
+            i => records[i],
+            { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey },
+        );
 
         this._boundIndices.forEach((dataIdx, i) => {
             if (dataIdx !== -1) this.updateRowVisualState(i);
