@@ -59,6 +59,40 @@ describe('AbstractBooleanInput label management (parity)', () => {
     }
 });
 
+describe('AbstractBooleanInput enabled / read-only reflection (parity)', () => {
+    for (const [name, make] of WIDGETS) {
+        it(`${name} reflects setEnabled(false) into aria-disabled, tabindex=-1, and the graphic cursor`, () => {
+            const w = make();
+
+            w.setEnabled(false);
+
+            expect(w.getAria().getDisabled()).toBe(true);
+            expect(w.getAria().getTabIndex()).toBe(-1);
+            // The interactive surface (box / ring / track) shows the default
+            // cursor when disabled, pointer when enabled.
+            expect(w.getInteractiveSurface().getCursor()).toBe('default');
+
+            w.setEnabled(true);
+
+            expect(w.getAria().getDisabled()).toBe(false);
+            expect(w.getAria().getTabIndex()).toBe(0);
+            expect(w.getInteractiveSurface().getCursor()).toBe('pointer');
+        });
+
+        it(`${name} reflects setReadOnly(true) into aria-readonly`, () => {
+            const w = make();
+
+            w.setReadOnly(true);
+
+            expect(w.getAria().getReadOnly()).toBe(true);
+
+            w.setReadOnly(false);
+
+            expect(w.getAria().getReadOnly()).toBe(false);
+        });
+    }
+});
+
 describe('AbstractBooleanInput pointer activation guard (parity)', () => {
     for (const [name, make] of WIDGETS) {
         it(`${name} activates from a pointer only when enabled and not read-only`, () => {
