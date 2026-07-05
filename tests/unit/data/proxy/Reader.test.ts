@@ -80,4 +80,28 @@ describe('JsonReader', () => {
         const reader = new JsonReader();
         expect(() => reader.read({ data: 'nope', total: 1 }, true)).toThrow(/'data' is not an array/);
     });
+
+    // --- explicit mode overrides the paginated flag ---
+    it("mode 'envelope' parses the envelope even when the read is unpaginated", () => {
+        const reader = new JsonReader({ rootProperty: 'rows', totalProperty: 'totalCount', mode: 'envelope' });
+        expect(reader.read({ rows: [{ id: 1 }], totalCount: 5 }, false)).toEqual({
+            records: [{ id: 1 }],
+            total: 5,
+            success: undefined,
+            message: undefined,
+        });
+    });
+    it("mode 'envelope' still throws on a non-envelope body when unpaginated", () => {
+        const reader = new JsonReader({ mode: 'envelope' });
+        expect(() => reader.read(42, false)).toThrow(/not an envelope object/);
+    });
+    it("mode 'array' parses a top-level array even when the read is paginated", () => {
+        const reader = new JsonReader({ mode: 'array' });
+        expect(reader.read([{ id: 1 }, { id: 2 }], true)).toEqual({ records: [{ id: 1 }, { id: 2 }] });
+    });
+    it("mode 'auto' (default) still keys the parse off the paginated flag", () => {
+        const reader = new JsonReader();
+        expect(reader.read([{ id: 1 }], false)).toEqual({ records: [{ id: 1 }] });
+        expect(reader.read({ data: [{ id: 1 }], total: 1 }, true).total).toBe(1);
+    });
 });
