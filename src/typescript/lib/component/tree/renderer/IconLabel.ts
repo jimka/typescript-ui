@@ -50,10 +50,10 @@ export type IconLabelGlyphResolver = (node: TreeNode, context: TreeNodeRenderCon
  */
 export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
 
-    private _icon:          Glyph;
+    private _icon:          Glyph | null  = null;
     private _label:         Text;
     private _glyphResolver: IconLabelGlyphResolver;
-    private _currentGlyph:  string;
+    private _currentGlyph:  string | null = null;
 
     /**
      * Constructs an icon+label renderer.
@@ -65,12 +65,12 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
         super();
         this.clearInsets();
 
+        // No icon is built here: the glyph is constructed lazily in the first
+        // update() from the resolved name, so a caller supplying its own resolver
+        // never forces the default "file" glyph to be registered.
         this._glyphResolver = glyphResolver;
-        this._currentGlyph  = "file";
-        this._icon          = new Glyph(this._currentGlyph);
         this._label         = new Text();
 
-        this._icon.clearInsets();
         this._label.clearInsets();
         this._label.setAutoMeasure(false);
     }
@@ -87,7 +87,7 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
         if (next !== this._currentGlyph) {
             const el = this.getElement();
 
-            if (el) {
+            if (el && this._icon) {
                 const oldEl = this._icon.getElement();
                 if (oldEl && DOM.source.getParentNode(oldEl) === el) {
                     DOM.sink.removeChild(el, oldEl);
@@ -112,7 +112,7 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
      * label width.
      */
     getContentWidth(): number {
-        return ICON_WIDTH + (this._label.getPreferredSize()?.width ?? 0);
+        return (this._icon ? ICON_WIDTH : 0) + (this._label.getPreferredSize()?.width ?? 0);
     }
 
     /**
@@ -122,17 +122,20 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
      * @param height - The vertical extent of the renderer in pixels.
      */
     layoutChildren(width: number, height: number): void {
-        this._icon.setAutoCommitStyle(false);
-        this._icon.setX(0);
-        this._icon.setY(Math.max(0, (height - ICON_SIZE) / 2));
-        this._icon.setWidth(ICON_SIZE);
-        this._icon.setHeight(ICON_SIZE);
-        this._icon.setAutoCommitStyle(true);
+        if (this._icon) {
+            this._icon.setAutoCommitStyle(false);
+            this._icon.setX(0);
+            this._icon.setY(Math.max(0, (height - ICON_SIZE) / 2));
+            this._icon.setWidth(ICON_SIZE);
+            this._icon.setHeight(ICON_SIZE);
+            this._icon.setAutoCommitStyle(true);
+        }
 
-        const labelWidth = Math.max(0, width - ICON_WIDTH);
+        const labelX     = this._icon ? ICON_WIDTH : 0;
+        const labelWidth = Math.max(0, width - labelX);
 
         this._label.setAutoCommitStyle(false);
-        this._label.setX(ICON_WIDTH);
+        this._label.setX(labelX);
         this._label.setY(0);
         this._label.setWidth(labelWidth);
         this._label.setHeight(height);
@@ -141,8 +144,9 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
     }
 
     /**
-     * Appends the icon and label sub-component elements to the renderer's DOM
-     * element.
+     * Appends the label sub-component element (and the icon, when one is already
+     * bound) to the renderer's DOM element. A later icon change is inserted before
+     * the label by {@link update}.
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().
      */
@@ -154,7 +158,10 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
             return this;
         }
 
-        DOM.sink.appendChild(el, this._icon.getElement(true)!);
+        if (this._icon) {
+            DOM.sink.appendChild(el, this._icon.getElement(true)!);
+        }
+
         DOM.sink.appendChild(el, this._label.getElement(true)!);
 
         return this;
