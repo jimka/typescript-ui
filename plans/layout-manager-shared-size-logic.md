@@ -6,7 +6,7 @@ The layout managers under [`src/typescript/lib/layout/`](src/typescript/lib/layo
 
 The single highest-leverage change is the **overflow-inflation** block: the "grow the working size to the children's combined min on any host-overflowing axis" idiom is copy-pasted, near-byte-identical, into `Fit`, `Card`, `Grid`, `Border`, and `Split` — while the same logic already exists extracted as [`BoxLayout.inflateForOverflow`](src/typescript/lib/layout/BoxLayout.ts#L374) (used only by `HBox`/`VBox`). Meanwhile `computeTotalMinSize` is declared `abstract` on `BoxLayout` ([`BoxLayout.ts:287`](src/typescript/lib/layout/BoxLayout.ts#L287)) yet independently re-declared as a concrete method on managers that do **not** extend `BoxLayout` (`Fit`, `Card`, `Grid`, `Border`, `Split`, `Accordion`, `Tab`). Hoisting both onto `LayoutManager` collapses seven scattered idioms into one.
 
-Two other duplications: `Fit` and `Card` each triplicate their `getPreferredSize`/`getMinSize`/`getMaxSize` bodies (byte-identical apart from the child accessor), which collapse to one accessor-parametrized helper the way `Split` already does with [`computeContentSize`](src/typescript/lib/layout/Split.ts#L550). And five managers still use `for (let idx in …)` (for-in over arrays), which the plan converts to `for-of`, aligning them with the newer flow/split style.
+Two other duplications: `Fit` and `Card` each triplicate their `getPreferredSize`/`getMinSize`/`getMaxSize` bodies (byte-identical apart from the child accessor), which collapse to one accessor-parametrized helper the way `Split` already does with [`computeContentSize`](src/typescript/lib/layout/Split.ts#L550). And five managers still use `for (let idx in …)` (for-in over arrays); this plan converts only the three it is already rewriting — `Grid`, `Split`, `Tab` — to `for-of`, aligning them with the newer flow/split style. `HBox`/`VBox` also use for-in but are **not** touched (per the surgical-change rule — this plan does not otherwise modify their bodies); their conversion is out of scope.
 
 Finally two non-mechanical fixes: `Split` and `Accordion` omit `getMaxSize` (every other sizing manager overrides all three) — each gets a documented, deliberately-unbounded override; and a user-facing error typo ("more then one" → "more than one") in `Fit`.
 
@@ -171,7 +171,7 @@ private computeSize(sizeOf: (component: Component) => Size | null): Size | null 
 7. **`Split.ts`** — (a) replace the overflow block in `doLayout` with `containerSize = this.inflateForOverflow(containerSize);`; (b) convert `for (let idx in this._gutters)` in `detach` (~776) to `for (const gutter of this._gutters)`; (c) add a documented, deliberately-unbounded `getMaxSize()` override.
 8. **`Tab.ts`** — (a) repurpose `computeTotalMinSize` to the visible-child min (drop strip thickness); (b) replace the content-area overflow block (~1684-1696) with `inflateForOverflow({ width: contentW, height: contentH })`, assigning `contentWidth`/`contentHeight` from the result; (c) convert `for (let idx in components)` (~1555) to `for (const component of components)`.
 9. **`Accordion.ts`** — add a documented, deliberately-unbounded `getMaxSize()` override. Leave the X-only overflow block and `computeTotalMinSize` untouched.
-10. **Regression sweep:** `grep -rn 'for (let idx in' src/typescript/lib/layout/` — expect zero matches (item #3 fully done). `grep -rn 'more then one' src/typescript/lib/layout/` — expect zero. `grep -rn 'inflateForOverflow' src/typescript/lib/layout/BoxLayout.ts` — expect zero (moved out).
+10. **Regression sweep:** `grep -rnE 'for \(let idx in' src/typescript/lib/layout/Grid.ts src/typescript/lib/layout/Split.ts src/typescript/lib/layout/Tab.ts` — expect zero matches (the three touched files fully converted). `HBox.ts`/`VBox.ts` deliberately retain their for-in loops (out of scope). `grep -rn 'more then one' src/typescript/lib/layout/` — expect zero. `grep -rn 'inflateForOverflow' src/typescript/lib/layout/BoxLayout.ts` — expect zero (moved out).
 
 ---
 
@@ -234,9 +234,9 @@ Returns `{ UNBOUNDED, UNBOUNDED }` (i.e. `Size.UNBOUNDED` on both axes) — the 
 
 - `npx tsc --noEmit` (or the project's typecheck script) — clean; confirms `HBox`/`VBox` still satisfy the (now-inherited) `computeTotalMinSize` and `inflateForOverflow`, and no manager lost a needed override.
 - `npm test -- tests/component/layout/` — the full layout suite green before and after (`Fit`, `Card`, `Grid`, `Border`, `Split`, `HBox`, `VBox`, `Tab.*`, `Accordion` if present). Add red-green cases for any `## Expected Behaviour` bullet the existing suite doesn't already cover (Grid/Border overflow, `Split`/`Accordion` `getMaxSize`, `Tab` content-area inflation with null child-min).
-- `grep -rn 'for (let idx in' src/typescript/lib/layout/` → zero.
+- `grep -rnE 'for \(let idx in' src/typescript/lib/layout/Grid.ts src/typescript/lib/layout/Split.ts src/typescript/lib/layout/Tab.ts` → zero (the three touched files). `HBox.ts`/`VBox.ts` keep their for-in loops (deliberately out of scope).
 - `grep -rn 'more then one' src/typescript/lib/layout/` → zero.
-- `grep -rn 'inflateForOverflow\|computeTotalMinSize' src/typescript/lib/layout/BoxLayout.ts` → zero (both moved to `LayoutManager`).
+- `grep -rn 'inflateForOverflow' src/typescript/lib/layout/BoxLayout.ts` → zero (the method and its doc reference are removed from `BoxLayout`). Note: `computeTotalMinSize` **remains** in `BoxLayout.ts` at its class-doc mentions (~L100, ~L108) — those stay accurate because `HBox`/`VBox` keep their concrete overrides; only the `abstract` declaration is dropped, so do **not** grep-zero it here.
 - Manual smoke (offline-untestable scroll geometry is exercised by the suite's `TestDOM`, so no live pass is strictly required, but if driving the app: scroll an auto-scroll `Panel` hosting each of `Fit`/`Card`/`Grid`/`Border`/`Split`/`Tab` and confirm the scrollbar still appears exactly when children overflow).
 
 ---
