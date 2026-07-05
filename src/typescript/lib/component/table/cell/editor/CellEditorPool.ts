@@ -118,6 +118,8 @@ export class CellEditorPool {
     private wireListeners(editor: CellEditor<unknown>): void {
         editor.setCommitRequestHandler(() => this._activeCell?.commitEdit());
 
+        // Internal cell-editor wiring: listens on a privately-owned child;
+        // see the cell-editor carve-out in ARCHITECTURE.md.
         Event.addListener(editor, "blur", (e: FocusEvent) => {
             if (editor.retainsFocus(blurRelatedTargetHandle(e))) {
                 return;
