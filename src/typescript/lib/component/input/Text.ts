@@ -113,7 +113,12 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private _textOverflow: string | null = null;
     private _truncate: boolean = true;
 
-    constructor(text?: String, options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+    // `NoInfer` on `options` keeps a partial options literal from narrowing
+    // TOptions to just the keys it carries: `new Text("x", { fontWeight: "600" })`
+    // must stay a `Text<TextOptions>` (assignable to Component), not a
+    // `Text<{ fontWeight: string }>` (whose narrowed option type is not). Subclasses
+    // still fix TOptions through `extends Text<MyOptions>`, not argument inference.
+    constructor(text?: String, options?: NoInfer<TOptions>, subclassDefaults?: Partial<TOptions>) {
         super(
             options,
             { ..._defaultTextOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,

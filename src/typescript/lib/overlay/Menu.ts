@@ -84,19 +84,23 @@ class Menu extends Component {
     private readonly _onWindowBlur: (e: FocusEvent) => void;
 
     /**
-     * Constructs a rebuild-mode (right-click context) menu. Items are supplied per `show()` call.
-     */
-    constructor();
-    /**
-     * Constructs a persistent-mode ([`MenuBar`](/api/component/menubar/classes/MenuBar) dropdown) menu. Items are built immediately
-     * and reused across `open()` / `close()` cycles.
+     * Constructs a Menu. With no arguments, a rebuild-mode (right-click context)
+     * menu whose items are supplied per `show()` call. With `items` (and `onClose`),
+     * a persistent-mode ([`MenuBar`](/api/component/menubar/classes/MenuBar) dropdown)
+     * menu whose items are built immediately and reused across `open()` / `close()`
+     * cycles.
+     *
+     * A single optional-parameter signature, deliberately not an overload pair: the
+     * `callable()` export's construct/call type is derived via TS `ConstructorParameters`,
+     * which captures only the *last* overload — an overload pair would drop the
+     * no-arg form and make `Menu()` a type error for consumers.
      *
      * @param items - The menu item configurations, or a provider called once now
      *   to produce them. A submenu is rebuilt on each open, so a provider passed
-     *   for a submenu's items is re-invoked every time that submenu opens.
+     *   for a submenu's items is re-invoked every time that submenu opens. Omit for
+     *   a rebuild-mode context menu.
      * @param onClose - Callback invoked when the panel should close (item activated or outside click).
      */
-    constructor(items: MenuItemConfig[] | (() => MenuItemConfig[]), onClose: () => void);
     constructor(items?: MenuItemConfig[] | (() => MenuItemConfig[]), onClose?: () => void) {
         super();
 

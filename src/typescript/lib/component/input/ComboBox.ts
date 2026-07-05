@@ -29,7 +29,10 @@ Glyph.register(chevron_down);
  * @category Components
  */
 export interface ComboBoxOptions extends AbstractInputOptions {
-    items?:             String | Array<String>;
+    // Matches `setItems` (CustomListItemSpec = a plain-string key or a
+    // { key, label } item), so an options-bag `items` accepts the same shapes the
+    // runtime setter does — a plain-string list or explicit keyed items.
+    items?:             CustomListItemSpec | Array<CustomListItemSpec>;
     store?:             AbstractStore;
     displayField?:      string;
     valueField?:        string;
