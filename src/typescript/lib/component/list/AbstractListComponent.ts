@@ -188,13 +188,13 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
     }
 
     /**
-     * Removes a ListItem child by instance or index.
+     * Removes a ListItem child.
      *
-     * @param component - The ListItem instance or its numeric index to remove.
+     * @param component - The ListItem instance to remove.
      *
      * @returns The layout constraints that were registered for the removed item, or undefined.
      */
-    removeComponent(component: ListItem | Number) {
+    removeComponent(component: ListItem) {
         return super.removeComponent(component);
     }
 }
