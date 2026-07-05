@@ -198,6 +198,30 @@ function flushPendingLayouts() {
 }
 
 /**
+ * Serialises one size term for a debug `data-*` size attribute: `"inf"` when the
+ * extent is unbounded, else its rounded pixel string.
+ *
+ * @param value - The extent to serialise.
+ * @returns `"inf"` for an unbounded extent, else `"<rounded>px"`.
+ */
+function formatSizeTerm(value: number): string {
+    return isUnbounded(value) ? "inf" : Math.round(value) + "px";
+}
+
+/**
+ * Serialises a width/height pair for a debug `data-*` size attribute, testing
+ * each axis independently so an unbounded width paired with a bounded height (or
+ * vice versa) renders correctly.
+ *
+ * @param width - The width extent.
+ * @param height - The height extent.
+ * @returns The space-separated `"<width> <height>"` term pair.
+ */
+function formatSizeAttr(width: number, height: number): string {
+    return formatSizeTerm(width) + " " + formatSizeTerm(height);
+}
+
+/**
  * Base class for all UI components in the framework.
  *
  * Manages the component's DOM element lifecycle, CSS style rule, layout manager,
@@ -252,7 +276,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // cascade-dispatched render can clobber it.
     private readonly _ownedHandles : Handle[]               = [];
     private _tag                  : string                  = "div";
-    private _attributes           : Map<String, String>;
+    private _attributes           : Map<string, string>;
     private _boxSizing            : string | null;
 
     // Geometry: NaN sentinels mean "never assigned", so equality guards on
@@ -383,7 +407,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // render; the dirty-style path queues writes until then. See
         // `ensureCSSRule`.
         this._components         = [];
-        this._attributes         = new Map<String, String>();
+        this._attributes         = new Map<string, string>();
         this._deferredStyleRules = new Map<string, StyleRule>();
 
         // Constants without ComponentOptions counterpart.
@@ -1015,7 +1039,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns True if the attribute exists, false otherwise, or undefined if the element is not in the DOM.
      */
-    hasElementAttribute(key: string) {
+    hasElementAttribute(key: string): boolean | undefined {
         let element = this.getElement();
         if (!element) {
             //console.warn("Component #" + this.id + " is not yet in the DOM.");
@@ -1032,7 +1056,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns The attribute value string, null if the attribute is absent, or undefined if the element is not in the DOM.
      */
-    getElementAttribute(key: string) {
+    getElementAttribute(key: string): string | null | undefined {
         let element = this.getElement();
         if (!element) {
             //console.warn("Component #" + this.id + " is not yet in the DOM. Attribute '" + key + "' can not be retrieved.");
@@ -1131,7 +1155,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns True if auto-commit is enabled, false if changes are batched.
      */
-    getAutoCommitStyle() {
+    getAutoCommitStyle(): boolean {
         return this._autoCommitStyle;
     }
 
@@ -1297,7 +1321,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @remarks Symmetric with {@link setDataAttribute}: the key is normalised
      * with a leading `data-` (idempotent if already prefixed) before lookup.
      */
-    getDataAttribute(key: string) {
+    getDataAttribute(key: string): string | undefined {
         const dataKey = key.startsWith("data-") ? key : `data-${key}`;
 
         return this._attributes.get(dataKey);
@@ -1359,7 +1383,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns True if explicitly visible, false if explicitly hidden, null if inheriting from the parent.
      */
-    isVisible(): Boolean | null {
+    isVisible(): boolean | null {
         // Key-presence so a never-set component folds the class default (e.g.
         // AnimatedDropdown's `visible: false`), while an explicit
         // `setVisible(false)`/inherit still wins — mirrors getCursor/getPadding.
@@ -1375,8 +1399,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @remarks Throws an Error if value is a non-boolean truthy value.
      */
-    setVisible(value: Boolean): this {
-        if (Type.isBoolean(value)) {
+    setVisible(value: boolean | null): this {
+        // `Type.isBoolean` runtime-checks arbitrary input (untyped callers can
+        // still pass a non-boolean); the cast bridges its `object` parameter to
+        // the narrowed `boolean | null` static type without altering behaviour.
+        if (Type.isBoolean(value as unknown as object)) {
             this._options.visible = value as boolean;
         } else if (!value) {
             this._options.visible = undefined;
@@ -2284,7 +2311,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const next: Size = { width, height };
         this._options.preferredSize = next;
-        this.setDataAttribute("preferredSize", (isUnbounded(next.width) ? "inf" : (Math.round(next.width) + "px")) + " " + (isUnbounded(next.width) ? "inf" : (Math.round(next.height) + "px")));
+        this.setDataAttribute("preferredSize", formatSizeAttr(next.width, next.height));
         this._onPreferredSizeChange?.();
 
         return this;
@@ -2314,45 +2341,51 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Merges a component's own size *constraint* with its layout manager's size,
+     * per axis, into a fresh {@link Size}. When both are present each axis is
+     * combined with `merge` (the tighter bound: `Math.max` for minimums,
+     * `Math.min` for maximums); when only one is present that source's values are
+     * copied; when neither is present the axes fall back to `fallback`. Every
+     * branch returns a new object, so callers never receive an alias of the
+     * stored constraint or manager size.
+     *
+     * @param constraint - This component's own min/max size constraint, or null.
+     * @param managerSize - The layout manager's reported min/max size, or null.
+     * @param merge - The per-axis combiner applied when both sources are present.
+     * @param fallback - The per-axis value used when neither source is present.
+     * @returns The merged size as a fresh object.
+     */
+    private mergeConstraintSize(
+        constraint: Size | null,
+        managerSize: Size | null,
+        merge: (a: number, b: number) => number,
+        fallback: number,
+    ): Size {
+        if (constraint && managerSize) {
+            return {
+                width:  merge(constraint.width,  managerSize.width),
+                height: merge(constraint.height, managerSize.height),
+            };
+        }
+
+        if (constraint) {
+            return { width: constraint.width, height: constraint.height };
+        }
+
+        if (managerSize) {
+            return { width: managerSize.width, height: managerSize.height };
+        }
+
+        return { width: fallback, height: fallback };
+    }
+
+    /**
      * Returns the effective minimum size: the larger of the component and layout manager minimums.
      *
      * @returns A Size object whose width and height are the element-wise maximums of the component and layout manager minimums.
      */
     getMinSize(): Size | null {
-        let componentMinSize = this.getMinSizeConstraint();
-        let layoutManager = this.getLayoutManager();
-
-        if (!layoutManager) {
-            return componentMinSize;
-        }
-
-        let layoutMinSize = layoutManager.getMinSize();
-
-        let width;
-        let height;
-
-        if (componentMinSize) {
-            if (layoutMinSize) {
-                width = Math.max(componentMinSize.width, layoutMinSize.width);
-                height = Math.max(componentMinSize.height, layoutMinSize.height);
-            } else {
-                width = componentMinSize.width;
-                height = componentMinSize.height;
-            }
-        } else {
-            if (layoutMinSize) {
-                width = layoutMinSize.width;
-                height = layoutMinSize.height;
-            } else {
-                width = 0;
-                height = 0;
-            }
-        }
-
-        return {
-            width: width,
-            height: height
-        }
+        return this.mergeConstraintSize(this.getMinSizeConstraint(), this.getLayoutManager().getMinSize(), Math.max, 0);
     }
 
     /**
@@ -2377,7 +2410,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             minHeight: next.height + "px"
         });
 
-        this.setDataAttribute("minSize", (isUnbounded(next.width) ? "inf" : (Math.round(next.width) + "px")) + " " + (isUnbounded(next.width) ? "inf" : (Math.round(next.height) + "px")));
+        this.setDataAttribute("minSize", formatSizeAttr(next.width, next.height));
 
         this._onConstraintSizeChange?.();
 
@@ -2394,40 +2427,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns A Size object whose width and height are the element-wise minimums of the component and layout manager maximums.
      */
     getMaxSize(): Size | null {
-        let componentMaxSize = this.getMaxSizeConstraint();
-        let layoutManager = this.getLayoutManager();
-
-        if (!layoutManager) {
-            return componentMaxSize;
-        }
-
-        let layoutMaxSize = layoutManager.getMaxSize();
-
-        let width;
-        let height;
-
-        if (componentMaxSize) {
-            if (layoutMaxSize) {
-                width = Math.min(componentMaxSize.width, layoutMaxSize.width);
-                height = Math.min(componentMaxSize.height, layoutMaxSize.height);
-            } else {
-                width = componentMaxSize.width;
-                height = componentMaxSize.height;
-            }
-        } else {
-            if (layoutMaxSize) {
-                width = layoutMaxSize.width;
-                height = layoutMaxSize.height;
-            } else {
-                width = UNBOUNDED;
-                height = UNBOUNDED;
-            }
-        }
-
-        return {
-            width: width,
-            height: height
-        };
+        return this.mergeConstraintSize(this.getMaxSizeConstraint(), this.getLayoutManager().getMaxSize(), Math.min, UNBOUNDED);
     }
 
     /**
@@ -2452,7 +2452,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             maxHeight: isUnbounded(next.height) ? "none" : next.height + "px"
         });
 
-        this.setDataAttribute("maxSize", (isUnbounded(next.width) ? "inf" : (Math.round(next.width) + "px")) + " " + (isUnbounded(next.width) ? "inf" : (Math.round(next.height) + "px")));
+        this.setDataAttribute("maxSize", formatSizeAttr(next.width, next.height));
 
         this._onConstraintSizeChange?.();
 
@@ -2464,7 +2464,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns The inner Size in pixels, or null if the element is not yet in the DOM.
      */
-    getInnerSize(): { width: number, height: number } | null {
+    getInnerSize(): Size | null {
         let element = this.getElement();
         if (!element) {
             return null;
@@ -2757,7 +2757,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns The width in pixels, or 0 if the size is unavailable.
      */
-    getWidth() {
+    getWidth(): number {
         let size = this.getSize();
         if (size) {
             return size.width;
@@ -2845,7 +2845,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns The height in pixels, or 0 if the size is unavailable.
      */
-    getHeight() {
+    getHeight(): number {
         let size = this.getSize();
         if (size) {
             return size.height;
@@ -2908,7 +2908,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns The left offset in pixels.
      */
-    getX() {
+    getX(): number {
         return this._left;
     }
 
@@ -2941,7 +2941,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns The top offset in pixels.
      */
-    getY() {
+    getY(): number {
         return this._top;
     }
 
@@ -3102,7 +3102,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns The translate-X value last passed to setTranslate, or 0.
      */
-    getTranslateX() {
+    getTranslateX(): number {
         return this._translateX;
     }
 
@@ -3111,7 +3111,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns The translate-Y value last passed to setTranslate, or 0.
      */
-    getTranslateY() {
+    getTranslateY(): number {
         return this._translateY;
     }
 
@@ -3933,6 +3933,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `CSSStyleRule.style`.
         this.ensureCSSRule();
 
+        this.applyBoxAndVisibilityStyles();
+        this.replayGeometryStyles();
+        this.applySizeConstraintStyles();
+        this.applyOverflowStyles();
+        this.applyChromeStyles();
+        this.applyMiscInlineStyles();
+        this.materialiseDeferredRules();
+
+        return this;
+    }
+
+    /**
+     * Writes the box-model, visibility, display, cursor, and colour styles — the
+     * first `applyStyle` phase.
+     */
+    private applyBoxAndVisibilityStyles(): void {
         // Every option-backed read below goes through the field's getter (or an
         // inline `_options.X ?? _defaultOptions.X` for the carve-out sizes), so
         // class-level defaults reach the DOM even when no setter has fired —
@@ -3979,7 +3995,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (backgroundImage) {
             this._styleRule.set("backgroundImage", backgroundImage);
         }
+    }
 
+    /**
+     * Replays the cached width / top / left / height and translate transform that
+     * the leading inline-style wipe cleared — the second `applyStyle` phase.
+     */
+    private replayGeometryStyles(): void {
         // NaN means "never assigned by a setter" — skip the DOM write for those.
         // Any finite value (including 0) MUST be written so the DOM matches the cached field.
         if (!Number.isNaN(this._width)) {
@@ -4005,7 +4027,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (this._translateX !== 0 || this._translateY !== 0) {
             this._inlineStyle.set("transform", "translate3d(" + this._translateX + "px," + this._translateY + "px,0)");
         }
+    }
 
+    /**
+     * Writes the min/max CSS constraints and reflects `data-maxSize` — the third
+     * `applyStyle` phase.
+     */
+    private applySizeConstraintStyles(): void {
         // Carve-out: the CSS min/max writes use the raw author *constraint*, not
         // the computed `getMinSize()`/`getMaxSize()` (which fold in the layout
         // manager and would push computed sizes into CSS, fighting the layout
@@ -4020,9 +4048,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (maxSize) {
             this._styleRule.set("maxWidth",  isUnbounded(maxSize.width)  ? "none" : maxSize.width  + "px");
             this._styleRule.set("maxHeight", isUnbounded(maxSize.height) ? "none" : maxSize.height + "px");
-            this.setDataAttribute("maxSize", (isUnbounded(maxSize.width) ? "inf" : (Math.round(maxSize.width) + "px")) + " " + (isUnbounded(maxSize.width) ? "inf" : (Math.round(maxSize.height) + "px")));
+            this.setDataAttribute("maxSize", formatSizeAttr(maxSize.width, maxSize.height));
         }
+    }
 
+    /**
+     * Writes the overflow styles and refreshes the wheel-scroll controller — the
+     * fourth `applyStyle` phase.
+     */
+    private applyOverflowStyles(): void {
         const overflowX = this.getOverflowX();
         if (overflowX !== null) {
             this._styleRule.set("overflowX", overflowX);
@@ -4037,11 +4071,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // wheel-scroll controller here from the effective overflow. Idempotent:
         // `refreshWheelScrolling` no-ops when the scroller already matches.
         this.refreshWheelScrolling();
+    }
 
-        if (this._whiteSpace) {
-            this._styleRule.set("whiteSpace", this._whiteSpace);
-        }
-
+    /**
+     * Writes the border, outline, border-radius, and box-shadow chrome styles —
+     * the fifth `applyStyle` phase.
+     */
+    private applyChromeStyles(): void {
         if (this._border) {
             this._styleRule.setMany(borderToStyle(this._border));
         } else {
@@ -4061,6 +4097,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const shadow = this.getShadow();
         if (shadow) {
             this._styleRule.set("boxShadow", shadow);
+        }
+    }
+
+    /**
+     * Writes the remaining inline and rule styles (white-space, pointer-events,
+     * writing-mode, z-index, transition, opacity, user-select, padding, insets,
+     * margin) — the sixth `applyStyle` phase.
+     */
+    private applyMiscInlineStyles(): void {
+        if (this._whiteSpace) {
+            this._styleRule.set("whiteSpace", this._whiteSpace);
         }
 
         const pointerEvents = this.getPointerEvents();
@@ -4106,7 +4153,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._styleRule.set("margin", "0px 0px 0px 0px");
+    }
 
+    /**
+     * Materialises the deferred subclass state rules onto the live stylesheet —
+     * the final `applyStyle` phase.
+     */
+    private materialiseDeferredRules(): void {
         // Materialise state-specific rules registered by subclasses (Button's
         // `:active` / `:hover`, ToggleButton's `.selected`). Each rule's
         // pending writes flush onto the live `CSSStyleRule` inside `ensure()`,
@@ -4115,8 +4168,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         for (const deferredRule of this._deferredStyleRules.values()) {
             deferredRule.ensure();
         }
-
-        return this;
     }
 
     /**
@@ -4170,24 +4221,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Adds a child component, appends its element, wires preferred-size change propagation, and triggers layout.
+     * Wires a child into this container's size-change propagation: adopts it as
+     * the child's parent and installs the two callback slots that relay a
+     * child's preferred-size / constraint-size change up to this container (which
+     * re-lays-out and relays onward to its own parent). The teardown counterpart
+     * is `unwireChild`.
      *
-     * @param component - The child component to add.
-     * @param constraints - Optional. Layout constraints to pass to the layout manager.
+     * @param component - The child being attached to this container.
      */
-    addComponent(component: Component, constraints?: LayoutConstraints): this {
-        if (component._parent === this) {
-            return this;
-        }
-
-        if (component._parent !== null) {
-            throw new Error(`Component ${component.getId()} already has a parent. Remove it first.`);
-        }
-
-        this._components.push(component);
-
-        this.setLayoutConstraints(component, constraints);
-
+    private wireChild(component: Component): void {
         component._parent = this;
         component._onPreferredSizeChange = () => {
             this.scheduleLayout();
@@ -4199,30 +4241,36 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
             this._onConstraintSizeChange?.();
         };
+    }
 
-        let element = this.getElement();
-        if (!element) {
-            return this;
-        }
+    /**
+     * Tears down a child wired by `wireChild`: releases its layout constraints,
+     * nulls both size-change callback slots (so a detached child can no longer
+     * re-enter this container's layout), clears its parent, and removes its
+     * element. Shared by `removeComponent` and `removeAllComponents`.
+     *
+     * @param component - The child being detached from this container.
+     * @returns The layout constraints that were registered for the child, or undefined.
+     */
+    private unwireChild(component: Component): LayoutConstraints | undefined {
+        const constraints = this.delLayoutConstraints(component);
 
-        let compElement = component.getElement(true);
-        // Attach into the content frame when one is active (overflow scrolling),
-        // else directly under the element.
-        const childHost = this.getChildHost();
+        component._parent = null;
+        component._onPreferredSizeChange = null;
+        component._onConstraintSizeChange = null;
+        component.removeElement();
 
-        if (childHost) {
-            DOM.sink.appendChild(childHost, compElement!);
-        }
+        return constraints ?? undefined;
+    }
 
-        this.scheduleLayout();
-        // Gaining a child changes this container's own preferred size, so notify
-        // the parent — the same signal a child's setPreferredSize raises via the
-        // handler installed above. Without it a nested add (e.g. a row into a
-        // content-sized viewport) relayouts only this container, leaving an
-        // ancestor that sizes to it (a form, a dialog) measuring the stale size.
-        this._onPreferredSizeChange?.();
-
-        return this;
+    /**
+     * Adds a child component, appends its element, wires preferred-size change propagation, and triggers layout.
+     *
+     * @param component - The child component to add.
+     * @param constraints - Optional. Layout constraints to pass to the layout manager.
+     */
+    addComponent(component: Component, constraints?: LayoutConstraints): this {
+        return this.insertComponent(component, this._components.length, constraints);
     }
 
     /**
@@ -4252,17 +4300,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         this.setLayoutConstraints(component, constraints);
 
-        component._parent = this;
-        component._onPreferredSizeChange = () => {
-            this.scheduleLayout();
-
-            this._onPreferredSizeChange?.();
-        };
-        component._onConstraintSizeChange = () => {
-            this.scheduleLayout();
-
-            this._onConstraintSizeChange?.();
-        };
+        this.wireChild(component);
 
         let element = this.getElement();
         if (!element) {
@@ -4345,33 +4383,21 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Removes a child component by instance or index, detaches its element, and triggers layout.
+     * Removes a child component, detaches its element, and triggers layout.
      *
-     * @param component - The Component instance to remove, or a Number index into the children array.
+     * @param component - The Component instance to remove.
      *
      * @returns The layout constraints that were registered for the removed component, or undefined.
      */
-    removeComponent(component: Component | Number) {
-        var index: number;
-        if (component instanceof Component) {
-            index = this._components.indexOf(component)
-        } else if (component instanceof Number) {
-            index = (component as Number).valueOf();
-            component = this._components[index];
-        } else {
-            return;
-        }
+    removeComponent(component: Component): LayoutConstraints | undefined {
+        let index = this._components.indexOf(component);
 
         if (index > -1) {
             this._components.splice(index, 1);
         }
 
-        let constraints = this.delLayoutConstraints(component);
+        const constraints = this.unwireChild(component);
 
-        component._parent = null;
-        component._onPreferredSizeChange = null;
-        component._onConstraintSizeChange = null;
-        component.removeElement();
         this.scheduleLayout();
         // See addComponent: losing a child changes this container's own preferred
         // size, so notify the parent to relayout and re-measure.
@@ -4386,11 +4412,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     removeAllComponents(): this {
-        for (let idx in this._components) {
-            let component = this._components[idx];
-            component._parent = null;
-            component._onPreferredSizeChange = null;
-            component.removeElement();
+        for (const component of this._components) {
+            this.unwireChild(component);
         }
 
         this._components = [];
