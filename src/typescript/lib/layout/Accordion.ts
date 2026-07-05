@@ -1195,11 +1195,12 @@ class Accordion extends LayoutManager {
         // so the accordion fits — see computeShrinkRatio for the full policy.
         const shrinkRatio = this.computeShrinkRatio(components, containerSize);
 
-        // Fill mode: the bottommost open section grows to absorb the container's
-        // leftover height (underflow). It is the counterpart to shrink: when the
-        // content overflows, shrinkRatio > 0 and the leftover is <= 0, so fill
-        // is a no-op and the two policies never both apply.
-        const { fillTarget, fillLeftover } = this.computeFill(components, containerSize, shrinkRatio);
+        // Fill: open sections grow to absorb the container's leftover height
+        // (underflow) — by per-section fillWeight, or the bottommost when
+        // setFillHeight is on. The counterpart to shrink: when the content
+        // overflows, shrinkRatio > 0 and the leftover is <= 0, so the fill map is
+        // empty and the two policies never both apply.
+        const fills = this.computeFill(components, containerSize, shrinkRatio);
 
         let y = insets.getTop();
         let displayedSoFar = 0;
@@ -1251,10 +1252,8 @@ class Accordion extends LayoutManager {
             const contentPref = preferred ? preferred.height : 100;
             let openHeight = this.openContentHeight(component, shrinkRatio);
 
-            // Fill mode: the bottommost open section absorbs the leftover height.
-            if (i === fillTarget) {
-                openHeight += fillLeftover;
-            }
+            // Fill: add this section's share of the container's leftover height.
+            openHeight += fills.get(i) ?? 0;
 
             const panelHeight   = isOpen ? openHeight  : 0;
             const contentHeight = isOpen ? openHeight  : contentPref;
@@ -1390,24 +1389,35 @@ class Accordion extends LayoutManager {
     }
 
     /**
-     * Computes fill placement: the index of the bottommost open displayed
-     * section (the fill target) and the leftover height it should absorb. Only
-     * active when `fill` is on and the content underflows the container; on
-     * overflow the leftover is `<= 0` so fill yields nothing (shrink handles it).
+     * Computes how much extra height each open section absorbs from the
+     * container's leftover space, keyed by section index. Active only when the
+     * open sections underflow the container (`leftover > 0`); on overflow the
+     * leftover is `<= 0` so fill yields nothing and shrink handles the fit.
+     *
+     * Sections with a positive `fillWeight` constraint split the leftover in
+     * proportion to their weights — so a single weighted section (in any
+     * position, not just the bottommost) fills all the slack and equal weights
+     * share it. When no section is weighted, the legacy `setFillHeight` mode
+     * gives the whole leftover to the bottommost open section.
      *
      * @param components - The container's child components.
      * @param containerSize - The container's inner size, or null.
      * @param shrinkRatio - The shrink ratio applied to open content.
-     * @returns The fill target index (`-1` if none) and the leftover height.
+     * @returns A map from section index to the extra height it absorbs; empty
+     *   when nothing fills.
      */
-    private computeFill(components: Component[], containerSize: Size | null, shrinkRatio: number): { fillTarget: number; fillLeftover: number } {
-        if (!this._fillHeight || !containerSize) {
-            return { fillTarget: -1, fillLeftover: 0 };
+    private computeFill(components: Component[], containerSize: Size | null, shrinkRatio: number): Map<number, number> {
+        const fills = new Map<number, number>();
+
+        if (!containerSize) {
+            return fills;
         }
 
         let used = 0;
         let displayed = 0;
-        let fillTarget = -1;
+        let bottommostOpen = -1;
+        const weighted: Array<{ index: number; weight: number }> = [];
+        let weightTotal = 0;
 
         for (let i = 0; i < components.length; i++) {
             if (!components[i].isDisplayed()) {
@@ -1423,16 +1433,31 @@ class Accordion extends LayoutManager {
 
             if (this._openState[i]) {
                 used += this.openContentHeight(components[i], shrinkRatio);
-                fillTarget = i;
+                bottommostOpen = i;
+
+                const weight = (this.getLayoutConstraints(components[i]) as AccordionConstraints | undefined)?.fillWeight ?? 0;
+                if (weight > 0) {
+                    weighted.push({ index: i, weight });
+                    weightTotal += weight;
+                }
             }
         }
 
         const leftover = containerSize.height - used;
 
-        return {
-            fillTarget,
-            fillLeftover: fillTarget !== -1 && leftover > 0 ? leftover : 0,
-        };
+        if (leftover <= 0) {
+            return fills;
+        }
+
+        if (weightTotal > 0) {
+            for (const { index, weight } of weighted) {
+                fills.set(index, leftover * (weight / weightTotal));
+            }
+        } else if (this._fillHeight && bottommostOpen !== -1) {
+            fills.set(bottommostOpen, leftover);
+        }
+
+        return fills;
     }
 
     /**

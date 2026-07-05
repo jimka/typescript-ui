@@ -22,6 +22,13 @@ export interface AccordionSectionConfig {
     glyph?:         string;
     /** Optional per-section tool components shown in this section's header. */
     tools?:         Component[];
+    /**
+     * Optional share of the accordion's leftover height this section fills when
+     * the open sections underflow. `0`/omitted sits at preferred height; a
+     * positive weight grows the section by its fraction of the total fill weight.
+     * See {@link AccordionConstraints.fillWeight}.
+     */
+    fillWeight?:    number;
 }
 
 /**
@@ -90,7 +97,7 @@ class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOpti
 
         if (options?.sections) {
             for (const section of options.sections) {
-                this.addSection(section.component, section.label, section.initiallyOpen, section.glyph, section.tools);
+                this.addSection(section.component, section.label, section.initiallyOpen, section.glyph, section.tools, section.fillWeight);
             }
         }
 
@@ -107,11 +114,18 @@ class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOpti
      * @param initiallyOpen - Optional. Whether the section starts expanded; defaults to `false`.
      * @param glyph - Optional. Registry glyph name shown leading the header label.
      * @param tools - Optional. Per-section tool components for this header.
+     * @param fillWeight - Optional. Share of the accordion's leftover height this
+     *   section fills when the open sections underflow (see
+     *   {@link AccordionConstraints.fillWeight}).
      *
      * @returns This panel, for method chaining.
      */
-    addSection(component: Component, label: string, initiallyOpen?: boolean, glyph?: string, tools?: Component[]): this {
+    addSection(component: Component, label: string, initiallyOpen?: boolean, glyph?: string, tools?: Component[], fillWeight?: number): this {
         const constraints = new AccordionConstraints(label, initiallyOpen, glyph, tools);
+
+        if (fillWeight !== undefined) {
+            constraints.fillWeight = fillWeight;
+        }
 
         this.addComponent(component, constraints);
 
