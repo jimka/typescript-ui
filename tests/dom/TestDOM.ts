@@ -621,17 +621,35 @@ export class ModelledDOMSource implements DOMSource {
         return makeRect(x, y, self.w, self.h);
     }
 
-    measureText(text: string, _options?: TextMeasureOptions): TextMetrics {
-        const font  = this.font();
-        let   width = 0;
+    measureText(text: string, options?: TextMeasureOptions): TextMetrics {
+        const font       = this.font();
+        const lineHeight = font.ascent + font.descent;
+        let   width      = 0;
 
         for (const ch of text) {
             width += font.advance[ch] ?? font.advance[' '] ?? 0;
         }
 
+        // Model soft-wrap when a wrap width is supplied: pack the run into as
+        // many equal lines as it takes to fit within maxWidth, so the reported
+        // height grows by whole lines. Char-proportional rather than word-aware,
+        // which is enough to exercise width-dependent height; callers that pass
+        // no maxWidth keep the single-line measurement unchanged.
+        const maxWidth = options?.maxWidth;
+
+        if (maxWidth !== undefined && maxWidth > 0 && width > maxWidth) {
+            const lines = Math.ceil(width / maxWidth);
+
+            return {
+                width:    Math.ceil(maxWidth),
+                height:   Math.ceil(lineHeight * lines),
+                baseline: Math.round(font.ascent),
+            };
+        }
+
         return {
             width:    Math.ceil(width),
-            height:   Math.ceil(font.ascent + font.descent),
+            height:   Math.ceil(lineHeight),
             baseline: Math.round(font.ascent),
         };
     }

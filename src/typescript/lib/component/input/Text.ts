@@ -379,21 +379,14 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
         const text = this._options.text;
         if (text) {
-            const fontSize   = this.getFontSize();
-            const lineHeight = this.getLineHeight();
+            // Natural (single-line) measurement establishes the preferred WIDTH
+            // and the baseline; the height then follows the box's current width,
+            // growing when a wrapping run has been laid out narrower than natural.
+            const natural = DOM.source.measureText(text.toString(), this.measureOptions());
+            const height  = this.measuredHeight(text.toString(), natural.width, natural.height);
 
-            const { width, height, baseline } = DOM.source.measureText(text.toString(), {
-                fontFamily : this.getFontFamily()  ?? undefined,
-                fontSize   : this._fontSizeCSSRule ?? (fontSize !== null ? `${fontSize}px` : undefined),
-                fontWeight : this.getFontWeight()  ?? undefined,
-                fontStyle  : this.getFontStyle()   ?? undefined,
-                fontVariant: this.getFontVariant() ?? undefined,
-                fontStretch: this.getFontStretch() ?? undefined,
-                lineHeight : this._lineHeightCSSRule ?? (lineHeight !== null ? `${lineHeight}px` : undefined)
-            });
-
-            this._measuredBaseline = baseline;
-            this.setCalculatedSize(width, height);
+            this._measuredBaseline = natural.baseline;
+            this.setCalculatedSize(natural.width, height);
             // Store the measured floor as per-instance derived state (like
             // `_measuredBaseline`), kept out of `_defaultOptions`, which holds
             // the class-level Text defaults rather than per-instance
@@ -403,8 +396,8 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             // otherwise cap it so the parent can shrink the text past its
             // natural width.
             const autoMinWidth = this._truncate
-                ? Math.min(width, TEXT_AUTO_MIN_WIDTH_CAP_PX)
-                : width;
+                ? Math.min(natural.width, TEXT_AUTO_MIN_WIDTH_CAP_PX)
+                : natural.width;
             this._measuredMinSize = {
                 width:  autoMinWidth,
                 height: Math.max(height, minLineHeight),
@@ -451,6 +444,119 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         }
 
         return this.wrapInnerBaseline(this._measuredBaseline);
+    }
+
+    /**
+     * Builds the font/line-height option bag for a {@link DOM.measureText} probe
+     * from this Text's resolved styling. Shared by the natural (single-line)
+     * measurement and the wrap-aware height re-measurement in
+     * {@link measuredHeight}, which adds a `maxWidth`.
+     *
+     * @returns The measure options (font family/size/weight/style/variant/stretch
+     *   and line height), each `undefined` when unset so the probe's own default
+     *   applies.
+     */
+    private measureOptions() {
+        const fontSize   = this.getFontSize();
+        const lineHeight = this.getLineHeight();
+
+        return {
+            fontFamily : this.getFontFamily()  ?? undefined,
+            fontSize   : this._fontSizeCSSRule ?? (fontSize !== null ? `${fontSize}px` : undefined),
+            fontWeight : this.getFontWeight()  ?? undefined,
+            fontStyle  : this.getFontStyle()   ?? undefined,
+            fontVariant: this.getFontVariant() ?? undefined,
+            fontStretch: this.getFontStretch() ?? undefined,
+            lineHeight : this._lineHeightCSSRule ?? (lineHeight !== null ? `${lineHeight}px` : undefined),
+        };
+    }
+
+    /**
+     * Whether this Text wraps onto multiple lines — i.e. its `white-space` is a
+     * wrapping value rather than `nowrap`/`pre`. Only a wrapping Text's height
+     * depends on the width it is given.
+     *
+     * @returns `true` when the text soft-wraps at its box width.
+     */
+    private isWrapping(): boolean {
+        const ws = this.getWhiteSpace();
+
+        return ws === "normal" || ws === "pre-wrap" || ws === "pre-line" || ws === "break-spaces";
+    }
+
+    /**
+     * The height the text needs given its current laid-out width.
+     *
+     * A `nowrap` label — or one not yet given a width, or in a vertical writing
+     * mode — is width-independent, so its natural single-line height stands. A
+     * wrapping label whose box is narrower than its natural run re-measures at
+     * the current inner width (its own border/insets removed): the extra lines
+     * make it taller. The re-measure uses the same line-height as the render, so
+     * the reported height matches what is drawn — line-height is the per-line
+     * unit the whole calculation stacks.
+     *
+     * @param text - The text run being measured.
+     * @param naturalWidth - The natural single-line width (nowrap), the wrap threshold.
+     * @param naturalHeight - The natural single-line height, used when it does not wrap.
+     * @returns The height (px) at the current width; floored at one line.
+     */
+    private measuredHeight(text: string, naturalWidth: number, naturalHeight: number): number {
+        if (!this.isWrapping() || this.isVerticalWritingMode()) {
+            return naturalHeight;
+        }
+
+        const width = this.getWidth();
+
+        if (Number.isNaN(width)) {
+            return naturalHeight;
+        }
+
+        const perimeter  = this.getPerimiterSize();
+        const innerWidth = width - perimeter.left - perimeter.right;
+
+        // Wide enough for the whole run on one line → no wrapping; keep the exact
+        // single-line height and skip a redundant probe.
+        if (innerWidth >= naturalWidth) {
+            return naturalHeight;
+        }
+
+        const wrapped       = DOM.source.measureText(text, { ...this.measureOptions(), maxWidth: innerWidth });
+        const minLineHeight = Math.ceil(this.getLineHeight() ?? this.readThemeLineHeightPx());
+
+        return Math.max(wrapped.height, minLineHeight);
+    }
+
+    /**
+     * Sets the laid-out width and, for a wrapping Text, re-measures at the new
+     * width so its preferred height tracks the number of wrapped lines.
+     *
+     * A wrapping run's height depends on the width it is given, but the
+     * preferred-size protocol resolves heights bottom-up before widths are
+     * assigned top-down — so the height is only knowable once the box has a
+     * width. Re-measuring here updates the preferred height, and
+     * {@link Component.setPreferredSize} fires the ancestor notify, so the parent
+     * re-lays-out one pass later at the taller height (the box's own min height
+     * also rises, so the current pass already reserves the room rather than
+     * clipping). A `nowrap` label's height is width-independent, so its width
+     * changes need no re-measure. Idempotent once the width settles: an
+     * unchanged width re-measures to the same height and the notify is suppressed.
+     *
+     * @param width - The new outer width in pixels.
+     * @returns This component, for chaining.
+     */
+    override setWidth(width: number): this {
+        const previous = this.getWidth();
+
+        super.setWidth(width);
+
+        if (this.isWrapping() && this.getWidth() !== previous) {
+            this._measurementDirty = true;
+            // Re-measure now (at the new width) so the updated preferred height
+            // propagates before the next layout pass reads it.
+            this.calculateSize();
+        }
+
+        return this;
     }
 
     /**

@@ -43,6 +43,22 @@ export interface Reader {
 }
 
 /**
+ * How {@link JsonReader} chooses between the envelope and top-level-array parse.
+ *
+ * - `'auto'` — the historical behaviour: an envelope when the read requested
+ *   pagination, a top-level array otherwise. The response *shape* is assumed to
+ *   follow the request.
+ * - `'envelope'` — always parse the `{ [rootProperty], [totalProperty] }`
+ *   envelope, regardless of pagination. For servers that return a counted
+ *   envelope on every read (paginated or not), decoupling the parse shape from
+ *   whether this particular read carried `page`/`pageSize`.
+ * - `'array'` — always parse a top-level (optionally `root`-unwrapped) array.
+ *
+ * @category Data
+ */
+export type JsonReaderMode = 'auto' | 'envelope' | 'array';
+
+/**
  * Construction-time options for {@link JsonReader}.
  *
  * @category Data
@@ -51,6 +67,12 @@ export interface JsonReaderOptions {
     root?          : string;
     rootProperty?  : string;
     totalProperty? : string;
+    /**
+     * Which parse to use. Defaults to `'auto'` (envelope when paginated, array
+     * otherwise). Set `'envelope'` or `'array'` to fix the shape independently
+     * of the read's pagination — see {@link JsonReaderMode}.
+     */
+    mode?          : JsonReaderMode;
 }
 
 /**
@@ -83,16 +105,19 @@ export class JsonReader implements Reader {
     private _root: string | undefined;
     private _rootProperty: string;
     private _totalProperty: string;
+    private _mode: JsonReaderMode;
 
     /**
      * Constructs a JsonReader from the given options.
      *
-     * @param options - Optional. The root-key and envelope-key overrides.
+     * @param options - Optional. The root-key and envelope-key overrides, and
+     *   the parse {@link JsonReaderMode | mode}.
      */
     constructor(options?: JsonReaderOptions) {
         this._root          = options?.root;
         this._rootProperty  = options?.rootProperty ?? DEFAULT_ROOT_PROPERTY;
         this._totalProperty = options?.totalProperty ?? DEFAULT_TOTAL_PROPERTY;
+        this._mode          = options?.mode ?? 'auto';
     }
 
     /**
@@ -104,17 +129,18 @@ export class JsonReader implements Reader {
      * @returns The normalized read result.
      *
      * @remarks
-     * Paginated mode reads `rootProperty` as the records array and
-     * `totalProperty` as the count from the (optionally `root`-unwrapped)
-     * envelope. Unpaginated mode unwraps `root` to an array, or falls back to a
-     * top-level array. Throws an `Error` on an unexpected shape.
+     * With the default `'auto'` mode the parse follows `paginated`: an envelope
+     * when paginated, a top-level array otherwise. `'envelope'` / `'array'`
+     * force the shape regardless of `paginated`. Envelope parsing reads
+     * `rootProperty` as the records array and `totalProperty` as the count from
+     * the (optionally `root`-unwrapped) object; array parsing unwraps `root` to
+     * an array, or falls back to a top-level array. Throws an `Error` on an
+     * unexpected shape.
      */
     read(raw: any, paginated: boolean): ReadResult {
-        if (paginated) {
-            return this.readEnvelope(raw);
-        }
+        const envelope = this._mode === 'envelope' || (this._mode === 'auto' && paginated);
 
-        return this.readArray(raw);
+        return envelope ? this.readEnvelope(raw) : this.readArray(raw);
     }
 
     /**

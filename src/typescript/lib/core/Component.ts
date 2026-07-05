@@ -148,19 +148,29 @@ export interface ComponentOptions {
 // it). `flushLayout()` provides a synchronous escape hatch for callers that need a layout
 // commit before reading layout-derived state.
 let pendingLayouts: Set<Component> = new Set();
+// Callbacks queued via Component.afterNextLayout, drained once after the next
+// flush lays out every dirty component — see afterNextLayout for the contract.
+let afterLayoutCallbacks: Array<() => void> = [];
 let rafHandle: number | null = null;
+
+/** Schedules a layout-flush frame if one is not already pending. */
+function ensureFlushScheduled(): void {
+    if (rafHandle === null) {
+        rafHandle = DOM.sink.requestAnimationFrame(flushPendingLayouts);
+    }
+}
 
 function flushPendingLayouts() {
     rafHandle = null;
 
-    if (pendingLayouts.size === 0) {
-        return;
-    }
-
-    // Snapshot and clear so re-entrant scheduleLayout calls (from doLayout side effects)
-    // queue into the next frame instead of mutating during iteration.
+    // Snapshot and clear both queues so re-entrant scheduleLayout / afterNextLayout
+    // calls (from a doLayout side effect or a post-layout callback) queue into the
+    // next frame instead of mutating these during iteration.
     const dirty = Array.from(pendingLayouts);
     pendingLayouts.clear();
+
+    const callbacks = afterLayoutCallbacks;
+    afterLayoutCallbacks = [];
 
     for (const c of dirty) {
         let hasDirtyAncestor = false;
@@ -176,6 +186,13 @@ function flushPendingLayouts() {
         if (!hasDirtyAncestor) {
             c.doLayout();
         }
+    }
+
+    // Post-layout callbacks run after every dirty component has settled, so a
+    // consumer that scheduled layout work (revealing a view, opening a section)
+    // can act on the final geometry — e.g. focus a now-laid-out element.
+    for (const cb of callbacks) {
+        cb();
     }
 }
 
@@ -4192,6 +4209,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this.scheduleLayout();
+        // Gaining a child changes this container's own preferred size, so notify
+        // the parent — the same signal a child's setPreferredSize raises via the
+        // handler installed above. Without it a nested add (e.g. a row into a
+        // content-sized viewport) relayouts only this container, leaving an
+        // ancestor that sizes to it (a form, a dialog) measuring the stale size.
+        this._onPreferredSizeChange?.();
 
         return this;
     }
@@ -4255,6 +4278,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this.scheduleLayout();
+        // See addComponent: propagate the container's own preferred-size change up
+        // so an ancestor that sizes to this container tracks the inserted child.
+        this._onPreferredSizeChange?.();
 
         return this;
     }
@@ -4341,6 +4367,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         component._onConstraintSizeChange = null;
         component.removeElement();
         this.scheduleLayout();
+        // See addComponent: losing a child changes this container's own preferred
+        // size, so notify the parent to relayout and re-measure.
+        this._onPreferredSizeChange?.();
 
         return constraints;
     }
@@ -4585,12 +4614,33 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         pendingLayouts.add(this);
-
-        if (rafHandle === null) {
-            rafHandle = DOM.sink.requestAnimationFrame(flushPendingLayouts);
-        }
+        ensureFlushScheduled();
 
         return this;
+    }
+
+    /**
+     * Runs a callback once, after the next batched layout flush completes.
+     *
+     * Layout is coalesced onto an animation frame (see {@link scheduleLayout}),
+     * so geometry a consumer has just triggered — revealing a view, opening an
+     * {@link Accordion} section, adding rows — is not yet final on the
+     * synchronous tick that triggered it. Deferring work here runs it past that
+     * flush, once every dirty component has laid out, so it observes the settled
+     * tree. The canonical case is moving focus into a freshly laid-out element:
+     * a bare `requestAnimationFrame` only races the flush, whereas this follows
+     * it deterministically.
+     *
+     * The callback fires on the same frame as an already-pending flush, or on
+     * the next frame when nothing is scheduled; either way after every
+     * `doLayout`. A callback that itself calls `afterNextLayout` queues the new
+     * work for the following frame, not re-entrantly within this drain.
+     *
+     * @param callback - The work to run once after the next layout flush.
+     */
+    static afterNextLayout(callback: () => void): void {
+        afterLayoutCallbacks.push(callback);
+        ensureFlushScheduled();
     }
 
     /**

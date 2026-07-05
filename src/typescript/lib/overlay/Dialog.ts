@@ -597,6 +597,13 @@ class Dialog extends Component implements DismissableLayer {
      *
      * @param config - Dialog configuration.
      * @returns Height in pixels for the content region.
+     *
+     * @remarks
+     * Content whose height depends on its width — a wrapping {@link Text} only
+     * knows its line count once laid out — reports a single-line height here,
+     * before it has been sized. {@link resizeToContent}, scheduled after the
+     * first layout in {@link open}, re-fits the dialog once the content has
+     * settled at the dialog width.
      */
     private computeContentHeight(config: DialogConfig): number {
         if (config.contentComponent) {
@@ -692,6 +699,13 @@ class Dialog extends Component implements DismissableLayer {
         this.scheduleLayout();
         this.center();
         this.animateIn();
+
+        // The construction-time height assumed single-line content; once the
+        // first layout has sized the content at the dialog width, content whose
+        // height depends on width (wrapping Text) has settled, so re-fit to it.
+        // A no-op for content whose height did not change (resizeToContent bails
+        // when the height is unchanged), so only width-dependent content reflows.
+        Component.afterNextLayout(() => this.resizeToContent());
 
         Event.addViewportListener(this, 'keydown', this._boundKeyHandler);
         Event.addViewportListener(this, 'resize', this._boundResizeHandler);
