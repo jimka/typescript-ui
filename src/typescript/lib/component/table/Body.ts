@@ -100,7 +100,7 @@ function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
  * hasn't changed (e.g. during a pure resize) the call is skipped, avoiding the
  * text-measurement reflow inside `setText()`.
  *
- * Scrolling is delegated to a {@link VirtualScroller} that owns the
+ * Scrolling is delegated to a `VirtualScroller` that owns the
  * rows-container transform, two custom scrollbar overlays, and the wheel/touch
  * handlers with fling momentum.
  *
@@ -582,7 +582,7 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
-     * Initializes the body element, constructs the {@link VirtualScroller}, and
+     * Initializes the body element, constructs the `VirtualScroller`, and
      * wires keyboard and focus listeners.
      *
      * @param element - Optional. The element handle to initialize with; falls back to `getElement()`.
@@ -993,7 +993,7 @@ class Body extends VirtualRowView<Row> {
      * `scrollY` from the scroll-side body into the pinned-side body;
      * `"horizontalscroll"` is used by `Table` to mirror `scrollX` into the
      * header's transform so column headers stay aligned with the body cells
-     * they label. The listeners fire from the {@link VirtualScroller}'s
+     * they label. The listeners fire from the `VirtualScroller`'s
      * onScroll hook (see `init`) — the body uses transform-based virtual
      * scroll, so the native DOM `scroll` event never fires.
      */
@@ -1374,7 +1374,7 @@ class Body extends VirtualRowView<Row> {
      *
      * @param colIndex - The visible-column index to reveal.
      *
-     * @remarks Driving the shared {@link VirtualScroller} keeps the header
+     * @remarks Driving the shared `VirtualScroller` keeps the header
      * translate and the scrollbar thumb in sync with the move. This is why an
      * inline edit routes through here rather than relying on the browser's
      * native focus-scroll: that scroll shifts only the clipped content layer

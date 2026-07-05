@@ -67,7 +67,7 @@ export interface TreeOptions extends ComponentOptions {
  * internal row components — rebinding rows only when their data index changes,
  * mirroring the approach used in `table/Body.ts`.
  *
- * Scrolling is delegated to a {@link VirtualScroller} that owns the
+ * Scrolling is delegated to a `VirtualScroller` that owns the
  * rows-container transform, two custom scrollbar overlays, and the wheel/touch
  * handlers with fling momentum.
  *
@@ -1073,7 +1073,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
-     * Constructs the {@link VirtualScroller} and wires click and keyboard listeners.
+     * Constructs the `VirtualScroller` and wires click and keyboard listeners.
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().
      */
