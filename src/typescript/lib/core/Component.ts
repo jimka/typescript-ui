@@ -237,6 +237,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // layoutManager, insets, padding, ...) live in `this._options` instead.
     private _components: Array<Component>;
 
+    // Callbacks queued via onFirstLayout, drained the first time this component
+    // completes a doLayout while its element is connected. Null once fired (or
+    // never registered) so the common case allocates nothing.
+    private _firstLayoutCallbacks : Array<() => void> | null = null;
+
     private _element              : Handle | undefined;
     // Handles for every element this component created — root, clip / content
     // frames, and subclass-created children (registered via trackHandle).
@@ -4593,8 +4598,75 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         lm.doLayout();
+        this.runFirstLayoutCallbacks();
 
         return this;
+    }
+
+    /**
+     * Runs a callback once, the first time this component completes a layout
+     * while its element is connected to the document — a per-instance "mounted
+     * and sized" signal.
+     *
+     * A component's content is built before its host attaches it (a dock tab's
+     * panel, an accordion section's body), so on the tick that builds it the
+     * element may not exist yet and its geometry is unknown. Polling
+     * `requestAnimationFrame` until `getElement()` appears is the workaround this
+     * replaces: the host schedules a layout when it mounts the component, and
+     * this fires right after that first connected layout — the element exists and
+     * has been sized, so focus, measurement, or seeding can act on it.
+     *
+     * If the component has already laid out connected when called, the callback
+     * is deferred to the next layout flush (via {@link afterNextLayout}) rather
+     * than run synchronously, so callers see one consistent asynchronous
+     * contract. Unlike the static `afterNextLayout`, this waits for *this*
+     * component specifically, so it is safe to register before the host mounts it.
+     *
+     * @param callback - The work to run once after the first connected layout.
+     *
+     * @returns This component, for method chaining.
+     */
+    onFirstLayout(callback: () => void): this {
+        const element = this.getElement();
+
+        if (element && DOM.source.isConnected(element)) {
+            Component.afterNextLayout(callback);
+
+            return this;
+        }
+
+        (this._firstLayoutCallbacks ??= []).push(callback);
+        // Ensure a layout will occur to drive the drain even if nothing else
+        // schedules one; if the component is still detached when it runs, the
+        // drain is skipped and waits for the host's mount-time layout.
+        this.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Drains the {@link onFirstLayout} queue once this component has laid out
+     * while connected. A layout that runs on a still-detached component (laid out
+     * in a subtree before its host attaches it) leaves the queue intact to fire
+     * on the connected layout that follows.
+     */
+    private runFirstLayoutCallbacks(): void {
+        if (!this._firstLayoutCallbacks) {
+            return;
+        }
+
+        const element = this.getElement();
+
+        if (!element || !DOM.source.isConnected(element)) {
+            return;
+        }
+
+        const callbacks = this._firstLayoutCallbacks;
+        this._firstLayoutCallbacks = null;
+
+        for (const callback of callbacks) {
+            callback();
+        }
     }
 
     /**
