@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { DOM } from "~/core/DOM.js";
-import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { BulletedListItemStyle } from "~/component/list/BulletedListItemStyle.js";
@@ -16,7 +14,6 @@ import { ListItem } from "~/component/list/ListItem.js";
  */
 export interface AbstractListOptions<U extends BulletedListItemStyle | NumberedListItemStyle> extends ComponentOptions {
     itemStyle?:     U;
-    selectedIndex?: number;
 }
 
 /**
@@ -64,10 +61,6 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
         // and queues the `list-style-type` rule without touching `_options`.
         this.setStyle(options.itemStyle ?? this.getStyle()!);
 
-        if (options.selectedIndex !== undefined) {
-            this.setSelectedIndex(options.selectedIndex, false);
-        }
-
         return this;
     }
 
@@ -88,89 +81,6 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
     setStyle(style: U) : this {
         this._style = style;
         this.setElementCSSRule("list-style-type", style);
-
-        return this;
-    }
-
-    /**
-     * Registers a listener for the list's `"action"` event — fired on a
-     * selection change. A typed semantic shorthand over
-     * {@link Event.addListener} (the underlying DOM event is `"change"`);
-     * `"action"` is currently the only allowed event name.
-     *
-     * @param event - The event name. Only `"action"` is accepted.
-     * @param listener - The callback to invoke when the selection changes.
-     *
-     * @returns This component, for method chaining.
-     */
-    on(event: "action", listener: Function): this;
-    on(_event: "action", listener: Function): this {
-        Event.addListener(this, "change", listener);
-
-        return this;
-    }
-
-    /**
-     * Removes a previously registered `"action"` listener. The exact callback
-     * reference must match the one passed to {@link on}.
-     *
-     * @param event - The event the listener was registered for.
-     * @param listener - The callback to remove.
-     *
-     * @returns This component, for method chaining.
-     */
-    off(event: "action", listener: Function): this;
-    off(_event: "action", listener: Function): this {
-        Event.removeListener(this, "change", listener);
-
-        return this;
-    }
-
-    /**
-     * Returns the data-key of the currently selected list item.
-     *
-     * @returns The data-key string of the selected option element.
-     */
-    getSelectedValue() {
-        let element = this.getElement();
-        if (!element) {
-            return undefined;
-        }
-
-        return DOM.source.getSelectedOptionDataset(element, "key");
-    }
-
-    /**
-     * Returns the zero-based index of the currently selected list item.
-     *
-     * @returns The selected index.
-     */
-    getSelectedIndex() {
-        let element = this.getElement();
-        if (!element) {
-            return -1;
-        }
-
-        return DOM.source.getSelectedIndex(element);
-    }
-
-    /**
-     * Sets the selected item index and optionally fires a 'change' event.
-     *
-     * @param idx - The zero-based index to select.
-     * @param fireEvent - Optional. When true (default), fires the 'change' event after updating.
-     */
-    setSelectedIndex(idx: number, fireEvent = true) : this {
-        let element = this.getElement();
-        if (!element) {
-            return this;
-        }
-
-        DOM.sink.setSelectedIndex(element, idx);
-
-        if (!!fireEvent) {
-            Event.fireEvent(this, "change");
-        }
 
         return this;
     }
