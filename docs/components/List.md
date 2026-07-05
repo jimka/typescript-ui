@@ -45,6 +45,33 @@ list.setStore(myStore, 'name', 'id');
 
 The list refreshes automatically on `load` / `add` / `remove` / `datachanged` / `sync` events. When records arrive after construction, the previously-selected key is preserved if it still appears in the new record set.
 
+## Item renderers
+
+Each row's content is produced by a [`ListItemRenderer`](/api/component/list/classes/ListItemRenderer). By default the list uses [`LabelListItemRenderer`](/api/component/list/classes/LabelListItemRenderer), which renders the item label as plain text with ellipsis truncation. Swap the renderer for every row with the `rendererFactory` option (or `setRendererFactory` at runtime), passing a zero-argument factory.
+
+[`GlyphListItemRenderer`](/api/component/list/classes/GlyphListItemRenderer) paints an icon before each label, sourcing the icon name from the item's `glyph` field. Register the glyphs first, as with any [`Glyph`](/api/component/display/classes/Glyph):
+
+```typescript
+import { List, GlyphListItemRenderer } from '@jimka/typescript-ui/component/list';
+import { Glyph } from '@jimka/typescript-ui/component/display';
+import { folder } from '@jimka/typescript-ui/glyphs/solid/folder';
+import { file }   from '@jimka/typescript-ui/glyphs/solid/file';
+
+Glyph.register(folder, file);
+
+const list = List({ rendererFactory: () => new GlyphListItemRenderer() });
+list.setItems([
+    { key: 'docs', label: 'Documents', glyph: 'folder' },
+    { key: 'read', label: 'README',    glyph: 'file'   },
+]);
+```
+
+An item with no `glyph` renders label-only. For a store-bound list, resolve each item's glyph from a record field by passing its name as the fourth [`setStore`](/api/component/list/classes/List#setstore) argument (or the `glyphField` option):
+
+```typescript
+list.setStore(myStore, 'name', 'id', 'icon');
+```
+
 ## Sizing
 
 A `List` fills the space its parent's layout manager allocates rather than shrink-wrapping to its rows: placed in a stretching region — a [`Border`](/api/layout/classes/Border) `WEST`/`CENTER`, a `Fit`/`Box` cell with a vertical fill — it grows to the region's full height and scrolls any overflow internally, instead of capping at its content height. An explicit `setMaxSize` / `setMinSize` (or the option-bag `maxSize` / `minSize`) still binds as a hard ceiling or floor. To size a free-standing list to its content instead, give it an explicit `preferredSize` and place it where the layout honours that (e.g. an `Absolute` cell).

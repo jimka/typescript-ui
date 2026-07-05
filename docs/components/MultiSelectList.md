@@ -40,6 +40,10 @@ panel.addComponent(tags);
 | `getSelectedRecords()` | When a store is bound, returns the selected [`ModelRecord`](/api/data/classes/ModelRecord) instances. |
 | `setSelectedRecords(records)` | Programmatically select the rows whose backing records appear in `records`. |
 
+## Item renderers
+
+`MultiSelectList` inherits the `rendererFactory` option / `setRendererFactory` and the per-item `glyph` field from the shared list base, so a [`GlyphListItemRenderer`](/api/component/list/classes/GlyphListItemRenderer) paints an icon beside each row exactly as in [`List`](/components/List#item-renderers).
+
 ## Binding
 
 `MultiSelectList` implements [`Bindable<string[]>`](/api/core/interfaces/Bindable) directly, so a [`Binding`](/api/core/classes/Binding) can wire it without explicit accessors:

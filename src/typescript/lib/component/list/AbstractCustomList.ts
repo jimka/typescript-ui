@@ -13,6 +13,8 @@ import { Fit } from "~/layout/Fit.js";
 import { VBox } from "~/layout/VBox.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
+import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
+import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
 
 /**
  * One entry in a [`List`](/api/component/list/classes/List) /
@@ -26,6 +28,14 @@ export interface CustomListItem {
     key:   string;
     /** Display text rendered in the row. */
     label: string;
+    /**
+     * Optional registry glyph name, read by
+     * [`GlyphListItemRenderer`](/api/component/list/classes/GlyphListItemRenderer)
+     * to paint an icon beside the label. Ignored by the default label
+     * renderer. Array-supplied items carry it directly; store-bound items
+     * resolve it from the record field named by the list's `glyphField`.
+     */
+    glyph?: string;
 }
 
 /**
@@ -65,6 +75,19 @@ export interface AbstractCustomListOptions extends AbstractInputOptions {
     store?:        AbstractStore;
     displayField?: string;
     valueField?:   string;
+    /**
+     * Record field whose value becomes each store-bound item's `glyph`, read
+     * by [`GlyphListItemRenderer`](/api/component/list/classes/GlyphListItemRenderer).
+     * Array-supplied items carry their glyph on the item instead.
+     */
+    glyphField?:   string;
+    /**
+     * Zero-argument factory producing the renderer for each row. Defaults to a
+     * label renderer reproducing the plain-text rows. Supply
+     * `() => new GlyphListItemRenderer()` to paint each item's `glyph` beside
+     * its label.
+     */
+    rendererFactory?: () => ListItemRenderer;
     /**
      * Construction-time listener bag — the declarative form of `on()`. Adds the
      * list's `action` shorthand to the inherited `change` / `binding`.
@@ -200,24 +223,35 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
 class CustomListRow extends Component {
     // Cached so setter calls made before the element renders survive to
     // be applied at render time.
-    private _text:     string  = "";
     private _selected: boolean = false;
     private _focused:  boolean = false;
     /** Zero-based index in the row pool; forwarded to `_onClick` on click. */
     private _index:    number;
     /** Owner-supplied click handler invoked with this row's `_index`. */
     private readonly _onClick: (index: number, event: MouseEvent) => void;
+    /**
+     * The renderer owning this row's content (label, optional glyph). Built
+     * from the owning list's factory, appended straight into the row DOM in
+     * {@link init}, and positioned from {@link doLayout}. Rendered
+     * `pointer-events: none` so a click on the label falls through to the
+     * row element, whose exact-target `click` listener drives selection.
+     */
+    private _renderer: ListItemRenderer;
 
     /**
      * @param onClick - Called with the row's index and the raw mouse event
      *   when the row is clicked.
      * @param index - Initial pool index.
+     * @param rendererFactory - Zero-argument factory producing this row's
+     *   content renderer.
      */
-    constructor(onClick: (index: number, event: MouseEvent) => void, index: number) {
+    constructor(onClick: (index: number, event: MouseEvent) => void, index: number, rendererFactory: () => ListItemRenderer) {
         super({ tag: "div" });
 
-        this._onClick = onClick;
-        this._index   = index;
+        this._onClick  = onClick;
+        this._index    = index;
+        this._renderer = rendererFactory();
+        this._renderer.setPointerEvents("none");
 
         this.getAria().setRole("option");
         this.setPreferredSize(0, ROW_HEIGHT_PX);
@@ -234,30 +268,48 @@ class CustomListRow extends Component {
     }
 
     /**
-     * Updates the rendered row label.
+     * Rebinds this row's renderer to a new item, replacing the plain-text
+     * label write the pool sync used before renderers existed.
      *
-     * @param text - The text to display.
+     * @param item - The item to display.
+     * @param index - The item's zero-based index.
      *
      * @returns This row, for method chaining.
      */
-    setLabel(text: string): this {
-        this._text = text;
-
-        const el = this.getElement();
-        if (el) {
-            DOM.sink.apply(el, { text });
-        }
+    updateItem(item: CustomListItem, index: number): this {
+        this._renderer.update({ item, index });
 
         return this;
     }
 
     /**
-     * Returns the cached row label.
+     * Swaps in a new content renderer, removing the old renderer's element
+     * and appending the new one. Used when the owning list's renderer factory
+     * changes. The new renderer is left blank until the next
+     * {@link updateItem}.
      *
-     * @returns The label string.
+     * @param renderer - The replacement renderer.
+     *
+     * @returns This row, for method chaining.
      */
-    getLabel(): string {
-        return this._text;
+    setRenderer(renderer: ListItemRenderer): this {
+        const el = this.getElement();
+
+        if (el) {
+            const oldEl = this._renderer.getElement();
+            if (oldEl && DOM.source.getParentNode(oldEl) === el) {
+                DOM.sink.removeChild(el, oldEl);
+            }
+        }
+
+        this._renderer = renderer;
+        this._renderer.setPointerEvents("none");
+
+        if (el) {
+            DOM.sink.appendChild(el, this._renderer.getElement(true)!);
+        }
+
+        return this;
     }
 
     /**
@@ -335,16 +387,65 @@ class CustomListRow extends Component {
     }
 
     /**
-     * Renders the row's `<div>` with its label and current class set.
+     * Renders the row's `<div>` with its current class set. The label content
+     * lives in the renderer child, appended by {@link init}.
      *
      * @returns The created element handle.
      */
     protected render(): Handle {
         const element = super.render();
-        DOM.sink.apply(element, { text: this._text });
         this.applyRowClass();
 
         return element;
+    }
+
+    /**
+     * Appends the renderer's element to the row DOM. The renderer's own
+     * children (label, optional glyph) are appended by the renderer's `init`.
+     *
+     * @param element - Optional element passed by the rendering pipeline;
+     *   falls back to getElement().
+     *
+     * @returns This row, for method chaining.
+     */
+    protected init(element?: Handle): this {
+        super.init(element);
+
+        const el = element || this.getElement();
+        if (el) {
+            DOM.sink.appendChild(el, this._renderer.getElement(true)!);
+        }
+
+        return this;
+    }
+
+    /**
+     * Positions the renderer to fill the row's padding box, then lets it lay
+     * out its own children. Only writes setters (no geometry reads), so it is
+     * safe under the `commitBounds` auto-commit path that drives it.
+     *
+     * @returns This row, for method chaining.
+     */
+    doLayout(): this {
+        super.doLayout();
+
+        const inner = this.getInnerSize();
+        if (!inner) {
+            return this;
+        }
+
+        const perim = this.getPerimiterSize();
+
+        this._renderer.setAutoCommitStyle(false);
+        this._renderer.setX(perim.left);
+        this._renderer.setY(perim.top);
+        this._renderer.setWidth(inner.width);
+        this._renderer.setHeight(inner.height);
+        this._renderer.setAutoCommitStyle(true);
+
+        this._renderer.layoutChildren(inner.width, inner.height);
+
+        return this;
     }
 
     /**
@@ -447,6 +548,14 @@ abstract class AbstractCustomList<
     protected _selectFollowsFocus: boolean = true;
     protected _innerPanel:   Panel;
     private _storeRefresh:   (() => void) | null   = null;
+    /**
+     * Factory producing each row's content renderer. Defaults to a label
+     * renderer reproducing the plain-text rows. Written only by
+     * {@link setRendererFactory}, dispatched from the constructor body, so the
+     * field-initializer default survives the `super()` cascade without a
+     * `declare`.
+     */
+    private _rendererFactory: () => ListItemRenderer = () => new LabelListItemRenderer();
 
     /**
      * @param options - Caller-supplied options bag.
@@ -492,11 +601,17 @@ abstract class AbstractCustomList<
 
         Event.addListener(this, "keydown", this.handleKeyDown);
 
-        // Late-built state: `store` / `items` / `enabled` / `readOnly`
-        // were written pure to `_options` by the super-time cascade.
-        // Dispatch them now that `_innerPanel` and `_rowPool` exist.
+        // Late-built state: `rendererFactory` / `store` / `items` / `enabled` /
+        // `readOnly` were written pure to `_options` by the super-time cascade.
+        // Dispatch them now that `_innerPanel` and `_rowPool` exist. The
+        // factory is dispatched first so the row pool is built (by `setStore` /
+        // `setItems` below) with the caller's renderer on first paint.
+        if (this._options.rendererFactory !== undefined) {
+            this.setRendererFactory(this._options.rendererFactory);
+        }
+
         if (this._options.store !== undefined && this._options.displayField !== undefined) {
-            this.setStore(this._options.store, this._options.displayField, this._options.valueField);
+            this.setStore(this._options.store, this._options.displayField, this._options.valueField, this._options.glyphField);
         }
 
         if (this._options.items !== undefined) {
@@ -573,10 +688,12 @@ abstract class AbstractCustomList<
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.items        !== undefined) this._options.items        = options.items;
-        if (options.store        !== undefined) this._options.store        = options.store;
-        if (options.displayField !== undefined) this._options.displayField = options.displayField;
-        if (options.valueField   !== undefined) this._options.valueField   = options.valueField;
+        if (options.items           !== undefined) this._options.items           = options.items;
+        if (options.store           !== undefined) this._options.store           = options.store;
+        if (options.displayField    !== undefined) this._options.displayField    = options.displayField;
+        if (options.valueField      !== undefined) this._options.valueField      = options.valueField;
+        if (options.glyphField      !== undefined) this._options.glyphField      = options.glyphField;
+        if (options.rendererFactory !== undefined) this._options.rendererFactory = options.rendererFactory;
 
         return this;
     }
@@ -631,7 +748,7 @@ abstract class AbstractCustomList<
             built.push(
                 typeof entry === "string"
                     ? { key: entry, label: entry }
-                    : { key: (entry as CustomListItem).key, label: (entry as CustomListItem).label },
+                    : { key: (entry as CustomListItem).key, label: (entry as CustomListItem).label, glyph: (entry as CustomListItem).glyph },
             );
         }
 
@@ -689,7 +806,7 @@ abstract class AbstractCustomList<
         this._items.push(
             typeof item === "string"
                 ? { key: item, label: item }
-                : { key: (item as CustomListItem).key, label: (item as CustomListItem).label },
+                : { key: (item as CustomListItem).key, label: (item as CustomListItem).label, glyph: (item as CustomListItem).glyph },
         );
 
         this.pauseLayout();
@@ -709,10 +826,13 @@ abstract class AbstractCustomList<
      * @param displayField - The record field whose value becomes the row label.
      * @param valueField - Optional. The record field used as the row key;
      *   defaults to the record's primary key when omitted.
+     * @param glyphField - Optional. The record field whose value becomes each
+     *   item's `glyph` (read by the glyph renderer); omitted leaves items
+     *   glyph-less.
      *
      * @returns This component, for method chaining.
      */
-    setStore(store: AbstractStore, displayField: string, valueField?: string): this {
+    setStore(store: AbstractStore, displayField: string, valueField?: string, glyphField?: string): this {
         const oldStore = this._options.store;
 
         if (this._storeRefresh && oldStore) {
@@ -723,6 +843,7 @@ abstract class AbstractCustomList<
         this._options.store        = store;
         this._options.displayField = displayField;
         this._options.valueField   = valueField;
+        this._options.glyphField   = glyphField;
 
         const refresh = (): void => this.refreshFromStore();
         this._storeRefresh = refresh;
@@ -745,6 +866,39 @@ abstract class AbstractCustomList<
      */
     getStore(): AbstractStore | null {
         return this._options.store ?? null;
+    }
+
+    /**
+     * Replaces the renderer factory. Every existing pool row swaps to a fresh
+     * renderer from the new factory and the pool is re-synced so each renderer
+     * rebinds to its item before the next layout. New rows built afterwards use
+     * the new factory too.
+     *
+     * @param factory - Zero-argument factory producing a renderer per row.
+     *
+     * @returns This component, for method chaining.
+     */
+    setRendererFactory(factory: () => ListItemRenderer): this {
+        this._rendererFactory = factory;
+
+        for (const row of this._rowPool) {
+            row.setRenderer(factory());
+        }
+
+        this.pauseLayout();
+        this.syncRows();
+        this.resumeLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the renderer factory currently in use.
+     *
+     * @returns The zero-argument renderer factory.
+     */
+    getRendererFactory(): () => ListItemRenderer {
+        return this._rendererFactory;
     }
 
     /**
@@ -903,6 +1057,7 @@ abstract class AbstractCustomList<
         const store        = this._options.store;
         const displayField = this._options.displayField;
         const valueField   = this._options.valueField;
+        const glyphField   = this._options.glyphField;
 
         if (!store || !displayField) {
             return;
@@ -927,8 +1082,9 @@ abstract class AbstractCustomList<
             const key    = valueField
                                ? String(record.get(valueField))
                                : String(record.getId());
+            const glyph  = glyphField ? String(record.get(glyphField)) : undefined;
 
-            this._items.push({ key, label });
+            this._items.push({ key, label, glyph });
 
             if (previousAnchorKey !== null && key === previousAnchorKey) {
                 restoredAnchor = i;
@@ -961,7 +1117,7 @@ abstract class AbstractCustomList<
 
         for (let i = 0; i < overlap; i++) {
             const row = this._rowPool[i];
-            row.setLabel(this._items[i].label);
+            row.updateItem(this._items[i], i);
             row.setIndex(i);
             row.setSelected(this._selectedSet.has(i));
             row.setFocused(i === this._focusedIndex);
@@ -969,8 +1125,8 @@ abstract class AbstractCustomList<
 
         if (newLen > oldLen) {
             for (let i = oldLen; i < newLen; i++) {
-                const row = new CustomListRow((idx, e) => this.handleRowClick(idx, e), i);
-                row.setLabel(this._items[i].label);
+                const row = new CustomListRow((idx, e) => this.handleRowClick(idx, e), i, this._rendererFactory);
+                row.updateItem(this._items[i], i);
                 row.setSelected(this._selectedSet.has(i));
                 row.setFocused(i === this._focusedIndex);
                 this._innerPanel.addComponent(row);

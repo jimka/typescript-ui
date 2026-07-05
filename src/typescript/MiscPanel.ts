@@ -79,6 +79,10 @@ import {
     Tree
 } from '@jimka/typescript-ui/component/tree';
 import type { TreeNode } from '@jimka/typescript-ui/component/tree';
+import {
+    GlyphListItemRenderer,
+    List
+} from '@jimka/typescript-ui/component/list';
 import { xmark }         from '@jimka/typescript-ui/glyphs/solid/xmark';
 import { arrow_right }   from '@jimka/typescript-ui/glyphs/solid/arrow_right';
 import { arrow_down }    from '@jimka/typescript-ui/glyphs/solid/arrow_down';
@@ -1276,6 +1280,38 @@ class MiscPanel extends Panel {
         fieldsRow.addComponent(animatedDateTime);
 
         rightColumn.addComponent(fieldsRow);
+
+        // ── Item renderers: a glyph beside each entry (List + ComboBox) ──
+        // One GlyphListItemRenderer factory drives the ComboBox dropdown rows,
+        // the standalone List rows, AND the collapsed ComboBox control, sourcing
+        // each icon from the item's `glyph` field. Glyphs used here are already
+        // registered above.
+        const glyphItems = [
+            { key: 'folder', label: 'Folder',     glyph: 'folder'      },
+            { key: 'file',   label: 'Document',   glyph: 'file'        },
+            { key: 'code',   label: 'Source',     glyph: 'file-code'   },
+            { key: 'save',   label: 'Save As…',   glyph: 'floppy-disk' },
+        ];
+
+        const glyphRenderersLabel = new Text("Item renderers (glyph per entry):");
+        rightColumn.addComponent(glyphRenderersLabel);
+
+        const glyphRenderRow = new Component();
+        glyphRenderRow.setLayoutManager(new HBox());
+
+        const glyphCombo = new ComboBox({ rendererFactory: () => new GlyphListItemRenderer() });
+        glyphCombo.setItems(glyphItems);
+        glyphRenderRow.addComponent(glyphCombo);
+
+        const glyphList = new List({
+            rendererFactory: () => new GlyphListItemRenderer(),
+            preferredSize:   { width: 160, height: 96 },
+        });
+        glyphList.setItems(glyphItems);
+        glyphList.setSelectedIndex(0, false);
+        glyphRenderRow.addComponent(glyphList);
+
+        rightColumn.addComponent(glyphRenderRow);
 
         // ── Panel auto-scroll demo ──
         const autoScrollLabel = new Text("Panel auto-scroll modes:");
