@@ -21,7 +21,7 @@ function key(name: string): KeyboardEvent {
     return { key: name, preventDefault() {}, stopPropagation() {} } as unknown as KeyboardEvent;
 }
 
-const MODEL = new Model([{ name: 'id' }, { name: 'name' }, { name: 'icon' }], 'id');
+const MODEL = new Model([{ name: 'id' }, { name: 'name' }, { name: 'code' }, { name: 'icon' }], 'id');
 function makeStore(rows: any[]): MemoryStore {
     const store = new MemoryStore(MODEL, rows);
     store.loadData(rows);
@@ -173,6 +173,31 @@ describe('ComboBox — store binding', () => {
 
         store.add({ id: 2, name: 'Bob' });
         expect(combo.getItems()).toHaveLength(2);
+    });
+
+    it('forwards valueField and glyphField to the options', () => {
+        installTestDOM(CONFIG);
+        const store = makeStore([{ id: 1, name: 'Alice', code: 'A1', icon: 'star' }]);
+        const combo = new ComboBox();
+        combo.setStore(store, 'name', 'code', 'icon');
+
+        // valueField drives the option key, so getValue returns the code, not the pk.
+        expect(combo.getValue()).toBe('A1');
+        // glyphField drives each option's glyph.
+        expect((combo.getItems()[0] as { glyph?: string }).glyph).toBe('star');
+    });
+
+    it('re-applies a pending value when the store later gains the matching record', () => {
+        installTestDOM(CONFIG);
+        const store = makeStore([{ id: 1, name: 'Alice', code: 'A1' }]);
+        const combo = new ComboBox();
+        combo.setStore(store, 'name', 'code'); // keys are codes
+        combo.setValue('Z9');                  // not present yet — cached pending
+
+        store.add({ id: 2, name: 'Zoe', code: 'Z9' }); // datachanged → onStoreRefresh → reapply
+
+        expect(combo.getValue()).toBe('Z9');
+        expect(combo.getSelectedRecord()?.get('name')).toBe('Zoe');
     });
 });
 
