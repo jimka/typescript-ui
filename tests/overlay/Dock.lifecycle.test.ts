@@ -1390,3 +1390,26 @@ describe('Dock empty-state', () => {
         expect(late.getParentComponent()).toBe(dock.getRootRegion());
     });
 });
+
+describe('Dock listeners option', () => {
+    it('wires emptychange from the construction listeners bag', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const events: Array<{ empty: boolean }> = [];
+        const dock = new Dock({ listeners: { emptychange: e => events.push(e) } });
+
+        dock.getElement(true);
+        dock.setWidth(800);
+        dock.setHeight(600);
+        flush();
+
+        // Born empty adopts without an emit; the first populate transition fires.
+        expect(events).toEqual([]);
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        flush();
+
+        expect(events).toEqual([{ empty: false }]);
+    });
+});

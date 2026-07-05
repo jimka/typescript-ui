@@ -71,6 +71,22 @@ export interface DockOptions extends ContainerOptions {
      * never serialized. See {@link Dock.setEmptyContent}.
      */
     emptyContent?: Component;
+    /**
+     * Construction-time listener bag — the declarative form of {@link Dock.on},
+     * so a consumer can wire dock events (notably `emptychange`, the empty↔
+     * populated aggregate) in the options bag instead of a separate post-build
+     * `on(...)` call. Each entry is registered via `on` after construction; the
+     * born-empty state is adopted without an emit, so read {@link Dock.isEmpty}
+     * for the initial value.
+     */
+    listeners?: {
+        attach?:      (event: DockPanelEvent) => void;
+        detach?:      (event: DockPanelEvent) => void;
+        moved?:       (event: DockPanelEvent) => void;
+        focus?:       (event: DockPanelEvent | null) => void;
+        close?:       (event: DockPanelEvent) => void;
+        emptychange?: (event: DockEmptyEvent) => void;
+    };
 }
 
 /**
@@ -255,6 +271,12 @@ class Dock extends Container<DockOptions> {
         this.addComponent(root);
         this.scheduleSweep();
         this.wireEmptyDropTarget();
+
+        // Wire the declarative listener bag here, not in applyOptions: applyOptions
+        // runs inside super() before this._listeners' field initializer, so on()
+        // would target an undefined bag. scheduleSweep only reconciles emptiness
+        // asynchronously, so no emptychange is missed by wiring after it.
+        this.applyListeners(options?.listeners);
     }
 
     /**
