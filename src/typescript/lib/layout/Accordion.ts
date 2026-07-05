@@ -7,7 +7,7 @@ import { Animation } from "~/core/Animation.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
-import { Size } from "~/primitive/Size.js";
+import { Size, UNBOUNDED } from "~/primitive/Size.js";
 import type { AxisEnd } from "~/primitive/Axis.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
@@ -1032,6 +1032,20 @@ class Accordion extends LayoutManager {
             width : maxWidth + perimeterSize.left + perimeterSize.right,
             height: totalHeight,
         };
+    }
+
+    /**
+     * The accordion's maximum size: deliberately unbounded on both axes. A
+     * height-animated vertical stack whose open/closed section state and
+     * in-flight animation make any static height ceiling meaningless — there is
+     * no stable maximum to report. Returning unbounded directly is the honest
+     * answer, and keeps the `min ≤ preferred ≤ max` invariant trivially
+     * satisfied against the finite min/preferred reports above.
+     *
+     * @returns `{ width: UNBOUNDED, height: UNBOUNDED }`.
+     */
+    getMaxSize(): Size | null {
+        return { width: UNBOUNDED, height: UNBOUNDED };
     }
 
     /**

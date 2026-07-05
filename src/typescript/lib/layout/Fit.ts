@@ -3,6 +3,7 @@
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { Size } from "~/primitive/Size.js";
 import { FillType } from "~/layout/FillType.js";
+import { Component } from "~/core/Component.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -83,33 +84,7 @@ class Fit extends LayoutManager {
      * @returns The preferred `{width, height}`, or `null` if there is no container or no displayed child.
      */
     getPreferredSize(): Size | null {
-        let container = this.getContainer();
-        if (!container) {
-            return null;
-        }
-
-        let perimiterSize = container.getPerimiterSize();
-
-        let outerWidth = perimiterSize.left + perimiterSize.right;
-        let outerHeight = perimiterSize.top + perimiterSize.bottom;
-
-        // Size the displayed child only: a hidden sole child contributes no
-        // size, so the Fit container reports none and its own parent reserves
-        // nothing for it (honouring `displayed`, matching doLayout below).
-        let component = container.getLaidOutComponents()[0] ?? null;
-        if (!component) {
-            return null;
-        }
-
-        let size = component.getPreferredSize();
-        if (!size) {
-            return null;
-        }
-
-        return {
-            width: size.width + outerWidth,
-            height: size.height + outerHeight
-        };
+        return this.computeSize(component => component.getPreferredSize());
     }
 
     /**
@@ -118,33 +93,7 @@ class Fit extends LayoutManager {
      * @returns The minimum `{width, height}`, or `null` if there is no container or no displayed child.
      */
     getMinSize(): Size | null {
-        let container = this.getContainer();
-        if (!container) {
-            return null;
-        }
-
-        let perimiterSize = container.getPerimiterSize();
-
-        let outerWidth = perimiterSize.left + perimiterSize.right;
-        let outerHeight = perimiterSize.top + perimiterSize.bottom;
-
-        // Size the displayed child only: a hidden sole child contributes no
-        // size, so the Fit container reports none and its own parent reserves
-        // nothing for it (honouring `displayed`, matching doLayout below).
-        let component = container.getLaidOutComponents()[0] ?? null;
-        if (!component) {
-            return null;
-        }
-
-        let size = component.getMinSize();
-        if (!size) {
-            return null;
-        }
-
-        return {
-            width: size.width + outerWidth,
-            height: size.height + outerHeight
-        };
+        return this.computeSize(component => component.getMinSize());
     }
 
     /**
@@ -153,25 +102,38 @@ class Fit extends LayoutManager {
      * @returns The maximum `{width, height}`, or `null` if there is no container or no displayed child.
      */
     getMaxSize(): Size | null {
-        let container = this.getContainer();
+        return this.computeSize(component => component.getMaxSize());
+    }
+
+    /**
+     * Shared core of {@link getPreferredSize} / {@link getMinSize} /
+     * {@link getMaxSize}: adds the displayed child's size (selected by `sizeOf`)
+     * to the container perimeter.
+     *
+     * @param sizeOf - Selects the child's preferred, minimum, or maximum size.
+     * @returns The composed `{width, height}`, or `null` if there is no
+     *   container, no displayed child, or the child reports no size.
+     */
+    private computeSize(sizeOf: (component: Component) => Size | null): Size | null {
+        const container = this.getContainer();
         if (!container) {
             return null;
         }
 
-        let perimiterSize = container.getPerimiterSize();
+        const perimiterSize = container.getPerimiterSize();
 
-        let outerWidth = perimiterSize.left + perimiterSize.right;
-        let outerHeight = perimiterSize.top + perimiterSize.bottom;
+        const outerWidth = perimiterSize.left + perimiterSize.right;
+        const outerHeight = perimiterSize.top + perimiterSize.bottom;
 
         // Size the displayed child only: a hidden sole child contributes no
         // size, so the Fit container reports none and its own parent reserves
         // nothing for it (honouring `displayed`, matching doLayout below).
-        let component = container.getLaidOutComponents()[0] ?? null;
+        const component = container.getLaidOutComponents()[0] ?? null;
         if (!component) {
             return null;
         }
 
-        let size = component.getMaxSize();
+        const size = sizeOf(component);
         if (!size) {
             return null;
         }
@@ -198,7 +160,7 @@ class Fit extends LayoutManager {
         let components = container.getComponents();
 
         if (components.length > 1) {
-            throw new Error("Container contains more then one component.");
+            throw new Error("Container contains more than one component.");
         }
 
         let component;
@@ -254,7 +216,7 @@ class Fit extends LayoutManager {
         let components = container.getLaidOutComponents();
 
         if (components.length > 1) {
-            throw new Error("Container contains more then one component.");
+            throw new Error("Container contains more than one component.");
         }
 
         let component;
@@ -274,12 +236,8 @@ class Fit extends LayoutManager {
         // host has marked the corresponding axis as overflowing, grow the
         // working size past the host's inner rect to the child's minSize so
         // the host's CSS `overflow: auto` produces a scrollbar.
-        if (containerSize && (this.isOverflowingX() || this.isOverflowingY())) {
-            const totalMin = this.computeTotalMinSize();
-            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
-            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
-
-            containerSize = { width: w, height: h };
+        if (containerSize) {
+            containerSize = this.inflateForOverflow(containerSize);
         }
 
         this.placeComponent(

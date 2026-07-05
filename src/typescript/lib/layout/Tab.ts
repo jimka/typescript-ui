@@ -1465,12 +1465,14 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Computes the tab strip's working content size on the strip's axis: the
-     * visible child's min size plus the strip thickness on the side the strip
-     * occupies. Used to inflate the content area when the host opts into scroll.
+     * Computes the children's combined minSize for the *content area*: the
+     * visible child's min size. The strip thickness is deliberately excluded —
+     * the content area is already net of the strip, which reserves its own
+     * thickness upstream. Used by `doLayout` to inflate the content area when
+     * the host opts into scroll.
      *
-     * @returns The total min-size; `{ width: 0, height: 0 }` when the
-     *   container is absent.
+     * @returns The visible child's min-size; `{ width: 0, height: 0 }` when the
+     *   container is absent or the visible child reports no min.
      */
     protected computeTotalMinSize(): Size {
         const container = this.getContainer();
@@ -1478,18 +1480,10 @@ class Tab extends LayoutManager {
             return { width: 0, height: 0 };
         }
 
-        const thickness = this._bar.stripThickness();
-
         const visible = this.getVisibleComponent() ?? container.getComponents()[0];
-        const childMin = visible?.getMinSize();
-        const childMinW = childMin ? childMin.width  : 0;
-        const childMinH = childMin ? childMin.height : 0;
+        const min = visible?.getMinSize();
 
-        if (this.isVertical()) {
-            return { width: thickness + childMinW, height: childMinH };
-        }
-
-        return { width: childMinW, height: thickness + childMinH };
+        return min ?? { width: 0, height: 0 };
     }
 
     /**
@@ -1553,8 +1547,7 @@ class Tab extends LayoutManager {
             this.materializeAsync(this._selectedTabIndex);
         }
 
-        for (let idx in components) {
-            let component = components[idx];
+        for (const component of components) {
             component.setVisible(false);
             component.getAria().setHidden(true);
         }
@@ -1679,22 +1672,12 @@ class Tab extends LayoutManager {
 
         // Universal scroll: the content area honours the host's overflow flags
         // (Panel.setAutoScroll) independently of the tab strip's own overflow.
-        let contentWidth  = contentW;
-        let contentHeight = contentH;
-
-        if (this.isOverflowingX() || this.isOverflowingY()) {
-            const childMin = component.getMinSize();
-
-            if (childMin) {
-                if (this.isOverflowingX()) {
-                    contentWidth = Math.max(contentWidth, childMin.width);
-                }
-
-                if (this.isOverflowingY()) {
-                    contentHeight = Math.max(contentHeight, childMin.height);
-                }
-            }
-        }
+        // computeTotalMinSize reports the visible child's min (net of the strip,
+        // which reserves its own thickness above), so the inflation targets the
+        // content area exactly as the previous inline block did.
+        const inflated = this.inflateForOverflow({ width: contentW, height: contentH });
+        const contentWidth  = inflated.width;
+        const contentHeight = inflated.height;
 
         this.placeComponent(
             component,

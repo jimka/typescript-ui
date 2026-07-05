@@ -125,3 +125,39 @@ describe('Grid placement geometry', () => {
         expect(b.getX()).toBeCloseTo(expectedCell + spacing, 5);
     });
 });
+
+describe('Grid overflow inflation', () => {
+    afterEach(() => DOM.reset());
+
+    // A single-column grid so every child spans the full working width. The
+    // observed child carries a small min; a wide sibling drives
+    // computeTotalMinSize's width (max child min) past the narrow host, so the
+    // observed width reflects the manager's inflation rather than the observed
+    // child's own min-clamp.
+    function hostWithWideSibling(): { grid: Grid; observed: Component } {
+        installTestDOM(CONFIG);
+        const grid = new Grid({ rows: 2, columns: 1 });
+        const host = hostGrid(100, 300, grid); // narrow host
+        const observed = new Component({ preferredSize: { width: 50, height: 50 } });
+        observed.setMinSize(50, 10);
+        const wide = new Component({ preferredSize: { width: 50, height: 50 } });
+        wide.setMinSize(300, 10); // drives totalMin width
+        host.addComponent(observed);
+        host.addComponent(wide);
+        return { grid, observed };
+    }
+
+    it('inflates the working width to the total min width when the host marks X overflowing', () => {
+        const { grid, observed } = hostWithWideSibling();
+        grid.setOverflowing(true, false);
+        grid.getContainer()!.doLayout();
+        expect(observed.getWidth()).toBe(300); // inflated to totalMin width (from the wide sibling)
+    });
+
+    it('does not inflate — child fills the container width — when X overflow is off', () => {
+        const { grid, observed } = hostWithWideSibling();
+        grid.setOverflowing(false, false);
+        grid.getContainer()!.doLayout();
+        expect(observed.getWidth()).toBe(100); // container width, not the 300 totalMin
+    });
+});

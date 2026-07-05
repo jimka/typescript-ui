@@ -109,3 +109,53 @@ describe('Tab active-index state', () => {
         expect(tab.getActiveTabIndex()).toBe(0);
     });
 });
+
+describe('Tab content-area overflow inflation', () => {
+    afterEach(() => DOM.reset());
+
+    // A sized, materialised host so doLayout produces real content-area
+    // geometry. Under the recording sink the strip Panels' scheduled rAF stays
+    // inert. The default "north" strip keeps the content width equal to the
+    // host inner width, so X-axis inflation is observable directly on the
+    // visible child's committed width.
+    function hostSizedTab(child: Component): { tab: Tab; host: Container; child: Component } {
+        const tab = new Tab();
+        const host = new Container({ layoutManager: tab });
+
+        host.getElement(true);
+        host.setWidth(200);
+        host.setHeight(150);
+        host.clearInsets();
+        host.addComponent(child);
+
+        return { tab, host, child };
+    }
+
+    it('does not inflate the content area when the visible child reports no min', () => {
+        installTestDOM(CONFIG);
+
+        // No setMinSize → getMinSize() is null → computeTotalMinSize is {0,0},
+        // so Math.max(contentW, 0) is a no-op: the child fills the content area
+        // (host inner width, 200) rather than inflating past it.
+        const { tab, host, child } = hostSizedTab(new Component({ preferredSize: { width: 50, height: 50 } }));
+        tab.setOverflowing(true, true);
+        host.doLayout();
+
+        expect(child.getWidth()).toBe(200);
+    });
+
+    it('inflates the content area to the visible child min when it exceeds the content width', () => {
+        installTestDOM(CONFIG);
+
+        // A child min wider than the 200 content width drives the inflation;
+        // the contrast with the null-min case above isolates the no-inflation
+        // branch.
+        const wide = new Component({ preferredSize: { width: 50, height: 50 } });
+        wide.setMinSize(500, 10);
+        const { tab, host, child } = hostSizedTab(wide);
+        tab.setOverflowing(true, true);
+        host.doLayout();
+
+        expect(child.getWidth()).toBe(500);
+    });
+});

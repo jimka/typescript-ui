@@ -135,3 +135,38 @@ describe('Border docking geometry (cross-axis span + edge reservation)', () => {
         expect(center.getHeight()).toBe(inner.height - 30 - spacing);
     });
 });
+
+describe('Border overflow inflation', () => {
+    afterEach(() => DOM.reset());
+
+    // North spans the full row and carries a wide min, driving
+    // computeTotalMinSize's width (which honours the wider of north/south)
+    // past the narrow host; center carries a small min so the observed width
+    // reflects the manager's inflation, not a self-clamp.
+    function hostWithWideNorth(): { border: Border; center: Component } {
+        installTestDOM(CONFIG);
+        const border = new Border();
+        const host = hostBorder(100, 300, border); // narrow host
+        const north = new Component({ preferredSize: { width: 50, height: 30 } });
+        north.setMinSize(300, 30); // drives totalMin width
+        const center = new Component({ preferredSize: { width: 50, height: 50 } });
+        center.setMinSize(50, 10);
+        host.addComponent(north, placement(Placement.NORTH));
+        host.addComponent(center, placement(Placement.CENTER));
+        return { border, center };
+    }
+
+    it('inflates the working width to the total min width when the host marks X overflowing', () => {
+        const { border, center } = hostWithWideNorth();
+        border.setOverflowing(true, false);
+        border.getContainer()!.doLayout();
+        expect(center.getWidth()).toBe(300); // inflated to totalMin width (from the wide north)
+    });
+
+    it('does not inflate — center fills the container width — when X overflow is off', () => {
+        const { border, center } = hostWithWideNorth();
+        border.setOverflowing(false, false);
+        border.getContainer()!.doLayout();
+        expect(center.getWidth()).toBe(100); // container width, not the 300 totalMin
+    });
+});

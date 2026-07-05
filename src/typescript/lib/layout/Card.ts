@@ -66,33 +66,7 @@ class Card extends LayoutManager {
      * @returns The preferred `{width, height}`, or `null` if there is no container or no visible component.
      */
     getPreferredSize(): Size | null {
-        let container = this.getContainer();
-        if (!container) {
-            return null;
-        }
-
-        let perimiterSize = container.getPerimiterSize();
-        if (!perimiterSize) {
-            return null;
-        }
-
-        let outerWidth = perimiterSize.left + perimiterSize.right;
-        let outerHeight = perimiterSize.top + perimiterSize.bottom;
-
-        let visibleComponent = this.getVisibleComponent();
-        if (!visibleComponent) {
-            return null;
-        }
-
-        let size = visibleComponent.getPreferredSize();
-        if (!size) {
-            return null;
-        }
-
-        return {
-            width: size.width + outerWidth,
-            height: size.height + outerHeight
-        };
+        return this.computeSize(component => component.getPreferredSize());
     }
 
     /**
@@ -101,33 +75,7 @@ class Card extends LayoutManager {
      * @returns The minimum `{width, height}`, or `null` if there is no container or no visible component.
      */
     getMinSize(): Size | null {
-        let container = this.getContainer();
-        if (!container) {
-            return null;
-        }
-
-        let perimiterSize = container.getPerimiterSize();
-        if (!perimiterSize) {
-            return null;
-        }
-
-        let outerWidth = perimiterSize.left + perimiterSize.right;
-        let outerHeight = perimiterSize.top + perimiterSize.bottom;
-
-        let visibleComponent = this.getVisibleComponent();
-        if (!visibleComponent) {
-            return null;
-        }
-
-        let size = visibleComponent.getMinSize();
-        if (!size) {
-            return null;
-        }
-
-        return {
-            width: size.width + outerWidth,
-            height: size.height + outerHeight
-        };
+        return this.computeSize(component => component.getMinSize());
     }
 
     /**
@@ -136,25 +84,38 @@ class Card extends LayoutManager {
      * @returns The maximum `{width, height}`, or `null` if there is no container or no visible component.
      */
     getMaxSize(): Size | null {
-        let container = this.getContainer();
+        return this.computeSize(component => component.getMaxSize());
+    }
+
+    /**
+     * Shared core of {@link getPreferredSize} / {@link getMinSize} /
+     * {@link getMaxSize}: adds the visible child's size (selected by `sizeOf`)
+     * to the container perimeter.
+     *
+     * @param sizeOf - Selects the child's preferred, minimum, or maximum size.
+     * @returns The composed `{width, height}`, or `null` if there is no
+     *   container, no visible component, or the child reports no size.
+     */
+    private computeSize(sizeOf: (component: Component) => Size | null): Size | null {
+        const container = this.getContainer();
         if (!container) {
             return null;
         }
 
-        let perimiterSize = container.getPerimiterSize();
+        const perimiterSize = container.getPerimiterSize();
         if (!perimiterSize) {
             return null;
         }
 
-        let outerWidth = perimiterSize.left + perimiterSize.right;
-        let outerHeight = perimiterSize.top + perimiterSize.bottom;
+        const outerWidth = perimiterSize.left + perimiterSize.right;
+        const outerHeight = perimiterSize.top + perimiterSize.bottom;
 
-        let visibleComponent = this.getVisibleComponent();
+        const visibleComponent = this.getVisibleComponent();
         if (!visibleComponent) {
             return null;
         }
 
-        let size = visibleComponent.getMaxSize();
+        const size = sizeOf(visibleComponent);
         if (!size) {
             return null;
         }
@@ -306,12 +267,8 @@ class Card extends LayoutManager {
         // host has marked the corresponding axis as overflowing, grow the
         // working size past the host's inner rect to the visible child's
         // minSize so the host's CSS `overflow: auto` produces a scrollbar.
-        if (containerSize && (this.isOverflowingX() || this.isOverflowingY())) {
-            const totalMin = this.computeTotalMinSize();
-            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
-            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
-
-            containerSize = { width: w, height: h };
+        if (containerSize) {
+            containerSize = this.inflateForOverflow(containerSize);
         }
 
         this.placeComponent(

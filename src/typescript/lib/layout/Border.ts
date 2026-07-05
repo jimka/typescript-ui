@@ -856,13 +856,7 @@ class Border extends LayoutManager {
         // Universal scroll: see HBox.doLayout for the rationale. Inflates the
         // working size to the children's combined minSize on the axes the
         // host has marked as overflowing.
-        if (this.isOverflowingX() || this.isOverflowingY()) {
-            const totalMin = this.computeTotalMinSize();
-            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
-            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
-
-            containerSize = { width: w, height: h };
-        }
+        containerSize = this.inflateForOverflow(containerSize);
 
         // Resolve every region through laidOut so a non-displayed region is
         // treated as absent: skipped for placement and excluded from the

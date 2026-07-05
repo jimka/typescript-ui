@@ -348,8 +348,7 @@ class Grid extends LayoutManager {
         let maxCellWidth = 0;
         let maxCellHeight = 0;
 
-        for (let idx in components) {
-            let component = components[idx];
+        for (const component of components) {
             let size = component.getPreferredSize();
 
             if (size) {
@@ -408,8 +407,7 @@ class Grid extends LayoutManager {
         let maxCellWidth = 0;
         let maxCellHeight = 0;
 
-        for (let idx in components) {
-            let component = components[idx];
+        for (const component of components) {
             let size = component.getMinSize();
 
             if (size) {
@@ -681,13 +679,7 @@ class Grid extends LayoutManager {
         // Universal scroll: see HBox.doLayout for the rationale. Inflates the
         // working size to the children's combined minSize on the axes the
         // host has marked as overflowing.
-        if (this.isOverflowingX() || this.isOverflowingY()) {
-            const totalMin = this.computeTotalMinSize();
-            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
-            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
-
-            containerSize = { width: w, height: h };
-        }
+        containerSize = this.inflateForOverflow(containerSize);
 
         if (!this._baselineAlign) {
             this.layoutOccupancy(components, cols, rows, containerSize, containerInsets, spacing);
