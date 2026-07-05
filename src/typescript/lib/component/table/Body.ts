@@ -11,7 +11,7 @@ import { Cell } from "~/component/table/cell/Cell.js";
 import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
 import { ComboEditor } from "~/component/table/cell/editor/Combo.js";
 import { Event } from "~/core/Event.js";
-import { VirtualScroller } from "~/component/container/VirtualScroller.js";
+import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Util } from "~/core/Util.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
@@ -19,8 +19,6 @@ import { Column } from "~/component/table/Column.js";
 import type { Header } from "~/component/table/Header.js";
 import type { HeaderCell } from "~/component/table/cell/Header.js";
 import { callable } from "~/core/Callable.js";
-
-const SCROLL_BUFFER = 2;
 
 /**
  * String-literal union of the events emitted by the table {@link Body}.
@@ -109,19 +107,14 @@ function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
  *
  * @category Components
  */
-class Body extends Component {
+class Body extends VirtualRowView<Row> {
 
     private _store           : AbstractStore;
     private _hiddenColumns   : Set<string>               = new Set();
     private _columns         : Column[]                  = [];
     private _columnConfigs   : Map<string, ColumnConfig> = new Map();
     private _rowReadOnly     : ((record: ModelRecord) => boolean) | null = null;
-    private _rowPool         : Row[]                     = [];
-    private _boundIndices    : number[]                  = [];
-    private _rowGeom         : Array<{ ty: number, w: number, h: number } | null> = [];
     private _cellGeom        : Array<Array<{ x: number, w: number, h: number } | null>> = [];
-    private _rowDisplayed    : boolean[]                 = [];
-    private _scroller        : VirtualScroller | null    = null;
     private _lastBodyWidth   : number                    = 0;
     private _lastColumnWidths: number[]                  = [];
     private _lastAriaRowCount: number                    = -1;
@@ -171,6 +164,41 @@ class Body extends Component {
         const padding    = theme.table.cell.padding          ?? 2;
 
         return lineHeight + 2 * padding;
+    }
+
+    /**
+     * Returns the live row height. The base's window / geometry math reads it
+     * on every call so a theme-driven `_rowHeight` recompute takes effect
+     * immediately.
+     */
+    protected getRowHeight(): number {
+        return this._rowHeight;
+    }
+
+    /**
+     * Constructs one pool row and wires each of its cells to the shared editor
+     * pool + horizontal scroll-into-view handler. The base's `growRowPool` owns
+     * the append + parallel-array bookkeeping.
+     *
+     * @returns The wired, un-appended pool row.
+     */
+    protected createPoolRow(): Row {
+        const row = this.createRow();
+
+        for (const cell of row.getComponents() as Cell<any>[]) {
+            cell.setEditorPool(this._editorPool);
+            cell.setScrollIntoViewHandler(() => this.scrollColumnIntoView(this._focusedColIndex));
+        }
+
+        return row;
+    }
+
+    /**
+     * Extends the Body-only `_cellGeom` cache in lockstep with the base pool
+     * arrays as each new slot is added.
+     */
+    protected onPoolRowAdded(): void {
+        this._cellGeom.push([]);
     }
 
     /**
@@ -369,13 +397,13 @@ class Body extends Component {
     }
 
     /**
-     * Clears the cached row/cell geometry so the next renderWindow re-applies
-     * positions and sizes for every visible row.
+     * Clears the cached row geometry (via the base) and additionally the
+     * Body-only per-cell geometry so the next renderWindow re-applies positions
+     * and sizes for every visible row.
      */
-    private invalidateGeom(): void {
-        for (let i = 0; i < this._rowGeom.length; i++) {
-            this._rowGeom[i] = null;
-        }
+    protected invalidateGeom(): void {
+        super.invalidateGeom();
+
         for (let i = 0; i < this._cellGeom.length; i++) {
             this._cellGeom[i] = [];
         }
@@ -566,26 +594,10 @@ class Body extends Component {
             return this;
         }
 
-        this._scroller = new VirtualScroller(this, el, () => {
-            this.renderWindow();
-            if (this._scroller) {
-                this.emit("verticalscroll",   this._scroller.getScrollY());
-                this.emit("horizontalscroll", this._scroller.getScrollX());
-            }
-        });
+        this.initScroller(el);
 
-        // Track the scroller's created container handles so they are released
-        // with this body (on destructor or GC); the scroller is not a Component.
-        for (const handle of this._scroller.ownedHandles()) {
-            this.trackHandle(handle);
-        }
-
-        Event.addListener(this, "focus", () => {
-            this._updateActiveDescendant();
-            this._updateFocusStyle();
-        });
-
-        Event.addListener(this, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
+        Event.addListener(this, "focus", this.onFocus);
+        Event.addListener(this, "keydown", this.onKeyDown);
 
         // One subtree click listener replaces the per-row listener that
         // growRowPool used to install. Walk up from the event target to find
@@ -593,11 +605,31 @@ class Body extends Component {
         // registration regardless of pool size. Routed through
         // `onSubtreeClick` so subclasses (e.g. `TreeBody`) can intercept
         // clicks on subtree-owned widgets like the expand/collapse toggle.
-        Event.addSubtreeListener(this, "click", (e: MouseEvent) => this.onSubtreeClick(e));
+        Event.addSubtreeListener(this, "click", this.onSubtreeClick);
 
         this.renderWindow();
 
         return this;
+    }
+
+    /**
+     * On every scroller tick, re-renders the window and then emits the
+     * unconditional scroll events consumers mirror (the header translate and
+     * the pinned-side body). Overrides the base default, which only re-renders.
+     */
+    protected onScrollerTick(): void {
+        this.renderWindow();
+
+        if (this._scroller) {
+            this.emit("verticalscroll",   this._scroller.getScrollY());
+            this.emit("horizontalscroll", this._scroller.getScrollX());
+        }
+    }
+
+    /** Refreshes the active-descendant pointer and focus ring when the body gains focus. */
+    private onFocus(): void {
+        this._updateActiveDescendant();
+        this._updateFocusStyle();
     }
 
     /**
@@ -610,32 +642,6 @@ class Body extends Component {
      */
     getEditorPool(): CellEditorPool {
         return this._editorPool;
-    }
-
-    /**
-     * Sets the JS-controlled vertical scroll position. Delegates to the
-     * underlying {@link VirtualScroller}.
-     *
-     * @param y - The new scroll position in pixels.
-     */
-    setScrollY(y: number): this {
-        this._scroller?.resetWheelEase();
-        this._scroller?.setScrollY(y);
-
-        return this;
-    }
-
-    /**
-     * Sets the JS-controlled horizontal scroll position. Delegates to the
-     * underlying {@link VirtualScroller}.
-     *
-     * @param x - The new scroll position in pixels.
-     */
-    setScrollX(x: number): this {
-        this._scroller?.resetWheelEase();
-        this._scroller?.setScrollX(x);
-
-        return this;
     }
 
     /**
@@ -731,103 +737,6 @@ class Body extends Component {
     }
 
     /**
-     * Computes the `[firstRow, lastRow]` data-index window visible in the
-     * current viewport, padded by `SCROLL_BUFFER` on each side and clamped to
-     * the dataset bounds.
-     *
-     * @param scrollY - The current scroll offset in pixels.
-     * @param visibleHeight - The viewport height in pixels.
-     * @param totalRows - The total number of records in the store.
-     * @returns The `firstRow` / `lastRow` data indices and the number of rows in the window.
-     */
-    private computeVisibleWindow(scrollY: number, visibleHeight: number, totalRows: number): { firstRow: number, lastRow: number, windowSize: number } {
-        const rowHeight = this._rowHeight;
-        const firstRow  = Math.max(0, Math.floor(scrollY / rowHeight) - SCROLL_BUFFER);
-        const lastRow   = Math.min(
-            totalRows - 1,
-            Math.ceil((scrollY + visibleHeight) / rowHeight) + SCROLL_BUFFER
-        );
-        const windowSize = lastRow - firstRow + 1 > 0 ? lastRow - firstRow + 1 : 0;
-
-        return { firstRow, lastRow, windowSize };
-    }
-
-    /**
-     * Computes the row-pool target size: the max possible window for the
-     * current viewport, not just the current windowSize. windowSize shrinks
-     * near the top/bottom edges of the dataset because firstRow clamps to 0
-     * (and lastRow to totalRows-1); growing only to windowSize would force
-     * regrowth mid-scroll once the user passes a viewport-edge boundary,
-     * paying per-row first-time `cell.doLayout` cost then. Pre-growing pays
-     * that cost once.
-     *
-     * @param windowSize - The current visible-window size.
-     * @param visibleHeight - The viewport height in pixels.
-     * @param totalRows - The total number of records in the store.
-     * @returns The pool target size.
-     */
-    private computePoolTarget(windowSize: number, visibleHeight: number, totalRows: number): number {
-        return Math.min(
-            totalRows,
-            Math.max(
-                windowSize,
-                Math.ceil(visibleHeight / this._rowHeight) + 2 * SCROLL_BUFFER + 2
-            )
-        );
-    }
-
-    /**
-     * Grows the row pool up to `poolTarget`, batching new row elements through
-     * a {@link DocumentFragment} so the live rows container sees a single
-     * append instead of N.
-     *
-     * @param poolTarget - The target pool size.
-     */
-    private growRowPool(poolTarget: number): void {
-        if (!this._scroller || this._rowPool.length >= poolTarget) {
-            return;
-        }
-
-        const rowsContainer = this._scroller.getRowsContainer();
-        const growFragment  = DOM.sink.createDocumentFragment();
-
-        while (this._rowPool.length < poolTarget) {
-            const row = this.createRow();
-
-            for (const cell of row.getComponents() as Cell<any>[]) {
-                cell.setEditorPool(this._editorPool);
-                cell.setScrollIntoViewHandler(() => this.scrollColumnIntoView(this._focusedColIndex));
-            }
-
-            const rowEl = row.getElement(true);
-
-            DOM.sink.appendChild(growFragment, rowEl!);
-
-            // Click handler is a single subtree listener on Body.init(); see
-            // there for the row-lookup walk.
-
-            // Pin row's static top to 0 once. Per-frame Y offset comes from translateY,
-            // which is composite-only (avoids layout/paint per scroll tick).
-            row.setY(0);
-
-            // Pre-promote pooled rows to their own compositor layer so the first
-            // scroll-driven translate doesn't pay a layer-creation cost. Pool
-            // rows now survive column-toggle and config swaps via in-place
-            // cell sync, so the hint stays live for the body's lifetime.
-            row.setWillChange("transform");
-
-            this._rowPool.push(row);
-            this._boundIndices.push(-1);
-            this._rowGeom.push(null);
-            this._cellGeom.push([]);
-            this._rowDisplayed.push(false);
-        }
-
-        DOM.sink.appendChild(rowsContainer, growFragment);
-        DOM.sink.release(growFragment);
-    }
-
-    /**
      * Binds visible pool slots to their data records and positions each row +
      * its cells. Skips data rebind when the slot's bound index hasn't changed;
      * skips geometry writes when the row geometry hasn't changed; skips cell
@@ -863,21 +772,7 @@ class Body extends Component {
 
             this.afterRowBound(row, dataIndex, wasRebound);
 
-            const targetY = dataIndex * rowHeight;
-            const prev = this._rowGeom[i];
-            if (!prev || prev.ty !== targetY || prev.w !== rowWidth || prev.h !== rowHeight) {
-                row.setAutoCommitStyle(false);
-                row.setX(0);
-                row.setTranslate(0, targetY);
-                row.setWidth(rowWidth);
-                row.setHeight(rowHeight);
-                row.setAutoCommitStyle(true);
-                this._rowGeom[i] = { ty: targetY, w: rowWidth, h: rowHeight };
-            }
-            if (!this._rowDisplayed[i]) {
-                row.setDisplayed(true);
-                this._rowDisplayed[i] = true;
-            }
+            this.positionRow(i, dataIndex * rowHeight, rowWidth);
 
             const cells = row.getComponents();
             const cellRow = this._cellGeom[i];
@@ -909,23 +804,6 @@ class Body extends Component {
 
                 x += colW;
             }
-        }
-    }
-
-    /**
-     * Hides pool slots whose index falls outside the visible window and
-     * clears their cached binding so the next bind triggers a full rebuild.
-     *
-     * @param windowSize - The number of pool slots currently in use.
-     */
-    private hideExcessPoolRows(windowSize: number): void {
-        for (let i = windowSize; i < this._rowPool.length; i++) {
-            if (this._rowDisplayed[i]) {
-                this._rowPool[i].setDisplayed(false);
-                this._rowDisplayed[i] = false;
-            }
-            this._boundIndices[i] = -1;
-            this._rowGeom[i] = null;
         }
     }
 
@@ -1484,7 +1362,7 @@ class Body extends Component {
 
         // Row navigation
         const currentIdx = this._anchorRecord ? records.indexOf(this._anchorRecord) : -1;
-        const pageSize = Math.max(1, Math.floor((this.getHeight() || this._rowHeight) / this._rowHeight));
+        const pageSize = this.computePageSize();
         let newIdx: number;
 
         if (e.key === 'ArrowDown') {
@@ -1519,27 +1397,7 @@ class Body extends Component {
      * consumer use.
      */
     protected scrollRecordIntoView(record: ModelRecord): void {
-        const idx = this.getVisibleRecords().indexOf(record);
-
-        if (idx === -1 || !this._scroller) {
-            return;
-        }
-
-        const top            = idx * this._rowHeight;
-        const bottom         = top + this._rowHeight;
-        const scrollTop      = this._scroller.getScrollY();
-        const viewportHeight = this.getHeight();
-        const visibleBottom  = scrollTop + viewportHeight;
-
-        let target = scrollTop;
-        if (top < scrollTop) {
-            target = top;
-        } else if (bottom > visibleBottom) {
-            target = bottom - viewportHeight;
-        }
-        if (target !== scrollTop) {
-            this.setScrollY(target);
-        }
+        this.scrollRowIntoView(this.getVisibleRecords().indexOf(record));
     }
 
     /**

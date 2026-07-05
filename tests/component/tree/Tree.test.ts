@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, beforeAll } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { _Tree } from '~/component/tree/Tree';
 import type { TreeNode } from '~/component/tree/TreeNode';
@@ -558,5 +558,124 @@ describe('Tree — rows fill the effective viewport width', () => {
         // No horizontal range: the horizontal bar stays hidden (scrollX pinned).
         priv._scroller.setScrollX(99999);
         expect(priv._scroller.getScrollX()).toBe(0);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Virtual-scroll reconciliation characterization (Phase A of the data-view
+// virtualization consolidation). These pin the current behaviour of the shared
+// window/pool/geometry machinery so the extraction of `VirtualRowView` is a
+// proven no-op. Tree's fixed ROW_HEIGHT is 24. The helpers poked here are the
+// shared virtualization primitives; on the pre-extraction Tree they carry the
+// `_`-prefixed names below (the extraction repoints these invocations to the
+// hoisted base names — the assertions, which pin the behaviour, are unchanged).
+// ---------------------------------------------------------------------------
+const ROW_HEIGHT = 24;
+
+describe('Tree virtual-scroll — characterization', () => {
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => DOM.reset());
+
+    function bigTree(n: number): TreeNode[] {
+        return Array.from({ length: n }, (_, i) => ({ label: 'n' + i }));
+    }
+
+    function mount(n: number, height: number): _Tree {
+        const tree = new _Tree();
+        tree.getElement(true);
+        tree.setWidth(200);
+        tree.setHeight(height);
+        tree.setNodes(bigTree(n));
+        (tree as any).renderWindow();
+        return tree;
+    }
+
+    it('computeVisibleWindow starts at row 0 and pads by SCROLL_BUFFER at the top', () => {
+        const p = mount(100, 120) as any;
+        const win = p.computeVisibleWindow(0, 120, 100);
+
+        expect(win.firstRow).toBe(0);
+        expect(win.lastRow).toBe(Math.min(99, Math.ceil(120 / ROW_HEIGHT) + 2));
+        expect(win.windowSize).toBe(win.lastRow - win.firstRow + 1);
+    });
+
+    it('computeVisibleWindow pads both edges mid-scroll', () => {
+        const p = mount(100, 120) as any;
+        const scrollY = 20 * ROW_HEIGHT;
+        const win = p.computeVisibleWindow(scrollY, 120, 100);
+
+        expect(win.firstRow).toBe(Math.max(0, Math.floor(scrollY / ROW_HEIGHT) - 2));
+        expect(win.lastRow).toBe(Math.min(99, Math.ceil((scrollY + 120) / ROW_HEIGHT) + 2));
+    });
+
+    it('computeVisibleWindow clamps lastRow near the bottom and empties for no rows', () => {
+        const p = mount(30, 120) as any;
+
+        expect(p.computeVisibleWindow(100000, 120, 30).lastRow).toBe(29);
+        expect(p.computeVisibleWindow(0, 120, 0).windowSize).toBe(0);
+    });
+
+    it('computePoolTarget grows to the max window capped at totalRows, never below windowSize', () => {
+        const p = mount(100, 120) as any;
+
+        expect(p.computePoolTarget(3, 120, 100)).toBe(
+            Math.min(100, Math.max(3, Math.ceil(120 / ROW_HEIGHT) + 2 * 2 + 2)),
+        );
+        expect(p.computePoolTarget(4, 120, 4)).toBe(4);
+    });
+
+    it('growRowPool extends every parallel array in lockstep and is monotonic', () => {
+        const p = mount(200, 120) as any;
+        const before = p._rowPool.length;
+
+        p.growRowPool(before + 5);
+
+        expect(p._rowPool.length).toBe(before + 5);
+        expect(p._boundIndices.length).toBe(before + 5);
+        expect(p._rowGeom.length).toBe(before + 5);
+        expect(p._rowDisplayed.length).toBe(before + 5);
+
+        for (let i = before; i < before + 5; i++) {
+            expect(p._boundIndices[i]).toBe(-1);
+            expect(p._rowGeom[i]).toBeNull();
+            expect(p._rowDisplayed[i]).toBe(false);
+            expect(p._rowPool[i].getElement()).toBeTruthy();
+        }
+
+        p.growRowPool(before);
+        expect(p._rowPool.length).toBe(before + 5);
+    });
+
+    it('hideExcessPoolRows hides and unbinds every slot beyond the window size', () => {
+        const p = mount(200, 120) as any;
+        const poolLen = p._rowPool.length;
+
+        p.hideExcessPoolRows(2);
+
+        for (let i = 2; i < poolLen; i++) {
+            expect(p._rowDisplayed[i]).toBe(false);
+            expect(p._boundIndices[i]).toBe(-1);
+            expect(p._rowGeom[i]).toBeNull();
+        }
+    });
+
+    it('invalidateGeom clears the row-geometry cache', () => {
+        const p = mount(50, 120) as any;
+        p._rowGeom[0] = { ty: 5, w: 5, h: 5 };
+
+        p.invalidateGeom();
+
+        expect(p._rowGeom.every((g: unknown) => g === null)).toBe(true);
+    });
+
+    it('scrollRowIntoView reveals a below-viewport row and no-ops when already visible', () => {
+        const p = mount(100, 100) as any;
+
+        p.scrollRowIntoView(50);
+        expect(p._scroller.getScrollY()).toBe(51 * ROW_HEIGHT - 100);
+
+        p.setScrollY(0);
+        p.scrollRowIntoView(0);
+        expect(p._scroller.getScrollY()).toBe(0);
     });
 });
