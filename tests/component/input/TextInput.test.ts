@@ -1,6 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TextArea } from '~/component/input/TextArea';
+import { TextField } from '~/component/input/TextField';
+import { PasswordField } from '~/component/input/PasswordField';
 import { DOM } from '~/core/DOM';
+import { Event } from '~/core/Event';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -24,6 +27,57 @@ afterEach(() => DOM.reset());
 function countWrites(op: string, type: string): number {
     return sink.writes.filter(w => w.op === op && w.args[0] === type).length;
 }
+
+describe('TextInput unified input sync (bug 1 / consolidation item 6)', () => {
+    // Consolidation: the base TextInput now owns the sole native "input"
+    // listener (sync-then-notify), so each subclass wires exactly one — down
+    // from the previous two (base fan-out + subclass DOM-sync hook). The
+    // recording sink's window-level base listener installs once per DOM event
+    // type, so countWrites can't distinguish 1 vs 2 registrations; spy on the
+    // Event.addListener source call instead.
+    for (const [name, make] of [
+        ['TextField',     (): unknown => new TextField()],
+        ['TextArea',      (): unknown => new TextArea()],
+        ['PasswordField', (): unknown => new PasswordField()],
+    ] as const) {
+        it(`${name} wires exactly one native "input" listener`, () => {
+            const spy = vi.spyOn(Event, 'addListener');
+
+            make();
+
+            const inputRegs = spy.mock.calls.filter(c => c[1] === 'input').length;
+
+            spy.mockRestore();
+
+            expect(inputRegs).toBe(1);
+        });
+    }
+
+    // Bug 1: a stale-cache read fired the change fan-out one keystroke behind.
+    // The unified onInput must sync _options.text from the live DOM *before*
+    // notifying, so on("change") sees the just-typed value.
+    for (const [name, make] of [
+        ['TextField',     (): any => new TextField()],
+        ['TextArea',      (): any => new TextArea()],
+        ['PasswordField', (): any => new PasswordField()],
+    ] as const) {
+        it(`${name}.onInput syncs the cached text from the live DOM before notifying change`, () => {
+            const field = make();
+            const el    = field.getElement(true)!;
+
+            // Simulate a keystroke: the DOM value diverges from the cached text.
+            DOM.sink.setValue(el, 'hello');
+
+            let captured: string | undefined;
+            field.on('change', (v: string) => { captured = v; });
+
+            field.onInput();
+
+            expect(field.getText()).toBe('hello');
+            expect(captured).toBe('hello');
+        });
+    }
+});
 
 describe('TextInput keydown shorthand', () => {
     // The recording sink does not deliver DOM events to listeners, so the

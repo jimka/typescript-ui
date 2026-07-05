@@ -4,8 +4,19 @@
 // reached via an `any` cast confined to this file. getValue/setValue delegate
 // to the inner TextField and round-trip on a bare (unmounted) field. Debounce
 // timing and the dropdown/store paths are out of scope (Non-Goals).
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AutoCompleteField } from '~/component/input/AutoCompleteField';
+import { DOM } from '~/core/DOM';
+import { installTestDOM } from '../../dom/TestDOM';
+import fontMetrics from '../../dom/font-metrics.test-font.json';
+
+const CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
 
 /** Builds a field in the given match mode and returns its private `matches`. */
 function matcherFor(matchMode?: string): (candidate: string, query: string) => boolean {
@@ -82,5 +93,42 @@ describe('AutoCompleteField value delegation', () => {
 
         field.setValue('Cherry');
         expect(field.getValue()).toBe('Cherry');
+    });
+});
+
+describe('AutoCompleteField select event routing', () => {
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => DOM.reset());
+
+    it('fires both on("select") and addSelectListener on a suggestion pick, and off("select") stops only the framework listener', () => {
+        const field = new AutoCompleteField({ suggestions: ['Apple'] });
+        field.getElement(true);
+
+        let viaOn     = 0;
+        let viaLegacy = 0;
+        let lastValue: string | null = null;
+
+        const onSelect = (v: string): void => {
+            viaOn += 1;
+            lastValue = v;
+        };
+
+        field.on('select', onSelect);
+        field.addSelectListener(() => { viaLegacy += 1; });
+
+        (field as any).onSuggestionSelected('Apple');
+
+        expect(viaOn).toBe(1);
+        expect(viaLegacy).toBe(1);
+        expect(lastValue).toBe('Apple');
+
+        field.off('select', onSelect);
+
+        (field as any).onSuggestionSelected('Apple');
+
+        // The removed framework listener no longer fires; the legacy
+        // addSelectListener (also routed through the bag) still does.
+        expect(viaOn).toBe(1);
+        expect(viaLegacy).toBe(2);
     });
 });

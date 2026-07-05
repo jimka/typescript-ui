@@ -652,14 +652,6 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
 
         Event.addListener(this, "click",   ()                 => this.toggleDropdown());
         Event.addListener(this, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
-        // Bridge the existing "change" event into AbstractInput's change /
-        // binding listener fan-out so on("change", fn) fires on every
-        // user-driven selection. The "change" event is dispatched by
-        // `setSelectedIndex(idx, true)` from `onRowSelected`, which is
-        // the single user-commit path — mouse click and keyboard
-        // commit both route through the inner list's `change` event
-        // and into `onRowSelected`.
-        Event.addListener(this, "change", () => this.notifyChange(this.getValue()));
 
         // The manager closes the dropdown on an outside click via its
         // "click-outside" mode; route that through closeDropdown. The anchor
@@ -739,15 +731,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * UA `<input>` probe.
      */
     protected updateHeight(): void {
-        const insets  = this.getInsets();
-        const padding = this.getPadding();
-        const border  = this.getBorderSize();
-
-        const chrome = insets.getTop() + insets.getBottom()
-                     + (padding ? padding.getTop() + padding.getBottom() : 0)
-                     + border.top + border.bottom;
-
-        const h = Util.lineHeightPx() + chrome;
+        const h = Util.singleLineBoxHeight(this.getInsets(), this.getPadding(), this.getBorderSize());
 
         this.setPreferredSize(200, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
@@ -960,11 +944,10 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Registers a listener for one of this combo box's events. `"action"`
-     * is a typed semantic shorthand over {@link Event.addListener} for the
-     * DOM change event, fired on each selection change. `"change"` and
-     * `"binding"` are the inherited {@link AbstractInput} listener-bag
-     * events.
+     * Registers a listener for one of this combo box's events. `"action"` is
+     * the semantic alias of `"change"` — both fire on every committed
+     * selection through the inherited {@link AbstractInput} listener bag;
+     * `"binding"` is the inherited data-binding event.
      *
      * @param event - The event name.
      * @param listener - The callback to invoke when the event fires.
@@ -975,13 +958,10 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     on(event: "change",  listener: (value: string) => void): this;
     on(event: "binding", listener: () => void): this;
     on(event: "action" | "change" | "binding", listener: Function): this {
-        if (event === "action") {
-            Event.addListener(this, "change", listener);
-
-            return this;
-        }
-
-        return super.on(event as "change", listener as (value: string) => void);
+        return super.on(
+            (event === "action" ? "change" : event) as "change",
+            listener as (value: string) => void,
+        );
     }
 
     /**
@@ -994,13 +974,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @returns This component, for method chaining.
      */
     off(event: "action" | "change" | "binding", listener: Function): this {
-        if (event === "action") {
-            Event.removeListener(this, "change", listener);
-
-            return this;
-        }
-
-        return super.off(event, listener);
+        return super.off(event === "action" ? "change" : event, listener);
     }
 
     /**
@@ -1052,14 +1026,14 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      */
     setSelectedIndex(idx: number, fireEvent: boolean = true): this {
         // Pass `false` to the inner list so its own `change` doesn't fire on
-        // `this._dropdown.getList()` — ComboBox's "change" event is fired
-        // directly on `this` below to preserve the historical fire-target.
+        // `this._dropdown.getList()`; ComboBox fans the committed value out
+        // through AbstractInput's change / binding listeners directly below.
         this._dropdown.getList().setSelectedIndex(idx, false);
         this._pendingValue = null;
         this.refreshLabel();
 
         if (fireEvent) {
-            Event.fireEvent(this, "change");
+            this.notifyChange(this.getValue());
         }
 
         return this;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Size } from "~/primitive/Size.js";
+import type { Insets } from "~/primitive/Insets.js";
 import { DOM } from "~/core/DOM.js";
 
 /**
@@ -185,6 +186,35 @@ export namespace Util {
         textBaselineCache = Math.round(gap / 2 + m.ascent);
 
         return textBaselineCache;
+    }
+
+    /**
+     * Returns the pixel height of a single-line input box: the theme line-box
+     * height ({@link lineHeightPx}) plus the component's own vertical chrome
+     * (insets + optional padding + border).
+     *
+     * @param insets - The component's layout insets (top/bottom read).
+     * @param padding - The component's CSS padding, or `null` when it has none.
+     * @param border - The component's border widths (top/bottom read).
+     * @returns The single-line box height in pixels.
+     *
+     * @remarks Factors out the `chrome = insets + padding + border; h =
+     * lineHeightPx() + chrome` idiom shared by every single-line native-input
+     * box height (`TextField` / `PasswordField` / `ComboBox` / the picker fields
+     * / `NumberSpinner`). Only the vertical (top/bottom) edges contribute; the
+     * horizontal edges are the caller's width concern. `NumberSpinner` uniquely
+     * passes its *inner input's* padding rather than its own.
+     */
+    export function singleLineBoxHeight(
+        insets:  Insets,
+        padding: Insets | null,
+        border:  { top: number; bottom: number },
+    ): number {
+        const chrome = insets.getTop() + insets.getBottom()
+                     + (padding ? padding.getTop() + padding.getBottom() : 0)
+                     + border.top + border.bottom;
+
+        return lineHeightPx() + chrome;
     }
 
     /**

@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { AbstractPickerField, AbstractPickerFieldOptions } from "~/component/input/AbstractPickerField.js";
-import { Insets } from "~/primitive/Insets.js";
 import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { calendar } from "~/glyphs/solid/calendar.js";
 import { DatePickerDropdown } from "~/component/input/DatePickerDropdown.js";
-import type { Handle } from "~/core/DOM.js";
 import { callable } from "~/core/Callable.js";
 
 Glyph.register(calendar);
@@ -23,18 +21,6 @@ export interface DateFieldOptions extends AbstractPickerFieldOptions {
     /** Latest date the picker will allow selection of. Optional. */
     maxDate?:  Date | null;
 }
-
-/**
- * User-overridable visual defaults forwarded to `super` via the options bag.
- */
-const _defaultDateFieldOptions: Partial<DateFieldOptions> = {
-    cursor:          "text",
-    padding:         new Insets(3, 3, 3, 3),
-    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
-    foregroundColor: "var(--ts-ui-text-color, black)",
-    border:          "var(--ts-ui-input-border)",
-    borderRadius:    "var(--ts-ui-border-radius, 4px)",
-};
 
 /**
  * A date-picker input component.
@@ -55,27 +41,18 @@ const _defaultDateFieldOptions: Partial<DateFieldOptions> = {
 class DateField extends AbstractPickerField<Date, DatePickerDropdown, DateFieldOptions> {
 
     constructor(options?: DateFieldOptions) {
-        super(options, _defaultDateFieldOptions);
+        super(options);
 
         // Button.setGlyph adds the glyph as the leading child of the
         // content row (with pointer-events: none) so the outer Fit centres
         // it within the button's inner rect.
         this._button.setGlyph("calendar");
 
-        // Late-built state: `applyOptions` dispatched value/enabled/readOnly
-        // through `_options` at super-time; re-apply them now that `_input`
-        // exists so the inner text reflects the initial value and the inner
-        // disabled / readonly attributes propagate.
+        // Late-built value: `applyOptions` cached it on `_options` at super-time;
+        // re-apply now that `_input` exists so the inner text reflects it. The
+        // enabled / readOnly re-dispatch is handled by the base constructor.
         if (this._options.value !== undefined) {
             this.setValue(this._options.value);
-        }
-
-        if (this._options.enabled !== undefined) {
-            this.applyEnabled(this._options.enabled);
-        }
-
-        if (this._options.readOnly !== undefined) {
-            this.applyReadOnly(this._options.readOnly);
         }
     }
 
@@ -147,17 +124,6 @@ class DateField extends AbstractPickerField<Date, DatePickerDropdown, DateFieldO
     }
 
     /**
-     * Anchors the date dropdown to the inner input element.
-     *
-     * @param dropdown - The dropdown instance to show.
-     * @param anchorEl - The element to anchor the panel to.
-     * @param value - The current field value (or null when empty).
-     */
-    protected showDropdown(dropdown: DatePickerDropdown, anchorEl: Handle, value: Date | null): void {
-        dropdown.showAt(anchorEl, value);
-    }
-
-    /**
      * Called when the user picks a day from the dropdown. Commits the value,
      * closes the panel, refocuses the input, and re-fires `input` so any
      * non-AbstractInput consumer reading from the inner DOM event still
@@ -178,13 +144,6 @@ class DateField extends AbstractPickerField<Date, DatePickerDropdown, DateFieldO
      */
     protected getPreferredWidth(): number {
         return 160;
-    }
-
-    /**
-     * The default border restored when the invalid-border state clears.
-     */
-    protected getDefaultBorder(): string {
-        return _defaultDateFieldOptions.border as string;
     }
 }
 

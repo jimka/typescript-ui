@@ -3,7 +3,6 @@
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
-import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
@@ -59,8 +58,6 @@ class TextArea extends TextInput<TextAreaOptions> {
         // the area can never be drag-resized. There is no accompanying option
         // or setter — non-resizability is immutable by design.
         this.setElementCSSRules({ resize: "none" });
-
-        Event.addListener(this, "input", this.onInput);
     }
 
     /**
@@ -240,21 +237,6 @@ class TextArea extends TextInput<TextAreaOptions> {
         }
 
         return this;
-    }
-
-    /**
-     * Cleanup hook; currently a no-op placeholder.
-     */
-    destructor() {
-        //Util.removeListener("input", this.onInput);
-    }
-
-    /**
-     * Syncs the text content from the DOM element's value on every input event.
-     */
-    onInput() {
-        let element = this.getElement();
-        this.setText(DOM.source.getValue(element!));
     }
 
 }

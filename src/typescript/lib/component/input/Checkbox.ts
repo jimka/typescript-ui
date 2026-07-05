@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Animation } from "~/core/Animation.js";
-import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
+import { AbstractBooleanInput, AbstractBooleanInputOptions } from "~/component/input/AbstractBooleanInput.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
-import { Text } from "~/component/input/Text.js";
-import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
 import { check } from "~/glyphs/solid/check.js";
 
@@ -21,11 +19,10 @@ Glyph.register(check);
  *
  * @category Components
  */
-export interface CheckboxOptions extends AbstractInputOptions {
+export interface CheckboxOptions extends AbstractBooleanInputOptions {
     selected?:      boolean;
     value?:         boolean;
     indeterminate?: boolean;
-    label?:         string | null;
     /**
      * Construction-time listener bag — the declarative form of `on()`. Adds the
      * checkbox's `action` shorthand to the inherited `change` / `binding`.
@@ -48,12 +45,11 @@ export interface CheckboxOptions extends AbstractInputOptions {
  * @category Components
  */
 class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
-    extends AbstractInput<boolean, TOptions>
+    extends AbstractBooleanInput<TOptions>
 {
     private _box:   Component;
     private _check: Glyph;
     private _dash:  Component;
-    private _label: Text | null = null;
 
     /**
      * Constructs a Checkbox.
@@ -121,7 +117,15 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
 
         this.setOutline("none");
 
-        this.installInteraction();
+        // The box owns the user-toggle click so the pointer/click + cursor
+        // surface is exactly the visible 16 × 16 graphic — clicks on a label or
+        // in any stretched empty area pass through to the root, which has no
+        // listener of its own. This pointer line stays per-subclass (a closure
+        // over the widget `this`) because a listener registered on the child
+        // box would otherwise bind `this` to the box; only the keyboard path,
+        // registered on the root, moves into the base.
+        Event.addListener(this._box, "click", () => this.activateFromPointer());
+        this.installKeyboard();
 
         if (this._options.value !== undefined && this._options.selected === undefined) {
             this._options.selected = this._options.value;
@@ -172,38 +176,30 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     }
 
     /**
-     * Wires the click and keyboard handlers that toggle the checkbox state.
+     * Activates the checkbox from a click or key: a user activation from the
+     * "mixed" state first clears the indeterminate flag and selects (WAI-ARIA);
+     * otherwise it flips the selected state. `setSelected` handles the visual +
+     * listener sync — calling it from a mixed state always lands at
+     * `selected=true` because its guard treats indeterminate as a force-out.
+     * The enabled/read-only guard is applied by the base before this runs.
      */
-    private installInteraction(): void {
-        const userToggle = (): void => {
-            if (!this.isEnabled() || this.isReadOnly()) {
-                return;
-            }
+    protected activate(): void {
+        if (this.isIndeterminate()) {
+            this.setSelected(true);
 
-            // WAI-ARIA: user click from "mixed" first clears the indeterminate
-            // flag and selects. `setSelected` handles the visual + listener
-            // sync; calling it from a mixed state always lands at selected=true
-            // because `setSelected`'s guard treats indeterminate as a force-out.
-            if (this.isIndeterminate()) {
-                this.setSelected(true);
+            return;
+        }
 
-                return;
-            }
+        this.setSelected(!this.isSelected());
+    }
 
-            this.setSelected(!this.isSelected());
-        };
-
-        // The box owns the user-toggle handler so the click and cursor surface
-        // is exactly the visible 16 × 16 graphic — clicks on a label or in
-        // any stretched empty area pass through to the root, which has no
-        // listener of its own. Keydown still targets the focused root.
-        Event.addListener(this._box, "click", userToggle);
-        Event.addListener(this, "keydown", (e: KeyboardEvent) => {
-            if (e.key === " ") {
-                e.preventDefault();
-                userToggle();
-            }
-        });
+    /**
+     * Returns the inner box graphic — the click + cursor surface.
+     *
+     * @returns The box component.
+     */
+    protected getInteractiveSurface(): Component {
+        return this._box;
     }
 
     /**
@@ -318,29 +314,6 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     }
 
     /**
-     * Returns the label text, or `null` when none was set.
-     *
-     * @returns The label string, or `null`.
-     */
-    getLabel(): string | null {
-        return this._options.label ?? null;
-    }
-
-    /**
-     * Sets the inline label text. Pass `null` to remove the label entirely.
-     *
-     * @param text - The label text, or `null` to clear.
-     *
-     * @returns This component, for method chaining.
-     */
-    setLabel(text: string | null): this {
-        this._options.label = text;
-        this.applyLabel(text);
-
-        return this;
-    }
-
-    /**
      * Registers a listener for one of this checkbox's events. `"action"` is a
      * typed semantic shorthand over {@link Event.addListener} for the native
      * click (used e.g. by the [`BooleanEditor`](/api/component/table/cell/editor/classes/BooleanEditor)
@@ -385,28 +358,6 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     }
 
     /**
-     * Returns the offset from the top of the checkbox to its inline label's
-     * text baseline, or — when there is no label — to the text baseline the box
-     * would share with a label, so a label-less box still sits on a row's
-     * baseline.
-     *
-     * @returns The baseline offset in pixels.
-     *
-     * @remarks A `null` baseline auto-centres the child within the row's
-     * text-line height, which floats a small box to the row centre once a tall
-     * sibling (e.g. a `TextArea`) inflates the row's descent. Returning the
-     * text-line baseline keeps the box aligned exactly as a labelled checkbox's
-     * box would be.
-     */
-    getBaseline(): number | null {
-        if (this._label === null) {
-            return this.wrapInnerBaseline(Util.measureTextBaseline());
-        }
-
-        return this.wrapInnerBaseline(this._label.getBaseline());
-    }
-
-    /**
      * Updates the visual + ARIA state for a (selected, indeterminate) pair.
      */
     private applySelected(selected: boolean, indeterminate: boolean): void {
@@ -432,44 +383,6 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
 
         this._check.setOpacity(selected && !indeterminate ? 1 : 0);
         this._dash.setOpacity(indeterminate ? 1 : 0);
-    }
-
-    /**
-     * Mounts, replaces, or removes the inline label.
-     */
-    private applyLabel(text: string | null): void {
-        if (text === null) {
-            if (this._label !== null) {
-                super.removeComponent(this._label);
-                this._label = null;
-            }
-
-            return;
-        }
-
-        if (this._label === null) {
-            this._label = new Text(text);
-            this._label.setPointerEvents("none");
-            super.addComponent(this._label);
-        } else {
-            this._label.setText(text);
-        }
-    }
-
-    /**
-     * Reflects the enabled flag in the ARIA tree and the tabindex.
-     */
-    protected applyEnabled(value: boolean): void {
-        this.getAria().setDisabled(!value);
-        this.getAria().setTabIndex(value ? 0 : -1);
-        this._box.setCursor(value ? "pointer" : "default");
-    }
-
-    /**
-     * Reflects the read-only flag in the ARIA tree.
-     */
-    protected applyReadOnly(value: boolean): void {
-        this.getAria().setReadOnly(value);
     }
 
 }

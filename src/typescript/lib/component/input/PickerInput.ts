@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
-import { Event } from "~/core/Event.js";
-import { DOM } from "~/core/DOM.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -24,10 +22,10 @@ const _defaultPickerInputOptions: Partial<TextInputOptions> = {
 
 /**
  * Internal `<input>` subclass shared by every {@link AbstractPickerField}
- * concrete subclass (DateField / TimeField / DateTimeField). Mirrors
- * `TextField`'s on-input sync hook — pulls the live DOM value into the
- * inherited cached text on every keystroke so callers can read it through
- * `getText()` instead of touching `element.value` directly.
+ * concrete subclass (DateField / TimeField / DateTimeField). Inherits the base
+ * `TextInput` on-input sync, which pulls the live DOM value into the cached
+ * text on every keystroke so callers can read it through `getText()` instead of
+ * touching `element.value` directly.
  *
  * @category Components
  */
@@ -35,18 +33,6 @@ class PickerInput extends TextInput<TextInputOptions> {
 
     constructor() {
         super(undefined, _defaultPickerInputOptions);
-
-        Event.addListener(this, "input", () => this.syncTextFromDom());
-    }
-
-    /**
-     * Pulls the live DOM value into the inherited cached text on every
-     * keystroke so callers can read it through `getText()` instead of
-     * `element.value`.
-     */
-    private syncTextFromDom(): void {
-        const el = this.getElement();
-        this.setText(el ? DOM.source.getValue(el) : "");
     }
 }
 
