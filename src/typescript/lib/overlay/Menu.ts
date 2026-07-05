@@ -3,7 +3,8 @@
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
-import { Event } from "~/core/Event.js";
+import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
+import { clampIntoViewport } from "~/core/OverlayPosition.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
 import { Insets } from "~/primitive/Insets.js";
 import { VBox } from "~/layout/VBox.js";
@@ -63,7 +64,7 @@ const VIEWPORT_MARGIN = 4;
  *
  * @category Components
  */
-class Menu extends Component {
+class Menu extends Component implements DismissableLayer {
 
     private readonly _persistent: boolean;
     // A persistent menu's items provider, kept so each open() re-resolves it —
@@ -80,8 +81,6 @@ class Menu extends Component {
     private _menuWidth: number | null = null;
     private _rebuildOnClose: (() => void) | null = null;
     private _currentOpener: Handle | null = null;
-    private readonly _onViewportPointerDown: (e: PointerEvent) => void;
-    private readonly _onWindowBlur: (e: FocusEvent) => void;
 
     /**
      * Constructs a Menu. With no arguments, a rebuild-mode (right-click context)
@@ -125,47 +124,6 @@ class Menu extends Component {
         } else {
             this.applyRebuildChrome();
         }
-
-        // Light dismiss on pointerdown, not mousedown. `mousedown` is a
-        // compatibility mouse event the browser suppresses whenever the preceding
-        // `pointerdown` was `preventDefault`ed — which `CustomListRow` does on
-        // every row press (to keep a click from blurring the list). A mousedown
-        // dismissal therefore never fired when the outside press landed on such a
-        // target (another list row, a tree item, a tab), leaving the menu open.
-        // `pointerdown` is the real event and always fires. It reaches this
-        // window-capture viewport listener even for targets that consume it,
-        // because `baseViewportListener` calls `stopPropagation()` (not
-        // `stopImmediatePropagation()`), so same-node same-phase listeners survive.
-        this._onViewportPointerDown = (e: PointerEvent) => {
-            const target = DOM.source.intern(e.target as EventTarget);
-
-            if (this._persistent) {
-                if (!this.containsTarget(target) && !(this._excludedEl != null && DOM.source.contains(this._excludedEl, target))) {
-                    this._onClose!();
-                }
-            } else {
-                if (!this.containsTarget(target) && !(this._excludedEl != null && DOM.source.contains(this._excludedEl, target))) {
-                    this.hide();
-                }
-            }
-        };
-
-        // Closing the whole browser window's focus (clicking another app or
-        // alt-tabbing) fires no in-page pointerdown, so the pointerdown dismissal
-        // above never runs and the menu would stay open. A window blur closes
-        // it. Viewport listeners are capture-phase, so element blurs from within
-        // the menu surface here too; act only on a genuine window blur.
-        this._onWindowBlur = (e: FocusEvent) => {
-            if (!DOM.source.isWindow(e.target === null ? null : DOM.source.intern(e.target))) {
-                return;
-            }
-
-            if (this._persistent) {
-                this._onClose!();
-            } else {
-                this.hide();
-            }
-        };
     }
 
     /**
@@ -271,28 +229,33 @@ class Menu extends Component {
 
         const vp = DOM.source.getViewportSize();
 
-        // Fold VIEWPORT_MARGIN into the position clamp so a fitting menu's bottom
-        // lands at `vp.height - VIEWPORT_MARGIN`; then `available` equals
-        // `totalHeight` exactly and no spurious scrollbar appears. `show()` only
-        // ever grows the menu downward from `top` (never flipped above the
-        // cursor), so the room below `top` is the correct available height.
-        const left = Math.max(VIEWPORT_MARGIN, Math.min(x, vp.width - width - VIEWPORT_MARGIN));
-        const top = Math.max(VIEWPORT_MARGIN, Math.min(y, vp.height - totalHeight - VIEWPORT_MARGIN));
-        const available = vp.height - top - VIEWPORT_MARGIN;
+        // Clamp the cursor point so the whole menu stays a VIEWPORT_MARGIN inside
+        // every edge; a fitting menu's bottom then lands at `vp.height -
+        // VIEWPORT_MARGIN`, so `available` equals `totalHeight` exactly and no
+        // spurious scrollbar appears. `show()` only ever grows the menu downward
+        // from the clamped top (never flipped above the cursor), so the room
+        // below it is the correct available height.
+        const clamped   = clampIntoViewport(x, y, { width, height: totalHeight }, vp, VIEWPORT_MARGIN);
+        const available = vp.height - clamped.y - VIEWPORT_MARGIN;
 
-        this.setX(left);
-        this.setY(top);
+        this.setX(clamped.x);
+        this.setY(clamped.y);
         this.applyViewportHeightClamp(available, totalHeight);
 
         this.scheduleLayout();
 
-        DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
+        LayerManager.mount(el);
 
         this.setVisible(true);
-        this.fadeIn(el);
+        this.fadeIn();
 
-        Event.addViewportListener(this, "pointerdown", this._onViewportPointerDown);
-        Event.addViewportListener(this, "blur", this._onWindowBlur);
+        // Join the central layer tree: the manager owns the outside-pointerdown /
+        // window-blur / Escape dismissal and stamps the z-index. Registering while
+        // whatever opened the menu is topmost links it under that layer, so a
+        // context menu raised over a modal dialog inherits the dialog band and
+        // paints in front of it.
+        LayerManager.register(this);
+        this.setZIndex(LayerManager.getZIndex(this));
 
         return this;
     }
@@ -347,8 +310,7 @@ class Menu extends Component {
 
         this.closeOpenSubmenu();
 
-        Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
-        Event.removeViewportListener(this, "blur", this._onWindowBlur);
+        LayerManager.unregister(this);
 
         this.fadeOutAndDetach();
 
@@ -411,7 +373,7 @@ class Menu extends Component {
         const width       = this.getWidth();
 
         const el = this.getElement(true)!;
-        DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
+        LayerManager.mount(el);
 
         const vp = DOM.source.getViewportSize();
 
@@ -463,10 +425,15 @@ class Menu extends Component {
 
         this.setVisible(true);
         this.doLayout();
-        this.fadeIn(this.getElement(true)!);
+        this.fadeIn();
 
-        Event.addViewportListener(this, "pointerdown", this._onViewportPointerDown);
-        Event.addViewportListener(this, "blur", this._onWindowBlur);
+        // Join the central layer tree so the manager owns dismissal and the
+        // z-stamp. A submenu opened via `open(item, this)` registers while its
+        // parent menu is topmost, so it links under the parent — a pointerdown
+        // inside the submenu counts as inside the parent (cross-portal
+        // containment) and keeps the whole chain open.
+        LayerManager.register(this);
+        this.setZIndex(LayerManager.getZIndex(this));
 
         return this;
     }
@@ -483,8 +450,7 @@ class Menu extends Component {
         this.setFocusedIndex(-1);
         this.clearItemHighlights();
 
-        Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
-        Event.removeViewportListener(this, "blur", this._onWindowBlur);
+        LayerManager.unregister(this);
 
         this.fadeOutAndDetach();
 
@@ -512,10 +478,8 @@ class Menu extends Component {
     /**
      * Plays the standard menu-panel entrance fade. Cancels any in-flight
      * fade-out so the deferred detach skips removing the still-visible panel.
-     *
-     * @param _el - The panel's root element (unused; retained for call-site clarity).
      */
-    private fadeIn(_el: Handle): void {
+    private fadeIn(): void {
         fadeShow(this, { durationMs: MENU_ANIM_DURATION_MS });
     }
 
@@ -669,7 +633,6 @@ class Menu extends Component {
      * Applies the persistent-mode chrome (MenuBar dropdown CSS variables, aria role).
      */
     private applyPersistentChrome(): void {
-        this.setZIndex(9999);
         this.setBackgroundColor("var(--ts-ui-menu-bar-panel-bg, rgb(255, 255, 255))");
         this.setInsets(new Insets(4, 0, 4, 0));
         this.setBorder({ border: "1px solid var(--ts-ui-menu-bar-panel-border, rgb(200, 200, 200))" });
@@ -686,7 +649,6 @@ class Menu extends Component {
      */
     private applyRebuildChrome(): void {
         this.setVisible(false);
-        this.setZIndex(10000);
         this.setBackgroundColor("var(--ts-ui-context-menu-bg, rgb(255, 255, 255))");
         this.setInsets(new Insets(4, 0, 4, 0));
         this.setBorder({ border: "1px solid var(--ts-ui-context-menu-border, rgb(200, 200, 200))" });
@@ -764,11 +726,6 @@ class Menu extends Component {
     }
 
     /**
-     * Builds the item list for persistent mode and sets the panel width.
-     *
-     * @param items - The item configs from the constructor.
-     */
-    /**
      * Tear down the current persistent items and rebuild them from `configs`.
      * Used by `open()` to re-resolve a provider-sourced dropdown each time it
      * shows, so its labels / enabled state track current state. Mirrors the
@@ -792,6 +749,11 @@ class Menu extends Component {
         this.buildPersistentItems(configs);
     }
 
+    /**
+     * Builds the item list for persistent mode and sets the panel width.
+     *
+     * @param items - The item configs from the constructor.
+     */
     private buildPersistentItems(items: MenuItemConfig[]): void {
         this.pauseLayout();
 
@@ -809,25 +771,6 @@ class Menu extends Component {
         this.resumeLayout();
 
         this.setWidth(this.layOutColumns());
-    }
-
-    /**
-     * Returns `true` if the given DOM node is inside this panel or any open child submenu.
-     *
-     * @param target - The node to test for containment.
-     * @returns Whether the target is within this panel's subtree.
-     */
-    private containsTarget(target: Handle): boolean {
-        const menuEl = this.getElement();
-        if (menuEl != null && DOM.source.contains(menuEl, target)) {
-            return true;
-        }
-
-        if (this._openSubmenuPanel?.containsTarget(target)) {
-            return true;
-        }
-
-        return false;
     }
 
     /**
@@ -902,6 +845,76 @@ class Menu extends Component {
         } else {
             this.hide();
         }
+    }
+
+    // ----- DismissableLayer -----
+
+    /**
+     * Returns the menu panel's root element for the central layer tree.
+     *
+     * @returns The menu's element, or null when not yet rendered.
+     */
+    getLayerElement(): Handle | null {
+        return this.getElement() ?? null;
+    }
+
+    /**
+     * Returns the dismiss mode the document-level handlers consult. A menu is
+     * `"click-outside"`: dismissed by a `pointerdown` outside its layer subtree
+     * (and its excluded trigger) and by a window blur, but never by a focus
+     * move — exactly the pointerdown + window-blur behaviour the menu owned
+     * before it joined the layer tree.
+     *
+     * @returns The layer dismiss mode.
+     */
+    getDismissMode(): LayerDismissMode {
+        return "click-outside";
+    }
+
+    /**
+     * Advisory close request from the manager (an outside `pointerdown`, a
+     * window blur, or Escape). Routes through the mode-aware close chain: a
+     * persistent (MenuBar) menu fires its `onClose`, a rebuild (context) menu
+     * calls `hide()`; either way any open submenu is torn down.
+     */
+    requestClose(): void {
+        this.dismissAll();
+    }
+
+    /**
+     * Returns the trigger element excluded from the manager's outside-pointerdown
+     * test — the context-menu opener passed to {@link show} / {@link toggleFor},
+     * or the [`MenuBar`](/api/component/menubar/classes/MenuBar) button set via
+     * {@link setExcludedElement} — so the gesture that opened the menu does not
+     * immediately re-close it.
+     *
+     * @returns The excluded element, or null.
+     */
+    getAnchorElement(): Handle | null {
+        return this._excludedEl;
+    }
+
+    /**
+     * Returns the dropdown z-index band so an unrelated top-level menu stacks in
+     * the dropdown family. A submenu — or a menu opened while another layer is
+     * topmost — inherits its opener's band instead, so it rises above the
+     * surface it was opened from.
+     *
+     * @returns The dropdown band base.
+     */
+    getBand(): number {
+        return LayerManager.Band.Dropdown;
+    }
+
+    /**
+     * Mirrors a manager-allocated z-index onto the element when the layer this
+     * menu was opened inside is raised via the manager's bring-to-front path,
+     * so an open menu never falls behind the surface it belongs to.
+     *
+     * @param zIndex - The fresh z-index assigned by the manager.
+     */
+    onZIndexChanged(zIndex: number): void {
+        this.setZIndex(zIndex);
     }
 
     /**

@@ -2,8 +2,8 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Menu } from '~/overlay/Menu';
 import { MenuItem, MenuItemConfig } from '~/component/container/MenuItem';
 import { DOM } from '~/core/DOM';
-import { Event } from '~/core/Event';
-import { installTestDOM, makeEvent } from '../dom/TestDOM';
+import { LayerManager } from '~/core/LayerManager';
+import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -373,60 +373,101 @@ describe('Menu focus navigation (persistent)', () => {
     });
 });
 
-describe('Menu rebuild-mode light dismiss (pointerdown)', () => {
+describe('Menu as DismissableLayer', () => {
     afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
 
-    /**
-     * The outside-press dismissal listener show() registers. Captured by type off
-     * a spy rather than dispatched through the window, because Event's viewport
-     * map is module-level and binds its base window listener only on the first
-     * registration per type — an earlier show() in this file already bound
-     * "pointerdown" to a stale window handle, so a real window dispatch here would
-     * miss. Spying on the registration sidesteps that and pins the exact type.
-     */
-    function captureDismiss(menu: Menu, onClose: () => void): (e: unknown) => void {
-        const spy = vi.spyOn(Event, 'addViewportListener');
-
-        menu.show(100, 100, [{ text: 'A', action: () => {} }], onClose);
-
-        // The fix: the light dismiss registers on "pointerdown", never "mousedown".
-        const types = spy.mock.calls.map((c) => c[1]);
-        expect(types).toContain('pointerdown');
-        expect(types).not.toContain('mousedown');
-
-        const call = spy.mock.calls.find((c) => c[1] === 'pointerdown');
-        return call![2] as (e: unknown) => void;
-    }
-
-    it('registers the dismiss on pointerdown and closes on an outside press', () => {
+    it('rebuild show() registers with LayerManager; hide() unregisters', () => {
         installTestDOM(CONFIG);
 
         const menu = new Menu();
-        let closed = 0;
-        const dismiss = captureDismiss(menu, () => { closed++; });
 
-        // pointerdown, not the compatibility mousedown: a preventDefaulted
-        // pointerdown (every CustomListRow does that on a row press) suppresses
-        // the follow-up mousedown, so a mousedown-only dismissal missed those
-        // targets. An outside press closes the menu.
-        const outside = DOM.sink.createElement('div');
-        dismiss(makeEvent(outside, 'pointerdown'));
+        menu.show(100, 100, [{ text: 'A', action: () => {} }]);
 
-        expect(closed).toBe(1);
+        // The manager owns the dismissal now: a shown menu is the topmost layer.
+        expect(LayerManager.getTopLayer()).toBe(menu);
+
+        menu.hide();
+
+        // After hide() the menu is popped from the layer tree.
+        expect(LayerManager.getTopLayer()).not.toBe(menu);
     });
 
-    it('ignores a pointerdown inside the menu surface', () => {
+    it('persistent open() registers with LayerManager; close() unregisters', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu([{ text: 'A', action: () => {} }], () => {});
+
+        menu.open(DOM.sink.createElement('div'));
+
+        expect(LayerManager.getTopLayer()).toBe(menu);
+
+        menu.close();
+
+        expect(LayerManager.getTopLayer()).not.toBe(menu);
+    });
+
+    it('reports the click-outside dismiss mode and the dropdown band', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        // No focusin dismissal (matching the old pointerdown + window-blur
+        // behaviour); the manager stamps it in the dropdown band.
+        expect(menu.getDismissMode()).toBe('click-outside');
+        expect(menu.getBand()).toBe(LayerManager.Band.Dropdown);
+    });
+
+    it('rebuild getAnchorElement() returns the excluded trigger element', () => {
+        installTestDOM(CONFIG);
+
+        const menu    = new Menu();
+        const trigger = DOM.sink.createElement('button');
+
+        menu.show(0, 0, [{ text: 'A' }], undefined, trigger);
+
+        // The trigger stays excluded from the manager's outside-pointerdown test
+        // so its own press does not immediately re-close the menu.
+        expect(menu.getAnchorElement()).toBe(trigger);
+    });
+
+    it('persistent getAnchorElement() returns the MenuBar-excluded element', () => {
+        installTestDOM(CONFIG);
+
+        const menu      = new Menu([{ text: 'A' }], () => {});
+        const barButton = DOM.sink.createElement('button');
+
+        menu.setExcludedElement(barButton);
+
+        expect(menu.getAnchorElement()).toBe(barButton);
+    });
+
+    it('requestClose() closes a rebuild menu and fires its per-show onClose', () => {
         installTestDOM(CONFIG);
 
         const menu = new Menu();
         let closed = 0;
-        const dismiss = captureDismiss(menu, () => { closed++; });
 
-        // A press on the menu's own subtree is not an outside click — the item
-        // action closes it, not the light-dismiss listener.
-        dismiss(makeEvent(menu.getElement()!, 'pointerdown'));
+        menu.show(0, 0, [{ text: 'A' }], () => { closed++; });
 
-        expect(closed).toBe(0);
-        expect(menu.isVisible()).toBe(true);
+        // The manager's advisory close routes through the mode-aware dismissAll:
+        // rebuild mode calls hide(), which fires the per-show onClose exactly once.
+        menu.requestClose();
+
+        expect(closed).toBe(1);
+        expect(LayerManager.getTopLayer()).not.toBe(menu);
+    });
+
+    it('requestClose() fires the persistent onClose callback', () => {
+        installTestDOM(CONFIG);
+
+        const onClose = vi.fn();
+        const menu    = new Menu([{ text: 'A' }], onClose);
+
+        menu.open(DOM.sink.createElement('div'));
+        menu.requestClose();
+
+        // Persistent mode routes requestClose to the MenuBar's onClose (which owns
+        // the close()/unregister), mirroring the old window-blur / outside path.
+        expect(onClose).toHaveBeenCalledOnce();
     });
 });

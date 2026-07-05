@@ -4,6 +4,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
 import { Position } from "~/primitive/Position.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
+import { positionAnchored } from "~/core/OverlayPosition.js";
 import { callable } from "~/core/Callable.js";
 import { DOM, type Rect, type Handle } from "~/core/DOM.js";
 
@@ -227,9 +228,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
 
         const el = this.getElement(true)!;
 
-        if (!DOM.source.contains(DOM.source.getDocumentElement(), el)) {
-            DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
-        }
+        LayerManager.mount(el);
 
         this.setVisible(true);
 
@@ -353,32 +352,13 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      *   `DOM.source.getElementRect(anchorEl)`).
      */
     placeAnchored(rect: Rect): this {
-        const w = this.getWidth();
-        const h = this.getHeight();
+        const size = { width: this.getWidth(), height: this.getHeight() };
+        const vp   = DOM.source.getViewportSize();
 
-        const vp       = DOM.source.getViewportSize();
-        const vpWidth  = vp.width;
-        const vpHeight = vp.height;
-
-        // Vertical: prefer below; flip above when below overflows AND above
-        // has room; otherwise pick the side with more space and clamp.
-        let y: number;
-        const spaceBelow = vpHeight - rect.bottom;
-        const spaceAbove = rect.top;
-
-        if (h <= spaceBelow) {
-            y = rect.bottom;
-        } else if (h <= spaceAbove) {
-            y = rect.top - h;
-        } else if (spaceBelow >= spaceAbove) {
-            y = Math.max(0, vpHeight - h);
-        } else {
-            y = 0;
-        }
-
-        // Horizontal: anchor at rect.left, clamp so the panel stays within
-        // the viewport on both sides.
-        const x = Math.max(0, Math.min(rect.left, vpWidth - w));
+        // Vertical growth: prefer below, flip above when below overflows and
+        // above has room, clamp horizontally into the viewport. The flip/clamp
+        // geometry lives in the shared pure primitive.
+        const { x, y } = positionAnchored(rect, size, vp, { axis: "vertical" });
 
         this.setX(x);
         this.setY(y);

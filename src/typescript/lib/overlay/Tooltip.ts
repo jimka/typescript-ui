@@ -4,6 +4,7 @@ import { Component } from "~/core/Component.js";
 import { DOM, type Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { LayerManager } from "~/core/LayerManager.js";
+import { clampIntoViewport } from "~/core/OverlayPosition.js";
 import { Util } from "~/core/Util.js";
 import { Animation } from "~/core/Animation.js";
 import { Text } from "~/component/input/Text.js";
@@ -31,10 +32,10 @@ export interface TooltipColors {
 interface TooltipAttachment {
     text        : string;
     colors      : TooltipColors | undefined;
-    mouseoverFn : Function;
-    mousemoveFn : Function;
-    mouseoutFn  : Function;
-    mousedownFn : Function;
+    mouseoverFn : (e: MouseEvent) => void;
+    mousemoveFn : (e: MouseEvent) => void;
+    mouseoutFn  : () => void;
+    mousedownFn : () => void;
 }
 
 /** Internal record of a raw-element tooltip attachment. */
@@ -62,6 +63,10 @@ interface ElementTooltipAttachment {
  *
  * @category Core
  */
+// Intentional exception to the `callable()`-wrap rule: `Tooltip` has a private
+// constructor and is used only through its static methods (`show` / `attach` /
+// …), so there is no public `new Tooltip()` / `Tooltip(...)` surface to wrap.
+// The singleton is exported directly (see `overlay/index.ts`).
 export class Tooltip extends Component {
 
     private static instance: Tooltip | null = null;
@@ -209,17 +214,24 @@ export class Tooltip extends Component {
         inst.setHeight(tooltipHeight);
 
         const vp = DOM.source.getViewportSize();
-        const clampedX = Math.min(x + Tooltip.CURSOR_OFFSET, vp.width - tooltipWidth);
-        const clampedY = Math.min(y + Tooltip.CURSOR_OFFSET, vp.height - tooltipHeight);
 
-        inst.setX(Math.max(0, clampedX));
-        inst.setY(Math.max(0, clampedY));
+        // Offset past the cursor, then clamp so the whole tooltip stays on-screen
+        // (no viewport margin — the tooltip may sit flush against an edge).
+        const placed = clampIntoViewport(
+            x + Tooltip.CURSOR_OFFSET,
+            y + Tooltip.CURSOR_OFFSET,
+            { width: tooltipWidth, height: tooltipHeight },
+            vp,
+        );
+
+        inst.setX(placed.x);
+        inst.setY(placed.y);
 
         const el = inst.getElement(true)!;
 
         inst.scheduleLayout();
 
-        DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
+        LayerManager.mount(el);
 
         inst.setVisible(true);
 

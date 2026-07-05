@@ -255,6 +255,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private readonly _boundOnSnapMouseDown: (e: MouseEvent)    => void = (e) => this.onSnapMouseDown(e);
     private readonly _boundOnViewportResize: () => void                = () => this.onViewportResize();
     private readonly _boundOnSnapBlur:       () => void                = () => this.clearSnapState();
+    private readonly _boundOnBorderResize:   (border: WindowBorder, e: MouseEvent) => void = (border, e) => this.onResize(border, e);
+    private readonly _boundOnBringToFront:   () => void                = () => this.bringToFront();
 
     /**
      * Builds the chrome-agnostic, dereference-free part of a window: the eight
@@ -280,14 +282,14 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             southwest: new WindowBorder(Direction.SOUTHWEST),
         };
 
-        this._borderComponents.west.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.northwest.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.north.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.northeast.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.east.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.southeast.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.south.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.southwest.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.west.on("drag", this._boundOnBorderResize);
+        this._borderComponents.northwest.on("drag", this._boundOnBorderResize);
+        this._borderComponents.north.on("drag", this._boundOnBorderResize);
+        this._borderComponents.northeast.on("drag", this._boundOnBorderResize);
+        this._borderComponents.east.on("drag", this._boundOnBorderResize);
+        this._borderComponents.southeast.on("drag", this._boundOnBorderResize);
+        this._borderComponents.south.on("drag", this._boundOnBorderResize);
+        this._borderComponents.southwest.on("drag", this._boundOnBorderResize);
 
         // Keep the resize handles on top of the window's content (see
         // RESIZE_BORDER_Z_INDEX) so a bar/header that paints over the gutter does
@@ -305,7 +307,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // — focus is driven programmatically on activation, not by tabbing.
         this.getAria().setTabIndex(-1);
 
-        Event.addSubtreeListener(this, "mousedown", () => this.bringToFront());
+        Event.addSubtreeListener(this, "mousedown", this._boundOnBringToFront);
     }
 
     /**
@@ -613,7 +615,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         AbstractWindow.openWindows.add(this);
 
-        DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
+        LayerManager.mount(el);
 
         this.setVisible(true);
 
