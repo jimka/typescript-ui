@@ -192,12 +192,19 @@ export function positionAnchored(anchorRect, size, viewport, opts) {
 function flipAxis(nearEdge, farEdge, extent, viewportExtent, gap): number { … }
 ```
 
-`Menu.placeVertically` ([`Menu.ts:751`](src/typescript/lib/overlay/Menu.ts#L751)) collapses
-onto `flipAxis` plus its existing `applyViewportHeightClamp` height-cap call. Keep
-`placeVertically` as the caller that owns the height clamp; have its body derive the top
-via the shared flip so the two menus (top-level, submenu) and `placeAnchored` share one
-flip implementation. (Note: `tests/overlay/Menu.test.ts` bracket-accesses
-`placeVertically` — preserve its signature/semantics or update that test in lockstep.)
+`Menu.placeVertically` ([`Menu.ts:751`](src/typescript/lib/overlay/Menu.ts#L751)) is kept
+**bespoke** rather than folded onto `flipAxis`. **Decision made during implementation:** the
+two flips have genuinely different overflow semantics and folding would relocate, not reduce,
+complexity — failing the *Compose before specializing* test. `flipAxis` *moves* an
+over-large element up to fit (saturating on-screen), whereas `placeVertically` *pins* the
+menu at its anchor edge and caps its height via `applyViewportHeightClamp` so the overflow
+**scrolls** — the behaviour the framework wants for a tall menu, and the behaviour the
+existing `Menu.test.ts` `placeVertically` tests lock in (a room-below ≥ room-above tie grows
+down and scrolls even when the content overflows). `placeVertically` also owns two anchor
+edges (`growTop` / `anchorTop`) and a `VIEWPORT_MARGIN`, neither of which `flipAxis` models.
+So `placeVertically` keeps its signature and semantics unchanged; the shared-flip
+consolidation applies to `placeAnchored` (the dropdown family), while `Menu` consumes the
+shared **`clampIntoViewport`** primitive for its `show()` point clamp instead.
 
 ### `Menu` DismissableLayer wiring
 
@@ -277,8 +284,11 @@ flip implementation. (Note: `tests/overlay/Menu.test.ts` bracket-accesses
    implement the five `DismissableLayer` methods + `onZIndexChanged`; register/unregister in
    `show`/`open`/`hide`/`close`; delete the two custom handlers, their fields, and
    `containsTarget`; stamp z from the manager; drop the `9999`/`10000` literals. Re-express
-   `Menu.show` (context/point) positioning via `clampIntoViewport` and the top-level/submenu
-   `open` branches + `placeVertically` via the shared `flipAxis`.
+   `Menu.show` (context/point) positioning via `clampIntoViewport`. The top-level/submenu
+   `open` branches and `placeVertically` keep their bespoke placement — their overflow
+   semantics (horizontal right/flip-left, and vertical scroll-pin) differ from the pure
+   `flipAxis` move-to-fit, so folding them would relocate rather than reduce complexity (see
+   *Internal Structure*).
 
 10. **Fix z-index #5.** Confirm no bare `9999`/`10000` remains in `Menu.ts`:
     `grep -nE '\b(9999|10000)\b' src/typescript/lib/overlay/Menu.ts` — expect zero.
