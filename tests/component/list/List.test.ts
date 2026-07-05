@@ -15,6 +15,25 @@ class TestList extends _List {
     public typeAhead(ch: string): void {
         this.handleTypeAhead(ch);
     }
+
+    // Widen the protected row-gesture dispatchers so the index → event mapping
+    // can be exercised without a rendered row pool (they otherwise fire only
+    // from a row's DOM listener).
+    public contextMenu(idx: number, e: MouseEvent): void {
+        this.handleRowContextMenu(idx, e);
+    }
+
+    public dblClick(idx: number, e: MouseEvent): void {
+        this.handleRowDblClick(idx, e);
+    }
+}
+
+/** A minimal MouseEvent stub tracking preventDefault, for the offline env. */
+function mouseEventStub(): { event: MouseEvent; prevented: () => boolean } {
+    let defaultPrevented = false;
+    const event = { preventDefault: () => { defaultPrevented = true; } } as unknown as MouseEvent;
+
+    return { event, prevented: () => defaultPrevented };
 }
 
 const FRUITS = ['Apple', 'Banana', 'Cherry', 'Date'];
@@ -314,5 +333,79 @@ describe('AbstractCustomList (via List) — store binding', () => {
             { id: 3, name: 'Gamma' },
         ]);
         expect(list.getItems().map(i => i.label)).toEqual(['Zulu']);
+    });
+});
+
+describe('List — row context-menu / dblclick events', () => {
+    it('contextmenu fires with the row index and event, suppresses the native menu, and leaves the selection', () => {
+        const list = new TestList({ items: FRUITS });
+        const seen: Array<{ index: number; event: MouseEvent }> = [];
+        list.on('contextmenu', (index, event) => seen.push({ index, event }));
+
+        const { event, prevented } = mouseEventStub();
+        list.contextMenu(2, event);
+
+        expect(seen).toEqual([{ index: 2, event }]);
+        expect(prevented()).toBe(true);
+        // Right-click positions a menu without selecting — the contract mirrors Tree.
+        expect(list.getSelectedIndex()).toBe(-1);
+    });
+
+    it('contextmenu ignores an out-of-range index without firing or preventing default', () => {
+        const list = new TestList({ items: FRUITS });
+        const fn = vi.fn();
+        list.on('contextmenu', fn);
+
+        const { event, prevented } = mouseEventStub();
+        list.contextMenu(99, event);
+
+        expect(fn).not.toHaveBeenCalled();
+        expect(prevented()).toBe(false);
+    });
+
+    it('dblclick fires with the row index and event', () => {
+        const list = new TestList({ items: FRUITS });
+        const seen: number[] = [];
+        list.on('dblclick', (index) => seen.push(index));
+
+        const { event } = mouseEventStub();
+        list.dblClick(1, event);
+
+        expect(seen).toEqual([1]);
+    });
+
+    it('off removes a row-event listener', () => {
+        const list = new TestList({ items: FRUITS });
+        const fn = vi.fn();
+        list.on('contextmenu', fn);
+        list.off('contextmenu', fn);
+
+        list.contextMenu(0, mouseEventStub().event);
+        expect(fn).not.toHaveBeenCalled();
+    });
+});
+
+describe('List — per-item tooltip data', () => {
+    it('carries an array item tooltip through setItems / getItems', () => {
+        const list = new _List();
+        list.setItemsArray([
+            { key: 'a', label: 'Apple',  tooltip: 'A red fruit' },
+            { key: 'b', label: 'Banana' },
+        ]);
+
+        expect(list.getItems()).toEqual([
+            { key: 'a', label: 'Apple',  glyph: undefined, tooltip: 'A red fruit' },
+            { key: 'b', label: 'Banana', glyph: undefined, tooltip: undefined },
+        ]);
+    });
+
+    it('resolves a store-bound tooltip from tooltipField', () => {
+        const model = new Model([{ name: 'id' }, { name: 'name' }, { name: 'note' }], 'id');
+        const store = new MemoryStore(model, []);
+        store.loadData([{ id: 1, name: 'Alpha', note: 'the first one' }]);
+
+        const list = new _List({ store, displayField: 'name', valueField: 'id', tooltipField: 'note' });
+
+        expect(list.getItems()[0].tooltip).toBe('the first one');
     });
 });
