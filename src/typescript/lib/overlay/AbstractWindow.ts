@@ -1733,8 +1733,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     clampPositionToViewport(): this {
         const { minX, maxX, minY, maxY } = this.viewportPositionBounds();
 
-        this.setX(Util.clamp(this.getX(), minX, maxX));
-        this.setY(Util.clamp(this.getY(), minY, maxY));
+        // High-first clamp (not Util.clamp): when the window is larger than the
+        // viewport, maxX < minX, and this must pin the leading edge on-screen
+        // (yield minX) rather than the low-first form's trailing edge (maxX).
+        this.setX(Math.max(Math.min(this.getX(), maxX), minX));
+        this.setY(Math.max(Math.min(this.getY(), maxY), minY));
 
         return this;
     }
