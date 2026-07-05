@@ -4192,6 +4192,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this.scheduleLayout();
+        // Gaining a child changes this container's own preferred size, so notify
+        // the parent — the same signal a child's setPreferredSize raises via the
+        // handler installed above. Without it a nested add (e.g. a row into a
+        // content-sized viewport) relayouts only this container, leaving an
+        // ancestor that sizes to it (a form, a dialog) measuring the stale size.
+        this._onPreferredSizeChange?.();
 
         return this;
     }
@@ -4255,6 +4261,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this.scheduleLayout();
+        // See addComponent: propagate the container's own preferred-size change up
+        // so an ancestor that sizes to this container tracks the inserted child.
+        this._onPreferredSizeChange?.();
 
         return this;
     }
@@ -4341,6 +4350,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         component._onConstraintSizeChange = null;
         component.removeElement();
         this.scheduleLayout();
+        // See addComponent: losing a child changes this container's own preferred
+        // size, so notify the parent to relayout and re-measure.
+        this._onPreferredSizeChange?.();
 
         return constraints;
     }
