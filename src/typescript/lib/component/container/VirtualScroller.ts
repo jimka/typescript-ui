@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { Util } from "~/core/Util.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
@@ -178,7 +179,7 @@ export class VirtualScroller {
      */
     setScrollY(y: number): this {
         const maxScroll = Math.max(0, this._contentHeight - this.effectiveViewportH());
-        const next      = Math.max(0, Math.min(maxScroll, y));
+        const next      = Util.clamp(y, 0, maxScroll);
 
         if (next === this._scrollY) {
             return this;
@@ -203,7 +204,7 @@ export class VirtualScroller {
      */
     setScrollX(x: number): this {
         const maxScroll = Math.max(0, this._contentWidth - this.effectiveViewportW());
-        const next      = Math.max(0, Math.min(maxScroll, x));
+        const next      = Util.clamp(x, 0, maxScroll);
 
         if (next === this._scrollX) {
             return this;
@@ -231,7 +232,7 @@ export class VirtualScroller {
             ? Math.max(0, this._contentWidth  - this.effectiveViewportW())
             : Math.max(0, this._contentHeight - this.effectiveViewportH());
 
-        return Math.max(0, Math.min(max, value));
+        return Util.clamp(value, 0, max);
     }
 
     /**

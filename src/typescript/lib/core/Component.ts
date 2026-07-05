@@ -10,6 +10,7 @@ import { Insets } from "~/primitive/Insets.js";
 import { BaseObject } from "~/core/BaseObject.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Type } from "~/core/Type.js";
+import { Util } from "~/core/Util.js";
 import { Position } from "~/primitive/Position.js";
 import { Aria } from "~/core/Aria.js";
 import { Event } from "~/core/Event.js";
@@ -3365,7 +3366,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
                 return element ? (axis === "x" ? DOM.source.getScrollLeft(element) : DOM.source.getScrollTop(element)) : 0;
             },
             write: (axis, value) => this.writeNativeScroll(axis, value),
-            clamp: (axis, value) => Math.max(0, Math.min(axis === "x" ? this.getMaxScrollLeft() : this.getMaxScrollTop(), value)),
+            clamp: (axis, value) => Util.clamp(value, 0, axis === "x" ? this.getMaxScrollLeft() : this.getMaxScrollTop()),
         });
 
         Event.addSubtreeListener(this, "wheel", this.onWheelScroll, { passive: false });
@@ -4246,7 +4247,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             throw new Error(`Component ${component.getId()} already has a parent. Remove it first.`);
         }
 
-        const clampedIndex = Math.max(0, Math.min(index, this._components.length));
+        const clampedIndex = Util.clamp(index, 0, this._components.length);
         this._components.splice(clampedIndex, 0, component);
 
         this.setLayoutConstraints(component, constraints);

@@ -8,6 +8,7 @@ import { SpinButton } from "~/component/input/SpinButton.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { Insets } from "~/primitive/Insets.js";
+import { UNBOUNDED } from "~/primitive/Size.js";
 import { Util } from "~/core/Util.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { StyleRule } from "~/core/StyleTarget.js";
@@ -217,7 +218,7 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
         const h = Util.lineHeightPx() + chrome;
 
         this.setPreferredSize(120, h);
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
+        this.setMaxSize(UNBOUNDED, h);
     }
 
     /**

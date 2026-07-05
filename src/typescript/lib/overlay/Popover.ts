@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
@@ -805,8 +806,6 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         const popoverW   = this.getWidth();
         const popoverH   = this.getHeight();
 
-        const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(value, max));
-
         // Inset box-shadow draws a 1px line on the two outward-facing edges
         // of the rotated diamond. The mapping below is given in
         // pre-rotation coordinates (the element's own CSS axes); after the
@@ -844,7 +843,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
                 popoverW - size - ARROW_EDGE_INSET_PX,
                 vp.width - VIEWPORT_EDGE_INSET_PX - popoverX - half - ARROW_VISUAL_HALF,
             );
-            const localX        = clamp(anchorCentreX - popoverX - half - border.left, minLocalX, maxLocalX);
+            const localX        = Util.clamp(anchorCentreX - popoverX - half - border.left, minLocalX, maxLocalX);
 
             this._arrowComponent.setX(localX);
 
@@ -865,7 +864,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
                 popoverH - size - ARROW_EDGE_INSET_PX,
                 vp.height - VIEWPORT_EDGE_INSET_PX - popoverY - half - ARROW_VISUAL_HALF,
             );
-            const localY        = clamp(anchorCentreY - popoverY - half - border.top, minLocalY, maxLocalY);
+            const localY        = Util.clamp(anchorCentreY - popoverY - half - border.top, minLocalY, maxLocalY);
 
             this._arrowComponent.setY(localY);
 

@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
+import { Util } from "~/core/Util.js";
 
 StyleRule.ensureKeyframes(
     'ts-ui-progress-indeterminate',
@@ -48,7 +49,7 @@ class ProgressBar extends Component {
         // eslint-disable-next-line local/forward-super-options
         super();
 
-        this._value         = Math.max(0, Math.min(100, value));
+        this._value         = Util.clamp(value, 0, 100);
         this._indeterminate = indeterminate;
 
         this.setBackgroundColor("var(--ts-ui-progress-track-bg, rgb(220, 220, 220))");
@@ -128,7 +129,7 @@ class ProgressBar extends Component {
      * @param value - Progress percentage in [0, 100].
      */
     setValue(value: number): this {
-        const clamped = Math.max(0, Math.min(100, value));
+        const clamped = Util.clamp(value, 0, 100);
         if (clamped === this._value) {
             return this;
         }

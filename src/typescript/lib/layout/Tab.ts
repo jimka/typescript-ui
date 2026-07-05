@@ -5,6 +5,7 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Size } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Component } from "~/core/Component.js";
+import { Util } from "~/core/Util.js";
 import { Window } from "~/overlay/Window.js";
 import { TabWindow } from "~/overlay/TabWindow.js";
 import { AbstractWindow } from "~/overlay/AbstractWindow.js";
@@ -1812,7 +1813,7 @@ class Tab extends LayoutManager {
             return this;
         }
 
-        const clamped = Math.max(0, Math.min(index, this._contents.length - 1));
+        const clamped = Util.clamp(index, 0, this._contents.length - 1);
 
         // Drive the selection through the strip, which sets the button group,
         // roving focus, and indicator intent, then emits "tabpressed" — handled
@@ -1846,7 +1847,7 @@ class Tab extends LayoutManager {
         // createTab appends the entry; move it to the drop slot so it lands where
         // the insertion bar showed rather than at the end of the strip.
         const appendedIndex = this._contents.length - 1;
-        const dest = Math.max(0, Math.min(slot, appendedIndex));
+        const dest = Util.clamp(slot, 0, appendedIndex);
 
         if (dest !== appendedIndex) {
             const entry = this._contents[appendedIndex];
