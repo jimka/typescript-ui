@@ -643,8 +643,44 @@ export class TreeStore extends AbstractStore {
     // ── Events ─────────────────────────────────────────────────────────────────
 
     /**
+     * Subscribes a listener to a store or tree-structure event. Widens the
+     * inherited surface so the tree events this subclass emits are key-checked
+     * alongside the base store events.
+     *
+     * @param event - The store or tree event to listen for.
+     * @param listener - The callback invoked when the event fires.
+     *
+     * @returns This store, for chaining.
+     */
+    override on(event: StoreEvent | TreeStoreEvent, listener: StoreListener): this {
+        return super.on(event as StoreEvent, listener);
+    }
+
+    /**
+     * Removes a previously registered store or tree-structure event listener.
+     *
+     * @param event - The store or tree event the listener was registered for.
+     * @param listener - The exact callback reference to remove.
+     *
+     * @returns This store, for chaining.
+     */
+    override off(event: StoreEvent | TreeStoreEvent, listener: StoreListener): this {
+        return super.off(event as StoreEvent, listener);
+    }
+
+    /**
+     * Notifies all listeners registered for a store or tree-structure event.
+     *
+     * @param event - The store or tree event to emit.
+     * @param payload - The data object passed to each listener.
+     */
+    protected override emit(event: StoreEvent | TreeStoreEvent, payload: any): void {
+        super.emit(event as StoreEvent, payload);
+    }
+
+    /**
      * Subscribes a listener to a tree-structure event. A typed wrapper over the
-     * inherited {@link AbstractStore.on} so consumers get key-checked tree events.
+     * widened {@link on} so consumers get key-checked tree events.
      *
      * @param event - The tree event to listen for.
      * @param listener - The callback invoked when the event fires.
@@ -652,6 +688,6 @@ export class TreeStore extends AbstractStore {
      * @returns This store, for chaining.
      */
     onTree(event: TreeStoreEvent, listener: StoreListener): this {
-        return this.on(event as StoreEvent, listener);
+        return this.on(event, listener);
     }
 }

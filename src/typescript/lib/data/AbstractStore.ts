@@ -27,7 +27,7 @@ export type StoreListener<T = any> = (payload: T) => void;
  *
  * @category Data
  */
-export type StoreEvent = 'load' | 'beforeload' | 'datachanged' | 'add' | 'remove' | 'clear' | 'beforesync' | 'sync' | 'exception' | 'loadingchanged' | 'pagechanged' | 'pagechangeblocked' | 'sortchanged' | 'filterchange' | 'update' | 'groupchange' | 'expand' | 'collapse' | 'append' | 'removenode';
+export type StoreEvent = 'load' | 'beforeload' | 'datachanged' | 'add' | 'remove' | 'clear' | 'beforesync' | 'sync' | 'exception' | 'loadingchanged' | 'pagechanged' | 'pagechangeblocked' | 'sortchanged' | 'filterchange' | 'update' | 'groupchange';
 
 /**
  * The proxy operation that failed in a {@link StoreExceptionEvent}.
@@ -594,11 +594,19 @@ export abstract class AbstractStore {
      * Converts raw objects to ModelRecords and rebuilds the filtered/sorted view.
      *
      * @param data - An array of plain objects to convert via the model's `createRecord`.
+     *
+     * @remarks
+     * A reload replaces the store's contents with a fresh authoritative snapshot,
+     * so any removal queued against the previous snapshot is discarded — its target
+     * may not exist in the new data, and letting it fire on the next `sync()` would
+     * destroy a server row the user never asked to delete. The queued records were
+     * already ownership-released by `remove()`, so clearing the array suffices.
      */
     private ingestRaw(data: any[]): Promise<void> {
         this.setOwnership(this._allRecords, false);
         this._allRecords = data.map(item => this.model.createRecord(item));
         this.setOwnership(this._allRecords, true);
+        this._pendingRemoved = [];
         this._snapshotDirty = true;
 
         return this.applyView();
@@ -769,24 +777,7 @@ export abstract class AbstractStore {
      * @returns An array of the newly created ModelRecord instances.
      */
     add(data: any | any[]): ModelRecord[] {
-        const items = Array.isArray(data) ? data : [data];
-        const added = items.map(item => {
-            const record = this.model.createRecord(item);
-
-            record.markAsNew();
-
-            return record;
-        });
-
-        this._allRecords.push(...added);
-        this.setOwnership(added, true);
-        this._snapshotDirty = true;
-        this.applyView();
-
-        this.emit('add', { records: added });
-        this.emit('datachanged', {});
-
-        return added;
+        return this.insertAt(null, data);
     }
 
     /**
@@ -805,6 +796,21 @@ export abstract class AbstractStore {
      * view still depends on any active sort and filter.
      */
     insert(index: number, data: any | any[]): ModelRecord[] {
+        return this.insertAt(index, data);
+    }
+
+    /**
+     * Shared body of {@link add} and {@link insert}: creates records marked new,
+     * places them in the master list, rebuilds the view, and fires 'add' then
+     * 'datachanged'.
+     *
+     * @param index - `null` appends to the master list; a number splices at the
+     *   position clamped to `[0, allRecords.length]`.
+     * @param data - A single plain object or an array of plain objects.
+     *
+     * @returns An array of the newly created ModelRecord instances.
+     */
+    private insertAt(index: number | null, data: any | any[]): ModelRecord[] {
         const items = Array.isArray(data) ? data : [data];
         const added = items.map(item => {
             const record = this.model.createRecord(item);
@@ -814,9 +820,14 @@ export abstract class AbstractStore {
             return record;
         });
 
-        const at = Math.max(0, Math.min(index, this._allRecords.length));
+        if (index === null) {
+            this._allRecords.push(...added);
+        } else {
+            const at = Math.max(0, Math.min(index, this._allRecords.length));
 
-        this._allRecords.splice(at, 0, ...added);
+            this._allRecords.splice(at, 0, ...added);
+        }
+
         this.setOwnership(added, true);
         this._snapshotDirty = true;
         this.applyView();
@@ -873,8 +884,8 @@ export abstract class AbstractStore {
 
         this.setOwnership(removed, false);
         this._allRecords = [];
-        this._records = [];
         this._snapshotDirty = true;
+        this.applyView();
 
         this.emit('clear', { removed });
         this.emit('datachanged', {});

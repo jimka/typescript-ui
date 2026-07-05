@@ -17,8 +17,6 @@ type StoreSnapshot = Array<Record<string, any>>;
 
 type Request =
     | { type: "snapshot";   storeId: string; records: StoreSnapshot;            requestId: number }
-    | { type: "sort";       storeId: string; field: string; direction: Direction; fieldType?: FieldType; requestId: number }
-    | { type: "filter";     storeId: string; descriptor: FilterDescriptor;       requestId: number }
     | { type: "sortFilter"; storeId: string; sort?: { field: string; direction: Direction; fieldType?: FieldType };
                             filter?: FilterDescriptor;                           requestId: number };
 
@@ -65,16 +63,12 @@ self.onmessage = (e: MessageEvent<Request>) => {
             indices.push(i);
         }
 
-        if (msg.type === "filter" || (msg.type === "sortFilter" && msg.filter)) {
-            const descriptor = msg.type === "filter" ? msg.descriptor : msg.filter!;
-            indices = indices.filter(i => matchesFilter(records[i], descriptor));
+        if (msg.filter) {
+            indices = indices.filter(i => matchesFilter(records[i], msg.filter!));
         }
 
-        if (msg.type === "sort" || (msg.type === "sortFilter" && msg.sort)) {
-            const sortSpec = msg.type === "sort"
-                ? { field: msg.field, direction: msg.direction, fieldType: msg.fieldType }
-                : msg.sort!;
-            sortIndices(records, indices, sortSpec.field, sortSpec.direction, sortSpec.fieldType);
+        if (msg.sort) {
+            sortIndices(records, indices, msg.sort.field, msg.sort.direction, msg.sort.fieldType);
         }
 
         (self as any).postMessage({ requestId: msg.requestId, indices } as Response);
