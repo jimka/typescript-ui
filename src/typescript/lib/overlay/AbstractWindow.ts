@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { Util } from "~/core/Util.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { WindowBorder, Direction } from "~/component/container/WindowBorder.js";
@@ -1707,8 +1708,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         const targetX = this._dragStartLeft + this._dragDX;
         const targetY = this._dragStartTop  + this._dragDY;
 
-        const clampedX = Math.max(Math.min(targetX, hiX), loX);
-        const clampedY = Math.max(Math.min(targetY, hiY), loY);
+        const clampedX = Util.clamp(targetX, loX, hiX);
+        const clampedY = Util.clamp(targetY, loY, hiY);
 
         // Record the new reach so the next frame's range can only tighten.
         this._dragReachMinX = Math.min(this._dragReachMinX, clampedX);
@@ -1732,6 +1733,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     clampPositionToViewport(): this {
         const { minX, maxX, minY, maxY } = this.viewportPositionBounds();
 
+        // High-first clamp (not Util.clamp): when the window is larger than the
+        // viewport, maxX < minX, and this must pin the leading edge on-screen
+        // (yield minX) rather than the low-first form's trailing edge (maxX).
         this.setX(Math.max(Math.min(this.getX(), maxX), minX));
         this.setY(Math.max(Math.min(this.getY(), maxY), minY));
 

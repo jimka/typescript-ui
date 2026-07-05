@@ -2,6 +2,8 @@
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { Component } from "~/core/Component.js";
+import { Util } from "~/core/Util.js";
+import { UNBOUNDED } from "~/primitive/Size.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { callable } from "~/core/Callable.js";
@@ -97,7 +99,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         super.addComponent(this._thumb);
 
         this.setPreferredSize(200, THUMB_SIZE);
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, THUMB_SIZE);
+        this.setMaxSize(UNBOUNDED, THUMB_SIZE);
         this.setOutline("none");
         this.setCursor("pointer");
 
@@ -636,7 +638,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             ? (rect.width  > 0 ? (e.clientX - rect.left) / rect.width  : 0)
             : (rect.height > 0 ? 1 - (e.clientY - rect.top) / rect.height : 0);
 
-        const clamped = Math.max(0, Math.min(1, fraction));
+        const clamped = Util.clamp(fraction, 0, 1);
         const min     = this.getMin();
         const max     = this.getMax();
 
@@ -651,7 +653,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         const max  = this.getMax();
         const step = this.getStep();
 
-        const clamped = Math.max(min, Math.min(max, value));
+        const clamped = Util.clamp(value, min, max);
 
         if (step <= 0) {
             return clamped;
@@ -659,7 +661,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
 
         const snapped = min + Math.round((clamped - min) / step) * step;
 
-        return Math.max(min, Math.min(max, snapped));
+        return Util.clamp(snapped, min, max);
     }
 
     /**
@@ -695,10 +697,10 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
 
         if (orientation === "horizontal") {
             this.setPreferredSize(200, THUMB_SIZE);
-            this.setMaxSize(Number.MAX_SAFE_INTEGER, THUMB_SIZE);
+            this.setMaxSize(UNBOUNDED, THUMB_SIZE);
         } else {
             this.setPreferredSize(THUMB_SIZE, 200);
-            this.setMaxSize(THUMB_SIZE, Number.MAX_SAFE_INTEGER);
+            this.setMaxSize(THUMB_SIZE, UNBOUNDED);
         }
 
         this.scheduleLayout();

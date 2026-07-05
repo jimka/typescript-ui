@@ -8,6 +8,7 @@ import { GridConstraints } from "~/layout/GridConstraints.js";
 import { Size, UNBOUNDED, isUnbounded, saturate } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Component } from "~/core/Component.js";
+import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -722,7 +723,7 @@ class Grid extends LayoutManager {
             }
 
             const cons    = this.getLayoutConstraints(component) as GridConstraints | undefined;
-            const colSpan = Math.min(Math.max(1, cons?.colSpan ?? 1), cols);
+            const colSpan = Util.clamp(cons?.colSpan ?? 1, 1, cols);
             const size    = component.getPreferredSize();
 
             perRow[flowRow].push({
@@ -880,8 +881,8 @@ class Grid extends LayoutManager {
             let r: number;
 
             if (cons && (cons.col != null || cons.row != null)) {
-                c = Math.min(Math.max(cons.col ?? 0, 0), Math.max(0, cols - 1));
-                r = Math.min(Math.max(cons.row ?? 0, 0), Math.max(0, rows - 1));
+                c = Util.clamp(cons.col ?? 0, 0, Math.max(0, cols - 1));
+                r = Util.clamp(cons.row ?? 0, 0, Math.max(0, rows - 1));
             } else {
                 c = flowCol;
                 r = flowRow;
@@ -1002,10 +1003,10 @@ class Grid extends LayoutManager {
                 continue;
             }
 
-            const c = Math.min(Math.max(cons.col ?? 0, 0), Math.max(0, cols - 1));
-            const r = Math.min(Math.max(cons.row ?? 0, 0), Math.max(0, rows - 1));
-            const colSpan = Math.min(Math.max(1, cons.colSpan ?? 1), cols - c);
-            const rowSpan = Math.min(Math.max(1, cons.rowSpan ?? 1), rows - r);
+            const c = Util.clamp(cons.col ?? 0, 0, Math.max(0, cols - 1));
+            const r = Util.clamp(cons.row ?? 0, 0, Math.max(0, rows - 1));
+            const colSpan = Util.clamp(cons.colSpan ?? 1, 1, cols - c);
+            const rowSpan = Util.clamp(cons.rowSpan ?? 1, 1, rows - r);
 
             for (let rr = r; rr < r + rowSpan; rr += 1) {
                 for (let cc = c; cc < c + colSpan; cc += 1) {
@@ -1029,8 +1030,8 @@ class Grid extends LayoutManager {
                 continue;
             }
 
-            const colSpan = Math.min(Math.max(1, cons?.colSpan ?? 1), cols);
-            const rowSpan = Math.min(Math.max(1, cons?.rowSpan ?? 1), rows);
+            const colSpan = Util.clamp(cons?.colSpan ?? 1, 1, cols);
+            const rowSpan = Util.clamp(cons?.rowSpan ?? 1, 1, rows);
 
             const slot = this.findFreeCell(occupancy, rows, cols, rowSpan, colSpan);
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { Util } from "~/core/Util.js";
 
 /**
  * Manages the roving tabindex pattern for a group of sibling {@link Component} items.
@@ -109,7 +110,7 @@ export class RovingTabIndex {
             return;
         }
 
-        const clampedIndex = Math.max(0, Math.min(index, this._items.length - 1));
+        const clampedIndex = Util.clamp(index, 0, this._items.length - 1);
 
         const prev = this._items[this._activeIndex];
 

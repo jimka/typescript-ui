@@ -48,6 +48,41 @@ describe('Util.isInteger', () => {
     });
 });
 
+describe('Util.clamp', () => {
+    it('returns a value already inside the range unchanged', () => {
+        expect(Util.clamp(5, 0, 10)).toBe(5);
+    });
+    it('returns min for a value below the range', () => {
+        expect(Util.clamp(-3, 0, 10)).toBe(0);
+    });
+    it('returns max for a value above the range', () => {
+        expect(Util.clamp(42, 0, 10)).toBe(10);
+    });
+    it('returns the bound value unchanged when exactly at a bound', () => {
+        expect(Util.clamp(0, 0, 10)).toBe(0);
+        expect(Util.clamp(10, 0, 10)).toBe(10);
+    });
+    it('respects fractional values and bounds', () => {
+        expect(Util.clamp(0.5, 0, 1)).toBe(0.5);
+        expect(Util.clamp(1.5, 0, 1)).toBe(1);
+    });
+    it('handles negative ranges', () => {
+        expect(Util.clamp(-5, -10, -1)).toBe(-5);
+        expect(Util.clamp(-20, -10, -1)).toBe(-10);
+    });
+    it('returns the shared bound for a degenerate min === max range', () => {
+        expect(Util.clamp(3, 5, 5)).toBe(5);
+        expect(Util.clamp(9, 5, 5)).toBe(5);
+    });
+    it('lets max win under the low-first form when min > max (documented tie-break)', () => {
+        // Callers must keep min ≤ max; this pins the inherited behaviour only.
+        expect(Util.clamp(5, 10, 0)).toBe(0);
+    });
+    it('propagates NaN (matches every inlined form it replaces)', () => {
+        expect(Util.clamp(NaN, 0, 10)).toBeNaN();
+    });
+});
+
 describe('Util.generateUUID', () => {
     it('matches the UUID v4 shape', () => {
         const uuid = Util.generateUUID();

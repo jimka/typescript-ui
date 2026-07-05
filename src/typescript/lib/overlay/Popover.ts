@@ -805,6 +805,9 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         const popoverW   = this.getWidth();
         const popoverH   = this.getHeight();
 
+        // High-first clamp (not Util.clamp): when the popover is larger than the
+        // viewport, maxLocal < minLocal, and the arrow must pin to the leading
+        // inset (minLocal), which the low-first Util.clamp would not do.
         const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(value, max));
 
         // Inset box-shadow draws a 1px line on the two outward-facing edges

@@ -271,6 +271,25 @@ export namespace Util {
     }
 
     /**
+     * Clamps a number into an inclusive `[min, max]` range.
+     *
+     * @param value - The number to clamp.
+     * @param min - The lower bound.
+     * @param max - The upper bound.
+     *
+     * @returns `value` when it lies within the range, otherwise the nearer bound.
+     *
+     * @remarks Assumes `min <= max` (the framework's `min <= preferred <= max`
+     * size invariant). When `min > max` the maximum wins (`clamp(v, 10, 0) === 0`)
+     * — the low-first `Math.min(Math.max(...))` tie-break; callers must not rely
+     * on it. `NaN` propagates (a `NaN` input returns `NaN`), matching the inlined
+     * `Math.min`/`Math.max` expressions this replaces.
+     */
+    export function clamp(value: number, min: number, max: number): number {
+        return Math.min(Math.max(value, min), max);
+    }
+
+    /**
      * Converts a hyphen-separated identifier (e.g. `"border-top-width"`) to its
      * camelCase equivalent (`"borderTopWidth"`). Useful for translating
      * CSS-style kebab-case property names into the camelCase form expected by

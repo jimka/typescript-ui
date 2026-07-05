@@ -3,6 +3,7 @@
 import { Button, ButtonEvent, ButtonOptions, ClickListener } from "~/component/button/Button.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
+import { AutoRepeat } from "~/core/AutoRepeat.js";
 import { Util } from "~/core/Util.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -63,8 +64,7 @@ const _defaultSpinButtonOptions: Partial<SpinButtonOptions> = {
 class SpinButton extends Button<SpinButtonOptions> {
 
     private _listeners    : ListenerBag<SpinButtonEvent> = new ListenerBag<SpinButtonEvent>();
-    private _repeatHandle : ReturnType<typeof setTimeout> | null = null;
-    private _repeatDelay  : number = 400;
+    private _repeat       : AutoRepeat;
 
     /**
      * @param symbol - The arrow rendered inside the button (`"▲"` or `"▼"`).
@@ -105,6 +105,13 @@ class SpinButton extends Button<SpinButtonOptions> {
         // above.
         this.pinGlyphSize(8);
         this.getGlyph()?.setTranslate(0, -1);
+
+        this._repeat = new AutoRepeat({
+            initialDelay: 400,   // ms before the first hold-repeat tick
+            decay:        0.75,  // accelerate the cadence by ×0.75 each tick
+            floor:        40,    // fastest steady cadence, in ms
+            onTick:       () => this.emit("tick"),
+        });
 
         Event.addListener(this, "mousedown", () => this.onMouseDown());
         Event.addViewportListener(this, "mouseup", () => this.onMouseUp());
@@ -200,46 +207,21 @@ class SpinButton extends Button<SpinButtonOptions> {
     }
 
     /**
-     * Cancels any in-progress hold-repeat schedule and resets the tick delay to its initial value.
-     */
-    cancelRepeat(): void {
-        if (this._repeatHandle !== null) {
-            clearTimeout(this._repeatHandle);
-            this._repeatHandle = null;
-        }
-
-        this._repeatDelay = 400;
-    }
-
-    /**
      * Fires the first tick immediately and schedules subsequent accelerating ticks.
      */
     private onMouseDown(): void {
-        this.emit("tick");
-        this.scheduleNext();
+        this._repeat.start();
     }
 
     /**
      * Cancels the hold-repeat schedule when the pointer is released or leaves the viewport.
      */
     private onMouseUp(): void {
-        if (this._repeatHandle === null) {
+        if (!this._repeat.isRunning()) {
             return;
         }
 
-        this.cancelRepeat();
-    }
-
-    /**
-     * Schedules the next hold-repeat tick using the current `repeatDelay`, then accelerates
-     * the delay (×0.75, floored at 40 ms) for the following tick.
-     */
-    private scheduleNext(): void {
-        this._repeatHandle = setTimeout(() => {
-            this.emit("tick");
-            this._repeatDelay = Math.max(40, this._repeatDelay * 0.75);
-            this.scheduleNext();
-        }, this._repeatDelay);
+        this._repeat.stop();
     }
 }
 

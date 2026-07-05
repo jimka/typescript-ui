@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { Util } from "~/core/Util.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Panel } from "~/core/Panel.js";
@@ -383,7 +384,7 @@ class PickerColumn extends Component {
         const viewportH    = panelMetrics.clientHeight;
         const desiredTop   = cellTop - (viewportH - cellHeight) / 2;
         const maxScrollTop = panelMetrics.scrollHeight - viewportH;
-        const clamped      = Math.max(0, Math.min(maxScrollTop, desiredTop));
+        const clamped      = Util.clamp(desiredTop, 0, maxScrollTop);
 
         DOM.sink.apply(panelEl, { scrollTop: clamped });
 

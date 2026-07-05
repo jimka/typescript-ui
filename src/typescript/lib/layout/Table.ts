@@ -5,6 +5,7 @@ import { Table as TableComponent } from "~/component/table/Table.js";
 import { Column } from "~/component/table/Column.js";
 import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
+import { UNBOUNDED } from "~/primitive/Size.js";
 import { DOM } from "~/core/DOM.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
@@ -331,9 +332,9 @@ class Table extends LayoutManager {
 
             const col = columns[i];
             const min = col.getMinWidth() ?? 30;
-            const max = col.getMaxWidth() ?? Infinity;
+            const max = col.getMaxWidth() ?? UNBOUNDED;
 
-            return Math.min(Math.max(rawFlex, min), max);
+            return Util.clamp(rawFlex, min, max);
         });
     }
 
@@ -383,9 +384,9 @@ class Table extends LayoutManager {
      */
     private clamp(width: number, column: Column): number {
         const min = column.getMinWidth() ?? 30;
-        const max = column.getMaxWidth() ?? Infinity;
+        const max = column.getMaxWidth() ?? UNBOUNDED;
 
-        return Math.min(Math.max(width, min), max);
+        return Util.clamp(width, min, max);
     }
 }
 

@@ -4,6 +4,7 @@ import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { SplitGutter } from "~/component/container/SplitGutter.js";
 import { CollapseDirection } from "~/component/container/CollapseButton.js";
 import { Component } from "~/core/Component.js";
+import { Util } from "~/core/Util.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size } from "~/primitive/Size.js";
 import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant } from "~/layout/CollapseSupport.js";
@@ -394,7 +395,7 @@ class Split extends LayoutManager {
         const lo  = min ? (horizontal ? min.width : min.height) : 0;
         const hi  = max ? (horizontal ? max.width : max.height) : Number.POSITIVE_INFINITY;
 
-        return Math.min(Math.max(value, lo), hi);
+        return Util.clamp(value, lo, hi);
     }
 
     /**
