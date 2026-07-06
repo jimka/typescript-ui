@@ -137,6 +137,7 @@
     "vitest": "^4.1.9"
   },
   "dependencies": {
-    "@fontsource-variable/manrope": "^5.2.8"
+    "@fontsource-variable/manrope": "^5.2.8",
+    "marked": "^18.0.5"
   }
 }

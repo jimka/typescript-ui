@@ -13,6 +13,8 @@ export type { GlyphAnimation, GlyphOptions } from '~/component/display/Glyph.js'
 export type { GlyphDef, NamedGlyphDef } from '~/component/display/Glyphs.js';
 export { IconText } from '~/component/display/IconText.js';
 export type { IconTextOptions } from '~/component/display/IconText.js';
+export { Markdown } from '~/component/display/Markdown.js';
+export type { MarkdownOptions } from '~/component/display/Markdown.js';
 export { IconLabel } from '~/component/display/IconLabel.js';
 export type { IconLabelOptions } from '~/component/display/IconLabel.js';
 export { ProgressBar } from '~/component/display/ProgressBar.js';
