@@ -112,6 +112,7 @@ export default defineConfig({
                     { text: 'Glyphs',          link: '/components/Glyphs' },
                     { text: 'IconText',        link: '/components/IconText' },
                     { text: 'IconLabel',       link: '/components/IconLabel' },
+                    { text: 'Markdown',        link: '/components/Markdown' },
                     { text: 'FieldSet',        link: '/components/FieldSet' },
                     { text: 'FormFieldSet',    link: '/components/FormFieldSet' },
                     { text: 'Legend',          link: '/components/Legend' },
