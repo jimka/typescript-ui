@@ -6,7 +6,7 @@ import { Model } from '~/data/Model';
 // White-box seam: widen the protected reducer / selectAll to public so the
 // modifier-key branches can be exercised without faking DOM MouseEvents. The
 // production reducer only fires from handleRowClick / the keyboard reducer,
-// both gated behind a rendered element — see AbstractCustomList.handleRowClick.
+// both gated behind a rendered element — see AbstractSelectableList.handleRowClick.
 class TestMultiSelectList extends _MultiSelectList {
     public reduce(idx: number, ev: { ctrl: boolean; shift: boolean }): void {
         this.reduceSelection(idx, ev);

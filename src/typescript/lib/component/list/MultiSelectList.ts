@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { AbstractCustomList, AbstractCustomListOptions } from "~/component/list/AbstractCustomList.js";
+import { AbstractSelectableList, AbstractSelectableListOptions } from "~/component/list/AbstractSelectableList.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { reduceModifierSelection } from "~/component/shared/reduceModifierSelection.js";
 import { callable } from "~/core/Callable.js";
@@ -10,7 +10,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export interface MultiSelectListOptions extends AbstractCustomListOptions {
+export interface MultiSelectListOptions extends AbstractSelectableListOptions {
     selectedIndices?: number[];
 }
 
@@ -34,7 +34,7 @@ export interface MultiSelectListOptions extends AbstractCustomListOptions {
  *
  * @category Components
  */
-class MultiSelectList extends AbstractCustomList<string[], MultiSelectListOptions> {
+class MultiSelectList extends AbstractSelectableList<string[], MultiSelectListOptions> {
 
     /**
      * @param options - Optional. Construction-time options applied to
@@ -219,7 +219,7 @@ class MultiSelectList extends AbstractCustomList<string[], MultiSelectListOption
 
     /**
      * Extends the base keyboard map with `Ctrl+A` (select-all) — every
-     * other key delegates to {@link AbstractCustomList.handleKeyDown}.
+     * other key delegates to {@link AbstractSelectableList.handleKeyDown}.
      *
      * @param e - The keyboard event.
      */

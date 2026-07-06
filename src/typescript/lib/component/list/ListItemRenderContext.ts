@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { CustomListItem } from "~/component/list/AbstractCustomList.js";
+import { SelectableListItem } from "~/component/list/AbstractSelectableList.js";
 
 /**
  * The bound-item state handed to a
@@ -18,7 +18,7 @@ import { CustomListItem } from "~/component/list/AbstractCustomList.js";
  */
 export interface ListItemRenderContext {
     /** The bound item — `{ key, label, glyph? }`. */
-    item:  CustomListItem;
+    item:  SelectableListItem;
     /** Zero-based row index, or `-1` for the empty collapsed-control state. */
     index: number;
 }

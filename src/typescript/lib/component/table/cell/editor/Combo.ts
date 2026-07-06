@@ -5,7 +5,7 @@ import { ComboBox } from "~/component/input/ComboBox.js";
 import { Event } from "~/core/Event.js";
 import { normalizeComboOptions } from "~/component/table/ColumnConfig.js";
 import type { ComboOption } from "~/component/table/ColumnConfig.js";
-import type { CustomListItem } from "~/component/list/AbstractCustomList.js";
+import type { SelectableListItem } from "~/component/list/AbstractSelectableList.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -40,7 +40,7 @@ class ComboEditor extends CellEditor<String | null> {
     constructor(optionList: Array<ComboOption | string>) {
         super("div");
 
-        const items: Array<CustomListItem> = normalizeComboOptions(optionList).map(
+        const items: Array<SelectableListItem> = normalizeComboOptions(optionList).map(
             option => ({ key: option.value, label: option.label }),
         );
 

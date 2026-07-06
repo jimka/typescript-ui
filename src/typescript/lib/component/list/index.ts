@@ -4,7 +4,7 @@ export { List } from '~/component/list/List.js';
 export type { ListOptions } from '~/component/list/List.js';
 export { MultiSelectList } from '~/component/list/MultiSelectList.js';
 export type { MultiSelectListOptions } from '~/component/list/MultiSelectList.js';
-export type { CustomListItem, CustomListItemSpec } from '~/component/list/AbstractCustomList.js';
+export type { SelectableListItem, SelectableListItemSpec } from '~/component/list/AbstractSelectableList.js';
 export { AbstractListComponent } from '~/component/list/AbstractListComponent.js';
 export type { AbstractListOptions } from '~/component/list/AbstractListComponent.js';
 export { BulletedList } from '~/component/list/BulletedList.js';
