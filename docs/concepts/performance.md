@@ -135,7 +135,7 @@ win.setContentFactory(
 win.show();
 ```
 
-Running `store.load()` before the callback would emit `loadingchanged: true` before `TablePanel` had subscribed (and before the table had a size for its overlay spinner to mount against). The `onReady` callback is the supported hook for any "after content is on screen" side effect.
+Running `store.load()` before the callback would emit `loadingchange: true` before `TablePanel` had subscribed (and before the table had a size for its overlay spinner to mount against). The `onReady` callback is the supported hook for any "after content is on screen" side effect.
 
 Both code paths share [`Animation.materialize`](/api/core/namespaces/Animation/functions/materialize), which composes the spinner mount, two-rAF yield, factory invocation, and cross-fade in one call.
 

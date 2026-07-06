@@ -118,13 +118,13 @@ const table = Table(store, {
 
 ## Events
 
-`table.on("selectionchange", records => …)` fires whenever the selected-record
+`table.on("selection", records => …)` fires whenever the selected-record
 set changes, receiving the current selection array.
 
 `table.on("cellclick", e => …)` fires when the user clicks a data cell,
 carrying the record and the exact column that was hit — so you can react to a
 click on a specific cell without inferring the column from a selection change.
-It is purely additive: the row still selects and `"selectionchange"` still
+It is purely additive: the row still selects and `"selection"` still
 fires, a single click does **not** open the inline editor, and clicking inside
 an active editor does not steal its focus.
 

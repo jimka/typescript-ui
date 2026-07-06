@@ -2,11 +2,11 @@
 
 This page covers the structural sub-components of [`Table`](/components/Table) — the header, body, footer, row, and column primitives. You'll rarely instantiate them directly; they are built and managed by `Table`. Reach for them when you need to subclass for a custom column type or hook into the virtual-scrolling pipeline.
 
-All symbols on this page are exported from `@jimka/typescript-ui/component/table`. Since `Header`, `Body`, `Row`, and `Column` collide with other groups (e.g. display, layout), import with an `as` rename in code that mixes them:
+All symbols on this page are exported from `@jimka/typescript-ui/component/table`. The column-header strip is exported as `TableHeader` (already disambiguated from `component/display`'s `Header`). Since `Body`, `Row`, and `Column` still collide with other groups (e.g. display, layout), import those with an `as` rename in code that mixes them:
 
 ```typescript
 import {
-    Header as TableHeader,
+    TableHeader,
     Body as TableBody,
     Row as TableRow,
     FooterRow as TableFooter,
@@ -14,9 +14,9 @@ import {
 } from '@jimka/typescript-ui/component/table';
 ```
 
-## Header
+## TableHeader
 
-[`Header`](/api/component/table/classes/Header) renders the column-header strip as a `<thead>` element. Internally it contains **two** `Row` children: a parent-header row at child index 0 and the column-header row at child index 1. It builds one [`HeaderCell`](/api/component/table/classes/HeaderCell) per visible field from the model, wired with sort-click, resize-drag, and context-menu callbacks, and one [`ParentHeaderCell`](/api/component/table/classes/ParentHeaderCell) per contiguous run of grouped columns. When no visible column declares a [`group`](/components/Table#parent-headers), the parent row collapses to zero height and the column row sits at `y = 0`.
+[`TableHeader`](/api/component/table/classes/TableHeader) renders the column-header strip as a `<thead>` element. Internally it contains **two** `Row` children: a parent-header row at child index 0 and the column-header row at child index 1. It builds one [`HeaderCell`](/api/component/table/classes/HeaderCell) per visible field from the model, wired with sort-click, resize-drag, and context-menu callbacks, and one [`ParentHeaderCell`](/api/component/table/classes/ParentHeaderCell) per contiguous run of grouped columns. When no visible column declares a [`group`](/components/Table#parent-headers), the parent row collapses to zero height and the column row sits at `y = 0`.
 
 ## Body
 

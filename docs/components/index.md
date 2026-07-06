@@ -117,7 +117,7 @@ A [`Table`](/api/component/table/classes/Table) ties columns to a [`Store`](/api
 | [`TablePanel`](/api/component/table/classes/TablePanel) | Table + add/remove/sync toolbar |
 | [`TreeTable`](/components/TreeTable) | Table whose rows form a parent/child hierarchy via a `parentField` on the model |
 | [`TreeTablePanel`](/components/TreeTablePanel) | `TreeTable` + add/remove/sync toolbar |
-| [`Header`](/api/component/table/classes/Header) | Column-header strip (import as `TableHeader` to avoid collision with `component/display`) |
+| [`TableHeader`](/api/component/table/classes/TableHeader) | Column-header strip |
 | [`Body`](/api/component/table/classes/Body) | Virtual-scrolling row container (import as `TableBody`) |
 | [`TreeBody`](/api/component/table/classes/TreeBody) | Tree-aware body that virtual-scrolls a depth-flattened record list |
 | [`FooterRow`](/api/component/table/classes/FooterRow) | Optional summary / footer strip (often aliased to `TableFooter`) |

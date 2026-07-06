@@ -27,7 +27,7 @@ panel.addComponent(role);
 
 ### Keyed items
 
-`addItem` / `setItems` also accept pre-formed `{ key, label }` entries — a [`CustomListItem`](/api/component/list/interfaces/CustomListItem) — so each option carries its own stable key without standing up a store. Explicit keys and plain strings can be mixed in one call; string entries are auto-keyed by their array position, object entries keep their key verbatim, and the caller owns key uniqueness:
+`addItem` / `setItems` also accept pre-formed `{ key, label }` entries — a [`SelectableListItem`](/api/component/list/interfaces/SelectableListItem) — so each option carries its own stable key without standing up a store. Explicit keys and plain strings can be mixed in one call; string entries are auto-keyed by their array position, object entries keep their key verbatim, and the caller owns key uniqueness:
 
 ```typescript
 const role = ComboBox();
@@ -58,7 +58,7 @@ role.setValueField('id');
 role.setDisplayField('name');
 ```
 
-The combo refreshes automatically on store `datachanged` events.
+The combo refreshes automatically on store `datachange` events.
 
 ## Item renderers
 

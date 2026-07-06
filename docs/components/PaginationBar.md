@@ -4,7 +4,7 @@
 that drives a paginated [`Store`](/api/data/classes/Store) — first / previous /
 next / last buttons plus a `Page X of Y` label.
 
-The bar listens to the store's `'pagechanged'` and `'load'` events and
+The bar listens to the store's `'pagechange'` and `'load'` events and
 keeps button-enabled state in sync automatically.
 
 ## Usage

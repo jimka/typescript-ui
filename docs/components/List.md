@@ -20,7 +20,7 @@ Event.addListener(fruits, 'change', () => {
 panel.addComponent(fruits);
 ```
 
-`addItem` / `setItems` also accept pre-formed `{ key, label }` pairs (a [`CustomListItem`](/api/component/list/interfaces/CustomListItem)) when each row needs an explicit, stable key instead of its positional index — e.g. `fruits.setItems([{ key: 'apple', label: 'Apple' }, 'Banana'])`. String entries are auto-keyed by array position; the caller owns key uniqueness.
+`addItem` / `setItems` also accept pre-formed `{ key, label }` pairs (a [`SelectableListItem`](/api/component/list/interfaces/SelectableListItem)) when each row needs an explicit, stable key instead of its positional index — e.g. `fruits.setItems([{ key: 'apple', label: 'Apple' }, 'Banana'])`. String entries are auto-keyed by array position; the caller owns key uniqueness.
 
 ## Keyboard
 
@@ -43,7 +43,7 @@ The list root is focusable; rows are not. Focus tracks the active row via `aria-
 list.setStore(myStore, 'name', 'id');
 ```
 
-The list refreshes automatically on `load` / `add` / `remove` / `datachanged` / `sync` events. When records arrive after construction, the previously-selected key is preserved if it still appears in the new record set.
+The list refreshes automatically on `load` / `add` / `remove` / `datachange` / `sync` events. When records arrive after construction, the previously-selected key is preserved if it still appears in the new record set.
 
 ## Item renderers
 

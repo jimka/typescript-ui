@@ -116,7 +116,7 @@ registration order. The same shape applies to
 [`ResizeHandle`](/api/component/table/classes/ResizeHandle),
 [`Cell`](/api/component/table/classes/Cell),
 [`HeaderCell`](/api/component/table/classes/HeaderCell), the table
-[`Header`](/api/component/table/classes/Header), the
+[`TableHeader`](/api/component/table/classes/TableHeader), the
 [`Accordion`](/api/layout/classes/Accordion) layout, and the
 [`Tab`](/api/layout/classes/Tab) layout.
 
