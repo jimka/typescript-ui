@@ -10,7 +10,9 @@ import {
     resolveDoc,
     linkFor,
     interpolateProse,
+    renderRow,
     estimateTokens,
+    assertBudget,
 } from '../../scripts/llms/generate.mjs';
 
 /** TypeDoc ReflectionKind values used by the generator. */
@@ -127,6 +129,27 @@ describe('llms generator — summary extraction', () => {
         expect(summarize(node)).toBe('A node in a tree store.');
         expect(summarize({})).toBe('');
     });
+
+    it('caps a long summary with an ellipsis (bounds a row for the budget)', () => {
+        const long = 'x'.repeat(300);
+        const node = { comment: { summary: [{ kind: 'text', text: long }] } };
+        const result = summarize(node);
+        expect(result.length).toBeLessThanOrEqual(140);
+        expect(result.endsWith('…')).toBe(true);
+    });
+});
+
+describe('llms generator — row rendering', () => {
+    const row = { task: 'Push button', symbol: 'Button', subpath: 'component/button', summary: 'A push button.', target: 'docs/components/Button.md' };
+
+    it('renders the catalog row contract: task → **Symbol** · subpath · summary · docs', () => {
+        expect(renderRow(row, 'fs')).toBe('- Push button → **Button** · `@jimka/typescript-ui/component/button` · A push button. · docs/components/Button.md');
+    });
+
+    it('rewrites the doc link per mode and omits it when there is no page', () => {
+        expect(renderRow(row, 'site')).toContain('· https://jimka.github.io/typescript-ui/components/Button');
+        expect(renderRow({ ...row, target: null }, 'fs')).toBe('- Push button → **Button** · `@jimka/typescript-ui/component/button` · A push button.');
+    });
 });
 
 describe('llms generator — linkFor (two variants)', () => {
@@ -184,5 +207,11 @@ describe('llms generator — doc resolution & budget', () => {
     it('estimates tokens as ceil(chars / 4)', () => {
         expect(estimateTokens('12345678')).toBe(2);
         expect(estimateTokens('123456789')).toBe(3);
+    });
+
+    it('passes a within-budget document and throws past the 6000-token ceiling', () => {
+        expect(assertBudget('small.txt', 'a'.repeat(400))).toBe(100);
+        // ceil(28000 / 4) = 7000 tokens, over the 6000 ceiling.
+        expect(() => assertBudget('big.txt', 'a'.repeat(28000))).toThrow(/budget/i);
     });
 });

@@ -29,5 +29,20 @@ export function linkFor(target: string, mode: "fs" | "site"): string;
 /** Replace `{{key}}` placeholders in a prose block with mode-resolved links. */
 export function interpolateProse(text: string, mode: "fs" | "site"): string;
 
+/** A resolved catalog row. */
+export interface ManifestRow {
+    task: string;
+    symbol: string;
+    subpath: string;
+    summary: string;
+    target: string | null;
+}
+
+/** Render one catalog row as a Markdown list item in the given link mode. */
+export function renderRow(row: ManifestRow, mode: "fs" | "site"): string;
+
 /** Estimate token cost as `ceil(chars / 4)`. */
 export function estimateTokens(text: string): number;
+
+/** Assert a rendered file is within the token budget; throw past it. */
+export function assertBudget(name: string, text: string): number;

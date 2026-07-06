@@ -386,4 +386,4 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     main();
 }
 
-export { buildSymbolIndex, resolveSymbol, summarize, resolveDoc, linkFor, interpolateProse, estimateTokens };
+export { buildSymbolIndex, resolveSymbol, summarize, resolveDoc, linkFor, interpolateProse, renderRow, estimateTokens, assertBudget };
