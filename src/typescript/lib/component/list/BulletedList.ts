@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { AbstractListComponent, AbstractListOptions } from "~/component/list/AbstractListComponent.js";
+import { AbstractMarkerList, AbstractMarkerListOptions } from "~/component/list/AbstractMarkerList.js";
 import { BulletedListItemStyle } from "~/component/list/BulletedListItemStyle.js";
 import { callable } from "~/core/Callable.js";
 
@@ -9,7 +9,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export interface BulletedListOptions extends AbstractListOptions<BulletedListItemStyle> {
+export interface BulletedListOptions extends AbstractMarkerListOptions<BulletedListItemStyle> {
 }
 
 /**
@@ -19,7 +19,7 @@ export interface BulletedListOptions extends AbstractListOptions<BulletedListIte
  *
  * @category Components
  */
-class BulletedList extends AbstractListComponent<BulletedListItemStyle> {
+class BulletedList extends AbstractMarkerList<BulletedListItemStyle> {
 
     constructor(options?: BulletedListOptions) {
         super("ul", BulletedListItemStyle.DISC, options);

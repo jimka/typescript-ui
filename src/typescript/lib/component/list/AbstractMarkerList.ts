@@ -8,11 +8,11 @@ import { NumberedListItemStyle } from "~/component/list/NumberedListItemStyle.js
 import { ListItem } from "~/component/list/ListItem.js";
 
 /**
- * Construction-time options for {@link AbstractListComponent}.
+ * Construction-time options for {@link AbstractMarkerList}.
  *
  * @category Components
  */
-export interface AbstractListOptions<U extends BulletedListItemStyle | NumberedListItemStyle> extends ComponentOptions {
+export interface AbstractMarkerListOptions<U extends BulletedListItemStyle | NumberedListItemStyle> extends ComponentOptions {
     itemStyle?:     U;
 }
 
@@ -22,7 +22,7 @@ export interface AbstractListOptions<U extends BulletedListItemStyle | NumberedL
  * Manages the CSS list-style-type, selection state, and restricts child components to
  * ListItem instances. Concrete subclasses supply the HTML tag and default style.
  */
-export abstract class AbstractListComponent<U extends BulletedListItemStyle | NumberedListItemStyle> extends Component<AbstractListOptions<U>> {
+export abstract class AbstractMarkerList<U extends BulletedListItemStyle | NumberedListItemStyle> extends Component<AbstractMarkerListOptions<U>> {
 
     // `declare` rather than initializer to dodge the class-field
     // super-cascade trap: the cascade-time setStyle write would otherwise
@@ -34,8 +34,8 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
     constructor(
         tag:              string,
         style:            U,
-        options?:         AbstractListOptions<U>,
-        subclassDefaults?: Partial<AbstractListOptions<U>>,
+        options?:         AbstractMarkerListOptions<U>,
+        subclassDefaults?: Partial<AbstractMarkerListOptions<U>>,
     ) {
         super(options, {
             tag,
@@ -43,16 +43,16 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
             padding:       new Insets(0, 0, 0, 25),
             itemStyle:     style,
             ...(subclassDefaults ?? {}),
-        } as Partial<AbstractListOptions<U>>);
+        } as Partial<AbstractMarkerListOptions<U>>);
     }
 
     /**
-     * Applies an {@link AbstractListOptions} bag, dispatching the list bullet
+     * Applies an {@link AbstractMarkerListOptions} bag, dispatching the list bullet
      * style and initial selection after inherited Component fields.
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: AbstractListOptions<U>): this {
+    protected applyOptions(options: AbstractMarkerListOptions<U>): this {
         super.applyOptions(options);
 
         // `itemStyle` is always defaulted (the constructor seeds the required

@@ -16,7 +16,7 @@ const CONFIG = {
     themeVars:       {},
 };
 
-// AbstractListComponent delegates selection to the native <select> seam, which
+// AbstractMarkerList delegates selection to the native <select> seam, which
 // the offline modelled source stubs to -1 — so selection getters are not
 // meaningfully testable offline. This suite is scoped to the style/marker
 // contract and the ListItem key/value contract instead (see plan Non-Goals).

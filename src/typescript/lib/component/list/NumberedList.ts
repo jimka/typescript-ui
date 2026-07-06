@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { AbstractListComponent, AbstractListOptions } from "~/component/list/AbstractListComponent.js";
+import { AbstractMarkerList, AbstractMarkerListOptions } from "~/component/list/AbstractMarkerList.js";
 import { NumberedListItemStyle } from "~/component/list/NumberedListItemStyle.js";
 import { callable } from "~/core/Callable.js";
 
@@ -9,7 +9,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export interface NumberedListOptions extends AbstractListOptions<NumberedListItemStyle> {
+export interface NumberedListOptions extends AbstractMarkerListOptions<NumberedListItemStyle> {
 }
 
 /**
@@ -19,7 +19,7 @@ export interface NumberedListOptions extends AbstractListOptions<NumberedListIte
  *
  * @category Components
  */
-class NumberedList extends AbstractListComponent<NumberedListItemStyle> {
+class NumberedList extends AbstractMarkerList<NumberedListItemStyle> {
 
     constructor(options?: NumberedListOptions) {
         super("ol", NumberedListItemStyle.DECIMAL, options);
