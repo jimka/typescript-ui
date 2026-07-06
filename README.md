@@ -6,6 +6,8 @@ A web-based layout manager and UI component framework written in TypeScript. Pro
 
 ## Documentation
 
+> **AI agents:** start at the machine-readable capability manifest — **<https://jimka.github.io/typescript-ui/llms.txt>** (also at `node_modules/@jimka/typescript-ui/llms.txt` after install). It indexes every component, layout, and data-layer class so you build with what exists instead of reinventing it.
+
 Full documentation lives at **<https://jimka.github.io/typescript-ui/>** *(deployed via GitHub Pages on push to `master`)*.
 
 For local development of the docs site:

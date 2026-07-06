@@ -41,6 +41,17 @@ ThemeManager.setTheme(ClassicTheme);
 
 See [Theming](/concepts/theming) for details and custom themes.
 
+## Using @jimka/typescript-ui with AI agents
+
+If you use an AI coding assistant, add this line to your project's `CLAUDE.md` or `AGENTS.md` so it discovers the library's capabilities before writing UI code:
+
+```markdown
+UI library capability index: https://jimka.github.io/typescript-ui/llms.txt
+(offline: node_modules/@jimka/typescript-ui/llms.txt) — read before building any UI with @jimka/typescript-ui.
+```
+
+The manifest is a compact, machine-readable catalog of every component, layout, and data-layer class — task, import subpath, and one-line summary — so the assistant reuses what exists instead of reinventing it.
+
 ## Development setup
 
 If you are working on the framework itself rather than consuming it:
