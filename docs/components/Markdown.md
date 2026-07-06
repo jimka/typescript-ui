@@ -45,7 +45,7 @@ Any token type not in the v1 set — tables, images, raw HTML, and GFM extension
 
 ### Sizing
 
-v1 does not measure flowed-text height — pixel-accurate wrapped-text height depends on the assigned width and is out of scope. Place a `Markdown` in a width-assigning cell or a scrolling [`Panel`](/api/component/container/classes/Panel) (via `setAutoScroll`), or set an explicit `preferredSize`, exactly as with other long-form content.
+`Markdown` measures its rendered content height at the width it is assigned and reports it as its minimum and preferred height, so dropping one in a scrolling [`Panel`](/api/component/container/classes/Panel) (via `setAutoScroll`) is all it takes — the panel grows to the full prose height and scrolls when the document overflows. The height is re-measured on content, width, and theme change. Only the **height** axis is derived; the width stays freely assignable so the prose reflows at whatever width its parent gives it. An explicit `preferredSize` or `setMinSize` still overrides the measurement when you want a fixed extent.
 
 ## Common methods
 
@@ -53,6 +53,7 @@ v1 does not measure flowed-text height — pixel-accurate wrapped-text height de
 | --- | --- |
 | `getMarkdown()` | Return the current Markdown source (`""` when unset). |
 | `setMarkdown(markdown)` | Replace the source, re-lexing and rebuilding the rendered subtree. |
+| `dispose()` | Detach the theme-change listener — call this before removing a dynamically-built `Markdown` from the page so the listener doesn't leak. |
 
 ## See also
 
