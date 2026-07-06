@@ -64,7 +64,8 @@ import {
     Image,
     PaginationBar,
     ProgressBar,
-    ProgressSpinner
+    ProgressSpinner,
+    VideoPlayer
 } from '@jimka/typescript-ui/component/display';
 import { FieldSet, Spacer, StatusBar } from '@jimka/typescript-ui/component/container';
 import type { MenuItemConfig } from '@jimka/typescript-ui/component/container';
@@ -1377,6 +1378,24 @@ class MiscPanel extends Panel {
         canvasRow.addComponent(buttonCanvasAnimate);
 
         rightColumn.addComponent(canvasRow);
+
+        // ── VideoPlayer demo ──
+        // A composite player: native <video> surface framed by a control bar
+        // built from this library's own Button / Slider / Text primitives. Uses a
+        // small public-domain sample clip so playback, scrubbing, volume, mute,
+        // and fullscreen can be exercised live.
+        rightColumn.addComponent(new Text("VideoPlayer:"));
+
+        const demoPlayer = new VideoPlayer({
+            src:          "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4",
+            preferredSize: { width: 360, height: 240 },
+        });
+
+        const playerRow = new Component();
+        playerRow.setLayoutManager(new HBox());
+        playerRow.addComponent(demoPlayer);
+
+        rightColumn.addComponent(playerRow);
 
         // ── Panel auto-scroll demo ──
         const autoScrollLabel = new Text("Panel auto-scroll modes:");

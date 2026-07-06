@@ -12,7 +12,7 @@
 // reads the recorded scroll / value / id state back off that stub. The shared
 // `TestHandleTable` is what lets a write through the sink be read by the source.
 
-import { DOM, type DOMSink, type DOMSource, type ElementPatch, type Handle, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize } from '~/core/DOM';
+import { DOM, type DOMSink, type DOMSource, type ElementPatch, type Handle, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize, type MediaState } from '~/core/DOM';
 import type { Component } from '~/core/Component';
 import type { Size } from '~/primitive/Size';
 import type { TextMeasureOptions, TextMetrics } from '~/core/Util';
@@ -66,6 +66,12 @@ interface HandleStub {
     naturalWidth:  number;
     naturalHeight: number;
     /**
+     * Modelled media playback state, folded by the recording sink's media
+     * writes and seeded by {@link setMediaState}, read back by
+     * {@link ModelledDOMSource.getMediaState} (which has no live element).
+     */
+    media: MediaState;
+    /**
      * Accumulated geometry-relevant inline-style writes, folded by
      * {@link RecordingDOMSink.apply} and parsed by
      * {@link ModelledDOMSource.getElementRect}. Default `""` (no write recorded).
@@ -114,6 +120,15 @@ class TestHandleTable {
             scrollTop:      0,
             naturalWidth:   0,
             naturalHeight:  0,
+            media:          {
+                currentTime:  0,
+                duration:     0,
+                paused:       true,
+                ended:        false,
+                volume:       1,
+                muted:        false,
+                playbackRate: 1,
+            },
             styleLeft:      '',
             styleTop:       '',
             styleWidth:     '',
@@ -218,6 +233,13 @@ let _table = new TestHandleTable();
 
 /** The stable window handle, minted once per {@link installTestDOM}. */
 let _windowHandle: Handle = 0 as Handle;
+
+/**
+ * The handle currently displayed fullscreen, set by
+ * {@link RecordingDOMSink.requestFullscreen} / cleared by `exitFullscreen`, read
+ * back by {@link ModelledDOMSource.getFullscreenElement}. `null` when nothing is.
+ */
+let _fullscreenHandle: Handle | null = null;
 
 /**
  * The brand a {@link makeEvent} sentinel carries on its `target`, so the
@@ -475,6 +497,46 @@ export class RecordingDOMSink implements DOMSink {
         this.record('getContext', contextId);
 
         return null;
+    }
+
+    mediaPlay(handle: Handle): void {
+        this.record('mediaPlay');
+        _table.stub(handle).media.paused = false;
+    }
+
+    mediaPause(handle: Handle): void {
+        this.record('mediaPause');
+        _table.stub(handle).media.paused = true;
+    }
+
+    setCurrentTime(handle: Handle, seconds: number): void {
+        this.record('setCurrentTime', seconds);
+        _table.stub(handle).media.currentTime = seconds;
+    }
+
+    setVolume(handle: Handle, value: number): void {
+        this.record('setVolume', value);
+        _table.stub(handle).media.volume = value;
+    }
+
+    setMuted(handle: Handle, muted: boolean): void {
+        this.record('setMuted', muted);
+        _table.stub(handle).media.muted = muted;
+    }
+
+    setPlaybackRate(handle: Handle, rate: number): void {
+        this.record('setPlaybackRate', rate);
+        _table.stub(handle).media.playbackRate = rate;
+    }
+
+    requestFullscreen(handle: Handle): void {
+        this.record('requestFullscreen');
+        _fullscreenHandle = handle;
+    }
+
+    exitFullscreen(): void {
+        this.record('exitFullscreen');
+        _fullscreenHandle = null;
     }
 }
 
@@ -873,6 +935,20 @@ export class ModelledDOMSource implements DOMSource {
         return { width: stub.naturalWidth, height: stub.naturalHeight };
     }
 
+    /**
+     * Reads the modelled media state folded by the recording sink's media writes
+     * and seeded by {@link setMediaState}. Returns a copy so a caller cannot
+     * mutate the stub through the snapshot.
+     */
+    getMediaState(handle: Handle): MediaState {
+        return { ..._table.stub(handle).media };
+    }
+
+    /** Returns the handle last passed to `requestFullscreen`, or `null`. */
+    getFullscreenElement(): Handle | null {
+        return _fullscreenHandle;
+    }
+
     getFiles(_handle: Handle): FileList | null {
         return null;
     }
@@ -1014,6 +1090,7 @@ function makeRect(x: number, y: number, width: number, height: number): Rect {
 export function installTestDOM(config: ModelledDOMConfig): RecordingDOMSink {
     _table = new TestHandleTable();
     _windowHandle = _table.mint('window');
+    _fullscreenHandle = null;
 
     const sink   = new RecordingDOMSink();
     const source = new ModelledDOMSource(config);
@@ -1073,6 +1150,20 @@ export function setNaturalSize(handle: Handle, width: number, height: number): v
 
     stub.naturalWidth  = width;
     stub.naturalHeight = height;
+}
+
+/**
+ * Seeds a handle's modelled media state, read back by
+ * {@link ModelledDOMSource.getMediaState}. Merges over the current state, so a
+ * test can set only the fields it cares about (e.g. `{ duration: 120 }`).
+ *
+ * @param handle - The media element handle.
+ * @param state - The media-state fields to override.
+ */
+export function setMediaState(handle: Handle, state: Partial<MediaState>): void {
+    const stub = _table.stub(handle);
+
+    stub.media = { ...stub.media, ...state };
 }
 
 /**
