@@ -480,7 +480,7 @@ class Video extends Component<VideoOptions> {
             return this;
         }
 
-        this.replayMediaOptions();
+        this.replayMediaOptions(el);
         this.attachMediaListeners(el);
 
         return this;
@@ -513,18 +513,42 @@ class Video extends Component<VideoOptions> {
     }
 
     /**
-     * Re-applies every cached media option through its setter now the element
-     * exists, so the DOM writes that no-op'd during construction take effect.
+     * Re-applies every cached media option onto the freshly-rendered element so
+     * the DOM writes that no-op'd during detached construction take effect.
+     *
+     * @remarks Writes go to the **passed** `element`, never through the
+     * `getElement()`-based setters. During `init()` the element has been created
+     * but is not yet attached to the document, and `render()` stores it as the
+     * component's element only *after* `init()` returns — so `getElement()`
+     * (which resolves by document id) returns nothing in a live DOM and every
+     * setter write would silently no-op, dropping `src` and the rest. Writing to
+     * the passed element mirrors the base `init()` replay of cached attributes
+     * and aria. (The offline modelled source resolves detached elements by id,
+     * which is why this was invisible to the recording-sink tests and had to be
+     * caught live.)
+     *
+     * @param element - The rendered (still-detached) video element.
      */
-    private replayMediaOptions(): void {
-        if (this._options.src          !== undefined) this.setSrc(this._options.src);
-        if (this._options.poster       !== undefined) this.setPoster(this._options.poster);
-        if (this._options.autoplay     !== undefined) this.setAutoplay(this._options.autoplay);
-        if (this._options.loop         !== undefined) this.setLoop(this._options.loop);
-        if (this._options.preload      !== undefined) this.setPreload(this._options.preload);
-        if (this._options.muted        !== undefined) this.setMuted(this._options.muted);
-        if (this._options.volume       !== undefined) this.setVolume(this._options.volume);
-        if (this._options.playbackRate !== undefined) this.setPlaybackRate(this._options.playbackRate);
+    private replayMediaOptions(element: Handle): void {
+        const options = this._options;
+        const setAttr: Record<string, string> = {};
+
+        if (options.src     !== undefined) setAttr.src     = options.src;
+        if (options.poster  !== undefined) setAttr.poster  = options.poster;
+        if (options.preload !== undefined) setAttr.preload = options.preload;
+        if (options.autoplay) setAttr.autoplay = "";
+        if (options.loop)     setAttr.loop     = "";
+        if (options.muted)    setAttr.muted    = "";
+
+        if (Object.keys(setAttr).length > 0) {
+            DOM.sink.apply(element, { setAttr });
+        }
+
+        // Live IDL properties: volume/playbackRate have no reflecting attribute,
+        // and muted must also be driven as a property to take effect immediately.
+        if (options.muted        !== undefined) DOM.sink.setMuted(element, options.muted);
+        if (options.volume       !== undefined) DOM.sink.setVolume(element, options.volume);
+        if (options.playbackRate !== undefined) DOM.sink.setPlaybackRate(element, options.playbackRate);
     }
 
     /**

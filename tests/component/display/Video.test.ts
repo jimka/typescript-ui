@@ -75,6 +75,34 @@ describe('Video accessibility', () => {
     });
 });
 
+describe('Video media options survive a detached element on render (regression)', () => {
+    it('applies src and volume to the passed element even when a document-id lookup misses mid-init', () => {
+        // Faithful repro of the live DOM: during init() the freshly-created
+        // element is not yet attached, so document.getElementById(id) finds
+        // nothing and getElement() (render() stores _element only *after* init
+        // returns) resolves to undefined. The modelled source otherwise resolves
+        // detached elements by id, which masked this offline — so force the miss.
+        // The old replay drove getElement()-based setters and silently dropped
+        // every media attribute: no src ever reached the <video>, so pressing
+        // play did nothing. The replay must write to the element it is handed.
+        const video = new Video({ src: 'clip.mp4', volume: 0.5 });
+        const recorder = DOM.sink as unknown as Recorder;
+        const source = DOM.source as unknown as { getElementById: (id: string) => unknown };
+        const original = source.getElementById.bind(source);
+
+        source.getElementById = () => null;
+
+        try {
+            video.getElement(true);
+        } finally {
+            source.getElementById = original;
+        }
+
+        expect(lastAttr(recorder, 'src')).toBe('clip.mp4');
+        expect(hasOp(recorder, 'setVolume')).toBe(true);
+    });
+});
+
 describe('Video attribute writes on render', () => {
     it('records src / poster / autoplay / loop / muted / preload attribute writes', () => {
         const video = new Video({
