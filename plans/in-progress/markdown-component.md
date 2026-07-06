@@ -414,3 +414,31 @@ payloads), unless marked otherwise.
   no tokenised/highlighted code.
 - **GFM extensions** (task lists, strikethrough, autolinks beyond `link` tokens)
   — deferred; they degrade to the fallback until explicitly added to the switch.
+
+---
+
+## Implementation Notes (drift from plan)
+
+Recorded during implementation; none changed the plan's core API or seam design:
+
+- **Installed `marked` major is 18** (`^18.0.5`), not v5 — v18 exports the named
+  `lexer` function and the `Tokens` namespace / `Token` type exactly as the plan
+  assumed, so the "v5+" assertion holds.
+- **Theme tokens.** The plan's illustrative `var(--ts-ui-foreground, …)` /
+  `var(--ts-ui-accent, …)` tokens do not exist in the theme. The real tokens are
+  used instead: `--ts-ui-text-color`, `--ts-ui-border-color`,
+  `--ts-ui-border-radius`, and the framework's single accent `--ts-ui-indicator-focus`
+  (shared with focus/selection) for link colour, each with a light/dark-safe
+  fallback. Code backgrounds use a translucent grey fallback (no dedicated
+  surface token exists).
+- **Interleaved text runs are wrapped in a `<span>`.** The DOM sink has no
+  raw-text-node primitive (only `apply({ text })`, which sets `textContent`), so
+  a text run that is a *sibling* of an inline element cannot be a bare text node.
+  A lone text child still writes straight onto its parent; only mixed inline
+  content (and the unsupported-token fallback) wraps each text run in a `<span>`.
+- **`clearContent` also releases handles.** Beyond the plan's `removeElement` +
+  `untrackHandle`, each removed node's handle is `DOM.sink.release`d, matching the
+  framework's established teardown (`Component.disposeFrame`) so the handle
+  registry does not leak across `setMarkdown` rebuilds.
+- **Demo host.** A dedicated `MarkdownPanel` demo tab was added (append-only
+  `main.ts` edit) rather than editing a contended existing panel.
