@@ -76,6 +76,31 @@ export interface OffsetSize {
 }
 
 /**
+ * Plain snapshot of a media element's playback state, read in one shot through
+ * {@link DOMSource.getMediaState}. Deliberately *not* a live element: like
+ * {@link ScrollMetrics}, the read seam returns plain data so the same call can
+ * be answered by a media model (offline tests) or across a worker boundary.
+ *
+ * @category Core
+ */
+export interface MediaState {
+    /** Current playback position in seconds. */
+    currentTime:  number;
+    /** Total media duration in seconds (`NaN` before metadata loads). */
+    duration:     number;
+    /** Whether playback is currently paused. */
+    paused:       boolean;
+    /** Whether playback has reached the end of the media. */
+    ended:        boolean;
+    /** Current audio volume in `[0, 1]`. */
+    volume:       number;
+    /** Whether audio is muted. */
+    muted:        boolean;
+    /** Current playback speed multiplier (`1` is normal speed). */
+    playbackRate: number;
+}
+
+/**
  * Opaque, serialisable element reference. A branded `number`, so a raw number
  * cannot be passed where a handle is expected and the reference forwards across
  * a worker boundary as plain data. The live `Node` it stands for never escapes
@@ -699,6 +724,69 @@ export interface DOMSink {
      *   element does not support the requested context).
      */
     getContext(handle: Handle, contextId: string, options?: unknown): RenderingContext | null;
+
+    /**
+     * Starts (or resumes) playback of a media element. Wraps the `play()` IDL
+     * method, whose returned promise is intentionally dropped — playback state is
+     * observed through media events, not the promise.
+     *
+     * @param handle - The `<video>` / `<audio>` element handle.
+     */
+    mediaPlay(handle: Handle): void;
+
+    /**
+     * Pauses playback of a media element.
+     *
+     * @param handle - The media element handle.
+     */
+    mediaPause(handle: Handle): void;
+
+    /**
+     * Seeks a media element to a playback position.
+     *
+     * @param handle - The media element handle.
+     * @param seconds - The target position in seconds.
+     */
+    setCurrentTime(handle: Handle, seconds: number): void;
+
+    /**
+     * Sets a media element's audio volume.
+     *
+     * @param handle - The media element handle.
+     * @param value - The volume in `[0, 1]`.
+     */
+    setVolume(handle: Handle, value: number): void;
+
+    /**
+     * Sets a media element's muted state (the IDL property, which the boolean
+     * attribute alone cannot toggle after load).
+     *
+     * @param handle - The media element handle.
+     * @param muted - Whether audio is muted.
+     */
+    setMuted(handle: Handle, muted: boolean): void;
+
+    /**
+     * Sets a media element's playback speed multiplier.
+     *
+     * @param handle - The media element handle.
+     * @param rate - The playback rate (`1` is normal speed).
+     */
+    setPlaybackRate(handle: Handle, rate: number): void;
+
+    /**
+     * Requests that an element enter fullscreen. Must be called from a user
+     * gesture handler; the returned promise is dropped — the transition is
+     * observed through the `fullscreenchange` event.
+     *
+     * @param handle - The element to display fullscreen.
+     */
+    requestFullscreen(handle: Handle): void;
+
+    /**
+     * Exits fullscreen for the document. No-op when nothing is fullscreen.
+     */
+    exitFullscreen(): void;
 }
 
 /**
@@ -1089,6 +1177,23 @@ export interface DOMSource {
     getNaturalSize(handle: Handle): { width: number; height: number };
 
     /**
+     * Reads a media element's playback state in one shot as plain data.
+     *
+     * @param handle - The `<video>` / `<audio>` element handle.
+     * @returns The element's {@link MediaState}.
+     */
+    getMediaState(handle: Handle): MediaState;
+
+    /**
+     * Returns the element currently displayed fullscreen, or `null` when nothing
+     * is. Reads `document.fullscreenElement` behind the seam so no call site
+     * names the global.
+     *
+     * @returns The fullscreen element handle, or `null`.
+     */
+    getFullscreenElement(): Handle | null;
+
+    /**
      * Reads the selected files of a file input.
      *
      * @param handle - The file-input element.
@@ -1368,6 +1473,52 @@ export class ProductionDOMSink implements DOMSink {
     /** @inheritDoc */
     getContext(handle: Handle, contextId: string, options?: unknown): RenderingContext | null {
         return (_registry.resolve(handle) as HTMLCanvasElement).getContext(contextId, options);
+    }
+
+    /** @inheritDoc */
+    mediaPlay(handle: Handle): void {
+        // The play() promise rejects on an autoplay-policy block; playback state
+        // is observed through media events, so the promise is intentionally void.
+        void (_registry.resolve(handle) as HTMLMediaElement).play().catch(() => {});
+    }
+
+    /** @inheritDoc */
+    mediaPause(handle: Handle): void {
+        (_registry.resolve(handle) as HTMLMediaElement).pause();
+    }
+
+    /** @inheritDoc */
+    setCurrentTime(handle: Handle, seconds: number): void {
+        (_registry.resolve(handle) as HTMLMediaElement).currentTime = seconds;
+    }
+
+    /** @inheritDoc */
+    setVolume(handle: Handle, value: number): void {
+        (_registry.resolve(handle) as HTMLMediaElement).volume = value;
+    }
+
+    /** @inheritDoc */
+    setMuted(handle: Handle, muted: boolean): void {
+        (_registry.resolve(handle) as HTMLMediaElement).muted = muted;
+    }
+
+    /** @inheritDoc */
+    setPlaybackRate(handle: Handle, rate: number): void {
+        (_registry.resolve(handle) as HTMLMediaElement).playbackRate = rate;
+    }
+
+    /** @inheritDoc */
+    requestFullscreen(handle: Handle): void {
+        // The transition is observed through fullscreenchange; a rejected request
+        // (no user gesture) is swallowed rather than surfaced as an unhandled reject.
+        void (_registry.resolve(handle) as HTMLElement).requestFullscreen().catch(() => {});
+    }
+
+    /** @inheritDoc */
+    exitFullscreen(): void {
+        if (document.fullscreenElement) {
+            void document.exitFullscreen().catch(() => {});
+        }
     }
 }
 
@@ -1793,6 +1944,28 @@ export class ProductionDOMSource implements DOMSource {
         const image = _registry.resolve(handle) as HTMLImageElement;
 
         return { width: image.naturalWidth, height: image.naturalHeight };
+    }
+
+    /** @inheritDoc */
+    getMediaState(handle: Handle): MediaState {
+        const media = _registry.resolve(handle) as HTMLMediaElement;
+
+        return {
+            currentTime:  media.currentTime,
+            duration:     media.duration,
+            paused:       media.paused,
+            ended:        media.ended,
+            volume:       media.volume,
+            muted:        media.muted,
+            playbackRate: media.playbackRate,
+        };
+    }
+
+    /** @inheritDoc */
+    getFullscreenElement(): Handle | null {
+        const element = document.fullscreenElement;
+
+        return element ? _registry.intern(element) : null;
     }
 
     /** @inheritDoc */
