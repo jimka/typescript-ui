@@ -103,7 +103,7 @@
     "doc": "typedoc --out dist/docs src/typescript",
     "docs:api": "typedoc",
     "docs:dev": "vitepress dev docs",
-    "docs:build": "npm run docs:api && vitepress build docs",
+    "docs:build": "npm run docs:api && NODE_OPTIONS=--max-old-space-size=6144 vitepress build docs",
     "docs:preview": "vitepress preview docs",
     "clean": "rimraf dist/*",
     "lint": "eslint src",
