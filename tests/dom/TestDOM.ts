@@ -458,10 +458,6 @@ export class RecordingDOMSink implements DOMSink {
         this.record('click');
     }
 
-    setSelectedIndex(_handle: Handle, index: number): void {
-        this.record('setSelectedIndex', index);
-    }
-
     setPointerCapture(_handle: Handle, pointerId: number): void {
         this.record('setPointerCapture', pointerId);
     }
@@ -852,14 +848,6 @@ export class ModelledDOMSource implements DOMSource {
 
     getAttribute(_handle: Handle, _key: string): string | null {
         return null;
-    }
-
-    getSelectedIndex(_handle: Handle): number {
-        return -1;
-    }
-
-    getSelectedOptionDataset(_handle: Handle, _key: string): string | undefined {
-        return undefined;
     }
 
     /** Reads the intrinsic size seeded by {@link setNaturalSize} (default 0). */

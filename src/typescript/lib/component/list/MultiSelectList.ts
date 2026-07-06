@@ -2,6 +2,7 @@
 
 import { AbstractCustomList, AbstractCustomListOptions } from "~/component/list/AbstractCustomList.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
+import { reduceModifierSelection } from "~/component/shared/reduceModifierSelection.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -195,30 +196,14 @@ class MultiSelectList extends AbstractCustomList<string[], MultiSelectListOption
      * @param ev - The normalised modifier flags.
      */
     protected reduceSelection(idx: number, ev: { ctrl: boolean, shift: boolean }): void {
-        if (ev.shift && this._anchorIndex !== null) {
-            const lo = Math.min(this._anchorIndex, idx);
-            const hi = Math.max(this._anchorIndex, idx);
-
-            if (!ev.ctrl) {
-                this._selectedSet.clear();
-            }
-
-            for (let i = lo; i <= hi; i++) {
-                this._selectedSet.add(i);
-            }
-        } else if (ev.ctrl) {
-            if (this._selectedSet.has(idx)) {
-                this._selectedSet.delete(idx);
-            } else {
-                this._selectedSet.add(idx);
-            }
-
-            this._anchorIndex = idx;
-        } else {
-            this._selectedSet.clear();
-            this._selectedSet.add(idx);
-            this._anchorIndex = idx;
-        }
+        this._anchorIndex = reduceModifierSelection(
+            this._selectedSet,
+            this._anchorIndex,
+            idx,
+            i => i,
+            i => i,
+            ev,
+        );
 
         this._focusedIndex = idx;
     }

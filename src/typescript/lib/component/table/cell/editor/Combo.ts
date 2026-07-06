@@ -62,10 +62,14 @@ class ComboEditor extends CellEditor<String | null> {
         // commit-request hook directly rather than re-dispatching a blur
         // for the pool to re-interpret.
         this._combo.on("action", () => this.commitFromCombo());
+        // Internal cell-editor wiring: listens on a privately-owned child;
+        // see the cell-editor carve-out in ARCHITECTURE.md.
         Event.addListener(this._combo, "blur", () => this.commitFromCombo());
 
         // Proxy keydown to the parent cell so Escape cancels and Enter
         // ends the edit, mirroring the text editors' `Cell.onKeyDown` path.
+        // Internal cell-editor wiring: listens on a privately-owned child;
+        // see the cell-editor carve-out in ARCHITECTURE.md.
         Event.addListener(this._combo, "keydown", (evnt: KeyboardEvent) => {
             Event.fireEvent(this, "keydown", { detail: {
                 key     : evnt.key     , code   : evnt.code   , keyCode: evnt.keyCode,

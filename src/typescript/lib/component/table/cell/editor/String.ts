@@ -23,6 +23,8 @@ class StringEditor extends CellEditor<String | null> {
     constructor() {
         super();
 
+        // Internal cell-editor wiring: listens on a privately-owned child;
+        // see the cell-editor carve-out in ARCHITECTURE.md.
         Event.addListener(this._textField, "blur", (evnt: UIEvent) => {
             Event.fireEvent(this, "blur", evnt);
         });

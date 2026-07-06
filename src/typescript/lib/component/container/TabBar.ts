@@ -723,7 +723,7 @@ class TabBar extends Container<TabBarOptions> {
         DOM.sink.appendChild(clip, this._dropTint.getElement(true)!);
         DOM.sink.appendChild(clip, this._reorderBar.getElement(true)!);
 
-        Event.addSubtreeListener(this, "keydown", (e: KeyboardEvent) => this.onToolbarKeyDown(e));
+        Event.addSubtreeListener(this, "keydown", this.onToolbarKeyDown);
 
         // The reorder option may have been set during construction before the
         // strip element existed; perform the deferred install now.

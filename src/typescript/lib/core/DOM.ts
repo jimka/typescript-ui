@@ -665,14 +665,6 @@ export interface DOMSink {
     click(handle: Handle): void;
 
     /**
-     * Sets the selected option index of a `<select>`.
-     *
-     * @param handle - The select element.
-     * @param index - The zero-based option index.
-     */
-    setSelectedIndex(handle: Handle, index: number): void;
-
-    /**
      * Routes subsequent pointer events for a pointer id to an element.
      *
      * @param handle - The capturing element.
@@ -1058,23 +1050,6 @@ export interface DOMSource {
     getAttribute(handle: Handle, key: string): string | null;
 
     /**
-     * Reads a `<select>`'s selected option index.
-     *
-     * @param handle - The select element.
-     * @returns The zero-based selected index.
-     */
-    getSelectedIndex(handle: Handle): number;
-
-    /**
-     * Reads a `data-*` value off a `<select>`'s currently-selected option.
-     *
-     * @param handle - The select element.
-     * @param key - The dataset key (camelCase).
-     * @returns The selected option's dataset value, or undefined.
-     */
-    getSelectedOptionDataset(handle: Handle, key: string): string | undefined;
-
-    /**
      * Reads an image's intrinsic pixel size.
      *
      * @param handle - The image element.
@@ -1347,11 +1322,6 @@ export class ProductionDOMSink implements DOMSink {
     /** @inheritDoc */
     click(handle: Handle): void {
         (_registry.resolve(handle) as HTMLElement).click();
-    }
-
-    /** @inheritDoc */
-    setSelectedIndex(handle: Handle, index: number): void {
-        (_registry.resolve(handle) as HTMLSelectElement).selectedIndex = index;
     }
 
     /** @inheritDoc */
@@ -1775,18 +1745,6 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getAttribute(handle: Handle, key: string): string | null {
         return (_registry.resolve(handle) as Element).getAttribute(key);
-    }
-
-    /** @inheritDoc */
-    getSelectedIndex(handle: Handle): number {
-        return (_registry.resolve(handle) as HTMLSelectElement).selectedIndex;
-    }
-
-    /** @inheritDoc */
-    getSelectedOptionDataset(handle: Handle, key: string): string | undefined {
-        const select = _registry.resolve(handle) as HTMLSelectElement;
-
-        return (select[select.selectedIndex] as HTMLElement | undefined)?.dataset[key];
     }
 
     /** @inheritDoc */
