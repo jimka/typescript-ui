@@ -16,7 +16,7 @@ import { Insets } from "~/primitive/Insets.js";
  * Shared by both window kinds — {@link TabWindow}'s trailing tools and the
  * `WindowHeader`'s trailing buttons — so the two cannot visually drift.
  */
-export const WINDOW_CONTROL_STYLE_RULES: ComponentStyleRuleSpec[] = [
+const WINDOW_CONTROL_STYLE_RULES: ComponentStyleRuleSpec[] = [
     { suffix: "",                    styles: { background: "var(--ts-ui-window-control-bg)", border: "var(--ts-ui-window-control-border)", boxShadow: "var(--ts-ui-window-control-shadow)" } },
     { suffix: ":hover:not(:active)", styles: { background: "var(--ts-ui-window-control-hover-bg)" } },
     { suffix: ":active",             styles: { background: "var(--ts-ui-window-control-active-bg)" } },
@@ -32,7 +32,7 @@ export const WINDOW_CONTROL_STYLE_RULES: ComponentStyleRuleSpec[] = [
  * The styling is baked into the rules (CSS) rather than a post-construct
  * `setBackground`, which the pre-init `applyStyle` cascade would replay away.
  */
-export const WINDOW_LEAD_GLYPH_STYLE_RULES: ComponentStyleRuleSpec[] = [
+const WINDOW_LEAD_GLYPH_STYLE_RULES: ComponentStyleRuleSpec[] = [
     { suffix: "", styles: { background: "transparent", border: "1px solid transparent", boxShadow: "none" } },
 ];
 

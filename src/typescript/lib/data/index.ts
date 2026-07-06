@@ -32,6 +32,6 @@ export { AjaxError } from '~/data/proxy/AjaxError.js';
 export { WebStorageProxy } from '~/data/proxy/WebStorageProxy.js';
 export type { WebStorageProxyOptions, WebStorageProxyConfig } from '~/data/proxy/WebStorageProxy.js';
 export { JsonReader } from '~/data/proxy/Reader.js';
-export type { Reader, ReadResult, JsonReaderOptions } from '~/data/proxy/Reader.js';
+export type { Reader, ReadResult, JsonReaderOptions, JsonReaderMode } from '~/data/proxy/Reader.js';
 export { JsonWriter } from '~/data/proxy/Writer.js';
 export type { Writer } from '~/data/proxy/Writer.js';

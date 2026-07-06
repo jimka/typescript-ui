@@ -12,14 +12,14 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export type ResizeHandleEvent = "dragstart" | "dragmove" | "dragend";
+type ResizeHandleEvent = "dragstart" | "dragmove" | "dragend";
 
 /**
  * Construction-time options for {@link ResizeHandle}.
  *
  * @category Components
  */
-export interface ResizeHandleOptions extends ComponentOptions {
+interface ResizeHandleOptions extends ComponentOptions {
     /**
      * Multi-event listener bag dispatched to {@link ResizeHandle.on} at
      * construction time. Each entry is appended; calling `on(event, fn)`

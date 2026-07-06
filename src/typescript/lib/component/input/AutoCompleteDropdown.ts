@@ -16,7 +16,7 @@ const AUTOCOMPLETE_DROPDOWN_ROW_HEIGHT_PX = 22;
  *
  * @category Components
  */
-export interface AutoCompleteDropdownOptions extends AnimatedDropdownOptions {}
+interface AutoCompleteDropdownOptions extends AnimatedDropdownOptions {}
 
 /**
  * User-overridable visual defaults forwarded to `super` via the options bag.

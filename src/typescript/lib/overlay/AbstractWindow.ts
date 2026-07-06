@@ -137,7 +137,7 @@ export interface WindowOptions extends ContainerOptions {
  * writes them pure into `_options` and the constructor body dispatches them
  * once the children/fields exist.
  */
-export const _defaultWindowOptions: Partial<WindowOptions> = {
+const _defaultWindowOptions: Partial<WindowOptions> = {
     x:                 50,
     y:                 50,
     width:             400,
