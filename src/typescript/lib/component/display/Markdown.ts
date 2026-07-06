@@ -31,13 +31,15 @@ let _classRulesEnsured = false;
  * Injects the shared prose class rules on first use. Idempotent — guarded by the
  * module-level `_classRulesEnsured` flag, mirroring `Glyph`'s keyframe singleton.
  *
- * @remarks Colours reference the framework theme tokens
- * (`--ts-ui-text-color`, `--ts-ui-border-color`, `--ts-ui-body-bg`, the accent
- * `--ts-ui-indicator-focus`, and `--ts-ui-border-radius`) with fallbacks that
- * work in both light and dark themes. Every spacing constant is genuine
- * structural spacing (a code padding, a list marker gutter, a blockquote bar),
- * expressed in `em` so it scales with the surrounding font — not a cosmetic
- * inset.
+ * @remarks Presentation references the framework theme tokens actually used by
+ * the rules — `--ts-ui-font-mono` (code/pre font), `--ts-ui-border-radius`
+ * (code/pre corners), `--ts-ui-border-color` (the blockquote bar), and the
+ * accent `--ts-ui-indicator-focus` (link colour) — each with a fallback that
+ * works in both light and dark themes; the code/pre background is a theme-neutral
+ * translucent grey wash rather than a token, since no surface token exists. Every
+ * spacing constant is genuine structural spacing (a code padding, a list marker
+ * gutter, a blockquote bar), expressed in `em` so it scales with the surrounding
+ * font — not a cosmetic inset.
  */
 function ensureMarkdownClassRules(): void {
     if (_classRulesEnsured) {
