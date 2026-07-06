@@ -614,6 +614,12 @@ class VideoPlayer extends Component<VideoPlayerOptions> {
 
         this._controls = new Component();
         this._controls.setLayoutManager(bar);
+        // Give the control bar an opaque, theme-tracking surface. Transparent, it
+        // borrowed the page background in-page (readable) but showed the black
+        // :fullscreen backdrop in fullscreen, hiding the dark time text and glyphs.
+        // The body background is what already showed through in-page, so this is
+        // invisible there yet keeps the controls readable over the fullscreen video.
+        this._controls.setBackgroundColor("var(--ts-ui-body-bg, rgb(255, 255, 255))");
         this._controls.addComponent(this._playBtn);
         this._controls.addComponent(this._scrubber, { weight: 1 });
         this._controls.addComponent(this._timeText);

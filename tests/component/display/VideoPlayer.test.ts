@@ -25,7 +25,7 @@ type Recorder = { writes: { op: string; args: unknown[] }[] };
 interface Labelled { getAria(): { getLabel(): string | null } }
 
 interface Internals {
-    _controls:      { getComponents(): unknown[]; isVisible(): boolean | null };
+    _controls:      { getComponents(): unknown[]; isVisible(): boolean | null; getBackgroundColor(): string | null };
     _scrubber:      { getMax(): number; getValue(): number } & Labelled;
     _timeText:      { getText(): string };
     _playBtn:       { getGlyph(): { getGlyphName(): string } | null } & Labelled;
@@ -70,6 +70,12 @@ describe('VideoPlayer construction', () => {
 
         expect(player.isControlsVisible()).toBe(false);
         expect(internals(player)._controls.isVisible()).toBe(false);
+    });
+
+    it('gives the control bar an opaque themed background so it reads over the fullscreen backdrop', () => {
+        const player = new VideoPlayer();
+
+        expect(internals(player)._controls.getBackgroundColor()).toBe('var(--ts-ui-body-bg, rgb(255, 255, 255))');
     });
 });
 
