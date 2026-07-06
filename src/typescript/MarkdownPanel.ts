@@ -33,8 +33,9 @@ Unsupported tokens (tables, images) fall back to plain text and never crash.`;
 /**
  * Demo panel showcasing the [`Markdown`](/api/component/display/classes/Markdown)
  * display component: a single instance rendering a sample document inside a
- * scrolling `Fit` panel. The component measures its own content height, so the
- * panel's `autoScroll` produces a scrollbar whenever the document overflows.
+ * scrolling `Fit` panel. The prose wraps to the panel width and the component
+ * measures its own flowed height, so vertical `autoScroll` produces a scrollbar
+ * whenever the document is taller than the panel.
  */
 class MarkdownPanel extends Panel {
 
@@ -42,7 +43,7 @@ class MarkdownPanel extends Panel {
         super();
 
         this.setLayoutManager(new Fit());
-        this.setAutoScroll("auto");
+        this.setAutoScroll("y");
 
         this.addComponent(new Markdown(SAMPLE));
     }

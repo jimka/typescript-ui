@@ -269,6 +269,14 @@ function stubScrollHeight(height: number) {
     });
 }
 
+describe('Markdown prose wrapping', () => {
+    it('sets white-space:normal so prose flows and wraps instead of inheriting the nowrap default', () => {
+        const md = new Markdown('hello world');
+
+        expect(md.getWhiteSpace()).toBe('normal');
+    });
+});
+
 describe('Markdown content-height measurement', () => {
     it('folds the measured content height into getMinSize (height axis only)', () => {
         stubScrollHeight(500);

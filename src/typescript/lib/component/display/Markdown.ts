@@ -147,13 +147,17 @@ export interface MarkdownOptions extends ComponentOptions {
  * Links render as plain `<a href target="_blank" rel="noopener noreferrer">`
  * with native navigation; the component exposes no event surface in v1.
  *
- * The component measures its rendered content height at the width it is assigned
- * and reports it through {@link Markdown.getMinSize} / {@link Markdown.getPreferredSize},
+ * Wrapping and scrolling. The prose wraps to the width it is assigned —
+ * paragraphs reflow at word boundaries and overlong unbreakable tokens (URLs)
+ * break, so content never overflows horizontally; fenced code blocks instead
+ * preserve their lines and scroll inside their own frame. Because prose reflows,
+ * the component measures its rendered content height at the assigned width and
+ * reports it through {@link Markdown.getMinSize} / {@link Markdown.getPreferredSize},
  * so it grows a size-negotiating scroll host to the full prose height — drop one
- * in a scrolling [`Panel`](/api/component/container/classes/Panel) and it scrolls.
- * The height is re-measured on content, width, and theme change. Only the height
- * axis is derived; the width stays freely assignable so the prose reflows at any
- * width. An explicit `preferredSize`/`setMinSize` still overrides the measurement.
+ * in a vertically-scrolling [`Panel`](/api/component/container/classes/Panel)
+ * (`setAutoScroll("y")`) and it scrolls. The height is re-measured on content,
+ * width, and theme change; only the height axis is derived (the width stays
+ * freely assignable). An explicit `preferredSize`/`setMinSize` still overrides it.
  *
  * @example
  * ```typescript
@@ -197,6 +201,14 @@ class Markdown extends Component<MarkdownOptions> {
         if (markdown !== undefined && this._options.markdown === undefined) {
             this._options.markdown = markdown;
         }
+
+        // Flowed prose must wrap: Component defaults `white-space` to "nowrap",
+        // which would lay the document out as unwrapping single lines that
+        // overflow horizontally. Reflow at word boundaries and break overlong
+        // unbreakable tokens (URLs) so nothing spills sideways; fenced code keeps
+        // its own `white-space: pre` + self-scroll from the `pre` class rule.
+        this.setWhiteSpace("normal");
+        this.setElementCSSRule("overflowWrap", "break-word");
 
         // Prose metrics (font, spacing) are theme-bound, so a theme swap can
         // change the rendered height — re-measure when it fires (mirrors Text).
