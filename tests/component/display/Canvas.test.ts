@@ -1,0 +1,176 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { Canvas } from '~/component/display/Canvas';
+import type { CanvasDrawCallback } from '~/component/display/Canvas';
+import { DOM } from '~/core/DOM';
+import { installTestDOM } from '../../dom/TestDOM';
+import fontMetrics from '../../dom/font-metrics.test-font.json';
+
+const CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
+
+// Canvas is a live-only component: the modelled sink returns `null` from
+// getContext and the modelled source reports dpr 1, so every context-dependent
+// path (draw, backing-store sync, rAF paint) no-ops offline. These tests pin the
+// offline-observable contract — construction, options plumbing, the animation
+// flag/teardown, and the two new seam signatures — while the crisp-render and
+// resize behaviour is the manual M-series in the plan.
+beforeEach(() => installTestDOM(CONFIG));
+afterEach(() => DOM.reset());
+
+type Recorder = { writes: { op: string; args: unknown[] }[] };
+
+describe('Canvas construction & tag', () => {
+    it('builds a <canvas>-tagged element (U1)', () => {
+        const canvas = new Canvas();
+        const recorder = DOM.sink as unknown as Recorder;
+
+        canvas.getElement(true);
+
+        expect(canvas.getTag()).toBe('canvas');
+
+        const created = recorder.writes.some(w =>
+            w.op === 'createElement' && w.args[0] === 'canvas');
+
+        expect(created).toBe(true);
+    });
+
+    it('supports options-bag construction (U1)', () => {
+        const canvas = Canvas({});
+
+        expect(canvas.getTag()).toBe('canvas');
+    });
+
+    it('clears its insets (U2)', () => {
+        const canvas = new Canvas();
+        const insets = canvas.getInsets();
+
+        expect([insets.getTop(), insets.getRight(), insets.getBottom(), insets.getLeft()])
+            .toEqual([0, 0, 0, 0]);
+    });
+});
+
+describe('Canvas offline no-op (U3)', () => {
+    it('returns null from getContext under the modelled source', () => {
+        const canvas = new Canvas();
+
+        canvas.getElement(true);
+
+        expect(canvas.getContext()).toBeNull();
+    });
+
+    it('redraws / syncs / animates without throwing when the context is null', () => {
+        const canvas = new Canvas({ onDraw: () => { throw new Error('onDraw must not run when the context is null'); } });
+
+        canvas.getElement(true);
+
+        expect(() => canvas.redraw()).not.toThrow();
+        expect(() => (canvas as unknown as { syncBackingStore(): void }).syncBackingStore()).not.toThrow();
+        expect(() => canvas.startAnimation()).not.toThrow();
+    });
+});
+
+describe('Canvas onDraw plumbing (U4)', () => {
+    it('reads back a constructor-supplied onDraw', () => {
+        const fn: CanvasDrawCallback = () => {};
+        const canvas = new Canvas({ onDraw: fn });
+
+        expect(canvas.getOnDraw()).toBe(fn);
+    });
+
+    it('defaults onDraw to null', () => {
+        const canvas = new Canvas();
+
+        expect(canvas.getOnDraw()).toBeNull();
+    });
+
+    it('updates and clears onDraw via the setter', () => {
+        const fn1: CanvasDrawCallback = () => {};
+        const fn2: CanvasDrawCallback = () => {};
+        const canvas = new Canvas({ onDraw: fn1 });
+
+        canvas.setOnDraw(fn2);
+        expect(canvas.getOnDraw()).toBe(fn2);
+
+        canvas.setOnDraw(null);
+        expect(canvas.getOnDraw()).toBeNull();
+    });
+});
+
+describe('Canvas animation loop (U5, U6)', () => {
+    const rafCount = (recorder: Recorder): number =>
+        recorder.writes.filter(w => w.op === 'requestAnimationFrame').length;
+
+    const cancelCount = (recorder: Recorder): number =>
+        recorder.writes.filter(w => w.op === 'cancelAnimationFrame').length;
+
+    it('sets the animating flag and schedules a frame (U5)', () => {
+        const canvas = new Canvas();
+        const recorder = DOM.sink as unknown as Recorder;
+
+        canvas.getElement(true);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(true);
+        expect(rafCount(recorder)).toBe(1);
+    });
+
+    it('does not stack a second frame on a repeated start (U5)', () => {
+        const canvas = new Canvas();
+        const recorder = DOM.sink as unknown as Recorder;
+
+        canvas.getElement(true);
+        canvas.startAnimation();
+        canvas.startAnimation();
+
+        expect(rafCount(recorder)).toBe(1);
+    });
+
+    it('cancels the frame and clears the flag on stop (U5)', () => {
+        const canvas = new Canvas();
+        const recorder = DOM.sink as unknown as Recorder;
+
+        canvas.getElement(true);
+        canvas.startAnimation();
+        canvas.stopAnimation();
+
+        expect(canvas.isAnimating()).toBe(false);
+        expect(cancelCount(recorder)).toBe(1);
+    });
+
+    it('cancels the loop on teardown (U6)', () => {
+        const canvas = new Canvas();
+        const recorder = DOM.sink as unknown as Recorder;
+
+        canvas.getElement(true);
+        canvas.startAnimation();
+
+        (canvas as unknown as { destructor(): void }).destructor();
+
+        expect(cancelCount(recorder)).toBe(1);
+    });
+});
+
+describe('Canvas seam signatures (U7)', () => {
+    it('RecordingDOMSink.getContext records and returns null', () => {
+        const recorder = DOM.sink as unknown as Recorder;
+        const handle = DOM.sink.createElement('canvas');
+
+        const ctx = DOM.sink.getContext(handle, '2d');
+
+        expect(ctx).toBeNull();
+
+        const recorded = recorder.writes.some(w =>
+            w.op === 'getContext' && w.args[0] === '2d');
+
+        expect(recorded).toBe(true);
+    });
+
+    it('ModelledDOMSource.getDevicePixelRatio returns 1', () => {
+        expect(DOM.source.getDevicePixelRatio()).toBe(1);
+    });
+});

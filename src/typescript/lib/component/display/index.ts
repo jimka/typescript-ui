@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+export { Canvas } from '~/component/display/Canvas.js';
+export type { CanvasOptions, CanvasDrawCallback } from '~/component/display/Canvas.js';
 export { Header } from '~/component/display/Header.js';
 export type { HeaderOptions } from '~/component/display/Header.js';
 export { Image } from '~/component/display/Image.js';

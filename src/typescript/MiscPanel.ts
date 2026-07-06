@@ -57,6 +57,7 @@ import {
 } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import {
+    Canvas,
     Glyph,
     IconLabel,
     IconText,
@@ -1312,6 +1313,70 @@ class MiscPanel extends Panel {
         glyphRenderRow.addComponent(glyphList);
 
         rightColumn.addComponent(glyphRenderRow);
+
+        // ── Canvas demo ──
+        // A raster surface has no intrinsic size, so it needs an explicit
+        // preferredSize (or a stretching parent). `onDraw` draws in CSS pixels —
+        // the dpr transform is applied — so it stays crisp on HiDPI and after a
+        // resize. A phase field animated by the loop makes the pulse visible.
+        rightColumn.addComponent(new Text("Canvas (onDraw + animation):"));
+
+        let canvasPhase = 0;
+
+        const demoCanvas = new Canvas({
+            preferredSize: { width: 240, height: 120 },
+            onDraw: (ctx, width, height) => {
+                ctx.fillStyle = "rgb(30, 30, 30)";
+                ctx.fillRect(0, 0, width, height);
+
+                // Pulse the radius between 20 and 40 px off the phase so the
+                // animation loop has something visibly moving to draw.
+                const radius = 30 + Math.sin(canvasPhase) * 10;
+
+                ctx.fillStyle = "rgb(21, 101, 192)";
+                ctx.beginPath();
+                ctx.arc(width / 2, height / 2, radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 0.5-px inset keeps the 1-px stroke on the pixel grid (crisp).
+                ctx.strokeStyle = "rgb(255, 255, 255)";
+                ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
+            },
+        });
+
+        const canvasRow = new Component();
+        canvasRow.setLayoutManager(new HBox());
+        canvasRow.addComponent(demoCanvas);
+
+        const buttonCanvasAnimate = new Button("Toggle canvas animation");
+        buttonCanvasAnimate.on("action", () => {
+            if (demoCanvas.isAnimating()) {
+                demoCanvas.stopAnimation();
+                return;
+            }
+
+            canvasPhase = 0;
+
+            demoCanvas.setOnDraw((ctx, width, height) => {
+                // Advance the pulse a tenth of a radian per frame (~6 rad/s at
+                // 60fps) so the circle breathes at a readable rate.
+                canvasPhase += 0.1;
+
+                ctx.fillStyle = "rgb(30, 30, 30)";
+                ctx.fillRect(0, 0, width, height);
+
+                const radius = 30 + Math.sin(canvasPhase) * 10;
+
+                ctx.fillStyle = "rgb(21, 101, 192)";
+                ctx.beginPath();
+                ctx.arc(width / 2, height / 2, radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            demoCanvas.startAnimation();
+        });
+        canvasRow.addComponent(buttonCanvasAnimate);
+
+        rightColumn.addComponent(canvasRow);
 
         // ── Panel auto-scroll demo ──
         const autoScrollLabel = new Text("Panel auto-scroll modes:");

@@ -465,6 +465,17 @@ export class RecordingDOMSink implements DOMSink {
     releasePointerCapture(_handle: Handle, pointerId: number): void {
         this.record('releasePointerCapture', pointerId);
     }
+
+    /**
+     * A live rendering context cannot be modelled or forwarded across a worker,
+     * so the recording sink records the request and returns `null` — the signal
+     * that makes a canvas no-op offline.
+     */
+    getContext(_handle: Handle, contextId: string, _options?: unknown): RenderingContext | null {
+        this.record('getContext', contextId);
+
+        return null;
+    }
 }
 
 /**
@@ -672,6 +683,11 @@ export class ModelledDOMSource implements DOMSource {
 
     getScrollBarWidth(): number {
         return this._config.scrollBarWidth;
+    }
+
+    /** Deterministic dpr 1 offline, so backing-store math needs no real display. */
+    getDevicePixelRatio(): number {
+        return 1;
     }
 
     isModelled(): boolean {
