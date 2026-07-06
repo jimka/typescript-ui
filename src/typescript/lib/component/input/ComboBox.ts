@@ -1212,7 +1212,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     /**
      * Re-asserts the surface selection and label after the inner list
      * rebuilds its rows from a deferred store event (an async `load`, or a
-     * later `add` / `remove` / `datachanged`). The inner list clears its
+     * later `add` / `remove` / `datachange`). The inner list clears its
      * selection whenever it rebuilds from the store, so without this the
      * combo would show populated options but a blank label on first paint
      * when the store loads after construction.

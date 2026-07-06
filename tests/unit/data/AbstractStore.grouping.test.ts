@@ -37,14 +37,14 @@ describe('AbstractStore grouping — group field', () => {
         expect(spy).toHaveBeenCalledOnce();
     });
 
-    it('does not rebuild the view or fire datachanged (grouping is a pure read)', () => {
+    it('does not rebuild the view or fire datachange (grouping is a pure read)', () => {
         const store = makeStore(SAMPLE);
-        const datachangedSpy = vi.fn();
-        store.on('datachange', datachangedSpy);
+        const datachangeSpy = vi.fn();
+        store.on('datachange', datachangeSpy);
 
         store.setGroupField('cat');
 
-        expect(datachangedSpy).not.toHaveBeenCalled();
+        expect(datachangeSpy).not.toHaveBeenCalled();
     });
 
     it('setGroupField(null) disables grouping and emits groupchange with null', () => {

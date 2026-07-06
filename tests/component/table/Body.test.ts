@@ -261,7 +261,7 @@ describe('Body virtual-scroll — scrollRecordIntoView', () => {
     });
 });
 
-describe('Body selectionchange event', () => {
+describe('Body selection event', () => {
     it('emits the current selection on select / set / clear', async () => {
         const store = new MemoryStore(MODEL, [{ a: '1' }, { a: '2' }]);
         await store.load();
@@ -365,7 +365,7 @@ describe('Body cellclick event', () => {
         expect(seen[0].rowIndex).toBe((b as any).getVisibleRecords().indexOf(rec));
     });
 
-    it('fires alongside selectionchange, with selection settled first', async () => {
+    it('fires alongside selection, with selection settled first', async () => {
         const store = new MemoryStore(MODEL, [{ a: 'x', b: 'y', c: 'z' }]);
         await store.load();
 

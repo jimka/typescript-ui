@@ -63,7 +63,7 @@ describe('AbstractStore pagination — page / totalPages', () => {
 });
 
 describe('AbstractStore pagination — nextPage', () => {
-    it('is a no-op when pageSize is unset (page unchanged, no pagechanged)', () => {
+    it('is a no-op when pageSize is unset (page unchanged, no pagechange)', () => {
         const store = new Store(MODEL);
         const spy = vi.fn();
         store.on('pagechange', spy);
@@ -82,7 +82,7 @@ describe('AbstractStore pagination — nextPage', () => {
         expect(spy).not.toHaveBeenCalled();
     });
 
-    it('increments the page, emits pagechanged { page, pageSize }, and reloads', async () => {
+    it('increments the page, emits pagechange { page, pageSize }, and reloads', async () => {
         const { store, proxy } = await paginated(30, 10);
         const before = proxy.calls.length;
         const spy = vi.fn();
@@ -107,7 +107,7 @@ describe('AbstractStore pagination — prevPage', () => {
         expect(spy).not.toHaveBeenCalled();
     });
 
-    it('decrements and emits pagechanged from a later page', async () => {
+    it('decrements and emits pagechange from a later page', async () => {
         const { store } = await paginated(30, 10);
         store.goToPage(3);
         const spy = vi.fn();

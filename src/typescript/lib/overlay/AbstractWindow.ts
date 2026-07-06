@@ -684,7 +684,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * Use the `onReady` callback for work that must happen after the content
      * is on screen and sized — for example kicking off an async data load
      * whose loading spinner is rendered by the content tree itself. Running
-     * such work before `onReady` would emit `loadingchanged: true` before
+     * such work before `onReady` would emit `loadingchange: true` before
      * the panel had subscribed (or before the target had a size).
      *
      * @example

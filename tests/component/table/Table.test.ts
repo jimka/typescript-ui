@@ -24,7 +24,7 @@ afterEach(() => DOM.reset());
 
 const MODEL = new Model([{ name: 'a', type: 'string', order: 0 }], 'a');
 
-describe('Table selectionchange event', () => {
+describe('Table selection event', () => {
     it('forwards the body selection on its own event', async () => {
         const store = new MemoryStore(MODEL, [{ a: '1' }]);
         await store.load();

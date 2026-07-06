@@ -82,7 +82,7 @@ export interface DockOptions extends ContainerOptions {
     listeners?: {
         attach?:      (event: DockPanelEvent) => void;
         detach?:      (event: DockPanelEvent) => void;
-        moved?:       (event: DockPanelEvent) => void;
+        move?:        (event: DockPanelEvent) => void;
         focus?:       (event: DockPanelEvent | null) => void;
         close?:       (event: DockPanelEvent) => void;
         emptychange?: (event: DockEmptyEvent) => void;

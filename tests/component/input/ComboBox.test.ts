@@ -182,7 +182,7 @@ describe('ComboBox — store binding', () => {
         expect(combo.getItems()).toHaveLength(2);
     });
 
-    it('refreshes options when the bound store fires datachanged (add)', () => {
+    it('refreshes options when the bound store fires datachange (add)', () => {
         installTestDOM(CONFIG);
         const store = makeStore([{ id: 1, name: 'Alice' }]);
         const combo = new ComboBox();
@@ -211,7 +211,7 @@ describe('ComboBox — store binding', () => {
         combo.setStore(store, 'name', 'code'); // keys are codes
         combo.setValue('Z9');                  // not present yet — cached pending
 
-        store.add({ id: 2, name: 'Zoe', code: 'Z9' }); // datachanged → onStoreRefresh → reapply
+        store.add({ id: 2, name: 'Zoe', code: 'Z9' }); // datachange → onStoreRefresh → reapply
 
         expect(combo.getValue()).toBe('Z9');
         expect(combo.getSelectedRecord()?.get('name')).toBe('Zoe');

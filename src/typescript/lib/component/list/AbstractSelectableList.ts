@@ -903,7 +903,7 @@ abstract class AbstractSelectableList<
     /**
      * Binds this list to a store. Records are pulled via `displayField` /
      * `valueField` whenever the store fires `load` / `add` / `remove` /
-     * `datachanged` / `sync`. Re-binding to a new store de-registers the
+     * `datachange` / `sync`. Re-binding to a new store de-registers the
      * previous handlers first.
      *
      * @param store - The store to bind to.

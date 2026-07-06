@@ -197,7 +197,7 @@ describe('PaginationBar options wiring', () => {
 });
 
 describe('PaginationBar dispose', () => {
-    it('detaches the store listeners so a later pagechanged emit does not refresh', async () => {
+    it('detaches the store listeners so a later pagechange emit does not refresh', async () => {
         const store = await pagedStore(25, 95);
 
         store.goToPage(2);

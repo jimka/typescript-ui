@@ -105,12 +105,12 @@ export interface TabBarOptions extends ContainerOptions {
     /** Multi-event listener bag dispatched to {@link TabBar.on} at construction time. */
     listeners?: {
         tabpressed?:       (id: string) => void;
-        reordered?:        (fromId: string, toIndex: number) => void;
+        reorder?:          (fromId: string, toIndex: number) => void;
         tabclose?:         (id: string) => void;
         dockrequested?:    (componentId: string, slot: number) => void;
         tabdragstart?:     (id: string) => void;
         tearoffrequested?: (id: string, clientX: number, clientY: number, forceBare: boolean) => void;
-        detached?:         (id: string) => void;
+        detach?:           (id: string) => void;
         dockhover?:        () => void;
     };
 

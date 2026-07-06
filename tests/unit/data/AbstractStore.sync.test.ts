@@ -206,7 +206,7 @@ describe('AbstractStore symmetric + lifecycle events', () => {
         expect(exceptions[0].records).toEqual([]);
     });
 
-    it('removeAll() emits clear with the removed set plus datachanged', () => {
+    it('removeAll() emits clear with the removed set plus datachange', () => {
         const store = new Store({ model: MODEL });
         store.loadData([{ id: 1, name: 'A' }, { id: 2, name: 'B' }]);
 
@@ -236,7 +236,7 @@ describe('AbstractStore symmetric + lifecycle events', () => {
         expect(seen[1]).toHaveLength(0);
     });
 
-    it('notifyRecordChanged(r) emits update with r then datachanged', () => {
+    it('notifyRecordChanged(r) emits update with r then datachange', () => {
         const store = new Store({ model: MODEL });
         store.loadData([{ id: 1, name: 'A' }]);
         const record = store.getAt(0)!;
