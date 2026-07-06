@@ -158,6 +158,7 @@ function summarize(node) {
     const collapsed = unlinked.replace(/\s+/g, " ").trim();
 
     if (collapsed.length > SUMMARY_CAP) {
+        // Reserve the last of the SUMMARY_CAP characters for the appended ellipsis.
         return `${collapsed.slice(0, SUMMARY_CAP - 1).trimEnd()}…`;
     }
 

@@ -123,7 +123,7 @@ describe('llms generator — summary extraction', () => {
         expect(summarize(node)).not.toMatch(/\/api\//);
     });
 
-    it('returns an empty string for an undocumented symbol', () => {
+    it('returns the lead sentence for a documented symbol and an empty string for an undocumented one', () => {
         const index = buildSymbolIndex(makeModel());
         const { node } = resolveSymbol({ symbol: 'TreeNode', subpath: 'data' }, index);
         expect(summarize(node)).toBe('A node in a tree store.');
