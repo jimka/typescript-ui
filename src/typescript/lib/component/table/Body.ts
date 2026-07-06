@@ -17,18 +17,18 @@ import { ThemeManager } from "~/core/Theme.js";
 import { Util } from "~/core/Util.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { Column } from "~/component/table/Column.js";
-import type { Header } from "~/component/table/Header.js";
+import type { TableHeader } from "~/component/table/Header.js";
 import type { HeaderCell } from "~/component/table/cell/Header.js";
 import { callable } from "~/core/Callable.js";
 
 /**
  * String-literal union of the events emitted by the table {@link Body}.
  * `"verticalscroll"` / `"horizontalscroll"` fire after the body's virtual
- * scroll position changes, carrying the new pixel offset. `"selectionchange"`
+ * scroll position changes, carrying the new pixel offset. `"selection"`
  * fires when the selected-record set changes; `"cellclick"` fires when a data
  * cell is clicked.
  */
-export type BodyEvent = "verticalscroll" | "horizontalscroll" | "selectionchange" | "cellclick";
+export type BodyEvent = "verticalscroll" | "horizontalscroll" | "selection" | "cellclick";
 
 /**
  * Payload delivered to a `"cellclick"` listener when a data cell is clicked.
@@ -125,7 +125,7 @@ class Body extends VirtualRowView<Row> {
     private _anchorRecord    : ModelRecord | null        = null;
     private _focusedColIndex: number                    = 0;
     private _editorPool      : CellEditorPool            = new CellEditorPool();
-    private _header          : Header | null             = null;
+    private _header          : TableHeader | null             = null;
     private _listeners       : ListenerBag<BodyEvent>    = new ListenerBag<BodyEvent>();
 
     constructor(store: AbstractStore) {
@@ -220,7 +220,7 @@ class Body extends VirtualRowView<Row> {
         store.on('load', refresh);
         store.on('add', refresh);
         store.on('remove', refresh);
-        store.on('datachanged', refresh);
+        store.on('datachange', refresh);
         store.on('beforesync', refresh);
         store.on('sync', refresh);
     }
@@ -560,7 +560,7 @@ class Body extends VirtualRowView<Row> {
         if (this._storeRefresh) {
             const old = this._store;
 
-            (['load', 'add', 'remove', 'datachanged', 'beforesync', 'sync'] as const).forEach(e =>
+            (['load', 'add', 'remove', 'datachange', 'beforesync', 'sync'] as const).forEach(e =>
                 old.off(e, this._storeRefresh!)
             );
         }
@@ -975,7 +975,7 @@ class Body extends VirtualRowView<Row> {
      * Registers a listener for one of this body's events.
      * `"verticalscroll"` fires after the body scrolls vertically with the
      * new `scrollY`; `"horizontalscroll"` fires after a horizontal scroll
-     * with the new `scrollX`; `"selectionchange"` fires with the current
+     * with the new `scrollX`; `"selection"` fires with the current
      * selected-record array; `"cellclick"` fires when a data cell is clicked,
      * carrying the clicked record, the column's field name and visible index,
      * the cell value, the record's row index in the visible-records view, and
@@ -983,7 +983,7 @@ class Body extends VirtualRowView<Row> {
      *
      * @param event - The event name.
      * @param listener - Receives the new pixel offset along the scroll axis
-     *   (scroll events), the selected records (`"selectionchange"`), or the
+     *   (scroll events), the selected records (`"selection"`), or the
      *   cell-click payload (`"cellclick"`).
      *
      * @returns This body, for method chaining.
@@ -999,7 +999,7 @@ class Body extends VirtualRowView<Row> {
      */
     on(event: "verticalscroll",   listener: (scrollTop: number) => void): this;
     on(event: "horizontalscroll", listener: (scrollLeft: number) => void): this;
-    on(event: "selectionchange",  listener: (records: ModelRecord[]) => void): this;
+    on(event: "selection",  listener: (records: ModelRecord[]) => void): this;
     on(event: "cellclick",        listener: (e: CellClickEvent) => void): this;
     on(event: BodyEvent,          listener: Function): this {
         this._listeners.add(event, listener);
@@ -1028,18 +1028,18 @@ class Body extends VirtualRowView<Row> {
      *
      * @param event - The event to emit.
      * @param payload - The scroll offset (scroll events) or the selected
-     *   records (`"selectionchange"`).
+     *   records (`"selection"`).
      */
     protected emit(event: "verticalscroll" | "horizontalscroll", offset: number): void;
-    protected emit(event: "selectionchange", records: ModelRecord[]): void;
+    protected emit(event: "selection", records: ModelRecord[]): void;
     protected emit(event: "cellclick", detail: CellClickEvent): void;
     protected emit(event: BodyEvent, payload: number | ModelRecord[] | CellClickEvent): void {
         this._listeners.fire(event, payload);
     }
 
-    /** Fire `"selectionchange"` with the current selection. */
+    /** Fire `"selection"` with the current selection. */
     private notifySelectionChange(): void {
-        this.emit("selectionchange", this.getSelectedRecords());
+        this.emit("selection", this.getSelectedRecords());
     }
 
     /**
@@ -1134,16 +1134,16 @@ class Body extends VirtualRowView<Row> {
 
     /**
      * Internal wiring called by [`Table`](/api/component/table/classes/Table) —
-     * not for consumer use. Hands the Body a reference to its sibling Header so
+     * not for consumer use. Hands the Body a reference to its sibling TableHeader so
      * `_updateFocusStyle` can mirror the focused column index onto the header
      * cells. Consumers instantiating `Body` standalone may leave this unset; the
      * header-side indicator is then simply skipped.
      *
-     * @param header - The Header sibling owned by the same Table.
+     * @param header - The TableHeader sibling owned by the same Table.
      *
      * @returns This component, for method chaining.
      */
-    setHeader(header: Header): this {
+    setHeader(header: TableHeader): this {
         this._header = header;
 
         return this;
@@ -1153,7 +1153,7 @@ class Body extends VirtualRowView<Row> {
      * Applies a focus ring to the cell at `_focusedColIndex` in the anchor row, clearing it from all other cells.
      *
      * @remarks Called after every navigation and after `renderWindow` re-binds pool slots.
-     * Also mirrors the focused column index onto the linked Header cells (when
+     * Also mirrors the focused column index onto the linked header cells (when
      * one has been wired in via `setHeader`) so the header shows the matching
      * column indicator. `protected` so subclasses (e.g. `TreeBody`) can
      * refresh the focus indicator after a programmatic navigation. Not

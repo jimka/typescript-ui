@@ -117,7 +117,7 @@ describe('GlyphListItemRenderer add/remove/idempotent', () => {
     });
 });
 
-describe('CustomListItem.glyph plumbing', () => {
+describe('SelectableListItem.glyph plumbing', () => {
     it('setItems round-trips the glyph on a pre-formed item', () => {
         const list = new _List({ items: [{ key: 'a', label: 'Alpha', glyph: UP }] as any });
 

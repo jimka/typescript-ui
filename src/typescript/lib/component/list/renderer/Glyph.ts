@@ -24,7 +24,7 @@ const ICON_SIZE = 16;
  * `glyph` field.
  *
  * @remarks
- * The glyph name comes from the bound item (`CustomListItem.glyph`), populated
+ * The glyph name comes from the bound item (`SelectableListItem.glyph`), populated
  * either directly on an array-supplied item or from a store record via the
  * list's `glyphField`. An item with no glyph renders label-only, with the label
  * filling the full row — matching the render-blank-on-empty contract of the

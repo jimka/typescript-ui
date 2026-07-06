@@ -82,7 +82,7 @@ export interface DockOptions extends ContainerOptions {
     listeners?: {
         attach?:      (event: DockPanelEvent) => void;
         detach?:      (event: DockPanelEvent) => void;
-        moved?:       (event: DockPanelEvent) => void;
+        move?:        (event: DockPanelEvent) => void;
         focus?:       (event: DockPanelEvent | null) => void;
         close?:       (event: DockPanelEvent) => void;
         emptychange?: (event: DockEmptyEvent) => void;
@@ -101,7 +101,7 @@ export interface DockOptions extends ContainerOptions {
  * two pair up across a move: a tear-off is `"detach"`(tiled) then
  * `"attach"`(float), and a re-dock — whether dropped on a region body/edge or
  * merged onto an existing tab bar — is `"detach"`(float) then `"attach"`(tiled).
- * `"moved"` fires when a panel **relocates within** its current host — a
+ * `"move"` fires when a panel **relocates within** its current host — a
  * different region in the same tiled tree, or repositioned in the same float —
  * without changing host; it never accompanies a host change (that is
  * `"detach"`+`"attach"`) nor a first appearance (that is `"attach"` alone), and
@@ -117,7 +117,7 @@ export interface DockOptions extends ContainerOptions {
  *
  * @category Core
  */
-export type DockEvent = "attach" | "detach" | "moved" | "focus" | "close" | "emptychange";
+export type DockEvent = "attach" | "detach" | "move" | "focus" | "close" | "emptychange";
 
 /**
  * Payload for a {@link Dock} lifecycle event, identifying the panel by its
@@ -133,7 +133,7 @@ export interface DockPanelEvent {
     content: Component;
     /**
      * The host the panel entered (`"attach"`), left (`"detach"`), moved within
-     * (`"moved"` — same host before and after), or currently occupies
+     * (`"move"` — same host before and after), or currently occupies
      * (`"focus"`): `null` denotes the tiled tree / main dock, otherwise the float
      * window. Always `null` for `"close"` — a destroy is not a host transition,
      * but the field is always present so the payload stays flat.
@@ -247,7 +247,7 @@ class Dock extends Container<DockOptions> {
         this.scheduleSweep();
     };
 
-    // Named, bound "docked" handler for every wired Tab: a foreign tab was merged
+    // Named, bound "dock" handler for every wired Tab: a foreign tab was merged
     // into a region's strip. The merge bypasses DockRegion, so it lands a sweep
     // here — the host-diff reconcile then emits the attach. The content arg is
     // unused (the reconcile re-derives every frame's host) but matches the
@@ -471,7 +471,7 @@ class Dock extends Container<DockOptions> {
             region.moveComponent(frame, undefined, this.leafConstraints(spec));
 
             // Activate it so the tab shows; activation drives realizeLazyContent
-            // (via the region's "activated" -> onPanelFocused) to materialize the
+            // (via the region's "activate" -> onPanelFocused) to materialize the
             // deferred content behind a spinner.
             (region.getLayoutManager() as Tab).setActiveContent(frame);
             this._frameRegion.set(spec.id, region);
@@ -511,9 +511,9 @@ class Dock extends Container<DockOptions> {
      * The region ledger is cleared first: `restoreLayout` tears the region tree
      * down and rebuilds it, so every surviving panel lands in a fresh region
      * object. Without clearing, the post-restore sweep would read each panel's
-     * stale (now-destroyed) region and spuriously fire `"moved"` for every panel.
+     * stale (now-destroyed) region and spuriously fire `"move"` for every panel.
      * A restore is not a user-visible relocation, so it stays silent for
-     * `"moved"`; the sweep re-seeds the ledger from the rebuilt tree.
+     * `"move"`; the sweep re-seeds the ledger from the rebuilt tree.
      *
      * @param state - A layout state from {@link getLayoutState}.
      *
@@ -985,8 +985,8 @@ class Dock extends Container<DockOptions> {
      * currently hosts one of this dock's frames — both the adopted bare
      * `Window` mini-docks and the self-contained `TabWindow` tear-offs the sweep
      * does not adopt. A `TabWindow`'s internal `Tab` is never wired by
-     * `wireRegion`, so its `"activated"` / `"tabclose"` / `"detached"` /
-     * `"docked"` are subscribed here explicitly; both float kinds get the
+     * `wireRegion`, so its `"activate"` / `"tabclose"` / `"detach"` /
+     * `"dock"` are subscribed here explicitly; both float kinds get the
      * window's `"activate"` / `"close"`. The tracked set stops a re-sweep
      * stacking duplicate listeners.
      */
@@ -1005,10 +1005,10 @@ class Dock extends Container<DockOptions> {
             if (win instanceof TabWindow) {
                 const tab = win.getLayoutManager() as Tab;
 
-                tab.on("activated", this.onPanelFocused);
+                tab.on("activate", this.onPanelFocused);
                 tab.on("tabclose",  this.onPanelClosed);
-                tab.on("detached",  this.onPanelDetached);
-                tab.on("docked",    this.onPanelDocked);
+                tab.on("detach",  this.onPanelDetached);
+                tab.on("dock",    this.onPanelDocked);
             }
 
             this._floatSubscribed.add(win);
@@ -1057,8 +1057,8 @@ class Dock extends Container<DockOptions> {
      * tear-off, a re-dock by either drop path, a float-to-float move) emits
      * `"detach"`(old host) then `"attach"`(new host); a same-host change of
      * region (a relocation to a different region within one host) emits
-     * `"moved"`; an unchanged host and region is silent. This is the single
-     * source of every `"attach"`/`"detach"`/`"moved"`, so the events are
+     * `"move"`; an unchanged host and region is silent. This is the single
+     * source of every `"attach"`/`"detach"`/`"move"`, so the events are
      * identical regardless of which DnD path landed the sweep.
      *
      * Only frames still registered and still cached are visited, so a panel whose
@@ -1087,7 +1087,7 @@ class Dock extends Container<DockOptions> {
                 // Same host, different region: the panel relocated within its
                 // host. The `region && prevRegion` guard keeps a frame transiently
                 // out of any region (mid-teardown) silent rather than spurious.
-                this.emit("moved", { id, content: frame, window: host });
+                this.emit("move", { id, content: frame, window: host });
             }
 
             this._panelHost.set(id, host);
@@ -1236,9 +1236,9 @@ class Dock extends Container<DockOptions> {
             // closed/activated content, the torn-off window) carry the identity
             // they need, so no per-region capture is required.
             tab.on("tabclose",  this.onPanelClosed);
-            tab.on("activated", this.onPanelFocused);
-            tab.on("detached",  this.onPanelDetached);
-            tab.on("docked",    this.onPanelDocked);
+            tab.on("activate", this.onPanelFocused);
+            tab.on("detach",  this.onPanelDetached);
+            tab.on("dock",    this.onPanelDocked);
 
             wiring.tabWired = true;
         }
@@ -1462,7 +1462,7 @@ class Dock extends Container<DockOptions> {
     };
 
     /**
-     * `"activated"` handler for every wired `Tab`: the active tab changed via a
+     * `"activate"` handler for every wired `Tab`: the active tab changed via a
      * click or `setActiveTabIndex`. Emits `"focus"` for the now-active panel,
      * gated on a genuine focused-panel change.
      *
@@ -1486,7 +1486,7 @@ class Dock extends Container<DockOptions> {
     };
 
     /**
-     * `"detached"` handler for every wired `Tab`: a tab was torn off into a new
+     * `"detach"` handler for every wired `Tab`: a tab was torn off into a new
      * float window. Schedules a sweep so the new float is wired (and any
      * Shift-torn bare `Window` adopted); the sweep's host-diff reconcile observes
      * the torn-off frame's tiled -> float transition and emits the
@@ -1820,19 +1820,19 @@ class Dock extends Container<DockOptions> {
 
     /**
      * Registers a listener for a panel-lifecycle event. The `"attach"`,
-     * `"detach"`, `"moved"`, and `"close"` events always carry a
+     * `"detach"`, `"move"`, and `"close"` events always carry a
      * {@link DockPanelEvent}; `"focus"` carries a `DockPanelEvent` or `null` when
      * nothing is focused. The payload's `window` field names the host: `null` for
      * the tiled tree, otherwise the float window the panel entered (`"attach"`),
-     * left (`"detach"`), or moved within (`"moved"`, same host before and after);
+     * left (`"detach"`), or moved within (`"move"`, same host before and after);
      * it is always `null` for `"close"`.
      *
-     * @param event - `"attach"` / `"detach"` / `"moved"` / `"close"`.
+     * @param event - `"attach"` / `"detach"` / `"move"` / `"close"`.
      * @param listener - Invoked with the affected panel.
      *
      * @returns This dock, for method chaining.
      */
-    on(event: "attach" | "detach" | "moved" | "close", listener: (event: DockPanelEvent) => void): this;
+    on(event: "attach" | "detach" | "move" | "close", listener: (event: DockPanelEvent) => void): this;
     /**
      * Registers a listener for the `"focus"` event, which fires when the
      * dock-wide active panel changes, carrying the now-focused panel or `null`
@@ -1870,7 +1870,7 @@ class Dock extends Container<DockOptions> {
      *
      * @returns This dock, for method chaining.
      */
-    off(event: "attach" | "detach" | "moved" | "close", listener: (event: DockPanelEvent) => void): this;
+    off(event: "attach" | "detach" | "move" | "close", listener: (event: DockPanelEvent) => void): this;
     /**
      * Removes a previously registered `"focus"` listener.
      *
@@ -1902,7 +1902,7 @@ class Dock extends Container<DockOptions> {
      * @param event - The event to emit.
      * @param payload - The lifecycle payload (`null` only for `"focus"`).
      */
-    protected emit(event: "attach" | "detach" | "moved" | "close", payload: DockPanelEvent): void;
+    protected emit(event: "attach" | "detach" | "move" | "close", payload: DockPanelEvent): void;
     protected emit(event: "focus", payload: DockPanelEvent | null): void;
     protected emit(event: "emptychange", payload: DockEmptyEvent): void;
     protected emit(event: DockEvent, payload: DockPanelEvent | DockEmptyEvent | null): void {

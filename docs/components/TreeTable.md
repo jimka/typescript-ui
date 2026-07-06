@@ -121,7 +121,7 @@ const ok = tree.reparentRow(file, folder);
 
 ## Sort interaction
 
-`TreeBody._flatten()` walks the parent/child index every time the visible-row list rebuilds, which happens after any store event including `'sortchanged'`. Children render immediately under their parent at the current sort point — but if the active sort interleaves records across hierarchy levels (e.g. by name), the parent-child grouping in the flat view follows that order. There is no "freeze parent order under sort" mode; consumers that need stable hierarchy under sort should sort the records by a path-aware key.
+`TreeBody._flatten()` walks the parent/child index every time the visible-row list rebuilds, which happens after any store event including `'sortchange'`. Children render immediately under their parent at the current sort point — but if the active sort interleaves records across hierarchy levels (e.g. by name), the parent-child grouping in the flat view follows that order. There is no "freeze parent order under sort" mode; consumers that need stable hierarchy under sort should sort the records by a path-aware key.
 
 ## Filtering
 

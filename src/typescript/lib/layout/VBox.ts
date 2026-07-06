@@ -46,7 +46,7 @@ class VBox extends BoxLayout {
             return null;
         }
 
-        let perimiterSize = container.getPerimiterSize();
+        let perimeterSize = container.getPerimeterSize();
         let components = container.getLaidOutComponents();
 
         if (this._mode === "equal") {
@@ -63,15 +63,15 @@ class VBox extends BoxLayout {
                 }
             }
 
-            const width  = innerWidth + perimiterSize.left + perimiterSize.right;
+            const width  = innerWidth + perimeterSize.left + perimeterSize.right;
             const height = components.length * (innerHeight + this._spacing) - this._spacing
-                         + perimiterSize.top + perimiterSize.bottom;
+                         + perimeterSize.top + perimeterSize.bottom;
 
             return { width, height };
         }
 
         let width = UNBOUNDED;
-        let height = perimiterSize.top + perimiterSize.bottom;
+        let height = perimeterSize.top + perimeterSize.bottom;
 
         for (let idx in components) {
             let component = components[idx];
@@ -83,7 +83,7 @@ class VBox extends BoxLayout {
             }
         }
 
-        width += perimiterSize.left + perimiterSize.right;
+        width += perimeterSize.left + perimeterSize.right;
         height += this._spacing * (components.length - 1);
 
         return {
@@ -106,7 +106,7 @@ class VBox extends BoxLayout {
             return null;
         }
 
-        let perimiterSize = container.getPerimiterSize();
+        let perimeterSize = container.getPerimeterSize();
         let components = container.getLaidOutComponents();
 
         if (this._mode === "equal") {
@@ -123,15 +123,15 @@ class VBox extends BoxLayout {
                 }
             }
 
-            const width  = innerWidth + perimiterSize.left + perimiterSize.right;
+            const width  = innerWidth + perimeterSize.left + perimeterSize.right;
             const height = components.length * (innerHeight + this._spacing) - this._spacing
-                         + perimiterSize.top + perimiterSize.bottom;
+                         + perimeterSize.top + perimeterSize.bottom;
 
             return { width, height };
         }
 
         let width = 0;
-        let height = perimiterSize.top + perimiterSize.bottom;
+        let height = perimeterSize.top + perimeterSize.bottom;
 
         for (let idx in components) {
             let component = components[idx];
@@ -143,7 +143,7 @@ class VBox extends BoxLayout {
             }
         }
 
-        width += perimiterSize.left + perimiterSize.right;
+        width += perimeterSize.left + perimeterSize.right;
         height += this._spacing * (components.length - 1);
 
         return {

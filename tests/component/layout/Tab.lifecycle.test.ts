@@ -1,6 +1,6 @@
 // Covers the panel-lifecycle additions to Tab: the public `closeTab(content)`
 // programmatic-close entry point (sharing the user-✕ teardown via the extracted
-// `closeEntry`) and the new `"activated"` event fired from the active-tab-change
+// `closeEntry`) and the new `"activate"` event fired from the active-tab-change
 // path. Scopes to the offline state surface the same way Tab.test.ts does — no
 // materialised element, no layout pass — relying on createTab/setActiveTabIndex/
 // closeTab resolving their state synchronously under the recording sink.
@@ -76,7 +76,7 @@ describe('Tab.closeTab', () => {
     });
 });
 
-describe('Tab "activated" event', () => {
+describe('Tab "activate" event', () => {
     afterEach(() => DOM.reset());
 
     it('fires once on setActiveTabIndex with (content, index)', () => {
@@ -85,7 +85,7 @@ describe('Tab "activated" event', () => {
         const { tab, b } = hostTab();
         const events: Array<[Component, number]> = [];
 
-        tab.on('activated', (content, index) => events.push([content, index]));
+        tab.on('activate', (content, index) => events.push([content, index]));
         tab.setActiveTabIndex(1);
 
         expect(events).toEqual([[b, 1]]);
@@ -102,11 +102,11 @@ describe('Tab "activated" event', () => {
 
         const spy = vi.fn();
 
-        tab.on('activated', spy);
+        tab.on('activate', spy);
         tab.closeTab(a);
 
         // The re-selection of the survivor goes through setActiveVisual, which
-        // must NOT route through _onBarTabPressed / emit "activated".
+        // must NOT route through _onBarTabPressed / emit "activate".
         expect(spy).not.toHaveBeenCalled();
     });
 });

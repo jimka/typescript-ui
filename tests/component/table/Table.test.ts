@@ -1,4 +1,4 @@
-// Table surfaces the body's selection changes on its own "selectionchange"
+// Table surfaces the body's selection changes on its own "selection"
 // event so consumers (e.g. a delete action) can react without reaching into the
 // private body.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -24,7 +24,7 @@ afterEach(() => DOM.reset());
 
 const MODEL = new Model([{ name: 'a', type: 'string', order: 0 }], 'a');
 
-describe('Table selectionchange event', () => {
+describe('Table selection event', () => {
     it('forwards the body selection on its own event', async () => {
         const store = new MemoryStore(MODEL, [{ a: '1' }]);
         await store.load();
@@ -33,7 +33,7 @@ describe('Table selectionchange event', () => {
         table.getElement(true);
 
         const seen: number[] = [];
-        table.on('selectionchange', (records: ModelRecord[]) => seen.push(records.length));
+        table.on('selection', (records: ModelRecord[]) => seen.push(records.length));
 
         // selectRecord on the body is the canonical mutation; addRow / clicks all
         // route through it. Triggering it must surface on the Table's event.

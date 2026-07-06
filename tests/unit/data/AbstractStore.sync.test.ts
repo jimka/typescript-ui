@@ -206,14 +206,14 @@ describe('AbstractStore symmetric + lifecycle events', () => {
         expect(exceptions[0].records).toEqual([]);
     });
 
-    it('removeAll() emits clear with the removed set plus datachanged', () => {
+    it('removeAll() emits clear with the removed set plus datachange', () => {
         const store = new Store({ model: MODEL });
         store.loadData([{ id: 1, name: 'A' }, { id: 2, name: 'B' }]);
 
         let removed: ModelRecord[] = [];
         let dataChanged = false;
         store.on('clear', (p: { removed: ModelRecord[] }) => { removed = p.removed; });
-        store.on('datachanged', () => { dataChanged = true; });
+        store.on('datachange', () => { dataChanged = true; });
 
         store.removeAll();
 
@@ -236,7 +236,7 @@ describe('AbstractStore symmetric + lifecycle events', () => {
         expect(seen[1]).toHaveLength(0);
     });
 
-    it('notifyRecordChanged(r) emits update with r then datachanged', () => {
+    it('notifyRecordChanged(r) emits update with r then datachange', () => {
         const store = new Store({ model: MODEL });
         store.loadData([{ id: 1, name: 'A' }]);
         const record = store.getAt(0)!;
@@ -244,11 +244,11 @@ describe('AbstractStore symmetric + lifecycle events', () => {
         let updated: ModelRecord | undefined;
         const order: string[] = [];
         store.on('update', (p: { record: ModelRecord }) => { updated = p.record; order.push('update'); });
-        store.on('datachanged', () => order.push('datachanged'));
+        store.on('datachange', () => order.push('datachange'));
 
         store.notifyRecordChanged(record);
 
         expect(updated).toBe(record);
-        expect(order).toEqual(['update', 'datachanged']);
+        expect(order).toEqual(['update', 'datachange']);
     });
 });

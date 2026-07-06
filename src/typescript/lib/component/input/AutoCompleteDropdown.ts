@@ -8,7 +8,7 @@ import { Fit } from "~/layout/Fit.js";
 import { List } from "~/component/list/List.js";
 import { callable } from "~/core/Callable.js";
 
-/** Pixel height of a single row inside the dropdown. Matches `CustomListRow`'s cached `preferredSize(0, 22)`. */
+/** Pixel height of a single row inside the dropdown. Matches `SelectableListRow`'s cached `preferredSize(0, 22)`. */
 const AUTOCOMPLETE_DROPDOWN_ROW_HEIGHT_PX = 22;
 
 /**
@@ -33,7 +33,7 @@ const _defaultAutoCompleteDropdownOptions: Partial<AutoCompleteDropdownOptions> 
 
 // The dropdown wrapper carries the visible chrome (border / radius /
 // shadow); the embedded List inherits a `:focus::after` ring from
-// `AbstractCustomList`, which would paint a second ring inside the
+// `AbstractSelectableList`, which would paint a second ring inside the
 // dropdown if any code path programmatically focused the list. The
 // host-forwarded keystroke pattern keeps DOM focus on the TextField
 // throughout the dropdown's lifetime, but the suppression is
@@ -79,7 +79,7 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
         this._onHide   = onHide;
 
         // The inner List already exposes `role="listbox"` from
-        // `AbstractCustomList`; the dropdown wrapper just provides the
+        // `AbstractSelectableList`; the dropdown wrapper just provides the
         // overlay chrome and must not duplicate the listbox role
         // (nested listboxes break assistive-tech enumeration of the
         // `option` rows).
@@ -138,7 +138,7 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
         this._list.setItemsArray(suggestions.map(s => ({ key: s, label: s })));
         this.resumeLayout();
 
-        const perim   = this.getPerimiterSize();
+        const perim   = this.getPerimeterSize();
         const chromeH = perim.top + perim.bottom;
         const rect    = DOM.source.getElementRect(anchorEl);
 

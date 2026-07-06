@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { AbstractCustomList, AbstractCustomListOptions, CustomListItem } from "~/component/list/AbstractCustomList.js";
+import { AbstractSelectableList, AbstractSelectableListOptions, SelectableListItem } from "~/component/list/AbstractSelectableList.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -8,7 +8,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export interface ListOptions extends AbstractCustomListOptions {
+export interface ListOptions extends AbstractSelectableListOptions {
     selectedIndex?: number;
     value?:         string;
     selectedItem?:  string;
@@ -27,7 +27,7 @@ export interface ListOptions extends AbstractCustomListOptions {
  *
  * @category Components
  */
-class List extends AbstractCustomList<string, ListOptions> {
+class List extends AbstractSelectableList<string, ListOptions> {
 
     /**
      * @param options - Optional. Construction-time options applied to
@@ -74,7 +74,7 @@ class List extends AbstractCustomList<string, ListOptions> {
     }
 
     /**
-     * Pushes pre-formed {@link CustomListItem} pairs into the list,
+     * Pushes pre-formed {@link SelectableListItem} pairs into the list,
      * bypassing the auto-keying that {@link setItems} applies to a
      * label-only array. Intended for hosts that already own typed
      * `{key, label}` data (e.g. the [`ComboBox`](/api/component/input/classes/ComboBox)
@@ -85,7 +85,7 @@ class List extends AbstractCustomList<string, ListOptions> {
      *
      * @returns This component, for method chaining.
      */
-    setItemsArray(items: Array<CustomListItem>): this {
+    setItemsArray(items: Array<SelectableListItem>): this {
         return super.setItemsArray(items);
     }
 

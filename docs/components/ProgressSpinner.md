@@ -46,7 +46,7 @@ Calling `setSpinnerSize(n)` later disables theme tracking; the spinner stays at 
 ## Loading overlays on `TablePanel`
 
 A [`TablePanel`](/components/TablePanel) automatically shows a `ProgressSpinner`
-overlay whenever its store fires `'loadingchanged'` with `loading: true`.
+overlay whenever its store fires `'loadingchange'` with `loading: true`.
 This happens during `store.load()` for stores backed by an async
 [`Proxy`](/api/data/classes/Proxy):
 
@@ -73,4 +73,4 @@ to inspect it from elsewhere.
 - [API: ProgressSpinner](/api/component/display/classes/ProgressSpinner)
 - [`ProgressBar`](/components/ProgressBar) — a horizontal alternative
 - [`TablePanel`](/components/TablePanel) — auto-overlays during `store.load()`
-- [`AbstractStore`](/api/data/classes/AbstractStore) — emits `'loadingchanged'`
+- [`AbstractStore`](/api/data/classes/AbstractStore) — emits `'loadingchange'`

@@ -295,11 +295,11 @@ export abstract class BoxLayout extends LayoutManager {
             return null;
         }
 
-        const perimiterSize = container.getPerimiterSize();
+        const perimeterSize = container.getPerimeterSize();
         const components = container.getLaidOutComponents();
 
-        const mainStart  = horizontal ? perimiterSize.left + perimiterSize.right : perimiterSize.top + perimiterSize.bottom;
-        const crossExtra = horizontal ? perimiterSize.top + perimiterSize.bottom : perimiterSize.left + perimiterSize.right;
+        const mainStart  = horizontal ? perimeterSize.left + perimeterSize.right : perimeterSize.top + perimeterSize.bottom;
+        const crossExtra = horizontal ? perimeterSize.top + perimeterSize.bottom : perimeterSize.left + perimeterSize.right;
 
         let main = mainStart;
         let cross = 0;

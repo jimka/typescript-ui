@@ -43,7 +43,7 @@ export interface Style {
 /**
  * Width of a component's outer perimeter on each side, in pixels.
  *
- * Returned by [`Component.getPerimiterSize`](/api/core/classes/Component#getperimitersize) — the sum of border width and
+ * Returned by [`Component.getPerimeterSize`](/api/core/classes/Component#getperimetersize) — the sum of border width and
  * padding for each edge.
  *
  * @category Core
@@ -1609,7 +1609,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * origin or the whole padding allowance piles onto the far side. Border is
      * deliberately omitted: the containing-block edge already sits inside it.
      * Derived on each call from {@link getInsets} and {@link getPadding}; no
-     * stored field, mirroring {@link getPerimiterSize}.
+     * stored field, mirroring {@link getPerimeterSize}.
      */
     getContentInsets(): Insets {
         const insets = this.getInsets();
@@ -2470,10 +2470,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return null;
         }
 
-        let perimiterSize = this.getPerimiterSize();
+        let perimeterSize = this.getPerimeterSize();
 
-        let width = this._width - perimiterSize.left - perimiterSize.right;
-        let height = this._height - perimiterSize.top - perimiterSize.bottom;
+        let width = this._width - perimeterSize.left - perimeterSize.right;
+        let height = this._height - perimeterSize.top - perimeterSize.bottom;
 
         return {
             width: width,
@@ -2579,12 +2579,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns A PerimeterSize where each side is the sum of the inset, border width, and padding for that side.
      */
-    getPerimiterSize() {
+    getPerimeterSize() {
         let borderSize = this.getBorderSize();
         let insets = this.getInsets();
         let padding = this.getPadding();
 
-        let perimiterSize: PerimeterSize = {
+        let perimeterSize: PerimeterSize = {
             top: 0,
             right: 0,
             bottom: 0,
@@ -2592,27 +2592,27 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         if (insets) {
-            perimiterSize.top = insets.getTop();
-            perimiterSize.right = insets.getRight();
-            perimiterSize.bottom = insets.getBottom();
-            perimiterSize.left = insets.getLeft();
+            perimeterSize.top = insets.getTop();
+            perimeterSize.right = insets.getRight();
+            perimeterSize.bottom = insets.getBottom();
+            perimeterSize.left = insets.getLeft();
         }
 
         if (borderSize) {
-            perimiterSize.top += borderSize.top;
-            perimiterSize.right += borderSize.right;
-            perimiterSize.bottom += borderSize.bottom;
-            perimiterSize.left += borderSize.left;
+            perimeterSize.top += borderSize.top;
+            perimeterSize.right += borderSize.right;
+            perimeterSize.bottom += borderSize.bottom;
+            perimeterSize.left += borderSize.left;
         }
 
         if (padding) {
-            perimiterSize.top += padding.getTop();
-            perimiterSize.right += padding.getRight();
-            perimiterSize.bottom += padding.getBottom();
-            perimiterSize.left += padding.getLeft();
+            perimeterSize.top += padding.getTop();
+            perimeterSize.right += padding.getRight();
+            perimeterSize.bottom += padding.getBottom();
+            perimeterSize.left += padding.getLeft();
         }
 
-        return perimiterSize;
+        return perimeterSize;
     }
 
     /**

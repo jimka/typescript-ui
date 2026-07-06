@@ -102,13 +102,13 @@ class Card extends LayoutManager {
             return null;
         }
 
-        const perimiterSize = container.getPerimiterSize();
-        if (!perimiterSize) {
+        const perimeterSize = container.getPerimeterSize();
+        if (!perimeterSize) {
             return null;
         }
 
-        const outerWidth = perimiterSize.left + perimiterSize.right;
-        const outerHeight = perimiterSize.top + perimiterSize.bottom;
+        const outerWidth = perimeterSize.left + perimeterSize.right;
+        const outerHeight = perimeterSize.top + perimeterSize.bottom;
 
         const visibleComponent = this.getVisibleComponent();
         if (!visibleComponent) {

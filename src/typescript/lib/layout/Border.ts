@@ -530,10 +530,10 @@ class Border extends LayoutManager {
             return null;
         }
 
-        let perimiterSize = container.getPerimiterSize();
+        let perimeterSize = container.getPerimeterSize();
 
-        let outerWidth = perimiterSize.left + perimiterSize.right;
-        let outerHeight = perimiterSize.top + perimiterSize.bottom;
+        let outerWidth = perimeterSize.left + perimeterSize.right;
+        let outerHeight = perimeterSize.top + perimeterSize.bottom;
 
         let innerWidth = 0;
         let innerHeight = 0;
@@ -608,10 +608,10 @@ class Border extends LayoutManager {
             return null;
         }
 
-        let perimiterSize = container.getPerimiterSize();
+        let perimeterSize = container.getPerimeterSize();
 
-        let outerWidth = perimiterSize.left + perimiterSize.right;
-        let outerHeight = perimiterSize.top + perimiterSize.bottom;
+        let outerWidth = perimeterSize.left + perimeterSize.right;
+        let outerHeight = perimeterSize.top + perimeterSize.bottom;
 
         let innerWidth = 0;
         let innerHeight = 0;
@@ -693,10 +693,10 @@ class Border extends LayoutManager {
             return null;
         }
 
-        let perimiterSize = container.getPerimiterSize();
+        let perimeterSize = container.getPerimeterSize();
 
-        let outerWidth = perimiterSize.left + perimiterSize.right;
-        let outerHeight = perimiterSize.top + perimiterSize.bottom;
+        let outerWidth = perimeterSize.left + perimeterSize.right;
+        let outerHeight = perimeterSize.top + perimeterSize.bottom;
 
         // A non-displayed region resolves to null here (no constraint), not the
         // unbounded sentinel — it must not widen/heighten the layout at all.

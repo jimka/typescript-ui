@@ -571,7 +571,7 @@ class Split extends LayoutManager {
         }
 
         const components = container.getLaidOutComponents();
-        const perimiter  = container.getPerimiterSize();
+        const perimeter  = container.getPerimeterSize();
         const horizontal = this._orientation === "horizontal";
 
         let main  = 0;
@@ -590,10 +590,10 @@ class Split extends LayoutManager {
         main += this.gutterTotal(components.length);
 
         return horizontal
-            ? { width:  main  + perimiter.left + perimiter.right,
-                height: cross + perimiter.top  + perimiter.bottom }
-            : { width:  cross + perimiter.left + perimiter.right,
-                height: main  + perimiter.top  + perimiter.bottom };
+            ? { width:  main  + perimeter.left + perimeter.right,
+                height: cross + perimeter.top  + perimeter.bottom }
+            : { width:  cross + perimeter.left + perimeter.right,
+                height: main  + perimeter.top  + perimeter.bottom };
     }
 
     /**

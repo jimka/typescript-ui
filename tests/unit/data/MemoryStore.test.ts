@@ -41,7 +41,7 @@ describe('MemoryStore', () => {
         await store.sort('score', 'asc');
         expect(store.getAt(0)?.get('score')).toBe(60);
     });
-    it('add fires add and datachanged events', () => {
+    it('add fires add and datachange events', () => {
         const store = makeStore([]);
         const addSpy = vi.fn();
         store.on('add', addSpy);
@@ -52,8 +52,8 @@ describe('MemoryStore', () => {
     it('off unregisters a listener', () => {
         const store = makeStore([]);
         const spy = vi.fn();
-        store.on('datachanged', spy);
-        store.off('datachanged', spy);
+        store.on('datachange', spy);
+        store.off('datachange', spy);
         store.add({ id: 1, name: 'X', score: 0 });
         expect(spy).not.toHaveBeenCalled();
     });
@@ -113,18 +113,18 @@ describe('MemoryStore', () => {
 });
 
 describe('MemoryStore auto-notify', () => {
-    it('fires update + datachanged when an owned record field is set', () => {
+    it('fires update + datachange when an owned record field is set', () => {
         const store          = makeStore(SAMPLE);
         const record         = store.getAt(0)!;
         const updateSpy      = vi.fn();
-        const datachangedSpy = vi.fn();
+        const datachangeSpy = vi.fn();
 
         store.on('update', updateSpy);
-        store.on('datachanged', datachangedSpy);
+        store.on('datachange', datachangeSpy);
         record.set('name', 'Zed');
 
         expect(updateSpy).toHaveBeenCalledOnce();
-        expect(datachangedSpy).toHaveBeenCalledOnce();
+        expect(datachangeSpy).toHaveBeenCalledOnce();
         expect(updateSpy.mock.calls[0][0]).toEqual({
             record,
             changes: { name: { old: 'Alice', new: 'Zed' } },
@@ -134,16 +134,16 @@ describe('MemoryStore auto-notify', () => {
     it('stays silent during a bulk load', () => {
         const store          = new MemoryStore(MODEL);
         const updateSpy      = vi.fn();
-        const datachangedSpy = vi.fn();
+        const datachangeSpy = vi.fn();
         const loadSpy        = vi.fn();
 
         store.on('update', updateSpy);
-        store.on('datachanged', datachangedSpy);
+        store.on('datachange', datachangeSpy);
         store.on('load', loadSpy);
         store.loadData(SAMPLE);
 
         expect(updateSpy).not.toHaveBeenCalled();
-        expect(datachangedSpy).not.toHaveBeenCalled();
+        expect(datachangeSpy).not.toHaveBeenCalled();
         expect(loadSpy).toHaveBeenCalledOnce();
     });
 
@@ -157,13 +157,13 @@ describe('MemoryStore auto-notify', () => {
         expect(updateSpy).not.toHaveBeenCalled();
     });
 
-    it('coalesces a store-level batch into one datachanged with no update', () => {
+    it('coalesces a store-level batch into one datachange with no update', () => {
         const store          = makeStore(SAMPLE);
         const updateSpy      = vi.fn();
-        const datachangedSpy = vi.fn();
+        const datachangeSpy = vi.fn();
 
         store.on('update', updateSpy);
-        store.on('datachanged', datachangedSpy);
+        store.on('datachange', datachangeSpy);
 
         store.beginEdit();
         store.getAt(0)!.set('name', 'X');
@@ -172,21 +172,21 @@ describe('MemoryStore auto-notify', () => {
         store.commitEdit();
 
         expect(updateSpy).not.toHaveBeenCalled();
-        expect(datachangedSpy).toHaveBeenCalledOnce();
+        expect(datachangeSpy).toHaveBeenCalledOnce();
     });
 
     it('setSilent mutates without firing any event', () => {
         const store          = makeStore(SAMPLE);
         const record         = store.getAt(0)!;
         const updateSpy      = vi.fn();
-        const datachangedSpy = vi.fn();
+        const datachangeSpy = vi.fn();
 
         store.on('update', updateSpy);
-        store.on('datachanged', datachangedSpy);
+        store.on('datachange', datachangeSpy);
         record.setSilent('name', 'Q');
 
         expect(updateSpy).not.toHaveBeenCalled();
-        expect(datachangedSpy).not.toHaveBeenCalled();
+        expect(datachangeSpy).not.toHaveBeenCalled();
         expect(record.get('name')).toBe('Q');
         expect(record.isDirty()).toBe(true);
     });
@@ -249,13 +249,13 @@ describe('MemoryStore auto-notify', () => {
         expect(store.getAll()).toHaveLength(0);
     });
 
-    it('removeAll still fires clear and datachanged with every prior record', () => {
+    it('removeAll still fires clear and datachange with every prior record', () => {
         const store = makeStore(SAMPLE);
         const clearSpy = vi.fn();
         const changedSpy = vi.fn();
 
         store.on('clear', clearSpy);
-        store.on('datachanged', changedSpy);
+        store.on('datachange', changedSpy);
         store.removeAll();
 
         expect(clearSpy).toHaveBeenCalledOnce();
@@ -310,14 +310,14 @@ describe('MemoryStore auto-notify', () => {
         expect(store.getAt(1)?.get('name')).toBe('Y');
     });
 
-    it('insert fires exactly one add followed by one datachanged', () => {
+    it('insert fires exactly one add followed by one datachange', () => {
         const store = makeStore([]);
         const events: string[] = [];
 
         store.on('add', () => events.push('add'));
-        store.on('datachanged', () => events.push('datachanged'));
+        store.on('datachange', () => events.push('datachange'));
         store.insert(0, { id: 1, name: 'A', score: 0 });
 
-        expect(events).toEqual(['add', 'datachanged']);
+        expect(events).toEqual(['add', 'datachange']);
     });
 });

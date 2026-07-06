@@ -25,7 +25,7 @@ import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
  *
  * @category Components
  */
-export interface CustomListItem {
+export interface SelectableListItem {
     /** Binding identifier — what `getValue` / `setValue` round-trip. */
     key:   string;
     /** Display text rendered in the row. */
@@ -51,16 +51,16 @@ export interface CustomListItem {
 /**
  * Accepted form for a single item passed to a custom list's `setItems` /
  * `addItem`: either a plain string (auto-keyed by its array position) or a
- * pre-formed {@link CustomListItem} with an explicit caller-supplied key.
+ * pre-formed {@link SelectableListItem} with an explicit caller-supplied key.
  *
  * @category Components
  */
-export type CustomListItemSpec = String | CustomListItem;
+export type SelectableListItemSpec = String | SelectableListItem;
 
 /**
- * Pixel height of one rendered row. Matches `CustomListRow`'s cached
+ * Pixel height of one rendered row. Matches `SelectableListRow`'s cached
  * `preferredSize(0, 22)` and the `lineHeight: 22px` declaration in the
- * shared `.CustomListRow` class rule. Keep these three values in lockstep
+ * shared `.SelectableListRow` class rule. Keep these three values in lockstep
  * if the row chrome changes — keyboard `PageUp`/`PageDown` derives its
  * page size from this constant divided into the visible viewport height.
  */
@@ -76,11 +76,11 @@ const ROW_HEIGHT_PX = 22;
 const TYPE_AHEAD_TIMEOUT_MS = 700;
 
 /**
- * Construction-time options for {@link AbstractCustomList}.
+ * Construction-time options for {@link AbstractSelectableList}.
  *
  * @category Components
  */
-export interface AbstractCustomListOptions extends AbstractInputOptions {
+export interface AbstractSelectableListOptions extends AbstractInputOptions {
     items?:        String | Array<String>;
     store?:        AbstractStore;
     displayField?: string;
@@ -115,12 +115,12 @@ export interface AbstractCustomListOptions extends AbstractInputOptions {
 }
 
 /**
- * Shared visual defaults for every {@link AbstractCustomList} subclass.
+ * Shared visual defaults for every {@link AbstractSelectableList} subclass.
  * Layered into the defaults bag passed to `super` from the abstract
  * constructor so {@link List} and {@link MultiSelectList} share row
  * chrome without duplicating the bag at every leaf.
  */
-const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
+const _defaultAbstractSelectableListOptions: Partial<AbstractSelectableListOptions> = {
     tag:             "div",
     backgroundColor: "var(--ts-ui-list-bg, rgb(255, 255, 255))",
     foregroundColor: "var(--ts-ui-text-color, black)",
@@ -134,7 +134,7 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
  * Static styling registered once at module init. The container surface
  * carries the focus ring (matched against the framework auto-added
  * `.List` / `.MultiSelectList` classes that `Component.init()` derives
- * from `constructor.name`); `.CustomListRow` carries the row chrome
+ * from `constructor.name`); `.SelectableListRow` carries the row chrome
  * (single-line text with ellipsis truncation, optional theme-controlled
  * separator); the `.selected` / `.focused` modifier classes layer the
  * selection wash and keyboard-focus outline on top.
@@ -142,9 +142,9 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
  * The `:focus` ring is attached via a compound selector covering both
  * concrete subclass names rather than the abstract base — TypeScript
  * `class.constructor.name` is the leaf class, so the framework adds
- * `"List"` / `"MultiSelectList"` (not `"AbstractCustomList"`) to the
+ * `"List"` / `"MultiSelectList"` (not `"AbstractSelectableList"`) to the
  * surface's classList. Keep this list in sync if a new concrete
- * subclass extends `AbstractCustomList`.
+ * subclass extends `AbstractSelectableList`.
  */
 (() => {
     new StyleRule({
@@ -182,7 +182,7 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
     // than the label text.
     new StyleRule({
         scope:  "class",
-        name:   "CustomListRow",
+        name:   "SelectableListRow",
         styles: {
             lineHeight:   "22px",
             whiteSpace:   "nowrap",
@@ -195,7 +195,7 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
 
     new StyleRule({
         scope:  "selector",
-        name:   ".CustomListRow:hover",
+        name:   ".SelectableListRow:hover",
         styles: {
             backgroundColor: "var(--ts-ui-list-row-hover-bg, rgba(30, 100, 200, 0.08))",
         },
@@ -203,7 +203,7 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
 
     new StyleRule({
         scope:  "selector",
-        name:   ".CustomListRow.selected",
+        name:   ".SelectableListRow.selected",
         styles: {
             backgroundColor: "var(--ts-ui-list-row-selected-bg, rgba(30, 100, 200, 0.18))",
             color:           "var(--ts-ui-list-row-selected-color, inherit)",
@@ -218,7 +218,7 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
     // top of the row's text without any covering issue.
     new StyleRule({
         scope:  "selector",
-        name:   ".CustomListRow.focused",
+        name:   ".SelectableListRow.focused",
         styles: {
             outline: "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))",
         },
@@ -226,16 +226,16 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
 })();
 
 /**
- * A single row inside an {@link AbstractCustomList}. Holds the static
- * row styling via the `.CustomListRow` / `.CustomListRow:hover` /
- * `.CustomListRow.selected` / `.CustomListRow.focused` class rules and
+ * A single row inside an {@link AbstractSelectableList}. Holds the static
+ * row styling via the `.SelectableListRow` / `.SelectableListRow:hover` /
+ * `.SelectableListRow.selected` / `.SelectableListRow.focused` class rules and
  * exposes typed setters for the label, the pool index, the selected
  * flag, and the focused flag.
  *
  * Internal — not re-exported from the per-subpath barrel; the public
  * surface lives on `List` / `MultiSelectList`.
  */
-class CustomListRow extends Component {
+class SelectableListRow extends Component {
     // Cached so setter calls made before the element renders survive to
     // be applied at render time.
     private _selected: boolean = false;
@@ -275,7 +275,7 @@ class CustomListRow extends Component {
         this.setMaxSize(Number.MAX_SAFE_INTEGER, ROW_HEIGHT_PX);
         this.setPadding(new Insets(0, 8, 0, 8));
         // Component's framework default writes `cursor: default` as an
-        // inline style, which would beat the `.CustomListRow` class rule
+        // inline style, which would beat the `.SelectableListRow` class rule
         // — set the inline cursor explicitly so rows show the hand
         // cursor on hover.
         this.setCursor("pointer");
@@ -295,7 +295,7 @@ class CustomListRow extends Component {
      *
      * @returns This row, for method chaining.
      */
-    updateItem(item: CustomListItem, index: number): this {
+    updateItem(item: SelectableListItem, index: number): this {
         this._renderer.update({ item, index });
         this.applyTooltip(item.tooltip);
 
@@ -475,7 +475,7 @@ class CustomListRow extends Component {
             return this;
         }
 
-        const perim = this.getPerimiterSize();
+        const perim = this.getPerimeterSize();
 
         this._renderer.setAutoCommitStyle(false);
         this._renderer.setX(perim.left);
@@ -495,7 +495,7 @@ class CustomListRow extends Component {
      * defer-write seam owns the DOM write.
      */
     private applyRowClass(): void {
-        const classes = ["CustomListRow"];
+        const classes = ["SelectableListRow"];
 
         if (this._selected) {
             classes.push("selected");
@@ -553,7 +553,7 @@ class CustomListRow extends Component {
 }
 
 /**
- * Owner-supplied gesture callbacks for a {@link CustomListRow}, each invoked
+ * Owner-supplied gesture callbacks for a {@link SelectableListRow}, each invoked
  * with the row's current pool index and the originating mouse event. The row
  * owns no selection or event-dispatch logic itself — it forwards to the list.
  */
@@ -570,13 +570,13 @@ interface RowHandlers {
  * Abstract base for the framework's custom selectable list controls.
  *
  * Owns the item array, the store binding, the row pool (one
- * {@link CustomListRow} per visible item), the selection set, the
+ * {@link SelectableListRow} per visible item), the selection set, the
  * keyboard model (ArrowUp/Down, Home/End, PageUp/Down, Enter/Space,
  * type-ahead), and the ARIA listbox wiring. Concrete subclasses
  * ({@link List}, {@link MultiSelectList}) supply the
- * {@link AbstractCustomList.reduceSelection} reducer that translates a
+ * {@link AbstractSelectableList.reduceSelection} reducer that translates a
  * click or keyboard gesture into a new selection set, and the
- * {@link AbstractCustomList.setValue} / `getValue` round-trip used by
+ * {@link AbstractSelectableList.setValue} / `getValue` round-trip used by
  * [`Bindable`](/api/core/interfaces/Bindable).
  *
  * Not wrapped with `callable()` — abstract classes are never instantiated;
@@ -584,14 +584,14 @@ interface RowHandlers {
  *
  * @category Components
  */
-abstract class AbstractCustomList<
+abstract class AbstractSelectableList<
     TValue,
-    TOptions extends AbstractCustomListOptions = AbstractCustomListOptions
+    TOptions extends AbstractSelectableListOptions = AbstractSelectableListOptions
 >
     extends AbstractInput<TValue, TOptions>
 {
-    protected _items:        Array<CustomListItem> = [];
-    protected _rowPool:      Array<CustomListRow>  = [];
+    protected _items:        Array<SelectableListItem> = [];
+    protected _rowPool:      Array<SelectableListRow>  = [];
     protected _selectedSet:  Set<number>           = new Set();
     protected _anchorIndex:  number | null         = null;
     protected _focusedIndex: number                = -1;
@@ -655,7 +655,7 @@ abstract class AbstractCustomList<
         super(
             options,
             {
-                ..._defaultAbstractCustomListOptions,
+                ..._defaultAbstractSelectableListOptions,
                 layoutManager: new Fit(),
                 ...(subclassDefaults ?? {}),
             } as Partial<TOptions>,
@@ -759,7 +759,7 @@ abstract class AbstractCustomList<
     }
 
     /**
-     * Applies an {@link AbstractCustomListOptions} bag. Item / store
+     * Applies an {@link AbstractSelectableListOptions} bag. Item / store
      * fields are written pure into `_options` here and dispatched from the
      * constructor body — the row pool and inner panel only exist after
      * `super()` returns.
@@ -798,7 +798,7 @@ abstract class AbstractCustomList<
      *
      * @returns The items in display order.
      */
-    getItems(): Array<CustomListItem> {
+    getItems(): Array<SelectableListItem> {
         return this._items.slice();
     }
 
@@ -806,7 +806,7 @@ abstract class AbstractCustomList<
      * Replaces all items with the given specs. Each entry is either a plain
      * string — keyed by the string itself (`{ key: label }`), so `getValue` /
      * `setValue` round-trip the visible text for the common "list of names"
-     * case — or a pre-formed {@link CustomListItem} whose explicit key is kept
+     * case — or a pre-formed {@link SelectableListItem} whose explicit key is kept
      * verbatim. Selection and focus are reset; the row pool is reconciled
      * against the new length.
      *
@@ -820,19 +820,19 @@ abstract class AbstractCustomList<
      *
      * @returns This component, for method chaining.
      */
-    setItems(items: CustomListItemSpec | Array<CustomListItemSpec>): this {
+    setItems(items: SelectableListItemSpec | Array<SelectableListItemSpec>): this {
         if (!Type.isArray(items)) {
-            items = [items as CustomListItemSpec];
+            items = [items as SelectableListItemSpec];
         }
 
-        const list = items as Array<CustomListItemSpec>;
-        const built: Array<CustomListItem> = [];
+        const list = items as Array<SelectableListItemSpec>;
+        const built: Array<SelectableListItem> = [];
 
         for (const entry of list) {
             built.push(
                 typeof entry === "string"
                     ? { key: entry, label: entry }
-                    : { key: (entry as CustomListItem).key, label: (entry as CustomListItem).label, glyph: (entry as CustomListItem).glyph, tooltip: (entry as CustomListItem).tooltip },
+                    : { key: (entry as SelectableListItem).key, label: (entry as SelectableListItem).label, glyph: (entry as SelectableListItem).glyph, tooltip: (entry as SelectableListItem).tooltip },
             );
         }
 
@@ -843,7 +843,7 @@ abstract class AbstractCustomList<
      * Replaces all items with the given pre-formed `{key, label}` pairs.
      * Mirrors {@link setItems} but skips the auto-keying step so a host
      * that already owns typed items (e.g. the [`ComboBox`](/api/component/input/classes/ComboBox)
-     * dropdown pushing a `CustomListItem` array) can hand them over
+     * dropdown pushing a `SelectableListItem` array) can hand them over
      * without the keys being clobbered to stringified indices. Selection and focus are reset; the row pool
      * is reconciled against the new length.
      *
@@ -856,7 +856,7 @@ abstract class AbstractCustomList<
      *
      * @returns This component, for method chaining.
      */
-    protected setItemsArray(items: Array<CustomListItem>): this {
+    protected setItemsArray(items: Array<SelectableListItem>): this {
         this._items = items.slice();
 
         this._selectedSet.clear();
@@ -874,7 +874,7 @@ abstract class AbstractCustomList<
     /**
      * Appends a new item to the end of the list. A plain string is keyed by the
      * string itself (`{ key: label }`), so `getValue` / `setValue` round-trip the
-     * visible text; a pre-formed {@link CustomListItem} keeps its explicit key
+     * visible text; a pre-formed {@link SelectableListItem} keeps its explicit key
      * verbatim.
      *
      * @param item - A string (keyed by its own value) or a `{ key, label }`
@@ -886,11 +886,11 @@ abstract class AbstractCustomList<
      *
      * @returns This component, for method chaining.
      */
-    addItem(item: CustomListItemSpec): this {
+    addItem(item: SelectableListItemSpec): this {
         this._items.push(
             typeof item === "string"
                 ? { key: item, label: item }
-                : { key: (item as CustomListItem).key, label: (item as CustomListItem).label, glyph: (item as CustomListItem).glyph, tooltip: (item as CustomListItem).tooltip },
+                : { key: (item as SelectableListItem).key, label: (item as SelectableListItem).label, glyph: (item as SelectableListItem).glyph, tooltip: (item as SelectableListItem).tooltip },
         );
 
         this.pauseLayout();
@@ -903,7 +903,7 @@ abstract class AbstractCustomList<
     /**
      * Binds this list to a store. Records are pulled via `displayField` /
      * `valueField` whenever the store fires `load` / `add` / `remove` /
-     * `datachanged` / `sync`. Re-binding to a new store de-registers the
+     * `datachange` / `sync`. Re-binding to a new store de-registers the
      * previous handlers first.
      *
      * @param store - The store to bind to.
@@ -922,7 +922,7 @@ abstract class AbstractCustomList<
         const oldStore = this._options.store;
 
         if (this._storeRefresh && oldStore) {
-            (['load', 'add', 'remove', 'datachanged', 'sync'] as const)
+            (['load', 'add', 'remove', 'datachange', 'sync'] as const)
                 .forEach(e => oldStore.off(e, this._storeRefresh!));
         }
 
@@ -938,7 +938,7 @@ abstract class AbstractCustomList<
         store.on('load',        refresh);
         store.on('add',         refresh);
         store.on('remove',      refresh);
-        store.on('datachanged', refresh);
+        store.on('datachange', refresh);
         store.on('sync',        refresh);
 
         this.refreshFromStore();
@@ -1233,7 +1233,7 @@ abstract class AbstractCustomList<
 
         if (newLen > oldLen) {
             for (let i = oldLen; i < newLen; i++) {
-                const row = new CustomListRow(
+                const row = new SelectableListRow(
                     {
                         onClick:       (idx, e) => this.handleRowClick(idx, e),
                         onContextMenu: (idx, e) => this.handleRowContextMenu(idx, e),
@@ -1707,4 +1707,4 @@ abstract class AbstractCustomList<
     }
 }
 
-export { AbstractCustomList, CustomListRow };
+export { AbstractSelectableList, SelectableListRow };

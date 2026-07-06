@@ -344,7 +344,7 @@ class PickerColumn extends Component {
      * writes the panel's native `scrollTop` directly — the framework's typed
      * scroll setter lives only on the `VirtualScroller`-backed components, and
      * a `Panel`-with-`autoScroll: "y"` surface relies on native browser
-     * overflow (the same pattern `AbstractCustomList.scrollIndexIntoView` uses).
+     * overflow (the same pattern `AbstractSelectableList.scrollIndexIntoView` uses).
      *
      * @returns This component, for method chaining.
      */

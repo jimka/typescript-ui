@@ -32,7 +32,7 @@ export interface PaginationBarOptions extends ComponentOptions {
  * @remarks
  * The bar displays first / previous / next / last buttons and a `Page X of Y`
  * label, all driven by the store's pagination state. It subscribes to the
- * store's `'pagechanged'` and `'load'` events and updates button-enabled
+ * store's `'pagechange'` and `'load'` events and updates button-enabled
  * state automatically. The bar can be embedded anywhere — [`TablePanel`](/api/component/table/classes/TablePanel)'s
  * `setPaginationBar()` is one consumer, but it is not required.
  *
@@ -109,9 +109,9 @@ class PaginationBar extends Component<PaginationBarOptions> {
         this.addComponent(this._nextBtn);
         this.addComponent(this._lastBtn);
 
-        this._store.on('pagechanged', this._onStoreUpdate);
+        this._store.on('pagechange', this._onStoreUpdate);
         this._store.on('load', this._onStoreUpdate);
-        this._store.on('datachanged', this._onStoreUpdate);
+        this._store.on('datachange', this._onStoreUpdate);
         this._store.on('add', this._onStoreUpdate);
         this._store.on('remove', this._onStoreUpdate);
         this._store.on('sync', this._onStoreUpdate);
@@ -152,9 +152,9 @@ class PaginationBar extends Component<PaginationBarOptions> {
      * disposal the bar will no longer track the store.
      */
     dispose(): void {
-        this._store.off('pagechanged', this._onStoreUpdate);
+        this._store.off('pagechange', this._onStoreUpdate);
         this._store.off('load', this._onStoreUpdate);
-        this._store.off('datachanged', this._onStoreUpdate);
+        this._store.off('datachange', this._onStoreUpdate);
         this._store.off('add', this._onStoreUpdate);
         this._store.off('remove', this._onStoreUpdate);
         this._store.off('sync', this._onStoreUpdate);

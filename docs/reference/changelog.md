@@ -6,6 +6,14 @@ Release history. For breaking-change details by version, see [Migration](/refere
 
 The package is at version `0.0.0` — pre-release, not yet published. Until a `0.x` or `1.0.0` is tagged, anything here may change without a migration note. Highlights below describe work-in-progress capabilities of the development snapshot, not stable contracts.
 
+**API naming harmonization** (breaking — renamed methods, events, and classes; no behaviour change):
+
+- **`Component.getPerimiterSize` is renamed to [`Component.getPerimeterSize`](/api/core/classes/Component#getperimetersize)** (and its `FieldSet` override), fixing the long-standing misspelling; the `PerimeterSize` return type was already spelled correctly.
+- **Event names are migrated to the framework's present-tense/noun convention.** `Tab`'s `activated` / `detached` / `docked` become `activate` / `detach` / `dock`; `TabBar`'s `reordered` / `detached` become `reorder` / `detach`; `Dock`'s `moved` becomes `move`; `Table` and `Body`'s `selectionchange` becomes `selection`; and the store's `datachanged` / `sortchanged` / `pagechanged` / `loadingchanged` become `datachange` / `sortchange` / `pagechange` / `loadingchange`. Same emit sites, payloads, and order — only the event strings change.
+- **The table column-header class is renamed `Header` → [`TableHeader`](/api/component/table/classes/TableHeader)** (event union `HeaderEvent` → `TableHeaderEvent`), disambiguating it from the generic `component/display` `Header` so both can be imported without aliasing.
+- **The list bases are renamed for clarity:** `AbstractListComponent` → `AbstractMarkerList` (public; its `AbstractListOptions` → `AbstractMarkerListOptions`), and the internal `AbstractCustomList` → `AbstractSelectableList` with its companions (`CustomListRow` → `SelectableListRow`, `CustomListItem` → `SelectableListItem`, `CustomListItemSpec` → `SelectableListItemSpec`).
+- **Consumers of the built `dist/lib` (e.g. the `sqladmin` app) import these public names and events and will need the same rename pass** after this release rebuilds.
+
 **Exact text metrics and a self-determined baseline** (behaviour fix — `Util` surface and `Theme.font.lineHeight` type change):
 
 - **Line height is now additive leading (`font-size + --ts-ui-line-padding`), replacing the old unitless `1.2` multiplier.** Every text-bearing control — `Text`, `Label`, `ComboBox`, and the native `<input>`/`<textarea>` controls — renders (via `calc(1em + var(--ts-ui-line-padding))`) **and** measures against the same line box, so an input's text sits on the same baseline as a sibling `Text`/`Label` in the same row, and the leading scales per font size (12px and 14px text get proportionate line boxes from one token). The theme token is renamed `font.lineHeight` → `font.linePadding` (`--ts-ui-line-height` → `--ts-ui-line-padding`), a CSS length string (e.g. `"2px"`). A control can still pin an explicit fixed line-height with `Text.setLineHeight(px)`.

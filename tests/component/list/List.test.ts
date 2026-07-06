@@ -183,7 +183,7 @@ describe('List — construction option dispatch', () => {
     });
 });
 
-describe('AbstractCustomList (via List) — item bookkeeping', () => {
+describe('AbstractSelectableList (via List) — item bookkeeping', () => {
     it('setItems resets selection / anchor / focus', () => {
         const list = new _List({ items: FRUITS, selectedIndex: 2 });
 
@@ -198,7 +198,7 @@ describe('AbstractCustomList (via List) — item bookkeeping', () => {
         const list = new _List({ items: FRUITS });
         const items = list.getItems();
 
-        // The contract (AbstractCustomList.ts:587) promises a *shallow* copy of
+        // The contract (AbstractSelectableList.ts:587) promises a *shallow* copy of
         // the array, so adding/removing entries from the returned array must not
         // change the list. (Element objects are shared by reference — deep
         // immutability is intentionally not part of the shallow-copy contract.)
@@ -216,7 +216,7 @@ describe('AbstractCustomList (via List) — item bookkeeping', () => {
     });
 });
 
-describe('AbstractCustomList (via List) — type-ahead with a deterministic clock', () => {
+describe('AbstractSelectableList (via List) — type-ahead with a deterministic clock', () => {
     afterEach(() => {
         vi.restoreAllMocks();
     });
@@ -268,7 +268,7 @@ describe('AbstractCustomList (via List) — type-ahead with a deterministic cloc
     });
 });
 
-describe('AbstractCustomList (via List) — store binding', () => {
+describe('AbstractSelectableList (via List) — store binding', () => {
     const MODEL = new Model([{ name: 'id' }, { name: 'name' }], 'id');
     const FIRST = [
         { id: 1, name: 'Alpha' },

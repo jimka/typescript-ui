@@ -76,13 +76,13 @@ class VFlow extends FlowLayout {
             return null;
         }
 
-        const perimiterSize = container.getPerimiterSize();
+        const perimeterSize = container.getPerimeterSize();
         const components = container.getLaidOutComponents();
         const uniformWidth  = this.isUniformWidth();
         const uniformHeight = this.isUniformHeight();
         const extents = (uniformWidth || uniformHeight) ? this.computeUniformExtents(components) : { width: 0, height: 0 };
 
-        let height = perimiterSize.top + perimiterSize.bottom;
+        let height = perimeterSize.top + perimeterSize.bottom;
         let maxWidth = 0;
 
         for (const component of components) {
@@ -105,7 +105,7 @@ class VFlow extends FlowLayout {
 
         let width = uniformWidth ? extents.width : maxWidth;
 
-        width += perimiterSize.left + perimiterSize.right;
+        width += perimeterSize.left + perimeterSize.right;
 
         return {
             width: width,
@@ -126,7 +126,7 @@ class VFlow extends FlowLayout {
             return null;
         }
 
-        const perimiterSize = container.getPerimiterSize();
+        const perimeterSize = container.getPerimeterSize();
         const components = container.getLaidOutComponents();
 
         let maxChildMinHeight = 0;
@@ -141,8 +141,8 @@ class VFlow extends FlowLayout {
             }
         }
 
-        const width  = perimiterSize.left + perimiterSize.right + maxWidth;
-        const height = perimiterSize.top + perimiterSize.bottom + maxChildMinHeight;
+        const width  = perimeterSize.left + perimeterSize.right + maxWidth;
+        const height = perimeterSize.top + perimeterSize.bottom + maxChildMinHeight;
 
         return {
             width: width,
@@ -166,12 +166,12 @@ class VFlow extends FlowLayout {
             return null;
         }
 
-        const perimiterSize = container.getPerimiterSize();
+        const perimeterSize = container.getPerimeterSize();
         const components = container.getLaidOutComponents();
         const uniformHeight = this.isUniformHeight();
         const extents = uniformHeight ? this.computeUniformExtents(components) : { width: 0, height: 0 };
 
-        let height = perimiterSize.top + perimiterSize.bottom;
+        let height = perimeterSize.top + perimeterSize.bottom;
         let width = 0;
         let widthUnbounded = false;
         let heightUnbounded = false;
@@ -207,7 +207,7 @@ class VFlow extends FlowLayout {
         }
 
         height += this._spacing * Math.max(0, components.length - 1);
-        width += perimiterSize.left + perimiterSize.right;
+        width += perimeterSize.left + perimeterSize.right;
 
         return {
             width:  widthUnbounded  ? UNBOUNDED : width,

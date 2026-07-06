@@ -10,7 +10,7 @@ import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
-import { CustomListItem, CustomListItemSpec } from "~/component/list/AbstractCustomList.js";
+import { SelectableListItem, SelectableListItemSpec } from "~/component/list/AbstractSelectableList.js";
 import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
 import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
 import { List } from "~/component/list/List.js";
@@ -29,10 +29,10 @@ Glyph.register(chevron_down);
  * @category Components
  */
 export interface ComboBoxOptions extends AbstractInputOptions {
-    // Matches `setItems` (CustomListItemSpec = a plain-string key or a
+    // Matches `setItems` (SelectableListItemSpec = a plain-string key or a
     // { key, label } item), so an options-bag `items` accepts the same shapes the
     // runtime setter does — a plain-string list or explicit keyed items.
-    items?:             CustomListItemSpec | Array<CustomListItemSpec>;
+    items?:             SelectableListItemSpec | Array<SelectableListItemSpec>;
     store?:             AbstractStore;
     displayField?:      string;
     valueField?:        string;
@@ -98,10 +98,10 @@ const _defaultComboBoxOptions: Partial<ComboBoxOptions> = {
 /** Maximum dropdown height in pixels. Long option lists scroll inside this cap. */
 const COMBOBOX_DROPDOWN_MAX_HEIGHT_PX = 200;
 
-/** Pixel height of a single row inside the dropdown. Matches `CustomListRow`'s cached `preferredSize(0, 22)`. */
+/** Pixel height of a single row inside the dropdown. Matches `SelectableListRow`'s cached `preferredSize(0, 22)`. */
 const COMBOBOX_DROPDOWN_ROW_HEIGHT_PX = 22;
 
-/** Combined left + right padding inside a `CustomListRow` (Insets(0, 8, 0, 8)). */
+/** Combined left + right padding inside a `SelectableListRow` (Insets(0, 8, 0, 8)). */
 const COMBOBOX_DROPDOWN_ROW_PADDING_PX = 16;
 
 /**
@@ -129,7 +129,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 
     /**
      * @param onSelect - Called with the index of the row the user picked.
-     *   Fired on click (`CustomListRow.onClick`) and on Enter / Space
+     *   Fired on click (`SelectableListRow.onClick`) and on Enter / Space
      *   forwarded into the inner list — both paths route through the
      *   list's `change` event.
      */
@@ -143,7 +143,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         });
 
         // The inner List already exposes `role="listbox"` from
-        // `AbstractCustomList`; the dropdown wrapper just provides the
+        // `AbstractSelectableList`; the dropdown wrapper just provides the
         // overlay chrome and must not duplicate the listbox role
         // (nested listboxes break assistive-tech enumeration of the
         // `option` rows).
@@ -207,7 +207,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
      * @param selectedIndex - The row to seed as currently selected, or
      *   `-1` for no initial selection.
      */
-    showAt(anchorEl: Handle, items: Array<CustomListItem>, selectedIndex: number): this {
+    showAt(anchorEl: Handle, items: Array<SelectableListItem>, selectedIndex: number): this {
         this.pauseLayout();
         this._list.setItemsArray(items);
         this._list.setSelectedIndex(selectedIndex, false);
@@ -216,7 +216,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         // Add the dropdown's border to the natural row stack so the inner List
         // (which receives `outerHeight - border`) has room for the rows without
         // overflowing by 2 px and triggering an unnecessary scrollbar.
-        const perim    = this.getPerimiterSize();
+        const perim    = this.getPerimeterSize();
         const chromeH  = perim.top + perim.bottom;
         const chromeW  = perim.left + perim.right;
         const naturalH = items.length * COMBOBOX_DROPDOWN_ROW_HEIGHT_PX + chromeH;
@@ -307,7 +307,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
      *
      * @returns The maximum measured width across all labels, or `0` when empty.
      */
-    private measureWidestLabel(items: Array<CustomListItem>): number {
+    private measureWidestLabel(items: Array<SelectableListItem>): number {
         let max = 0;
 
         for (const item of items) {
@@ -324,9 +324,9 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 // Static typography for the ComboBox surface. Layout (label + caret
 // placement) is handled by the framework's HBox manager so no class
 // rule needs to write `display: flex` here. The dropdown's row chrome
-// comes from the shared `.CustomListRow` / `.CustomListRow:hover` /
-// `.CustomListRow.selected` / `.CustomListRow.focused` rules in
-// AbstractCustomList — no ComboBox-side row styling is required.
+// comes from the shared `.SelectableListRow` / `.SelectableListRow:hover` /
+// `.SelectableListRow.selected` / `.SelectableListRow.focused` rules in
+// AbstractSelectableList — no ComboBox-side row styling is required.
 (() => {
     new StyleRule({
         scope:  "class",
@@ -351,7 +351,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 
     // The dropdown wrapper already carries the visible chrome (border /
     // radius / shadow); the embedded List inherits a `:focus::after`
-    // ring from `AbstractCustomList`, which would paint a second ring
+    // ring from `AbstractSelectableList`, which would paint a second ring
     // inside the dropdown when it takes focus on open. Suppress the
     // pseudo so the dropdown chrome reads as a single surface.
     new StyleRule({
@@ -401,7 +401,7 @@ class ComboBoxLabel extends Component {
      *
      * @returns This component, for method chaining.
      */
-    setItem(item: CustomListItem, index: number): this {
+    setItem(item: SelectableListItem, index: number): this {
         this._renderer.update({ item, index });
 
         return this;
@@ -563,7 +563,7 @@ class ComboBoxCaret extends Component {
  * A drop-down combo box backed by a styled `<div>` surface and an
  * `AnimatedDropdown` panel.
  *
- * Manages an internal list of [`CustomListItem`](/api/component/list/interfaces/CustomListItem) entries and an active selection.
+ * Manages an internal list of [`SelectableListItem`](/api/component/list/interfaces/SelectableListItem) entries and an active selection.
  * Also accepts an {@link AbstractStore} via {@link setStore} to populate
  * options from the data layer. The dropdown fades in / out using the shared
  * `AnimatedDropdown` lifecycle; pass `dropdownAnimated: false` (or call
@@ -922,7 +922,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      *
      * @returns The selected `{ item, index }`, or the blank item at `-1`.
      */
-    private computeSelectedItem(): { item: CustomListItem; index: number } {
+    private computeSelectedItem(): { item: SelectableListItem; index: number } {
         const list  = this._dropdown.getList();
         const idx   = list.getSelectedIndex();
         const items = list.getItems();
@@ -1040,25 +1040,25 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Returns a copy of the current [`CustomListItem`](/api/component/list/interfaces/CustomListItem) array.
+     * Returns a copy of the current [`SelectableListItem`](/api/component/list/interfaces/SelectableListItem) array.
      *
      * @returns A shallow copy of the internal item array.
      */
-    getItems(): Array<CustomListItem> {
+    getItems(): Array<SelectableListItem> {
         return this._dropdown.getList().getItems();
     }
 
     /**
      * Replaces all options with the given specs. Each entry is either a plain
      * string — auto-keyed by its array position — or a pre-formed
-     * [`CustomListItem`](/api/component/list/interfaces/CustomListItem) whose
+     * [`SelectableListItem`](/api/component/list/interfaces/SelectableListItem) whose
      * explicit key is kept verbatim, in which case `getValue()` returns that
      * key instead of the positional index. The caller owns key uniqueness.
      *
      * @param items - A single spec or an array of specs. Each spec is a string
      *   (auto-keyed by position) or a `{ key, label }` object (explicit key).
      */
-    setItems(items: CustomListItemSpec | Array<CustomListItemSpec>): this {
+    setItems(items: SelectableListItemSpec | Array<SelectableListItemSpec>): this {
         this._dropdown.getList().setItems(items);
         this.reapplyPendingValue();
         this.autoSelectFirstIfEmpty();
@@ -1070,13 +1070,13 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     /**
      * Appends a new option to the end of the list. A plain string is auto-keyed
      * by the appended position; a pre-formed
-     * [`CustomListItem`](/api/component/list/interfaces/CustomListItem) keeps
+     * [`SelectableListItem`](/api/component/list/interfaces/SelectableListItem) keeps
      * its explicit key verbatim.
      *
      * @param item - A string (auto-keyed by final position) or a `{ key, label }`
      *   object (explicit key).
      */
-    addItem(item: CustomListItemSpec): this {
+    addItem(item: SelectableListItemSpec): this {
         this._dropdown.getList().addItem(item);
         this.reapplyPendingValue();
         this.autoSelectFirstIfEmpty();
@@ -1105,7 +1105,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         this._options.glyphField   = glyphField;
 
         if (this._boundStore) {
-            (['load', 'add', 'remove', 'datachanged'] as const).forEach(e =>
+            (['load', 'add', 'remove', 'datachange'] as const).forEach(e =>
                 this._boundStore!.off(e, this._onStoreRefresh)
             );
         }
@@ -1117,7 +1117,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
 
         this._boundStore = store;
 
-        (['load', 'add', 'remove', 'datachanged'] as const).forEach(e =>
+        (['load', 'add', 'remove', 'datachange'] as const).forEach(e =>
             store.on(e, this._onStoreRefresh)
         );
 
@@ -1212,7 +1212,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     /**
      * Re-asserts the surface selection and label after the inner list
      * rebuilds its rows from a deferred store event (an async `load`, or a
-     * later `add` / `remove` / `datachanged`). The inner list clears its
+     * later `add` / `remove` / `datachange`). The inner list clears its
      * selection whenever it rebuilds from the store, so without this the
      * combo would show populated options but a blank label on first paint
      * when the store loads after construction.

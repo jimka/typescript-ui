@@ -511,7 +511,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             return naturalHeight;
         }
 
-        const perimeter  = this.getPerimiterSize();
+        const perimeter  = this.getPerimeterSize();
         const innerWidth = width - perimeter.left - perimeter.right;
 
         // Wide enough for the whole run on one line → no wrapping; keep the exact

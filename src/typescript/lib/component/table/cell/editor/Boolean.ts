@@ -49,7 +49,7 @@ class BooleanEditor extends CellEditor<Boolean | null> {
             // toggles AND programmatic `setValue` calls. Without the
             // `_suppressCommit` guard, every scroll-driven `setValue` would
             // commit the bound record back to the store, fire
-            // `'datachanged'`, and re-render both bodies in a loop.
+            // `'datachange'`, and re-render both bodies in a loop.
             if (this._suppressCommit) {
                 return;
             }

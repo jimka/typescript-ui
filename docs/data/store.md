@@ -126,7 +126,7 @@ store.getActiveSorters();   // → SortDescriptor[] in priority order
 store.sort([]);             // clear all sorters (also: store.clearSort())
 ```
 
-`Table` headers compose multi-column sort interactively when the user shift-clicks. The store fires the dedicated `'sortchanged'` event whenever the active sorter list is replaced, alongside the broader `'datachanged'` notification.
+`Table` headers compose multi-column sort interactively when the user shift-clicks. The store fires the dedicated `'sortchange'` event whenever the active sorter list is replaced, alongside the broader `'datachange'` notification.
 
 The legacy `getActiveSorter()` accessor still works (returns the primary sorter mapped to `{ property, direction }`) but is **deprecated** in favour of `getActiveSorters()`.
 
@@ -160,7 +160,7 @@ type-aware default genuinely can't cover.
 ```typescript
 const [newPerson] = store.add({ id: 3, name: 'Carol', age: 28 });
 
-store.on('datachanged', () => console.log('store changed'));
+store.on('datachange', () => console.log('store changed'));
 
 store.remove(newPerson);
 ```
@@ -234,7 +234,7 @@ appear in first-encounter order and records keep their view order within each
 group. Keys are the `String()` form of the group value, with `''` standing in
 for a null / unset value. Grouping is a pure read over the existing view, so
 `setGroupField` fires only `'groupchange'` (once, on an actual change) and does
-**not** rebuild the view or fire `'datachanged'`. Grouping is intentionally one
+**not** rebuild the view or fire `'datachange'`. Grouping is intentionally one
 level deep.
 
 ## Server-side pagination
@@ -414,14 +414,14 @@ Leaf-ness resolves in priority order: an explicit `leafField`, then
 | `beforeload`        | `load()` is about to read through the proxy |
 | `load`              | `load()` resolves |
 | `exception`         | A `load()` read or a `sync()` create/update/destroy failed |
-| `datachanged`       | Any record is added, removed, moved (sorted), has its fields committed / rolled back, or a store-owned record's field is set |
+| `datachange`       | Any record is added, removed, moved (sorted), has its fields committed / rolled back, or a store-owned record's field is set |
 | `clear`             | `removeAll()` cleared the store (carries the removed records) |
 | `update`            | A field was set on a store-owned record (auto-notify), or `notifyRecordChanged(record)` was called manually; the payload carries the changed record and an optional field-level `changes` diff |
-| `sortchanged`       | The active multi-column sort list changed (replaced or cleared) |
+| `sortchange`       | The active multi-column sort list changed (replaced or cleared) |
 | `filterchange`      | The active filter list changed (added or cleared) |
 | `groupchange`       | The active group field changed via `setGroupField` |
 | `beforesync` / `sync` | `sync()` starts / settles (the `'sync'` payload lists any failures) |
-| `pagechanged`       | Page or page size changes via the pagination API |
+| `pagechange`       | Page or page size changes via the pagination API |
 | `pagechangeblocked` | Page navigation was blocked because the store has pending changes |
 | `expand` / `collapse` | A `TreeStore` node was expanded / collapsed |
 | `append`            | A `TreeStore` node's children were appended (lazy load or nested ingest) |
@@ -433,14 +433,14 @@ subscribed via its typed [`onTree`](/api/data/classes/TreeStore#ontree).
 
 ### Auto-notify and batching
 
-Setting a field on a record the store owns auto-fires `'update'` + `'datachanged'`, so any view bound to the store refreshes — `notifyRecordChanged(record)` is the manual fallback for an unowned record or to force a refresh. Two escape hatches keep this from storming the event surface. To coalesce many record edits into a single `'datachanged'`, bracket them in a store batch:
+Setting a field on a record the store owns auto-fires `'update'` + `'datachange'`, so any view bound to the store refreshes — `notifyRecordChanged(record)` is the manual fallback for an unowned record or to force a refresh. Two escape hatches keep this from storming the event surface. To coalesce many record edits into a single `'datachange'`, bracket them in a store batch:
 
 ```typescript
 store.beginEdit();
 for (const record of store.getRecords()) {
     record.set('selected', false);
 }
-store.commitEdit();              // one 'datachanged' for the whole batch
+store.commitEdit();              // one 'datachange' for the whole batch
 ```
 
 For a single record's multiple fields, prefer the [record-level batch](/data/record#batch-edits-and-silent-writes) (`record.beginEdit()` / `commitEdit()` / `setMany`), which fires one `'update'` carrying every change. `record.setSilent(field, value)` mutates without firing anything.

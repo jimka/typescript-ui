@@ -78,9 +78,9 @@ class HBox extends BoxLayout {
             return null;
         }
 
-        let perimiterSize = container.getPerimiterSize();
+        let perimeterSize = container.getPerimeterSize();
         let components = container.getLaidOutComponents();
-        let width = perimiterSize.left + perimiterSize.right;
+        let width = perimeterSize.left + perimeterSize.right;
 
         const heights: number[] = [];
         const baselines: Array<number | null> = [];
@@ -117,7 +117,7 @@ class HBox extends BoxLayout {
 
         let height = this.computeRowHeight(heights, baselines);
 
-        height += perimiterSize.top + perimiterSize.bottom;
+        height += perimeterSize.top + perimeterSize.bottom;
 
         return {
             width: width,
@@ -140,9 +140,9 @@ class HBox extends BoxLayout {
             return null;
         }
 
-        let perimiterSize = container.getPerimiterSize();
+        let perimeterSize = container.getPerimeterSize();
         let components = container.getLaidOutComponents();
-        let width = perimiterSize.left + perimiterSize.right;
+        let width = perimeterSize.left + perimeterSize.right;
 
         const heights: number[] = [];
         const baselines: Array<number | null> = [];
@@ -179,7 +179,7 @@ class HBox extends BoxLayout {
 
         let height = this.computeRowHeight(heights, baselines);
 
-        height += perimiterSize.top + perimiterSize.bottom;
+        height += perimeterSize.top + perimeterSize.bottom;
 
         return {
             width: width,

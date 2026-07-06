@@ -172,7 +172,7 @@ describe('Dock attach', () => {
         const log = recordHostEvents(dock);
         const movedSpy = vi.fn();
 
-        dock.on('moved', movedSpy);
+        dock.on('move', movedSpy);
 
         // A DockRegion body/edge drop moves the frame back and schedules a sweep.
         dock.getRootRegion().moveComponent(frameA);
@@ -188,7 +188,7 @@ describe('Dock attach', () => {
         expect(movedSpy).not.toHaveBeenCalled();
     });
 
-    it('emits detach(float) then attach(tiled) when a tab-bar merge fires the Tab "docked" event', () => {
+    it('emits detach(float) then attach(tiled) when a tab-bar merge fires the Tab "dock" event', () => {
         installTestDOM(CONFIG);
         captureRaf();
 
@@ -209,11 +209,11 @@ describe('Dock attach', () => {
         const log = recordHostEvents(dock);
 
         // The tab-bar merge path (Tab._onBarDockRequested) moves the frame into the
-        // destination strip and fires "docked" — it never calls DockRegion, so the
-        // "docked" -> requestSweep wiring is the only thing that lands the sweep.
+        // destination strip and fires "dock" — it never calls DockRegion, so the
+        // "dock" -> requestSweep wiring is the only thing that lands the sweep.
         // Without that wiring this emits nothing (the regression this pins).
         dock.getRootRegion().moveComponent(frameA);
-        (rootTab(dock) as any).emit('docked', frameA);
+        (rootTab(dock) as any).emit('dock', frameA);
         flush();
 
         expect(log).toEqual([
@@ -245,11 +245,11 @@ describe('Dock detach', () => {
         const movedSpy = vi.fn();
 
         dock.on('close', e => closed.push(e));
-        dock.on('moved', movedSpy);
+        dock.on('move', movedSpy);
 
         // The torn-off frame already sits in its float window; driving the source
-        // region's "detached" lands a sweep whose host diff emits the pair.
-        (rootTab(dock) as any).emit('detached', win);
+        // region's "detach" lands a sweep whose host diff emits the pair.
+        (rootTab(dock) as any).emit('detach', win);
         flush();
 
         expect(log).toEqual([
@@ -300,7 +300,7 @@ describe('Dock moved', () => {
         const moved:   DockPanelEvent[] = [];
         const hostLog = recordHostEvents(dock);
 
-        dock.on('moved', e => moved.push(e));
+        dock.on('move', e => moved.push(e));
 
         // Relocate 'a' into 'b''s region — same host (tiled tree), new region.
         // A real cross-region drag purges the source region's tab registry and
@@ -332,7 +332,7 @@ describe('Dock moved', () => {
         const dock = mountDock();
         const movedSpy = vi.fn();
 
-        dock.on('moved', movedSpy);
+        dock.on('move', movedSpy);
         dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
         flush();
 
@@ -349,7 +349,7 @@ describe('Dock moved', () => {
 
         const movedSpy = vi.fn();
 
-        dock.on('moved', movedSpy);
+        dock.on('move', movedSpy);
         priv(dock).runSweep();
 
         expect(movedSpy).not.toHaveBeenCalled();
@@ -370,7 +370,7 @@ describe('Dock moved', () => {
         const state = dock.getLayoutState();
         const movedSpy = vi.fn();
 
-        dock.on('moved', movedSpy);
+        dock.on('move', movedSpy);
         dock.setLayoutState(state);
         flush();
 
@@ -778,7 +778,7 @@ describe('Dock addPanel — empty dock', () => {
         flush();
 
         // Close the NORTH tab and promote the south (DockRegion) stack to the sole
-        // root. Force the prune (as the 'moved' test does) so the offline harness
+        // root. Force the prune (as the 'move' test does) so the offline harness
         // runs the close -> prune -> collapse an X-click drives in the app.
         const northRegion = priv(dock).regionForFrame(frameOf(dock, 'a'));
         (northRegion.getLayoutManager() as Tab).closeTab(frameOf(dock, 'a'));
@@ -817,7 +817,7 @@ describe('Dock addPanel — last-active region', () => {
 
         expect(regionA).not.toBe(regionB);
 
-        // Simulate the user focusing the second tab-bar (its "activated" handler).
+        // Simulate the user focusing the second tab-bar (its "activate" handler).
         priv(dock).onPanelFocused(frameOf(dock, 'b'));
 
         dock.addPanel({ id: 'c', title: 'C', content: new Component({}) });
@@ -882,8 +882,8 @@ describe('Dock addLazyPanel', () => {
         const content = new Component({});
 
         dock.addLazyPanel({ id: 'a', title: 'A', content: () => { built++; return content; } });
-        flush();           // run the sweep so the region's "activated" listener is wired
-        dock.doLayout();   // realize the deferred active-set -> fires "activated"
+        flush();           // run the sweep so the region's "activate" listener is wired
+        dock.doLayout();   // realize the deferred active-set -> fires "activate"
         flush();           // drain materialize's two-rAF yield so the factory runs
 
         // Activation ran the factory exactly once and placed its output in the frame.
@@ -978,7 +978,7 @@ describe('Dock empty-state', () => {
 
         win.show();
         win.moveComponent(frameA);
-        (rootTab(dock) as any).emit('detached', win);
+        (rootTab(dock) as any).emit('detach', win);
         flush();
 
         expect(dock.isEmpty()).toBe(false);
@@ -1012,7 +1012,7 @@ describe('Dock empty-state', () => {
 
         win.show();
         win.moveComponent(frameA);
-        (rootTab(dock) as any).emit('detached', win);
+        (rootTab(dock) as any).emit('detach', win);
         flush();
 
         expect(dock.isEmpty()).toBe(false);
@@ -1107,7 +1107,7 @@ describe('Dock empty-state', () => {
 
         win.show();
         win.moveComponent(frameA);
-        (rootTab(dock) as any).emit('detached', win);
+        (rootTab(dock) as any).emit('detach', win);
         flush();
 
         // The dock still owns the (now floated) panel, so it is NOT empty...
@@ -1136,7 +1136,7 @@ describe('Dock empty-state', () => {
 
         win.show();
         win.moveComponent(frameA);
-        (rootTab(dock) as any).emit('detached', win);
+        (rootTab(dock) as any).emit('detach', win);
         flush();
 
         expect(placeholder.getParentComponent()).toBe(dock.getRootRegion());
