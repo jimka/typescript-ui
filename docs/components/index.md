@@ -73,6 +73,7 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | [`Canvas`](/components/Canvas) | `<canvas>` raster surface — draw in CSS px via an `onDraw` hook |
 | [`Video`](/components/Video) | Native `<video>` surface primitive with typed media setters and events |
 | [`VideoPlayer`](/components/VideoPlayer) | Composite player — `<video>` framed by a themable control bar |
+| [`WebGLCanvas`](/components/WebGLCanvas) | `<canvas>` WebGL2 surface — build resources in `onContextInit`, draw in `onFrame` |
 | [`Glyph`](/components/Glyph) | Self-contained icon — SVG or Unicode entry from a curated registry |
 | [`IconText`](/components/IconText) | Glyph + standalone [`Text`](/api/component/input/classes/Text), horizontal flow |
 | [`IconLabel`](/components/IconLabel) | Glyph + form-control [`Label`](/api/component/input/classes/Label), horizontal flow |
