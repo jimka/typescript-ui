@@ -45,7 +45,9 @@ Any token type not in the v1 set — tables, images, raw HTML, and GFM extension
 
 ### Sizing
 
-`Markdown` measures its rendered content height at the width it is assigned and reports it as its minimum and preferred height, so dropping one in a scrolling [`Panel`](/api/component/container/classes/Panel) (via `setAutoScroll`) is all it takes — the panel grows to the full prose height and scrolls when the document overflows. The height is re-measured on content, width, and theme change. Only the **height** axis is derived; the width stays freely assignable so the prose reflows at whatever width its parent gives it. An explicit `preferredSize` or `setMinSize` still overrides the measurement when you want a fixed extent.
+The prose **wraps** to whatever width its parent assigns — paragraphs reflow at word boundaries and overlong unbreakable tokens (URLs) break rather than spill sideways, so the content never overflows horizontally. Fenced code blocks are the exception: they preserve their formatting and scroll **inside their own frame** when a line is too wide, leaving the surrounding layout stable.
+
+Because prose reflows, `Markdown` measures its rendered content **height** at the width it is assigned and reports it as its minimum and preferred height. Dropping one in a vertically-scrolling [`Panel`](/api/component/container/classes/Panel) (via `setAutoScroll("y")`) is all it takes — the panel grows to the full prose height and scrolls when the document is taller than the viewport. The height is re-measured on content, width, and theme change. Only the **height** axis is derived; the width stays freely assignable. An explicit `preferredSize` or `setMinSize` still overrides the measurement when you want a fixed extent.
 
 ## Common methods
 
