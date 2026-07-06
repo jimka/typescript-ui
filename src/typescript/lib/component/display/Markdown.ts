@@ -322,8 +322,8 @@ class Markdown extends Component<MarkdownOptions> {
 
     /**
      * Re-measures the flowed content height when the assigned width changes: prose
-     * height is width-dependent, so a narrower box reflows taller. Measuring reads
-     * the just-assigned width back from the DOM (see {@link measureContentHeight}).
+     * height is width-dependent, so a narrower box reflows taller. The re-measure
+     * reads the just-committed width back from the DOM before reading the height.
      *
      * @param width - The new width in pixels.
      * @returns This component, for method chaining.
@@ -363,14 +363,28 @@ class Markdown extends Component<MarkdownOptions> {
             return;
         }
 
-        // Flush the buffered width write so `scrollHeight` reflects the assigned
-        // width, not the pre-resize DOM (the commitBounds/stale-DOM gotcha).
+        // Read the true content height, not the committed box. `scrollHeight` is
+        // floored at the element's own `clientHeight`, so measuring the live
+        // (already height-committed) box would only ever report *growth* — a
+        // document that reflows wider or is edited shorter could never shrink its
+        // extent, leaving stale dead space. Collapse the box to its content
+        // first; the flush also commits the buffered width so the read reflects
+        // the assigned width (the commitBounds/stale-DOM gotcha). The raw style
+        // write is a transient probe restored below, not persistent state, so it
+        // deliberately bypasses the typed `setHeight` (which takes only a number).
+        const restoreHeight = this.getHeight();
+        this.setElementStyle("height", "auto");
         this.commitElementStyle();
 
         // `scrollHeight` is content + padding (border-box excludes the border),
         // so reach the outer height by adding only the border.
         const border   = this.getBorderSize();
         const measured = DOM.source.getScrollMetrics(element).scrollHeight + border.top + border.bottom;
+
+        // Restore the laid-out height so the box isn't left content-collapsed
+        // between now and the next layout pass (which re-commits it anyway).
+        this.setElementStyle("height", restoreHeight + "px");
+        this.commitElementStyle();
 
         if (measured === this._measuredHeight) {
             return;

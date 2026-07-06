@@ -261,6 +261,14 @@ describe('Markdown construction parity', () => {
 // content height by stubbing the seam read, exercising the size-negotiation fold
 // and its invalidation wiring against the real seam — the browser's block-flow
 // computation itself is covered by the manual-verify step in the plan.
+//
+// Manual-verify only (offline-inexpressible): `measureContentHeight` collapses
+// the box to `height:auto` before reading `scrollHeight`, because `scrollHeight`
+// is floored at `clientHeight` — without the collapse a document that reflows
+// wider or is edited shorter could only ever *grow*, never shrink. The stub
+// returns a fixed height regardless of that collapse, so shrink-on-widen cannot
+// be pinned here; verified live in-browser (narrow→wide reflow shrank the
+// measured height 434→402px, and the panel scroll extent tracked it).
 function stubScrollHeight(height: number) {
     return vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
         scrollTop: 0, scrollLeft: 0,
