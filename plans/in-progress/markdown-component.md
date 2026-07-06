@@ -425,12 +425,13 @@ Recorded during implementation; none changed the plan's core API or seam design:
   `lexer` function and the `Tokens` namespace / `Token` type exactly as the plan
   assumed, so the "v5+" assertion holds.
 - **Theme tokens.** The plan's illustrative `var(--ts-ui-foreground, …)` /
-  `var(--ts-ui-accent, …)` tokens do not exist in the theme. The real tokens are
-  used instead: `--ts-ui-text-color`, `--ts-ui-border-color`,
-  `--ts-ui-border-radius`, and the framework's single accent `--ts-ui-indicator-focus`
-  (shared with focus/selection) for link colour, each with a light/dark-safe
-  fallback. Code backgrounds use a translucent grey fallback (no dedicated
-  surface token exists).
+  `var(--ts-ui-accent, …)` tokens do not exist in the theme. The real tokens the
+  rules use are `--ts-ui-font-mono` (code/pre font family), `--ts-ui-border-radius`
+  (code/pre corners), `--ts-ui-border-color` (the blockquote bar), and the
+  framework's single accent `--ts-ui-indicator-focus` (shared with focus/selection)
+  for link colour — each with a light/dark-safe fallback. Code/pre backgrounds use
+  a hardcoded translucent grey wash (no dedicated surface token exists), and no
+  rule sets a `color`/`background` from `--ts-ui-text-color`/`--ts-ui-body-bg`.
 - **Interleaved text runs are wrapped in a `<span>`.** The DOM sink has no
   raw-text-node primitive (only `apply({ text })`, which sets `textContent`), so
   a text run that is a *sibling* of an inline element cannot be a bare text node.
