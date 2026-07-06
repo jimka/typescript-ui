@@ -62,6 +62,19 @@ describe('Video construction & tag', () => {
     });
 });
 
+describe('Video accessibility', () => {
+    it('gives the video surface an accessible label, written to the element on render', () => {
+        const video = new Video();
+        const recorder = DOM.sink as unknown as Recorder;
+
+        expect(video.getAria().getLabel()).toBe('Video');
+
+        video.getElement(true);
+
+        expect(lastAttr(recorder, 'aria-label')).toBe('Video');
+    });
+});
+
 describe('Video attribute writes on render', () => {
     it('records src / poster / autoplay / loop / muted / preload attribute writes', () => {
         const video = new Video({

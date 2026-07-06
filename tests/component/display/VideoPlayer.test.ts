@@ -22,14 +22,17 @@ afterEach(() => DOM.reset());
 type Recorder = { writes: { op: string; args: unknown[] }[] };
 
 /** Access to the player's private control internals for white-box assertions. */
+interface Labelled { getAria(): { getLabel(): string | null } }
+
 interface Internals {
-    _controls:  { getComponents(): unknown[]; isVisible(): boolean | null };
-    _scrubber:  { getMax(): number; getValue(): number };
-    _timeText:  { getText(): string };
-    _playBtn:   { getGlyph(): { getGlyphName(): string } | null };
-    _muteBtn:   { getGlyph(): { getGlyphName(): string } | null };
-    _volume:    { getValue(): number };
-    _scrubbing: boolean;
+    _controls:      { getComponents(): unknown[]; isVisible(): boolean | null };
+    _scrubber:      { getMax(): number; getValue(): number } & Labelled;
+    _timeText:      { getText(): string };
+    _playBtn:       { getGlyph(): { getGlyphName(): string } | null } & Labelled;
+    _muteBtn:       { getGlyph(): { getGlyphName(): string } | null } & Labelled;
+    _fullscreenBtn: Labelled;
+    _volume:        { getValue(): number } & Labelled;
+    _scrubbing:     boolean;
     syncFromState(state: MediaState): void;
 }
 
@@ -65,6 +68,25 @@ describe('VideoPlayer construction', () => {
 
         expect(player.isControlsVisible()).toBe(false);
         expect(internals(player)._controls.isVisible()).toBe(false);
+    });
+});
+
+describe('VideoPlayer accessibility', () => {
+    it('exposes a labelled region role on the player root', () => {
+        const player = new VideoPlayer();
+
+        expect(player.getAria().getRole()).toBe('region');
+        expect(player.getAria().getLabel()).toBe('Video player');
+    });
+
+    it('gives every control an accessible label', () => {
+        const i = internals(new VideoPlayer());
+
+        expect(i._playBtn.getAria().getLabel()).toBe('Play');
+        expect(i._muteBtn.getAria().getLabel()).toBe('Mute');
+        expect(i._fullscreenBtn.getAria().getLabel()).toBe('Fullscreen');
+        expect(i._scrubber.getAria().getLabel()).toBe('Seek');
+        expect(i._volume.getAria().getLabel()).toBe('Volume');
     });
 });
 
