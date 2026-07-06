@@ -5,6 +5,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle, MediaState } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
+import type { Size } from "~/primitive/Size.js";
 import { Border } from "~/layout/Border.js";
 import { HBox } from "~/layout/HBox.js";
 import { Placement } from "~/primitive/Placement.js";
@@ -709,13 +710,56 @@ class VideoPlayer extends Component<VideoPlayerOptions> {
         this._scrubbing = false;
     }
 
-    /** Reads the current fullscreen element and swaps the fullscreen glyph. */
+    /**
+     * Reconciles the player with the document's fullscreen state: relayouts to
+     * fill (or shrink back from) the fullscreen viewport and swaps the fullscreen
+     * glyph. Driven by the `fullscreenchange` listener, so a browser-initiated
+     * exit (Esc) is handled the same as the button.
+     *
+     * The browser's `:fullscreen` UA rules blow the root element up to fill the
+     * screen, but the absolute layout keeps sizing the children for the
+     * pre-fullscreen bounds — leaving the video in the corner over a black
+     * backdrop. Resizing the player to the viewport re-runs the `Border` layout
+     * so the video stretches to fill and the controls stay docked at the bottom;
+     * the saved in-page bounds are restored on exit.
+     */
     private syncFullscreen(): void {
         const fullscreen = DOM.source.getFullscreenElement();
         const element    = this.getElement();
 
         this._fullscreen = element != null && fullscreen === element;
         this._fullscreenBtn.setGlyph(this._fullscreen ? "compress" : "expand");
+
+        // Re-lay the children against the now fullscreen-aware inner size (see
+        // getInnerSize): entering stretches the video to fill the viewport,
+        // exiting reverts it to the in-page size.
+        this.doLayout();
+    }
+
+    /**
+     * Reports the content area a layout manager fills. While fullscreen the
+     * browser's `:fullscreen` UA rules blow the root element up to the viewport,
+     * but its parent-committed box stays at the in-page size — so the `Border`
+     * layout would keep positioning the video and controls for the small box,
+     * leaving the video in a corner over a black backdrop. Returning the viewport
+     * extent here makes every layout pass (including parent-driven relayouts that
+     * re-commit the in-page box) stretch the children to fill the screen; exiting
+     * fullscreen falls back to the inherited inner size.
+     *
+     * @returns The inner content size, or `null` before the element renders.
+     */
+    getInnerSize(): Size | null {
+        if (this._fullscreen && this.getElement()) {
+            const viewport  = DOM.source.getViewportSize();
+            const perimeter = this.getPerimeterSize();
+
+            return {
+                width:  viewport.width  - perimeter.left - perimeter.right,
+                height: viewport.height - perimeter.top  - perimeter.bottom,
+            };
+        }
+
+        return super.getInnerSize();
     }
 }
 

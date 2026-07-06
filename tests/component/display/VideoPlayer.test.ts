@@ -34,6 +34,8 @@ interface Internals {
     _volume:        { getValue(): number } & Labelled;
     _scrubbing:     boolean;
     syncFromState(state: MediaState): void;
+    syncFullscreen(): void;
+    getPerimeterSize(): { left: number; right: number; top: number; bottom: number };
 }
 
 const internals = (player: VideoPlayer): Internals => player as unknown as Internals;
@@ -225,5 +227,36 @@ describe('VideoPlayer playback control routes to the video', () => {
         player.getElement(true);
         player.setCurrentTime(15);
         expect(recorder.writes.find(w => w.op === 'setCurrentTime')?.args[0]).toBe(15);
+    });
+});
+
+describe('VideoPlayer fullscreen relayout', () => {
+    it('reports the viewport as its inner size while fullscreen so the Border fills the screen', () => {
+        const player = new VideoPlayer({ preferredSize: { width: 360, height: 240 } });
+
+        player.getElement(true);
+
+        const perimeter = internals(player).getPerimeterSize();
+        const fullscreenInner = {
+            width:  CONFIG.viewport.width  - perimeter.left - perimeter.right,
+            height: CONFIG.viewport.height - perimeter.top  - perimeter.bottom,
+        };
+
+        // Entering fullscreen: the modelled sink records the element as the
+        // fullscreen element. getInnerSize must then report the viewport so the
+        // Border stretches the video to fill it — the bug was that the children
+        // stayed at the in-page inner size, leaving the video in a corner.
+        player.enterFullscreen();
+        internals(player).syncFullscreen();
+
+        expect(player.isFullscreen()).toBe(true);
+        expect(player.getInnerSize()).toEqual(fullscreenInner);
+
+        // Exiting stops forcing the viewport size.
+        player.exitFullscreen();
+        internals(player).syncFullscreen();
+
+        expect(player.isFullscreen()).toBe(false);
+        expect(player.getInnerSize()).not.toEqual(fullscreenInner);
     });
 });
