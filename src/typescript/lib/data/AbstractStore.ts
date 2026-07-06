@@ -27,7 +27,7 @@ export type StoreListener<T = any> = (payload: T) => void;
  *
  * @category Data
  */
-export type StoreEvent = 'load' | 'beforeload' | 'datachanged' | 'add' | 'remove' | 'clear' | 'beforesync' | 'sync' | 'exception' | 'loadingchanged' | 'pagechanged' | 'pagechangeblocked' | 'sortchanged' | 'filterchange' | 'update' | 'groupchange';
+export type StoreEvent = 'load' | 'beforeload' | 'datachange' | 'add' | 'remove' | 'clear' | 'beforesync' | 'sync' | 'exception' | 'loadingchange' | 'pagechange' | 'pagechangeblocked' | 'sortchange' | 'filterchange' | 'update' | 'groupchange';
 
 /**
  * The proxy operation that failed in a {@link StoreExceptionEvent}.
@@ -196,7 +196,7 @@ export abstract class AbstractStore {
 
     // Store-level edit-batch flag. While set, owned records suppress their own
     // auto-notify (consulted through their back-ref by ModelRecord.set()); the
-    // matching commitEdit() fires a single coalesced 'datachanged'.
+    // matching commitEdit() fires a single coalesced 'datachange'.
     private _batching: boolean = false;
 
     // ── Server-side pagination state ─────────────────────────────────────────
@@ -408,7 +408,7 @@ export abstract class AbstractStore {
     }
 
     /**
-     * Sets the loading flag and fires `'loadingchanged'` only when the value actually changes.
+     * Sets the loading flag and fires `'loadingchange'` only when the value actually changes.
      *
      * @param value - The new loading state.
      */
@@ -418,7 +418,7 @@ export abstract class AbstractStore {
         }
 
         this._loading = value;
-        this.emit('loadingchanged', { loading: value });
+        this.emit('loadingchange', { loading: value });
     }
 
     /**
@@ -452,12 +452,12 @@ export abstract class AbstractStore {
      * Calling this method opts the store into the paginated `load()` path, where
      * [`ReadParams`](/api/data/interfaces/ReadParams) are forwarded to the proxy. Paginated mode also causes
      * `sort()` and `clearFilter()` to reset to page 1 and re-fetch from the proxy.
-     * Fires `'pagechanged'`.
+     * Fires `'pagechange'`.
      */
     setPageSize(n: number): this {
         this._pageSize = n;
         this._page = 1;
-        this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
+        this.emit('pagechange', { page: this._page, pageSize: this._pageSize });
 
         return this;
     }
@@ -511,7 +511,7 @@ export abstract class AbstractStore {
      * No-op when pagination is disabled or the current page equals the total
      * page count. When the store has pending unsynced changes, the navigation
      * is blocked and `'pagechangeblocked'` is emitted instead, so the user can
-     * sync or reject before leaving the page. Otherwise fires `'pagechanged'`
+     * sync or reject before leaving the page. Otherwise fires `'pagechange'`
      * and triggers a fire-and-forget reload.
      */
     nextPage(): void {
@@ -530,7 +530,7 @@ export abstract class AbstractStore {
         }
 
         this._page++;
-        this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
+        this.emit('pagechange', { page: this._page, pageSize: this._pageSize });
         void this.load();
     }
 
@@ -539,7 +539,7 @@ export abstract class AbstractStore {
      *
      * @remarks
      * Blocked when the store has pending changes — emits `'pagechangeblocked'`
-     * instead of firing `'pagechanged'`.
+     * instead of firing `'pagechange'`.
      */
     prevPage(): void {
         if (this._pageSize == null || this._page <= 1) {
@@ -552,7 +552,7 @@ export abstract class AbstractStore {
         }
 
         this._page--;
-        this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
+        this.emit('pagechange', { page: this._page, pageSize: this._pageSize });
         void this.load();
     }
 
@@ -584,7 +584,7 @@ export abstract class AbstractStore {
         }
 
         this._page = target;
-        this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
+        this.emit('pagechange', { page: this._page, pageSize: this._pageSize });
         void this.load();
 
         return this;
@@ -770,7 +770,7 @@ export abstract class AbstractStore {
     // ── Mutation ─────────────────────────────────────────────────────────────
 
     /**
-     * Adds one or more records (marked as new), updates the view, and fires 'add'/'datachanged'.
+     * Adds one or more records (marked as new), updates the view, and fires 'add'/'datachange'.
      *
      * @param data - A single plain object or an array of plain objects to add.
      *
@@ -782,7 +782,7 @@ export abstract class AbstractStore {
 
     /**
      * Inserts one or more records (marked as new) into the master list at a
-     * clamped position, rebuilds the view, and fires 'add'/'datachanged'.
+     * clamped position, rebuilds the view, and fires 'add'/'datachange'.
      *
      * @param index - The target position in the master list; clamped to
      *   `[0, allRecords.length]`.
@@ -802,7 +802,7 @@ export abstract class AbstractStore {
     /**
      * Shared body of {@link add} and {@link insert}: creates records marked new,
      * places them in the master list, rebuilds the view, and fires 'add' then
-     * 'datachanged'.
+     * 'datachange'.
      *
      * @param index - `null` appends to the master list; a number splices at the
      *   position clamped to `[0, allRecords.length]`.
@@ -833,7 +833,7 @@ export abstract class AbstractStore {
         this.applyView();
 
         this.emit('add', { records: added });
-        this.emit('datachanged', {});
+        this.emit('datachange', {});
 
         return added;
     }
@@ -865,7 +865,7 @@ export abstract class AbstractStore {
         this.applyView();
 
         this.emit('remove', { record });
-        this.emit('datachanged', {});
+        this.emit('datachange', {});
 
         return this;
     }
@@ -888,7 +888,7 @@ export abstract class AbstractStore {
         this.applyView();
 
         this.emit('clear', { removed });
-        this.emit('datachanged', {});
+        this.emit('datachange', {});
 
         return this;
     }
@@ -922,7 +922,7 @@ export abstract class AbstractStore {
      *   the `'update'` event for listeners that want per-field granularity.
      *
      * @remarks
-     * Fires `'update'` ({@link StoreUpdateEvent}) followed by `'datachanged'` so
+     * Fires `'update'` ({@link StoreUpdateEvent}) followed by `'datachange'` so
      * listeners (toolbars, pagination bars, etc.) re-evaluate state such as
      * {@link hasPendingChanges}. A store-owned record calls this automatically
      * from `set()`; it remains public for the standalone/manual case (an unowned
@@ -930,7 +930,7 @@ export abstract class AbstractStore {
      */
     notifyRecordChanged(record: ModelRecord, changes?: Record<string, FieldChange>): void {
         this.emit('update', { record, changes });
-        this.emit('datachanged', {});
+        this.emit('datachange', {});
     }
 
     /**
@@ -952,13 +952,13 @@ export abstract class AbstractStore {
     }
 
     /**
-     * Closes a store-level edit batch and fires a single `'datachanged'` so bound
+     * Closes a store-level edit batch and fires a single `'datachange'` so bound
      * views refresh once for the whole batch.
      *
      * @returns This store, for method chaining.
      *
      * @remarks
-     * Deliberately emits only `'datachanged'`, not per-record `'update'`s:
+     * Deliberately emits only `'datachange'`, not per-record `'update'`s:
      * replaying every record's update would defeat the coalescing the batch
      * exists to provide. Use a record edit batch when per-record granularity is
      * needed.
@@ -966,7 +966,7 @@ export abstract class AbstractStore {
     commitEdit(): this {
         this._batching = false;
 
-        this.emit('datachanged', {});
+        this.emit('datachange', {});
 
         return this;
     }
@@ -1031,7 +1031,7 @@ export abstract class AbstractStore {
 
     /**
      * Discards all unsynced changes — reverts dirty records, drops new ones,
-     * and restores pending removals — then fires 'datachanged'.
+     * and restores pending removals — then fires 'datachange'.
      *
      * @remarks
      * Pending removals are pushed back into `allRecords` (in their original
@@ -1072,11 +1072,11 @@ export abstract class AbstractStore {
         this._snapshotDirty = true;
         this.applyView();
 
-        this.emit('datachanged', {});
+        this.emit('datachange', {});
     }
 
     /**
-     * Persists new, dirty, and removed records via the proxy, then fires 'sync'/'datachanged'.
+     * Persists new, dirty, and removed records via the proxy, then fires 'sync'/'datachange'.
      *
      * @returns A promise that resolves when the sync run has settled.
      *
@@ -1126,7 +1126,7 @@ export abstract class AbstractStore {
         }
 
         this.emit('sync', { failures });
-        this.emit('datachanged', {});
+        this.emit('datachange', {});
     }
 
     /**
@@ -1394,7 +1394,7 @@ export abstract class AbstractStore {
      * triggers a fire-and-forget reload. With `remoteSort` on, the active
      * sorters are serialized into [`ReadParams`](/api/data/interfaces/ReadParams) so the proxy receives the new
      * ordering; without it, a paginated reload still fires but sends only
-     * `{page, pageSize}`. Fires `'sortchanged'` and `'datachanged'`.
+     * `{page, pageSize}`. Fires `'sortchange'` and `'datachange'`.
      */
     sort(field: string, dir?: 'asc' | 'desc'): Promise<void>;
     /**
@@ -1421,12 +1421,12 @@ export abstract class AbstractStore {
 
         if (reload) {
             this._page = 1;
-            this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
+            this.emit('pagechange', { page: this._page, pageSize: this._pageSize });
         }
 
         return this.applyView().then(() => {
-            this.emit('sortchanged', { sorters: this.getActiveSorters() });
-            this.emit('datachanged', {});
+            this.emit('sortchange', { sorters: this.getActiveSorters() });
+            this.emit('datachange', {});
 
             if (reload) {
                 void this.load();
@@ -1466,7 +1466,7 @@ export abstract class AbstractStore {
     }
 
     /**
-     * Removes any active sort and restores insertion order, firing 'sortchanged' and 'datachanged'.
+     * Removes any active sort and restores insertion order, firing 'sortchange' and 'datachange'.
      *
      * @returns A promise that resolves once the local view has been rebuilt.
      */
@@ -1474,15 +1474,15 @@ export abstract class AbstractStore {
         this._activeSorters = [];
 
         return this.applyView().then(() => {
-            this.emit('sortchanged', { sorters: [] });
-            this.emit('datachanged', {});
+            this.emit('sortchange', { sorters: [] });
+            this.emit('datachange', {});
         });
     }
 
     // ── Filter ───────────────────────────────────────────────────────────────
 
     /**
-     * Adds an equality filter on a property and fires 'datachanged'.
+     * Adds an equality filter on a property and fires 'datachange'.
      *
      * @param property - The field name to filter on.
      * @param value - The value a record's field must equal to pass the filter.
@@ -1518,7 +1518,7 @@ export abstract class AbstractStore {
 
     /**
      * Rebuilds the view after a filter mutation, fires `'filterchange'` (with the
-     * active filters) plus `'datachanged'`, and, when `remoteFilter` or
+     * active filters) plus `'datachange'`, and, when `remoteFilter` or
      * pagination is enabled, resets to page 1 and triggers a reload.
      *
      * @returns A promise that resolves once the local view has been rebuilt.
@@ -1528,12 +1528,12 @@ export abstract class AbstractStore {
 
         if (reload) {
             this._page = 1;
-            this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
+            this.emit('pagechange', { page: this._page, pageSize: this._pageSize });
         }
 
         return this.applyView().then(() => {
             this.emit('filterchange', { filters: this.getActiveFilters() });
-            this.emit('datachanged', {});
+            this.emit('datachange', {});
 
             if (reload) {
                 void this.load();
@@ -1542,7 +1542,7 @@ export abstract class AbstractStore {
     }
 
     /**
-     * Removes all active filters and fires 'datachanged'.
+     * Removes all active filters and fires 'datachange'.
      *
      * @remarks
      * When `remoteFilter` is enabled, or when server-side pagination is enabled
@@ -1697,7 +1697,7 @@ export abstract class AbstractStore {
      * @remarks
      * Grouping is a pure read over the existing view ({@link getGroups}), so
      * changing the group field does **not** rebuild the view or fire
-     * `'datachanged'`; it fires only `'groupchange'` ({@link StoreGroupChangeEvent}).
+     * `'datachange'`; it fires only `'groupchange'` ({@link StoreGroupChangeEvent}).
      */
     setGroupField(field: string | null): this {
         if (this._groupField === field) {

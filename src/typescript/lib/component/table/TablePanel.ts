@@ -74,7 +74,7 @@ class TablePanel extends Container {
         super.addComponent(this._toolbar, { placement: Placement.NORTH });
         super.addComponent(this._table,   { placement: Placement.CENTER });
 
-        store.on('loadingchanged', (payload: { loading: boolean }) => {
+        store.on('loadingchange', (payload: { loading: boolean }) => {
             if (!this._spinner) {
                 this._spinner = new ProgressSpinner(24);
             }
@@ -89,7 +89,7 @@ class TablePanel extends Container {
         const refreshSyncButtons = (): void => this.refreshSyncButtons();
         store.on('add', refreshSyncButtons);
         store.on('remove', refreshSyncButtons);
-        store.on('datachanged', refreshSyncButtons);
+        store.on('datachange', refreshSyncButtons);
         store.on('sync', refreshSyncButtons);
         store.on('load', refreshSyncButtons);
 

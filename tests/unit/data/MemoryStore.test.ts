@@ -52,8 +52,8 @@ describe('MemoryStore', () => {
     it('off unregisters a listener', () => {
         const store = makeStore([]);
         const spy = vi.fn();
-        store.on('datachanged', spy);
-        store.off('datachanged', spy);
+        store.on('datachange', spy);
+        store.off('datachange', spy);
         store.add({ id: 1, name: 'X', score: 0 });
         expect(spy).not.toHaveBeenCalled();
     });
@@ -120,7 +120,7 @@ describe('MemoryStore auto-notify', () => {
         const datachangedSpy = vi.fn();
 
         store.on('update', updateSpy);
-        store.on('datachanged', datachangedSpy);
+        store.on('datachange', datachangedSpy);
         record.set('name', 'Zed');
 
         expect(updateSpy).toHaveBeenCalledOnce();
@@ -138,7 +138,7 @@ describe('MemoryStore auto-notify', () => {
         const loadSpy        = vi.fn();
 
         store.on('update', updateSpy);
-        store.on('datachanged', datachangedSpy);
+        store.on('datachange', datachangedSpy);
         store.on('load', loadSpy);
         store.loadData(SAMPLE);
 
@@ -163,7 +163,7 @@ describe('MemoryStore auto-notify', () => {
         const datachangedSpy = vi.fn();
 
         store.on('update', updateSpy);
-        store.on('datachanged', datachangedSpy);
+        store.on('datachange', datachangedSpy);
 
         store.beginEdit();
         store.getAt(0)!.set('name', 'X');
@@ -182,7 +182,7 @@ describe('MemoryStore auto-notify', () => {
         const datachangedSpy = vi.fn();
 
         store.on('update', updateSpy);
-        store.on('datachanged', datachangedSpy);
+        store.on('datachange', datachangedSpy);
         record.setSilent('name', 'Q');
 
         expect(updateSpy).not.toHaveBeenCalled();
@@ -255,7 +255,7 @@ describe('MemoryStore auto-notify', () => {
         const changedSpy = vi.fn();
 
         store.on('clear', clearSpy);
-        store.on('datachanged', changedSpy);
+        store.on('datachange', changedSpy);
         store.removeAll();
 
         expect(clearSpy).toHaveBeenCalledOnce();
@@ -315,9 +315,9 @@ describe('MemoryStore auto-notify', () => {
         const events: string[] = [];
 
         store.on('add', () => events.push('add'));
-        store.on('datachanged', () => events.push('datachanged'));
+        store.on('datachange', () => events.push('datachange'));
         store.insert(0, { id: 1, name: 'A', score: 0 });
 
-        expect(events).toEqual(['add', 'datachanged']);
+        expect(events).toEqual(['add', 'datachange']);
     });
 });

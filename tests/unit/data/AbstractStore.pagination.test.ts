@@ -66,7 +66,7 @@ describe('AbstractStore pagination — nextPage', () => {
     it('is a no-op when pageSize is unset (page unchanged, no pagechanged)', () => {
         const store = new Store(MODEL);
         const spy = vi.fn();
-        store.on('pagechanged', spy);
+        store.on('pagechange', spy);
         store.nextPage();
         expect(store.getPage()).toBe(1);
         expect(spy).not.toHaveBeenCalled();
@@ -76,7 +76,7 @@ describe('AbstractStore pagination — nextPage', () => {
         const { store } = await paginated(30, 10);   // 3 pages
         store.goToPage(3);
         const spy = vi.fn();
-        store.on('pagechanged', spy);
+        store.on('pagechange', spy);
         store.nextPage();
         expect(store.getPage()).toBe(3);
         expect(spy).not.toHaveBeenCalled();
@@ -86,7 +86,7 @@ describe('AbstractStore pagination — nextPage', () => {
         const { store, proxy } = await paginated(30, 10);
         const before = proxy.calls.length;
         const spy = vi.fn();
-        store.on('pagechanged', spy);
+        store.on('pagechange', spy);
 
         store.nextPage();
 
@@ -101,7 +101,7 @@ describe('AbstractStore pagination — prevPage', () => {
     it('is a no-op on page 1', async () => {
         const { store } = await paginated(30, 10);
         const spy = vi.fn();
-        store.on('pagechanged', spy);
+        store.on('pagechange', spy);
         store.prevPage();
         expect(store.getPage()).toBe(1);
         expect(spy).not.toHaveBeenCalled();
@@ -111,7 +111,7 @@ describe('AbstractStore pagination — prevPage', () => {
         const { store } = await paginated(30, 10);
         store.goToPage(3);
         const spy = vi.fn();
-        store.on('pagechanged', spy);
+        store.on('pagechange', spy);
         store.prevPage();
         expect(store.getPage()).toBe(2);
         expect(spy).toHaveBeenCalledOnce();
@@ -137,7 +137,7 @@ describe('AbstractStore pagination — goToPage', () => {
         const { store, proxy } = await paginated(30, 10);
         const before = proxy.calls.length;
         const spy = vi.fn();
-        store.on('pagechanged', spy);
+        store.on('pagechange', spy);
         store.goToPage(1);   // already on page 1
         expect(spy).not.toHaveBeenCalled();
         expect(proxy.calls.length).toBe(before);
@@ -146,7 +146,7 @@ describe('AbstractStore pagination — goToPage', () => {
     it('is a no-op when pageSize is unset', () => {
         const store = new Store(MODEL);
         const spy = vi.fn();
-        store.on('pagechanged', spy);
+        store.on('pagechange', spy);
         store.goToPage(3);
         expect(store.getPage()).toBe(1);
         expect(spy).not.toHaveBeenCalled();
@@ -168,7 +168,7 @@ describe('AbstractStore pagination — dirty guard', () => {
         const blocked = vi.fn();
         const changed = vi.fn();
         store.on('pagechangeblocked', blocked);
-        store.on('pagechanged', changed);
+        store.on('pagechange', changed);
 
         store.nextPage();
 
@@ -197,7 +197,7 @@ describe('AbstractStore pagination — dirty guard', () => {
         expect(store.hasPendingChanges()).toBe(false);
 
         const changed = vi.fn();
-        store.on('pagechanged', changed);
+        store.on('pagechange', changed);
         store.nextPage();
 
         expect(changed).toHaveBeenCalledOnce();

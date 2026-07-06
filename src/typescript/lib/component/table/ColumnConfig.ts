@@ -97,7 +97,7 @@ export interface ColumnConfig {
      *
      * The predicate fires on every row rebind: when scrolling pulls
      * new records into the visible window, when the store emits
-     * `'datachanged'` (which
+     * `'datachange'` (which
      * [`notifyRecordChanged`](/api/data/classes/AbstractStore#notifyRecordChanged)
      * does), or when columns are hidden / shown. It MUST be O(1) and
      * pure — read fields off `record`, return a boolean, do not call
@@ -208,7 +208,7 @@ export interface ColumnSpec {
      *
      * The predicate fires on every row rebind — when scrolling pulls
      * new records into the visible window, when the store emits
-     * `'datachanged'` (which
+     * `'datachange'` (which
      * [`notifyRecordChanged`](/api/data/classes/AbstractStore#notifyRecordChanged)
      * does), or when columns are hidden / shown. It MUST be O(1) and
      * pure: read fields off `record`, return a boolean, do not call

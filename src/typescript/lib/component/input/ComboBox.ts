@@ -1105,7 +1105,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         this._options.glyphField   = glyphField;
 
         if (this._boundStore) {
-            (['load', 'add', 'remove', 'datachanged'] as const).forEach(e =>
+            (['load', 'add', 'remove', 'datachange'] as const).forEach(e =>
                 this._boundStore!.off(e, this._onStoreRefresh)
             );
         }
@@ -1117,7 +1117,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
 
         this._boundStore = store;
 
-        (['load', 'add', 'remove', 'datachanged'] as const).forEach(e =>
+        (['load', 'add', 'remove', 'datachange'] as const).forEach(e =>
             store.on(e, this._onStoreRefresh)
         );
 

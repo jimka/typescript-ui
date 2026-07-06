@@ -922,7 +922,7 @@ abstract class AbstractCustomList<
         const oldStore = this._options.store;
 
         if (this._storeRefresh && oldStore) {
-            (['load', 'add', 'remove', 'datachanged', 'sync'] as const)
+            (['load', 'add', 'remove', 'datachange', 'sync'] as const)
                 .forEach(e => oldStore.off(e, this._storeRefresh!));
         }
 
@@ -938,7 +938,7 @@ abstract class AbstractCustomList<
         store.on('load',        refresh);
         store.on('add',         refresh);
         store.on('remove',      refresh);
-        store.on('datachanged', refresh);
+        store.on('datachange', refresh);
         store.on('sync',        refresh);
 
         this.refreshFromStore();

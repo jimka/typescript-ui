@@ -271,7 +271,7 @@ describe('Body selectionchange event', () => {
 
         const recs = store.getAll();
         const seen: number[] = [];
-        b.on('selectionchange', (records) => seen.push(records.length));
+        b.on('selection', (records) => seen.push(records.length));
 
         b.selectRecord(recs[0]);
         b.setSelectedRecords([recs[0], recs[1]]);
@@ -377,7 +377,7 @@ describe('Body cellclick event', () => {
         const rec   = row.getData();
 
         const order: string[] = [];
-        b.on('selectionchange', () => order.push('selection'));
+        b.on('selection', () => order.push('selection'));
         b.on('cellclick',       () => order.push('cellclick'));
 
         (b as any).onRowClick(row, makeEvent(cells[0].getElement(), 'click'));

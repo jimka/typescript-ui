@@ -213,7 +213,7 @@ describe('AbstractStore symmetric + lifecycle events', () => {
         let removed: ModelRecord[] = [];
         let dataChanged = false;
         store.on('clear', (p: { removed: ModelRecord[] }) => { removed = p.removed; });
-        store.on('datachanged', () => { dataChanged = true; });
+        store.on('datachange', () => { dataChanged = true; });
 
         store.removeAll();
 
@@ -244,11 +244,11 @@ describe('AbstractStore symmetric + lifecycle events', () => {
         let updated: ModelRecord | undefined;
         const order: string[] = [];
         store.on('update', (p: { record: ModelRecord }) => { updated = p.record; order.push('update'); });
-        store.on('datachanged', () => order.push('datachanged'));
+        store.on('datachange', () => order.push('datachange'));
 
         store.notifyRecordChanged(record);
 
         expect(updated).toBe(record);
-        expect(order).toEqual(['update', 'datachanged']);
+        expect(order).toEqual(['update', 'datachange']);
     });
 });

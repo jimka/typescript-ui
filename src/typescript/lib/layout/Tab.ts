@@ -27,18 +27,18 @@ import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
  *
  * `"tabclose"` fires when a tab is closed (carrying the removed content);
  * `"empty"` fires when the strip loses its last tab by any path — close,
- * tear-off, or re-dock — and carries no payload; `"detached"` fires when a tab
+ * tear-off, or re-dock — and carries no payload; `"detach"` fires when a tab
  * is torn off into a new floating window (carrying that window), the one
- * structural change that does *not* always empty the source strip; `"docked"`
+ * structural change that does *not* always empty the source strip; `"dock"`
  * fires when a foreign tab is dropped onto this strip (carrying the docked
- * content), the structural counterpart of `"detached"` — a tab arrived by drop;
- * `"activated"` fires when the active tab changes via a click or
+ * content), the structural counterpart of `"detach"` — a tab arrived by drop;
+ * `"activate"` fires when the active tab changes via a click or
  * {@link Tab.setActiveTabIndex} (carrying the now-active content and its index),
  * but *not* on the silent post-close re-selection of a surviving sibling.
  *
  * @category Layouts
  */
-export type TabEvent = "tabclose" | "empty" | "detached" | "activated" | "docked";
+export type TabEvent = "tabclose" | "empty" | "detach" | "activate" | "dock";
 
 /**
  * How a torn-off tab's floating window hosts its content.
@@ -891,12 +891,12 @@ class Tab extends LayoutManager {
         DOM.sink.appendChild(container.getElement(true)!, this._bar.getElement(true)!);
 
         this._bar.on("tabpressed",       this._onBarTabPressed);
-        this._bar.on("reordered",        this._onBarReordered);
+        this._bar.on("reorder",        this._onBarReordered);
         this._bar.on("tabclose",         this._onBarTabClose);
         this._bar.on("dockrequested",    this._onBarDockRequested);
         this._bar.on("tabdragstart",     this._onBarTabDragStart);
         this._bar.on("tearoffrequested", this._onBarTearOffRequested);
-        this._bar.on("detached",         this._onBarDetached);
+        this._bar.on("detach",         this._onBarDetached);
         this._bar.on("dockhover",        this._onBarDockHover);
 
         return this;
@@ -915,12 +915,12 @@ class Tab extends LayoutManager {
         }
 
         this._bar.off("tabpressed",       this._onBarTabPressed);
-        this._bar.off("reordered",        this._onBarReordered);
+        this._bar.off("reorder",        this._onBarReordered);
         this._bar.off("tabclose",         this._onBarTabClose);
         this._bar.off("dockrequested",    this._onBarDockRequested);
         this._bar.off("tabdragstart",     this._onBarTabDragStart);
         this._bar.off("tearoffrequested", this._onBarTearOffRequested);
-        this._bar.off("detached",         this._onBarDetached);
+        this._bar.off("detach",         this._onBarDetached);
         this._bar.off("dockhover",        this._onBarDockHover);
 
         this._bar.dispose();
@@ -953,7 +953,7 @@ class Tab extends LayoutManager {
             // here). The post-close re-selection uses setActiveVisual, which does
             // not route through here, so a close never emits a spurious activation.
             if (entry.component) {
-                this.emit("activated", entry.component, idx);
+                this.emit("activate", entry.component, idx);
             }
         }
 
@@ -961,7 +961,7 @@ class Tab extends LayoutManager {
     };
 
     /**
-     * Strip `"reordered"` handler: an in-strip reorder committed. Re-derives the
+     * Strip `"reorder"` handler: an in-strip reorder committed. Re-derives the
      * content order from the strip's new id order, keeping the selected content
      * selected by identity, then re-lays out.
      *
@@ -1087,8 +1087,8 @@ class Tab extends LayoutManager {
 
             // Announce the merge so a tree owner can react to a tab-bar dock the
             // same way it reacts to a tear-off. The structural counterpart of
-            // "detached": a tab arrived by drop rather than leaving by tear-off.
-            this.emit("docked", content);
+            // "detach": a tab arrived by drop rather than leaving by tear-off.
+            this.emit("dock", content);
         }
     };
 
@@ -1146,7 +1146,7 @@ class Tab extends LayoutManager {
     };
 
     /**
-     * Strip `"detached"` handler: a cell's drag was released onto a target. Clears
+     * Strip `"detach"` handler: a cell's drag was released onto a target. Clears
      * the registry entry; if the content actually moved out of this container (a
      * dock into another strip, not a within-strip reorder), drops its cell.
      *
@@ -1932,7 +1932,7 @@ class Tab extends LayoutManager {
         // model. `removeEntryKeepingContent` already fired `"empty"` when this was
         // the strip's last tab, but a tear-off that leaves siblings behind fires
         // nothing else — this is the signal that covers that case.
-        this.emit("detached", win);
+        this.emit("detach", win);
     }
 
     /**
@@ -2076,20 +2076,20 @@ class Tab extends LayoutManager {
      */
     on(event: "empty", listener: () => void): this;
     /**
-     * Registers a listener for the `"detached"` event, which fires after a tab is
+     * Registers a listener for the `"detach"` event, which fires after a tab is
      * torn off into a new floating window, carrying that window. Unlike `"empty"`,
      * it fires whether or not the tear-off left the source strip empty — so a
      * tree owner such as [`Dock`](/api/overlay/classes/Dock) can react to *every*
      * tear-off, not just the ones that drain the strip.
      *
-     * @param event - The `"detached"` event.
+     * @param event - The `"detach"` event.
      * @param listener - Invoked with the torn-off window.
      *
      * @returns This tab layout, for method chaining.
      */
-    on(event: "detached", listener: (window: AbstractWindow) => void): this;
+    on(event: "detach", listener: (window: AbstractWindow) => void): this;
     /**
-     * Registers a listener for the `"activated"` event, which fires when the
+     * Registers a listener for the `"activate"` event, which fires when the
      * active tab changes via a click or {@link setActiveTabIndex}, carrying the
      * now-active content component and its zero-based index. It does *not* fire
      * on the post-close re-selection of a surviving sibling (that re-selection
@@ -2097,26 +2097,26 @@ class Tab extends LayoutManager {
      * [`Dock`](/api/overlay/classes/Dock) can treat it as a genuine
      * active-tab-change signal.
      *
-     * @param event - The `"activated"` event.
+     * @param event - The `"activate"` event.
      * @param listener - Invoked with the now-active content and its index.
      *
      * @returns This tab layout, for method chaining.
      */
-    on(event: "activated", listener: (content: Component, index: number) => void): this;
+    on(event: "activate", listener: (content: Component, index: number) => void): this;
     /**
-     * Registers a listener for the `"docked"` event, which fires after a foreign
+     * Registers a listener for the `"dock"` event, which fires after a foreign
      * tab is dropped onto this strip, carrying the docked content. It is the
-     * structural counterpart of `"detached"` (a tab arrived by drop, vs. a tab
+     * structural counterpart of `"detach"` (a tab arrived by drop, vs. a tab
      * left by tear-off), so a tree owner such as
      * [`Dock`](/api/overlay/classes/Dock) can react to a tab-bar merge the same
      * way it reacts to a tear-off.
      *
-     * @param event - The `"docked"` event.
+     * @param event - The `"dock"` event.
      * @param listener - Invoked with the docked content.
      *
      * @returns This tab layout, for method chaining.
      */
-    on(event: "docked", listener: (content: Component) => void): this;
+    on(event: "dock", listener: (content: Component) => void): this;
     on(event: TabEvent,   listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -2147,9 +2147,9 @@ class Tab extends LayoutManager {
      */
     protected emit(event: "tabclose", component: Component): void;
     protected emit(event: "empty"): void;
-    protected emit(event: "detached", window: AbstractWindow): void;
-    protected emit(event: "activated", content: Component, index: number): void;
-    protected emit(event: "docked",   content: Component): void;
+    protected emit(event: "detach", window: AbstractWindow): void;
+    protected emit(event: "activate", content: Component, index: number): void;
+    protected emit(event: "dock",   content: Component): void;
     protected emit(event: TabEvent,   ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }

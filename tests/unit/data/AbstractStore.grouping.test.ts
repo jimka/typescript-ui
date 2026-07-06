@@ -40,7 +40,7 @@ describe('AbstractStore grouping — group field', () => {
     it('does not rebuild the view or fire datachanged (grouping is a pure read)', () => {
         const store = makeStore(SAMPLE);
         const datachangedSpy = vi.fn();
-        store.on('datachanged', datachangedSpy);
+        store.on('datachange', datachangedSpy);
 
         store.setGroupField('cat');
 

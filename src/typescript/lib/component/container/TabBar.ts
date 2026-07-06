@@ -74,7 +74,7 @@ const SCROLL_ARROW_STEP = 80;
  * touches the content, a `Window`, or a `Tab`.
  *
  * - `"tabpressed"(id)` — a cell was activated; the owner swaps content / runs lazy-load.
- * - `"reordered"(fromId, toIndex)` — an in-strip reorder committed; the owner
+ * - `"reorder"(fromId, toIndex)` — an in-strip reorder committed; the owner
  *   re-derives its content order from {@link TabBar.getEntryIds}.
  * - `"tabclose"(id)` — a cell's ✕ was clicked; the owner removes the content.
  * - `"dockrequested"(componentId, slot)` — a foreign tab was dropped here; the
@@ -83,7 +83,7 @@ const SCROLL_ARROW_STEP = 80;
  *   content so a foreign strip's drop can resolve it.
  * - `"tearoffrequested"(id, clientX, clientY, forceBare)` — a cell was released
  *   over empty space; the owner tears it off (only if its content is ready).
- * - `"detached"(id)` — a cell's drag was released onto a target; the owner drops
+ * - `"detach"(id)` — a cell's drag was released onto a target; the owner drops
  *   the cell only if the content left its container (a within-strip reorder is a
  *   no-op for the owner).
  * - `"dockhover"()` — a foreign tab has dwelt over this strip long enough to
@@ -93,7 +93,7 @@ const SCROLL_ARROW_STEP = 80;
  * @category Components
  */
 export type TabBarEvent =
-    "tabpressed" | "reordered" | "tabclose" | "dockrequested" | "tabdragstart" | "tearoffrequested" | "detached" | "dockhover";
+    "tabpressed" | "reorder" | "tabclose" | "dockrequested" | "tabdragstart" | "tearoffrequested" | "detach" | "dockhover";
 
 /**
  * Construction-time options for {@link TabBar} — the bar-only subset of the
@@ -2701,7 +2701,7 @@ class TabBar extends Container<TabBarOptions> {
     /**
      * Source-side end of a header gesture. A release over empty space emits
      * `"tearoffrequested"`; a release a target consumed (`dropped`) emits
-     * `"detached"`. The owner applies the content guards (whether the cell is
+     * `"detach"`. The owner applies the content guards (whether the cell is
      * ready, whether its content actually left this container) and acts.
      *
      * @param entry - The dragged cell.
@@ -2716,7 +2716,7 @@ class TabBar extends Container<TabBarOptions> {
             return;
         }
 
-        this.emit("detached", entry.id);
+        this.emit("detach", entry.id);
     }
 
     /**
@@ -2811,7 +2811,7 @@ class TabBar extends Container<TabBarOptions> {
 
     /**
      * Moves a cell from `fromIdx` to the insertion slot `toIdx`, reorders the
-     * wrapper among the clip frame's children, and emits `"reordered"` so the
+     * wrapper among the clip frame's children, and emits `"reorder"` so the
      * owner re-derives its content order. The active cell (tracked by id) stays
      * active across the move.
      *
@@ -2840,7 +2840,7 @@ class TabBar extends Container<TabBarOptions> {
 
         this._tabClip.moveItem(entry.button, dest);
 
-        this.emit("reordered", fromId, dest);
+        this.emit("reorder", fromId, dest);
     }
 
     /**
@@ -2898,12 +2898,12 @@ class TabBar extends Container<TabBarOptions> {
      * @returns This tab strip, for method chaining.
      */
     on(event: "tabpressed",       listener: (id: string) => void): this;
-    on(event: "reordered",        listener: (fromId: string, toIndex: number) => void): this;
+    on(event: "reorder",        listener: (fromId: string, toIndex: number) => void): this;
     on(event: "tabclose",         listener: (id: string) => void): this;
     on(event: "dockrequested",    listener: (componentId: string, slot: number) => void): this;
     on(event: "tabdragstart",     listener: (id: string) => void): this;
     on(event: "tearoffrequested", listener: (id: string, clientX: number, clientY: number, forceBare: boolean) => void): this;
-    on(event: "detached",         listener: (id: string) => void): this;
+    on(event: "detach",         listener: (id: string) => void): this;
     on(event: "dockhover",        listener: () => void): this;
     on(event: TabBarEvent, listener: Function): this {
         this._listeners.add(event, listener);
@@ -2934,12 +2934,12 @@ class TabBar extends Container<TabBarOptions> {
      * @param payload - Forwarded to each listener.
      */
     protected emit(event: "tabpressed",       id: string): void;
-    protected emit(event: "reordered",        fromId: string, toIndex: number): void;
+    protected emit(event: "reorder",        fromId: string, toIndex: number): void;
     protected emit(event: "tabclose",         id: string): void;
     protected emit(event: "dockrequested",    componentId: string, slot: number): void;
     protected emit(event: "tabdragstart",     id: string): void;
     protected emit(event: "tearoffrequested", id: string, clientX: number, clientY: number, forceBare: boolean): void;
-    protected emit(event: "detached",         id: string): void;
+    protected emit(event: "detach",         id: string): void;
     protected emit(event: "dockhover"): void;
     protected emit(event: TabBarEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
