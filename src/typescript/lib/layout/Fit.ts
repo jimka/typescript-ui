@@ -120,10 +120,10 @@ class Fit extends LayoutManager {
             return null;
         }
 
-        const perimiterSize = container.getPerimiterSize();
+        const perimeterSize = container.getPerimeterSize();
 
-        const outerWidth = perimiterSize.left + perimiterSize.right;
-        const outerHeight = perimiterSize.top + perimiterSize.bottom;
+        const outerWidth = perimeterSize.left + perimeterSize.right;
+        const outerHeight = perimeterSize.top + perimeterSize.bottom;
 
         // Size the displayed child only: a hidden sole child contributes no
         // size, so the Fit container reports none and its own parent reserves

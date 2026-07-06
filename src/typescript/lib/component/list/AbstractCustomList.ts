@@ -475,7 +475,7 @@ class CustomListRow extends Component {
             return this;
         }
 
-        const perim = this.getPerimiterSize();
+        const perim = this.getPerimeterSize();
 
         this._renderer.setAutoCommitStyle(false);
         this._renderer.setX(perim.left);

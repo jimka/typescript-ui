@@ -74,13 +74,13 @@ class HFlow extends FlowLayout {
             return null;
         }
 
-        const perimiterSize = container.getPerimiterSize();
+        const perimeterSize = container.getPerimeterSize();
         const components = container.getLaidOutComponents();
         const uniformWidth  = this.isUniformWidth();
         const uniformHeight = this.isUniformHeight();
         const extents = (uniformWidth || uniformHeight) ? this.computeUniformExtents(components) : { width: 0, height: 0 };
 
-        let width = perimiterSize.left + perimiterSize.right;
+        let width = perimeterSize.left + perimeterSize.right;
         const heights: number[] = [];
         const baselines: Array<number | null> = [];
 
@@ -105,7 +105,7 @@ class HFlow extends FlowLayout {
 
         let height = uniformHeight ? extents.height : this.computeRowHeight(heights, baselines);
 
-        height += perimiterSize.top + perimiterSize.bottom;
+        height += perimeterSize.top + perimeterSize.bottom;
 
         return {
             width: width,
@@ -126,7 +126,7 @@ class HFlow extends FlowLayout {
             return null;
         }
 
-        const perimiterSize = container.getPerimiterSize();
+        const perimeterSize = container.getPerimeterSize();
         const components = container.getLaidOutComponents();
 
         let maxChildMinWidth = 0;
@@ -143,11 +143,11 @@ class HFlow extends FlowLayout {
             }
         }
 
-        const width = perimiterSize.left + perimiterSize.right + maxChildMinWidth;
+        const width = perimeterSize.left + perimeterSize.right + maxChildMinWidth;
 
         let height = this.computeRowHeight(heights, baselines);
 
-        height += perimiterSize.top + perimiterSize.bottom;
+        height += perimeterSize.top + perimeterSize.bottom;
 
         return {
             width: width,
@@ -171,12 +171,12 @@ class HFlow extends FlowLayout {
             return null;
         }
 
-        const perimiterSize = container.getPerimiterSize();
+        const perimeterSize = container.getPerimeterSize();
         const components = container.getLaidOutComponents();
         const uniformWidth = this.isUniformWidth();
         const extents = uniformWidth ? this.computeUniformExtents(components) : { width: 0, height: 0 };
 
-        let width = perimiterSize.left + perimiterSize.right;
+        let width = perimeterSize.left + perimeterSize.right;
         let height = 0;
         let widthUnbounded = false;
         let heightUnbounded = false;
@@ -212,7 +212,7 @@ class HFlow extends FlowLayout {
         }
 
         width += this._spacing * Math.max(0, components.length - 1);
-        height += perimiterSize.top + perimiterSize.bottom;
+        height += perimeterSize.top + perimeterSize.bottom;
 
         return {
             width:  widthUnbounded  ? UNBOUNDED : width,

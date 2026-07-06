@@ -28,7 +28,7 @@ const _defaultFieldSetOptions: Partial<FieldSetOptions> = {
     borderRadius:  "var(--ts-ui-border-radius, 4px)",
     // Intrinsic chrome carried as insets, not CSS padding. Top (5) is the gap
     // above content; the legend's own reserved height is added separately in
-    // getPerimiterSize so it counts toward the box height without also pushing
+    // getPerimeterSize so it counts toward the box height without also pushing
     // the child origin (a <fieldset> already offsets its absolutely positioned
     // children below the legend). Sides/bottom (8) are the inner gutter.
     insets:        new Insets(5, 8, 8, 8),
@@ -115,7 +115,7 @@ class FieldSet extends Component {
             return this;
         }
 
-        const perim   = this.getPerimiterSize();
+        const perim   = this.getPerimeterSize();
         const chromeW = perim.left + perim.right;
         const innerW  = Math.max(0, width - chromeW);
 
@@ -139,7 +139,7 @@ class FieldSet extends Component {
             return baseMin;
         }
 
-        const perim   = this.getPerimiterSize();
+        const perim   = this.getPerimeterSize();
         const chromeW = perim.left + perim.right;
 
         const fieldsetW = legendMin.width + chromeW;
@@ -175,8 +175,8 @@ class FieldSet extends Component {
      *
      * @returns The base perimeter with the legend clearance added to `top`.
      */
-    getPerimiterSize() {
-        const perim = super.getPerimiterSize();
+    getPerimeterSize() {
+        const perim = super.getPerimeterSize();
 
         perim.top += this.legendClearance();
 

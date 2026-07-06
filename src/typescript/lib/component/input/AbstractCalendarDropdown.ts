@@ -671,13 +671,13 @@ abstract class AbstractCalendarDropdown<
     /**
      * Sums the fixed-height rows + any subclass-supplied extras + the
      * dropdown's chrome (border + insets) to produce the panel's outer
-     * height. `getPerimiterSize` rather than `getInsets` so the 1-px
+     * height. `getPerimeterSize` rather than `getInsets` so the 1-px
      * border counts.
      *
      * @returns Panel outer height in pixels.
      */
     protected computePanelHeight(): number {
-        const perim  = this.getPerimiterSize();
+        const perim  = this.getPerimeterSize();
         const innerH = MONTH_HEIGHT + ROOT_GAP + HEADER_HEIGHT + ROOT_GAP + DAY_GRID_HEIGHT + this.getExtraInnerHeight();
 
         return perim.top + perim.bottom + innerH;

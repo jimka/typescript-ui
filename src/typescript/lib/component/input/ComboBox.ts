@@ -216,7 +216,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         // Add the dropdown's border to the natural row stack so the inner List
         // (which receives `outerHeight - border`) has room for the rows without
         // overflowing by 2 px and triggering an unnecessary scrollbar.
-        const perim    = this.getPerimiterSize();
+        const perim    = this.getPerimeterSize();
         const chromeH  = perim.top + perim.bottom;
         const chromeW  = perim.left + perim.right;
         const naturalH = items.length * COMBOBOX_DROPDOWN_ROW_HEIGHT_PX + chromeH;

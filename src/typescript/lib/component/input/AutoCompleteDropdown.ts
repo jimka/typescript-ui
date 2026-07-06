@@ -138,7 +138,7 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
         this._list.setItemsArray(suggestions.map(s => ({ key: s, label: s })));
         this.resumeLayout();
 
-        const perim   = this.getPerimiterSize();
+        const perim   = this.getPerimeterSize();
         const chromeH = perim.top + perim.bottom;
         const rect    = DOM.source.getElementRect(anchorEl);
 

@@ -923,7 +923,7 @@ class Accordion extends LayoutManager {
             return null;
         }
 
-        const perimeterSize = container.getPerimiterSize();
+        const perimeterSize = container.getPerimeterSize();
         const components = container.getComponents();
         let totalHeight = perimeterSize.top + perimeterSize.bottom;
         let maxWidth = 0;
@@ -987,7 +987,7 @@ class Accordion extends LayoutManager {
             return null;
         }
 
-        const perimeterSize = container.getPerimiterSize();
+        const perimeterSize = container.getPerimeterSize();
         const components = container.getComponents();
         let totalHeight = perimeterSize.top + perimeterSize.bottom;
         let maxWidth = 0;

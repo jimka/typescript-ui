@@ -1938,7 +1938,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     /**
      * Computes the auto-sized preferred size from the content row's
      * preferred size plus this button's perimeter (insets + border).
-     * Mirrors `Fit.getPreferredSize`'s use of `getPerimiterSize` so the
+     * Mirrors `Fit.getPreferredSize`'s use of `getPerimeterSize` so the
      * border width isn't truncated off the text. Subclasses override to
      * alter — the typical case is replacing the derived height with a
      * fixed token (see `MenuBarButton`).
@@ -1948,7 +1948,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     protected computePreferredSize(): { width: number; height: number } {
         const content = this._content?.getPreferredSize() ?? { width: 0, height: 0 };
-        const perim   = this.getPerimiterSize();
+        const perim   = this.getPerimeterSize();
 
         return {
             width:  content.width  + perim.left + perim.right,

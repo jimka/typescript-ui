@@ -1270,9 +1270,9 @@ class Tab extends LayoutManager {
             return null;
         }
 
-        const perimiter = container.getPerimiterSize();
-        const outerWidth = perimiter.left + perimiter.right;
-        const outerHeight = perimiter.top + perimiter.bottom;
+        const perimeter = container.getPerimeterSize();
+        const outerWidth = perimeter.left + perimeter.right;
+        const outerHeight = perimeter.top + perimeter.bottom;
         const thickness = this._bar.stripThickness();
 
         if (this.isVertical()) {

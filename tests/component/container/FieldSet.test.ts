@@ -53,7 +53,7 @@ describe('FieldSet perimeter and size', () => {
         // the assertion tracks the default inset, not a captured number.
         const insetTop = fs.getInsets()!.getTop();
 
-        expect(fs.getPerimiterSize().top).toBe(insetTop + LEGEND_CLEARANCE_FALLBACK);
+        expect(fs.getPerimeterSize().top).toBe(insetTop + LEGEND_CLEARANCE_FALLBACK);
     });
 
     it('surfaces the default minSize / preferredSize through the getters', () => {
