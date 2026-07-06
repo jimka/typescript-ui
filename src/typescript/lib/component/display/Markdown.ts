@@ -157,7 +157,9 @@ export interface MarkdownOptions extends ComponentOptions {
  * in a vertically-scrolling [`Panel`](/api/component/container/classes/Panel)
  * (`setAutoScroll("y")`) and it scrolls. The height is re-measured on content,
  * width, and theme change; only the height axis is derived (the width stays
- * freely assignable). An explicit `preferredSize`/`setMinSize` still overrides it.
+ * freely assignable). The measured height is reported as a *minimum*, so an
+ * explicit `preferredSize`/`setMinSize` taller than the content still wins; to
+ * cap the component below its content, give it a bounded scroll host.
  *
  * @example
  * ```typescript
