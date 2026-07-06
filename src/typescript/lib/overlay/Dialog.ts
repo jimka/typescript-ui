@@ -694,10 +694,10 @@ class Dialog extends Component implements DismissableLayer {
         this._backdrop.setZIndex(panelZ - 1);
 
         const backdropEl = this._backdrop.getElement(true)!;
-        DOM.sink.appendChild(DOM.source.getDocumentElement(), backdropEl);
+        LayerManager.mount(backdropEl);
 
         const dialogEl = this.getElement(true)!;
-        DOM.sink.appendChild(DOM.source.getDocumentElement(), dialogEl);
+        LayerManager.mount(dialogEl);
 
         // Trap wheels no inner scroller claimed so the content behind a modal
         // dialog stays inert, matching modality.
@@ -995,14 +995,14 @@ class Dialog extends Component implements DismissableLayer {
     /**
      * Returns the dialog's title-bar component.
      *
-     * @returns The internal title-bar instance, exposing `getText()` and
+     * @returns The internal title-bar instance, exposing `getTitleText()` and
      *          `setGlyph()` for callers (e.g. the notification detail dialog)
      *          that need to tint or decorate the header.
      *
      * @remarks
      * The `DialogTitleBar` class itself is not exported — callers reach it
      * only through this accessor and interact via its few public methods
-     * (`getText`, `setGlyph`, `getGlyph`).
+     * (`getTitleText`, `setGlyph`, `getGlyph`).
      */
     getTitleBar(): DialogTitleBar {
         return this._titleBar;

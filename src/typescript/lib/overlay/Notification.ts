@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { LayerManager } from "~/core/LayerManager.js";
 import { Animation } from "~/core/Animation.js";
 import { Text } from "~/component/input/Text.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -71,6 +72,12 @@ export class Notification extends Component {
     private static readonly CLOSE_SIZE: number     = 20;
     private static readonly BADGE_SIZE: number     = 20;
     private static readonly BADGE_TEXT_GAP: number = 8;
+    // Stacking z-index for toasts. Sits just above the managed dropdown band
+    // (`LayerManager.Band.Dropdown` = 10000) so a toast floats over open pickers
+    // and menus, yet below the Dialog band (11000) so the modal detail dialog a
+    // toast can open covers it. A fixed literal rather than a `Band` allocation
+    // because a `Notification` is not a registered layer — it never joins the
+    // dismiss / stacking tree, so it has no node for the manager to stamp.
     private static readonly Z_INDEX: number        = 10002;
 
     private static activeNotifications: Notification[] = [];
@@ -96,6 +103,17 @@ export class Notification extends Component {
     private _remainingDuration: number = 0;
     private _timerStartedAt: number    = 0;
     private _dismissing: boolean       = false;
+
+    // Named listener refs (removable, grep-able, named in stack traces) for the
+    // close button's action, the body double-click, and the hover hold pair.
+    private readonly _boundOnCloseAction: (e: MouseEvent) => void = (e) => {
+        // Prevent the click from contributing to a double-click on the body.
+        e.stopPropagation();
+        this.dismiss();
+    };
+    private readonly _boundOnDblClick:  () => void              = () => this.openDetail();
+    private readonly _boundOnMouseOver: (e: MouseEvent) => void = (e) => Notification.acquireHoverHold(e, this.getElement());
+    private readonly _boundOnMouseOut:  (e: MouseEvent) => void = (e) => Notification.releaseHoverHold(e, this.getElement());
 
     /**
      * Private — use `Notification.show()` to create and display instances.
@@ -163,14 +181,14 @@ export class Notification extends Component {
         this._closeButton.getAria().setLabel("Dismiss notification");
         this.addComponent(this._closeButton);
 
-        Event.addListener(this._closeButton, "click", (e: MouseEvent) => {
-            // Prevent the click from contributing to a double-click on the body.
-            e.stopPropagation();
-            this.dismiss();
-        });
+        // Route through the button's own `"action"` surface rather than reaching
+        // into its DOM `click` via the Event API (a component must not listen to
+        // another component's events through Event). The raw MouseEvent is
+        // forwarded, so the dblclick-suppressing stopPropagation is preserved.
+        this._closeButton.on("action", this._boundOnCloseAction);
 
         // addSubtreeListener so double-clicks on the badge / text bubble up.
-        Event.addSubtreeListener(this, "dblclick", () => this.openDetail());
+        Event.addSubtreeListener(this, "dblclick", this._boundOnDblClick);
 
         // Subtree mouseover / mouseout on the root. These bubble from every
         // descendant of the toast, so the handlers below filter out
@@ -181,8 +199,8 @@ export class Notification extends Component {
         // Subtree listeners route through `Event`'s window-level base
         // listener, so `e.currentTarget` resolves to `window` (which has no
         // `.contains` method) — pass the toast root explicitly instead.
-        Event.addSubtreeListener(this, "mouseover", (e: MouseEvent) => Notification.acquireHoverHold(e, this.getElement()));
-        Event.addSubtreeListener(this, "mouseout",  (e: MouseEvent) => Notification.releaseHoverHold(e, this.getElement()));
+        Event.addSubtreeListener(this, "mouseover", this._boundOnMouseOver);
+        Event.addSubtreeListener(this, "mouseout",  this._boundOnMouseOut);
     }
 
     /**
@@ -202,7 +220,7 @@ export class Notification extends Component {
 
         n.scheduleLayout();
 
-        DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
+        LayerManager.mount(el);
 
         Notification.restack();
         n.animateIn();

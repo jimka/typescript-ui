@@ -233,6 +233,22 @@ export namespace LayerManager {
     }
 
     /**
+     * Appends a portaled overlay element to `document.documentElement` if it is
+     * not already contained there. The single home for the "portal mount"
+     * idiom every floating surface used to inline. Idempotent — a surface that
+     * re-shows after detach re-appends, and one already mounted is left alone.
+     * Does **not** register the layer; surfaces still call {@link register}
+     * explicitly.
+     *
+     * @param el - The overlay element to portal onto the document root.
+     */
+    export function mount(el: Handle): void {
+        if (!DOM.source.contains(DOM.source.getDocumentElement(), el)) {
+            DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
+        }
+    }
+
+    /**
      * Pops `layer` from the tree (and unlinks it from its parent's child
      * list), clears it as active if it was, and removes the document-level
      * listeners on the last call.

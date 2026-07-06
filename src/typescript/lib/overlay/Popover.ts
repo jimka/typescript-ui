@@ -4,6 +4,7 @@ import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
+import { Util } from "~/core/Util.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
 import type { Edge } from "~/primitive/Edge.js";
@@ -402,7 +403,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
 
         const button = new Button(label);
 
-        Event.addListener(button, "click", onClick);
+        button.on("action", onClick);
 
         this._actionsRow.addComponent(button);
 
@@ -468,9 +469,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
 
         const el = this.getElement(true)!;
 
-        if (!DOM.source.contains(DOM.source.getDocumentElement(), el)) {
-            DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
-        }
+        LayerManager.mount(el);
 
         // Trap wheels no inner scroller claimed so they cannot fall through to
         // scrollable content behind the popover.
@@ -670,8 +669,8 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
             maxY -= ARROW_VISUAL_HALF;
         }
 
-        x = Math.max(minX, Math.min(x, maxX));
-        y = Math.max(minY, Math.min(y, maxY));
+        x = Util.clamp(x, minX, maxX);
+        y = Util.clamp(y, minY, maxY);
 
         this.setX(x);
         this.setY(y);
@@ -737,7 +736,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         };
 
         if (fits(this._placement)) {
-            return this._placement ?? this._defaultOptions.placement!;
+            return this._placement;
         }
 
         const opposite: Record<Exclude<PopoverPlacement, "auto">, Exclude<PopoverPlacement, "auto">> = {
