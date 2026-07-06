@@ -1,5 +1,6 @@
 # Coding Guidelines
 
+- **Library capability index: [`llms.txt`](llms.txt) — read before building any UI feature**, so you use existing components/layouts instead of reinventing them.
 - When producing implementation plans, **ALWAYS** use the plan skill.
 - When implementing implementation plans, **ALWAYS** use the implement skill.
 - When documenting code, **ALWAYS** use the document skill.

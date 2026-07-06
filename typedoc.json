@@ -19,6 +19,7 @@
     "tsconfig": "tsconfig.lib.json",
     "plugin": ["typedoc-plugin-markdown", "typedoc-vitepress-theme", "./typedoc-callable-plugin.mjs"],
     "out": "docs/api",
+    "json": "docs/api/typedoc-model.json",
     "docsRoot": "docs",
     "readme": "none",
     "excludePrivate": true,

@@ -12,3 +12,5 @@ coverage
 docs/api
 docs/.vitepress/dist
 docs/.vitepress/cache
+# Generated hosted copy of the capability manifest (root llms.txt is committed)
+docs/public/llms.txt
