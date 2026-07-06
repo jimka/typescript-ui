@@ -65,7 +65,8 @@ import {
     PaginationBar,
     ProgressBar,
     ProgressSpinner,
-    VideoPlayer
+    VideoPlayer,
+    WebGLCanvas
 } from '@jimka/typescript-ui/component/display';
 import { FieldSet, Spacer, StatusBar } from '@jimka/typescript-ui/component/container';
 import type { MenuItemConfig } from '@jimka/typescript-ui/component/container';
@@ -1396,6 +1397,49 @@ class MiscPanel extends Panel {
         playerRow.addComponent(demoPlayer);
 
         rightColumn.addComponent(playerRow);
+
+        // ── WebGLCanvas demo ──
+        // A GPU surface has no intrinsic size, so it needs an explicit
+        // preferredSize. `onContextInit` builds GL resources once (and again
+        // after a context restore); `onFrame` draws each frame — here it animates
+        // the clear colour so the render loop (auto-started on first layout) is
+        // visibly running. The viewport is already set in device pixels.
+        rightColumn.addComponent(new Text("WebGLCanvas (animated clear colour):"));
+
+        let glPhase = 0;
+
+        const demoWebGL = new WebGLCanvas({
+            preferredSize: { width: 240, height: 120 },
+            onFrame: (gl) => {
+                // Sweep the clear colour through a slow hue-ish pulse so the
+                // continuously-running loop is obviously alive.
+                glPhase += 0.02;
+                gl.clearColor(
+                    0.5 + 0.5 * Math.sin(glPhase),
+                    0.5 + 0.5 * Math.sin(glPhase + 2),
+                    0.5 + 0.5 * Math.sin(glPhase + 4),
+                    1,
+                );
+                gl.clear(gl.COLOR_BUFFER_BIT);
+            },
+        });
+
+        const webglRow = new Component();
+        webglRow.setLayoutManager(new HBox());
+        webglRow.addComponent(demoWebGL);
+
+        const buttonWebGLAnimate = new Button("Toggle WebGL animation");
+        buttonWebGLAnimate.on("action", () => {
+            if (demoWebGL.isAnimating()) {
+                demoWebGL.stopAnimation();
+                return;
+            }
+
+            demoWebGL.startAnimation();
+        });
+        webglRow.addComponent(buttonWebGLAnimate);
+
+        rightColumn.addComponent(webglRow);
 
         // ── Panel auto-scroll demo ──
         const autoScrollLabel = new Text("Panel auto-scroll modes:");

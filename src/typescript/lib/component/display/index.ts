@@ -2,6 +2,8 @@
 
 export { Canvas } from '~/component/display/Canvas.js';
 export type { CanvasOptions, CanvasDrawCallback } from '~/component/display/Canvas.js';
+export { WebGLCanvas } from '~/component/display/WebGLCanvas.js';
+export type { WebGLCanvasOptions, WebGLContextInitCallback, WebGLFrameCallback } from '~/component/display/WebGLCanvas.js';
 export { Header } from '~/component/display/Header.js';
 export type { HeaderOptions } from '~/component/display/Header.js';
 export { Image } from '~/component/display/Image.js';
