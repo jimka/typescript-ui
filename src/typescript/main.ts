@@ -27,6 +27,7 @@ import { LayoutSerializationPanel } from "./LayoutSerializationPanel.js";
 
 import { Benchmark } from "./perf/Benchmark.js";
 import { BaselinePanel } from "./BaselinePanel.js";
+import { MarkdownPanel } from "./MarkdownPanel.js";
 
 DOM.source.getScrollBarWidth();
 (window as any).bench = Benchmark;
@@ -58,6 +59,7 @@ layoutManager.addLazyTab(() => new ToolBarPanel(),         "ToolBar"    );
 layoutManager.addLazyTab(() => new MultiSelectListPanel(), "MultiSelect");
 layoutManager.addLazyTab(() => new BaselinePanel(),        "Baseline"   );
 layoutManager.addLazyTab(() => new LayoutSerializationPanel(), "Layout I/O" );
+layoutManager.addLazyTab(() => new MarkdownPanel(),        "Markdown"   );
 
 const PersonModel = new Model([
     { name: 'id',   type: 'number'                  },

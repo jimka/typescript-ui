@@ -46,6 +46,9 @@ export default defineConfig({
     sourcemap: true,
     minify: 'oxc',
     rollupOptions: {
+      // `marked` is a real runtime dependency, resolved from the consumer's
+      // node_modules rather than inlined into the display chunk.
+      external: ['marked'],
       output: {
         // Downstream consumers hit the same `constructor.name` dependency as
         // the app (CSS classes + layout serialization), so the library bundle
