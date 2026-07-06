@@ -70,6 +70,7 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | [`Label`](/api/component/input/classes/Label) | Text tied to a form control via the HTML `for` attribute |
 | [`Header`](/api/component/display/classes/Header) | Title-bar / panel header text |
 | [`Image`](/api/component/display/classes/Image) | `<img>` wrapper |
+| [`Canvas`](/components/Canvas) | `<canvas>` raster surface — draw in CSS px via an `onDraw` hook |
 | [`Glyph`](/components/Glyph) | Self-contained icon — SVG or Unicode entry from a curated registry |
 | [`IconText`](/components/IconText) | Glyph + standalone [`Text`](/api/component/input/classes/Text), horizontal flow |
 | [`IconLabel`](/components/IconLabel) | Glyph + form-control [`Label`](/api/component/input/classes/Label), horizontal flow |

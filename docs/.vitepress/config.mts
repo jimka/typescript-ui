@@ -106,6 +106,7 @@ export default defineConfig({
                     { text: 'Header',          link: '/components/Header' },
                     { text: 'Text',            link: '/components/Text' },
                     { text: 'Image',           link: '/components/Image' },
+                    { text: 'Canvas',          link: '/components/Canvas' },
                     { text: 'Glyph',           link: '/components/Glyph' },
                     { text: 'Glyphs',          link: '/components/Glyphs' },
                     { text: 'IconText',        link: '/components/IconText' },
