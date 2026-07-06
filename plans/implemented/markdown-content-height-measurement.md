@@ -47,21 +47,25 @@ No new public exported symbols. The change adds private/protected members to `Ma
 class Markdown extends Component<MarkdownOptions> {
     // New per-instance derived state (NOT on MarkdownOptions):
     private _measuredHeight: number | null;      // cached content height in px, null until first measure
-    private _measurementDirty: boolean;           // set on content/width/theme change
     private readonly _unsubscribeTheme: () => void; // ThemeManager.onThemeChange handle
 
     // New behaviour on inherited public methods:
     getMinSize(): Size | null;                    // folds _measuredHeight as a height floor
     getPreferredSize(): Size | null;              // reports _measuredHeight as height when no explicit constraint
-    override setWidth(width: number): this;       // on width change: mark dirty + re-measure post-commit
+    setWidth(width: number): this;                // on width change: re-measure post-commit
 
-    // New lifecycle hook already public on Component:
-    dispose(): void;                              // detaches the theme listener (mirrors Text.dispose)
+    // New lifecycle hook (mirrors Text.dispose):
+    dispose(): void;                              // detaches the theme listener
 
     // New private mechanics:
     private measureContentHeight(): void;         // commitElementStyle(); read scrollHeight; cache; scheduleLayout
 }
 ```
+
+> **Implementation deviations (recorded during build).**
+> - **No `_measurementDirty` flag.** The plan modelled one on `Text`, whose getters *lazily* measure when dirty. `Markdown`'s getters instead read the cache directly (a `scrollHeight` read is unsafe in the hot `getMinSize` recursion and needs the element attached + width-assigned), and the triggers (`onFirstLayout`, `setWidth`-on-change, `setMarkdown`, theme) call `measureContentHeight()` directly. A dirty flag would be vestigial, so it was dropped.
+> - **Prose wrapping fix (added scope, root cause found via live testing).** `Component` defaults `white-space` to `"nowrap"`, which `Markdown` inherited — the document rendered as unwrapping single lines that overflowed horizontally and never reflowed. The constructor now sets `white-space: normal` + `overflow-wrap: break-word` on the root (fenced code keeps its own `white-space: pre` + self-scroll). This is what makes the height measurement meaningful — it now measures *wrapped* height.
+> - **Horizontal scroll: investigated and deliberately not built.** Browser testing showed that once prose wraps, content never overflows horizontally (long tokens break; code self-scrolls) — matching standard Markdown renderers. Folding a measured *width* would require preventing wrapping plus an invasive, offline-untestable min-content probe. Rejected; the demo uses `setAutoScroll("y")`.
 
 `dispose()` mirrors [Text.dispose](src/typescript/lib/component/input/Text.ts#L1260): components that build `Markdown` dynamically and remove it should call it to detach the theme listener.
 
