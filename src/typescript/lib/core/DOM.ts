@@ -679,6 +679,26 @@ export interface DOMSink {
      * @param pointerId - The pointer id to release.
      */
     releasePointerCapture(handle: Handle, pointerId: number): void;
+
+    /**
+     * Obtains a drawing context from a `<canvas>` element. Generic over
+     * `contextId` (`"2d"`, `"webgl"`, `"webgl2"`) so a single seam entry serves
+     * both the raster and WebGL components, each narrowing the returned union
+     * itself.
+     *
+     * @remarks Unlike every other sink method this returns a live object rather
+     * than a forwardable one-way write: a rendering context cannot cross a worker
+     * boundary, so a modelled sink returns `null` and the caller no-ops offline.
+     * This is the single, named escape from the seam's one-way contract — the
+     * reason a canvas is a live-only component.
+     *
+     * @param handle - The `<canvas>` element handle.
+     * @param contextId - The context identifier (`"2d"`, `"webgl"`, …).
+     * @param options - Optional context attributes (e.g. `{ alpha: false }`).
+     * @returns The rendering context, or `null` when unavailable (offline, or the
+     *   element does not support the requested context).
+     */
+    getContext(handle: Handle, contextId: string, options?: unknown): RenderingContext | null;
 }
 
 /**
@@ -795,6 +815,17 @@ export interface DOMSource {
      * @returns The scrollbar width.
      */
     getScrollBarWidth(): number;
+
+    /**
+     * Returns the display's device-pixel ratio — the factor by which a
+     * `<canvas>` backing store must be scaled above its CSS size to stay crisp
+     * on a HiDPI display. Reads the flagged `window.devicePixelRatio` global
+     * behind the seam; a modelled source reports `1` so offline backing-store
+     * math stays deterministic.
+     *
+     * @returns The device-pixel ratio (`1` or greater); `1` when unavailable.
+     */
+    getDevicePixelRatio(): number;
 
     /**
      * Whether this is a modelled (no-browser) source. Lets the few
@@ -1333,6 +1364,11 @@ export class ProductionDOMSink implements DOMSink {
     releasePointerCapture(handle: Handle, pointerId: number): void {
         (_registry.resolve(handle) as Element).releasePointerCapture(pointerId);
     }
+
+    /** @inheritDoc */
+    getContext(handle: Handle, contextId: string, options?: unknown): RenderingContext | null {
+        return (_registry.resolve(handle) as HTMLCanvasElement).getContext(contextId, options);
+    }
 }
 
 /**
@@ -1524,6 +1560,11 @@ export class ProductionDOMSource implements DOMSource {
         _scrollBarWidth = widthNoScroll - widthScroll;
 
         return _scrollBarWidth;
+    }
+
+    /** @inheritDoc */
+    getDevicePixelRatio(): number {
+        return window.devicePixelRatio || 1;
     }
 
     /** @inheritDoc */
