@@ -117,6 +117,8 @@ export default defineConfig({
                     { text: 'ProgressBar',     link: '/components/ProgressBar' },
                     { text: 'ProgressSpinner', link: '/components/ProgressSpinner' },
                     { text: 'PaginationBar',   link: '/components/PaginationBar' },
+                    { text: 'Video',           link: '/components/Video' },
+                    { text: 'VideoPlayer',     link: '/components/VideoPlayer' },
                     { text: 'Spacer',          link: '/components/Spacer' },
                     { text: 'StatusBar',       link: '/components/StatusBar' },
                 ] },
