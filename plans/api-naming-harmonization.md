@@ -34,6 +34,30 @@ as binding.
 
 ---
 
+## Drift Reconciliation (2026-07-06 — after phases 1–2 merged)
+
+This plan was deferred to run last, against settled code. Two of its renames are now
+**obsolete no-ops** because the merged consolidation plans already *removed* their targets —
+a cleaner outcome than renaming. **Skip steps 2 and 3.**
+
+- **`showDropdown` → `placeDropdown` (step 2): OBSOLETE.** The `input-field-fixes-and-scaffolding-consolidation`
+  plan deleted the abstract `showDropdown` hook entirely (its `openDropdown` now calls
+  `dropdown.showAt(...)` directly). `grep -rn showDropdown src/ tests/` → **zero**. Nothing to rename.
+- **`getSelectedValue` → `getValue` (step 3): OBSOLETE.** The `data-view-virtualization-consolidation`
+  plan (bug 5) removed the dead `<select>`-backed selection surface from `AbstractListComponent`,
+  including `getSelectedValue`. `grep -rn getSelectedValue src/ tests/` → **zero**. Nothing to rename.
+  (`AbstractListComponent` is still renamed to `AbstractMarkerList` under step 7 — only the
+  `getValue` fold-in disappears.)
+
+All other renames remain valid and their targets are present on the settled base: `getPerimiterSize`
+(41 refs), `selectionchange` (Table/Body), the event-tense outliers (`activated`/`detached`/`docked`/
+`moved`/`reordered`), the store `*changed` events (`datachanged`/`sortchanged`/`pagechanged`/
+`loadingchanged`, single-quoted), `table/Header`→`TableHeader`, and both list-base families
+(`AbstractCustomList*`, `AbstractListComponent*`). Line-number anchors throughout have shifted from
+the consolidation edits — target every rename by symbol/content, not by the line numbers cited below.
+
+---
+
 ## Architecture Decisions
 
 ### Overlay lifecycle: codify the two-archetype convention; fix only the real collision
@@ -246,17 +270,14 @@ complete. Group commits per the commit skill's one-functionality rule (one clust
    `src/typescript/BaselinePanel.ts` uses the method indirectly — grep confirms.
    → verify: `grep -rn 'getPerimiterSize\|perimiterSize' src/ tests/ — expect zero`; `codegraph_impact getPerimiterSize` re-run returns nothing; `npm run typecheck` clean.
 
-2. **`showDropdown` → `placeDropdown`.** Rename the abstract declaration
-   ([`AbstractPickerField.ts:162`](src/typescript/lib/component/input/AbstractPickerField.ts#L162)),
-   its caller ([`AbstractPickerField.ts:490`](src/typescript/lib/component/input/AbstractPickerField.ts#L490)),
-   and the three overrides (`DateField.ts:156`, `TimeField.ts:175`, `DateTimeField.ts:185`); update
-   any JSDoc mentioning "showDropdown".
-   → verify: `grep -rn 'showDropdown' src/ tests/ — expect zero`; typecheck clean.
+2. **`showDropdown` → `placeDropdown`. — OBSOLETE, SKIP** (see Drift Reconciliation). The abstract
+   `showDropdown` hook was removed by `input-field-fixes-and-scaffolding-consolidation`; `grep -rn
+   'showDropdown' src/ tests/` already returns zero. No edit.
 
-3. **`getSelectedValue` → `getValue`.** Rename on `AbstractListComponent`
-   ([:134](src/typescript/lib/component/list/AbstractListComponent.ts#L134)); update its one
-   test reference and any internal callers.
-   → verify: `grep -rn 'getSelectedValue' src/ tests/ — expect zero`; typecheck clean.
+3. **`getSelectedValue` → `getValue`. — OBSOLETE, SKIP** (see Drift Reconciliation). `getSelectedValue`
+   was removed with the dead selection surface by `data-view-virtualization-consolidation` (bug 5);
+   `grep -rn 'getSelectedValue' src/ tests/` already returns zero. No edit. (The `AbstractListComponent`
+   → `AbstractMarkerList` class rename still happens under step 7.)
 
 4. **Event tense/spelling renames.** For each union, change the member(s) then chase every
    `on`/`off`/`emit`/JSDoc string; the string-literal type makes misses compile errors:
