@@ -4,7 +4,9 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
+import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
+import { Size } from "~/primitive/Size.js";
 import { lexer } from "marked";
 import type { Token, Tokens } from "marked";
 
@@ -145,9 +147,13 @@ export interface MarkdownOptions extends ComponentOptions {
  * Links render as plain `<a href target="_blank" rel="noopener noreferrer">`
  * with native navigation; the component exposes no event surface in v1.
  *
- * v1 does not measure flowed-text height: place a `Markdown` in a
- * width-assigning cell or a scrolling [`Panel`](/api/component/container/classes/Panel),
- * or set an explicit `preferredSize`.
+ * The component measures its rendered content height at the width it is assigned
+ * and reports it through {@link Markdown.getMinSize} / {@link Markdown.getPreferredSize},
+ * so it grows a size-negotiating scroll host to the full prose height — drop one
+ * in a scrolling [`Panel`](/api/component/container/classes/Panel) and it scrolls.
+ * The height is re-measured on content, width, and theme change. Only the height
+ * axis is derived; the width stays freely assignable so the prose reflows at any
+ * width. An explicit `preferredSize`/`setMinSize` still overrides the measurement.
  *
  * @example
  * ```typescript
@@ -167,6 +173,17 @@ class Markdown extends Component<MarkdownOptions> {
     private _contentHandles: Handle[] = [];
 
     /**
+     * Measured content height in px (outer/border-box), cached as per-instance
+     * derived state — intrinsic runtime bookkeeping, so it lives here rather than
+     * in {@link MarkdownOptions}. `null` until the first measure records it; folded
+     * into {@link getMinSize} / {@link getPreferredSize} to drive a scroll host.
+     */
+    private _measuredHeight: number | null = null;
+
+    /** Handle to detach the {@link ThemeManager.onThemeChange} listener on {@link dispose}. */
+    private readonly _unsubscribeTheme: () => void;
+
+    /**
      * Constructs a Markdown component for the given source string.
      *
      * @param markdown - The Markdown source to render (optional; defaults to "").
@@ -180,6 +197,15 @@ class Markdown extends Component<MarkdownOptions> {
         if (markdown !== undefined && this._options.markdown === undefined) {
             this._options.markdown = markdown;
         }
+
+        // Prose metrics (font, spacing) are theme-bound, so a theme swap can
+        // change the rendered height — re-measure when it fires (mirrors Text).
+        this._unsubscribeTheme = ThemeManager.onThemeChange(() => this.measureContentHeight());
+
+        // First measurement rides the first connected layout: only then is the
+        // element attached and width-assigned, so the `scrollHeight` read is
+        // meaningful. Subsequent re-measures come from setWidth / setMarkdown / theme.
+        this.onFirstLayout(() => this.measureContentHeight());
     }
 
     /**
@@ -230,7 +256,116 @@ class Markdown extends Component<MarkdownOptions> {
         ensureMarkdownClassRules();
         this.appendBlockTokens(element, lexer(markdown));
 
+        // Content changed — the flowed height did too; re-measure and let a host grow.
+        this.measureContentHeight();
+
         return this;
+    }
+
+    /**
+     * Folds the measured content height into the inherited minimum as a height
+     * floor, so a scroll host grows to the full prose extent (via
+     * `Fit.inflateForOverflow`, which reads the child's `getMinSize`). Only the
+     * height axis is folded; the width minimum stays `0` so the prose can reflow
+     * at any assigned width. An explicit {@link setMinSize} still wins when larger.
+     *
+     * @returns The min size with the measured height folded in, or the inherited
+     *   minimum when nothing has been measured yet.
+     */
+    getMinSize(): Size | null {
+        const base = super.getMinSize();
+
+        if (this._measuredHeight === null) {
+            return base;
+        }
+
+        if (!base) {
+            return { width: 0, height: this._measuredHeight };
+        }
+
+        return { width: base.width, height: Math.max(base.height, this._measuredHeight) };
+    }
+
+    /**
+     * Reports the measured content height as the preferred height when the caller
+     * has set no explicit `preferredSize`, keeping the component's preferred extent
+     * honest inside a sizing parent. An explicit `preferredSize` constraint wins.
+     *
+     * @returns The preferred size with the measured height applied, or the
+     *   inherited preferred size when a constraint is set or nothing is measured.
+     */
+    getPreferredSize(): Size | null {
+        const base = super.getPreferredSize();
+
+        if (this._measuredHeight === null || this.getPreferredSizeConstraint() !== null) {
+            return base;
+        }
+
+        if (!base) {
+            return { width: 0, height: this._measuredHeight };
+        }
+
+        return { width: base.width, height: this._measuredHeight };
+    }
+
+    /**
+     * Re-measures the flowed content height when the assigned width changes: prose
+     * height is width-dependent, so a narrower box reflows taller. Measuring reads
+     * the just-assigned width back from the DOM (see {@link measureContentHeight}).
+     *
+     * @param width - The new width in pixels.
+     * @returns This component, for method chaining.
+     */
+    setWidth(width: number): this {
+        const changed = width !== this.getWidth();
+
+        super.setWidth(width);
+
+        if (changed) {
+            this.measureContentHeight();
+        }
+
+        return this;
+    }
+
+    /**
+     * Detaches the theme-change listener. Call when a dynamically-built Markdown
+     * is permanently removed from the page, mirroring `Text.dispose`.
+     */
+    dispose(): void {
+        this._unsubscribeTheme();
+    }
+
+    /**
+     * Measures the rendered subtree's content height at the element's assigned
+     * width and folds it into the component's reported size, then schedules a
+     * re-layout so a scroll host can grow to fit. This is the component's only
+     * live seam read (`scrollHeight`) — isolated here as the single forced-layout
+     * point — and no-ops before the element exists (the first connected layout
+     * retries via {@link onFirstLayout}). Idempotent: an unchanged height suppresses
+     * the re-layout so repeated measures cannot loop.
+     */
+    private measureContentHeight(): void {
+        const element = this.getElement();
+        if (!element) {
+            return;
+        }
+
+        // Flush the buffered width write so `scrollHeight` reflects the assigned
+        // width, not the pre-resize DOM (the commitBounds/stale-DOM gotcha).
+        this.commitElementStyle();
+
+        // `scrollHeight` is content + padding (border-box excludes the border),
+        // so reach the outer height by adding only the border.
+        const border   = this.getBorderSize();
+        const measured = DOM.source.getScrollMetrics(element).scrollHeight + border.top + border.bottom;
+
+        if (measured === this._measuredHeight) {
+            return;
+        }
+
+        this._measuredHeight = measured;
+        (this.getParentComponent() ?? this).scheduleLayout();
     }
 
     /**

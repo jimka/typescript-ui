@@ -1,7 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Markdown } from '~/component/display/Markdown';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
+import { Container } from '~/core/Container';
+import { Fit } from '~/layout/Fit';
+import { ThemeManager, DarkTheme, ModernTheme } from '~/core/Theme';
 import { installTestDOM, type RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -16,7 +19,7 @@ const CONFIG = {
 let sink: RecordingDOMSink;
 
 beforeEach(() => { sink = installTestDOM(CONFIG); });
-afterEach(() => DOM.reset());
+afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
 
 /** The tags passed to every `createElement`, in creation order. */
 function createdTags(): string[] {
@@ -250,5 +253,162 @@ describe('Markdown construction parity', () => {
     it('works through the callable form Markdown("# A")', () => {
         expect(() => Markdown('# A').getElement(true)).not.toThrow();
         expect(createdTags()).toContain('h1');
+    });
+});
+
+// The modelled source reports scrollHeight === clientHeight (no real overflow),
+// so real flowed-text height cannot be produced offline. These tests inject the
+// content height by stubbing the seam read, exercising the size-negotiation fold
+// and its invalidation wiring against the real seam — the browser's block-flow
+// computation itself is covered by the manual-verify step in the plan.
+function stubScrollHeight(height: number) {
+    return vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+        scrollTop: 0, scrollLeft: 0,
+        scrollWidth: 0, scrollHeight: height,
+        clientWidth: 0, clientHeight: height,
+    });
+}
+
+describe('Markdown content-height measurement', () => {
+    it('folds the measured content height into getMinSize (height axis only)', () => {
+        stubScrollHeight(500);
+        const md = new Markdown('# A');
+        md.getElement(true);
+
+        md.setWidth(300);   // width change → measure at the assigned width
+
+        expect(md.getMinSize()!.height).toBe(500);
+        expect(md.getMinSize()!.width).toBe(0);   // width stays freely assignable
+    });
+
+    it('reports the measured height through getPreferredSize', () => {
+        stubScrollHeight(420);
+        const md = new Markdown('# A');
+        md.getElement(true);
+
+        md.setWidth(300);
+
+        expect(md.getPreferredSize()!.height).toBe(420);
+    });
+
+    it('lets an explicit preferredSize win over the measured height', () => {
+        stubScrollHeight(500);
+        const md = new Markdown('# A', { preferredSize: { width: 300, height: 999 } });
+        md.getElement(true);
+
+        md.setWidth(300);
+
+        expect(md.getPreferredSize()!.height).toBe(999);
+    });
+
+    it('keeps an explicit setMinSize floor when it exceeds the measured height', () => {
+        stubScrollHeight(500);
+        const md = new Markdown('# A');
+        md.getElement(true);
+        md.setMinSize(0, 900);
+
+        md.setWidth(300);
+
+        expect(md.getMinSize()!.height).toBe(900);   // Math.max(900, 500)
+    });
+
+    it('reports no spurious height for empty source (measured 0)', () => {
+        stubScrollHeight(0);
+        const md = new Markdown('');
+        md.getElement(true);
+
+        md.setWidth(300);
+
+        expect(md.getMinSize()?.height ?? 0).toBe(0);
+    });
+
+    it('re-measures a taller height when the content grows', () => {
+        const spy = stubScrollHeight(200);
+        const md = new Markdown('# A');
+        md.getElement(true);
+        md.setWidth(300);
+        expect(md.getMinSize()!.height).toBe(200);
+
+        spy.mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 0, scrollHeight: 600,
+            clientWidth: 0, clientHeight: 600,
+        });
+        md.setMarkdown('# A\n\nmore prose');   // content change → re-measure
+
+        expect(md.getMinSize()!.height).toBe(600);
+    });
+
+    it('does not re-layout when a re-measure reads the same height', () => {
+        stubScrollHeight(300);
+        const md = new Markdown('# A');
+        md.getElement(true);
+        md.setWidth(300);
+
+        const spy = vi.spyOn(md, 'scheduleLayout');
+        md.setMarkdown('# A');   // unchanged stubbed height → no re-layout
+
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('re-measures on theme change', () => {
+        const spy = stubScrollHeight(300);
+        const md = new Markdown('# A');
+        md.getElement(true);
+        md.setWidth(300);
+        expect(md.getMinSize()!.height).toBe(300);
+
+        spy.mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 0, scrollHeight: 700,
+            clientWidth: 0, clientHeight: 700,
+        });
+        try {
+            ThemeManager.setTheme(DarkTheme);
+            expect(md.getMinSize()!.height).toBe(700);
+        } finally {
+            ThemeManager.setTheme(ModernTheme);   // restore the default for later tests
+        }
+    });
+
+    it('dispose() detaches the theme listener so a later theme change does not re-measure', () => {
+        const spy = stubScrollHeight(300);
+        const md = new Markdown('# A');
+        md.getElement(true);
+        md.setWidth(300);
+        expect(md.getMinSize()!.height).toBe(300);
+
+        md.dispose();
+
+        spy.mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 0, scrollHeight: 700,
+            clientWidth: 0, clientHeight: 700,
+        });
+        try {
+            ThemeManager.setTheme(DarkTheme);
+            expect(md.getMinSize()!.height).toBe(300);   // unchanged: listener detached
+        } finally {
+            ThemeManager.setTheme(ModernTheme);
+        }
+    });
+
+    it('grows a Fit scroll host past its inner height to the measured content height', () => {
+        stubScrollHeight(500);
+        const host = new Container({ layoutManager: new Fit() });
+        host.getElement(true);
+        host.setWidth(300);
+        host.setHeight(100);
+        host.clearInsets();
+
+        const md = new Markdown('# A');
+        host.addComponent(md);
+        host.getLayoutManager().setOverflowing(false, true);
+
+        host.doLayout();   // pass 1: seeds the measure (child laid to inner height)
+        host.doLayout();   // pass 2: inflates to the measured content height
+
+        expect(md.getHeight()).toBeGreaterThanOrEqual(500);
+        expect(md.getHeight()).toBeGreaterThan(host.getInnerSize()!.height);
     });
 });
