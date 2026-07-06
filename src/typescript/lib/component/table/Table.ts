@@ -2,7 +2,7 @@
 
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Table as TableLayout } from "~/layout/Table.js";
-import { Header } from "~/component/table/Header.js";
+import { TableHeader } from "~/component/table/Header.js";
 import { Body } from "~/component/table/Body.js";
 import type { CellClickEvent } from "~/component/table/Body.js";
 import { FooterRow } from "~/component/table/Footer.js";
@@ -39,7 +39,7 @@ export interface TableOptions extends ComponentOptions {
 /**
  * A data-bound table component rendered as an HTML `<table>` element.
  *
- * Composes a {@link Header}, a virtual-scrolling {@link Body}, and an optional
+ * Composes a {@link TableHeader}, a virtual-scrolling {@link Body}, and an optional
  * {@link FooterRow}. Exposes CRUD and sync operations that delegate to the underlying
  * {@link AbstractStore}.
  *
@@ -79,7 +79,7 @@ class Table extends Component<TableOptions> {
     private _hiddenColumns    : Set<string> = new Set();
     private _columnContextMenu: Menu = new Menu();
     private _headerVisible    : boolean;
-    private _header           : Header;
+    private _header           : TableHeader;
     private _body             : Body;
     private _bodyVisible      : boolean;
     private _footer           : FooterRow;
@@ -126,7 +126,7 @@ class Table extends Component<TableOptions> {
         this._resolvedColumns = Column.resolve(store.model.getFields(), spec);
         this.initHiddenFromSpec();
 
-        this._header = new Header(store.model, store);
+        this._header = new TableHeader(store.model, store);
         this._header.on("columnresizestart",  (i, clientX) => this.onColumnResizeStart(i, clientX));
         this._header.on("columnresize",        (i, clientX) => this.onColumnResize(i, clientX));
         this._header.on("columncontextmenu",  (_, x, y) => this.showColumnMenu(x, y));
@@ -377,7 +377,7 @@ class Table extends Component<TableOptions> {
     /**
      * Returns the table header component.
      *
-     * @returns The {@link Header} section of this table.
+     * @returns The {@link TableHeader} section of this table.
      */
     getHeader() {
         return this._header;
@@ -502,8 +502,8 @@ class Table extends Component<TableOptions> {
      *
      * @returns This component, for method chaining.
      */
-    addComponent(row: Header | Body | FooterRow, constraints?: LayoutConstraints): this {
-        if (row instanceof Header) {
+    addComponent(row: TableHeader | Body | FooterRow, constraints?: LayoutConstraints): this {
+        if (row instanceof TableHeader) {
             this._header = row;
         } else if (row instanceof Body) {
             this._body = row;

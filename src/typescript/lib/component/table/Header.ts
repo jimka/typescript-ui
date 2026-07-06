@@ -25,11 +25,11 @@ import { callable } from "~/core/Callable.js";
 const TABLE_HEADER_BG = "var(--ts-ui-table-header-bg, var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))))";
 
 /**
- * String-literal union of the events emitted by the table {@link Header}.
+ * String-literal union of the events emitted by the table {@link TableHeader}.
  *
  * @category Components
  */
-export type HeaderEvent = "columnresizestart" | "columnresize" | "columncontextmenu";
+export type TableHeaderEvent = "columnresizestart" | "columnresize" | "columncontextmenu";
 
 /**
  * The header section of a table, rendered as a `<thead>` element.
@@ -38,19 +38,19 @@ export type HeaderEvent = "columnresizestart" | "columnresize" | "columncontextm
  * wired with a sort-click callback (cycles asc → desc → clear), a resize-drag
  * callback (forwarded to the owner via the `"columnresize"` event), and a
  * context-menu callback (forwarded via the `"columncontextmenu"` event); see
- * {@link Header.on}.
+ * {@link TableHeader.on}.
  *
  * Re-exported as `TableHeader` from the package barrel.
  *
  * @category Components
  */
-class Header extends Component {
+class TableHeader extends Component {
 
     private _model: AbstractModel;
     private _store: AbstractStore;
     private _hiddenColumns: Set<string> = new Set();
     private _columns: Column[] = [];
-    private _listeners: ListenerBag<HeaderEvent> = new ListenerBag<HeaderEvent>();
+    private _listeners: ListenerBag<TableHeaderEvent> = new ListenerBag<TableHeaderEvent>();
     private _scrollbarCover: Handle | null = null;
 
     constructor(model: AbstractModel, store: AbstractStore) {
@@ -185,7 +185,7 @@ class Header extends Component {
     on(event: "columnresizestart", listener: (colIndex: number, clientX: number) => void): this;
     on(event: "columnresize",      listener: (colIndex: number, clientX: number) => void): this;
     on(event: "columncontextmenu", listener: (fieldName: string, x: number, y: number) => void): this;
-    on(event: HeaderEvent,         listener: Function): this {
+    on(event: TableHeaderEvent,         listener: Function): this {
         this._listeners.add(event, listener);
 
         return this;
@@ -200,7 +200,7 @@ class Header extends Component {
      *
      * @returns This header, for method chaining.
      */
-    off(event: HeaderEvent, listener: Function): this {
+    off(event: TableHeaderEvent, listener: Function): this {
         this._listeners.remove(event, listener);
 
         return this;
@@ -216,7 +216,7 @@ class Header extends Component {
     protected emit(event: "columnresizestart", colIndex: number, clientX: number): void;
     protected emit(event: "columnresize",      colIndex: number, clientX: number): void;
     protected emit(event: "columncontextmenu", fieldName: string, x: number, y: number): void;
-    protected emit(event: HeaderEvent,         ...payload: unknown[]): void {
+    protected emit(event: TableHeaderEvent,         ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
 
@@ -368,7 +368,7 @@ class Header extends Component {
 
     /**
      * Sets the header height. Row-level heights (parent row + column row)
-     * are set independently by the table layout manager — `Header` itself
+     * are set independently by the table layout manager — `TableHeader` itself
      * just stores the total band height. The per-row height assignments
      * live in `layout/Table.doLayout` because the split depends on
      * {@link hasParentRow}.
@@ -649,9 +649,9 @@ class Header extends Component {
     }
 }
 
-const HeaderCallable = callable(Header);
-type HeaderCallable = Header;
+const TableHeaderCallable = callable(TableHeader);
+type TableHeaderCallable = TableHeader;
 export {
-    Header         as _Header,
-    HeaderCallable as Header
+    TableHeader         as _TableHeader,
+    TableHeaderCallable as TableHeader
 };

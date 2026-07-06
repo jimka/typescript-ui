@@ -17,7 +17,7 @@ import { ThemeManager } from "~/core/Theme.js";
 import { Util } from "~/core/Util.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { Column } from "~/component/table/Column.js";
-import type { Header } from "~/component/table/Header.js";
+import type { TableHeader } from "~/component/table/Header.js";
 import type { HeaderCell } from "~/component/table/cell/Header.js";
 import { callable } from "~/core/Callable.js";
 
@@ -125,7 +125,7 @@ class Body extends VirtualRowView<Row> {
     private _anchorRecord    : ModelRecord | null        = null;
     private _focusedColIndex: number                    = 0;
     private _editorPool      : CellEditorPool            = new CellEditorPool();
-    private _header          : Header | null             = null;
+    private _header          : TableHeader | null             = null;
     private _listeners       : ListenerBag<BodyEvent>    = new ListenerBag<BodyEvent>();
 
     constructor(store: AbstractStore) {
@@ -1134,16 +1134,16 @@ class Body extends VirtualRowView<Row> {
 
     /**
      * Internal wiring called by [`Table`](/api/component/table/classes/Table) —
-     * not for consumer use. Hands the Body a reference to its sibling Header so
+     * not for consumer use. Hands the Body a reference to its sibling TableHeader so
      * `_updateFocusStyle` can mirror the focused column index onto the header
      * cells. Consumers instantiating `Body` standalone may leave this unset; the
      * header-side indicator is then simply skipped.
      *
-     * @param header - The Header sibling owned by the same Table.
+     * @param header - The TableHeader sibling owned by the same Table.
      *
      * @returns This component, for method chaining.
      */
-    setHeader(header: Header): this {
+    setHeader(header: TableHeader): this {
         this._header = header;
 
         return this;
@@ -1153,7 +1153,7 @@ class Body extends VirtualRowView<Row> {
      * Applies a focus ring to the cell at `_focusedColIndex` in the anchor row, clearing it from all other cells.
      *
      * @remarks Called after every navigation and after `renderWindow` re-binds pool slots.
-     * Also mirrors the focused column index onto the linked Header cells (when
+     * Also mirrors the focused column index onto the linked header cells (when
      * one has been wired in via `setHeader`) so the header shows the matching
      * column indicator. `protected` so subclasses (e.g. `TreeBody`) can
      * refresh the focus indicator after a programmatic navigation. Not
