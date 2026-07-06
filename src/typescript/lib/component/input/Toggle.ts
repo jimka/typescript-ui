@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Animation } from "~/core/Animation.js";
-import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
+import { AbstractBooleanInput, AbstractBooleanInputOptions } from "~/component/input/AbstractBooleanInput.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
-import { Text } from "~/component/input/Text.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -13,9 +12,8 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export interface ToggleOptions extends AbstractInputOptions {
+export interface ToggleOptions extends AbstractBooleanInputOptions {
     value?: boolean;
-    label?: string | null;
 }
 
 /**
@@ -32,11 +30,10 @@ export interface ToggleOptions extends AbstractInputOptions {
  * @category Components
  */
 class Toggle<TOptions extends ToggleOptions = ToggleOptions>
-    extends AbstractInput<boolean, TOptions>
+    extends AbstractBooleanInput<TOptions>
 {
     private _track: Component;
     private _thumb: Component;
-    private _label: Text | null = null;
 
     /**
      * Constructs a Toggle.
@@ -91,7 +88,15 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
 
         this.setOutline("none");
 
-        this.installInteraction();
+        // The track owns the user-toggle click so the pointer/click + cursor
+        // surface is exactly the visible pill — clicks on a label or in any
+        // stretched empty area pass through to the root, which has no listener
+        // of its own. This pointer line stays per-subclass (a closure over the
+        // widget `this`) because a listener registered on the child track would
+        // otherwise bind `this` to the track; only the keyboard path, registered
+        // on the root, moves into the base.
+        Event.addListener(this._track, "click", () => this.activateFromPointer());
+        this.installKeyboard();
 
         // Late-built dispatch: applyOptions buffered these onto _options because
         // children didn't exist yet. Run their setters now.
@@ -134,31 +139,30 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
     }
 
     /**
-     * Wires the keyboard (Space / Enter) and click handlers that flip the
-     * toggle. Read-only and disabled controls suppress user-driven flips.
+     * Activates the toggle from a click or key by flipping the on/off state.
+     * The enabled/read-only guard is applied by the base before this runs.
      */
-    private installInteraction(): void {
-        // The track owns the user-toggle handler so the click and cursor
-        // surface is exactly the visible pill — clicks on a label or in any
-        // stretched empty area pass through to the root, which has no
-        // listener of its own. Keydown still targets the focused root.
-        Event.addListener(this._track, "click", () => {
-            if (this.isEnabled() && !this.isReadOnly()) {
-                this.setValue(!this.getValue());
-            }
-        });
+    protected activate(): void {
+        this.setValue(!this.getValue());
+    }
 
-        Event.addListener(this, "keydown", (e: KeyboardEvent) => {
-            if (e.key !== " " && e.key !== "Enter") {
-                return;
-            }
+    /**
+     * Returns the inner track graphic — the click + cursor surface.
+     *
+     * @returns The track component.
+     */
+    protected getInteractiveSurface(): Component {
+        return this._track;
+    }
 
-            e.preventDefault();
-
-            if (this.isEnabled() && !this.isReadOnly()) {
-                this.setValue(!this.getValue());
-            }
-        });
+    /**
+     * The toggle activates on Space and Enter (the switch idiom), widening the
+     * base default of Space only.
+     *
+     * @returns The activation key strings.
+     */
+    protected activationKeys(): string[] {
+        return [" ", "Enter"];
     }
 
     /**
@@ -198,29 +202,6 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
      */
     clearValue(): this {
         return this.setValue(false);
-    }
-
-    /**
-     * Returns the label text, or `null` when the toggle has no label.
-     *
-     * @returns The label string, or `null`.
-     */
-    getLabel(): string | null {
-        return this._options.label ?? null;
-    }
-
-    /**
-     * Sets the label text; pass `null` to remove the label.
-     *
-     * @param text - The new label text, or `null` to clear.
-     *
-     * @returns This component, for method chaining.
-     */
-    setLabel(text: string | null): this {
-        this._options.label = text;
-        this.applyLabel(text);
-
-        return this;
     }
 
     /**
@@ -307,44 +288,6 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
         this._track.setBackgroundColor(value
             ? "var(--ts-ui-toggle-track-bg-on, rgb(30, 100, 200))"
             : "var(--ts-ui-toggle-track-bg-off, rgb(200, 200, 200))");
-    }
-
-    /**
-     * Mounts, replaces, or removes the inline label.
-     */
-    private applyLabel(text: string | null): void {
-        if (text === null) {
-            if (this._label !== null) {
-                super.removeComponent(this._label);
-                this._label = null;
-            }
-
-            return;
-        }
-
-        if (this._label === null) {
-            this._label = new Text(text);
-            this._label.setPointerEvents("none");
-            super.addComponent(this._label);
-        } else {
-            this._label.setText(text);
-        }
-    }
-
-    /**
-     * Reflects the enabled flag in the ARIA tree and the tabindex.
-     */
-    protected applyEnabled(value: boolean): void {
-        this.getAria().setDisabled(!value);
-        this.getAria().setTabIndex(value ? 0 : -1);
-        this._track.setCursor(value ? "pointer" : "default");
-    }
-
-    /**
-     * Reflects the read-only flag in the ARIA tree.
-     */
-    protected applyReadOnly(value: boolean): void {
-        this.getAria().setReadOnly(value);
     }
 
 }

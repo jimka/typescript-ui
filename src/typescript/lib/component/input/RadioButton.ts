@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Animation } from "~/core/Animation.js";
-import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
+import { AbstractBooleanInput, AbstractBooleanInputOptions } from "~/component/input/AbstractBooleanInput.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
-import { Text } from "~/component/input/Text.js";
-import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
 import { circle } from "~/glyphs/solid/circle.js";
 
@@ -20,10 +18,9 @@ Glyph.register(circle);
  *
  * @category Components
  */
-export interface RadioButtonOptions extends AbstractInputOptions {
+export interface RadioButtonOptions extends AbstractBooleanInputOptions {
     selected?:  boolean;
     value?:     boolean;
-    label?:     string | null;
     text?:      string;
     radioName?: string;
     /**
@@ -48,11 +45,10 @@ export interface RadioButtonOptions extends AbstractInputOptions {
  * @category Components
  */
 class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
-    extends AbstractInput<boolean, TOptions>
+    extends AbstractBooleanInput<TOptions>
 {
     private _ring:  Component;
     private _dot:   Glyph;
-    private _label: Text | null = null;
 
     /**
      * Constructs a RadioButton.
@@ -108,7 +104,15 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
 
         this.setOutline("none");
 
-        this.installInteraction();
+        // The ring owns the user-select click so the pointer/click + cursor
+        // surface is exactly the visible 16 × 16 graphic — clicks on a label or
+        // in any stretched empty area pass through to the root, which has no
+        // listener of its own. This pointer line stays per-subclass (a closure
+        // over the widget `this`) because a listener registered on the child
+        // ring would otherwise bind `this` to the ring; only the keyboard path,
+        // registered on the root, moves into the base.
+        Event.addListener(this._ring, "click", () => this.activateFromPointer());
+        this.installKeyboard();
 
         // The positional `text` arg wins only when `options.label` (or
         // `options.text`) was not provided.
@@ -164,33 +168,26 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
     }
 
     /**
-     * Wires the click + Space-key handlers that select the radio button.
+     * Activates the radio button from a click or key: radio buttons can only be
+     * selected, never directly deselected by the user (the `ButtonGroup`
+     * deselects siblings on change), so this selects and fires the DOM `change`
+     * only on a real off→on transition. The enabled/read-only guard is applied
+     * by the base before this runs.
      */
-    private installInteraction(): void {
-        const userSelect = (): void => {
-            if (!this.isEnabled() || this.isReadOnly()) {
-                return;
-            }
+    protected activate(): void {
+        if (!this.isSelected()) {
+            this.setSelected(true);
+            Event.fireEvent(this, "change");
+        }
+    }
 
-            // Radio buttons can only be selected, never directly deselected by
-            // the user — the ButtonGroup deselects siblings on change.
-            if (!this.isSelected()) {
-                this.setSelected(true);
-                Event.fireEvent(this, "change");
-            }
-        };
-
-        // The ring owns the user-select handler so the click and cursor surface
-        // is exactly the visible 16 × 16 graphic — clicks on a label or in
-        // any stretched empty area pass through to the root, which has no
-        // listener of its own. Keydown still targets the focused root.
-        Event.addListener(this._ring, "click", userSelect);
-        Event.addListener(this, "keydown", (e: KeyboardEvent) => {
-            if (e.key === " ") {
-                e.preventDefault();
-                userSelect();
-            }
-        });
+    /**
+     * Returns the inner ring graphic — the click + cursor surface.
+     *
+     * @returns The ring component.
+     */
+    protected getInteractiveSurface(): Component {
+        return this._ring;
     }
 
     /**
@@ -243,29 +240,6 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
      */
     setValue(value: boolean): this {
         return this.setSelected(value);
-    }
-
-    /**
-     * Returns the label text, or `null` when none was set.
-     *
-     * @returns The label string, or `null`.
-     */
-    getLabel(): string | null {
-        return this._options.label ?? null;
-    }
-
-    /**
-     * Sets the inline label text. Pass `null` to remove the label entirely.
-     *
-     * @param text - The label text, or `null` to clear.
-     *
-     * @returns This component, for method chaining.
-     */
-    setLabel(text: string | null): this {
-        this._options.label = text;
-        this.applyLabel(text);
-
-        return this;
     }
 
     /**
@@ -350,28 +324,6 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
     }
 
     /**
-     * Returns the offset from the top of the radio button to its inline label's
-     * text baseline, or — when there is no label — to the text baseline the dot
-     * would share with a label, so a label-less dot still sits on a row's
-     * baseline.
-     *
-     * @returns The baseline offset in pixels.
-     *
-     * @remarks A `null` baseline auto-centres the child within the row's
-     * text-line height, which floats a small dot to the row centre once a tall
-     * sibling (e.g. a `TextArea`) inflates the row's descent. Returning the
-     * text-line baseline keeps the dot aligned exactly as a labelled radio's
-     * dot would be.
-     */
-    getBaseline(): number | null {
-        if (this._label === null) {
-            return this.wrapInnerBaseline(Util.measureTextBaseline());
-        }
-
-        return this.wrapInnerBaseline(this._label.getBaseline());
-    }
-
-    /**
      * Updates the visual + ARIA state for the given selected flag.
      */
     private applySelected(selected: boolean): void {
@@ -385,44 +337,6 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
             : "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))");
 
         this._dot.setOpacity(selected ? 1 : 0);
-    }
-
-    /**
-     * Mounts, replaces, or removes the inline label.
-     */
-    private applyLabel(text: string | null): void {
-        if (text === null) {
-            if (this._label !== null) {
-                super.removeComponent(this._label);
-                this._label = null;
-            }
-
-            return;
-        }
-
-        if (this._label === null) {
-            this._label = new Text(text);
-            this._label.setPointerEvents("none");
-            super.addComponent(this._label);
-        } else {
-            this._label.setText(text);
-        }
-    }
-
-    /**
-     * Reflects the enabled flag in the ARIA tree and the tabindex.
-     */
-    protected applyEnabled(value: boolean): void {
-        this.getAria().setDisabled(!value);
-        this.getAria().setTabIndex(value ? 0 : -1);
-        this._ring.setCursor(value ? "pointer" : "default");
-    }
-
-    /**
-     * Reflects the read-only flag in the ARIA tree.
-     */
-    protected applyReadOnly(value: boolean): void {
-        this.getAria().setReadOnly(value);
     }
 
 }

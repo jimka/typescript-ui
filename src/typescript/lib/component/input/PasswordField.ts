@@ -53,15 +53,7 @@ class PasswordField extends TextInput<PasswordFieldOptions> {
      * adjustments propagate to the layout hint automatically.
      */
     private updateHeight(): void {
-        const insets  = this.getInsets();
-        const padding = this.getPadding();
-        const border  = this.getBorderSize();
-
-        const chrome = insets.getTop() + insets.getBottom()
-                     + (padding ? padding.getTop() + padding.getBottom() : 0)
-                     + border.top + border.bottom;
-
-        const h = Util.lineHeightPx() + chrome;
+        const h = Util.singleLineBoxHeight(this.getInsets(), this.getPadding(), this.getBorderSize());
 
         this.setPreferredSize(200, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);

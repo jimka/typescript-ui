@@ -33,7 +33,7 @@ export interface LabelOptions extends TextOptions {
  */
 class Label extends Text<LabelOptions> {
 
-    forId: string;
+    private _forId: string;
 
     constructor(text: string, forId: string, options?: LabelOptions) {
         if (!forId) {
@@ -42,7 +42,7 @@ class Label extends Text<LabelOptions> {
 
         super(text, { ...(options ?? {}), tag: options?.tag ?? "label" });
 
-        this.forId = forId;
+        this._forId = forId;
     }
 
     /**
@@ -51,7 +51,7 @@ class Label extends Text<LabelOptions> {
      * @returns The value of the HTML `for` attribute.
      */
     public getForId() : string {
-        return this.forId;
+        return this._forId;
     }
 
     /**
@@ -66,7 +66,7 @@ class Label extends Text<LabelOptions> {
             throw new Error("Label forId must be non-empty.");
         }
 
-        this.forId = id;
+        this._forId = id;
 
         let element = this.getElement();
         if (!element) {
@@ -86,7 +86,7 @@ class Label extends Text<LabelOptions> {
     protected render(): Handle {
         let element = super.render();
 
-        DOM.sink.apply(element, { setAttr: { for: this.forId } });
+        DOM.sink.apply(element, { setAttr: { for: this._forId } });
 
         return element;
     }

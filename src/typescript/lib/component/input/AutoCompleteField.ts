@@ -7,34 +7,13 @@ import { ThemeManager } from "~/core/Theme.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { TextField } from "~/component/input/TextField.js";
 import { AutoCompleteDropdown } from "~/component/input/AutoCompleteDropdown.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { registerFocusWithinRing } from "~/component/input/focusRing.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 
-/**
- * `:focus-within ::after` overlay highlights the composite root whenever
- * the inner TextField is focused. A pseudo-element drawn at
- * `inset: 0` carries the focus border so the ring sits *inside* the
- * outer's padding box and isn't clipped by an ancestor's `overflow:
- * hidden` (the framework's default). The `z-index: 1` lifts the
- * pseudo above the absolutely-positioned inner TextField so the ring
- * is never painted over.
- */
-(() => {
-    new StyleRule({
-        scope:  "selector",
-        name:   ".AutoCompleteField:focus-within::after",
-        styles: {
-            content:       "''",
-            position:      "absolute",
-            inset:         "0",
-            border:        "2px solid var(--ts-ui-indicator-focus, rgb(30, 100, 200))",
-            borderRadius:  "inherit",
-            boxSizing:     "border-box",
-            pointerEvents: "none",
-            zIndex:        "1",
-        },
-    });
-})();
+// Focus ring highlighting the composite root whenever the inner TextField is
+// focused (the helper appends the focus pseudo-element).
+registerFocusWithinRing(".AutoCompleteField");
 
 /**
  * Controls how typed input is matched against suggestion strings.
@@ -82,6 +61,15 @@ export interface AutoCompleteFieldOptions extends AbstractInputOptions {
 export type AutoCompleteFieldConfig = AutoCompleteFieldOptions;
 
 /**
+ * String-literal event emitted by {@link AutoCompleteField} on top of the
+ * inherited `change` / `binding`: `"select"` fires when the user picks a
+ * suggestion from the dropdown.
+ *
+ * @category Components
+ */
+export type AutoCompleteFieldEvent = "select";
+
+/**
  * A typeahead/autocomplete text field.
  *
  * Wraps a [`TextField`](/api/component/input/classes/TextField) and an `AutoCompleteDropdown`. Suggestions may come
@@ -105,7 +93,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     private _textField     : TextField;
     private _dropdown      : AutoCompleteDropdown;
     private _debounceTimer : ReturnType<typeof setTimeout> | null = null;
-    private _selectListeners: Array<(value: string) => void>      = [];
+    private _selectBag     : ListenerBag<AutoCompleteFieldEvent> = new ListenerBag<AutoCompleteFieldEvent>();
 
     /**
      * @param options - Optional construction-time options for suggestions, store, behaviour, and base Component styling.
@@ -146,7 +134,6 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
 
         Event.addListener(this._textField, "input",   () => this.onInput());
         Event.addListener(this._textField, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
-        Event.addListener(this._textField, "focus",   () => this.onFocus());
         Event.addListener(this._textField, "blur",    () => this.onBlur());
         // Bridge user-driven text changes from the inner TextField up into
         // AbstractInput's change / binding listener fan-out so consumers
@@ -373,12 +360,56 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     // ── Events ───────────────────────────────────────────────────────────────
 
     /**
-     * Registers a listener called when the user selects a suggestion.
+     * Registers a listener for one of this field's events. `"select"` fires when
+     * the user picks a suggestion from the dropdown (routed through this class's
+     * own listener bag); `"change"` and `"binding"` are the inherited
+     * {@link AbstractInput} value events.
+     *
+     * @param event - The event name.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This component, for method chaining.
+     */
+    on(event: "select",  listener: (value: string) => void): this;
+    on(event: "change",  listener: (value: string) => void): this;
+    on(event: "binding", listener: () => void): this;
+    on(event: "select" | "change" | "binding", listener: Function): this {
+        if (event === "select") {
+            this._selectBag.add("select", listener);
+
+            return this;
+        }
+
+        return super.on(event as "change", listener as (value: string) => void);
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match the one passed to {@link on}.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This component, for method chaining.
+     */
+    off(event: "select" | "change" | "binding", listener: Function): this {
+        if (event === "select") {
+            this._selectBag.remove("select", listener);
+
+            return this;
+        }
+
+        return super.off(event, listener);
+    }
+
+    /**
+     * Registers a listener called when the user selects a suggestion. Retained
+     * for back-compat; a thin forwarder onto `on("select", fn)`.
      *
      * @param fn - Callback that receives the selected string value.
      */
     addSelectListener(fn: (value: string) => void): void {
-        this._selectListeners.push(fn);
+        this.on("select", fn);
     }
 
     // ── Internal event handlers ──────────────────────────────────────────────
@@ -458,13 +489,6 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
             default:
                 break;
         }
-    }
-
-    /**
-     * Handles focus on the text field — no-op placeholder for future extension.
-     */
-    private onFocus(): void {
-        // reserved for future use
     }
 
     /**
@@ -607,9 +631,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     private onSuggestionSelected(value: string): void {
         this.setValue(value);
 
-        for (const fn of this._selectListeners) {
-            fn(value);
-        }
+        this._selectBag.fire("select", value);
 
         this._dropdown.hide();
         this._textField.focus();

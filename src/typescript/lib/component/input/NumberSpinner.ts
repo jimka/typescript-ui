@@ -12,35 +12,18 @@ import { UNBOUNDED } from "~/primitive/Size.js";
 import { Util } from "~/core/Util.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { StyleRule } from "~/core/StyleTarget.js";
+import { registerFocusWithinRing } from "~/component/input/focusRing.js";
 import { callable } from "~/core/Callable.js";
 
-/**
- * `:focus-within ::after` overlay draws the focus indicator around the
- * outer NumberSpinner so the ring sits at the composite's chrome edge
- * rather than around just the inner text column. The inner `TextField`'s
- * own `.TextField:focus` box-shadow is suppressed by the second rule
- * below — without that override, the inner shadow's right edge would
- * paint a blue vertical stripe between the text and the spin-button
- * column (inside the NumberSpinner). The outer pseudo is drawn at
- * `inset: 0` with `z-index: 1` so an ancestor's `overflow: hidden`
- * (the framework default) can't clip the ring.
- */
-(() => {
-    new StyleRule({
-        scope:  "selector",
-        name:   ".NumberSpinner:focus-within::after",
-        styles: {
-            content:       "''",
-            position:      "absolute",
-            inset:         "0",
-            border:        "2px solid var(--ts-ui-indicator-focus, rgb(30, 100, 200))",
-            borderRadius:  "inherit",
-            boxSizing:     "border-box",
-            pointerEvents: "none",
-            zIndex:        "1",
-        },
-    });
+// Focus indicator around the outer NumberSpinner so the ring sits at the
+// composite's chrome edge rather than around just the inner text column (the
+// helper appends the focus pseudo-element).
+registerFocusWithinRing(".NumberSpinner");
 
+// Suppress the inner `TextField`'s own `.TextField:focus` box-shadow — without
+// this override, the inner shadow's right edge would paint a blue vertical
+// stripe between the text and the spin-button column (inside the NumberSpinner).
+(() => {
     new StyleRule({
         scope:  "selector",
         name:   ".NumberSpinner .TextField:focus",
@@ -207,15 +190,9 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
      * standalone `TextField` in the same row.
      */
     private updateHeight(): void {
-        const insets       = this.getInsets();
-        const border       = this.getBorderSize();
-        const inputPadding = this._input.getPadding();
-
-        const chrome = insets.getTop() + insets.getBottom()
-                     + (inputPadding ? inputPadding.getTop() + inputPadding.getBottom() : 0)
-                     + border.top + border.bottom;
-
-        const h = Util.lineHeightPx() + chrome;
+        // Reads the *inner* input's padding (not the spinner's own, which is
+        // zero) so the spinner matches a standalone TextField's height.
+        const h = Util.singleLineBoxHeight(this.getInsets(), this._input.getPadding(), this.getBorderSize());
 
         this.setPreferredSize(120, h);
         this.setMaxSize(UNBOUNDED, h);

@@ -4,6 +4,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Util } from '~/core/Util';
 import { DOM } from '~/core/DOM';
+import { Insets } from '~/primitive/Insets';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -94,6 +95,56 @@ describe('Util.generateUUID', () => {
         for (let i = 0; i < 500; i += 1) {
             expect(Util.generateUUID()).toMatch(/^[^0-9]/);
         }
+    });
+});
+
+describe('Util.singleLineBoxHeight', () => {
+    afterEach(() => {
+        Util.invalidateTextMetricsCache();
+        DOM.reset();
+    });
+
+    it('sums the line box, insets, padding, and border for a single-line box', () => {
+        installTestDOM(CONFIG);
+
+        // lineHeightPx() (no args) = rootFontSize(14) + linePadding(2) = 16.
+        // chrome = insets(3+3) + padding(3+3) + border(1+1) = 14 -> 16 + 14 = 30.
+        const h = Util.singleLineBoxHeight(
+            new Insets(3, 3, 3, 3),
+            new Insets(3, 3, 3, 3),
+            { top: 1, bottom: 1 },
+        );
+
+        expect(h).toBe(Util.lineHeightPx() + 14);
+        expect(h).toBe(30);
+    });
+
+    it('treats a null padding as zero vertical padding', () => {
+        installTestDOM(CONFIG);
+
+        // chrome = insets(0) + padding(0) + border(0) = 0 -> just the line box.
+        const h = Util.singleLineBoxHeight(
+            new Insets(0, 0, 0, 0),
+            null,
+            { top: 0, bottom: 0 },
+        );
+
+        expect(h).toBe(Util.lineHeightPx());
+        expect(h).toBe(16);
+    });
+
+    it('reads only the vertical (top/bottom) insets, padding, and border', () => {
+        installTestDOM(CONFIG);
+
+        // Horizontal (left/right) insets and padding must not affect the height.
+        const wide = Util.singleLineBoxHeight(
+            new Insets(2, 40, 2, 40),
+            new Insets(2, 40, 2, 40),
+            { top: 1, bottom: 1 },
+        );
+
+        // vertical chrome = insets(2+2) + padding(2+2) + border(1+1) = 10.
+        expect(wide).toBe(Util.lineHeightPx() + 10);
     });
 });
 

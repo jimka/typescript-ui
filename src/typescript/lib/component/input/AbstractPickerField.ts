@@ -8,34 +8,13 @@ import { PickerButton } from "~/component/input/PickerButton.js";
 import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
 import { ThemeManager } from "~/core/Theme.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import { registerFocusWithinRing } from "~/component/input/focusRing.js";
 import { Util } from "~/core/Util.js";
 
-/**
- * `:focus-within ::after` overlay highlights the picker root whenever
- * the inner {@link PickerInput} is focused. A pseudo-element drawn at
- * `inset: 0` carries the focus border so the ring sits *inside* the
- * outer's padding box and isn't clipped by an ancestor's `overflow:
- * hidden` (the framework's default). `z-index: 1` lifts the pseudo
- * above the absolutely-positioned PickerInput so the ring is never
- * painted over.
- */
-(() => {
-    new StyleRule({
-        scope:  "selector",
-        name:   ".DateField:focus-within::after, .TimeField:focus-within::after, .DateTimeField:focus-within::after",
-        styles: {
-            content:       "''",
-            position:      "absolute",
-            inset:         "0",
-            border:        "2px solid var(--ts-ui-indicator-focus, rgb(30, 100, 200))",
-            borderRadius:  "inherit",
-            boxSizing:     "border-box",
-            pointerEvents: "none",
-            zIndex:        "1",
-        },
-    });
-})();
+// Focus ring highlighting the picker root whenever the inner PickerInput is
+// focused. The three concrete selectors share the one helper-registered overlay
+// rule (the helper appends the focus pseudo-element to each).
+registerFocusWithinRing(".DateField, .TimeField, .DateTimeField");
 
 // Width of the picker glyph button in pixels. Matches the prior `display: flex`
 // + 24px caret column the framework used before the per-field doLayout
@@ -57,6 +36,20 @@ export interface AbstractPickerFieldOptions extends AbstractInputOptions {
 }
 
 /**
+ * User-overridable visual defaults shared by every concrete picker field
+ * (DateField / TimeField / DateTimeField); merged in the base constructor. The
+ * three fields' defaults were byte-identical, so they live here once.
+ */
+const _defaultPickerFieldOptions: Partial<AbstractPickerFieldOptions> = {
+    cursor:          "text",
+    padding:         new Insets(3, 3, 3, 3),
+    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
+    foregroundColor: "var(--ts-ui-text-color, black)",
+    border:          "var(--ts-ui-input-border)",
+    borderRadius:    "var(--ts-ui-border-radius, 4px)",
+};
+
+/**
  * Abstract base for the three picker fields ({@link DateField},
  * {@link TimeField}, {@link DateTimeField}). Owns the shared chrome — a
  * [`PickerInput`](/api/component/input/classes/PickerInput) on the left, a
@@ -75,7 +68,7 @@ export interface AbstractPickerFieldOptions extends AbstractInputOptions {
  */
 abstract class AbstractPickerField<
     TValue,
-    TDropdown extends AnimatedDropdown,
+    TDropdown extends AnimatedDropdown & { showAt(anchorEl: Handle, value: TValue | null): unknown },
     TOptions extends AbstractPickerFieldOptions = AbstractPickerFieldOptions
 >
     extends AbstractInput<TValue | null, TOptions>
@@ -85,15 +78,15 @@ abstract class AbstractPickerField<
     protected _dropdown: TDropdown | null = null;
     protected _value:    TValue | null    = null;
     protected _invalid:  boolean          = false;
+    // Hoisted here so it is declared once; only TimeField / DateTimeField
+    // read it (from their constructor body). Harmless-and-unused on DateField.
+    protected _showSeconds: boolean       = false;
 
     /**
      * @param options - Caller-supplied options bag.
-     * @param subclassDefaults - Per-subclass default bag layered over this
-     *   class's defaults; concrete subclasses forward their
-     *   `_defaultXxxFieldOptions` constant here.
      */
-    constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
-        super(options, subclassDefaults);
+    constructor(options?: TOptions) {
+        super(options, _defaultPickerFieldOptions as Partial<TOptions>);
 
         this._input = new PickerInput();
         this._input.setType("text");
@@ -122,6 +115,13 @@ abstract class AbstractPickerField<
         this._button.on("action", ()                => this.onButtonClick());
         // Suppress focus loss when clicking the button (it would blur the input).
         this._button.addPointerDownListener((e: PointerEvent) => this.onButtonPointerDown(e));
+
+        // Late-built dispatch: `applyOptions` cached enabled / readOnly onto
+        // `_options` during `super()` before `_input` existed. Dispatch them now
+        // that `_input` is built. The per-subclass `value` re-dispatch stays in
+        // each subclass because it reads the subclass-typed `_options.value`.
+        if (this._options.enabled  !== undefined) this.applyEnabled(this._options.enabled);
+        if (this._options.readOnly !== undefined) this.applyReadOnly(this._options.readOnly);
     }
 
     /**
@@ -150,18 +150,6 @@ abstract class AbstractPickerField<
     protected abstract createDropdown(): TDropdown;
 
     /**
-     * Subclass hook: anchor and show the dropdown with the field's current
-     * value. Each concrete dropdown's `showAt(anchorEl, value)` accepts a
-     * subclass-specific `value` type, so the dispatch lives here rather
-     * than directly in `openDropdown`.
-     *
-     * @param dropdown - The dropdown instance to show.
-     * @param anchorEl - The element to anchor the panel to.
-     * @param value - The current field value (or null when empty).
-     */
-    protected abstract showDropdown(dropdown: TDropdown, anchorEl: Handle, value: TValue | null): void;
-
-    /**
      * Subclass hook: called when the user selects a value from the dropdown.
      * Implementations typically call `this.setValue(value)` and
      * `this.closeDropdown()`.
@@ -179,15 +167,15 @@ abstract class AbstractPickerField<
     protected abstract getPreferredWidth(): number;
 
     /**
-     * Subclass hook: returns the default border restored when the
-     * invalid-border state clears. The return value is a complete CSS
-     * border shorthand string (typically a `var(...)` reference to the
-     * shared `--ts-ui-input-border` token) passed straight to
-     * {@link Component.setBorder}.
+     * Returns the default border restored when the invalid-border state clears
+     * — the shared `--ts-ui-input-border` token, identical across all three
+     * picker fields. The value is passed straight to {@link Component.setBorder}.
      *
      * @returns The default border shorthand string.
      */
-    protected abstract getDefaultBorder(): string;
+    protected getDefaultBorder(): string {
+        return _defaultPickerFieldOptions.border as string;
+    }
 
     /**
      * Applies an {@link AbstractPickerFieldOptions} bag. The inherited
@@ -249,15 +237,7 @@ abstract class AbstractPickerField<
      * the root's chrome (not the inner input's) governs the box.
      */
     protected updateHeight(): void {
-        const insets  = this.getInsets();
-        const padding = this.getPadding();
-        const border  = this.getBorderSize();
-
-        const chrome = insets.getTop() + insets.getBottom()
-                     + (padding ? padding.getTop() + padding.getBottom() : 0)
-                     + border.top + border.bottom;
-
-        const h = Util.lineHeightPx() + chrome;
+        const h = Util.singleLineBoxHeight(this.getInsets(), this.getPadding(), this.getBorderSize());
 
         this.setPreferredSize(this.getPreferredWidth(), h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
@@ -470,9 +450,9 @@ abstract class AbstractPickerField<
     }
 
     /**
-     * Opens the dropdown anchored to the input. The concrete subclass's
-     * {@link showDropdown} hook performs the actual `dropdown.showAt(...)`
-     * call so the value type matches the dropdown's signature.
+     * Opens the dropdown anchored to the input. Every concrete dropdown
+     * declares `showAt(anchorEl, value: TValue | null)` (enforced by the
+     * `TDropdown` bound), so the value-typed call lives here directly.
      */
     protected openDropdown(): void {
         const dropdown = this.ensureDropdown();
@@ -487,7 +467,7 @@ abstract class AbstractPickerField<
         dropdown.setCloseHandler(() => this.closeDropdown());
         dropdown.setAnchorElement(this.getElement(true) ?? null);
 
-        this.showDropdown(dropdown, this._input.getElement(true)!, this._value);
+        dropdown.showAt(this._input.getElement(true)!, this._value);
     }
 
     /**

@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { AbstractPickerField, AbstractPickerFieldOptions } from "~/component/input/AbstractPickerField.js";
-import { Insets } from "~/primitive/Insets.js";
 import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { clock } from "~/glyphs/solid/clock.js";
 import { TimePickerDropdown } from "~/component/input/TimePickerDropdown.js";
-import type { Handle } from "~/core/DOM.js";
 import { callable } from "~/core/Callable.js";
 
 Glyph.register(clock);
@@ -21,18 +19,6 @@ export interface TimeFieldOptions extends AbstractPickerFieldOptions {
     /** When true, the field formats and the picker exposes seconds. Default: false. */
     showSeconds?: boolean;
 }
-
-/**
- * User-overridable visual defaults forwarded to `super` via the options bag.
- */
-const _defaultTimeFieldOptions: Partial<TimeFieldOptions> = {
-    cursor:          "text",
-    padding:         new Insets(3, 3, 3, 3),
-    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
-    foregroundColor: "var(--ts-ui-text-color, black)",
-    border:          "var(--ts-ui-input-border)",
-    borderRadius:    "var(--ts-ui-border-radius, 4px)",
-};
 
 /**
  * A time-picker input component.
@@ -54,34 +40,24 @@ const _defaultTimeFieldOptions: Partial<TimeFieldOptions> = {
  */
 class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldOptions> {
 
-    private _showSeconds: boolean = false;
-
     constructor(options?: TimeFieldOptions) {
-        super(options, _defaultTimeFieldOptions);
+        super(options);
 
         // Button.setGlyph adds the glyph as the leading child of the
         // content row (with pointer-events: none) so the outer Fit centres
         // it within the button's inner rect.
         this._button.setGlyph("clock");
 
-        // Late-built state: `applyOptions` dispatched these through `_options`
-        // at super-time. Re-apply now that `_input` exists. `showSeconds` is
-        // read into the private field before `setValue` so the initial
-        // formatting picks up the right precision.
+        // Late-built state: `applyOptions` cached these on `_options` at
+        // super-time. `showSeconds` is read into the inherited field before
+        // `setValue` so the initial formatting picks up the right precision.
+        // The enabled / readOnly re-dispatch is handled by the base constructor.
         if (this._options.showSeconds !== undefined) {
             this._showSeconds = this._options.showSeconds;
         }
 
         if (this._options.value !== undefined) {
             this.setValue(this._options.value);
-        }
-
-        if (this._options.enabled !== undefined) {
-            this.applyEnabled(this._options.enabled);
-        }
-
-        if (this._options.readOnly !== undefined) {
-            this.applyReadOnly(this._options.readOnly);
         }
     }
 
@@ -166,17 +142,6 @@ class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldO
     }
 
     /**
-     * Anchors the time dropdown to the inner input element.
-     *
-     * @param dropdown - The dropdown instance to show.
-     * @param anchorEl - The element to anchor the panel to.
-     * @param value - The current field value (or null when empty).
-     */
-    protected showDropdown(dropdown: TimePickerDropdown, anchorEl: Handle, value: Date | null): void {
-        dropdown.showAt(anchorEl, value);
-    }
-
-    /**
      * Adapter from the inner dropdown's `(h, m, s)` selection callback to
      * the abstract base's `(value)` shape. Builds a Date with today's date
      * portion and the selected H:M:S.
@@ -205,13 +170,6 @@ class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldO
      */
     protected getPreferredWidth(): number {
         return 140;
-    }
-
-    /**
-     * The default border restored when the invalid-border state clears.
-     */
-    protected getDefaultBorder(): string {
-        return _defaultTimeFieldOptions.border as string;
     }
 }
 

@@ -109,12 +109,30 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
             lineHeight: "calc(1em + var(--ts-ui-line-padding, 2px))",
         });
 
-        // Bridge the native `input` DOM event into AbstractInput's change /
-        // binding listener fan-out so `on("change", fn)` fires on every
-        // keystroke for every text-derived control. Bindings already fire on
-        // the same DOM event in subclass-specific `onInput` hooks; this opens
-        // the second dispatch path for the unified listener API.
-        Event.addListener(this, "input", () => this.notifyChange(this.getValue()));
+        // Single native `input` listener for every text-derived control: it
+        // syncs the cached text from the live DOM, then fans the fresh value
+        // out through AbstractInput's change / binding listeners. Folding the
+        // sync and the notify into one base listener (rather than a per-subclass
+        // second `input` hook wired after this one) guarantees the cache is
+        // current before `on("change")` reads it — the fix for the
+        // one-keystroke-behind value bug.
+        Event.addListener(this, "input", this.onInput);
+    }
+
+    /**
+     * Native `input` handler: syncs the cached text from the live DOM element,
+     * then notifies the change / binding listeners with the fresh value.
+     *
+     * @remarks Registered once by the base constructor for every subclass, so
+     * `getText()` and the `on("change")` fan-out always observe the just-typed
+     * value on the same event. Subclasses must not wire a second `input`
+     * listener.
+     */
+    protected onInput(): void {
+        const element = this.getElement();
+
+        this.setText(element ? DOM.source.getValue(element) : "");
+        this.notifyChange(this.getValue());
     }
 
     /**

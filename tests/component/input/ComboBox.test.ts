@@ -1,9 +1,8 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { ComboBox } from '~/component/input/ComboBox';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import { DOM } from '~/core/DOM';
-import { Event } from '~/core/Event';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -73,34 +72,41 @@ describe('ComboBox — items & selection', () => {
         expect(combo.getValue()).toBe('x');
     });
 
-    it('setSelectedIndex updates value/selection and dispatches a change on the ComboBox by default', () => {
+    it('setSelectedIndex fires change and action bag listeners with the new value by default', () => {
         installTestDOM(CONFIG);
         const combo = new ComboBox();
         combo.setItems([{ key: 'x', label: 'X' }, { key: 'y', label: 'Y' }]);
-        // The change fires through Event.fireEvent(this, "change"); assert the
-        // dispatch directly — DOM-bridge listener delivery is test-ordering
-        // sensitive offline and exercised end-to-end by the Button suites.
-        const fire = vi.spyOn(Event, 'fireEvent').mockImplementation(() => {});
+
+        // Notification now routes directly through AbstractInput.notifyChange
+        // (no self-consumed synthetic DOM `change`), so a real on("change") /
+        // on("action") bag listener is delivered reliably offline. `action` is
+        // an alias of `change` on ComboBox.
+        let changeValue: string | null = null;
+        let actionCount = 0;
+        combo.on('change', v => { changeValue = v; });
+        combo.on('action', () => { actionCount += 1; });
 
         combo.setSelectedIndex(1);
 
         expect(combo.getSelectedIndex()).toBe(1);
         expect(combo.getValue()).toBe('y');
-        expect((fire.mock.calls as unknown[][]).some(c => c[0] === combo && c[1] === 'change')).toBe(true);
-        fire.mockRestore();
+        expect(changeValue).toBe('y');
+        expect(actionCount).toBe(1);
     });
 
-    it('setSelectedIndex with fireEvent=false does not dispatch change', () => {
+    it('setSelectedIndex with fireEvent=false fires neither change nor action', () => {
         installTestDOM(CONFIG);
         const combo = new ComboBox();
         combo.setItems([{ key: 'x', label: 'X' }, { key: 'y', label: 'Y' }]);
-        const fire = vi.spyOn(Event, 'fireEvent').mockImplementation(() => {});
+
+        let fired = 0;
+        combo.on('change', () => { fired += 1; });
+        combo.on('action', () => { fired += 1; });
 
         combo.setSelectedIndex(1, false);
 
         expect(combo.getSelectedIndex()).toBe(1);
-        expect((fire.mock.calls as unknown[][]).some(c => c[0] === combo && c[1] === 'change')).toBe(false);
-        fire.mockRestore();
+        expect(fired).toBe(0);
     });
 });
 

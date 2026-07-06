@@ -2,8 +2,6 @@
 
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { Util } from "~/core/Util.js";
-import { Event } from "~/core/Event.js";
-import { DOM } from "~/core/DOM.js";
 import { Insets } from "~/primitive/Insets.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
@@ -43,8 +41,6 @@ class TextField extends TextInput<TextFieldOptions> {
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
 
-        Event.addListener(this, "input", this.onInput);
-
         this.setType("text");
     }
 
@@ -59,33 +55,10 @@ class TextField extends TextInput<TextFieldOptions> {
      * adjustments propagate to the layout hint automatically.
      */
     private updateHeight(): void {
-        const insets  = this.getInsets();
-        const padding = this.getPadding();
-        const border  = this.getBorderSize();
-
-        const chrome = insets.getTop() + insets.getBottom()
-                     + (padding ? padding.getTop() + padding.getBottom() : 0)
-                     + border.top + border.bottom;
-
-        const h = Util.lineHeightPx() + chrome;
+        const h = Util.singleLineBoxHeight(this.getInsets(), this.getPadding(), this.getBorderSize());
 
         this.setPreferredSize(200, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
-    }
-
-    /**
-     * Cleanup hook; currently a no-op placeholder.
-     */
-    destructor() {
-        //Util.removeListener("input", this.onInput);
-    }
-
-    /**
-     * Syncs the text content from the DOM element's value on every input event.
-     */
-    onInput() {
-        let element = this.getElement();
-        this.setText(DOM.source.getValue(element!));
     }
 
 }

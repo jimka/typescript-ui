@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { AbstractPickerField, AbstractPickerFieldOptions } from "~/component/input/AbstractPickerField.js";
-import { Insets } from "~/primitive/Insets.js";
 import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { calendar } from "~/glyphs/solid/calendar.js";
 import { DateTimePickerDropdown } from "~/component/input/DateTimePickerDropdown.js";
-import type { Handle } from "~/core/DOM.js";
 import { callable } from "~/core/Callable.js";
 
 Glyph.register(calendar);
@@ -27,18 +25,6 @@ export interface DateTimeFieldOptions extends AbstractPickerFieldOptions {
 }
 
 /**
- * User-overridable visual defaults forwarded to `super` via the options bag.
- */
-const _defaultDateTimeFieldOptions: Partial<DateTimeFieldOptions> = {
-    cursor:          "text",
-    padding:         new Insets(3, 3, 3, 3),
-    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
-    foregroundColor: "var(--ts-ui-text-color, black)",
-    border:          "var(--ts-ui-input-border)",
-    borderRadius:    "var(--ts-ui-border-radius, 4px)",
-};
-
-/**
  * A date-time-picker input component.
  *
  * Renders a text input with a calendar-glyph button on the right; clicking
@@ -56,34 +42,24 @@ const _defaultDateTimeFieldOptions: Partial<DateTimeFieldOptions> = {
  */
 class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, DateTimeFieldOptions> {
 
-    private _showSeconds: boolean = false;
-
     constructor(options?: DateTimeFieldOptions) {
-        super(options, _defaultDateTimeFieldOptions);
+        super(options);
 
         // Button.setGlyph adds the glyph as the leading child of the
         // content row (with pointer-events: none) so the outer Fit centres
         // it within the button's inner rect.
         this._button.setGlyph("calendar");
 
-        // Late-built state: `applyOptions` dispatched these through `_options`
-        // at super-time. Re-apply now that `_input` exists. `showSeconds` is
-        // read into the private field before `setValue` so the initial
-        // formatting picks up the right precision.
+        // Late-built state: `applyOptions` cached these on `_options` at
+        // super-time. `showSeconds` is read into the inherited field before
+        // `setValue` so the initial formatting picks up the right precision.
+        // The enabled / readOnly re-dispatch is handled by the base constructor.
         if (this._options.showSeconds !== undefined) {
             this._showSeconds = this._options.showSeconds;
         }
 
         if (this._options.value !== undefined) {
             this.setValue(this._options.value);
-        }
-
-        if (this._options.enabled !== undefined) {
-            this.applyEnabled(this._options.enabled);
-        }
-
-        if (this._options.readOnly !== undefined) {
-            this.applyReadOnly(this._options.readOnly);
         }
     }
 
@@ -176,17 +152,6 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
     }
 
     /**
-     * Anchors the date-time dropdown to the inner input element.
-     *
-     * @param dropdown - The dropdown instance to show.
-     * @param anchorEl - The element to anchor the panel to.
-     * @param value - The current field value (or null when empty).
-     */
-    protected showDropdown(dropdown: DateTimePickerDropdown, anchorEl: Handle, value: Date | null): void {
-        dropdown.showAt(anchorEl, value);
-    }
-
-    /**
      * Called when the user picks a date-time from the dropdown. Commits the
      * value and re-fires `input` on the inner field so any DOM-event
      * consumer still sees the change.
@@ -205,13 +170,6 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
      */
     protected getPreferredWidth(): number {
         return 200;
-    }
-
-    /**
-     * The default border restored when the invalid-border state clears.
-     */
-    protected getDefaultBorder(): string {
-        return _defaultDateTimeFieldOptions.border as string;
     }
 }
 
