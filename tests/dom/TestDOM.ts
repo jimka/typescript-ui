@@ -499,6 +499,18 @@ export class RecordingDOMSink implements DOMSink {
         return null;
     }
 
+    /**
+     * A foreign live widget cannot be modelled or forwarded across a worker, so
+     * the recording sink records the request and returns `null` without calling
+     * `factory` — the signal that makes a `mountView`-based component (e.g.
+     * `CodeEditor`) no-op offline, mirroring {@link getContext}.
+     */
+    mountView<T>(_handle: Handle, _factory: (parent: HTMLElement) => T): T | null {
+        this.record('mountView');
+
+        return null;
+    }
+
     mediaPlay(handle: Handle): void {
         this.record('mediaPlay');
         _table.stub(handle).media.paused = false;

@@ -726,6 +726,29 @@ export interface DOMSink {
     getContext(handle: Handle, contextId: string, options?: unknown): RenderingContext | null;
 
     /**
+     * Resolves `handle` to its real element and hands it to `factory`, which
+     * mounts a foreign live widget (a third-party library that takes a parent
+     * element and mutates a whole DOM region it owns) into it — the second
+     * named escape from the seam's one-way contract, after {@link getContext}.
+     *
+     * @remarks Like `getContext`, this returns a live object rather than a
+     * forwardable one-way write: the mounted widget instance cannot cross a
+     * worker boundary, so a modelled sink returns `null` and the caller no-ops
+     * offline. This is the reason a component built on `mountView` (e.g.
+     * `CodeEditor` on CodeMirror's `EditorView`) is live-only. `factory`'s
+     * parameter is deliberately left unannotated at call sites outside this
+     * seam — its type is inferred from this signature — so no call site names
+     * a DOM element type and trips `no-raw-dom`'s *hold* clause.
+     *
+     * @param handle - The element handle to mount the foreign widget into.
+     * @param factory - Builds and returns the foreign widget given the
+     *   resolved parent element.
+     * @returns Whatever `factory` returns, or `null` offline / when the handle
+     *   does not resolve.
+     */
+    mountView<T>(handle: Handle, factory: (parent: HTMLElement) => T): T | null;
+
+    /**
      * Starts (or resumes) playback of a media element. Wraps the `play()` IDL
      * method, whose returned promise is intentionally dropped — playback state is
      * observed through media events, not the promise.
@@ -1473,6 +1496,11 @@ export class ProductionDOMSink implements DOMSink {
     /** @inheritDoc */
     getContext(handle: Handle, contextId: string, options?: unknown): RenderingContext | null {
         return (_registry.resolve(handle) as HTMLCanvasElement).getContext(contextId, options);
+    }
+
+    /** @inheritDoc */
+    mountView<T>(handle: Handle, factory: (parent: HTMLElement) => T): T | null {
+        return factory(_registry.resolve(handle) as HTMLElement);
     }
 
     /** @inheritDoc */
