@@ -238,6 +238,15 @@ describe('MarkdownEditor value round-trip (idempotence)', () => {
     }
 });
 
+// These cover the mode API's offline-observable behaviour (get/set mode, the
+// mode-aware value, cross-surface round-tripping, and change suppression on a
+// no-op switch). Source-mode *change emission* — a `setValue`/user edit in
+// source mode firing exactly one `"change"` — is NOT asserted here: it is driven
+// only by CodeEditor's live CodeMirror update listener, which never fires under
+// the modelled sink (see the file header and `CodeEditor.mount`). That path is
+// manual-verify (exercised live in the MD Editor demo, whose `change → syncViewer`
+// wiring reflects source edits) and shares its guard logic with the tested
+// `handleChange` path.
 describe('MarkdownEditor mode', () => {
     it('defaults to wysiwyg', () => {
         expect(new MarkdownEditor().getMode()).toBe('wysiwyg');
