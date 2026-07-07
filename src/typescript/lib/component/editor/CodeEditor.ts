@@ -43,16 +43,18 @@ export interface CodeEditorOptions extends ComponentOptions {
 }
 
 /**
- * Builds the readOnly-state extension pair: `EditorState.readOnly` blocks
- * every edit (including programmatic ones), and `EditorView.editable`
- * additionally drops the caret / editing affordances, so the two are always
- * toggled together.
+ * Builds the readOnly-state extension: `EditorState.readOnly` blocks every
+ * edit (including programmatic ones) while leaving the content DOM editable, so
+ * the caret, cursor navigation, and text selection / copy all keep working —
+ * the standard read-only experience. (`EditorView.editable.of(false)` would
+ * additionally strip selection by making CodeMirror stop managing a caret in
+ * the content, so it is deliberately *not* used here.)
  *
  * @param readOnly - Whether the editor should reject edits.
- * @returns The combined extension for the readOnly compartment.
+ * @returns The extension for the readOnly compartment.
  */
 function buildReadOnlyExtension(readOnly: boolean): Extension {
-    return [EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)];
+    return EditorState.readOnly.of(readOnly);
 }
 
 /**
