@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
@@ -23,8 +25,14 @@ export interface CodeEditorChange {
     value: string;
 }
 
-/** The event {@link CodeEditor} exposes through its custom `on` / `off` surface. */
-type CodeEditorEvent = "change";
+/**
+ * The events {@link CodeEditor} exposes through its custom `on` / `off` surface:
+ *
+ * - `"change"` — the document text changed (payload {@link CodeEditorChange}).
+ * - `"readonlyedit"` — a user edit was rejected because the editor is read-only
+ *   (no payload); see {@link CodeEditor.on}.
+ */
+type CodeEditorEvent = "change" | "readonlyedit";
 
 /**
  * Construction-time options for {@link CodeEditor}.
@@ -38,9 +46,22 @@ export interface CodeEditorOptions extends ComponentOptions {
     language?: string;
     /** Whether the editor rejects edits. Default `false`. */
     readOnly?: boolean;
-    /** Construction-time listener bag; the only event is `"change"`. */
-    listeners?: { change?: (payload: CodeEditorChange) => void };
+    /** Construction-time listener bag; the events are `"change"` and `"readonlyedit"`. */
+    listeners?: { change?: (payload: CodeEditorChange) => void; readonlyedit?: () => void };
 }
+
+/** Duration of the read-only rejection flash, in milliseconds. */
+const READONLY_FLASH_MS = 300;
+
+/** Peak opacity of the read-only rejection wash — a subtle tint that keeps the text readable. */
+const READONLY_FLASH_PEAK_OPACITY = 0.16;
+
+/**
+ * Fill of the read-only rejection wash: the project's validation-error token,
+ * with a light/dark-safe fallback, so the tint follows a `ThemeManager.setTheme`
+ * toggle with no rebuild (the CSS variable resolves live).
+ */
+const READONLY_FLASH_COLOR = "var(--ts-ui-validation-error-border, #dc2626)";
 
 /**
  * Builds the readOnly-state extension: `EditorState.readOnly` blocks every
@@ -96,6 +117,9 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
     /** The live CodeMirror view; `null` until mounted (or forever, offline). */
     private _view: EditorView | null = null;
+
+    /** Overlay flashed on a rejected read-only edit; `null` until mounted (or forever, offline). */
+    private _flashOverlay: Handle | null = null;
 
     /** Reconfigured by {@link CodeEditor.setLanguage} to swap the active grammar. */
     private readonly _langCompartment: Compartment = new Compartment();
@@ -321,6 +345,16 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * @param listener - Invoked with the new document text.
      * @returns This component, for method chaining.
      */
+    on(event: "change", listener: (payload: CodeEditorChange) => void): this;
+    /**
+     * Registers a listener for the `"readonlyedit"` event, fired when a user
+     * edit (typing, paste, drop) is rejected because the editor is read-only.
+     *
+     * @param event - Must be `"readonlyedit"`.
+     * @param listener - Invoked with no arguments on each rejected edit.
+     * @returns This component, for method chaining.
+     */
+    on(event: "readonlyedit", listener: () => void): this;
     on(event: CodeEditorEvent, listener: (payload: CodeEditorChange) => void): this {
         this._listeners.add(event, listener);
 
@@ -334,6 +368,15 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * @param listener - The exact callback reference to remove.
      * @returns This component, for method chaining.
      */
+    off(event: "change", listener: (payload: CodeEditorChange) => void): this;
+    /**
+     * Removes a previously registered `"readonlyedit"` listener.
+     *
+     * @param event - Must be `"readonlyedit"`.
+     * @param listener - The exact callback reference to remove.
+     * @returns This component, for method chaining.
+     */
+    off(event: "readonlyedit", listener: () => void): this;
     off(event: CodeEditorEvent, listener: (payload: CodeEditorChange) => void): this {
         this._listeners.remove(event, listener);
 
@@ -341,13 +384,15 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
-     * Fans the `"change"` event out to its registered listeners.
+     * Fans an event out to its registered listeners.
      *
-     * @param event - Must be `"change"`.
-     * @param payload - The event payload.
+     * @param event - The event name.
+     * @param payload - The event payload (`"change"` only; `"readonlyedit"` has none).
      */
-    protected emit(event: CodeEditorEvent, payload: CodeEditorChange): void {
-        this._listeners.fire(event, payload);
+    protected emit(event: "change", payload: CodeEditorChange): void;
+    protected emit(event: "readonlyedit"): void;
+    protected emit(event: CodeEditorEvent, payload?: CodeEditorChange): void {
+        this._listeners.fire(event, ...(payload ? [payload] : []));
     }
 
     /**
@@ -397,17 +442,60 @@ class CodeEditor extends Component<CodeEditorOptions> {
                     this.emit("change", { value: this._options.value });
                 }
             }),
+            EditorView.domEventHandlers({
+                // A user edit while read-only is blocked by `EditorState.readOnly`
+                // at the input layer — it never becomes a transaction, so it emits
+                // no "change". These hooks surface the rejection as feedback:
+                // typing / IME / delete fire `beforeinput`, while paste and drop are
+                // prevented before `beforeinput` runs, so each needs its own hook.
+                beforeinput: () => this.onEditIntent(),
+                paste:       () => this.onEditIntent(),
+                drop:        () => this.onEditIntent(),
+            }),
         ];
 
         const state = EditorState.create({ doc: this._options.value ?? "", extensions });
 
         this._view = DOM.sink.mountView(element, (parent) => new EditorView({ parent, state }));
 
+        if (this._view) {
+            this.mountFlashOverlay(element);
+        }
+
         const language = this.getLanguage();
 
         if (language) {
             this.setLanguage(language);
         }
+    }
+
+    /**
+     * Creates the read-only rejection wash: a pointer-transparent overlay that
+     * fills the editor box and sits above CodeMirror's content, appended after
+     * the view so it paints on top. It rests at `opacity: 0`; {@link CodeEditor.flashReadOnly}
+     * pulses it. Tracked as an owned handle, so the component's teardown releases it.
+     *
+     * @param host - The mounted editor element the overlay fills.
+     */
+    private mountFlashOverlay(host: Handle): void {
+        const overlay = this.trackHandle(DOM.sink.createElement("div"));
+
+        DOM.sink.apply(overlay, {
+            style: {
+                position:      "absolute",
+                inset:         "0",
+                pointerEvents: "none",
+                // Above CodeMirror's sticky line-number gutter (z-index 200) so the
+                // wash covers the gutter too; `.cm-editor` forms no stacking context,
+                // so the gutter would otherwise paint over a lower overlay.
+                zIndex:        "300",
+                backgroundColor: READONLY_FLASH_COLOR,
+                opacity:       "0",
+            },
+        });
+        DOM.sink.appendChild(host, overlay);
+
+        this._flashOverlay = overlay;
     }
 
     /**
@@ -423,6 +511,58 @@ class CodeEditor extends Component<CodeEditorOptions> {
         const dark = ThemeManager.getTheme().colorScheme === "dark";
 
         this._view.dispatch({ effects: this._themeCompartment.reconfigure(codeEditorTheme(dark)) });
+    }
+
+    /**
+     * DOM-event hook for the read-only rejection feedback, wired to
+     * `beforeinput` / `paste` / `drop` in {@link CodeEditor.mount}. When the
+     * editor is read-only it surfaces the attempt via
+     * {@link CodeEditor.signalReadOnlyEdit}; it never consumes the event, so
+     * CodeMirror's own `EditorState.readOnly` handling still blocks the edit.
+     *
+     * @returns Always `false` (event left unhandled).
+     */
+    private onEditIntent(): boolean {
+        if (this.getReadOnly()) {
+            this.signalReadOnlyEdit();
+        }
+
+        return false;
+    }
+
+    /**
+     * Emits the `"readonlyedit"` event and plays the rejection flash — a
+     * programmatic hook plus a built-in visual cue that an edit was refused
+     * because the editor is read-only.
+     */
+    private signalReadOnlyEdit(): void {
+        this.emit("readonlyedit");
+        this.flashReadOnly();
+    }
+
+    /**
+     * Flashes a brief error-coloured wash over the editor as feedback for a
+     * rejected edit: fades the overlay from a subtle tint back to transparent.
+     * No-op before the overlay is mounted (offline / pre-mount), and — via
+     * {@link Animation.play} — honours `prefers-reduced-motion`: under reduced
+     * motion the `"readonlyedit"` event still fires but nothing animates.
+     *
+     * A full-box wash is used rather than a border/ring cue because the editor
+     * is often large and mostly empty, so an edge flash sits far from where the
+     * eye is (the caret) and reads as nothing; the wash covers the content the
+     * user is looking at while staying faint enough to keep the text legible.
+     */
+    private flashReadOnly(): void {
+        if (!this._flashOverlay) {
+            return;
+        }
+
+        Animation.play(this._flashOverlay, {
+            from:       { opacity: String(READONLY_FLASH_PEAK_OPACITY) },
+            to:         { opacity: "0" },
+            durationMs: READONLY_FLASH_MS,
+            properties: ["opacity"],
+        });
     }
 }
 
