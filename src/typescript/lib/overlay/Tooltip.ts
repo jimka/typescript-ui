@@ -174,6 +174,13 @@ export class Tooltip extends Component {
 
         const inst = Tooltip.getInstance();
 
+        // Whether the tooltip is already on screen (and not mid-dismiss). A
+        // caller that shows on every mousemove — a chart hover — reaches `show`
+        // dozens of times a second; replaying the entrance fade each time would
+        // reset opacity to 0 before the 100 ms fade completes, flickering the
+        // tooltip. When already shown we skip the fade and just reposition/retext.
+        const alreadyShown = inst.isVisible() && !Tooltip.dismissing;
+
         inst._text.setText(text);
 
         // Size width to the widest line and height to the line count so a
@@ -246,6 +253,14 @@ export class Tooltip extends Component {
         // Cancel a pending fade-out's removeElement so a fresh show during the
         // outgoing transition keeps the element in the DOM.
         Tooltip.dismissing = false;
+
+        if (alreadyShown) {
+            // Already visible — hold at full opacity; the position/size/text
+            // updates above are all this repeat show needs. No entrance fade.
+            DOM.sink.apply(el, { style: { opacity: "1" } });
+
+            return;
+        }
 
         Animation.play(el, {
             from:       { opacity: "0" },

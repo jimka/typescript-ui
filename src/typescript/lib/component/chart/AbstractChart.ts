@@ -143,6 +143,13 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
     // detached node in the registry — the Glyphs sprite-leak lesson).
     private _marks: Array<{ parent: Handle; handle: Handle }> = [];
 
+    // The plot rectangle and scales from the last layout, cached so pointer
+    // hit-testing (which runs outside layout, on every mousemove) can map the
+    // cursor into data space without rebuilding them. Null until first layout.
+    protected _plot: PlotRect | null = null;
+    protected _xScale: ChartScale | null = null;
+    protected _yScale: ChartScale | null = null;
+
     /**
      * Builds the chart shell: the legend child, the default size envelope, the
      * interaction listeners, and the theme subscription. Chart-specific options
@@ -565,6 +572,10 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
         const plot = this.computePlot(plotOuter);
         const scales = this.buildScales(plot);
 
+        this._plot = plot;
+        this._xScale = scales.x;
+        this._yScale = scales.y;
+
         this.repaint(plot, scales.x, scales.y);
 
         return this;
@@ -824,7 +835,7 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
      * @param event - The mouse-move event.
      */
     private handlePointerMove = (event: MouseEvent): void => {
-        const hit = this.hitMark(event);
+        const hit = this.resolveHit(event);
 
         if (!hit) {
             Tooltip.hide();
@@ -843,9 +854,22 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
     };
 
     /**
-     * Hides the tooltip when the pointer leaves the chart.
+     * Hides the tooltip when the pointer truly leaves the chart. The subtree
+     * `mouseout` also fires when the pointer crosses *between* internal marks
+     * (a point marker onto the line path, say); hiding then would blank the
+     * tooltip at every internal boundary, so a move whose `relatedTarget` is
+     * still inside the chart is ignored.
+     *
+     * @param event - The mouse-out event.
      */
-    private handlePointerOut = (): void => {
+    private handlePointerOut = (event: MouseEvent): void => {
+        const related = event.relatedTarget;
+        const root = this.getElement();
+
+        if (root && DOM.source.isNode(related) && DOM.source.contains(root, DOM.source.intern(related))) {
+            return;
+        }
+
         Tooltip.hide();
     };
 
@@ -856,7 +880,7 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
      * @param event - The click event.
      */
     private handlePointerClick = (event: MouseEvent): void => {
-        const hit = this.hitMark(event);
+        const hit = this.resolveHit(event);
 
         // Selection needs a concrete point — a whole-series mark (line path,
         // null index) carries no datum to select.
@@ -881,6 +905,41 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
             this.scheduleLayout();
         }
     };
+
+    /**
+     * Resolves a pointer event to the datum (or whole series) it targets, or
+     * `null` for a miss. The default reads the series/index data attributes off
+     * the event's target mark ({@link hitMark}); subtypes whose marks are hard
+     * to land on precisely (a thin line path) override this with a geometric
+     * proximity test.
+     *
+     * @param event - The pointer event.
+     *
+     * @returns The hit `{ series, index }` (`index` null for a whole-series mark), or `null`.
+     */
+    protected resolveHit(event: MouseEvent): { series: number; index: number | null } | null {
+        return this.hitMark(event);
+    }
+
+    /**
+     * Maps a viewport (client) coordinate to the SVG surface's user space, whose
+     * viewBox matches the inner-box pixels 1:1. Returns `null` before the surface
+     * exists. Used by geometric hit-testing to place the cursor in mark space.
+     *
+     * @param clientX - The viewport x coordinate.
+     * @param clientY - The viewport y coordinate.
+     *
+     * @returns The point in SVG user space, or `null`.
+     */
+    protected clientToSurface(clientX: number, clientY: number): { x: number; y: number } | null {
+        if (!this._svg) {
+            return null;
+        }
+
+        const rect = DOM.source.getElementRect(this._svg);
+
+        return { x: clientX - rect.x, y: clientY - rect.y };
+    }
 
     /**
      * Reads the series/index data attributes off the event's target mark. A mark

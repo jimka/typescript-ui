@@ -11,6 +11,63 @@ import type { ChartPoint, PlotRect } from "~/component/chart/types.js";
 export type LineChartScaleType = "linear" | "time";
 
 /**
+ * Vertical distance (px) within which the pointer "catches" a line for hover.
+ * A comfortable band so the thin stroke need not be hit exactly; the nearest
+ * line within it wins.
+ */
+const HOVER_TOLERANCE = 16;
+
+/** Binary-search steps used to invert a curve segment's x(t) — sub-pixel at 24. */
+const CURVE_SOLVE_STEPS = 24;
+
+/** One captured path segment as a cubic in pixel space: `[x0,y0, x1,y1, x2,y2, x3,y3]`. */
+type CurveSegment = [number, number, number, number, number, number, number, number];
+
+/**
+ * A minimal path "context" that records the segments d3's line generator emits.
+ * Feeding this to `line().context(...)` captures the *exact* rendered curve —
+ * straight (`curveLinear`) or monotone (`curveMonotoneX`) — as cubic segments in
+ * pixel space, so hover hit-testing can evaluate the real curve instead of the
+ * straight chord between data points (which, for a monotone curve, sits off the
+ * visible line and biases the catch band to one side). Only the three calls a
+ * d3 line curve makes are implemented; a straight `lineTo` is stored as a
+ * degenerate cubic whose controls lie on the chord.
+ */
+class CurveTape {
+    readonly segments: CurveSegment[] = [];
+    private _x = 0;
+    private _y = 0;
+
+    moveTo(x: number, y: number): void {
+        this._x = x;
+        this._y = y;
+    }
+
+    lineTo(x: number, y: number): void {
+        this.segments.push([this._x, this._y, this._x, this._y, x, y, x, y]);
+        this._x = x;
+        this._y = y;
+    }
+
+    bezierCurveTo(x1: number, y1: number, x2: number, y2: number, x: number, y: number): void {
+        this.segments.push([this._x, this._y, x1, y1, x2, y2, x, y]);
+        this._x = x;
+        this._y = y;
+    }
+
+    closePath(): void {
+        // Line paths are never closed; required only to satisfy the context shape.
+    }
+}
+
+/** Evaluates a cubic Bézier component (one axis) at parameter `t`. */
+function cubicAt(a: number, b: number, c: number, d: number, t: number): number {
+    const u = 1 - t;
+
+    return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d;
+}
+
+/**
  * Construction-time options for {@link LineChart}.
  *
  * @category Components
@@ -248,6 +305,148 @@ class LineChart extends AbstractChart<LineChartOptions> {
         const project = this.projector(xScale, yScale);
 
         return { x: project.x(point.x), y: project.y(point.y) };
+    }
+
+    /**
+     * Resolves a pointer to the vertically-nearest visible series' line at the
+     * cursor's x, within {@link HOVER_TOLERANCE}. A thin line path is hard to
+     * land on precisely, so instead of the base's data-attribute hit-testing
+     * this interpolates each line's y at the pointer and picks the closest,
+     * reporting that series' nearest point (so the tooltip shows its value and a
+     * click selects it). Returns `null` before layout or when no line is near.
+     *
+     * @param event - The pointer event.
+     *
+     * @returns The nearest `{ series, index }`, or `null`.
+     */
+    protected resolveHit(event: MouseEvent): { series: number; index: number | null } | null {
+        if (!this._plot || !this._xScale || !this._yScale) {
+            return null;
+        }
+
+        const cursor = this.clientToSurface(event.clientX, event.clientY);
+
+        if (!cursor) {
+            return null;
+        }
+
+        const plot = this._plot;
+
+        // Only inside the plot's horizontal band, and its vertical band widened
+        // by the tolerance so a line at the very top/bottom edge still catches.
+        if (cursor.x < plot.x || cursor.x > plot.x + plot.width
+            || cursor.y < plot.y - HOVER_TOLERANCE || cursor.y > plot.y + plot.height + HOVER_TOLERANCE) {
+            return null;
+        }
+
+        const project = this.projector(this._xScale, this._yScale);
+
+        let bestSeries = -1;
+        let bestDist = HOVER_TOLERANCE;
+
+        this._series.forEach((model, seriesIndex) => {
+            if (model.hidden || model.points.length === 0) {
+                return;
+            }
+
+            const lineY = this.curveYAt(model.points, cursor.x, project);
+
+            if (lineY === null) {
+                return;
+            }
+
+            const dist = Math.abs(cursor.y - lineY);
+
+            if (dist <= bestDist) {
+                bestDist = dist;
+                bestSeries = seriesIndex;
+            }
+        });
+
+        if (bestSeries < 0) {
+            return null;
+        }
+
+        return { series: bestSeries, index: this.nearestPointIndex(this._series[bestSeries].points, cursor.x, project) };
+    }
+
+    /**
+     * Evaluates a series' rendered line at a pixel x, returning the curve's
+     * pixel y (or `null` when the cursor is outside the series' x-extent). The
+     * curve is captured exactly as drawn — via {@link CurveTape} fed to the same
+     * `line()` generator {@link drawSeries} uses — so a monotone (curved) line is
+     * followed faithfully rather than approximated by the straight chord, which
+     * would sit off the visible line and make the catch band lopsided. Within the
+     * bracketing segment (x is monotone across it for both curve kinds), a binary
+     * search inverts x(t), then y(t) gives the height.
+     *
+     * @param points - The series points (x-ordered, as drawn).
+     * @param px - The cursor's pixel x.
+     * @param project - The point→pixel projectors.
+     *
+     * @returns The line's pixel y at `px`, or `null` when out of range.
+     */
+    private curveYAt(points: ChartPoint[], px: number, project: { x: (v: number) => number; y: (v: number) => number }): number | null {
+        const tape = new CurveTape();
+        // d3's context type is Canvas-shaped; CurveTape implements only the three
+        // calls a line curve makes, so the cast bridges the structural gap.
+        const generator = line<ChartPoint>()
+            .x((p) => project.x(p.x))
+            .y((p) => project.y(p.y))
+            .curve(this.isCurved() ? curveMonotoneX : curveLinear)
+            .context(tape as unknown as CanvasRenderingContext2D);
+
+        generator(points);
+
+        for (const [x0, y0, x1, y1, x2, y2, x3, y3] of tape.segments) {
+            if (px < Math.min(x0, x3) || px > Math.max(x0, x3)) {
+                continue;
+            }
+
+            const ascending = x3 >= x0;
+            let lo = 0;
+            let hi = 1;
+
+            for (let step = 0; step < CURVE_SOLVE_STEPS; step++) {
+                const mid = (lo + hi) / 2;
+
+                if ((cubicAt(x0, x1, x2, x3, mid) <= px) === ascending) {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+
+            return cubicAt(y0, y1, y2, y3, (lo + hi) / 2);
+        }
+
+        return null;
+    }
+
+    /**
+     * Returns the index of the series point whose projected x is nearest the
+     * cursor's pixel x — the datum a near-line hover reports.
+     *
+     * @param points - The series points.
+     * @param px - The cursor's pixel x.
+     * @param project - The point→pixel projectors.
+     *
+     * @returns The nearest point's index.
+     */
+    private nearestPointIndex(points: ChartPoint[], px: number, project: { x: (v: number) => number; y: (v: number) => number }): number {
+        let best = 0;
+        let bestDx = Infinity;
+
+        points.forEach((point, index) => {
+            const dx = Math.abs(project.x(point.x) - px);
+
+            if (dx < bestDx) {
+                bestDx = dx;
+                best = index;
+            }
+        });
+
+        return best;
     }
 
     /**
