@@ -46,6 +46,7 @@ export function codeEditorTheme(dark: boolean): Extension {
         ".cm-content": {
             fontFamily: "var(--ts-ui-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)",
             caretColor: "var(--ts-ui-indicator-focus, #2563eb)",
+            cursor:     "text",
         },
         ".cm-gutters": {
             color:           "var(--ts-ui-text-color, #1a1a1a)",
