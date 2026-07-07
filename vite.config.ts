@@ -17,6 +17,7 @@ export default defineConfig({
       { find: '@jimka/typescript-ui/component/menubar',   replacement: sub('component/menubar/index.ts') },
       { find: '@jimka/typescript-ui/component/table',     replacement: sub('component/table/index.ts') },
       { find: '@jimka/typescript-ui/component/tree',      replacement: sub('component/tree/index.ts') },
+      { find: '@jimka/typescript-ui/component/diagram',   replacement: sub('component/diagram/index.ts') },
       { find: '@jimka/typescript-ui/core',                replacement: sub('core/index.ts') },
       { find: '@jimka/typescript-ui/overlay',             replacement: sub('overlay/index.ts') },
       { find: '@jimka/typescript-ui/primitive',           replacement: sub('primitive/index.ts') },

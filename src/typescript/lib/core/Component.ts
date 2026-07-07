@@ -127,6 +127,7 @@ export interface ComponentOptions {
     minSize?:         Size;
     maxSize?:         Size;
     transform?:       string;
+    transformOrigin?: string;
     transition?:      string;
     willChange?:      string | null;
     opacity?:         number;
@@ -317,6 +318,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _appearance           : string | null           = null;
     private _borderImage          : string | null           = null;
     private _transform            : string | null           = null;
+    private _transformOrigin      : string | null           = null;
     private _opacity              : number | null           = null;
     private _disabledAttribute    : boolean                 = false;
     private _border               : BorderOptions | null     = null;
@@ -496,6 +498,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (options.minSize         !== undefined) this.setMinSize(options.minSize.width, options.minSize.height);
         if (options.maxSize         !== undefined) this.setMaxSize(options.maxSize.width, options.maxSize.height);
         if (options.transform       !== undefined) this.setTransform(options.transform);
+        if (options.transformOrigin !== undefined) this.setTransformOrigin(options.transformOrigin);
         if (options.transition      !== undefined) this.setTransition(options.transition);
         if (options.willChange      !== undefined) this.setWillChange(options.willChange);
         if (options.opacity         !== undefined) this.setOpacity(options.opacity);
@@ -2199,6 +2202,44 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     clearTransform(): this {
         this._transform = null;
         this.setElementCSSRule("transform", null);
+
+        return this;
+    }
+
+    /**
+     * Returns the CSS transform-origin last passed to
+     * {@link setTransformOrigin}, or `null` if none is set.
+     *
+     * @returns The transform-origin string, or null.
+     */
+    getTransformOrigin(): string | null {
+        return this._transformOrigin;
+    }
+
+    /**
+     * Sets the CSS transform-origin — the anchor point a {@link setTransform}
+     * scales/rotates about. Use {@link clearTransformOrigin} to remove.
+     *
+     * @param value - A CSS transform-origin value (e.g. "0 0", "50% 50%").
+     *
+     * @returns This component, for method chaining.
+     */
+    setTransformOrigin(value: string): this {
+        this._transformOrigin = value;
+
+        this.setElementCSSRule("transformOrigin", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the transform-origin CSS property from the element.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearTransformOrigin(): this {
+        this._transformOrigin = null;
+        this.setElementCSSRule("transformOrigin", null);
 
         return this;
     }
