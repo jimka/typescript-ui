@@ -31,6 +31,7 @@ Give the editor a sized host (a `Fit` panel, as above, or an explicit `preferred
 | --- | --- | --- | --- |
 | `value` | `string` | `""` | Initial Markdown source. |
 | `readOnly` | `boolean` | `false` | Whether the editor rejects edits. |
+| `mode` | `"wysiwyg" \| "source"` | `"wysiwyg"` | Which editing surface is shown — see [Source / WYSIWYG mode](#source-wysiwyg-mode). |
 | `listeners` | `{ change?: (payload) => void }` | — | Construction-time listener bag for the `"change"` event. |
 
 Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields (preferred size, background, foreground, etc.).
@@ -78,9 +79,29 @@ Each command operates on the current selection and no-ops (without throwing) whe
 | Method | Purpose |
 | --- | --- |
 | `getValue()` / `setValue(value)` | Read or replace the whole document as a Markdown string. |
+| `getMode()` / `setMode(mode)` | Read or switch the editing surface — see [Source / WYSIWYG mode](#source-wysiwyg-mode). |
 | `getReadOnly()` / `setReadOnly(readOnly)` | Read or toggle whether the editor accepts edits. |
 | `on('change', fn)` / `off('change', fn)` | Subscribe to content changes (the payload carries the new Markdown). |
 | `dispose()` | Detach the Lexical registrations and the editor root — call before discarding a dynamically-built `MarkdownEditor`. |
+
+## Source / WYSIWYG mode
+
+The editor has two surfaces, selected by its `mode`:
+
+- `"wysiwyg"` (default) — the Lexical rich-text surface described above.
+- `"source"` — a raw-Markdown [`CodeEditor`](/components/CodeEditor), for editing the Markdown text directly.
+
+Both surfaces are bound to the **same Markdown value**, so `getValue()` / `setValue()` and the `"change"` event behave identically whichever mode is active, and switching modes **preserves the document** (the text is converted across on each switch). `setReadOnly` applies to both surfaces.
+
+```typescript
+const editor = new MarkdownEditor('# Title', { mode: 'source' });
+
+editor.getMode();            // "source"
+editor.setMode('wysiwyg');   // convert the source text into rich text and show it
+editor.getValue();           // same Markdown, regardless of the active mode
+```
+
+Like the [command API](#command-api), the mode toggle is **consumer-wired** — the editor ships no built-in chrome. Drive `setMode` from your own control (e.g. a [`ToggleButton`](/components/ToggleButton)) when you want to expose the switch to users.
 
 ## Read-only
 

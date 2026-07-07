@@ -106,7 +106,7 @@ function createBlockNode(type: MarkdownBlockType): ElementNode {
  *
  * @remarks
  * Split out from {@link MarkdownEditor} so the coordinator's own element can host
- * *both* this surface and the source {@link CodeEditor} as two {@link Card}
+ * *both* this surface and the source {@link CodeEditor} as two [`Card`](/api/layout/classes/Card)
  * children — one DOM element per class, since Lexical's `contenteditable` and
  * CodeMirror's view are two foreign live widgets that each need their own host
  * element. `MarkdownEditor` keeps ownership of the Lexical editor object; only
@@ -257,7 +257,7 @@ class WysiwygSurface extends Component {
  * chrome — so a consumer drives `setMode` from their own control.
  *
  * Internally the component's own element hosts two swappable child surfaces
- * through a {@link Card} layout: a private WYSIWYG surface owning Lexical's
+ * through a [`Card`](/api/layout/classes/Card) layout: a private WYSIWYG surface owning Lexical's
  * `contenteditable` element (a *foreign live widget*, like the `EditorView`
  * behind `CodeEditor`) and the source `CodeEditor`. Lexical separates its editor
  * **state** (a pure, DOM-free immutable tree) from that view, so the Markdown
@@ -373,7 +373,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Switches the active editing surface. Converts the current document across
      * the surfaces so no edits are lost — the outgoing surface's Markdown is read
      * (via {@link MarkdownEditor.getValue}) before the mode flips, then loaded
-     * into the incoming surface — and swaps the visible {@link Card} child.
+     * into the incoming surface — and swaps the visible [`Card`](/api/layout/classes/Card) child.
      * No-op (no conversion, no `"change"`) when already in `mode`.
      *
      * @param mode - The surface to show.
