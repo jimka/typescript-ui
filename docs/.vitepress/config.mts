@@ -151,6 +151,9 @@ export default defineConfig({
                 { text: 'Tree', collapsed: false, items: [
                     { text: 'Tree', link: '/components/Tree' },
                 ] },
+                { text: 'Diagram', collapsed: false, items: [
+                    { text: 'DiagramView', link: '/components/DiagramView' },
+                ] },
                 { text: 'Containers', collapsed: false, items: [
                     { text: 'TabBar',         link: '/components/TabBar' },
                     { text: 'TabPanel',       link: '/components/TabPanel' },
