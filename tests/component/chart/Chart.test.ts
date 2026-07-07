@@ -8,8 +8,9 @@ import { _LineChart } from '~/component/chart/LineChart';
 import { _BarChart } from '~/component/chart/BarChart';
 import { Model } from '~/data/Model';
 import { MemoryStore } from '~/data/MemoryStore';
+import { DOM } from '~/core/DOM';
 import type { ChartSeriesModel } from '~/component/chart/types';
-import type { ElementPatch } from '~/core/DOM';
+import type { ElementPatch, Handle } from '~/core/DOM';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -166,6 +167,78 @@ describe('store binding symmetry', () => {
         // The internally-owned legend must be disposed too, or its subtree click
         // listener leaks in Event's module-level map.
         expect(legendDispose).toHaveBeenCalledTimes(1);
+    });
+
+    it('dispose releases the last repaint marks (no retained-handle leak)', () => {
+        const sink = installTestDOM(CONFIG);
+        const chart = new _LineChart({ series: [{ name: 'A', data: [{ x: 0, y: 1 }, { x: 1, y: 2 }] }], showLegend: false });
+
+        layout(chart, sink);
+
+        const marksBefore = (chart as unknown as { _marks: unknown[] })._marks.length;
+
+        expect(marksBefore).toBeGreaterThan(0);
+
+        const releasesBefore = sink.writes.filter((w) => w.op === 'release').length;
+        chart.dispose();
+        const releasesAfter = sink.writes.filter((w) => w.op === 'release').length;
+
+        // Every tracked mark is detached-and-released, and the list is emptied.
+        expect((chart as unknown as { _marks: unknown[] })._marks.length).toBe(0);
+        expect(releasesAfter - releasesBefore).toBe(marksBefore);
+    });
+});
+
+describe('hit-testing (hitMark)', () => {
+    /** White-box subclass exposing the private hit-test + a dataset-stub helper. */
+    class HitChart extends _LineChart {
+        public hit(datasets: Record<string, string | undefined>): { series: number; index: number | null } | null {
+            // Stub the source seam so the dataset read returns the given attrs for
+            // any (fake) event target — the pattern used elsewhere for source reads.
+            vi.spyOn(DOM.source, 'isNode').mockReturnValue(true);
+            vi.spyOn(DOM.source, 'intern').mockReturnValue(1 as unknown as Handle);
+            vi.spyOn(DOM.source, 'getDataset').mockImplementation((_h, key) => datasets[key]);
+
+            return (this as unknown as { hitMark(e: MouseEvent): { series: number; index: number | null } | null })
+                .hitMark({ target: {} } as unknown as MouseEvent);
+        }
+    }
+
+    const seriesFixture = [
+        { name: 'A', data: [{ x: 0, y: 1 }, { x: 1, y: 2 }] },
+        { name: 'B', data: [{ x: 0, y: 3 }] },
+    ];
+
+    it('resolves a series-only mark (a line path) to a whole-series hit', () => {
+        const chart = new HitChart({ series: seriesFixture });
+
+        expect(chart.hit({ series: '0' })).toEqual({ series: 0, index: null });
+    });
+
+    it('resolves an indexed mark (a point/bar) to that datum', () => {
+        const chart = new HitChart({ series: seriesFixture });
+
+        expect(chart.hit({ series: '0', index: '1' })).toEqual({ series: 0, index: 1 });
+    });
+
+    it('returns null for a non-mark target (no data-series)', () => {
+        const chart = new HitChart({ series: seriesFixture });
+
+        expect(chart.hit({})).toBeNull();
+    });
+
+    it('returns null when the hit series is hidden', () => {
+        const chart = new HitChart({ series: seriesFixture });
+
+        (chart as unknown as { _series: ChartSeriesModel[] })._series[0].hidden = true;
+
+        expect(chart.hit({ series: '0', index: '0' })).toBeNull();
+    });
+
+    it('returns null when the point index is out of range', () => {
+        const chart = new HitChart({ series: seriesFixture });
+
+        expect(chart.hit({ series: '1', index: '5' })).toBeNull();
     });
 });
 

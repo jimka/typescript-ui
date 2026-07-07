@@ -1021,6 +1021,13 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
         Event.removeSubtreeListener(this, "mouseout", this.handlePointerOut);
         Event.removeSubtreeListener(this, "click", this.handlePointerClick);
 
+        // Release the last repaint's marks. They deliberately bypass
+        // `trackHandle` (only the <svg> and its groups are tracked, and released
+        // by the destructor), and `release` is non-recursive, so without this
+        // every mark stays pinned in the handle registry — the Glyphs sprite-leak
+        // lesson at final teardown, not just per repaint.
+        this.clearMarks();
+
         this._legend.dispose();
 
         Tooltip.hide();
