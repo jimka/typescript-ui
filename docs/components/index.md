@@ -79,6 +79,7 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | [`IconLabel`](/components/IconLabel) | Glyph + form-control [`Label`](/api/component/input/classes/Label), horizontal flow |
 | [`Markdown`](/components/Markdown) | Renders a Markdown source string as a live DOM subtree (lexer-only, no HTML injection) |
 | [`CodeEditor`](/components/CodeEditor) | CodeMirror-backed syntax highlighting + one-command formatting (JS/TS, JSON, HTML, SQL, Markdown) |
+| [`MarkdownEditor`](/components/MarkdownEditor) | WYSIWYG rich-text editor (Lexical) whose value is a Markdown string — the editing counterpart to `Markdown` |
 | [`FieldSet`](/api/component/container/classes/FieldSet) | Grouped form section with optional [`Legend`](/api/component/container/classes/Legend) |
 | [`FormFieldSet`](/components/FormFieldSet) | [`FieldSet`](/api/component/container/classes/FieldSet) of baseline-aligned title/field rows in one or more columns |
 | [`ProgressBar`](/components/ProgressBar) | Horizontal progress indicator (determinate or indeterminate) |

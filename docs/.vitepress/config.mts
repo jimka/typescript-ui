@@ -114,6 +114,7 @@ export default defineConfig({
                     { text: 'IconLabel',       link: '/components/IconLabel' },
                     { text: 'Markdown',        link: '/components/Markdown' },
                     { text: 'CodeEditor',      link: '/components/CodeEditor' },
+                    { text: 'MarkdownEditor',  link: '/components/MarkdownEditor' },
                     { text: 'FieldSet',        link: '/components/FieldSet' },
                     { text: 'FormFieldSet',    link: '/components/FormFieldSet' },
                     { text: 'Legend',          link: '/components/Legend' },
