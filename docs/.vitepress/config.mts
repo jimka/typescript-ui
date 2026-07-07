@@ -125,6 +125,11 @@ export default defineConfig({
                     { text: 'Spacer',          link: '/components/Spacer' },
                     { text: 'StatusBar',       link: '/components/StatusBar' },
                 ] },
+                { text: 'Charts', collapsed: false, items: [
+                    { text: 'LineChart',       link: '/components/LineChart' },
+                    { text: 'BarChart',        link: '/components/BarChart' },
+                    { text: 'ChartLegend',     link: '/components/ChartLegend' },
+                ] },
                 { text: 'Lists', collapsed: false, items: [
                     { text: 'List',            link: '/components/List' },
                     { text: 'MultiSelectList', link: '/components/MultiSelectList' },

@@ -115,6 +115,25 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 One accent blue runs across selection (`table.row.selected`, list/row `selectedBackground`), the keyboard `indicator.focus` ring, and drag-and-drop *position* feedback (the [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator) bar plus the dock / tab-strip drop-zone wash). The overlap is deliberate — blue means "what you're acting on, or where the action goes." Drag feedback stays distinct from selection by **modality** (it shows only during an active drag, on overlays above the page) and **treatment** (a faint area wash plus a thin moving bar, versus a selection's solid filled state), and the drop-zone wash uses a lighter blue than the accent fill. Don't introduce a second accent hue for drag — rely on treatment and modality. See [Drag-and-drop feedback colours](/recipes/drag-and-drop#drop-feedback-colours).
 :::
 
+## Chart tokens
+
+The [charting family](/components/) ([`LineChart`](/components/LineChart), [`BarChart`](/components/BarChart)) draws its plot as SVG marks whose colours and stroke widths bind to a dedicated `chart` token block, so a light/dark theme switch recolours every plot with no reload.
+
+The **series palette** is an ordered `chart.series` array emitted as one custom property per slot — `--ts-ui-chart-series-1` through `--ts-ui-chart-series-8`. Each series mark binds `var(--ts-ui-chart-series-N)` by its index (cycling within the palette), unless a series supplies an explicit `color`. The built-in themes ship an Okabe–Ito colour-blind-safe palette tuned per scheme (light for `ModernTheme` / `ClassicTheme`, brightened for `DarkTheme`); override `chart.series` in a custom theme to rebrand every chart at once.
+
+| Token | CSS variable | Purpose |
+| --- | --- | --- |
+| `chart.series` | `--ts-ui-chart-series-1` … `-8` | Ordered categorical palette; series marks bind a slot by index |
+| `chart.axis` | `--ts-ui-chart-axis` | Axis line and tick-mark colour |
+| `chart.grid` | `--ts-ui-chart-grid` | Gridline colour |
+| `chart.label` | `--ts-ui-chart-label` | Axis / tick label text colour |
+| `chart.selection` | `--ts-ui-chart-selection` | Selection-ring colour for a clicked point/bar |
+| `chart.lineWidth` | `--ts-ui-chart-line-width` | Series line stroke width (structural; in `BaseTheme`) |
+| `chart.axisWidth` | `--ts-ui-chart-axis-width` | Axis / tick / gridline stroke width (structural) |
+| `chart.pointRadius` | `--ts-ui-chart-point-radius` | Point-marker radius (structural) |
+
+The three structural widths are scheme-invariant, so they carry their base values in [`BaseTheme`](/api/core/variables/BaseTheme) rather than each per-scheme palette.
+
 ## Base size & scaling
 
 Most theme sizes are CSS length strings, so they already scale with the font and the cascade. SVG glyphs are the exception: an SVG icon is sized by its px box, not by CSS `font-size`, so a `rem`/`em` length never reaches it. The `scale` block gives the framework one **base size in px** plus a set of ratios, exposed both as a CSS variable and — once resolved — as plain JS numbers, so layout math and SVG glyph boxes can size off `round(base × ratio)`.

@@ -99,6 +99,16 @@ export const BaseTheme: DeepPartial<Theme> = {
     drag: {
         ghost: { opacity: '0.85' },
     },
+    // Scheme-invariant charting structure: stroke widths and the point-marker
+    // radius carry no palette meaning, so they live here rather than in each
+    // per-scheme theme. `2px` line / `1px` axis mirror the framework's other
+    // hairline rules (e.g. the tab under-border); `3px` points read at the
+    // plan's modest data densities without crowding.
+    chart: {
+        lineWidth  : '2px',
+        axisWidth  : '1px',
+        pointRadius: '3px',
+    },
     // The scale knob plus the font-coupled ratios. Each ratio is `current-px ÷
     // base`, chosen so `round(base × ratio)` recovers the exact historic px at
     // the default base of 14 (so nothing shifts until the base is raised), then

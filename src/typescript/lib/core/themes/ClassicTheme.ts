@@ -329,4 +329,23 @@ export const ClassicTheme: Theme = defineTheme(BaseTheme, {
     scroll: {
         shadowColor: 'rgba(0, 0, 0, 1)',
     },
+    // Okabe–Ito colour-blind-safe categorical palette, tuned for a light
+    // background (Classic is a light scheme). Neutral grey axis/grid/label; the
+    // selection ring reuses the theme's blue accent.
+    chart: {
+        series: [
+            '#0072B2', // blue
+            '#E69F00', // orange
+            '#009E73', // green
+            '#D55E00', // vermilion
+            '#CC79A7', // purple
+            '#56B4E9', // sky
+            '#8C6D1F', // gold
+            '#555555', // grey
+        ],
+        axis     : 'rgb(120, 120, 120)',
+        grid     : 'rgb(220, 220, 220)',
+        label    : 'rgb(80, 80, 80)',
+        selection: '#1a73e8',
+    },
 });

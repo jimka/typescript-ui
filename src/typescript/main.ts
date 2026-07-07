@@ -29,6 +29,7 @@ import { Benchmark } from "./perf/Benchmark.js";
 import { BaselinePanel } from "./BaselinePanel.js";
 import { MarkdownPanel } from "./MarkdownPanel.js";
 import { CodeEditorPanel } from "./CodeEditorPanel.js";
+import { ChartDemoPanel } from "./ChartDemoPanel.js";
 
 DOM.source.getScrollBarWidth();
 (window as any).bench = Benchmark;
@@ -62,6 +63,7 @@ layoutManager.addLazyTab(() => new BaselinePanel(),        "Baseline"   );
 layoutManager.addLazyTab(() => new LayoutSerializationPanel(), "Layout I/O" );
 layoutManager.addLazyTab(() => new MarkdownPanel(),        "Markdown"   );
 layoutManager.addLazyTab(() => new CodeEditorPanel(),      "CodeEditor" );
+layoutManager.addLazyTab(() => new ChartDemoPanel(),       "Charts"     );
 
 const PersonModel = new Model([
     { name: 'id',   type: 'number'                  },

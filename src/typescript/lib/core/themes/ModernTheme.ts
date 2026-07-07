@@ -335,4 +335,23 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
     scroll: {
         shadowColor: 'rgba(0, 0, 0, 1)',
     },
+    // Okabe–Ito colour-blind-safe categorical palette, tuned for a light
+    // background. Axis/grid/label are neutral greys; the selection ring reuses
+    // the theme's blue accent (matching the focus indicator).
+    chart: {
+        series: [
+            '#0072B2', // blue
+            '#E69F00', // orange
+            '#009E73', // green
+            '#D55E00', // vermilion
+            '#CC79A7', // purple
+            '#56B4E9', // sky
+            '#8C6D1F', // gold
+            '#555555', // grey
+        ],
+        axis     : 'rgb(120, 120, 120)',
+        grid     : 'rgb(224, 224, 224)',
+        label    : 'rgb(85, 85, 85)',
+        selection: '#1a73e8',
+    },
 });
