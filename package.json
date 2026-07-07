@@ -41,6 +41,10 @@
       "import": "./dist/lib/component/display.es.js",
       "types": "./dist/lib/types/component/display/index.d.ts"
     },
+    "./component/editor": {
+      "import": "./dist/lib/component/editor.es.js",
+      "types": "./dist/lib/types/component/editor/index.d.ts"
+    },
     "./glyphs": {
       "import": "./dist/lib/glyphs/index.es.js",
       "types": "./dist/lib/types/glyphs/index.d.ts"
@@ -92,7 +96,8 @@
     "LICENSE-FONTAWESOME.md"
   ],
   "sideEffects": [
-    "**/core.es.js"
+    "**/core.es.js",
+    "**/component/editor/languages.ts"
   ],
   "scripts": {
     "dev": "vite",
@@ -139,7 +144,20 @@
     "vitest": "^4.1.9"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/lang-html": "^6.4.11",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.6",
     "@fontsource-variable/manrope": "^5.2.8",
-    "marked": "^18.0.5"
+    "@lezer/highlight": "^1.2.3",
+    "codemirror": "^6.0.2",
+    "marked": "^18.0.5",
+    "prettier": "^3.9.4",
+    "sql-formatter": "^15.8.2"
   }
 }

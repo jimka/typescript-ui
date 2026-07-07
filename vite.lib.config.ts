@@ -31,6 +31,7 @@ export default defineConfig({
         'component/input':     r('component/input/index.ts'),
         'component/button':    r('component/button/index.ts'),
         'component/display':   r('component/display/index.ts'),
+        'component/editor':    r('component/editor/index.ts'),
         'component/list':      r('component/list/index.ts'),
         'component/container': r('component/container/index.ts'),
         'component/menubar':   r('component/menubar/index.ts'),
@@ -46,9 +47,13 @@ export default defineConfig({
     sourcemap: true,
     minify: 'oxc',
     rollupOptions: {
-      // `marked` is a real runtime dependency, resolved from the consumer's
-      // node_modules rather than inlined into the display chunk.
-      external: ['marked'],
+      // `marked` and the CodeEditor stack (CodeMirror, Prettier, sql-formatter)
+      // are real runtime dependencies, resolved from the consumer's
+      // node_modules rather than inlined into the display/editor chunks. A
+      // predicate — not a literal array — because the CodeMirror family alone
+      // is a dozen-plus `@codemirror/*` / `@lezer/*` packages plus their own
+      // dynamic-import subpaths (e.g. `prettier/plugins/babel`).
+      external: /^(codemirror|@codemirror\/|@lezer\/|prettier|sql-formatter|marked)/,
       output: {
         // Downstream consumers hit the same `constructor.name` dependency as
         // the app (CSS classes + layout serialization), so the library bundle

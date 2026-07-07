@@ -19,6 +19,7 @@
             "@jimka/typescript-ui/component/input":     ["./src/typescript/lib/component/input/index.ts"],
             "@jimka/typescript-ui/component/button":    ["./src/typescript/lib/component/button/index.ts"],
             "@jimka/typescript-ui/component/display":   ["./src/typescript/lib/component/display/index.ts"],
+            "@jimka/typescript-ui/component/editor":    ["./src/typescript/lib/component/editor/index.ts"],
             "@jimka/typescript-ui/component/list":      ["./src/typescript/lib/component/list/index.ts"],
             "@jimka/typescript-ui/component/container": ["./src/typescript/lib/component/container/index.ts"],
             "@jimka/typescript-ui/component/menubar":   ["./src/typescript/lib/component/menubar/index.ts"],
