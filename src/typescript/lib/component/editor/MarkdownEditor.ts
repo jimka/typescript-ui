@@ -5,6 +5,9 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
+import { Card } from "~/layout/Card.js";
+import { CodeEditor } from "~/component/editor/CodeEditor.js";
+import type { CodeEditorChange } from "~/component/editor/CodeEditor.js";
 import { createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $createParagraphNode } from "lexical";
 import type { LexicalEditor, ElementNode } from "lexical";
 import { $convertFromMarkdownString, $convertToMarkdownString, registerMarkdownShortcuts } from "@lexical/markdown";
@@ -40,6 +43,14 @@ export interface MarkdownEditorChange {
 type MarkdownEditorEvent = "change";
 
 /**
+ * The editing surface a {@link MarkdownEditor} currently shows: the WYSIWYG
+ * rich-text surface, or the raw-Markdown source [`CodeEditor`](/api/component/editor/classes/CodeEditor).
+ *
+ * @category Components
+ */
+export type MarkdownEditorMode = "wysiwyg" | "source";
+
+/**
  * A block type accepted by {@link MarkdownEditor.setBlockType}: a paragraph, one
  * of the six heading levels, a blockquote, or a fenced code block.
  *
@@ -57,6 +68,8 @@ export interface MarkdownEditorOptions extends ComponentOptions {
     value?: string;
     /** Whether the editor is read-only. Default `false`. */
     readOnly?: boolean;
+    /** Which surface is shown. Default `"wysiwyg"`. */
+    mode?: MarkdownEditorMode;
     /** Construction-time listener bag; the only event is `"change"`. */
     listeners?: { change?: (payload: MarkdownEditorChange) => void };
 }
@@ -88,7 +101,134 @@ function createBlockNode(type: MarkdownBlockType): ElementNode {
 }
 
 /**
- * A WYSIWYG rich-text editor whose public value is a Markdown string.
+ * The private WYSIWYG editing surface: the element Lexical's `contenteditable`
+ * view mounts into.
+ *
+ * @remarks
+ * Split out from {@link MarkdownEditor} so the coordinator's own element can host
+ * *both* this surface and the source {@link CodeEditor} as two {@link Card}
+ * children — one DOM element per class, since Lexical's `contenteditable` and
+ * CodeMirror's view are two foreign live widgets that each need their own host
+ * element. `MarkdownEditor` keeps ownership of the Lexical editor object; only
+ * the mount element (and its `contenteditable` / caret plumbing) lives here.
+ */
+class WysiwygSurface extends Component {
+
+    /** Whether this surface's element hosts an editable region (`contenteditable`). */
+    private _contentEditable: boolean = false;
+
+    /** Invoked on the surface's first connected + sized layout — the moment to mount the live view. */
+    private readonly _onReady: () => void;
+
+    /**
+     * Constructs the WYSIWYG surface.
+     *
+     * @param onReady - Called on the surface's first connected + sized layout.
+     */
+    constructor(onReady: () => void) {
+        super();
+
+        this._onReady = onReady;
+
+        this.setContentEditable(true);
+        // Fills its host box and scrolls internally when the document overflows.
+        this.setOverflow("auto");
+        // Text caret over the whole surface: signals editability, and — paired
+        // with the `user-select: text` Lexical stamps on the root — keeps the
+        // surface select-and-copy-able even in read-only mode. `setCursor` caches
+        // in `_options.cursor`, which `applyStyle` replays, so it survives both
+        // detached construction and Lexical's mount.
+        this.setCursor("text");
+
+        this.onFirstLayout(() => this._onReady());
+    }
+
+    /**
+     * Replays the cached `contenteditable` state onto the freshly-created
+     * element. `setContentEditable` (called during detached construction, before
+     * an element exists) caches into `_contentEditable` but its underlying
+     * `setElementAttribute` is write-through only, so the constructor-time write
+     * is dropped; without this replay the mounted element never becomes editable
+     * and the WYSIWYG view silently behaves read-only.
+     *
+     * The write targets the `element` handle directly — as the base class does
+     * for its own cached attributes — because at init time the element is not yet
+     * in the document, so a `getElement()`-based setter would miss it.
+     *
+     * @param element - Optional element to initialise; falls back to `getElement()`.
+     * @returns This surface, for method chaining.
+     */
+    protected init(element?: Handle): this {
+        super.init(element);
+
+        const el = element ?? this.getElement();
+
+        if (el) {
+            DOM.sink.apply(el, { setAttr: { contenteditable: this._contentEditable ? "true" : "false" } });
+        }
+
+        return this;
+    }
+
+    /**
+     * Sets whether this surface's element hosts an editable region. Caches the
+     * state in `_contentEditable` and writes the `contenteditable` attribute
+     * through to the element. The underlying `setElementAttribute` is
+     * write-through only, so a call made during detached construction (before the
+     * element exists) is a no-op on the DOM; {@link WysiwygSurface.init} replays
+     * the cached state onto the element once it is created.
+     *
+     * @param contentEditable - Whether the element is contenteditable.
+     * @returns This surface, for method chaining.
+     */
+    setContentEditable(contentEditable: boolean): this {
+        this._contentEditable = contentEditable;
+        this.setElementAttribute("contenteditable", contentEditable ? "true" : "false");
+
+        return this;
+    }
+
+    /**
+     * Returns whether this surface's element hosts an editable region.
+     *
+     * @returns The contenteditable state.
+     */
+    getContentEditable(): boolean {
+        return this._contentEditable;
+    }
+
+    /**
+     * Mounts the given Lexical editor's editable view into this surface's element
+     * through the DOM seam's `mountView` escape. No-ops when the view is already
+     * mounted, the element is not yet available, or offline (the seam returns
+     * `null`, leaving the editor headless).
+     *
+     * @param editor - The Lexical editor whose view to mount here.
+     */
+    mount(editor: LexicalEditor): void {
+        if (editor.getRootElement()) {
+            return;
+        }
+
+        const element = this.getElement();
+
+        if (!element) {
+            return;
+        }
+
+        ensureMarkdownEditorClassRules();
+
+        // The factory parameter is left unannotated: its `HTMLElement` type is
+        // inferred from the seam signature, so no DOM type is named here and the
+        // `no-raw-dom` *hold* clause stays green. `setRootElement` accepts the
+        // element structurally.
+        DOM.sink.mountView(element, (root) => { editor.setRootElement(root); return root; });
+    }
+}
+
+/**
+ * A WYSIWYG rich-text editor whose public value is a Markdown string, with an
+ * optional raw-Markdown source mode.
  *
  * @remarks
  * `MarkdownEditor` edits a document as rendered rich text — no visible markup —
@@ -108,16 +248,24 @@ function createBlockNode(type: MarkdownBlockType): ElementNode {
  * `toggleUnorderedList`, `toggleLink`, …) a consumer can wire to their own
  * `Button`s.
  *
- * Lexical's editing view is a `contenteditable` element it owns and mutates
- * directly — a *foreign live widget*, like the `EditorView` behind
- * [`CodeEditor`](/api/component/editor/classes/CodeEditor) — so the view mounts
- * through the DOM seam's `mountView` escape in the first connected layout. Unlike
- * a code editor, Lexical separates its editor **state** (a pure, DOM-free
- * immutable tree) from that view, so the Markdown value get/set/round-trip runs
- * headless: offline the view never attaches, yet `getValue` / `setValue` and the
- * command API still operate on the state. The editor fills its host box and
- * scrolls internally; give it a sized host (a `Fit` panel or an explicit
- * `preferredSize`), the same as `CodeEditor`.
+ * A {@link MarkdownEditor.setMode | mode} (`"wysiwyg"` | `"source"`) swaps the
+ * editing surface between that rich-text view and a raw-Markdown
+ * [`CodeEditor`](/api/component/editor/classes/CodeEditor); both are bound to the
+ * same Markdown value, so `getValue`/`setValue` and the `"change"` event behave
+ * identically in either mode and switching modes preserves the document. Like the
+ * command API, the mode toggle is **consumer-wired** — there is no built-in
+ * chrome — so a consumer drives `setMode` from their own control.
+ *
+ * Internally the component's own element hosts two swappable child surfaces
+ * through a {@link Card} layout: a private WYSIWYG surface owning Lexical's
+ * `contenteditable` element (a *foreign live widget*, like the `EditorView`
+ * behind `CodeEditor`) and the source `CodeEditor`. Lexical separates its editor
+ * **state** (a pure, DOM-free immutable tree) from that view, so the Markdown
+ * value get/set/round-trip runs headless: offline neither view attaches, yet
+ * `getValue` / `setValue`, the command API, and mode switching still operate on
+ * the state. The editor fills its host box and scrolls internally; give it a
+ * sized host (a `Fit` panel or an explicit `preferredSize`), the same as
+ * `CodeEditor`.
  *
  * @example
  * ```typescript
@@ -126,6 +274,7 @@ function createBlockNode(type: MarkdownBlockType): ElementNode {
  * const editor = new MarkdownEditor('# Title\n\nSome **bold** text.');
  * panel.addComponent(editor);
  * editor.on('change', ({ value }) => console.log(value));
+ * editor.setMode('source'); // switch to raw-Markdown editing
  * ```
  *
  * @category Components
@@ -142,11 +291,17 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /** The `mergeRegister` teardown for the rich-text / list / history / shortcut / update registrations. */
     private _unregister: (() => void) | null = null;
 
-    /** Whether this component's element hosts an editable region (`contenteditable`). */
-    private _contentEditable: boolean = false;
-
     /** Custom-event fan-out for `"change"`. */
     private readonly _listeners: ListenerBag<MarkdownEditorEvent> = new ListenerBag<MarkdownEditorEvent>();
+
+    /** The Card layout swapping the visible editing surface between WYSIWYG and source. */
+    private readonly _card: Card;
+
+    /** The WYSIWYG surface hosting Lexical's `contenteditable` view. */
+    private readonly _wysiwyg: WysiwygSurface;
+
+    /** The raw-Markdown source surface, shown in `"source"` mode. */
+    private readonly _codeEditor: CodeEditor;
 
     /**
      * Constructs a Markdown editor.
@@ -163,26 +318,34 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             this._options.value = value;
         }
 
-        this.setContentEditable(true);
-        // Fills its host box and scrolls internally when the document overflows.
-        this.setOverflow("auto");
-        // Text caret over the whole surface: signals editability, and — paired
-        // with the `user-select: text` Lexical stamps on the root — keeps the
-        // surface select-and-copy-able even in read-only mode. `setCursor` caches
-        // in `_options.cursor`, which `applyStyle` replays, so it survives both
-        // detached construction and Lexical's mount.
-        this.setCursor("text");
+        // The component's own element hosts two swappable surfaces via a Card
+        // (one DOM element per class): the WYSIWYG contenteditable and the source
+        // CodeEditor. The Card shows exactly one at a time.
+        this._card = new Card();
+        this.setLayoutManager(this._card);
+
+        this._wysiwyg = new WysiwygSurface(() => this.mountWysiwyg());
+        this._codeEditor = new CodeEditor(this._options.value ?? "", {
+            language:  "markdown",
+            readOnly:  this._options.readOnly ?? false,
+            listeners: { change: (payload) => this.handleCodeChange(payload) },
+        });
+
+        this.addComponent(this._wysiwyg);
+        this.addComponent(this._codeEditor);
+
+        // Pick the initial visible child from the mode.
+        this._card.setVisibleComponentId(
+            this.getMode() === "source" ? this._codeEditor.getId() : this._wysiwyg.getId());
 
         this.applyListeners(options?.listeners);
-
-        this.onFirstLayout(() => this.ensureEditor());
     }
 
     /**
-     * Caches the `value` / `readOnly` fields onto `_options` after inherited
-     * Component fields cascade through `super.applyOptions`. The editor is built
-     * later (lazily), so these are pure caches applied to the freshly-created
-     * editor state in `ensureEditor`.
+     * Caches the `value` / `readOnly` / `mode` fields onto `_options` after
+     * inherited Component fields cascade through `super.applyOptions`. The editor
+     * is built later (lazily), so these are pure caches applied to the freshly-
+     * created editor state / surfaces in the constructor and `ensureEditor`.
      *
      * @param options - The options bag carrying the values to apply.
      * @returns This component, for method chaining.
@@ -192,45 +355,63 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (options.value    !== undefined) this._options.value    = options.value;
         if (options.readOnly !== undefined) this._options.readOnly = options.readOnly;
+        if (options.mode     !== undefined) this._options.mode     = options.mode;
 
         return this;
     }
 
     /**
-     * Replays the cached `contenteditable` state onto the freshly-created
-     * element. `setContentEditable` (called during detached construction, before
-     * an element exists) caches into `_contentEditable` but its underlying
-     * `setElementAttribute` is write-through only, so the constructor-time write
-     * is dropped; without this replay the mounted element never becomes editable
-     * and the WYSIWYG view silently behaves read-only.
+     * Returns the active editing surface mode.
      *
-     * The write targets the `element` handle directly — as the base class does
-     * for its own cached attributes — because at init time the element is not yet
-     * in the document, so a `getElement()`-based setter would miss it.
+     * @returns `"source"` when the raw-Markdown surface is shown, else `"wysiwyg"`.
+     */
+    getMode(): MarkdownEditorMode {
+        return this._options.mode ?? "wysiwyg";
+    }
+
+    /**
+     * Switches the active editing surface. Converts the current document across
+     * the surfaces so no edits are lost — the outgoing surface's Markdown is read
+     * (via {@link MarkdownEditor.getValue}) before the mode flips, then loaded
+     * into the incoming surface — and swaps the visible {@link Card} child.
+     * No-op (no conversion, no `"change"`) when already in `mode`.
      *
-     * @param element - Optional element to initialise; falls back to `getElement()`.
+     * @param mode - The surface to show.
      * @returns This component, for method chaining.
      */
-    protected init(element?: Handle): this {
-        super.init(element);
+    setMode(mode: MarkdownEditorMode): this {
+        if (this.getMode() === mode) {
+            return this;
+        }
 
-        const el = element ?? this.getElement();
+        // Read the canonical Markdown from the OUTGOING surface before the flip.
+        const markdown = this.getValue();
+        this._options.mode = mode;
 
-        if (el) {
-            DOM.sink.apply(el, { setAttr: { contenteditable: this._contentEditable ? "true" : "false" } });
+        if (mode === "source") {
+            this._codeEditor.setValue(markdown);
+            this._card.setVisibleComponentId(this._codeEditor.getId());
+        } else {
+            this.ensureEditor().update(
+                () => $convertFromMarkdownString(markdown, TRANSFORMERS), { discrete: true });
+            this._card.setVisibleComponentId(this._wysiwyg.getId());
         }
 
         return this;
     }
 
     /**
-     * Returns the current document as a Markdown string: converted live from the
-     * editor state when the editor exists, else the cached pre-mount / offline
-     * value.
+     * Returns the current document as a Markdown string, from whichever surface
+     * is active: the raw source text in `"source"` mode, else converted live from
+     * the Lexical editor state (or the cached pre-mount / offline value).
      *
      * @returns The Markdown source, or `""` when unset.
      */
     getValue(): string {
+        if (this.getMode() === "source") {
+            return this._codeEditor.getValue();
+        }
+
         const editor = this._editor;
 
         if (editor) {
@@ -241,19 +422,23 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Replaces the whole document from a Markdown string. Builds the editor if
-     * needed, then converts the Markdown into editor state; a resulting content
-     * change fires `"change"`.
+     * Replaces the whole document from a Markdown string, targeting the active
+     * surface: the source `CodeEditor` in `"source"` mode, else the Lexical
+     * editor (building it if needed). A resulting content change fires `"change"`.
      *
      * @param value - The new Markdown source.
      * @returns This component, for method chaining.
      */
     setValue(value: string): this {
-        const editor = this.ensureEditor();
+        if (this.getMode() === "source") {
+            this._codeEditor.setValue(value);
+
+            return this;
+        }
 
         // Discrete forces a synchronous commit, so the resulting `"change"`
         // fires before this returns rather than on a later flush.
-        editor.update(() => $convertFromMarkdownString(value, TRANSFORMERS), { discrete: true });
+        this.ensureEditor().update(() => $convertFromMarkdownString(value, TRANSFORMERS), { discrete: true });
 
         return this;
     }
@@ -268,9 +453,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Sets whether the editor rejects edits. Caches the state; when the editor
-     * exists, toggles its editable flag (which also drops the caret / editing
-     * affordances on the mounted view).
+     * Sets whether the editor rejects edits, on **both** surfaces. Caches the
+     * state; when the Lexical editor exists, toggles its editable flag (which
+     * also drops the caret / editing affordances on the mounted view); and
+     * forwards to the source `CodeEditor`.
      *
      * @param readOnly - Whether the editor should reject edits.
      * @returns This component, for method chaining.
@@ -278,6 +464,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     setReadOnly(readOnly: boolean): this {
         this._options.readOnly = readOnly;
         this._editor?.setEditable(!readOnly);
+        this._codeEditor.setReadOnly(readOnly);
 
         return this;
     }
@@ -384,7 +571,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Registers a listener for the `"change"` event, fired whenever the document
-     * content changes (typing, a command, or {@link MarkdownEditor.setValue}).
+     * content changes (typing, a command, or {@link MarkdownEditor.setValue}) in
+     * whichever surface is active.
      *
      * @param event - Must be `"change"`.
      * @param listener - Invoked with the new Markdown value.
@@ -420,49 +608,42 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Sets whether this component's element hosts an editable region. Caches the
-     * state in `_contentEditable` and writes the `contenteditable` attribute
-     * through to the element. The underlying `setElementAttribute` is
-     * write-through only, so a call made during detached construction (before the
-     * element exists) is a no-op on the DOM; {@link MarkdownEditor.init} replays
-     * the cached state onto the element once it is created.
+     * Sets whether the WYSIWYG surface's element hosts an editable region.
+     * Forwards to the private surface, preserving the public setter.
      *
      * @param contentEditable - Whether the element is contenteditable.
      * @returns This component, for method chaining.
      */
     setContentEditable(contentEditable: boolean): this {
-        this._contentEditable = contentEditable;
-        this.setElementAttribute("contenteditable", contentEditable ? "true" : "false");
+        this._wysiwyg.setContentEditable(contentEditable);
 
         return this;
     }
 
     /**
-     * Returns whether this component's element hosts an editable region.
+     * Returns whether the WYSIWYG surface's element hosts an editable region.
      *
      * @returns The contenteditable state.
      */
     getContentEditable(): boolean {
-        return this._contentEditable;
+        return this._wysiwyg.getContentEditable();
     }
 
     /**
-     * Detaches the Lexical registrations and the editor's root element. Call
+     * Detaches the Lexical registrations and both surfaces' live views. Call
      * before discarding a dynamically-built `MarkdownEditor`, mirroring
      * `CodeEditor.dispose`.
      */
     dispose(): void {
         this._unregister?.();
         this._editor?.setRootElement(null);
+        this._codeEditor.dispose();
     }
 
     /**
-     * Builds the headless Lexical editor on first use and, when a connected
-     * element exists, mounts its editable view. Idempotent: the editor is built
-     * once, and mounting is guarded on there being no root element yet. Offline
-     * the seam's `mountView` returns `null`, so the view never attaches and the
-     * editor stays headless — the state, and every value / command operation,
-     * still work.
+     * Builds the headless Lexical editor on first use. Idempotent: the editor is
+     * built once. Offline the editor stays headless — the state, and every value
+     * / command operation, still work.
      *
      * @returns The live (headless-capable) Lexical editor.
      */
@@ -486,43 +667,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             this._editor = editor;
         }
 
-        this.mountRoot();
-
         return this._editor;
     }
 
     /**
-     * Mounts the editor's editable view into this component's element through
-     * the DOM seam's `mountView` escape. No-ops when the element is not yet
-     * available, the view is already mounted, or offline (the seam returns
-     * `null`, leaving the editor headless).
+     * Builds the headless editor (if needed) and mounts its live view into the
+     * WYSIWYG surface. Driven by the surface's first connected layout, i.e. the
+     * first time it is the visible `Card` child and gets sized.
      */
-    private mountRoot(): void {
-        const editor = this._editor;
-
-        if (!editor || editor.getRootElement()) {
-            return;
-        }
-
-        const element = this.getElement();
-
-        if (!element) {
-            return;
-        }
-
-        ensureMarkdownEditorClassRules();
-
-        // The factory parameter is left unannotated: its `HTMLElement` type is
-        // inferred from the seam signature, so no DOM type is named here and the
-        // `no-raw-dom` *hold* clause stays green. `setRootElement` accepts the
-        // element structurally.
-        DOM.sink.mountView(element, (root) => { editor.setRootElement(root); return root; });
+    private mountWysiwyg(): void {
+        this._wysiwyg.mount(this.ensureEditor());
     }
 
     /**
-     * Recomputes the Markdown value from the committed editor state after an
-     * update and, when it differs from the cached value (i.e. the content — not
-     * merely the selection — changed), caches it and emits `"change"`.
+     * Recomputes the Markdown value from the committed editor state after a
+     * Lexical update and, when it differs from the cached value (i.e. the content
+     * — not merely the selection — changed), caches it and emits `"change"`.
      */
     private handleChange(): void {
         const editor = this._editor;
@@ -539,6 +699,23 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         this._options.value = value;
         this.emit("change", { value });
+    }
+
+    /**
+     * Recomputes the cached value from a source-surface (`CodeEditor`) edit and,
+     * when it differs from the cached value, caches it and emits `"change"`. The
+     * equality guard makes the programmatic `setValue` on a mode switch not
+     * double-emit (it loads the value already equal to `_options.value`).
+     *
+     * @param payload - The `CodeEditor` change payload (the new source text).
+     */
+    private handleCodeChange(payload: CodeEditorChange): void {
+        if (payload.value === this._options.value) {
+            return;
+        }
+
+        this._options.value = payload.value;
+        this.emit("change", { value: payload.value });
     }
 }
 

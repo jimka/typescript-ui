@@ -9,4 +9,4 @@ export { registerLanguage, getLanguage, listLanguages } from '~/component/editor
 export type { LanguageDefinition, Formatter } from '~/component/editor/LanguageRegistry.js';
 
 export { MarkdownEditor } from '~/component/editor/MarkdownEditor.js';
-export type { MarkdownEditorOptions, MarkdownEditorChange, MarkdownBlockType } from '~/component/editor/MarkdownEditor.js';
+export type { MarkdownEditorOptions, MarkdownEditorChange, MarkdownBlockType, MarkdownEditorMode } from '~/component/editor/MarkdownEditor.js';

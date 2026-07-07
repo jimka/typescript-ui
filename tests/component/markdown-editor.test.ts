@@ -61,6 +61,11 @@ function lexicalOf(editor: MarkdownEditor): LexicalEditor {
     return (editor as unknown as { _editor: LexicalEditor })._editor;
 }
 
+/** Reaches the private source-surface CodeEditor for white-box readOnly assertions. */
+function codeEditorOf(editor: MarkdownEditor): { getReadOnly(): boolean; getValue(): string } {
+    return (editor as unknown as { _codeEditor: { getReadOnly(): boolean; getValue(): string } })._codeEditor;
+}
+
 /** Places a collapsed range selection at the start of the document, so a block command has a selection to act on. */
 function selectStart(editor: MarkdownEditor): void {
     lexicalOf(editor).update(() => { $getRoot().selectStart(); }, { discrete: true });
@@ -231,6 +236,92 @@ describe('MarkdownEditor value round-trip (idempotence)', () => {
             expect(normalize(v1)).toBe(normalize(doc));
         });
     }
+});
+
+describe('MarkdownEditor mode', () => {
+    it('defaults to wysiwyg', () => {
+        expect(new MarkdownEditor().getMode()).toBe('wysiwyg');
+    });
+
+    it('honours the mode option', () => {
+        expect(new MarkdownEditor('x', { mode: 'source' }).getMode()).toBe('source');
+    });
+
+    it('getValue is mode-agnostic for the same document', () => {
+        const editor = new MarkdownEditor('# Title');
+        const wysiwyg = normalize(editor.getValue());
+
+        editor.setMode('source');
+
+        expect(normalize(editor.getValue())).toBe(wysiwyg);
+    });
+
+    it('setMode("source") exposes raw markdown equal to the pre-switch value', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('## Heading two');
+        const before = editor.getValue();
+
+        editor.setMode('source');
+
+        expect(editor.getValue()).toBe(before);
+    });
+
+    it('edits made in source mode survive switching back to wysiwyg', () => {
+        const editor = new MarkdownEditor('# Original');
+
+        editor.setMode('source');
+        editor.setValue('## Edited in source');
+        editor.setMode('wysiwyg');
+
+        expect(normalize(editor.getValue())).toContain('## Edited in source');
+    });
+
+    it('round-trips each corpus document through a source/wysiwyg switch', () => {
+        for (const [name, doc] of Object.entries(CORPUS)) {
+            const editor = new MarkdownEditor();
+            editor.setValue(doc);
+            const canonical = normalize(editor.getValue());
+
+            editor.setMode('source');
+            editor.setMode('wysiwyg');
+
+            expect(normalize(editor.getValue()), name).toBe(canonical);
+        }
+    });
+
+    it('setMode to the current mode is a no-op and fires no change', () => {
+        let fired = 0;
+        const editor = new MarkdownEditor('# Doc', { listeners: { change: () => { fired += 1; } } });
+
+        editor.setMode('wysiwyg');
+
+        expect(editor.getMode()).toBe('wysiwyg');
+        expect(fired).toBe(0);
+    });
+
+    it('a mode round-trip on unchanged content fires no change', () => {
+        let fired = 0;
+        const editor = new MarkdownEditor('# Untouched', { listeners: { change: () => { fired += 1; } } });
+
+        editor.setMode('source');
+        editor.setMode('wysiwyg');
+
+        expect(fired).toBe(0);
+    });
+
+    it('routes readOnly to both surfaces', () => {
+        const editor = new MarkdownEditor(undefined, { readOnly: true });
+        editor.setValue('locked');   // builds the headless Lexical editor
+
+        expect(editor.getReadOnly()).toBe(true);
+        expect(lexicalOf(editor).isEditable()).toBe(false);
+        expect(codeEditorOf(editor).getReadOnly()).toBe(true);
+
+        editor.setReadOnly(false);
+
+        expect(lexicalOf(editor).isEditable()).toBe(true);
+        expect(codeEditorOf(editor).getReadOnly()).toBe(false);
+    });
 });
 
 describe('MarkdownEditor dialect fidelity (viewer token set)', () => {

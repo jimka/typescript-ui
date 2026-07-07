@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { callable, Panel } from '@jimka/typescript-ui/core';
-import { Fit, Split } from '@jimka/typescript-ui/layout';
+import { Border, Fit, Split } from '@jimka/typescript-ui/layout';
+import { Placement } from '@jimka/typescript-ui/primitive';
+import { ToggleButton } from '@jimka/typescript-ui/component/button';
+import { ToolBar } from '@jimka/typescript-ui/component/menubar';
 import { Markdown } from '@jimka/typescript-ui/component/display';
 import { MarkdownEditor } from '@jimka/typescript-ui/component/editor';
 
@@ -30,8 +33,10 @@ const editor = new MarkdownEditor("# Hello");
  * component beside the read-only [`Markdown`](/api/component/display/classes/Markdown)
  * viewer. Editing on the left drives the viewer on the right through the
  * editor's `"change"` event and `getValue()`, visually proving the dialect
- * round-trips: what you edit renders identically in the viewer. The editor fills
- * its `Fit` host and scrolls internally; the viewer sits in a vertically
+ * round-trips: what you edit renders identically in the viewer. A toolbar toggle
+ * over the editor switches it between the WYSIWYG surface and a raw-Markdown
+ * source editor via `setMode`; the viewer stays in sync in both modes. The editor
+ * fills its `Fit` host and scrolls internally; the viewer sits in a vertically
  * scrolling panel.
  */
 class MarkdownEditorPanel extends Panel {
@@ -47,8 +52,20 @@ class MarkdownEditorPanel extends Panel {
         this._editor = new MarkdownEditor(SAMPLE);
         this._viewer = new Markdown(SAMPLE);
 
-        const editorHost = new Panel({ layoutManager: new Fit() });
-        editorHost.addComponent(this._editor);
+        // A toolbar toggle drives the editor's WYSIWYG / raw-Markdown source mode;
+        // the mode API is consumer-wired (the editor ships no built-in chrome).
+        const sourceToggle = new ToggleButton('Edit Markdown source');
+        sourceToggle.on('action', () => this._editor.setMode(sourceToggle.isSelected() ? 'source' : 'wysiwyg'));
+
+        const toolbar = new ToolBar();
+        toolbar.addComponent(sourceToggle);
+
+        const editorFit = new Panel({ layoutManager: new Fit() });
+        editorFit.addComponent(this._editor);
+
+        const editorHost = new Panel({ layoutManager: new Border() });
+        editorHost.addComponent(toolbar,    { placement: Placement.NORTH });
+        editorHost.addComponent(editorFit,  { placement: Placement.CENTER });
         this.addComponent(editorHost);
 
         const viewerHost = new Panel({ layoutManager: new Fit() });
