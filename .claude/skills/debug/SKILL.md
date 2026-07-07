@@ -1,6 +1,7 @@
 ---
 name: debug
 description: Investigate a bug, layout/sizing issue, or performance regression in this framework. Use when the user reports incorrect rendering, slow performance, broken behaviour, or asks why something isn't working.
+model: opus
 ---
 
 ## Required reading

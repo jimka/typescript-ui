@@ -1,6 +1,7 @@
 ---
 name: document
 description: Update project documentation when the public API changes — new exported symbols, renames, removals, JSDoc additions, or changes that touch docs/, typedoc.json, or the typedoc-callable-plugin. Use whenever a code change is consumer-visible.
+model: sonnet
 ---
 
 ## Required reading
