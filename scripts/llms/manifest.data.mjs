@@ -82,6 +82,7 @@ export const groups = [
         { task: "Font-Awesome icon glyph", symbol: "Glyph" },
         { task: "Icon paired with a label", symbol: "IconLabel" },
         { task: "Render a Markdown string as formatted content", symbol: "Markdown" },
+        { task: "Syntax-highlighted code editor with one-command formatting", symbol: "CodeEditor" },
         { task: "Determinate/indeterminate progress bar", symbol: "ProgressBar" },
         { task: "Spinning busy indicator", symbol: "ProgressSpinner" },
         { task: "Page-through pagination controls", symbol: "PaginationBar" },
