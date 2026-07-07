@@ -7,3 +7,6 @@ export { CodeEditor } from '~/component/editor/CodeEditor.js';
 export type { CodeEditorOptions, CodeEditorChange } from '~/component/editor/CodeEditor.js';
 export { registerLanguage, getLanguage, listLanguages } from '~/component/editor/LanguageRegistry.js';
 export type { LanguageDefinition, Formatter } from '~/component/editor/LanguageRegistry.js';
+
+export { MarkdownEditor } from '~/component/editor/MarkdownEditor.js';
+export type { MarkdownEditorOptions, MarkdownEditorChange, MarkdownBlockType, MarkdownEditorMode } from '~/component/editor/MarkdownEditor.js';

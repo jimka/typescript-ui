@@ -18,6 +18,7 @@ import { AnimatedDropdown } from '~/core/AnimatedDropdown';
 import { LineChart } from '~/component/chart/LineChart';
 import { BarChart } from '~/component/chart/BarChart';
 import { DiagramView } from '~/component/diagram/DiagramView';
+import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { Insets } from '~/primitive/Insets';
 import { Size } from '~/primitive/Size';
 
@@ -176,6 +177,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'LineChart xScaleType',         resolve: () => new LineChart({}).getXScaleType(),                          expected: 'linear' },
     { label: 'BarChart grouped (no data)',   resolve: () => new BarChart({}).isGrouped(),                               expected: false },
     { label: 'DiagramView zoom',             resolve: () => new DiagramView().getZoom(),                                expected: 1 },
+    { label: 'MarkdownEditor readOnly',      resolve: () => new MarkdownEditor().getReadOnly(),                         expected: false },
 ];
 
 describe('default-resolution registry: a bare construction resolves every class default', () => {

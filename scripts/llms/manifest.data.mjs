@@ -83,6 +83,7 @@ export const groups = [
         { task: "Icon paired with a label", symbol: "IconLabel" },
         { task: "Render a Markdown string as formatted content", symbol: "Markdown" },
         { task: "Syntax-highlighted code editor with one-command formatting", symbol: "CodeEditor" },
+        { task: "WYSIWYG rich-text editor whose value is a Markdown string", symbol: "MarkdownEditor" },
         { task: "Determinate/indeterminate progress bar", symbol: "ProgressBar" },
         { task: "Spinning busy indicator", symbol: "ProgressSpinner" },
         { task: "Page-through pagination controls", symbol: "PaginationBar" },

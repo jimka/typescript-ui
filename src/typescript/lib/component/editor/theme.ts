@@ -73,6 +73,20 @@ export function codeEditorTheme(dark: boolean): Extension {
         { tag: tags.typeName,                                                   color: SYNTAX_TYPE },
         { tag: [tags.propertyName, tags.attributeName],                        color: SYNTAX_PROPERTY },
         { tag: tags.tagName,                                                    color: SYNTAX_KEYWORD },
+        // Markdown constructs (the `markdown` language, e.g. the MarkdownEditor
+        // source surface). The parser tags these; without a style here they
+        // would render as plain text. Headings/links reuse the accent hue; bold
+        // and italic carry weight/slant rather than colour so prose stays
+        // readable; the markup marks (`#`, `**`, `` ` ``, `>`, `-`) and quotes
+        // are muted so the content reads over the syntax.
+        { tag: [tags.heading, tags.heading1, tags.heading2, tags.heading3,
+                tags.heading4, tags.heading5, tags.heading6],                   color: SYNTAX_KEYWORD, fontWeight: "bold" },
+        { tag: tags.strong,                                                     fontWeight: "bold" },
+        { tag: tags.emphasis,                                                   fontStyle: "italic" },
+        { tag: tags.monospace,                                                  color: SYNTAX_STRING },
+        { tag: [tags.link, tags.url],                                           color: SYNTAX_KEYWORD, textDecoration: "underline" },
+        { tag: [tags.quote, tags.contentSeparator],                             color: SYNTAX_COMMENT },
+        { tag: tags.processingInstruction,                                      color: SYNTAX_COMMENT },
     ]));
 
     return [chrome, highlight];

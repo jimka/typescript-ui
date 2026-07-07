@@ -31,6 +31,7 @@ import { MarkdownPanel } from "./MarkdownPanel.js";
 import { CodeEditorPanel } from "./CodeEditorPanel.js";
 import { ChartDemoPanel } from "./ChartDemoPanel.js";
 import { DiagramPanel } from "./DiagramPanel.js";
+import { MarkdownEditorPanel } from "./MarkdownEditorPanel.js";
 
 DOM.source.getScrollBarWidth();
 (window as any).bench = Benchmark;
@@ -66,6 +67,7 @@ layoutManager.addLazyTab(() => new MarkdownPanel(),        "Markdown"   );
 layoutManager.addLazyTab(() => new CodeEditorPanel(),      "CodeEditor" );
 layoutManager.addLazyTab(() => new ChartDemoPanel(),       "Charts"     );
 layoutManager.addLazyTab(() => new DiagramPanel(),         "Diagram"    );
+layoutManager.addLazyTab(() => new MarkdownEditorPanel(),  "MD Editor"  );
 
 const PersonModel = new Model([
     { name: 'id',   type: 'number'                  },
