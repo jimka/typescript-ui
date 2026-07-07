@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $createParagraphNode } from "lexical";
@@ -165,6 +166,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         this.setContentEditable(true);
         // Fills its host box and scrolls internally when the document overflows.
         this.setOverflow("auto");
+        // Text caret over the whole surface: signals editability, and — paired
+        // with the `user-select: text` Lexical stamps on the root — keeps the
+        // surface select-and-copy-able even in read-only mode. `setCursor` caches
+        // in `_options.cursor`, which `applyStyle` replays, so it survives both
+        // detached construction and Lexical's mount.
+        this.setCursor("text");
 
         this.applyListeners(options?.listeners);
 
@@ -185,6 +192,33 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (options.value    !== undefined) this._options.value    = options.value;
         if (options.readOnly !== undefined) this._options.readOnly = options.readOnly;
+
+        return this;
+    }
+
+    /**
+     * Replays the cached `contenteditable` state onto the freshly-created
+     * element. `setContentEditable` (called during detached construction, before
+     * an element exists) caches into `_contentEditable` but its underlying
+     * `setElementAttribute` is write-through only, so the constructor-time write
+     * is dropped; without this replay the mounted element never becomes editable
+     * and the WYSIWYG view silently behaves read-only.
+     *
+     * The write targets the `element` handle directly — as the base class does
+     * for its own cached attributes — because at init time the element is not yet
+     * in the document, so a `getElement()`-based setter would miss it.
+     *
+     * @param element - Optional element to initialise; falls back to `getElement()`.
+     * @returns This component, for method chaining.
+     */
+    protected init(element?: Handle): this {
+        super.init(element);
+
+        const el = element ?? this.getElement();
+
+        if (el) {
+            DOM.sink.apply(el, { setAttr: { contenteditable: this._contentEditable ? "true" : "false" } });
+        }
 
         return this;
     }
@@ -386,9 +420,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Sets whether this component's element hosts an editable region. Routes
-     * through the buffered attribute seam so the `contenteditable` attribute is
-     * queued before the element exists and flushed at render.
+     * Sets whether this component's element hosts an editable region. Caches the
+     * state in `_contentEditable` and writes the `contenteditable` attribute
+     * through to the element. The underlying `setElementAttribute` is
+     * write-through only, so a call made during detached construction (before the
+     * element exists) is a no-op on the DOM; {@link MarkdownEditor.init} replays
+     * the cached state onto the element once it is created.
      *
      * @param contentEditable - Whether the element is contenteditable.
      * @returns This component, for method chaining.
