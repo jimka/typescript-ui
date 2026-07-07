@@ -86,6 +86,14 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | [`PaginationBar`](/components/PaginationBar) | First / prev / next / last navigation for a paginated [`Store`](/api/data/classes/Store) |
 | [`StatusBar`](/components/StatusBar) | Bottom-of-window status strip with a transient message and left / right indicator zones |
 
+## Charts
+
+| Component | Purpose |
+| --- | --- |
+| [`LineChart`](/components/LineChart) | Line series over a linear or time x axis; in-memory or [`Store`](/api/data/classes/Store)-bound |
+| [`BarChart`](/components/BarChart) | Grouped or stacked bars over a category axis; in-memory or [`Store`](/api/data/classes/Store)-bound |
+| [`ChartLegend`](/components/ChartLegend) | Clickable series legend shared by the chart family (toggles series visibility) |
+
 ## Lists
 
 | Component | Purpose |

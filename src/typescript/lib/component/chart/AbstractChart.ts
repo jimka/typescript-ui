@@ -100,8 +100,8 @@ export interface AbstractChartOptions extends PanelOptions {
  *
  * The computational layer (scales, ticks, path generation) delegates to pure
  * d3 submodules; all rendering, layout, interaction, and theming are native.
- * Concrete subtypes fill in {@link buildScales}, {@link drawSeries}, and
- * {@link pointPixel}.
+ * Concrete subtypes fill in the scale-building, series-drawing, and
+ * point-anchor hooks.
  *
  * @typeParam O - The subtype's options interface.
  *

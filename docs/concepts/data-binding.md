@@ -45,3 +45,32 @@ record?.set('age', 31);
 console.log(record?.isDirty()); // true
 record?.commit();
 ```
+
+## Charts
+
+The [charting family](/components/) binds to a [`Store`](/api/data/classes/Store) the same way [`ComboBox`](/components/ComboBox) and [`List`](/components/List) do: pass the store plus the record fields the chart should read. A [`LineChart`](/components/LineChart) or [`BarChart`](/components/BarChart) reads each point's `x`/`y` from `xField`/`yField`, and an optional `seriesField` splits the records into one series per distinct value. The chart subscribes to the store's `load` / `add` / `remove` / `datachange` events and rebuilds itself when the data changes — a toggled-off series stays hidden across a refresh (matched by name).
+
+```typescript
+import { Model, MemoryStore } from '@jimka/typescript-ui/data';
+import { LineChart } from '@jimka/typescript-ui/component/chart';
+
+const SalesModel = new Model([
+    { name: 'id',     type: 'number' },
+    { name: 'month',  type: 'number' },
+    { name: 'sales',  type: 'number' },
+    { name: 'region', type: 'string' },
+]);
+
+const store = new MemoryStore(SalesModel, [
+    { id: 1, month: 1, sales: 30, region: 'North' },
+    { id: 2, month: 2, sales: 45, region: 'North' },
+    { id: 3, month: 1, sales: 20, region: 'South' },
+    { id: 4, month: 2, sales: 28, region: 'South' },
+]);
+
+panel.addComponent(LineChart({ store, xField: 'month', yField: 'sales', seriesField: 'region' }));
+
+await store.load(); // the chart repaints from the load event
+```
+
+Pass an in-memory `series` array instead of `store` when the data is static — the two are mutually exclusive construction paths.
