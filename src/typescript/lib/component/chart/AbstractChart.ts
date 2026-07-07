@@ -105,6 +105,10 @@ export interface AbstractChartOptions extends PanelOptions {
  *
  * @typeParam O - The subtype's options interface.
  *
+ * @remarks Abstract, so it is deliberately **not** wrapped with `callable()` (a
+ * base with abstract members cannot be constructed); the concrete `LineChart` /
+ * `BarChart` subclasses carry the callable export.
+ *
  * @category Components
  */
 export abstract class AbstractChart<O extends AbstractChartOptions = AbstractChartOptions> extends Panel<O> {
@@ -820,7 +824,7 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
      * @param event - The mouse-move event.
      */
     private handlePointerMove = (event: MouseEvent): void => {
-        const hit = this.hitDatum(event);
+        const hit = this.hitMark(event);
 
         if (!hit) {
             Tooltip.hide();
@@ -829,8 +833,11 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
         }
 
         const model = this._series[hit.series];
-        const point = model.points[hit.index];
-        const text = `${model.name}: (${point.x}, ${point.y})`;
+        // A whole-series mark (a line path, no point index) shows the series name
+        // only; an indexed mark (a point marker or bar) shows the datum.
+        const text = hit.index === null
+            ? model.name
+            : `${model.name}: (${model.points[hit.index].x}, ${model.points[hit.index].y})`;
 
         Tooltip.show(text, event.clientX, event.clientY);
     };
@@ -849,9 +856,11 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
      * @param event - The click event.
      */
     private handlePointerClick = (event: MouseEvent): void => {
-        const hit = this.hitDatum(event);
+        const hit = this.hitMark(event);
 
-        if (!hit) {
+        // Selection needs a concrete point — a whole-series mark (line path,
+        // null index) carries no datum to select.
+        if (!hit || hit.index === null) {
             return;
         }
 
@@ -874,32 +883,46 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
     };
 
     /**
-     * Reads the series/index data attributes off the event's target mark,
-     * returning the identified datum or `null` when the target is not an indexed
-     * mark or its series is hidden.
+     * Reads the series/index data attributes off the event's target mark. A mark
+     * carrying only `data-series` (a line path) resolves to a whole-series hit
+     * (`index: null`); a mark carrying `data-index` too (a point marker or bar)
+     * resolves to that datum. Returns `null` when the target is not a series
+     * mark, its series is hidden, or its index is out of range — so a series with
+     * no point markers (`showPoints: false`) still hovers at the series level via
+     * its path.
      *
      * @param event - The pointer event.
      *
-     * @returns The hit datum's series/index, or `null`.
+     * @returns The hit `{ series, index }` (`index` null for a whole-series mark), or `null`.
      */
-    private hitDatum(event: MouseEvent): { series: number; index: number } | null {
+    private hitMark(event: MouseEvent): { series: number; index: number | null } | null {
         if (!DOM.source.isNode(event.target)) {
             return null;
         }
 
         const target = DOM.source.intern(event.target);
         const seriesRaw = DOM.source.getDataset(target, "series");
-        const indexRaw = DOM.source.getDataset(target, "index");
 
-        if (seriesRaw === undefined || indexRaw === undefined) {
+        if (seriesRaw === undefined) {
             return null;
         }
 
         const series = Number(seriesRaw);
-        const index = Number(indexRaw);
         const model = this._series[series];
 
-        if (!model || model.hidden || index >= model.points.length) {
+        if (!model || model.hidden) {
+            return null;
+        }
+
+        const indexRaw = DOM.source.getDataset(target, "index");
+
+        if (indexRaw === undefined) {
+            return { series, index: null };
+        }
+
+        const index = Number(indexRaw);
+
+        if (index >= model.points.length) {
             return null;
         }
 
@@ -997,6 +1020,8 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
         Event.removeSubtreeListener(this, "mousemove", this.handlePointerMove);
         Event.removeSubtreeListener(this, "mouseout", this.handlePointerOut);
         Event.removeSubtreeListener(this, "click", this.handlePointerClick);
+
+        this._legend.dispose();
 
         Tooltip.hide();
     }

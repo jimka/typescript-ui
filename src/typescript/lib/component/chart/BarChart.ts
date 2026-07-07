@@ -3,6 +3,7 @@
 import { AbstractChart, AbstractChartOptions } from "~/component/chart/AbstractChart.js";
 import { bandScale, linearScale, isBandScale, pointsYBounds } from "~/component/chart/Scale.js";
 import type { ChartScale } from "~/component/chart/Scale.js";
+import type { ScaleBand } from "d3-scale";
 import { callable } from "~/core/Callable.js";
 import type { ChartPoint, ChartSeriesModel, PlotRect } from "~/component/chart/types.js";
 
@@ -192,7 +193,7 @@ class BarChart extends AbstractChart<BarChartOptions> {
         model: ChartSeriesModel,
         seriesIndex: number,
         position: number,
-        xScale: import("d3-scale").ScaleBand<string>,
+        xScale: ScaleBand<string>,
         project: (v: number) => number,
         baseline: number,
         grouped: boolean,

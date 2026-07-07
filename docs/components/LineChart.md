@@ -55,9 +55,11 @@ Inherits the common [`PanelOptions`](/api/core/interfaces/PanelOptions) fields. 
 
 ## Interaction
 
-- **Hover** a point to show a tooltip with its series and value; moving off it hides the tooltip.
+- **Hover** a point to show a tooltip with its series and value; hovering the line itself (no marker) shows a series-level tooltip. Moving off hides the tooltip.
 - **Click** a legend entry to hide/show that series (the chart repaints); click again to restore it.
 - **Click** a point to select it (a selection ring is drawn) and fire the `"selection"` event.
+
+Point markers are the per-point hit targets, so with `showPoints: false` a series stays hoverable at the series level (via its line) but has no per-point selection. Leave `showPoints` on (the default) for point-level hover and selection.
 
 ## Theming
 

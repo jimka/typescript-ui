@@ -194,6 +194,10 @@ class LineChart extends AbstractChart<LineChartOptions> {
             const color = this.seriesColor(seriesIndex, model);
             const path = line<ChartPoint>().x((p) => project.x(p.x)).y((p) => project.y(p.y)).curve(curve)(model.points);
 
+            // The path spans the whole series, so it carries `data-series` only
+            // (no per-point `data-index`): hovering the line shows a series-level
+            // tooltip, while per-point hover/selection rides on the point markers
+            // below. With `showPoints: false` the line stays series-level hoverable.
             this.seriesMark("path", {
                 setAttr: { d: path ?? "", "data-series": String(seriesIndex) },
                 style:   { fill: "none", stroke: color, "stroke-width": "var(--ts-ui-chart-line-width)" },

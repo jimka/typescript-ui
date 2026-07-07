@@ -276,6 +276,16 @@ class ChartLegend extends Panel<ChartLegendOptions> {
     protected emit(event: ChartLegendEvent, seriesIndex: number): void {
         this._listeners.fire(event, seriesIndex);
     }
+
+    /**
+     * Removes the self-subtree click listener. `Event.addSubtreeListener` holds a
+     * permanent hard reference in a module-level map, so a legend that is never
+     * disposed pins itself (and its DOM handles) for the life of the page; the
+     * owning chart calls this from its own `dispose`.
+     */
+    dispose(): void {
+        Event.removeSubtreeListener(this, "click", this.handleRowClick);
+    }
 }
 
 const ChartLegendCallable = callable(ChartLegend);

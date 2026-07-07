@@ -157,10 +157,15 @@ describe('store binding symmetry', () => {
         const off = vi.spyOn(store, 'off');
 
         const chart = new _LineChart({ store, xField: 'x', yField: 'y' });
+        const legendDispose = vi.spyOn((chart as unknown as { _legend: { dispose(): void } })._legend, 'dispose');
+
         chart.dispose();
 
         expect(off).toHaveBeenCalledTimes(4);
         expect(chart.getStore()).toBeNull();
+        // The internally-owned legend must be disposed too, or its subtree click
+        // listener leaks in Event's module-level map.
+        expect(legendDispose).toHaveBeenCalledTimes(1);
     });
 });
 
