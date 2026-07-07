@@ -111,6 +111,25 @@ describe('DiagramView — layout application (U2)', () => {
     });
 });
 
+describe('DiagramView — content host does not clip the diagram (U2b)', () => {
+    it('leaves the content host overflow visible so scaled, unscaled-coordinate nodes are not cropped', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        // Nodes live at unscaled graph coordinates under the host's `scale(zoom)`
+        // transform, while the host box is sized to graph bounds × zoom. If the
+        // host clipped (the base `overflow: hidden` default), a zoom-out would
+        // crop the diagram to a `zoom`-fraction of the graph. It must not clip;
+        // the overflowing scaled nodes then drive the correct native scroll
+        // extent (verified live in the browser — not observable offline).
+        expect(view._contentHost.getOverflowX()).toBe('visible');
+        expect(view._contentHost.getOverflowY()).toBe('visible');
+    });
+});
+
 describe('DiagramView — node sizing input (U3)', () => {
     it('feeds explicit model sizes to ELK, else the node component preferred size', async () => {
         stubEngine = new StubEngine(fixedResult());
@@ -187,11 +206,19 @@ describe('DiagramView — zoom (U5, U6)', () => {
 
         expect(view.getZoom()).toBe(4);
         expect(view._contentHost.getTransform()).toBe('scale(4)');
-        expect(view._contentHost.getPreferredSize()).toEqual({ width: 160 * 4, height: 230 * 4 });
+        // On zoom-in the `scale(zoom)` transform already enlarges the host box's
+        // scroll-overflow contribution, so the untransformed box stays clamped
+        // at the graph bounds (× min(zoom, 1)); a `× zoom` box would overshoot
+        // to graph bounds × zoom² and add phantom scrollbars.
+        expect(view._contentHost.getPreferredSize()).toEqual({ width: 160, height: 230 });
 
         view.setZoom(0);
 
         expect(view.getZoom()).toBe(0.25);
+        // On zoom-out the transform's scale-down is ignored by the scroll
+        // container, so the box itself shrinks to graph bounds × zoom to keep
+        // the native scroll extent equal to the visual diagram.
+        expect(view._contentHost.getPreferredSize()).toEqual({ width: 160 * 0.25, height: 230 * 0.25 });
     });
 
     it('resolves the class-default zoom of 1 through the folding getter (U6)', () => {

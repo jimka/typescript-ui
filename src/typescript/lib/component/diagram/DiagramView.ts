@@ -134,7 +134,14 @@ class DiagramView extends Panel<DiagramViewOptions> {
 
         this._engine = this.createEngine();
 
-        this._contentHost = new Container({ layoutManager: new Absolute() });
+        // Nodes are laid out at unscaled graph coordinates under the host's
+        // `scale(zoom)` transform, so the host box (graph bounds × zoom) is
+        // smaller than the node coordinates whenever zoom < 1. The base
+        // `overflow: hidden` default would then crop the diagram to a
+        // `zoom`-fraction of the graph; keep it visible so the whole graph
+        // paints and the overflowing scaled nodes drive the native scroll
+        // extent (which tracks the visual size — graph bounds × zoom).
+        this._contentHost = new Container({ layoutManager: new Absolute(), overflow: "visible" });
         this._contentHost.setTransformOrigin("0 0");
         this.addComponent(this._contentHost);
 
@@ -343,7 +350,18 @@ class DiagramView extends Panel<DiagramViewOptions> {
         const zoom = this.getZoom();
 
         this._contentHost.setTransform(`scale(${zoom})`);
-        this._contentHost.setPreferredSize(this._graphWidth * zoom, this._graphHeight * zoom);
+
+        // The host's box feeds the viewport's native scroll extent, and the
+        // `scale(zoom)` transform above already scales the box's contribution:
+        // Chrome enlarges a scaled-up element's scroll-overflow footprint but
+        // ignores a scaled-down one (it keeps the untransformed box). So the box
+        // multiplier is clamped at 1 — on zoom-in the transform supplies the
+        // growth (a `× zoom` box would overshoot to graph bounds × zoom² and add
+        // phantom scrollbars), while on zoom-out the box must shrink with `zoom`
+        // itself since the transform's shrink is ignored. Either way the host's
+        // effective extent matches the nodes' own scaled extent (bounds × zoom).
+        const boxScale = Math.min(zoom, 1);
+        this._contentHost.setPreferredSize(this._graphWidth * boxScale, this._graphHeight * boxScale);
     }
 
     /**
