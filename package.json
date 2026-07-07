@@ -124,6 +124,9 @@
     "cloc": "cloc src/typescript/lib --include-lang=TypeScript"
   },
   "devDependencies": {
+    "@types/d3-array": "^3.2.2",
+    "@types/d3-scale": "^4.0.9",
+    "@types/d3-shape": "^3.1.8",
     "@vitest/coverage-v8": "^4.1.9",
     "cloc": "^2.6.0-cloc",
     "concurrently": "^6.3.0",
@@ -156,6 +159,9 @@
     "@fontsource-variable/manrope": "^5.2.8",
     "@lezer/highlight": "^1.2.3",
     "codemirror": "^6.0.2",
+    "d3-array": "^3.2.4",
+    "d3-scale": "^4.0.2",
+    "d3-shape": "^3.2.0",
     "marked": "^18.0.5",
     "prettier": "^3.9.4",
     "sql-formatter": "^15.8.2"
