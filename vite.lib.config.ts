@@ -32,6 +32,7 @@ export default defineConfig({
         'component/button':    r('component/button/index.ts'),
         'component/display':   r('component/display/index.ts'),
         'component/editor':    r('component/editor/index.ts'),
+        'component/chart':     r('component/chart/index.ts'),
         'component/list':      r('component/list/index.ts'),
         'component/container': r('component/container/index.ts'),
         'component/menubar':   r('component/menubar/index.ts'),

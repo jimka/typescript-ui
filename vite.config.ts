@@ -11,6 +11,7 @@ export default defineConfig({
       { find: '@jimka/typescript-ui/component/button',    replacement: sub('component/button/index.ts') },
       { find: '@jimka/typescript-ui/component/display',   replacement: sub('component/display/index.ts') },
       { find: '@jimka/typescript-ui/component/editor',    replacement: sub('component/editor/index.ts') },
+      { find: '@jimka/typescript-ui/component/chart',      replacement: sub('component/chart/index.ts') },
       { find: '@jimka/typescript-ui/component/list',      replacement: sub('component/list/index.ts') },
       { find: '@jimka/typescript-ui/component/container', replacement: sub('component/container/index.ts') },
       { find: '@jimka/typescript-ui/component/menubar',   replacement: sub('component/menubar/index.ts') },

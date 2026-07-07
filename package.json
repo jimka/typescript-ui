@@ -45,6 +45,10 @@
       "import": "./dist/lib/component/editor.es.js",
       "types": "./dist/lib/types/component/editor/index.d.ts"
     },
+    "./component/chart": {
+      "import": "./dist/lib/component/chart.es.js",
+      "types": "./dist/lib/types/component/chart/index.d.ts"
+    },
     "./glyphs": {
       "import": "./dist/lib/glyphs/index.es.js",
       "types": "./dist/lib/types/glyphs/index.d.ts"

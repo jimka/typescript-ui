@@ -11,6 +11,7 @@
         "src/typescript/lib/component/button/index.ts",
         "src/typescript/lib/component/display/index.ts",
         "src/typescript/lib/component/editor/index.ts",
+        "src/typescript/lib/component/chart/index.ts",
         "src/typescript/lib/component/list/index.ts",
         "src/typescript/lib/component/container/index.ts",
         "src/typescript/lib/component/menubar/index.ts",
