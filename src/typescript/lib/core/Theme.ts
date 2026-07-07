@@ -671,6 +671,34 @@ export interface Theme {
     };
 
     /**
+     * Charting tokens consumed by the [`component/chart`](/api/component/chart) family.
+     * `series` is the ordered categorical palette — emitted as
+     * `--ts-ui-chart-series-1 … --ts-ui-chart-series-N`, one custom property per
+     * slot — that series marks bind to by index; the remaining colour tokens
+     * dress the axes, gridlines, tick labels, and the selection ring. The
+     * scheme-invariant structural widths and the point radius live in
+     * {@link BaseTheme}, not the per-scheme palettes.
+     */
+    chart: {
+        /** Ordered categorical series palette; at least 8 entries. */
+        series: string[];
+        /** Axis line and tick-mark colour. */
+        axis: string;
+        /** Gridline colour. */
+        grid: string;
+        /** Axis/tick label text colour. */
+        label: string;
+        /** Selection-ring colour for a clicked point. */
+        selection: string;
+        /** Series line/area stroke width (CSS length). */
+        lineWidth: string;
+        /** Axis/tick/gridline stroke width (CSS length). */
+        axisWidth: string;
+        /** Point-marker radius (CSS length). */
+        pointRadius: string;
+    };
+
+    /**
      * The framework's global scale knob plus the font-coupled size ratios that
      * follow it. `base` is the root size in px, mirrored to CSS as
      * `--ts-ui-base-size`; SVG glyph boxes and JS layout constants size off it
@@ -837,6 +865,27 @@ function tabButtonSideVars(
         [`${base}-bottom`]: side.borderBottom ?? side.border,
         [`${base}-left`]:   side.borderLeft   ?? side.border,
     };
+}
+
+/**
+ * Emits the categorical series palette as one custom property per slot, keyed
+ * `<base>-1 … <base>-N`. A spread helper in the shape of {@link tabButtonSideVars},
+ * so a chart mark can bind `var(--ts-ui-chart-series-3)` directly and a theme
+ * switch recolours every series with no JS.
+ *
+ * @param base - The palette var-name prefix (e.g. `'--ts-ui-chart-series'`).
+ * @param palette - The ordered colour list.
+ *
+ * @returns A map of the per-slot custom properties.
+ */
+function chartSeriesVars(base: string, palette: string[]): Record<string, string> {
+    const vars: Record<string, string> = {};
+
+    palette.forEach((color, index) => {
+        vars[`${base}-${index + 1}`] = color;
+    });
+
+    return vars;
 }
 
 // Matches a signed pixel offset: '+2px', '-2px', '+0.5px'. Whole/decimal, px only.
@@ -1121,6 +1170,14 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-filedropzone-active-bg'           : theme.fileDropZone.activeBackground,
         '--ts-ui-filedropzone-active-border'       : theme.fileDropZone.activeBorder,
         '--ts-ui-scroll-shadow-color'              : theme.scroll.shadowColor,
+        '--ts-ui-chart-axis'                       : theme.chart.axis,
+        '--ts-ui-chart-grid'                       : theme.chart.grid,
+        '--ts-ui-chart-label'                      : theme.chart.label,
+        '--ts-ui-chart-selection'                  : theme.chart.selection,
+        '--ts-ui-chart-line-width'                 : theme.chart.lineWidth,
+        '--ts-ui-chart-axis-width'                 : theme.chart.axisWidth,
+        '--ts-ui-chart-point-radius'               : theme.chart.pointRadius,
+        ...chartSeriesVars('--ts-ui-chart-series', theme.chart.series),
     };
 }
 

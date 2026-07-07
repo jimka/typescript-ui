@@ -324,4 +324,23 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
     scroll: {
         shadowColor: 'rgba(0, 0, 0, 1)',
     },
+    // Okabe–Ito-derived categorical palette, brightened for adequate contrast on
+    // a dark background. Light-grey axis/label with a dim grid; the selection
+    // ring reuses the theme's blue accent (matching the focus indicator).
+    chart: {
+        series: [
+            '#56B4E9', // sky
+            '#E69F00', // orange
+            '#00C08B', // green
+            '#FF7F4D', // vermilion
+            '#E48FC1', // purple
+            '#0091D5', // blue
+            '#F0E442', // yellow
+            '#AAAAAA', // grey
+        ],
+        axis     : 'rgb(176, 176, 176)',
+        grid     : 'rgb(58, 58, 58)',
+        label    : 'rgb(192, 192, 192)',
+        selection: '#4a9eff',
+    },
 });
