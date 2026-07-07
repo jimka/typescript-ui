@@ -203,6 +203,57 @@ describe('LineChart mark set', () => {
     });
 });
 
+/** Collects every text-content string written by an apply patch. */
+function textMarks(sink: { writes: Array<{ op: string; args: unknown[] }> }): string[] {
+    const texts: string[] = [];
+
+    for (const write of sink.writes) {
+        if (write.op !== 'apply') {
+            continue;
+        }
+
+        const patch = write.args[1] as ElementPatch;
+
+        if (patch.text !== undefined) {
+            texts.push(patch.text);
+        }
+    }
+
+    return texts;
+}
+
+describe('axis titles', () => {
+    it('draws the x/y axis titles when the label options are set', () => {
+        const sink = installTestDOM(CONFIG);
+        const chart = new _LineChart({ series: [{ name: 'A', data: [{ x: 0, y: 1 }, { x: 1, y: 2 }] }], xAxisLabel: 'Month', yAxisLabel: 'Sales', showLegend: false });
+
+        expect(chart.getXAxisLabel()).toBe('Month');
+        expect(chart.getYAxisLabel()).toBe('Sales');
+
+        layout(chart, sink);
+
+        const texts = textMarks(sink);
+
+        expect(texts).toContain('Month');
+        expect(texts).toContain('Sales');
+    });
+
+    it('draws no axis titles when the label options are absent', () => {
+        const sink = installTestDOM(CONFIG);
+        const chart = new _LineChart({ series: [{ name: 'A', data: [{ x: 0, y: 1 }, { x: 1, y: 2 }] }], showLegend: false });
+
+        expect(chart.getXAxisLabel()).toBeNull();
+
+        layout(chart, sink);
+
+        // Tick labels are drawn, but neither of these title strings.
+        const texts = textMarks(sink);
+
+        expect(texts).not.toContain('Month');
+        expect(texts).not.toContain('Sales');
+    });
+});
+
 describe('BarChart mark set', () => {
     it('draws one rect per (visible series × point)', () => {
         const sink = installTestDOM(CONFIG);

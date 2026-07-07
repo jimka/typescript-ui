@@ -194,6 +194,14 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
             this.setLegendPosition(options.legendPosition);
         }
 
+        if (options.xAxisLabel !== undefined) {
+            this.setXAxisLabel(options.xAxisLabel);
+        }
+
+        if (options.yAxisLabel !== undefined) {
+            this.setYAxisLabel(options.yAxisLabel);
+        }
+
         this.applyListeners(options.listeners);
     }
 
@@ -396,6 +404,54 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
      */
     getLegendPosition(): ChartLegendPosition {
         return this._options.legendPosition ?? "right";
+    }
+
+    /**
+     * Sets the x-axis title (reserving a margin band for it) and repaints.
+     *
+     * @param label - The axis title.
+     *
+     * @returns This chart, for method chaining.
+     */
+    setXAxisLabel(label: string): this {
+        this._options.xAxisLabel = label;
+
+        this.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the x-axis title, or `null` when unset.
+     *
+     * @returns The x-axis title, or `null`.
+     */
+    getXAxisLabel(): string | null {
+        return this._options.xAxisLabel ?? null;
+    }
+
+    /**
+     * Sets the y-axis title (reserving a margin band for it) and repaints.
+     *
+     * @param label - The axis title.
+     *
+     * @returns This chart, for method chaining.
+     */
+    setYAxisLabel(label: string): this {
+        this._options.yAxisLabel = label;
+
+        this.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the y-axis title, or `null` when unset.
+     *
+     * @returns The y-axis title, or `null`.
+     */
+    getYAxisLabel(): string | null {
+        return this._options.yAxisLabel ?? null;
     }
 
     // ── Events ──────────────────────────────────────────────────────────────
