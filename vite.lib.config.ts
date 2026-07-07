@@ -49,15 +49,17 @@ export default defineConfig({
     sourcemap: true,
     minify: 'oxc',
     rollupOptions: {
-      // `marked`, the CodeEditor stack (CodeMirror, Prettier, sql-formatter),
-      // and the diagram family's optional `elkjs` peer dependency are all real
-      // runtime dependencies resolved from the consumer's node_modules rather
-      // than inlined into the chunks. A predicate matches the CodeMirror family
-      // (a dozen-plus `@codemirror/*` / `@lezer/*` packages plus their own
-      // dynamic-import subpaths, e.g. `prettier/plugins/babel`); `elkjs` is kept
-      // external so its lazy `import("elkjs/...")` survives verbatim and its GWT
-      // bundle never lands in the core chunks.
-      external: [/^(codemirror|@codemirror\/|@lezer\/|prettier|sql-formatter|marked)/, /^elkjs(\/|$)/],
+      // `marked`, the editor stacks (CodeMirror + Prettier + sql-formatter for
+      // CodeEditor, the Lexical family for MarkdownEditor), and the diagram
+      // family's optional `elkjs` peer dependency are all real runtime
+      // dependencies resolved from the consumer's node_modules rather than
+      // inlined into the chunks. A predicate matches the CodeMirror family (a
+      // dozen-plus `@codemirror/*` / `@lezer/*` packages plus their own
+      // dynamic-import subpaths, e.g. `prettier/plugins/babel`) and the Lexical
+      // family (core `lexical` plus its `@lexical/*` feature packages); `elkjs`
+      // is kept external so its lazy `import("elkjs/...")` survives verbatim and
+      // its GWT bundle never lands in the core chunks.
+      external: [/^(codemirror|@codemirror\/|@lezer\/|prettier|sql-formatter|marked|lexical$|@lexical\/)/, /^elkjs(\/|$)/],
       output: {
         // Downstream consumers hit the same `constructor.name` dependency as
         // the app (CSS classes + layout serialization), so the library bundle
