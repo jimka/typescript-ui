@@ -163,6 +163,16 @@ tree.setNodes([
 ]);
 ```
 
+## Diagram
+
+| Component | Purpose |
+| --- | --- |
+| [`DiagramView`](/components/DiagramView) | Read-only graph viewer with ELK auto-layout, pan/zoom, and node selection |
+| [`DiagramNode`](/api/component/diagram/classes/DiagramNode) | Default themed node renderer — a rounded box with optional glyph + label |
+| [`DiagramData`](/api/component/diagram/interfaces/DiagramData) | Graph model: `{ nodes, edges, layoutOptions? }` |
+
+Requires the optional [`elkjs`](https://github.com/kieler/elkjs) peer dependency (`npm install elkjs`); it is lazily imported and kept out of the core bundle.
+
 ## Containers
 
 | Component | Purpose |

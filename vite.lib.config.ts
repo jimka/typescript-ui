@@ -38,6 +38,7 @@ export default defineConfig({
         'component/menubar':   r('component/menubar/index.ts'),
         'component/table':     r('component/table/index.ts'),
         'component/tree':      r('component/tree/index.ts'),
+        'component/diagram':   r('component/diagram/index.ts'),
         ...glyphEntries,
       },
       formats: ['es'],
@@ -48,13 +49,15 @@ export default defineConfig({
     sourcemap: true,
     minify: 'oxc',
     rollupOptions: {
-      // `marked` and the CodeEditor stack (CodeMirror, Prettier, sql-formatter)
-      // are real runtime dependencies, resolved from the consumer's
-      // node_modules rather than inlined into the display/editor chunks. A
-      // predicate — not a literal array — because the CodeMirror family alone
-      // is a dozen-plus `@codemirror/*` / `@lezer/*` packages plus their own
-      // dynamic-import subpaths (e.g. `prettier/plugins/babel`).
-      external: /^(codemirror|@codemirror\/|@lezer\/|prettier|sql-formatter|marked)/,
+      // `marked`, the CodeEditor stack (CodeMirror, Prettier, sql-formatter),
+      // and the diagram family's optional `elkjs` peer dependency are all real
+      // runtime dependencies resolved from the consumer's node_modules rather
+      // than inlined into the chunks. A predicate matches the CodeMirror family
+      // (a dozen-plus `@codemirror/*` / `@lezer/*` packages plus their own
+      // dynamic-import subpaths, e.g. `prettier/plugins/babel`); `elkjs` is kept
+      // external so its lazy `import("elkjs/...")` survives verbatim and its GWT
+      // bundle never lands in the core chunks.
+      external: [/^(codemirror|@codemirror\/|@lezer\/|prettier|sql-formatter|marked)/, /^elkjs(\/|$)/],
       output: {
         // Downstream consumers hit the same `constructor.name` dependency as
         // the app (CSS classes + layout serialization), so the library bundle

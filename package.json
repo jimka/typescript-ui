@@ -92,6 +92,10 @@
     "./component/tree": {
       "import": "./dist/lib/component/tree.es.js",
       "types": "./dist/lib/types/component/tree/index.d.ts"
+    },
+    "./component/diagram": {
+      "import": "./dist/lib/component/diagram.es.js",
+      "types": "./dist/lib/types/component/diagram/index.d.ts"
     }
   },
   "files": [
@@ -134,6 +138,7 @@
     "@vitest/coverage-v8": "^4.1.9",
     "cloc": "^2.6.0-cloc",
     "concurrently": "^6.3.0",
+    "elkjs": "^0.10.0",
     "eslint": "^9.0.0",
     "google-closure-compiler": "^20200406.0.0",
     "jsdom": "^29.1.1",
@@ -169,5 +174,13 @@
     "marked": "^18.0.5",
     "prettier": "^3.9.4",
     "sql-formatter": "^15.8.2"
+  },
+  "peerDependencies": {
+    "elkjs": "^0.10.0"
+  },
+  "peerDependenciesMeta": {
+    "elkjs": {
+      "optional": true
+    }
   }
 }

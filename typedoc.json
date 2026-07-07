@@ -16,7 +16,8 @@
         "src/typescript/lib/component/container/index.ts",
         "src/typescript/lib/component/menubar/index.ts",
         "src/typescript/lib/component/table/index.ts",
-        "src/typescript/lib/component/tree/index.ts"
+        "src/typescript/lib/component/tree/index.ts",
+        "src/typescript/lib/component/diagram/index.ts"
     ],
     "tsconfig": "tsconfig.lib.json",
     "plugin": ["typedoc-plugin-markdown", "typedoc-vitepress-theme", "./typedoc-callable-plugin.mjs"],

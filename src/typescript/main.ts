@@ -30,6 +30,7 @@ import { BaselinePanel } from "./BaselinePanel.js";
 import { MarkdownPanel } from "./MarkdownPanel.js";
 import { CodeEditorPanel } from "./CodeEditorPanel.js";
 import { ChartDemoPanel } from "./ChartDemoPanel.js";
+import { DiagramPanel } from "./DiagramPanel.js";
 
 DOM.source.getScrollBarWidth();
 (window as any).bench = Benchmark;
@@ -64,6 +65,7 @@ layoutManager.addLazyTab(() => new LayoutSerializationPanel(), "Layout I/O" );
 layoutManager.addLazyTab(() => new MarkdownPanel(),        "Markdown"   );
 layoutManager.addLazyTab(() => new CodeEditorPanel(),      "CodeEditor" );
 layoutManager.addLazyTab(() => new ChartDemoPanel(),       "Charts"     );
+layoutManager.addLazyTab(() => new DiagramPanel(),         "Diagram"    );
 
 const PersonModel = new Model([
     { name: 'id',   type: 'number'                  },
