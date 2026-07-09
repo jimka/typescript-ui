@@ -32,9 +32,13 @@ const SAMPLE: DiagramData = {
     ],
     edges: [
         { id: 'e1', source: 'start',   target: 'process' },
-        { id: 'e2', source: 'process', target: 'store'   },
-        { id: 'e3', source: 'process', target: 'branch'  },
-        { id: 'e4', source: 'branch',  target: 'done'    },
+        // "one and only one" both ends, e.g. an FK backed by a unique NOT NULL
+        // column — one crow's-foot marker kind out of the set this edge showcases.
+        { id: 'e2', source: 'process', target: 'store', style: { startMarker: 'one', endMarker: 'one' } },
+        // Optional-many: a process can validate zero or many times.
+        { id: 'e3', source: 'process', target: 'branch', style: { startMarker: 'zeroOrMany', endMarker: 'one' } },
+        // Mandatory-many with a themed dashed stroke and a mid-edge label.
+        { id: 'e4', source: 'branch',  target: 'done', style: { startMarker: 'oneOrMany', endMarker: 'one', dashed: true, label: 'ON DELETE CASCADE' } },
         { id: 'e5', source: 'store',   target: 'done'    },
     ],
     layoutOptions: { 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT' },
@@ -44,7 +48,10 @@ const SAMPLE: DiagramData = {
  * Demo panel showcasing the
  * [`DiagramView`](/api/component/diagram/classes/DiagramView): a read-only
  * automatic-layout graph laid out by ELK, with themed nodes, an SVG edge layer,
- * pan (drag / trackpad), wheel zoom, and node selection.
+ * pan (drag / trackpad), wheel zoom, and node selection. A few sample edges
+ * carry a `style` (crow's-foot cardinality markers, a dashed stroke, and a
+ * mid-edge label) to showcase `DiagramEdgeData.style`; plain edges keep the
+ * default single arrowhead.
  *
  * A `Border` layout puts a toolbar (zoom in / out / fit-to-view) at the top and
  * the diagram in the centre; a status line reflects the selected node emitted by
