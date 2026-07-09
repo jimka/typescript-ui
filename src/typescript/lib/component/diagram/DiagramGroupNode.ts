@@ -8,6 +8,7 @@
 
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Absolute } from "~/layout/Absolute.js";
+import { IconText } from "~/component/display/IconText.js";
 import { Text } from "~/component/input/Text.js";
 import { callable } from "~/core/Callable.js";
 
@@ -19,6 +20,8 @@ import { callable } from "~/core/Callable.js";
 export interface DiagramGroupNodeOptions extends PanelOptions {
     /** The container's header label (e.g. the schema name). */
     label?: string;
+    /** Optional registered glyph name shown before the header label. */
+    glyph?: string;
 }
 
 /** Corner radius in pixels for the container's box, matching `DiagramNode`. */
@@ -43,8 +46,8 @@ const HEADER_INSET = 6;
  */
 class DiagramGroupNode extends Panel<DiagramGroupNodeOptions> {
 
-    /** The header label shown at the box's top-left corner. */
-    private _label!: Text;
+    /** The header shown at the box's top-left corner: a bare label, or a glyph + label. */
+    private _header!: IconText | Text;
 
     constructor(options?: DiagramGroupNodeOptions) {
         super(options, { layoutManager: new Absolute() });
@@ -53,18 +56,23 @@ class DiagramGroupNode extends Panel<DiagramGroupNodeOptions> {
         this.setBorder("1px solid var(--ts-ui-diagram-group-border, var(--ts-ui-border-color, rgb(180, 180, 180)))");
         this.setBorderRadius(GROUP_BORDER_RADIUS);
 
-        // The label is built here (not during super's cascade), so the value
-        // cached pure in `applyOptions` is dispatched now that the box exists.
-        this._label = new Text(this._options.label ?? "");
-        this._label.setPointerEvents("none");
-        this._label.setX(HEADER_INSET);
-        this._label.setY(HEADER_INSET);
-        this.addComponent(this._label);
+        // The header is built here (not during super's cascade), so the values
+        // cached pure in `applyOptions` are dispatched now that the box exists.
+        // An IconText when a glyph is present (glyph before the label, mirroring
+        // DiagramNode), else a bare Text.
+        const label = this._options.label ?? "";
+        this._header = this._options.glyph !== undefined
+            ? new IconText(this._options.glyph, label)
+            : new Text(label);
+        this._header.setPointerEvents("none");
+        this._header.setX(HEADER_INSET);
+        this._header.setY(HEADER_INSET);
+        this.addComponent(this._header);
     }
 
     /**
-     * Caches the label field pure to `_options`; it is dispatched from the
-     * constructor body once the header child exists.
+     * Caches the label/glyph fields pure to `_options`; they are dispatched from
+     * the constructor body once the header child exists.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -72,6 +80,7 @@ class DiagramGroupNode extends Panel<DiagramGroupNodeOptions> {
         super.applyOptions(options);
 
         if (options.label !== undefined) this._options.label = options.label;
+        if (options.glyph !== undefined) this._options.glyph = options.glyph;
 
         return this;
     }
@@ -85,7 +94,7 @@ class DiagramGroupNode extends Panel<DiagramGroupNodeOptions> {
      */
     setLabel(value: string): this {
         this._options.label = value;
-        this._label.setText(value);
+        this._header.setText(value);
 
         return this;
     }

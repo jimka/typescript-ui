@@ -119,12 +119,14 @@ function mergeLayoutOptions(...maps: Array<Record<string, string> | undefined>):
  * Default padding reserved inside every container's ELK box, keyed by side.
  * The default renderer (`DiagramGroupNode`) paints its header label a few
  * pixels from the top-left corner, so without a reserved top inset ELK could
- * place a child flush against — or under — the title. The left/bottom/right
- * values match ELK's own built-in default (12px) and only widen the top
- * inset; a consumer supplying a custom `groupRenderer` with a taller or
- * shorter header overrides this via the container's own `layoutOptions`.
+ * place a child flush against — or under — the title. The top inset reserves
+ * the header row (its inset + one text/glyph line) plus a ~10px gap so the
+ * first child sits clearly below the title, not tight against it. The
+ * left/bottom/right values match ELK's own built-in default (12px); a consumer
+ * supplying a custom `groupRenderer` with a taller or shorter header overrides
+ * this via the container's own `layoutOptions`.
  */
-const CONTAINER_PADDING_DEFAULT: Record<string, string> = { "elk.padding": "[top=24,left=12,bottom=12,right=12]" };
+const CONTAINER_PADDING_DEFAULT: Record<string, string> = { "elk.padding": "[top=34,left=12,bottom=12,right=12]" };
 
 /**
  * Maps one framework-native node to its ELK counterpart, recursing into

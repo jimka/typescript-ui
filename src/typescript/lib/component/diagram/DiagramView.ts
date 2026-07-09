@@ -265,7 +265,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
         const renderer = this._options.nodeRenderer ?? ((node: DiagramNodeData): Component =>
             new DiagramNode({ label: node.label, glyph: node.glyph }));
         const groupRenderer = this._options.groupRenderer ?? ((node: DiagramNodeData): Component =>
-            new DiagramGroupNode({ label: node.label }));
+            new DiagramGroupNode({ label: node.label, glyph: node.glyph }));
 
         const build = (nodes: DiagramNodeData[]): void => {
             for (const node of nodes) {
