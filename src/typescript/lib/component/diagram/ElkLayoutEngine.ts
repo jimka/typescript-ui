@@ -109,11 +109,25 @@ function mergeLayoutOptions(...maps: Array<Record<string, string> | undefined>):
 }
 
 /**
+ * Default padding reserved inside every container's ELK box, keyed by side.
+ * The default renderer (`DiagramGroupNode`) paints its header label a few
+ * pixels from the top-left corner, so without a reserved top inset ELK could
+ * place a child flush against — or under — the title. The left/bottom/right
+ * values match ELK's own built-in default (12px) and only widen the top
+ * inset; a consumer supplying a custom `groupRenderer` with a taller or
+ * shorter header overrides this via the container's own `layoutOptions`.
+ */
+const CONTAINER_PADDING_DEFAULT: Record<string, string> = { "elk.padding": "[top=24,left=12,bottom=12,right=12]" };
+
+/**
  * Maps one framework-native node to its ELK counterpart, recursing into
  * `children` for a compound container. A container (non-empty `children`)
  * carries no explicit `width`/`height` — ELK computes its box from its
  * contents — and its children are mapped the same way, so nesting is
- * unbounded. A leaf (no children) maps exactly as before.
+ * unbounded. A container's `layoutOptions` resolve as
+ * `CONTAINER_PADDING_DEFAULT` < `node.layoutOptions` (the node's own option
+ * wins), reserving header clearance by default while staying overridable. A
+ * leaf (no children) maps exactly as before.
  *
  * @param node - The framework-native node.
  * @param sizes - Per-leaf resolved sizes (explicit size, else preferred size).
@@ -126,7 +140,7 @@ function mapDiagramNode(
     if (node.children && node.children.length > 0) {
         return {
             id:            node.id,
-            layoutOptions: node.layoutOptions,
+            layoutOptions: mergeLayoutOptions(CONTAINER_PADDING_DEFAULT, node.layoutOptions),
             children:      node.children.map((child) => mapDiagramNode(child, sizes)),
         };
     }

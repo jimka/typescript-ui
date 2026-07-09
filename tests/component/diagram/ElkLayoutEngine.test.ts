@@ -111,7 +111,9 @@ describe('ElkLayoutEngine — buildElkGraph', () => {
         expect(graph.children).toEqual([
             {
                 id: 'schema:public',
-                layoutOptions: undefined,
+                // The default container padding reserves top clearance for
+                // DiagramGroupNode's header label — see the next test.
+                layoutOptions: { 'elk.padding': expect.any(String) },
                 children: [
                     { id: 'public.users', width: 50, height: 30, layoutOptions: undefined, ports: undefined },
                     { id: 'public.orders', width: 90, height: 40, layoutOptions: undefined, ports: undefined },
@@ -121,6 +123,32 @@ describe('ElkLayoutEngine — buildElkGraph', () => {
         // A container carries no explicit size — ELK computes it from contents.
         expect(graph.children?.[0]).not.toHaveProperty('width');
         expect(graph.children?.[0]).not.toHaveProperty('height');
+    });
+
+    it('gives a container a top padding wide enough to clear the DiagramGroupNode header, overridable by the node\'s own layoutOptions', () => {
+        const data: DiagramData = {
+            nodes: [{ id: 'schema:public', children: [{ id: 'public.users' }] }],
+            edges: [],
+        };
+
+        const graph = buildElkGraph(data, new Map());
+        const padding = graph.children?.[0].layoutOptions?.['elk.padding'];
+
+        // The exact spacing is an implementation detail; what matters is a
+        // non-zero top inset (so the container box leaves room above its
+        // children for the header label DiagramGroupNode paints).
+        expect(padding).toBeDefined();
+        expect(padding).toMatch(/top\s*=\s*(?!0\b)\d/);
+
+        const overridden = buildElkGraph(
+            {
+                nodes: [{ id: 'schema:public', layoutOptions: { 'elk.padding': '[top=1,left=1,bottom=1,right=1]' }, children: [{ id: 'public.users' }] }],
+                edges: [],
+            },
+            new Map(),
+        );
+
+        expect(overridden.children?.[0].layoutOptions).toEqual({ 'elk.padding': '[top=1,left=1,bottom=1,right=1]' });
     });
 
     it('recurses through nested containers (a container inside a container)', () => {
