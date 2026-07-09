@@ -388,3 +388,123 @@ describe('DiagramView — graceful ELK-absent (U10)', () => {
         expect(view.getSelection()).toEqual([]);
     });
 });
+
+// U11 — compound (container) nodes: rebuildNodes/collectNodeSizes recurse into
+// `children`, containers render via groupRenderer, and z-index is only
+// touched when the graph actually has a container (flat graphs unaffected).
+
+function compoundGraph(): DiagramData {
+    return {
+        nodes: [
+            {
+                id: 'schema:public', label: 'public',
+                children: [{ id: 'public.users', label: 'users' }, { id: 'public.orders', label: 'orders' }],
+            },
+        ],
+        edges: [{ id: 'e', source: 'public.users', target: 'public.orders' }],
+    };
+}
+
+function compoundResult(): DiagramLayoutResult {
+    return {
+        nodes: [
+            { id: 'schema:public', x: 0, y: 0, width: 200, height: 150 },
+            { id: 'public.users', x: 10, y: 10, width: 60, height: 30 },
+            { id: 'public.orders', x: 10, y: 60, width: 60, height: 30 },
+        ],
+        edges: [{ id: 'e', sections: [] }],
+        width:  200,
+        height: 150,
+    };
+}
+
+describe('DiagramView — compound container nodes (U11)', () => {
+    it('registers the container and its children in _nodeComponents/_nodeData, building the container via groupRenderer', async () => {
+        stubEngine = new StubEngine(compoundResult());
+
+        const built: string[] = [];
+        const groupRenderer = (d: DiagramNodeData): Component => {
+            built.push(d.id);
+
+            return new Component({ preferredSize: { width: 10, height: 10 } });
+        };
+
+        const view = new StubDiagramView({ data: compoundGraph(), groupRenderer }) as any;
+
+        await flush();
+
+        expect(built).toEqual(['schema:public']);
+        expect([...view._nodeComponents.keys()]).toEqual(['schema:public', 'public.users', 'public.orders']);
+        expect(view._nodeData.get('public.users').label).toBe('users');
+    });
+
+    it('defaults the container renderer to a DiagramGroupNode carrying the container\'s label', async () => {
+        stubEngine = new StubEngine(compoundResult());
+
+        const view = new StubDiagramView({ data: compoundGraph() }) as any;
+
+        await flush();
+
+        const container = view._nodeComponents.get('schema:public');
+
+        expect(container.getLabel?.()).toBe('public');
+    });
+
+    it('positions every flattened node (container + leaves) at its absolute layout coords', async () => {
+        stubEngine = new StubEngine(compoundResult());
+
+        const view = new StubDiagramView({ data: compoundGraph() }) as any;
+
+        await flush();
+
+        const container = view._nodeComponents.get('schema:public');
+        const users = view._nodeComponents.get('public.users');
+
+        expect([container.getX(), container.getY()]).toEqual([0, 0]);
+        expect([users.getX(), users.getY()]).toEqual([10, 10]);
+    });
+
+    it('z-indexes containers below the edge layer and leaves above it, when the graph has a container', async () => {
+        stubEngine = new StubEngine(compoundResult());
+
+        const view = new StubDiagramView({ data: compoundGraph() }) as any;
+
+        await flush();
+
+        const container = view._nodeComponents.get('schema:public');
+        const users = view._nodeComponents.get('public.users');
+        const orders = view._nodeComponents.get('public.orders');
+
+        expect(container.getZIndex()).toBe(0);
+        expect(view._edgeLayer.getZIndex()).toBe(1);
+        expect(users.getZIndex()).toBe(2);
+        expect(orders.getZIndex()).toBe(2);
+    });
+
+    it('leaves z-index untouched for a flat (no-container) graph', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        const nodeA = view._nodeComponents.get('a');
+
+        expect(nodeA.getZIndex()).toBe(0);
+        expect(view._edgeLayer.getZIndex()).toBe(0);
+    });
+
+    it('collectNodeSizes feeds every node (container + leaves) to the ELK sizes map', async () => {
+        stubEngine = new StubEngine(compoundResult());
+
+        const view = new StubDiagramView({ data: compoundGraph() }) as any;
+
+        await flush();
+
+        const sizes = stubEngine.lastArgs!.sizes;
+
+        expect(sizes.has('schema:public')).toBe(true);
+        expect(sizes.has('public.users')).toBe(true);
+        expect(sizes.has('public.orders')).toBe(true);
+    });
+});

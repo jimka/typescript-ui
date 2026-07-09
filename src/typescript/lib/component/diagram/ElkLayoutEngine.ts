@@ -9,7 +9,7 @@
 // `StoreWorkerClient.ensureWorker`) and externalised from the library bundle so
 // its GWT blob never lands in the core chunk.
 
-import type { DiagramData } from "~/component/diagram/DiagramModel.js";
+import type { DiagramData, DiagramNodeData } from "~/component/diagram/DiagramModel.js";
 
 /** A point in ELK's layout coordinate space. */
 export interface ElkPoint {
@@ -109,13 +109,64 @@ function mergeLayoutOptions(...maps: Array<Record<string, string> | undefined>):
 }
 
 /**
+ * Maps one framework-native node to its ELK counterpart, recursing into
+ * `children` for a compound container. A container (non-empty `children`)
+ * carries no explicit `width`/`height` — ELK computes its box from its
+ * contents — and its children are mapped the same way, so nesting is
+ * unbounded. A leaf (no children) maps exactly as before.
+ *
+ * @param node - The framework-native node.
+ * @param sizes - Per-leaf resolved sizes (explicit size, else preferred size).
+ * @returns The mapped ELK node.
+ */
+function mapDiagramNode(
+    node: DiagramNodeData,
+    sizes: Map<string, { width: number; height: number }>,
+): ElkNode {
+    if (node.children && node.children.length > 0) {
+        return {
+            id:            node.id,
+            layoutOptions: node.layoutOptions,
+            children:      node.children.map((child) => mapDiagramNode(child, sizes)),
+        };
+    }
+
+    const size = sizes.get(node.id);
+
+    return {
+        id:            node.id,
+        width:         node.width  ?? size?.width  ?? DEFAULT_NODE_WIDTH,
+        height:        node.height ?? size?.height ?? DEFAULT_NODE_HEIGHT,
+        layoutOptions: node.layoutOptions,
+        ports:         node.ports?.map((p) => ({
+            id:            p.id,
+            x:             p.x,
+            y:             p.y,
+            width:         p.width,
+            height:        p.height,
+            layoutOptions: p.side !== undefined ? { "elk.port.side": p.side } : undefined,
+        })),
+    };
+}
+
+/**
+ * Root-level ELK options enabling cross-container edge routing. Without it,
+ * an edge declared on the root (as every {@link DiagramEdgeData} is) between
+ * two nodes nested under different containers may be dropped or mis-routed by
+ * ELK's hierarchical layout. Merged in as the lowest-precedence tier, so a
+ * view-level default or a graph's own `layoutOptions` can still override it.
+ */
+const HIERARCHY_HANDLING_DEFAULT: Record<string, string> = { "elk.hierarchyHandling": "INCLUDE_CHILDREN" };
+
+/**
  * Maps the framework-native graph to an ELK graph JSON. Pure and synchronous —
  * no `elkjs` import — so it is unit-testable directly.
  *
- * Graph-level options resolve as `defaults` < `data.layoutOptions` (graph wins
- * over defaults) on the root; each node carries its own `layoutOptions`, which
- * ELK resolves over the inherited root options so a per-node option wins over
- * both.
+ * Graph-level options resolve as `HIERARCHY_HANDLING_DEFAULT` < `defaults` <
+ * `data.layoutOptions` (graph wins over view defaults, which win over the
+ * hierarchy-handling default) on the root; each node carries its own
+ * `layoutOptions`, which ELK resolves over the inherited root options so a
+ * per-node option wins over all three.
  *
  * @param data - The framework-native graph.
  * @param sizes - Per-node resolved sizes (explicit size, else preferred size).
@@ -127,24 +178,7 @@ export function buildElkGraph(
     sizes: Map<string, { width: number; height: number }>,
     defaults?: Record<string, string>,
 ): ElkNode {
-    const children: ElkNode[] = data.nodes.map((node) => {
-        const size = sizes.get(node.id);
-
-        return {
-            id:            node.id,
-            width:         node.width  ?? size?.width  ?? DEFAULT_NODE_WIDTH,
-            height:        node.height ?? size?.height ?? DEFAULT_NODE_HEIGHT,
-            layoutOptions: node.layoutOptions,
-            ports:         node.ports?.map((p) => ({
-                id:            p.id,
-                x:             p.x,
-                y:             p.y,
-                width:         p.width,
-                height:        p.height,
-                layoutOptions: p.side !== undefined ? { "elk.port.side": p.side } : undefined,
-            })),
-        };
-    });
+    const children: ElkNode[] = data.nodes.map((node) => mapDiagramNode(node, sizes));
 
     const edges: ElkExtendedEdge[] = data.edges.map((edge) => ({
         id:      edge.id,
@@ -154,28 +188,57 @@ export function buildElkGraph(
 
     return {
         id:            "root",
-        layoutOptions: mergeLayoutOptions(defaults, data.layoutOptions),
+        layoutOptions: mergeLayoutOptions(HIERARCHY_HANDLING_DEFAULT, defaults, data.layoutOptions),
         children,
         edges,
     };
 }
 
 /**
+ * Recursively flattens an ELK node (and its `children`, if any) into
+ * `out`, threading an `(offsetX, offsetY)` accumulator. ELK reports each
+ * child's `x`/`y` relative to its own parent, so a node's absolute position is
+ * its parent's absolute origin plus its own relative `x`/`y`; a container then
+ * recurses with that absolute origin as the new offset for its own children.
+ *
+ * @param node - The ELK node to flatten (a container or a leaf).
+ * @param offsetX - The accumulated absolute x of `node`'s parent (0 at the root).
+ * @param offsetY - The accumulated absolute y of `node`'s parent (0 at the root).
+ * @param out - The flat output array nodes are appended to, in traversal order.
+ */
+function flattenElkNode(
+    node: ElkNode,
+    offsetX: number,
+    offsetY: number,
+    out: Array<{ id: string; x: number; y: number; width: number; height: number }>,
+): void {
+    const x = offsetX + (node.x ?? 0);
+    const y = offsetY + (node.y ?? 0);
+
+    out.push({ id: node.id, x, y, width: node.width ?? 0, height: node.height ?? 0 });
+
+    for (const child of node.children ?? []) {
+        flattenElkNode(child, x, y, out);
+    }
+}
+
+/**
  * Maps an ELK layout result back to the engine-agnostic
  * {@link DiagramLayoutResult}. Pure and synchronous, so it is unit-testable
- * directly.
+ * directly. A container's descendants are flattened into the same output list
+ * as its siblings, each carrying absolute (not parent-relative) coordinates —
+ * see {@link flattenElkNode}. A flat (no-children) result maps exactly as
+ * before, since flattening a childless node is a no-op recursion.
  *
  * @param result - The root ELK node returned by `elk.layout`.
  * @returns The mapped layout result.
  */
 export function mapElkResult(result: ElkNode): DiagramLayoutResult {
-    const nodes = (result.children ?? []).map((child) => ({
-        id:     child.id,
-        x:      child.x ?? 0,
-        y:      child.y ?? 0,
-        width:  child.width  ?? 0,
-        height: child.height ?? 0,
-    }));
+    const nodes: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+
+    for (const child of result.children ?? []) {
+        flattenElkNode(child, 0, 0, nodes);
+    }
 
     const edges = (result.edges ?? []).map((edge) => ({
         id:       edge.id,

@@ -22,6 +22,7 @@ import { ListenerBag } from "~/core/ListenerBag.js";
 import { DiagramData, DiagramNodeData } from "~/component/diagram/DiagramModel.js";
 import { ElkLayoutEngine, DiagramLayoutResult } from "~/component/diagram/ElkLayoutEngine.js";
 import { DiagramNode } from "~/component/diagram/DiagramNode.js";
+import { DiagramGroupNode } from "~/component/diagram/DiagramGroupNode.js";
 import { DiagramEdgeLayer } from "~/component/diagram/DiagramEdgeLayer.js";
 import type { DiagramEdgeRoute } from "~/component/diagram/DiagramEdgeLayer.js";
 import { callable } from "~/core/Callable.js";
@@ -44,6 +45,15 @@ const DEFAULT_MAX_ZOOM = 4;
 /** Multiplicative zoom step per wheel notch. */
 const WHEEL_ZOOM_STEP = 1.1;
 
+// Paint order for a compound graph (one with at least one container): the
+// container boxes sit behind the edges, which sit behind the leaves, so a
+// leaf's click is never intercepted by its own container box. Applied only
+// when a container exists — a flat graph never writes z-index, leaving it at
+// every component's own default so today's behaviour is unaffected.
+const CONTAINER_Z_INDEX = 0;
+const EDGE_LAYER_Z_INDEX = 1;
+const LEAF_Z_INDEX = 2;
+
 /**
  * Construction-time options for {@link DiagramView}.
  *
@@ -54,6 +64,8 @@ export interface DiagramViewOptions extends PanelOptions {
     data?: DiagramData;
     /** Factory for node components; defaults to building a `DiagramNode`. */
     nodeRenderer?: DiagramNodeRenderer;
+    /** Factory for compound container components; defaults to `DiagramGroupNode`. */
+    groupRenderer?: DiagramNodeRenderer;
     /** Default ELK layout options applied to every layout pass. */
     layoutOptions?: Record<string, string>;
     /** Optional URL of a consumer-hosted `elk-worker.js` for off-thread layout. */
@@ -109,6 +121,9 @@ class DiagramView extends Panel<DiagramViewOptions> {
 
     /** Node model data keyed by node id (selection payload source). */
     private _nodeData: Map<string, DiagramNodeData> = new Map();
+
+    /** Ids of the compound container nodes built by the last `rebuildNodes`. */
+    private _containerIds: Set<string> = new Set();
 
     /** Currently selected node data (single-select). */
     private _selection: DiagramNodeData[] = [];
@@ -184,6 +199,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
 
         if (options.data          !== undefined) this._options.data          = options.data;
         if (options.nodeRenderer   !== undefined) this._options.nodeRenderer  = options.nodeRenderer;
+        if (options.groupRenderer  !== undefined) this._options.groupRenderer = options.groupRenderer;
         if (options.layoutOptions  !== undefined) this._options.layoutOptions = options.layoutOptions;
         if (options.elkWorkerUrl   !== undefined) this._options.elkWorkerUrl  = options.elkWorkerUrl;
         if (options.minZoom        !== undefined) this._options.minZoom       = options.minZoom;
@@ -220,7 +236,13 @@ class DiagramView extends Panel<DiagramViewOptions> {
     /**
      * Tears down the old node components + selection and builds fresh ones via
      * the node renderer (default: `DiagramNode`), adding them to the content
-     * host. The persistent edge layer is cleared but not removed.
+     * host. The persistent edge layer is cleared but not removed. Recurses into
+     * `children`: a container node (non-empty `children`) is built via the
+     * group renderer (default: `DiagramGroupNode`) and its children are built
+     * the same way, so container + leaf components all land as flat siblings in
+     * `_nodeComponents`/`_nodeData`, keyed by id — a container is never a DOM
+     * parent of its children (that would perturb the single-content-host model
+     * `nodeIdAt` hit-testing relies on).
      *
      * @param data - The graph whose nodes to build.
      */
@@ -231,19 +253,32 @@ class DiagramView extends Panel<DiagramViewOptions> {
 
         this._nodeComponents.clear();
         this._nodeData.clear();
+        this._containerIds.clear();
         this._selection = [];
         this._edgeLayer.setEdges([]);
 
         const renderer = this._options.nodeRenderer ?? ((node: DiagramNodeData): Component =>
             new DiagramNode({ label: node.label, glyph: node.glyph }));
+        const groupRenderer = this._options.groupRenderer ?? ((node: DiagramNodeData): Component =>
+            new DiagramGroupNode({ label: node.label }));
 
-        for (const node of data.nodes) {
-            const component = renderer(node);
+        const build = (nodes: DiagramNodeData[]): void => {
+            for (const node of nodes) {
+                const isContainer = (node.children?.length ?? 0) > 0;
+                const component = isContainer ? groupRenderer(node) : renderer(node);
 
-            this._nodeComponents.set(node.id, component);
-            this._nodeData.set(node.id, node);
-            this._contentHost.addComponent(component);
-        }
+                this._nodeComponents.set(node.id, component);
+                this._nodeData.set(node.id, node);
+                this._contentHost.addComponent(component);
+
+                if (isContainer) {
+                    this._containerIds.add(node.id);
+                    build(node.children!);
+                }
+            }
+        };
+
+        build(data.nodes);
     }
 
     /**
@@ -268,6 +303,9 @@ class DiagramView extends Panel<DiagramViewOptions> {
     /**
      * Resolves each node's size fed to ELK: the explicit `width`/`height` from
      * the model when present, else the node component's preferred size.
+     * Recurses into `children` so every container and leaf is represented; a
+     * container's entry is harmless-but-unused since `buildElkGraph` computes a
+     * container's box from its contents rather than consulting this map.
      *
      * @param data - The graph whose node sizes to collect.
      * @returns A map of node id to resolved size.
@@ -275,15 +313,23 @@ class DiagramView extends Panel<DiagramViewOptions> {
     private collectNodeSizes(data: DiagramData): Map<string, { width: number; height: number }> {
         const sizes = new Map<string, { width: number; height: number }>();
 
-        for (const node of data.nodes) {
-            const component = this._nodeComponents.get(node.id);
-            const preferred = component?.getPreferredSize();
+        const collect = (nodes: DiagramNodeData[]): void => {
+            for (const node of nodes) {
+                const component = this._nodeComponents.get(node.id);
+                const preferred = component?.getPreferredSize();
 
-            sizes.set(node.id, {
-                width:  node.width  ?? preferred?.width  ?? 0,
-                height: node.height ?? preferred?.height ?? 0,
-            });
-        }
+                sizes.set(node.id, {
+                    width:  node.width  ?? preferred?.width  ?? 0,
+                    height: node.height ?? preferred?.height ?? 0,
+                });
+
+                if (node.children && node.children.length > 0) {
+                    collect(node.children);
+                }
+            }
+        };
+
+        collect(data.nodes);
 
         return sizes;
     }
@@ -319,11 +365,31 @@ class DiagramView extends Panel<DiagramViewOptions> {
         this._edgeLayer.setPreferredSize(result.width, result.height);
         this._edgeLayer.setEdges(this.joinEdgeStyles(result.edges));
 
+        this.applyContainerZIndex();
+
         this.applyZoomToHost();
 
         this.scheduleLayout();
 
         this.emit("layout");
+    }
+
+    /**
+     * Applies the compound paint order — containers behind the edge layer,
+     * leaves in front of it — only when `rebuildNodes` built at least one
+     * container; a flat graph never has its z-index touched here, so today's
+     * behaviour is unaffected (see the module-level z-index constants).
+     */
+    private applyContainerZIndex(): void {
+        if (this._containerIds.size === 0) {
+            return;
+        }
+
+        this._edgeLayer.setZIndex(EDGE_LAYER_Z_INDEX);
+
+        for (const [id, component] of this._nodeComponents) {
+            component.setZIndex(this._containerIds.has(id) ? CONTAINER_Z_INDEX : LEAF_Z_INDEX);
+        }
     }
 
     /**

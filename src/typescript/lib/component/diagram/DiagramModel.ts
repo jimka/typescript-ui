@@ -65,6 +65,13 @@ export interface DiagramNodeData {
      * default renderer — a passthrough seam for the hosting application.
      */
     data?: unknown;
+    /**
+     * Optional child nodes. A node with a non-empty `children` is a compound
+     * *container* (e.g. a schema box grouping its tables); ELK lays its children
+     * out inside it and computes the container's own size. A node with no
+     * `children` is a leaf, exactly as before.
+     */
+    children?: DiagramNodeData[];
 }
 
 /**

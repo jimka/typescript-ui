@@ -89,6 +89,92 @@ describe('ElkLayoutEngine — buildElkGraph', () => {
         expect(graph.edges).toEqual([{ id: 'e', sources: ['a'], targets: ['b'] }]);
     });
 
+    it('maps a container node (non-empty children) to a nested ElkNode with no width/height', () => {
+        const data: DiagramData = {
+            nodes: [
+                {
+                    id: 'schema:public',
+                    label: 'public',
+                    children: [
+                        { id: 'public.users', width: 50, height: 30 },
+                        { id: 'public.orders' },
+                    ],
+                },
+            ],
+            edges: [],
+        };
+
+        const sizes = new Map([['public.orders', { width: 90, height: 40 }]]);
+
+        const graph = buildElkGraph(data, sizes);
+
+        expect(graph.children).toEqual([
+            {
+                id: 'schema:public',
+                layoutOptions: undefined,
+                children: [
+                    { id: 'public.users', width: 50, height: 30, layoutOptions: undefined, ports: undefined },
+                    { id: 'public.orders', width: 90, height: 40, layoutOptions: undefined, ports: undefined },
+                ],
+            },
+        ]);
+        // A container carries no explicit size — ELK computes it from contents.
+        expect(graph.children?.[0]).not.toHaveProperty('width');
+        expect(graph.children?.[0]).not.toHaveProperty('height');
+    });
+
+    it('recurses through nested containers (a container inside a container)', () => {
+        const data: DiagramData = {
+            nodes: [
+                {
+                    id: 'outer',
+                    children: [
+                        { id: 'inner', children: [{ id: 'leaf' }] },
+                    ],
+                },
+            ],
+            edges: [],
+        };
+
+        const graph = buildElkGraph(data, new Map());
+
+        const outer = graph.children?.[0];
+        expect(outer?.id).toBe('outer');
+        const inner = outer?.children?.[0];
+        expect(inner?.id).toBe('inner');
+        expect(inner).not.toHaveProperty('width');
+        expect(inner?.children).toEqual([
+            { id: 'leaf', width: 120, height: 40, layoutOptions: undefined, ports: undefined },
+        ]);
+    });
+
+    it('a leaf node (empty or absent children) maps exactly as today', () => {
+        const data: DiagramData = {
+            nodes: [{ id: 'a', children: [] }, { id: 'b' }],
+            edges: [],
+        };
+
+        const graph = buildElkGraph(data, new Map());
+
+        expect(graph.children).toEqual([
+            { id: 'a', width: 120, height: 40, layoutOptions: undefined, ports: undefined },
+            { id: 'b', width: 120, height: 40, layoutOptions: undefined, ports: undefined },
+        ]);
+    });
+
+    it('sets elk.hierarchyHandling=INCLUDE_CHILDREN on the root, overridable by data.layoutOptions', () => {
+        const data: DiagramData = { nodes: [], edges: [] };
+
+        const graph = buildElkGraph(data, new Map());
+        expect(graph.layoutOptions).toMatchObject({ 'elk.hierarchyHandling': 'INCLUDE_CHILDREN' });
+
+        const overridden = buildElkGraph(
+            { ...data, layoutOptions: { 'elk.hierarchyHandling': 'SEPARATE_CHILDREN' } },
+            new Map(),
+        );
+        expect(overridden.layoutOptions).toMatchObject({ 'elk.hierarchyHandling': 'SEPARATE_CHILDREN' });
+    });
+
     it('merges graph options over defaults on the root; per-node options ride on the child', () => {
         const data: DiagramData = {
             nodes: [{ id: 'a', layoutOptions: { 'elk.algorithm': 'force' } }],
@@ -99,10 +185,13 @@ describe('ElkLayoutEngine — buildElkGraph', () => {
         const graph = buildElkGraph(data, new Map(), { 'elk.algorithm': 'stress', 'elk.spacing': '20' });
 
         // Graph wins over defaults on the root: algorithm=layered, spacing kept.
+        // hierarchyHandling is the lowest-precedence tier (below defaults/graph),
+        // unset by either here, so its own default value survives.
         expect(graph.layoutOptions).toEqual({
-            'elk.algorithm': 'layered',
-            'elk.spacing':   '20',
-            'elk.direction': 'RIGHT',
+            'elk.algorithm':         'layered',
+            'elk.spacing':           '20',
+            'elk.direction':         'RIGHT',
+            'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
         });
 
         // Per-node option rides on the child so ELK resolves it over the
@@ -139,5 +228,71 @@ describe('ElkLayoutEngine — mapElkResult', () => {
         expect(result.height).toBe(0);
         expect(result.nodes).toEqual([{ id: 'a', x: 0, y: 0, width: 0, height: 0 }]);
         expect(result.edges).toEqual([{ id: 'e', sections: [] }]);
+    });
+
+    it('flattens a container\'s parent-relative child coords to absolute, emitting both the container and its children', () => {
+        const result = mapElkResult({
+            id: 'root',
+            width: 300,
+            height: 200,
+            children: [
+                {
+                    id: 'schema:public',
+                    x: 10, y: 20, width: 150, height: 100,
+                    children: [
+                        // Coordinates below are relative to the container's own
+                        // top-left (10, 20), per ELK's nested-result convention.
+                        { id: 'public.users', x: 5, y: 8, width: 50, height: 30 },
+                        { id: 'public.orders', x: 5, y: 50, width: 50, height: 30 },
+                    ],
+                },
+            ],
+            edges: [],
+        });
+
+        expect(result.nodes).toEqual([
+            { id: 'schema:public', x: 10, y: 20, width: 150, height: 100 },
+            // Absolute = container origin (10, 20) + child-relative (5, 8) / (5, 50).
+            { id: 'public.users', x: 15, y: 28, width: 50, height: 30 },
+            { id: 'public.orders', x: 15, y: 70, width: 50, height: 30 },
+        ]);
+    });
+
+    it('flattens nested containers by accumulating offsets through each level', () => {
+        const result = mapElkResult({
+            id: 'root',
+            children: [
+                {
+                    id: 'outer',
+                    x: 100, y: 100, width: 200, height: 200,
+                    children: [
+                        {
+                            id: 'inner',
+                            x: 10, y: 10, width: 100, height: 100,
+                            children: [{ id: 'leaf', x: 5, y: 5, width: 20, height: 20 }],
+                        },
+                    ],
+                },
+            ],
+            edges: [],
+        });
+
+        expect(result.nodes).toEqual([
+            { id: 'outer', x: 100, y: 100, width: 200, height: 200 },
+            { id: 'inner', x: 110, y: 110, width: 100, height: 100 },
+            { id: 'leaf', x: 115, y: 115, width: 20, height: 20 },
+        ]);
+    });
+
+    it('a flat (no-children) result maps exactly as today', () => {
+        const result = mapElkResult({
+            id: 'root',
+            width: 200,
+            height: 100,
+            children: [{ id: 'a', x: 10, y: 20, width: 50, height: 30 }],
+            edges: [],
+        });
+
+        expect(result.nodes).toEqual([{ id: 'a', x: 10, y: 20, width: 50, height: 30 }]);
     });
 });
