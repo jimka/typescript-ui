@@ -1,6 +1,26 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 /**
+ * A connection point on a node — a fixed anchor an edge can attach to instead
+ * of the node as a whole. Maps to an ELK port; the intended use is a per-column
+ * anchor so a foreign-key edge can run column-to-column once nodes render their
+ * columns. Ports are inert until an edge references one via
+ * {@link DiagramEdgeData.sourcePort} / {@link DiagramEdgeData.targetPort}.
+ *
+ * @category Components
+ */
+export interface DiagramPortData {
+    /** Stable id, referenced by an edge's `sourcePort` / `targetPort`. */
+    id: string;
+    /** Optional ELK side hint (`"NORTH" | "SOUTH" | "EAST" | "WEST"`), applied when ports are laid out. */
+    side?: string;
+    /** Optional explicit port width fed to ELK. */
+    width?: number;
+    /** Optional explicit port height fed to ELK. */
+    height?: number;
+}
+
+/**
  * A node in the framework-native graph model. Maps to a single ELK node when
  * the graph is laid out.
  *
@@ -25,6 +45,17 @@ export interface DiagramNodeData {
     height?: number;
     /** Per-node ELK layout options passed straight through to the engine. */
     layoutOptions?: Record<string, string>;
+    /**
+     * Optional connection ports (e.g. per-column anchors). Consumed by ELK when
+     * column-to-column edges are enabled; ignored by layout and the default
+     * renderer until then.
+     */
+    ports?: DiagramPortData[];
+    /**
+     * Opaque consumer metadata (e.g. per-column rows). Ignored by layout and the
+     * default renderer — a passthrough seam for the hosting application.
+     */
+    data?: unknown;
 }
 
 /**
@@ -42,6 +73,23 @@ export interface DiagramEdgeData {
     target: string;
     /** Optional edge label (routing/placement of labels is left to ELK). */
     label?: string;
+    /**
+     * Optional source port id (a {@link DiagramNodeData.ports} entry on the
+     * source node) the edge anchors to; falls back to the node as a whole when
+     * absent. Enables column-to-column anchoring without a re-key.
+     */
+    sourcePort?: string;
+    /**
+     * Optional target port id (a {@link DiagramNodeData.ports} entry on the
+     * target node) the edge anchors to; falls back to the node when absent.
+     */
+    targetPort?: string;
+    /**
+     * Opaque consumer metadata (e.g. the FK's local/referenced columns and
+     * referential actions). Ignored by layout and rendering — a passthrough seam
+     * feeding later cardinality / column work.
+     */
+    data?: unknown;
 }
 
 /**
