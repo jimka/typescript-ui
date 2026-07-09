@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import { Insets } from "~/primitive/Insets.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { Card } from "~/layout/Card.js";
@@ -133,6 +134,15 @@ class WysiwygSurface extends Component {
         this.setContentEditable(true);
         // Fills its host box and scrolls internally when the document overflows.
         this.setOverflow("auto");
+        // A few pixels of inset off the padding box: without it the caret sits
+        // flush against the surface's left edge (at column 0 of any line) and
+        // gets clipped to invisibility. The padding is on the scroll container,
+        // so it clears the caret at every edge while overflow scrolling still
+        // reveals the full document. The values match source mode's CodeMirror
+        // text inset so toggling modes doesn't shift the prose: 4px vertical
+        // (CodeMirror's `.cm-content` padding is `4px 0`) and 6px horizontal
+        // (its `.cm-line` padding-left is 6px).
+        this.setPadding(new Insets(4, 6, 4, 6));
         // Text caret over the whole surface: signals editability, and — paired
         // with the `user-select: text` Lexical stamps on the root — keeps the
         // surface select-and-copy-able even in read-only mode. `setCursor` caches
