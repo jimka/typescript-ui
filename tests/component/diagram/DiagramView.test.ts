@@ -111,6 +111,37 @@ describe('DiagramView — layout application (U2)', () => {
     });
 });
 
+describe('DiagramView — edge style re-join (applyLayout)', () => {
+    it('attaches the model edge\'s style to the route passed to the edge layer, joined by id', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const data: DiagramData = {
+            nodes: [{ id: 'a' }, { id: 'b' }],
+            edges: [{ id: 'e', source: 'a', target: 'b', style: { startMarker: 'oneOrMany', endMarker: 'one' } }],
+        };
+
+        const view = new StubDiagramView({ data }) as any;
+
+        await flush();
+
+        const drawn = view._edgeLayer._edges;
+
+        expect(drawn).toHaveLength(1);
+        expect(drawn[0].id).toBe('e');
+        expect(drawn[0].style).toEqual({ startMarker: 'oneOrMany', endMarker: 'one' });
+    });
+
+    it('leaves a plain (no-style) model edge\'s route with no style', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        expect(view._edgeLayer._edges[0].style).toBeUndefined();
+    });
+});
+
 describe('DiagramView — content host does not clip the diagram (U2b)', () => {
     it('leaves the content host overflow visible so scaled, unscaled-coordinate nodes are not cropped', async () => {
         stubEngine = new StubEngine(fixedResult());

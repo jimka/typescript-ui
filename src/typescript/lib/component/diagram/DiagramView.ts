@@ -23,6 +23,7 @@ import { DiagramData, DiagramNodeData } from "~/component/diagram/DiagramModel.j
 import { ElkLayoutEngine, DiagramLayoutResult } from "~/component/diagram/ElkLayoutEngine.js";
 import { DiagramNode } from "~/component/diagram/DiagramNode.js";
 import { DiagramEdgeLayer } from "~/component/diagram/DiagramEdgeLayer.js";
+import type { DiagramEdgeRoute } from "~/component/diagram/DiagramEdgeLayer.js";
 import { callable } from "~/core/Callable.js";
 
 /** Factory producing a node component from a node's model data. */
@@ -316,13 +317,28 @@ class DiagramView extends Panel<DiagramViewOptions> {
         this._edgeLayer.setX(0);
         this._edgeLayer.setY(0);
         this._edgeLayer.setPreferredSize(result.width, result.height);
-        this._edgeLayer.setEdges(result.edges);
+        this._edgeLayer.setEdges(this.joinEdgeStyles(result.edges));
 
         this.applyZoomToHost();
 
         this.scheduleLayout();
 
         this.emit("layout");
+    }
+
+    /**
+     * Re-attaches each model edge's `style` to its layout-routed counterpart.
+     * ELK's result carries only `{ id, sections }` — `style` never survives the
+     * round trip — so this joins by edge id back to `this._options.data.edges`,
+     * the model the layout was computed from.
+     *
+     * @param edges - The ELK-routed edges (id + sections only).
+     * @returns The same routes, each carrying its model edge's `style` if any.
+     */
+    private joinEdgeStyles(edges: DiagramEdgeRoute[]): DiagramEdgeRoute[] {
+        const modelById = new Map(this._options.data?.edges.map(e => [e.id, e]) ?? []);
+
+        return edges.map(edge => ({ ...edge, style: modelById.get(edge.id)?.style }));
     }
 
     /**
