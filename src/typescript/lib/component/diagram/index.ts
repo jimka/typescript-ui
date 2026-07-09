@@ -8,4 +8,4 @@ export { DiagramEdgeLayer } from '~/component/diagram/DiagramEdgeLayer.js';
 export type { DiagramEdgeRoute } from '~/component/diagram/DiagramEdgeLayer.js';
 export { ElkLayoutEngine } from '~/component/diagram/ElkLayoutEngine.js';
 export type { DiagramLayoutResult, ElkEdgeSection, ElkPoint } from '~/component/diagram/ElkLayoutEngine.js';
-export type { DiagramData, DiagramNodeData, DiagramEdgeData, DiagramPortData } from '~/component/diagram/DiagramModel.js';
+export type { DiagramData, DiagramNodeData, DiagramEdgeData, DiagramPortData, DiagramEdgeMarker, DiagramEdgeStyle } from '~/component/diagram/DiagramModel.js';

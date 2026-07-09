@@ -59,6 +59,37 @@ export interface DiagramNodeData {
 }
 
 /**
+ * Edge end-cap kinds. `"arrow"` is the existing default arrowhead; the rest are
+ * ER crow's-foot end markers.
+ *
+ * @category Components
+ */
+export type DiagramEdgeMarker =
+    | "arrow"
+    | "one" // "one and only one": two perpendicular bars
+    | "zeroOrOne" // circle + one bar
+    | "oneOrMany" // bar + crow's foot
+    | "zeroOrMany"; // circle + crow's foot
+
+/**
+ * Optional per-edge visual style. Absent = today's plain arrow-ended edge.
+ *
+ * @category Components
+ */
+export interface DiagramEdgeStyle {
+    /** Marker at the source end (`marker-start`). Absent = no start marker. */
+    startMarker?: DiagramEdgeMarker;
+    /** Marker at the target end (`marker-end`). Absent = no end marker. */
+    endMarker?: DiagramEdgeMarker;
+    /** Dashed stroke when true (for the sibling dependency-graph plan). */
+    dashed?: boolean;
+    /** Themed stroke override (e.g. a warning tint). Falls back to the default edge stroke. */
+    stroke?: string;
+    /** Optional mid-edge label (e.g. the referential action). */
+    label?: string;
+}
+
+/**
  * An edge in the framework-native graph model. Maps to an ELK edge with a
  * single source and target.
  *
@@ -90,6 +121,8 @@ export interface DiagramEdgeData {
      * feeding later cardinality / column work.
      */
     data?: unknown;
+    /** Optional additive visual style; plain edges omit it. */
+    style?: DiagramEdgeStyle;
 }
 
 /**
