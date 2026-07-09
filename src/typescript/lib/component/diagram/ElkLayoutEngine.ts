@@ -68,6 +68,13 @@ interface ElkExtendedEdge {
     sources:  string[];
     targets:  string[];
     sections?: ElkEdgeSection[];
+    /**
+     * The node whose origin the routed `sections` coordinates are relative to,
+     * as reported by ELK. For an edge between two nodes nested inside the same
+     * container, ELK routes it in that container and reports container-relative
+     * coordinates here (see {@link mapElkResult}, which shifts them to absolute).
+     */
+    container?: string;
 }
 
 /** Minimal structural type for the lazily-imported ELK instance. */
@@ -237,12 +244,59 @@ function flattenElkNode(
 }
 
 /**
+ * Collects every ELK edge in the tree — the root's own `edges` plus any nested
+ * in a container's `edges` — resolving each edge's container id (the node its
+ * routed coordinates are relative to). ELK tags a routed edge with its own
+ * `container`; absent that, the edge is relative to the node whose `edges`
+ * array holds it (the root for a flat graph).
+ *
+ * @param node - The ELK node whose `edges` (and descendants') to collect.
+ * @param out - The flat output array edges are appended to, each paired with
+ *   its resolved container id.
+ */
+function collectElkEdges(node: ElkNode, out: Array<{ edge: ElkExtendedEdge; container: string }>): void {
+    for (const edge of node.edges ?? []) {
+        out.push({ edge, container: edge.container ?? node.id });
+    }
+
+    for (const child of node.children ?? []) {
+        collectElkEdges(child, out);
+    }
+}
+
+/**
+ * Shifts every point of an edge's routed sections by `origin`, translating
+ * container-relative ELK coordinates into absolute graph space. Returns the
+ * sections unchanged when `origin` is the graph origin, so a flat graph's
+ * root-relative edges pass through untouched.
+ *
+ * @param sections - The edge's routed sections, in their container's frame.
+ * @param origin - The absolute origin of the edge's container.
+ * @returns The sections with every point translated into absolute coordinates.
+ */
+function offsetSections(sections: ElkEdgeSection[], origin: ElkPoint): ElkEdgeSection[] {
+    if (origin.x === 0 && origin.y === 0) {
+        return sections;
+    }
+
+    const shift = (point: ElkPoint): ElkPoint => ({ x: point.x + origin.x, y: point.y + origin.y });
+
+    return sections.map((section) => ({
+        startPoint: shift(section.startPoint),
+        endPoint:   shift(section.endPoint),
+        bendPoints: section.bendPoints?.map(shift),
+    }));
+}
+
+/**
  * Maps an ELK layout result back to the engine-agnostic
  * {@link DiagramLayoutResult}. Pure and synchronous, so it is unit-testable
  * directly. A container's descendants are flattened into the same output list
  * as its siblings, each carrying absolute (not parent-relative) coordinates —
- * see {@link flattenElkNode}. A flat (no-children) result maps exactly as
- * before, since flattening a childless node is a no-op recursion.
+ * see {@link flattenElkNode}. Edge sections get the same treatment: ELK reports
+ * an intra-container edge's route relative to that container's origin, so each
+ * edge is shifted by its container's absolute position (a flat graph's
+ * root-relative edges are shifted by the zero origin, i.e. left unchanged).
  *
  * @param result - The root ELK node returned by `elk.layout`.
  * @returns The mapped layout result.
@@ -254,9 +308,21 @@ export function mapElkResult(result: ElkNode): DiagramLayoutResult {
         flattenElkNode(child, 0, 0, nodes);
     }
 
-    const edges = (result.edges ?? []).map((edge) => ({
+    // Absolute origin of every node (containers included), so an edge routed in
+    // a container's frame can be lifted into absolute graph space. The root maps
+    // to the zero origin.
+    const origins = new Map<string, ElkPoint>([[result.id, { x: 0, y: 0 }]]);
+
+    for (const node of nodes) {
+        origins.set(node.id, { x: node.x, y: node.y });
+    }
+
+    const collected: Array<{ edge: ElkExtendedEdge; container: string }> = [];
+    collectElkEdges(result, collected);
+
+    const edges = collected.map(({ edge, container }) => ({
         id:       edge.id,
-        sections: edge.sections ?? [],
+        sections: offsetSections(edge.sections ?? [], origins.get(container) ?? { x: 0, y: 0 }),
     }));
 
     return {

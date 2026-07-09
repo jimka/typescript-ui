@@ -323,4 +323,73 @@ describe('ElkLayoutEngine — mapElkResult', () => {
 
         expect(result.nodes).toEqual([{ id: 'a', x: 10, y: 20, width: 50, height: 30 }]);
     });
+
+    it('shifts an intra-container edge\'s route by its container\'s absolute origin', () => {
+        // ELK routes an edge between two nodes nested in the same container in
+        // that container's frame, and tags it with `container`. Its section
+        // coordinates are relative to the container's top-left (10, 20), so the
+        // absolute route is that origin plus each reported point.
+        const result = mapElkResult({
+            id: 'root',
+            children: [
+                {
+                    id: 'schema:public',
+                    x: 10, y: 20, width: 150, height: 100,
+                    children: [
+                        { id: 'public.orders', x: 12, y: 12, width: 120, height: 40 },
+                        { id: 'public.customers', x: 152, y: 12, width: 120, height: 40 },
+                    ],
+                },
+            ],
+            edges: [{
+                id: 'e',
+                sources: ['public.orders'],
+                targets: ['public.customers'],
+                container: 'schema:public',
+                sections: [{
+                    startPoint: { x: 132, y: 32 },
+                    bendPoints: [{ x: 142, y: 32 }],
+                    endPoint:   { x: 152, y: 32 },
+                }],
+            }],
+        });
+
+        expect(result.edges).toEqual([{
+            id: 'e',
+            sections: [{
+                startPoint: { x: 142, y: 52 },
+                bendPoints: [{ x: 152, y: 52 }],
+                endPoint:   { x: 162, y: 52 },
+            }],
+        }]);
+    });
+
+    it('collects and offsets an edge nested inside a container\'s own edges array', () => {
+        // Some ELK results place a routed edge in the container node's `edges`
+        // rather than the root's, with no explicit `container`; its frame is
+        // then that container. Both placements must map to the same absolute
+        // route.
+        const result = mapElkResult({
+            id: 'root',
+            children: [
+                {
+                    id: 'schema:public',
+                    x: 10, y: 20, width: 150, height: 100,
+                    children: [{ id: 'public.orders', x: 12, y: 12, width: 120, height: 40 }],
+                    edges: [{
+                        id: 'e',
+                        sources: ['public.orders'],
+                        targets: ['public.orders'],
+                        sections: [{ startPoint: { x: 1, y: 2 }, endPoint: { x: 3, y: 4 } }],
+                    }],
+                },
+            ],
+            edges: [],
+        });
+
+        expect(result.edges).toEqual([{
+            id: 'e',
+            sections: [{ startPoint: { x: 11, y: 22 }, endPoint: { x: 13, y: 24 } }],
+        }]);
+    });
 });
