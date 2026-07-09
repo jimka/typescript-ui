@@ -18,6 +18,15 @@ export interface DiagramPortData {
     width?: number;
     /** Optional explicit port height fed to ELK. */
     height?: number;
+    /**
+     * Explicit port x relative to the node's top-left, fed to ELK under
+     * `elk.portConstraints=FIXED_POS` (set via the node's `layoutOptions`).
+     * Lets a consumer pin a port to an exact row/column coordinate (e.g. a
+     * table card's column row) instead of letting ELK spread ports along a side.
+     */
+    x?: number;
+    /** Explicit port y relative to the node's top-left; see {@link x}. */
+    y?: number;
 }
 
 /**

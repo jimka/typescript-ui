@@ -55,6 +55,24 @@ edges: [
 
 `startMarker` / `endMarker` are each a [`DiagramEdgeMarker`](/api/component/diagram/type-aliases/DiagramEdgeMarker): `"arrow"` (the default arrowhead), `"one"` (mandatory-one, two bars), `"zeroOrOne"` (optional-one, a bar plus a circle), `"oneOrMany"` (mandatory-many, a crow's foot plus a bar), or `"zeroOrMany"` (optional-many, a crow's foot plus a circle). `dashed` switches the stroke to a dash pattern; `stroke` overrides the themed edge colour (e.g. a warning tint); `label` renders centred on the route. Every marker is defined once per `DiagramEdgeLayer` instance and reused at both ends via `orient="auto-start-reverse"`, so the same marker id reads correctly whether it is a `startMarker` or `endMarker`.
 
+## Ports
+
+A node's optional `ports` ([`DiagramPortData`](/api/component/diagram/interfaces/DiagramPortData)) let an edge attach to a fixed anchor on the node instead of the node as a whole — e.g. a per-row anchor on a card-shaped node, so a relationship edge can run row-to-row:
+
+```typescript
+nodes: [
+    { id: 'a', width: 200, height: 80, layoutOptions: { 'elk.portConstraints': 'FIXED_POS' },
+      ports: [{ id: 'a::x::out', x: 199, y: 30, width: 1, height: 1, side: 'EAST' }] },
+    { id: 'b', width: 200, height: 40, layoutOptions: { 'elk.portConstraints': 'FIXED_POS' },
+      ports: [{ id: 'b::id::in', x: 0, y: 20, width: 1, height: 1, side: 'WEST' }] },
+],
+edges: [
+    { id: 'e', source: 'a', target: 'b', sourcePort: 'a::x::out', targetPort: 'b::id::in' },
+],
+```
+
+Each port carries a stable `id` (referenced by an edge's `sourcePort` / `targetPort`), an optional `side` hint, and — to pin it at an exact coordinate rather than let ELK spread ports along a side — an explicit `x`/`y` relative to the node's top-left. Pinning requires the node to also set `layoutOptions: { 'elk.portConstraints': 'FIXED_POS' }`. An edge with no `sourcePort`/`targetPort` anchors to the node as a whole, unchanged from today's behaviour. Ports are inert until an edge references one — omit them entirely for a plain node-to-node graph.
+
 ## Common methods
 
 | Method | Purpose |

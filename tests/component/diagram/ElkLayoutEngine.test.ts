@@ -41,6 +41,54 @@ describe('ElkLayoutEngine — buildElkGraph', () => {
         expect(graph.edges).toEqual([{ id: 'e', sources: ['a'], targets: ['b'] }]);
     });
 
+    it('maps node ports to ELK ports, with a side hint becoming elk.port.side', () => {
+        const data: DiagramData = {
+            nodes: [{ id: 'a', ports: [{ id: 'p', x: 0, y: 30, width: 1, height: 1, side: 'WEST' }] }],
+            edges: [],
+        };
+
+        const graph = buildElkGraph(data, new Map());
+
+        expect(graph.children?.[0].ports).toEqual([
+            { id: 'p', x: 0, y: 30, width: 1, height: 1, layoutOptions: { 'elk.port.side': 'WEST' } },
+        ]);
+    });
+
+    it('maps a sideless port with layoutOptions left undefined (not an empty object)', () => {
+        const data: DiagramData = {
+            nodes: [{ id: 'a', ports: [{ id: 'p', x: 0, y: 0 }] }],
+            edges: [],
+        };
+
+        const graph = buildElkGraph(data, new Map());
+
+        expect(graph.children?.[0].ports).toEqual([
+            { id: 'p', x: 0, y: 0, width: undefined, height: undefined, layoutOptions: undefined },
+        ]);
+    });
+
+    it('routes an edge through its sourcePort/targetPort when set', () => {
+        const data: DiagramData = {
+            nodes: [{ id: 'a' }, { id: 'b' }],
+            edges: [{ id: 'e', source: 'a', target: 'b', sourcePort: 'a::c::out', targetPort: 'b::d::in' }],
+        };
+
+        const graph = buildElkGraph(data, new Map());
+
+        expect(graph.edges).toEqual([{ id: 'e', sources: ['a::c::out'], targets: ['b::d::in'] }]);
+    });
+
+    it('falls back to the node id when an edge carries no ports (regression)', () => {
+        const data: DiagramData = {
+            nodes: [{ id: 'a' }, { id: 'b' }],
+            edges: [{ id: 'e', source: 'a', target: 'b' }],
+        };
+
+        const graph = buildElkGraph(data, new Map());
+
+        expect(graph.edges).toEqual([{ id: 'e', sources: ['a'], targets: ['b'] }]);
+    });
+
     it('merges graph options over defaults on the root; per-node options ride on the child', () => {
         const data: DiagramData = {
             nodes: [{ id: 'a', layoutOptions: { 'elk.algorithm': 'force' } }],
