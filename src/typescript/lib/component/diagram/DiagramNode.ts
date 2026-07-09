@@ -112,6 +112,16 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
 
         this._content = glyph !== undefined ? new IconText(glyph, label) : new Text(label);
 
+        // Every Component stamps its own `cursor` (defaulting to `default`) onto
+        // its CSS rule, so the label/glyph would override the node's `pointer`
+        // wherever they sit under the cursor — the hover cursor would flicker
+        // between pointer (over padding) and arrow (over the text). Make the
+        // content transparent to pointer events so hover + clicks land on the
+        // node itself; `pointer-events: none` inherits, so this one call also
+        // covers the glyph and text nested inside an `IconText`. Mirrors how
+        // `Button` frees its label row so the button's cursor governs.
+        this._content.setPointerEvents("none");
+
         this.addComponent(this._content);
     }
 
