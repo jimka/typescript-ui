@@ -47,9 +47,14 @@ const WHEEL_ZOOM_STEP = 1.1;
 
 // Paint order for a compound graph (one with at least one container): the
 // container boxes sit behind the edges, which sit behind the leaves, so a
-// leaf's click is never intercepted by its own container box. Applied only
-// when a container exists — a flat graph never writes z-index, leaving it at
-// every component's own default so today's behaviour is unaffected.
+// leaf's click is never intercepted by its own container box. A leaf/container
+// component is always freshly built by rebuildNodes, so on a flat graph it
+// simply starts at DEFAULT_Z_INDEX and is never touched. The edge layer is the
+// one exception — it is a persistent child of the content host (built once in
+// the constructor, never torn down/rebuilt — see the constructor comment), so
+// a flat pass must explicitly restore DEFAULT_Z_INDEX in case an earlier
+// compound pass on the same view left EDGE_LAYER_Z_INDEX behind.
+const DEFAULT_Z_INDEX = 0;
 const CONTAINER_Z_INDEX = 0;
 const EDGE_LAYER_Z_INDEX = 1;
 const LEAF_Z_INDEX = 2;
@@ -376,12 +381,17 @@ class DiagramView extends Panel<DiagramViewOptions> {
 
     /**
      * Applies the compound paint order — containers behind the edge layer,
-     * leaves in front of it — only when `rebuildNodes` built at least one
-     * container; a flat graph never has its z-index touched here, so today's
-     * behaviour is unaffected (see the module-level z-index constants).
+     * leaves in front of it — when `rebuildNodes` built at least one
+     * container. A flat graph's own (freshly-built) node components are never
+     * touched here — they start at `DEFAULT_Z_INDEX` — but the persistent edge
+     * layer is explicitly restored to `DEFAULT_Z_INDEX`, since an earlier
+     * compound `setData` on this same view could have left it elevated (see
+     * the module-level z-index constants).
      */
     private applyContainerZIndex(): void {
         if (this._containerIds.size === 0) {
+            this._edgeLayer.setZIndex(DEFAULT_Z_INDEX);
+
             return;
         }
 

@@ -494,6 +494,29 @@ describe('DiagramView — compound container nodes (U11)', () => {
         expect(view._edgeLayer.getZIndex()).toBe(0);
     });
 
+    it('resets the edge layer\'s z-index when a flat setData follows a compound one on the same (persistent, never-rebuilt) view', async () => {
+        // The edge layer is a persistent child of the content host — built once
+        // in the constructor, never torn down/recreated by setData/rebuildNodes
+        // — unlike node components, which are always freshly built (so a fresh
+        // leaf/container naturally starts at the Component default z-index).
+        // A z-index written by an earlier compound pass must not leak into a
+        // later flat pass on that same edge layer instance.
+        let call = 0;
+        const results = [compoundResult(), fixedResult()];
+        stubEngine = { layout: () => Promise.resolve(results[call++]) } as unknown as StubEngine;
+
+        const view = new StubDiagramView({ data: compoundGraph() }) as any;
+
+        await flush();
+        expect(view._edgeLayer.getZIndex()).toBe(1);
+
+        view.setData(simpleGraph());
+
+        await flush();
+        expect(view._edgeLayer.getZIndex()).toBe(0);
+        expect(view._nodeComponents.get('a').getZIndex()).toBe(0);
+    });
+
     it('collectNodeSizes feeds every node (container + leaves) to the ELK sizes map', async () => {
         stubEngine = new StubEngine(compoundResult());
 
