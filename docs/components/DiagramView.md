@@ -39,6 +39,22 @@ panel.addComponent(view);
 
 The model is three plain interfaces — [`DiagramNodeData`](/api/component/diagram/interfaces/DiagramNodeData), [`DiagramEdgeData`](/api/component/diagram/interfaces/DiagramEdgeData), and [`DiagramData`](/api/component/diagram/interfaces/DiagramData). A node's size fed to ELK is its explicit `width`/`height` when given, else the node component's preferred size. `layoutOptions` (per-node and graph-level) pass straight through to ELK.
 
+## Edge style
+
+An edge's optional `style` ([`DiagramEdgeStyle`](/api/component/diagram/interfaces/DiagramEdgeStyle)) draws crow's-foot cardinality markers, a dashed stroke, a themed stroke override, and a mid-edge label — additive over the default plain, single-arrowhead edge:
+
+```typescript
+edges: [
+    // Default: a plain arrow at the target end, no style needed.
+    { id: 'e1', source: 'start', target: 'process' },
+    // 1:N mandatory-at-the-many-end, e.g. an FK backed by a NOT NULL column
+    // with no unique constraint: a crow's foot at the child, a bar at the parent.
+    { id: 'e2', source: 'process', target: 'store', style: { startMarker: 'oneOrMany', endMarker: 'one' } },
+]
+```
+
+`startMarker` / `endMarker` are each a [`DiagramEdgeMarker`](/api/component/diagram/type-aliases/DiagramEdgeMarker): `"arrow"` (the default arrowhead), `"one"` (mandatory-one, two bars), `"zeroOrOne"` (optional-one, a bar plus a circle), `"oneOrMany"` (mandatory-many, a crow's foot plus a bar), or `"zeroOrMany"` (optional-many, a crow's foot plus a circle). `dashed` switches the stroke to a dash pattern; `stroke` overrides the themed edge colour (e.g. a warning tint); `label` renders centred on the route. Every marker is defined once per `DiagramEdgeLayer` instance and reused at both ends via `orient="auto-start-reverse"`, so the same marker id reads correctly whether it is a `startMarker` or `endMarker`.
+
 ## Common methods
 
 | Method | Purpose |
