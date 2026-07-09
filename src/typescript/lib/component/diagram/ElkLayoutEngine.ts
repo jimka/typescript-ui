@@ -39,6 +39,16 @@ export interface DiagramLayoutResult {
     height: number;
 }
 
+/** ELK port shape: a fixed anchor on a node an edge can attach to. */
+interface ElkPort {
+    id: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    layoutOptions?: Record<string, string>;
+}
+
 /** ELK graph node shape (input carries sizes/options; output adds x/y). */
 interface ElkNode {
     id: string;
@@ -49,6 +59,7 @@ interface ElkNode {
     layoutOptions?: Record<string, string>;
     children?: ElkNode[];
     edges?:    ElkExtendedEdge[];
+    ports?:    ElkPort[];
 }
 
 /** ELK edge shape with explicit source/target endpoint lists. */
@@ -124,13 +135,21 @@ export function buildElkGraph(
             width:         node.width  ?? size?.width  ?? DEFAULT_NODE_WIDTH,
             height:        node.height ?? size?.height ?? DEFAULT_NODE_HEIGHT,
             layoutOptions: node.layoutOptions,
+            ports:         node.ports?.map((p) => ({
+                id:            p.id,
+                x:             p.x,
+                y:             p.y,
+                width:         p.width,
+                height:        p.height,
+                layoutOptions: p.side !== undefined ? { "elk.port.side": p.side } : undefined,
+            })),
         };
     });
 
     const edges: ElkExtendedEdge[] = data.edges.map((edge) => ({
         id:      edge.id,
-        sources: [edge.source],
-        targets: [edge.target],
+        sources: [edge.sourcePort ?? edge.source],
+        targets: [edge.targetPort ?? edge.target],
     }));
 
     return {
