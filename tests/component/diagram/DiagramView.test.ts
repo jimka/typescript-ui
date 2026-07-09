@@ -174,6 +174,38 @@ describe('DiagramView — selection (U4)', () => {
         expect(fired[0].map((n) => n.id)).toEqual(['a']);
     });
 
+    it('a node double-click fires "activate" with the node data, without clearing selection', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const activated: DiagramNodeData[] = [];
+        const view = new StubDiagramView({ data: simpleGraph(), listeners: { activate: (node) => activated.push(node) } }) as any;
+
+        await flush();
+
+        const handle: Handle = view._nodeComponents.get('a').getElement(true);
+
+        view._handleDoubleClick(makeEvent(handle, 'dblclick'));
+
+        expect(activated).toHaveLength(1);
+        expect(activated[0].id).toBe('a');
+    });
+
+    it('a double-click on empty canvas fires no "activate"', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const activated: DiagramNodeData[] = [];
+        const view = new StubDiagramView({ data: simpleGraph(), listeners: { activate: (node) => activated.push(node) } }) as any;
+
+        await flush();
+
+        // The view's own root element is not a node, so it resolves to no node.
+        const empty: Handle = view.getElement(true);
+
+        view._handleDoubleClick(makeEvent(empty, 'dblclick'));
+
+        expect(activated).toHaveLength(0);
+    });
+
     it('selectNode updates state without emitting, and selectNode(null) clears', async () => {
         stubEngine = new StubEngine(fixedResult());
 

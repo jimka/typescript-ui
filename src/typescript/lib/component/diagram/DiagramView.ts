@@ -29,7 +29,7 @@ import { callable } from "~/core/Callable.js";
 export type DiagramNodeRenderer = (data: DiagramNodeData) => Component;
 
 /** String-literal union of the events emitted by {@link DiagramView}. */
-export type DiagramViewEvent = "selection" | "layout";
+export type DiagramViewEvent = "selection" | "activate" | "layout";
 
 /** Default initial zoom factor. */
 const DEFAULT_ZOOM = 1;
@@ -66,6 +66,7 @@ export interface DiagramViewOptions extends PanelOptions {
     /** Construction-time listener bag dispatched to {@link DiagramView.on}. */
     listeners?: {
         selection?: (nodes: DiagramNodeData[]) => void;
+        activate?:  (node: DiagramNodeData) => void;
         layout?:    () => void;
     };
 }
@@ -75,7 +76,8 @@ export interface DiagramViewOptions extends PanelOptions {
  *
  * Pass a graph via the `data` option or {@link DiagramView.setData}. Layout runs
  * asynchronously through ELK; a `"layout"` event fires after each successful
- * pass and a `"selection"` event fires when the selected node changes.
+ * pass, a `"selection"` event fires when the selected node changes, and an
+ * `"activate"` event fires when a node is double-clicked.
  *
  * @example
  * ```typescript
@@ -480,12 +482,14 @@ class DiagramView extends Panel<DiagramViewOptions> {
      * Registers a listener for a diagram event.
      *
      * @param event - `"selection"` fires when the selected node changes;
-     *   `"layout"` fires after each successful ELK layout pass.
+     *   `"activate"` fires when a node is double-clicked; `"layout"` fires
+     *   after each successful ELK layout pass.
      * @param listener - The callback to invoke.
      *
      * @returns This view, for method chaining.
      */
     on(event: "selection", listener: (nodes: DiagramNodeData[]) => void): this;
+    on(event: "activate",  listener: (node: DiagramNodeData) => void): this;
     on(event: "layout",    listener: () => void): this;
     on(event: DiagramViewEvent, listener: Function): this {
         this._listeners.add(event, listener);
@@ -511,9 +515,11 @@ class DiagramView extends Panel<DiagramViewOptions> {
      * Fires every listener registered for `event`, in registration order.
      *
      * @param event - The event to emit.
-     * @param nodes - The selected node data (for `"selection"`).
+     * @param nodes - The selected node data (for `"selection"`), or the
+     *   activated node data (for `"activate"`).
      */
     protected emit(event: "selection", nodes: DiagramNodeData[]): void;
+    protected emit(event: "activate", node: DiagramNodeData): void;
     protected emit(event: "layout"): void;
     protected emit(event: DiagramViewEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
@@ -531,6 +537,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
         super.init(element);
 
         Event.addSubtreeListener(this, "click", this._handleClick);
+        Event.addSubtreeListener(this, "dblclick", this._handleDoubleClick);
         Event.addListener(this, "wheel", this._handleWheel);
         Event.addListener(this, "pointerdown", this._handlePointerDown);
         Event.addListener(this, "pointermove", this._handlePointerMove);
@@ -555,6 +562,29 @@ class DiagramView extends Panel<DiagramViewOptions> {
         } else if (this._selection.length > 0) {
             this.setSelection(null);
             this.emit("selection", this.getSelection());
+        }
+    }
+
+    /**
+     * Resolves the node under a double-click and emits `"activate"` with its
+     * data. A double-click is preceded by the single click that already
+     * selected the node, so this only signals activation. A double-click on
+     * empty space resolves to no node and emits nothing.
+     *
+     * @param event - The dblclick event whose target is inside the view's
+     *   subtree.
+     */
+    private _handleDoubleClick(event: MouseEvent): void {
+        const id = this.nodeIdAt(event.target);
+
+        if (id === null) {
+            return;
+        }
+
+        const data = this._nodeData.get(id);
+
+        if (data !== undefined) {
+            this.emit("activate", data);
         }
     }
 
