@@ -24,11 +24,20 @@ const ZOOM_STEP = 1.25;
 
 const SAMPLE: DiagramData = {
     nodes: [
-        { id: 'start',    label: 'Start',    glyph: 'circle-play'    },
-        { id: 'process',  label: 'Process',  glyph: 'gears'          },
-        { id: 'store',    label: 'Database', glyph: 'database'       },
-        { id: 'branch',   label: 'Validate', glyph: 'code-branch'    },
-        { id: 'done',     label: 'Done',     glyph: 'flag-checkered' },
+        { id: 'start', label: 'Start', glyph: 'circle-play' },
+        // A compound container: 'process' and 'branch' render inside a titled
+        // "Pipeline" box (the default DiagramGroupNode) rather than as bare
+        // nodes, showcasing DiagramNodeData.children. Edges below still target
+        // 'process'/'branch' directly — a leaf's id is unaffected by grouping.
+        {
+            id: 'pipeline', label: 'Pipeline',
+            children: [
+                { id: 'process', label: 'Process',  glyph: 'gears'       },
+                { id: 'branch',  label: 'Validate', glyph: 'code-branch' },
+            ],
+        },
+        { id: 'store', label: 'Database', glyph: 'database'       },
+        { id: 'done',  label: 'Done',     glyph: 'flag-checkered' },
     ],
     edges: [
         { id: 'e1', source: 'start',   target: 'process' },
@@ -51,7 +60,9 @@ const SAMPLE: DiagramData = {
  * pan (drag / trackpad), wheel zoom, and node selection. A few sample edges
  * carry a `style` (crow's-foot cardinality markers, a dashed stroke, and a
  * mid-edge label) to showcase `DiagramEdgeData.style`; plain edges keep the
- * default single arrowhead.
+ * default single arrowhead. The "Process"/"Validate" nodes sit inside a
+ * "Pipeline" compound container (`DiagramNodeData.children`), showcasing the
+ * default `DiagramGroupNode` container renderer alongside plain leaf nodes.
  *
  * A `Border` layout puts a toolbar (zoom in / out / fit-to-view) at the top and
  * the diagram in the centre; a status line reflects the selected node emitted by

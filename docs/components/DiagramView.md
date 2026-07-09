@@ -73,6 +73,27 @@ edges: [
 
 Each port carries a stable `id` (referenced by an edge's `sourcePort` / `targetPort`), an optional `side` hint, and — to pin it at an exact coordinate rather than let ELK spread ports along a side — an explicit `x`/`y` relative to the node's top-left. Pinning requires the node to also set `layoutOptions: { 'elk.portConstraints': 'FIXED_POS' }`. An edge with no `sourcePort`/`targetPort` anchors to the node as a whole, unchanged from today's behaviour. Ports are inert until an edge references one — omit them entirely for a plain node-to-node graph.
 
+## Compound / container nodes
+
+A node's optional `children` ([`DiagramNodeData.children`](/api/component/diagram/interfaces/DiagramNodeData)) groups a set of nodes inside a labelled container box — e.g. clustering a database's tables into one box per schema:
+
+```typescript
+nodes: [
+    {
+        id: 'schema:public', label: 'public',
+        children: [
+            { id: 'public.users',  label: 'users',  glyph: 'table' },
+            { id: 'public.orders', label: 'orders', glyph: 'table' },
+        ],
+    },
+],
+edges: [
+    { id: 'e', source: 'public.users', target: 'public.orders' },
+],
+```
+
+A node with a non-empty `children` is a *container*: ELK computes its size and position from its contents, so a container never carries an explicit `width`/`height`. Edges are still declared flat at the graph's top level (as always) and may cross container boundaries — `buildElkGraph` sets `elk.hierarchyHandling: 'INCLUDE_CHILDREN'` on the root so ELK routes them correctly; override it via `layoutOptions` if a graph needs `SEPARATE_CHILDREN` instead. A container renders via the `groupRenderer` factory (default: [`DiagramGroupNode`](/api/component/diagram/classes/DiagramGroupNode), a titled translucent box); its children render through the normal `nodeRenderer` path as flat siblings — not DOM children — of the container, so clicking, selecting, and `nodeIdAt` hit-testing all resolve to the leaf even though it sits visually inside its box. A graph with no `children` anywhere is unaffected: no container is built and paint order is untouched.
+
 ## Common methods
 
 | Method | Purpose |
@@ -95,7 +116,7 @@ Each port carries a stable `id` (referenced by an edge's `sourcePort` / `targetP
 ## Notes
 
 - **Read-only.** There is no node dragging, in-place editing, or edge drawing. The node-renderer factory and model are shaped so an edit layer could be added later without breaking changes, but none of it is built here — ELK lays out once per data change.
-- **Custom node content.** `nodeRenderer` is a `(data) => Component` factory; the default builds a [`DiagramNode`](/api/component/diagram/classes/DiagramNode) (a themed box with an optional glyph + label). Supply your own to render arbitrary components — the view consumes them only through `Component` + `getPreferredSize()`.
+- **Custom node content.** `nodeRenderer` is a `(data) => Component` factory; the default builds a [`DiagramNode`](/api/component/diagram/classes/DiagramNode) (a themed box with an optional glyph + label). Supply your own to render arbitrary components — the view consumes them only through `Component` + `getPreferredSize()`. `groupRenderer` is the same shape for container nodes (see [Compound / container nodes](#compound--container-nodes)); its default builds a `DiagramGroupNode`.
 - **Off-thread layout (opt-in).** Layout runs on the main thread by default (still `await`-ed). Pass `elkWorkerUrl` pointing at a consumer-hosted `elk-worker.js` to run ELK's compute in a worker.
 - **Graceful when ELK is absent.** If `elkjs` is not installed, a layout attempt fails quietly and the view stays empty rather than throwing.
 
