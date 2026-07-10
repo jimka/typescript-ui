@@ -5,7 +5,7 @@ import { Insets, AxisEnd, AxisPosition } from '@jimka/typescript-ui/primitive';
 import { Fit, HBox, VBox, DockRegion, TabWidthMode, TabSide, TabOrientation } from '@jimka/typescript-ui/layout';
 import { Text, ComboBox, NumberSpinner } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
-import { TabPanel } from '@jimka/typescript-ui/component/container';
+import { TabPanel, TabToolDescriptor } from '@jimka/typescript-ui/component/container';
 import { Glyph } from '@jimka/typescript-ui/component/display';
 // Per-glyph subpath import (not the `glyphs/solid` barrel) so dev mode doesn't
 // fetch all ~2,000 glyph modules — see MenuBarPanel for the rationale.
@@ -97,13 +97,18 @@ class TabDemoPanel extends Component {
         const compactBtn = new Button("Toggle Compact");
         const reorderBtn = new Button("Toggle Reorder");
 
-        // Tool button pinned at the far end of the strip; adds a new tab.
-        const addToolBtn = new Button({ glyph: "plus" });
-        addToolBtn.on("action", () => {
-            this.tabCounter += 1;
-            const label = `Tab ${this.tabCounter}`;
-            this.tabPanel.addTab(this.buildContent(label), label);
-        });
+        // Tool descriptor: the strip builds one flat "+" button pinned opposite the
+        // tabs *and* a matching row in the context menu's "Tools" submenu, both
+        // firing this one action — glyph/label/action declared once.
+        const addTabTool: TabToolDescriptor = {
+            label:  "New tab",
+            glyph:  "plus",
+            action: () => {
+                this.tabCounter += 1;
+                const label = `Tab ${this.tabCounter}`;
+                this.tabPanel.addTab(this.buildContent(label), label);
+            },
+        };
 
         placeRow.addComponent(new Text("Side:", { preferredSize: { width: 36, height: 28 } }));
         placeRow.addComponent(sideCombo);
@@ -119,10 +124,11 @@ class TabDemoPanel extends Component {
 
         this.addComponent(placeRow);
 
-        // Right-click any tab button to open a context menu that switches to any
-        // tab or closes the right-clicked one (when closeable).
+        // Right-click any tab button to open a context menu with a "Switch to"
+        // submenu, the single + bulk close actions (others / to the right / to the
+        // left / all), and a "Tools" submenu carrying the descriptor tool below.
         this.addComponent(new Text(
-            "Tip: right-click a tab to switch tabs or close it.",
+            "Tip: right-click a tab for Switch to, the close actions, and Tools.",
             { preferredSize: { width: 0, height: 24 } },
         ));
 
@@ -138,7 +144,7 @@ class TabDemoPanel extends Component {
                 maxWidth: 160,
                 fixedWidth: 120,
                 reorderable: true,
-                tools: [addToolBtn],
+                tools: [addTabTool],
             },
             tabs: [
                 { label: "Alpha", component: this.buildContent("Alpha"), glyph: "star" },
