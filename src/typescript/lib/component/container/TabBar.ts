@@ -1679,11 +1679,13 @@ class TabBar extends Container<TabBarOptions> {
     /**
      * Opens the shared context menu for a right-clicked tab. The layout is a
      * `Switch to` submenu (every tab, the active one inert) · the single `Close`
-     * for the clicked tab · the four bulk closes (`Close others` / `... to the
-     * right` / `... to the left` / `Close all`) · and, only when a tool supplied a
-     * {@link TabToolDescriptor}, a trailing `Tools` submenu. Every close reuses the
-     * `"tabclose"` emit and switching reuses {@link setActiveEntry}, so no
-     * activation or close logic is duplicated.
+     * for the clicked tab · the four bulk closes (`Close others`, then the
+     * before/after pair — `Close all to the left` / `... to the right` on a
+     * horizontal strip, `Close all above` / `... below` on a vertical one — then
+     * `Close all`) · and, only when a tool supplied a {@link TabToolDescriptor}, a
+     * trailing `Tools` submenu. Every close reuses the `"tabclose"` emit and
+     * switching reuses {@link setActiveEntry}, so no activation or close logic is
+     * duplicated.
      *
      * @param entry - The cell that was right-clicked.
      * @param x - Horizontal viewport coordinate of the click.
@@ -1703,6 +1705,12 @@ class TabBar extends Container<TabBarOptions> {
             action:  () => this.setActiveEntry(t.id),
         }));
 
+        // On a vertical strip (west/east) the tabs run top-to-bottom, so the
+        // "before"/"after" scopes read as above/below rather than left/right.
+        const vertical    = this._side === "west" || this._side === "east";
+        const beforeLabel = vertical ? "Close all above" : "Close all to the left";
+        const afterLabel  = vertical ? "Close all below" : "Close all to the right";
+
         const configs: MenuItemConfig[] = [
             { text: "Switch to", submenu: { label: "Switch to", items: switchItems } },
             { separator: true },
@@ -1711,10 +1719,10 @@ class TabBar extends Container<TabBarOptions> {
                 enabled: entry.constraints?.closeable === true,
                 action:  () => this.emit("tabclose", entry.id),
             },
-            this.bulkCloseItem("Close others",          ids, clickedIdx, closeable, "others"),
-            this.bulkCloseItem("Close all to the right", ids, clickedIdx, closeable, "right"),
-            this.bulkCloseItem("Close all to the left",  ids, clickedIdx, closeable, "left"),
-            this.bulkCloseItem("Close all",              ids, clickedIdx, closeable, "all"),
+            this.bulkCloseItem("Close others", ids, clickedIdx, closeable, "others"),
+            this.bulkCloseItem(beforeLabel,    ids, clickedIdx, closeable, "left"),
+            this.bulkCloseItem(afterLabel,     ids, clickedIdx, closeable, "right"),
+            this.bulkCloseItem("Close all",    ids, clickedIdx, closeable, "all"),
         ];
 
         // Trailing `Tools` submenu, only when at least one tool opted in with a

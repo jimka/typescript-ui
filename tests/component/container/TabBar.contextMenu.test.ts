@@ -79,10 +79,26 @@ describe('TabBar context menu assembly', () => {
             '---',
             'Close',
             'Close others',
-            'Close all to the right',
             'Close all to the left',
+            'Close all to the right',
             'Close all',
         ]);
+    });
+
+    it('renames the before/after closes to above/below on a vertical strip', () => {
+        installTestDOM(CONFIG);
+
+        const bar = pinnedFirstBar();
+        bar.setSide('west');
+
+        const rowLabels = labels(openMenuFor(bar, 2));
+
+        expect(rowLabels).toContain('Close all above');
+        expect(rowLabels).toContain('Close all below');
+        expect(rowLabels).not.toContain('Close all to the left');
+        expect(rowLabels).not.toContain('Close all to the right');
+        // Order stays before-then-after: above precedes below.
+        expect(rowLabels.indexOf('Close all above')).toBeLessThan(rowLabels.indexOf('Close all below'));
     });
 
     it('lists every tab in the Switch-to submenu with only the active one disabled', () => {
