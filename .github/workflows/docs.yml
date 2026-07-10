@@ -26,7 +26,7 @@ jobs:
             - run: npm ci
             - run: npm run docs:build
               env:
-                  NODE_OPTIONS: --max-old-space-size=8192
+                  NODE_OPTIONS: --max-old-space-size=12288
             - uses: actions/configure-pages@v5
             - uses: actions/upload-pages-artifact@v3
               with:
