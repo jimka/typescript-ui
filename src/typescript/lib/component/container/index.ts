@@ -33,7 +33,7 @@ export type { AccordionIndicatorOptions } from '~/component/container/AccordionI
 export { CollapseButton } from '~/component/container/CollapseButton.js';
 export type { CollapseButtonOptions, CollapseButtonEvent, CollapseDirection } from '~/component/container/CollapseButton.js';
 export { TabBar } from '~/component/container/TabBar.js';
-export type { TabBarOptions, TabBarEvent } from '~/component/container/TabBar.js';
+export type { TabBarOptions, TabBarEvent, TabToolDescriptor } from '~/component/container/TabBar.js';
 export { TabPanel } from '~/component/container/TabPanel.js';
 export type { TabPanelOptions, TabEntryConfig } from '~/component/container/TabPanel.js';
 export { AccordionPanel } from '~/component/container/AccordionPanel.js';

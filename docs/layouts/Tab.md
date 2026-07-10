@@ -150,25 +150,56 @@ tabbed.addComponent(generalPanel, { name: 'General', glyph: 'gear' });
 
 ## Right-click context menu
 
-Right-clicking any tab button opens a context menu listing every tab — clicking
-an entry switches to that tab (the right-clicked tab is shown inert) — followed
-by a **Close** action for the right-clicked tab. The Close item is enabled only
-when that tab is `closeable`. The menu reuses the strip's own selection and
-close paths, so switching materializes a lazy tab exactly as a left-click would
-and closing fires `tabclose`.
+Right-clicking any tab button opens a context menu. A **Switch to** submenu
+lists every tab — clicking an entry switches to that tab (the currently-showing
+tab is shown inert). Below it sit the close actions for the right-clicked tab:
+**Close** (just that tab), **Close others**, the before/after pair, and **Close
+all**. The before/after labels follow the strip orientation — **Close all to the
+left** / **Close all to the right** on a horizontal (north/south) strip, **Close
+all above** / **Close all below** on a vertical (west/east) one. Each close item
+only ever affects `closeable` tabs, and a bulk item is disabled when no closeable
+tab falls in its scope (e.g. **Close all to the right** is disabled when nothing
+closeable sits after the clicked tab). **Close all** closes every closeable tab
+including the right-clicked one; **Close others** closes every closeable tab
+except it. The menu reuses the strip's own selection and close paths, so
+switching materializes a lazy tab exactly as a left-click would and each close
+fires `tabclose`.
+
+When one or more tools were registered with a descriptor (see [Tab tools](#tab-tools)),
+a trailing **Tools** submenu lists them, so every strip tool's action is also
+reachable from the keyboard-friendly menu.
 
 ## Tab tools
 
-[`addTool(button)`](/api/layout/classes/Tab#addtool) pins a button at the
-far end of the strip, opposite the tab buttons — a natural home for a
-"new tab" or overflow-menu control. Tools always sit at the extreme opposite the
-tabs, so they move to the leading edge when the tabs are `"end"`-aligned.
+[`addTool`](/api/layout/classes/Tab#addtool) pins a tool at the far end of
+the strip, opposite the tab buttons — a natural home for a "new tab" or
+overflow-menu control. Tools always sit at the extreme opposite the tabs, so they
+move to the leading edge when the tabs are `"end"`-aligned.
 [`removeTool`](/api/layout/classes/Tab#removetool) takes one back out, or
 pass an initial set via the `tools` option.
 
-A [`Button`](/api/component/button/classes/Button) tool is forced into `flat`
-mode when added, so strip tools read as flat icons regardless of how the caller
-configured them. Non-`Button` tools are left untouched.
+`addTool` has two forms. Passing a [`Component`](/api/core/classes/Component)
+adds a bare strip tool with no context-menu entry; a
+[`Button`](/api/component/button/classes/Button) tool is forced into `flat` mode
+so strip tools read as flat icons regardless of how the caller configured them,
+and non-`Button` tools are left untouched. Passing a
+[`TabToolDescriptor`](/api/component/container/interfaces/TabToolDescriptor)
+(`{ label, glyph?, action }`) instead builds the flat strip button **and** a row
+in the context menu's **Tools** submenu from that one descriptor — so glyph,
+label, and action are declared exactly once and the button and menu row always
+fire the same action. A plain-`Component` tool never appears in the menu.
+
+```typescript
+// Bare strip tool — visible on the strip only.
+tab.addTool(new Button({ glyph: 'gear' }));
+
+// Menu-backed tool — one "+" button on the strip and a matching
+// "New tab" row in the right-click menu's Tools submenu.
+tab.addTool({ label: 'New tab', glyph: 'plus', action: () => addTab() });
+```
+
+The `tools` option accepts either form per element:
+`tools: [new Button({ glyph: 'gear' }), { label: 'New tab', glyph: 'plus', action: … }]`.
 
 ## Overflow scrolling
 

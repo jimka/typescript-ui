@@ -18,6 +18,7 @@ import { Button } from "~/component/button/Button.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { tabDragRegistry } from "~/overlay/DragManager.js";
 import { TabBar } from "~/component/container/TabBar.js";
+import type { TabToolDescriptor } from "~/component/container/TabBar.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
@@ -159,8 +160,12 @@ export interface TabOptions extends LayoutManagerOptions {
      */
     scrollable?: boolean;
 
-    /** Tool buttons pinned at the far end of the strip, opposite the tabs. */
-    tools?: Component[];
+    /**
+     * Tools pinned at the far end of the strip, opposite the tabs. A plain
+     * {@link Component} is a bare strip tool; a {@link TabToolDescriptor} also
+     * surfaces in the context menu's `Tools` submenu.
+     */
+    tools?: (Component | TabToolDescriptor)[];
 
     /** Reduce tab-button insets for a denser strip. Defaults to `false`. */
     compact?: boolean;
@@ -393,8 +398,15 @@ class Tab extends LayoutManager {
         }
 
         if (options.tools !== undefined) {
+            // Dispatch each element through an explicit `instanceof Component`
+            // branch: overload resolution rejects the `Component | TabToolDescriptor`
+            // union passed against the two separate non-union `addTool` signatures.
             for (const tool of options.tools) {
-                this.addTool(tool);
+                if (tool instanceof Component) {
+                    this.addTool(tool);
+                } else {
+                    this.addTool(tool);
+                }
             }
         }
     }
@@ -782,21 +794,39 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Adds a tool button at the far end of the strip, opposite the tab buttons.
+     * Adds a tool at the far end of the strip, opposite the tab buttons.
      *
-     * A {@link Button} tool is forced into `flat` appearance so strip tools read
-     * as flat icons regardless of how the caller configured them.
+     * Two forms: a plain {@link Component} is a bare strip tool with no context-menu
+     * entry (a {@link Button} tool is forced into `flat` appearance so strip tools
+     * read as flat icons regardless of how the caller configured them); a
+     * {@link TabToolDescriptor} has its strip button and its `Tools`-submenu row
+     * built from the one descriptor. The two are told apart by `instanceof
+     * Component` — a descriptor is a plain object.
      *
-     * @param button - The tool component to add.
+     * @param button - The tool component to add (no menu row).
      *
      * @returns This layout manager, for chaining.
      */
-    addTool(button: Component): this {
-        if (button instanceof Button) {
-            button.setFlat(true);
-        }
+    addTool(button: Component): this;
 
-        this._bar.addTool(button);
+    /**
+     * @param descriptor - Declares a tool that also appears in the context menu's
+     *   `Tools` submenu; the bar builds the strip button and menu row from it.
+     */
+    addTool(descriptor: TabToolDescriptor): this;
+
+    addTool(arg: Component | TabToolDescriptor): this {
+        if (arg instanceof Component) {
+            // Plain tool: keep the flat-forcing for Button tools, then forward.
+            if (arg instanceof Button) {
+                arg.setFlat(true);
+            }
+
+            this._bar.addTool(arg);
+        } else {
+            // Descriptor tool: the bar builds + flats the Button and registers the menu row.
+            this._bar.addTool(arg);
+        }
 
         this.getContainer()?.scheduleLayout();
 
