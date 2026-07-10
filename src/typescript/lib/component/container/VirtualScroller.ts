@@ -299,7 +299,7 @@ export class VirtualScroller {
      * spurious horizontal bar for the reserved band. Reads the current
      * `_contentWidth` / `_contentHeight`; callers refresh those via
      * {@link clampToContent} at the top of their render pass before querying.
-     * The public face of {@link effectiveViewportW} (same value; that stays the
+     * The public face of `effectiveViewportW` (same value; that stays the
      * internal clamp helper).
      *
      * @returns The effective viewport width in pixels.

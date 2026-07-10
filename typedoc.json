@@ -28,6 +28,11 @@
     "excludePrivate": true,
     "excludeProtected": true,
     "excludeInternal": true,
+    "externalSymbolLinkMappings": {
+        "typescript": {
+            "MouseEvent": "https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent"
+        }
+    },
     "hideGenerator": true,
     "githubPages": false,
     "useCodeBlocks": true,

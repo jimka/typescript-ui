@@ -534,7 +534,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * preferred-size protocol resolves heights bottom-up before widths are
      * assigned top-down — so the height is only knowable once the box has a
      * width. Re-measuring here updates the preferred height, and
-     * {@link Component.setPreferredSize} fires the ancestor notify, so the parent
+     * `Component.setPreferredSize` fires the ancestor notify, so the parent
      * re-lays-out one pass later at the taller height (the box's own min height
      * also rises, so the current pass already reserves the room rather than
      * clipping). A `nowrap` label's height is width-independent, so its width

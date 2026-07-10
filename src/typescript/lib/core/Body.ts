@@ -34,7 +34,7 @@ export class Body extends Component {
      * ergonomic entry point for mounting a top-level layout in one call:
      * `Body.init({ layoutManager: Fit(), components: [shell] })`. Only the
      * supplied fields are dispatched (it delegates to
-     * {@link Component.applyOptions}), so the body's viewport-size tracking and
+     * `Component.applyOptions`), so the body's viewport-size tracking and
      * theme set up at construction are preserved.
      *
      * @param options - Component options to apply (layout manager, children, …).

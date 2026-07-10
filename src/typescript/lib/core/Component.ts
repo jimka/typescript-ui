@@ -4760,8 +4760,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Runs a callback once, after the next batched layout flush completes.
      *
      * Layout is coalesced onto an animation frame (see {@link scheduleLayout}),
-     * so geometry a consumer has just triggered — revealing a view, opening an
-     * {@link Accordion} section, adding rows — is not yet final on the
+     * so geometry a consumer has just triggered is not yet final on the
      * synchronous tick that triggered it. Deferring work here runs it past that
      * flush, once every dirty component has laid out, so it observes the settled
      * tree. The canonical case is moving focus into a freshly laid-out element:

@@ -103,7 +103,7 @@ class PickerCellList extends Panel {
      * surface, so it may be allocated less height than its stacked cells need and
      * scroll the overflow rather than demand its full content height.
      *
-     * Without this override the inherited {@link Component.getMinSize} sums the
+     * Without this override the inherited `Component.getMinSize` sums the
      * cells' minimums — and each {@link PickerCell} (a {@link Text}) reports a
      * one-line height floor — so the list's min height equals its entire content
      * height. The parent {@link PickerColumn}'s `VBox` then floors the weighted
