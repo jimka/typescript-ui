@@ -9,6 +9,7 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
 import { TabButton } from "~/component/button/TabButton.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
+import { Button } from "~/component/button/Button.js";
 import { ScrollStrip } from "~/component/container/ScrollStrip.js";
 import { Event } from "~/core/Event.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -21,6 +22,8 @@ import { BoxLayout } from "~/layout/BoxLayout.js";
 import { Menu } from "~/overlay/Menu.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
+import { computeBulkCloseIds } from "~/component/container/tabCloseTargets.js";
+import type { BulkCloseScope } from "~/component/container/tabCloseTargets.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { DragManager, DragEventDetail, DragData, TabDragData, SPRING_RAISE_DELAY_MS } from "~/overlay/DragManager.js";
 import { callable } from "~/core/Callable.js";
@@ -96,6 +99,25 @@ export type TabBarEvent =
     "tabpressed" | "reorder" | "tabclose" | "dockrequested" | "tabdragstart" | "tearoffrequested" | "detach" | "dockhover";
 
 /**
+ * Declares a strip tool that also surfaces in the tab context menu's `Tools`
+ * submenu. Passed to {@link TabBar.addTool} (or the owning `Tab`'s `addTool`),
+ * which builds both the strip {@link Button} and the menu row from this single
+ * descriptor — so glyph, label, and action are declared exactly once.
+ *
+ * @category Components
+ */
+export interface TabToolDescriptor {
+    /** Tooltip on the strip button and label on the menu row (required). */
+    label: string;
+
+    /** Optional registry glyph name for the button and menu row (matches {@link MenuItemConfig.glyph}). */
+    glyph?: string;
+
+    /** Invoked by both the strip button's action and the menu row — the same reference. */
+    action: () => void;
+}
+
+/**
  * Construction-time options for {@link TabBar} — the bar-only subset of the
  * owning `Tab`'s options (no content / tear-off / lazy-load fields).
  *
@@ -146,8 +168,12 @@ export interface TabBarOptions extends ContainerOptions {
      */
     scrollable?: boolean;
 
-    /** Tool buttons pinned at the far end of the strip, opposite the tabs. */
-    tools?: Component[];
+    /**
+     * Tools pinned at the far end of the strip, opposite the tabs. A plain
+     * {@link Component} is a bare strip tool; a {@link TabToolDescriptor} also
+     * surfaces in the context menu's `Tools` submenu.
+     */
+    tools?: (Component | TabToolDescriptor)[];
 
     /** Reduce tab-button insets for a denser strip. Defaults to `false`. */
     compact?: boolean;
@@ -490,6 +516,11 @@ class TabBar extends Container<TabBarOptions> {
     // the clip frame's only box children and their indices line up 1:1 with
     // `_entries` for the reorder/indicator/close-button math.
     private _tools: Component[] = [];
+    // Maps each descriptor-built tool button to its descriptor, so `openTabMenu`
+    // can list only the tools that opted into a menu row (plain-Component tools
+    // are absent) and `removeTool` can drop the row when its tool is removed.
+    // `_tools` stays the ordering source of truth; this is keyed lookup only.
+    private _toolMenuItems: Map<Component, TabToolDescriptor> = new Map();
     // Also a Panel so it fills its reserved slot rather than clamping to the tool
     // buttons' content max (same reason as the strip itself).
     private _toolGroup: Panel = new Panel();
@@ -668,8 +699,16 @@ class TabBar extends Container<TabBarOptions> {
         }
 
         if (options.tools !== undefined) {
+            // Dispatch each element with an explicit `instanceof Component` branch:
+            // TypeScript overload resolution rejects a `Component | TabToolDescriptor`
+            // union passed against the two separate non-union `addTool` signatures,
+            // so each arm passes a narrowed type that matches one overload.
             for (const tool of options.tools) {
-                this.addTool(tool);
+                if (tool instanceof Component) {
+                    this.addTool(tool);
+                } else {
+                    this.addTool(tool);
+                }
             }
         }
 
@@ -1105,19 +1144,57 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Adds a tool button at the far end of the strip, opposite the tab buttons.
+     * Adds a tool at the far end of the strip, opposite the tab buttons.
      *
-     * @param button - The tool component to add.
+     * Two forms: a plain {@link Component} is added as a bare strip tool with no
+     * context-menu entry (the original behaviour); a {@link TabToolDescriptor}
+     * has its strip {@link Button} and its `Tools`-submenu row built from the one
+     * descriptor, so glyph, label, and action are declared exactly once. The two
+     * are told apart by `instanceof Component` — a descriptor is a plain object.
+     *
+     * @param button - The tool component to add (no menu row).
      *
      * @returns This tab strip, for method chaining.
      */
-    addTool(button: Component): this {
+    addTool(button: Component): this;
+
+    /**
+     * @param descriptor - Declares a tool that also appears in the context menu's
+     *   `Tools` submenu; the strip button and menu row are built internally.
+     */
+    addTool(descriptor: TabToolDescriptor): this;
+
+    addTool(arg: Component | TabToolDescriptor): this {
+        const button = arg instanceof Component ? arg : this.buildDescriptorTool(arg);
+
         this._tools.push(button);
         this._toolGroup.addComponent(button);
 
         this.scheduleLayout();
 
         return this;
+    }
+
+    /**
+     * Builds the flat strip {@link Button} for a descriptor tool — glyph from the
+     * descriptor, `label` as its tooltip, `action` as its press handler — and
+     * registers its menu row in {@link _toolMenuItems} so {@link openTabMenu}
+     * lists it. The button's press and the menu row invoke the same `action`
+     * reference, so the two can never diverge.
+     *
+     * @param descriptor - The tool descriptor to build a strip button for.
+     *
+     * @returns The built, flat, tooltip'd tool button.
+     */
+    private buildDescriptorTool(descriptor: TabToolDescriptor): Button {
+        const button = new Button({ glyph: descriptor.glyph });
+
+        button.setFlat(true);
+        Tooltip.attach(button, descriptor.label);
+        button.on("action", descriptor.action);
+        this._toolMenuItems.set(button, descriptor);
+
+        return button;
     }
 
     /**
@@ -1135,6 +1212,7 @@ class TabBar extends Container<TabBarOptions> {
         }
 
         this._tools.splice(idx, 1);
+        this._toolMenuItems.delete(button);
         this._toolGroup.removeComponent(button);
 
         this.scheduleLayout();
@@ -1599,11 +1677,13 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Opens the shared context menu for a right-clicked tab. Lists every tab
-     * (click to switch, the currently-active tab shown inert) followed by a
-     * `Close` action gated on the tab's `closeable` constraint. Reuses the strip's
-     * own {@link setActiveEntry} and the `"tabclose"` emit, so no activation or
-     * close logic is duplicated.
+     * Opens the shared context menu for a right-clicked tab. The layout is a
+     * `Switch to` submenu (every tab, the active one inert) · the single `Close`
+     * for the clicked tab · the four bulk closes (`Close others` / `... to the
+     * right` / `... to the left` / `Close all`) · and, only when a tool supplied a
+     * {@link TabToolDescriptor}, a trailing `Tools` submenu. Every close reuses the
+     * `"tabclose"` emit and switching reuses {@link setActiveEntry}, so no
+     * activation or close logic is duplicated.
      *
      * @param entry - The cell that was right-clicked.
      * @param x - Horizontal viewport coordinate of the click.
@@ -1611,23 +1691,82 @@ class TabBar extends Container<TabBarOptions> {
      */
     private openTabMenu(entry: BarEntry, x: number, y: number): void {
         const activeEntry = this.activeEntry();
+        const ids         = this.getEntryIds();
+        const clickedIdx  = ids.indexOf(entry.id);
+        const closeable   = (id: string): boolean => this.isEntryCloseable(id);
 
-        const configs: MenuItemConfig[] = this._entries.map(t => ({
+        // The per-tab switch items move into their own submenu; disable only the
+        // tab that's already showing (switching to it is a no-op).
+        const switchItems: MenuItemConfig[] = this._entries.map(t => ({
             text:    t.name,
-            // Disable only the tab that's already showing — switching to it is a
-            // no-op — so a right-click on any other tab can still switch to it.
             enabled: t !== activeEntry,
             action:  () => this.setActiveEntry(t.id),
         }));
 
-        configs.push({ separator: true });
-        configs.push({
-            text:    "Close",
-            enabled: entry.constraints?.closeable === true,
-            action:  () => this.emit("tabclose", entry.id),
-        });
+        const configs: MenuItemConfig[] = [
+            { text: "Switch to", submenu: { label: "Switch to", items: switchItems } },
+            { separator: true },
+            {
+                text:    "Close",
+                enabled: entry.constraints?.closeable === true,
+                action:  () => this.emit("tabclose", entry.id),
+            },
+            this.bulkCloseItem("Close others",          ids, clickedIdx, closeable, "others"),
+            this.bulkCloseItem("Close all to the right", ids, clickedIdx, closeable, "right"),
+            this.bulkCloseItem("Close all to the left",  ids, clickedIdx, closeable, "left"),
+            this.bulkCloseItem("Close all",              ids, clickedIdx, closeable, "all"),
+        ];
+
+        // Trailing `Tools` submenu, only when at least one tool opted in with a
+        // descriptor. Iterate `_tools` so the rows keep strip order.
+        const toolItems: MenuItemConfig[] = this._tools
+            .filter(tool => this._toolMenuItems.has(tool))
+            .map(tool => {
+                const descriptor = this._toolMenuItems.get(tool)!;
+
+                return { text: descriptor.label, glyph: descriptor.glyph, action: descriptor.action };
+            });
+
+        if (toolItems.length > 0) {
+            configs.push({ separator: true });
+            configs.push({ text: "Tools", submenu: { label: "Tools", items: toolItems } });
+        }
 
         this._contextMenu.show(x, y, configs);
+    }
+
+    /**
+     * Builds one bulk-close menu row: computes its closeable target ids up front
+     * (a stable snapshot, so the action closure never re-reads the live `_entries`
+     * that each `"tabclose"` emit mutates) and disables the row when that set is
+     * empty.
+     *
+     * @param text - The row label.
+     * @param ids - The tab ids in strip order.
+     * @param clickedIdx - The right-clicked tab's index within `ids`.
+     * @param closeable - Predicate reporting whether a tab id is closeable.
+     * @param scope - Which tabs, relative to the clicked one, the row closes.
+     *
+     * @returns The menu-item config for the bulk-close row.
+     */
+    private bulkCloseItem(
+        text: string,
+        ids: readonly string[],
+        clickedIdx: number,
+        closeable: (id: string) => boolean,
+        scope: BulkCloseScope,
+    ): MenuItemConfig {
+        const targets = computeBulkCloseIds(ids, clickedIdx, closeable, scope);
+
+        return {
+            text,
+            enabled: targets.length > 0,
+            action:  () => {
+                for (const id of targets) {
+                    this.emit("tabclose", id);
+                }
+            },
+        };
     }
 
     /**
