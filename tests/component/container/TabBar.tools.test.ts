@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { TabBar, TabToolDescriptor } from '~/component/container/TabBar';
 import { Button } from '~/component/button/Button';
 import { Component } from '~/core/Component';
+import { Tooltip } from '~/overlay/Tooltip';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -54,6 +55,9 @@ describe('TabBar.addTool dispatch', () => {
 
         expect(built).toBeInstanceOf(Button);
         expect((built as Button).isFlat()).toBe(true);
+        // The descriptor's label is attached as the button's tooltip.
+        const attachments = (Tooltip as unknown as { attachments: Map<string, { text: string }> }).attachments;
+        expect(attachments.get(built.getId())?.text).toBe('New tab');
         // The menu row is fed the same descriptor, whose `action` is the exact
         // reference wired to the built button — one source of truth, no divergence.
         expect(state._toolMenuItems.get(built)).toBe(descriptor);
