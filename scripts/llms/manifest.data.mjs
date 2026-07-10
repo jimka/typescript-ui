@@ -59,6 +59,7 @@ export const groups = [
         { task: "Single-line text field", symbol: "TextField" },
         { task: "Multi-line text area", symbol: "TextArea" },
         { task: "Masked password field", symbol: "PasswordField" },
+        { task: "Username / login-identifier field", symbol: "UsernameField" },
         { task: "Numeric input with up/down spinners", symbol: "NumberSpinner" },
         { task: "Dropdown select bound to a store", symbol: "ComboBox" },
         { task: "Type-ahead field with autocomplete suggestions", symbol: "AutoCompleteField" },

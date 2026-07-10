@@ -7,16 +7,13 @@ import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 
 /**
- * Construction-time options for {@link PasswordField}.
+ * Construction-time options for {@link UsernameField}.
  *
  * @category Components
  */
-export interface PasswordFieldOptions extends TextInputOptions {
-    /**
-     * false (default) → autocomplete="current-password" (login);
-     * true            → autocomplete="new-password" (signup / change-password).
-     */
-    newPassword?: boolean;
+export interface UsernameFieldOptions extends TextInputOptions {
+    /** When true, seed autocomplete="email" instead of "username" (email-based logins). */
+    email?: boolean;
 }
 
 /**
@@ -24,36 +21,38 @@ export interface PasswordFieldOptions extends TextInputOptions {
  * The cascade in `Component`'s constructor dispatches each setter once with
  * the final value, so any field the caller supplied wins.
  */
-const _defaultPasswordFieldOptions: Partial<PasswordFieldOptions> = {
-    padding:         new Insets(3, 3, 3, 3),
+const _defaultUsernameFieldOptions: Partial<UsernameFieldOptions> = {
     cursor:          "text",
+    padding:         new Insets(3, 3, 3, 3),
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
     foregroundColor: "var(--ts-ui-text-color, black)",
 };
 
 /**
- * A password input component that renders an `<input type="password">`
- * element, defaulting `autocomplete="current-password"` and `name="password"`
- * for browser credential managers.
+ * A username / login-identifier field — a `TextField` preset that defaults
+ * `autocomplete="username"` and `name="username"` for browser credential
+ * managers.
+ *
+ * Keeps internal text state in sync with the DOM on every input event.
  *
  * @category Components
  */
-class PasswordField extends TextInput<PasswordFieldOptions> {
+class UsernameField extends TextInput<UsernameFieldOptions> {
 
-    constructor(options?: PasswordFieldOptions) {
-        super(options, _defaultPasswordFieldOptions);
+    constructor(options?: UsernameFieldOptions) {
+        super(options, _defaultUsernameFieldOptions);
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
 
-        this.setType("password");
+        this.setType("text");
 
         if (this._options.name === undefined) {
-            this.setName("password");
+            this.setName("username");
         }
 
         if (this._options.autoComplete === undefined) {
-            this.setAutoComplete(options?.newPassword ? "new-password" : "current-password");
+            this.setAutoComplete(options?.email ? "email" : "username");
         }
     }
 
@@ -73,11 +72,12 @@ class PasswordField extends TextInput<PasswordFieldOptions> {
         this.setPreferredSize(200, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
     }
+
 }
 
-const PasswordFieldCallable = callable(PasswordField);
-type PasswordFieldCallable = PasswordField;
+const UsernameFieldCallable = callable(UsernameField);
+type UsernameFieldCallable = UsernameField;
 export {
-    PasswordField         as _PasswordField,
-    PasswordFieldCallable as PasswordField
+    UsernameField         as _UsernameField,
+    UsernameFieldCallable as UsernameField
 };

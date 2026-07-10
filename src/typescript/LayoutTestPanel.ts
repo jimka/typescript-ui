@@ -3,8 +3,8 @@
 import { Component } from '@jimka/typescript-ui/core';
 import { callable, Panel } from '@jimka/typescript-ui/core';
 import { ButtonGroup } from '@jimka/typescript-ui/overlay';
-import { HBox } from '@jimka/typescript-ui/layout';
-import { Checkbox, ComboBox, PasswordField, RadioButton, Slider, Text, TextArea, TextField, Toggle } from '@jimka/typescript-ui/component/input';
+import { HBox, VBox } from '@jimka/typescript-ui/layout';
+import { Checkbox, ComboBox, PasswordField, RadioButton, Slider, Text, TextArea, TextField, Toggle, UsernameField } from '@jimka/typescript-ui/component/input';
 import { Button, ToggleButton } from '@jimka/typescript-ui/component/button';
 import { List } from '@jimka/typescript-ui/component/list';
 import { FieldSet } from '@jimka/typescript-ui/component/container';
@@ -46,6 +46,15 @@ class LayoutTestPanel extends Panel {
 
         let passwordField = new PasswordField();
         this.addComponent(passwordField);
+
+        // A <form> container demonstrating the credential presets. No submit
+        // handler — the presets only wire autocomplete/name; the form
+        // semantics stay the consumer's job.
+        let loginForm = new Component({ tag: "form" });
+        loginForm.setLayoutManager(new VBox());
+        loginForm.addComponent(new UsernameField());
+        loginForm.addComponent(new PasswordField());     // login default: current-password
+        this.addComponent(loginForm);
 
         let radioButtonComponent = new Component();
         radioButtonComponent.clearInsets();

@@ -31,6 +31,8 @@ export { DateTimePickerDropdown } from '~/component/input/DateTimePickerDropdown
 export type { DateTimePickerDropdownOptions } from '~/component/input/DateTimePickerDropdown.js';
 export { PasswordField } from '~/component/input/PasswordField.js';
 export type { PasswordFieldOptions } from '~/component/input/PasswordField.js';
+export { UsernameField } from '~/component/input/UsernameField.js';
+export type { UsernameFieldOptions } from '~/component/input/UsernameField.js';
 export { TextArea } from '~/component/input/TextArea.js';
 export type { TextAreaOptions } from '~/component/input/TextArea.js';
 export { Checkbox } from '~/component/input/Checkbox.js';

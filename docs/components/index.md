@@ -50,6 +50,7 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | [`TextField`](/api/component/input/classes/TextField) | Single-line text input |
 | [`TextArea`](/api/component/input/classes/TextArea) | Multi-line text input |
 | [`PasswordField`](/api/component/input/classes/PasswordField) | Masked text input |
+| [`UsernameField`](/api/component/input/classes/UsernameField) | Username / login-identifier text input |
 | [`Checkbox`](/api/component/input/classes/Checkbox) | Boolean toggle (supports indeterminate / mixed state) |
 | [`Toggle`](/api/component/input/classes/Toggle) | Sliding-pill on/off switch |
 | [`ComboBox`](/api/component/input/classes/ComboBox) | Drop-down selection from a list of items or a [`Store`](/api/data/classes/Store) |
