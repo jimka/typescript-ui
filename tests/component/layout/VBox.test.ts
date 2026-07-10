@@ -2,6 +2,9 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
 import { VBox } from '~/layout/VBox';
+import { HBox } from '~/layout/HBox';
+import { Text } from '~/component/input/Text';
+import { Insets } from '~/primitive/Insets';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
@@ -153,5 +156,129 @@ describe('VBox doLayout geometry', () => {
 
         // Relational: a weight-2 cell gets ~2x the height of a weight-1 cell.
         expect(b.getHeight()).toBeCloseTo(a.getHeight() * 2, 5);
+    });
+});
+
+/**
+ * Builds a non-stretching HBox host (a Container so doLayout runs), sized and
+ * inset-cleared so child origins start at (0,0). Mirrors the Anchor.test.ts
+ * host pattern; used for the placement case that proves a VBox container
+ * baseline-aligns in a row rather than centring.
+ */
+function hostHBox(width: number, height: number): Container {
+    const host = new Container({ layoutManager: new HBox() });
+
+    host.getElement(true);
+    host.setWidth(width);
+    host.setHeight(height);
+    host.clearInsets();
+
+    return host;
+}
+
+describe('VBox first-child baseline forwarding', () => {
+    afterEach(() => DOM.reset());
+
+    it('forwards the first child\'s baseline (chrome-free container adds 0)', () => {
+        installTestDOM(CONFIG);
+
+        const text = new Text('Label');
+        const container = hostVBox(200, 400, new VBox());
+
+        container.addComponent(text);
+
+        // Container has zero insets/border/padding (hostVBox clears insets), so
+        // wrapInnerBaseline adds nothing — the container baseline IS the child's.
+        expect(text.getBaseline()).not.toBeNull();
+        expect(container.getBaseline()).toBe(text.getBaseline());
+    });
+
+    it('baseline-aligns in a non-stretching HBox instead of centring', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostHBox(800, 400);
+
+        // A: a short VBox container whose first row is a Text. A plain Component
+        // (not Container) clamps to its content height, so it stays short and the
+        // baseline-vs-centre distinction is real rather than filling the row.
+        const column = new Component({ layoutManager: new VBox() });
+        column.getElement(true);
+        column.clearInsets();
+        column.addComponent(new Text('First row'));
+
+        // B: a tall baseline-bearing sibling — small baseline near the font
+        // ascent, large box height, so it dominates the row's descent. Size via
+        // the setters, not the constructor option: Text re-measures at
+        // construction and caps a constructor preferredSize to its content
+        // height, whereas setPreferredSize + setMaxSize hold the tall box.
+        const tall = new Text('Tall');
+        tall.setPreferredSize(40, 200);
+        tall.setMaxSize(200, 200);
+
+        host.addComponent(column);
+        host.addComponent(tall);
+
+        host.doLayout();
+
+        const columnBaseline = column.getBaseline()!;
+        const rowAscent = Math.max(columnBaseline, tall.getBaseline()!);
+
+        // Baseline placement: y = contentTop(0) + (rowAscent - ownBaseline).
+        expect(column.getY()).toBeCloseTo(rowAscent - columnBaseline, 5);
+
+        // Guard: this must NOT be the old null-baseline centred position, which
+        // sat the short column near the middle of the ~200px text line.
+        const rowDescent = tall.getHeight() - tall.getBaseline()!;
+        const centred = Math.max(0, (rowAscent + rowDescent - column.getHeight()) / 2);
+        expect(column.getY()).not.toBeCloseTo(centred, 1);
+    });
+
+    it('returns null for an empty container (no children)', () => {
+        installTestDOM(CONFIG);
+
+        const container = hostVBox(200, 400, new VBox());
+
+        expect(container.getBaseline()).toBeNull();
+    });
+
+    it('returns null when the first child has a null baseline (verbatim, no scan)', () => {
+        installTestDOM(CONFIG);
+
+        const container = hostVBox(200, 400, new VBox());
+
+        // First child is a plain Component (Absolute layout → null baseline).
+        container.addComponent(new Component({ preferredSize: { width: 50, height: 30 } }));
+        // A later baseline-bearing child must NOT be consulted.
+        container.addComponent(new Text('Has a baseline'));
+
+        expect(container.getBaseline()).toBeNull();
+    });
+
+    it('adds the container chrome exactly once (no double-count)', () => {
+        installTestDOM(CONFIG);
+
+        const text = new Text('Label');
+        const container = hostVBox(200, 400, new VBox());
+
+        container.addComponent(text);
+        container.setInsets(new Insets(10, 0, 0, 0));
+
+        // Chrome (insets.top = 10) is added once by Component.getBaseline →
+        // wrapInnerBaseline; getContentBaseline itself stays content-relative.
+        expect(container.getBaseline()).toBe(text.getBaseline()! + 10);
+    });
+
+    it('still forwards the baseline when stretching (no HBox-style guard)', () => {
+        installTestDOM(CONFIG);
+
+        const text = new Text('Label');
+        const container = hostVBox(200, 400, new VBox({ stretching: true }));
+
+        container.addComponent(text);
+
+        // VBox stretching is the cross (width) axis and leaves child baselines
+        // intact, so the baseline is NOT nulled out (unlike HBox stretching).
+        expect(container.getBaseline()).toBe(text.getBaseline());
+        expect(container.getBaseline()).not.toBeNull();
     });
 });

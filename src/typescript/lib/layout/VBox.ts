@@ -34,6 +34,40 @@ class VBox extends BoxLayout {
     private _defaultComponentHeight: number = 100;
 
     /**
+     * Returns the column's baseline — the first laid-out child's baseline,
+     * measured from the container's content-top — so a baseline-aware parent
+     * aligns this VBox container by its first row's text baseline rather than
+     * auto-centring the whole container.
+     *
+     * @returns The first child's baseline offset in pixels, or `null` when there
+     * is no container, no laid-out children, or the first child reports no
+     * baseline of its own.
+     *
+     * @remarks Forwards the **first** child's baseline verbatim — unlike
+     * {@link HBox}, which takes the maximum baseline across the row's children.
+     * A column has a single well-defined first row, so forwarding it (including
+     * a `null` when that first row is graphical) is the most predictable
+     * contract. The first child stacks at the container's content-top in every
+     * mode, so its own baseline is already content-relative — `Component`'s
+     * `getBaseline` then adds the container's chrome. Unlike `HBox`, this is not
+     * disabled while stretching: VBox `stretching` fills the cross (width) axis
+     * and leaves each child's height and intrinsic baseline untouched.
+     */
+    getContentBaseline(): number | null {
+        const container = this.getContainer();
+        if (!container) {
+            return null;
+        }
+
+        const components = container.getLaidOutComponents();
+        if (components.length === 0) {
+            return null;
+        }
+
+        return components[0].getBaseline();
+    }
+
+    /**
      * Returns the preferred size. In `"preferred"` mode this is the widest
      * child width and the sum of child heights plus spacing. In `"equal"`
      * mode height is `count * (maxChildHeight + spacing) - spacing`.
