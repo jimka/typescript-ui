@@ -140,6 +140,12 @@ column.addComponent(rule,  { fill:   FillType.HORIZONTAL });     // full column 
 
 An explicit per-child cross intent overrides the box's global `stretching` for that child only: with `stretching: true`, a child carrying `anchor: AnchorType.EAST` shrinks to its preferred width and pins to the right while its siblings still fill the column.
 
+## Baseline alignment
+
+A VBox-managed container reports **its first laid-out child's baseline** as its own (via `getContentBaseline`). So when a column is placed inside a baseline-aware parent — a non-stretching [`HBox`](/layouts/HBox), `HFlow`, or `Grid` — it aligns by its first row's text baseline instead of floating to the row's vertical centre as a baseline-less element would. A two-field login column dropped next to a taller control lines its first field up on the surrounding text baseline.
+
+The first child's baseline is forwarded **verbatim**: if that first child is graphical (returns `null` from `getBaseline()`), the column reports `null` too — it does not scan for a later baseline-bearing child. This differs from `HBox`, which takes the largest baseline across the whole row. Unlike `HBox`, baseline forwarding is **not** disabled by `setStretching(true)`, because a VBox's `stretching` fills the cross (width) axis and leaves each child's height and intrinsic baseline untouched.
+
 ## Common methods
 
 | Method | Purpose |
