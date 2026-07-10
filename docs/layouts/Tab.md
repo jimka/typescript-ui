@@ -153,14 +153,17 @@ tabbed.addComponent(generalPanel, { name: 'General', glyph: 'gear' });
 Right-clicking any tab button opens a context menu. A **Switch to** submenu
 lists every tab — clicking an entry switches to that tab (the currently-showing
 tab is shown inert). Below it sit the close actions for the right-clicked tab:
-**Close** (just that tab), **Close others**, **Close all to the right**, **Close
-all to the left**, and **Close all**. Each close item only ever affects
-`closeable` tabs, and a bulk item is disabled when no closeable tab falls in its
-scope (e.g. **Close all to the right** is disabled when nothing closeable sits to
-the right). **Close all** closes every closeable tab including the right-clicked
-one; **Close others** closes every closeable tab except it. The menu reuses the
-strip's own selection and close paths, so switching materializes a lazy tab
-exactly as a left-click would and each close fires `tabclose`.
+**Close** (just that tab), **Close others**, the before/after pair, and **Close
+all**. The before/after labels follow the strip orientation — **Close all to the
+left** / **Close all to the right** on a horizontal (north/south) strip, **Close
+all above** / **Close all below** on a vertical (west/east) one. Each close item
+only ever affects `closeable` tabs, and a bulk item is disabled when no closeable
+tab falls in its scope (e.g. **Close all to the right** is disabled when nothing
+closeable sits after the clicked tab). **Close all** closes every closeable tab
+including the right-clicked one; **Close others** closes every closeable tab
+except it. The menu reuses the strip's own selection and close paths, so
+switching materializes a lazy tab exactly as a left-click would and each close
+fires `tabclose`.
 
 When one or more tools were registered with a descriptor (see [Tab tools](#tab-tools)),
 a trailing **Tools** submenu lists them, so every strip tool's action is also
