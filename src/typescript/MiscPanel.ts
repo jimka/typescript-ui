@@ -1106,6 +1106,19 @@ class MiscPanel extends Panel {
         });
         leftColumn.addComponent(buttonDialogBackdrop);
 
+        const buttonDialogNonDismissable = new Button("Dialog — non-dismissable (mandatory)");
+        buttonDialogNonDismissable.on("action", async () => {
+            const result = await Dialog.show({
+                title      : 'Mandatory action required',
+                message    : 'This dialog has no close button, and Escape and the backdrop are both inert — only the footer button below can dismiss it.',
+                dismissable: false,
+                buttons    : [{ text: 'OK', result: 'confirm', primary: true }],
+            });
+
+            Notification.show(`Dialog closed with: ${result}`, 'info');
+        });
+        leftColumn.addComponent(buttonDialogNonDismissable);
+
         const formNameField  = new TextField({ placeholder: 'Name' });
         const formEmailField = new TextField({ placeholder: 'Email' });
 

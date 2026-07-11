@@ -3,6 +3,8 @@ import { _Dialog as Dialog, DialogButtons } from '~/overlay/Dialog';
 import { LayerManager } from '~/core/LayerManager';
 import { DOM } from '~/core/DOM';
 import { Component } from '~/core/Component';
+import { _Button as Button } from '~/component/button/Button';
+import { _DialogBackdrop as DialogBackdrop } from '~/component/container/DialogBackdrop';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -227,5 +229,78 @@ describe('Dialog — Enter confirms the primary button', () => {
 
         expect(prevented()).toBe(false);
         expect(hide).not.toHaveBeenCalled();
+    });
+});
+
+describe('Dialog — dismissable', () => {
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    it('default (dismissable omitted): close button is built and getDismissMode() is "modal"', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new Dialog({ title: 'T', message: 'M' });
+
+        expect(dialog.getTitleBar().getCloseButton()).toBeInstanceOf(Button);
+        expect(dialog.getDismissMode()).toBe('modal');
+    });
+
+    it('default (dismissable omitted): requestClose() closes the dialog', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new Dialog({ title: 'T', message: 'M' });
+        const hide = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+
+        dialog.requestClose();
+
+        expect(hide).toHaveBeenCalledWith('close');
+    });
+
+    it('default (dismissable omitted): closeOnBackdrop still wires the backdrop click', () => {
+        installTestDOM(CONFIG);
+
+        const addClickListener = vi.spyOn(DialogBackdrop.prototype, 'addClickListener');
+        const dialog = new Dialog({ title: 'T', message: 'M', closeOnBackdrop: true });
+
+        void dialog.show();
+
+        expect(addClickListener).toHaveBeenCalled();
+    });
+
+    it('dismissable: false suppresses the title-bar close button', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new Dialog({ title: 'T', message: 'M', dismissable: false });
+
+        expect(dialog.getTitleBar().getCloseButton()).toBeNull();
+    });
+
+    it('dismissable: false makes requestClose() a no-op', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new Dialog({ title: 'T', message: 'M', dismissable: false });
+        const hide = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+
+        dialog.requestClose();
+
+        expect(hide).not.toHaveBeenCalled();
+    });
+
+    it('dismissable: false does not wire the backdrop even with closeOnBackdrop: true', () => {
+        installTestDOM(CONFIG);
+
+        const addClickListener = vi.spyOn(DialogBackdrop.prototype, 'addClickListener');
+        const dialog = new Dialog({ title: 'T', message: 'M', closeOnBackdrop: true, dismissable: false });
+
+        void dialog.show();
+
+        expect(addClickListener).not.toHaveBeenCalled();
+    });
+
+    it('dismissable: false keeps getDismissMode() at "modal" (Escape is swallowed, not delegated)', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new Dialog({ title: 'T', message: 'M', dismissable: false });
+
+        expect(dialog.getDismissMode()).toBe('modal');
     });
 });
