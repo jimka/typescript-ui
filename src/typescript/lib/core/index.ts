@@ -20,6 +20,8 @@ export { Container } from '~/core/Container.js';
 export type { ContainerOptions } from '~/core/Container.js';
 export { Panel } from '~/core/Panel.js';
 export type { AutoScrollMode, PanelOptions } from '~/core/Panel.js';
+export { Form } from '~/core/Form.js';
+export type { FormOptions } from '~/core/Form.js';
 export { Aria } from '~/core/Aria.js';
 export type { AriaRole, AriaSort, AriaLive, AriaOrientation } from '~/core/Aria.js';
 export { RovingTabIndex } from '~/core/RovingTabIndex.js';

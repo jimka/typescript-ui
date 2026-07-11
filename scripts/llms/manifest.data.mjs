@@ -49,6 +49,7 @@ export const groups = [
     ] },
 
     { name: "Inputs / Forms", entries: [
+        { task: "Semantic <form> container with submit handling", symbol: "Form" },
         { task: "Push button", symbol: "Button" },
         { task: "Two-state toggle button", symbol: "ToggleButton" },
         { task: "Button with a primary action plus a dropdown menu", symbol: "SplitButton" },

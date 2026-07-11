@@ -234,7 +234,7 @@ if (this._closeButton) {
 
 6. **`src/typescript/MiscPanel.ts`** (demo) — in the dialog-button block (~line 1094), add a `"Dialog — non-dismissable (mandatory)"` button that calls `Dialog.show({ title, message, dismissable: false, buttons: [{ text: 'OK', result: 'confirm', primary: true }] })`. Add a small `Form` demo: a `Form({ layoutManager: new VBox(), components: [ /* a couple of TextFields */ ], onSubmit: (f) => Notification.show('submitted', 'success') })` plus an **external** `Button("Submit").on("action", () => form.requestSubmit())`. Add the `Form` import from `@jimka/typescript-ui/core`.
 
-7. **Tests** — create `tests/component/core/Form.test.ts`; extend `tests/overlay/Dialog.test.ts` (per `## Verification`).
+7. **Tests** — create `tests/core/Form.test.ts` (drift note: the plan originally said `tests/component/core/Form.test.ts`, but the repo's actual convention mirrors `src/typescript/lib/core/*.ts` under `tests/core/*.test.ts` — e.g. `Aria.ts` → `tests/core/Aria.test.ts`, `Body.ts` → `tests/core/Body.test.ts` — so the file lives at `tests/core/Form.test.ts` instead); extend `tests/overlay/Dialog.test.ts` (per `## Verification`).
 
 8. **Docs** — create `docs/components/Form.md`; add a `Form` row to `docs/components/index.md`; add a `Form` sidebar entry to `docs/.vitepress/config.mts` (Inputs group); add a `dismissable` row to the `DialogConfig` table in `docs/components/Dialog.md`; add a `Form` catalog entry to `scripts/llms/manifest.data.mjs` (Inputs / Forms group). Then run `npm run docs:build` — must finish with zero warnings and the manifest must resolve the `Form` symbol.
 
@@ -247,7 +247,7 @@ if (this._closeButton) {
 | Action | File |
 |---|---|
 | Create | `src/typescript/lib/core/Form.ts` |
-| Create | `tests/component/core/Form.test.ts` |
+| Create | `tests/core/Form.test.ts` |
 | Create | `docs/components/Form.md` |
 | Modify | `src/typescript/lib/core/DOM.ts` (DOMSink interface + ProductionDOMSink) |
 | Modify | `tests/dom/TestDOM.ts` (RecordingDOMSink) |
@@ -292,7 +292,7 @@ if (this._closeButton) {
 ## Verification
 
 - **Typecheck:** `npm run typecheck` (or `tsc --noEmit`) green — in a worktree, symlink `node_modules` from the main checkout first if a tool needs it.
-- **Unit tests:** `npx vitest run tests/component/core/Form.test.ts tests/overlay/Dialog.test.ts` — all `## Expected Behaviour` unit cases pass.
+- **Unit tests:** `npx vitest run tests/core/Form.test.ts tests/overlay/Dialog.test.ts` — all `## Expected Behaviour` unit cases pass.
 - **Seam grep:** `grep -rn "requestSubmit" src/typescript/lib/core/DOM.ts tests/dom/TestDOM.ts` — interface + `ProductionDOMSink` + `RecordingDOMSink` present (three sites).
 - **Docs build:** `npm run docs:build` — zero TypeDoc warnings (no `{@link}` to non-exported symbols in the new `Form` JSDoc), and `docs:llms` resolves the new `Form` manifest symbol against the TypeDoc model (an unresolved symbol fails the build).
 - **Manual smoke:** run the demo app, open the **Misc.** tab; exercise the `Form` submit button (external button → `requestSubmit()` → notification) and the non-dismissable dialog button (no ✕, Escape/backdrop inert, footer button closes).

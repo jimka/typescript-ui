@@ -380,6 +380,17 @@ export class RecordingDOMSink implements DOMSink {
         _table.setFocus(handle);
     }
 
+    /**
+     * Models what the browser does when native `requestSubmit()` fires: records
+     * the call, then dispatches a modelled `submit` event at the handle (mirroring
+     * {@link dispatchCustomEvent}'s offline modelling of browser event dispatch),
+     * so listeners wired via `Event.addListener(..., "submit", ...)` fire offline.
+     */
+    requestSubmit(handle: Handle): void {
+        this.record('requestSubmit');
+        this.dispatchEvent(handle, makeEvent(handle, "submit"));
+    }
+
     blur(_handle: Handle): void {
         this.record('blur');
         _table.setFocus(null);

@@ -78,6 +78,12 @@ export interface DialogConfig {
     height?          : number;
     /** When true, clicking the backdrop closes the dialog with result `'close'`. Defaults to false. */
     closeOnBackdrop? : boolean;
+    /**
+     * When `false`, the dialog is a mandatory modal: no title-bar close button,
+     * Escape does not close it, and a backdrop click does not close it (regardless
+     * of `closeOnBackdrop`). Defaults to `true`.
+     */
+    dismissable?     : boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,14 +162,16 @@ const TITLE_GLYPH_TEXT_GAP: number = 8;
 class DialogTitleBar extends Component {
 
     private readonly _titleText  : Text;
-    private readonly _closeButton: Button;
+    private _closeButton: Button | null = null;
     private _titleGlyph: Glyph | null = null;
 
     /**
      * @param title - Text to display in the title bar.
      * @param onClose - Called when the user clicks the close button.
+     * @param dismissable - When `false`, the close button is not built at all
+     *   (mandatory-modal title bar).
      */
-    constructor(title: string, onClose: () => void) {
+    constructor(title: string, onClose: () => void, dismissable: boolean) {
         super();
 
         this.setBackgroundColor("var(--ts-ui-body-bg)");
@@ -183,27 +191,39 @@ class DialogTitleBar extends Component {
         this._titleText.centerInHeight(TITLE_HEIGHT - TITLE_V_PAD * 2);
         this.addComponent(this._titleText);
 
-        this._closeButton = new Button({ glyph: "xmark" });
-        this._closeButton.setInsets(new Insets(0, 0, 0, 0));
-        this._closeButton.setBorder("none");
-        this._closeButton.clearBackgroundImage();
-        this._closeButton.setBackgroundColor("transparent");
-        this._closeButton.clearShadow();
-        this._closeButton.clearPressedShadow();
-        this._closeButton.clearHoverShadow();
-        // Hover and pressed background swap out the framework's gray
-        // var(--ts-ui-button-hover-bg, …) for a translucent overlay that
-        // darkens whatever tinted header sits underneath without
-        // imposing its own colour. Also drop the hover gradient so it
-        // doesn't double up over the overlay.
-        this._closeButton.setHoverBackgroundColor("var(--ts-ui-titlebar-btn-hover-bg, rgba(0, 0, 0, 0.08))");
-        this._closeButton.setPressedBackgroundColor("var(--ts-ui-titlebar-btn-active-bg, rgba(0, 0, 0, 0.16))");
-        this._closeButton.clearHoverBackgroundImage();
-        this._closeButton.clearPressedBackgroundImage();
-        this._closeButton.setPreferredSize(CLOSE_SIZE, CLOSE_SIZE);
-        this.addComponent(this._closeButton);
+        if (dismissable) {
+            this._closeButton = new Button({ glyph: "xmark" });
+            this._closeButton.setInsets(new Insets(0, 0, 0, 0));
+            this._closeButton.setBorder("none");
+            this._closeButton.clearBackgroundImage();
+            this._closeButton.setBackgroundColor("transparent");
+            this._closeButton.clearShadow();
+            this._closeButton.clearPressedShadow();
+            this._closeButton.clearHoverShadow();
+            // Hover and pressed background swap out the framework's gray
+            // var(--ts-ui-button-hover-bg, …) for a translucent overlay that
+            // darkens whatever tinted header sits underneath without
+            // imposing its own colour. Also drop the hover gradient so it
+            // doesn't double up over the overlay.
+            this._closeButton.setHoverBackgroundColor("var(--ts-ui-titlebar-btn-hover-bg, rgba(0, 0, 0, 0.08))");
+            this._closeButton.setPressedBackgroundColor("var(--ts-ui-titlebar-btn-active-bg, rgba(0, 0, 0, 0.16))");
+            this._closeButton.clearHoverBackgroundImage();
+            this._closeButton.clearPressedBackgroundImage();
+            this._closeButton.setPreferredSize(CLOSE_SIZE, CLOSE_SIZE);
+            this.addComponent(this._closeButton);
 
-        this._closeButton.on("action", onClose);
+            this._closeButton.on("action", onClose);
+        }
+    }
+
+    /**
+     * Returns the title bar's close button, or `null` when the title bar was
+     * built non-dismissable (no close affordance).
+     *
+     * @returns The close [`Button`](/api/component/button/classes/Button), or `null`.
+     */
+    getCloseButton(): Button | null {
+        return this._closeButton;
     }
 
     /**
@@ -282,6 +302,9 @@ class DialogTitleBar extends Component {
         const h       = this.getHeight();
         const closeX  = w - CLOSE_SIZE - TITLE_RIGHT_GAP;
         const centerY = Math.floor((h - CLOSE_SIZE) / 2);
+        const rightBound = this._closeButton
+            ? closeX                    // reserve the close-button slot
+            : (w - TITLE_H_PAD);        // no button: label runs to the right pad
 
         let labelX = TITLE_H_PAD;
 
@@ -298,7 +321,7 @@ class DialogTitleBar extends Component {
         }
 
         // Reserve TITLE_RIGHT_GAP of space between the label and the close button.
-        const labelWidth = Math.max(0, closeX - labelX - TITLE_RIGHT_GAP);
+        const labelWidth = Math.max(0, rightBound - labelX - TITLE_RIGHT_GAP);
         const labelH     = h - TITLE_V_PAD * 2;
 
         this._titleText.setX(labelX);
@@ -306,13 +329,15 @@ class DialogTitleBar extends Component {
         this._titleText.setWidth(labelWidth);
         this._titleText.setHeight(labelH);
 
-        this._closeButton.setX(closeX);
-        this._closeButton.setY(centerY);
-        this._closeButton.setWidth(CLOSE_SIZE);
-        this._closeButton.setHeight(CLOSE_SIZE);
-        // setX/setY/setWidth/setHeight don't cascade — explicitly relayout the
-        // close button so its internal Fit layout sizes the times glyph.
-        this._closeButton.doLayout();
+        if (this._closeButton) {
+            this._closeButton.setX(closeX);
+            this._closeButton.setY(centerY);
+            this._closeButton.setWidth(CLOSE_SIZE);
+            this._closeButton.setHeight(CLOSE_SIZE);
+            // setX/setY/setWidth/setHeight don't cascade — explicitly relayout the
+            // close button so its internal Fit layout sizes the times glyph.
+            this._closeButton.doLayout();
+        }
 
         return this;
     }
@@ -511,7 +536,7 @@ class Dialog extends Component implements DismissableLayer {
         layout.setComponentSpacing(0);
         this.setLayoutManager(layout);
 
-        this._titleBar = new DialogTitleBar(config.title, () => this.hide('close'));
+        this._titleBar = new DialogTitleBar(config.title, () => this.hide('close'), config.dismissable !== false);
         this.addComponent(this._titleBar, { placement: Placement.NORTH });
 
         this.applyHeaderVariant(this.computeHeaderVariant(buttons));
@@ -680,7 +705,7 @@ class Dialog extends Component implements DismissableLayer {
     private open(): void {
         this._previousFocus = DOM.source.getActiveElement();
 
-        if (this._config.closeOnBackdrop) {
+        if (this._config.closeOnBackdrop && this._config.dismissable !== false) {
             this._backdrop.addClickListener(() => this.hide('close'));
         }
 
@@ -1034,8 +1059,19 @@ class Dialog extends Component implements DismissableLayer {
     /**
      * Advisory close request from the manager — closes the dialog with the
      * `'close'` result, matching the title-bar close affordance.
+     *
+     * @remarks No-op when `dismissable` is `false`: this is the Escape path
+     * (`LayerManager` routes Escape to the topmost non-`"manual"` layer's
+     * `requestClose()`), so a mandatory modal swallows Escape rather than
+     * closing. `getDismissMode()` deliberately stays `"modal"` here — a
+     * `"manual"` layer would be skipped by the Escape loop, letting Escape
+     * fall through to close a layer beneath this one.
      */
     requestClose(): void {
+        if (this._config.dismissable === false) {
+            return;
+        }
+
         this.hide('close');
     }
 
