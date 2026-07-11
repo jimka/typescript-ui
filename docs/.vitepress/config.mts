@@ -117,7 +117,7 @@ export default defineConfig({
                     { text: 'CodeEditor',      link: '/components/CodeEditor' },
                     { text: 'MarkdownEditor',  link: '/components/MarkdownEditor' },
                     { text: 'FieldSet',        link: '/components/FieldSet' },
-                    { text: 'FormFieldSet',    link: '/components/FormFieldSet' },
+                    { text: 'LabeledFieldSet', link: '/components/LabeledFieldSet' },
                     { text: 'Legend',          link: '/components/Legend' },
                     { text: 'ProgressBar',     link: '/components/ProgressBar' },
                     { text: 'ProgressSpinner', link: '/components/ProgressSpinner' },

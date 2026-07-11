@@ -34,6 +34,8 @@ Some components compute their preferred size from content rather than asking you
 
 For these you usually don't call `setPreferredSize` unless you need to override the auto-computed value.
 
+Single-line inputs — [`TextField`](/components/TextField), [`PasswordField`](/components/PasswordField), [`UsernameField`](/components/UsernameField), [`ComboBox`](/components/ComboBox), the picker fields ([`DateField`](/components/DateField)/[`TimeField`](/components/TimeField)/[`DateTimeField`](/components/DateTimeField)), [`NumberSpinner`](/components/NumberSpinner), and [`AutoCompleteField`](/components/AutoCompleteField) — also pin their **minimum** height to that same one-line box, with minimum width left at `0`. A stacked layout (`VBox`, or a [`LabeledFieldSet`](/components/LabeledFieldSet) row) can therefore never compress one of these fields shorter than one line; it can still shrink or stretch them horizontally.
+
 ## Min / max as floors and ceilings
 
 Min and max are particularly important inside flexible layouts. In a [`Border`](/layouts/Border)'s east region, the layout assigns the column's preferred width by default, but `setMinSize(200, 0)` keeps the column at least 200 pixels wide even if there's room to shrink. `setMaxSize(0, 0)` (the default for a freshly-constructed `Component`) means "no upper bound".

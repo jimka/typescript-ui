@@ -10,7 +10,7 @@ import { callable } from "~/core/Callable.js";
 
 /**
  * Default inter-cell spacing (px) for the internal form grid. Mirrors the
- * hand-rolled Binding demo's `spacing: 8` so a {@link FormFieldSet} matches the
+ * hand-rolled Binding demo's `spacing: 8` so a {@link LabeledFieldSet} matches the
  * reference labelled-form look without the caller restating it.
  */
 const FIELD_SPACING_DEFAULT = 8;
@@ -20,7 +20,7 @@ const FIELD_SPACING_DEFAULT = 8;
  *
  * @category Components
  */
-export interface FormFieldDescriptor {
+export interface LabeledFieldDescriptor {
 
     /** Label text rendered as a baseline-aligned `Text`. */
     title: string;
@@ -30,22 +30,22 @@ export interface FormFieldDescriptor {
 }
 
 /**
- * One row of a {@link FormFieldSet}: either an array of pairs (one per logical
+ * One row of a {@link LabeledFieldSet}: either an array of pairs (one per logical
  * column, left-to-right; a short array leaves trailing columns empty), or a
  * single component that spans every column (status lines, button bars).
  *
  * @category Components
  */
-export type FormRowDescriptor =
-    | FormFieldDescriptor[]
+export type LabeledRowDescriptor =
+    | LabeledFieldDescriptor[]
     | { component: Component; fullWidth: true };
 
 /**
- * Construction-time options for {@link FormFieldSet}.
+ * Construction-time options for {@link LabeledFieldSet}.
  *
  * @category Components
  */
-export interface FormFieldSetOptions extends FieldSetOptions {
+export interface LabeledFieldSetOptions extends FieldSetOptions {
 
     /** Logical title/field columns laid side by side. Default `1`. */
     columns?: number;
@@ -54,19 +54,21 @@ export interface FormFieldSetOptions extends FieldSetOptions {
     fieldSpacing?: number;
 
     /** Declarative rows, applied in order at construction via the same path as `addRow`. */
-    rows?: FormRowDescriptor[];
+    rows?: LabeledRowDescriptor[];
 }
 
 /**
  * Subclass defaults layered under the caller's options. Clears the base
- * FieldSet's fixed 200x200 preferred size: a form is exactly as large as its
- * computed grid content, so the fixed value would otherwise pad a short form
- * with dead space at the bottom. With it cleared, `Component.getPreferredSize`
- * falls through to the internal grid, whose `getPreferredSize` already adds the
- * legend clearance and insets.
+ * FieldSet's fixed 200x200 preferred size and fixed 100x100 min size: a
+ * labeled fieldset is exactly as large as its computed grid content, so the
+ * fixed values would otherwise pad a short form with dead space (preferred)
+ * or force a min floor no tiny form needs (min). With both cleared,
+ * `Component.getPreferredSize` / `getMinSize` fall through to the internal
+ * grid, whose reports already add the legend clearance and insets.
  */
-const _defaultFormFieldSetOptions: Partial<FormFieldSetOptions> = {
+const _defaultLabeledFieldSetOptions: Partial<LabeledFieldSetOptions> = {
     preferredSize: undefined,
+    minSize:       undefined,
 };
 
 /**
@@ -84,7 +86,7 @@ const _defaultFormFieldSetOptions: Partial<FormFieldSetOptions> = {
  *
  * @category Components
  */
-class FormFieldSet extends _FieldSet {
+class LabeledFieldSet extends _FieldSet {
 
     /** Logical title/field column count (the grid has `2 ×` this many grid-columns). */
     private _columns: number;
@@ -106,8 +108,8 @@ class FormFieldSet extends _FieldSet {
      * @param options - Form structure: `columns`, `fieldSpacing`, `rows`.
      * @param subclassDefaults - Defaults a subclass layers under the caller's options.
      */
-    constructor(title: string = "", options?: FormFieldSetOptions, subclassDefaults?: Partial<FormFieldSetOptions>) {
-        super(title, options, { ..._defaultFormFieldSetOptions, ...(subclassDefaults ?? {}) });
+    constructor(title: string = "", options?: LabeledFieldSetOptions, subclassDefaults?: Partial<LabeledFieldSetOptions>) {
+        super(title, options, { ..._defaultLabeledFieldSetOptions, ...(subclassDefaults ?? {}) });
 
         this._columns = options?.columns ?? 1;
 
@@ -157,7 +159,7 @@ class FormFieldSet extends _FieldSet {
      * @param fields - The pairs to place across the row, left-to-right.
      * @returns This component, for method chaining.
      */
-    addRow(fields: FormFieldDescriptor[]): this {
+    addRow(fields: LabeledFieldDescriptor[]): this {
         this.finishRow();
 
         for (const field of fields) {
@@ -220,7 +222,7 @@ class FormFieldSet extends _FieldSet {
      *
      * @param rows - The declarative row descriptors to apply, in order.
      */
-    private applyRows(rows: FormRowDescriptor[]): void {
+    private applyRows(rows: LabeledRowDescriptor[]): void {
         for (const row of rows) {
             if (Array.isArray(row)) {
                 this.addRow(row);
@@ -271,9 +273,9 @@ class FormFieldSet extends _FieldSet {
     }
 }
 
-const FormFieldSetCallable = callable(FormFieldSet);
-type FormFieldSetCallable = FormFieldSet;
+const LabeledFieldSetCallable = callable(LabeledFieldSet);
+type LabeledFieldSetCallable = LabeledFieldSet;
 export {
-    FormFieldSet         as _FormFieldSet,
-    FormFieldSetCallable as FormFieldSet
+    LabeledFieldSet         as _LabeledFieldSet,
+    LabeledFieldSetCallable as LabeledFieldSet
 };
