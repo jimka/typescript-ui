@@ -78,6 +78,7 @@ See [`DialogConfig`](/api/overlay/interfaces/DialogConfig) for the full option l
 | `buttons` | One `OK` button (with a `circle-check` glyph) | Footer button definitions. |
 | `width` / `height` | `480` / auto (clamped to `320 × 160` minimums) | Dialog panel size in pixels. |
 | `closeOnBackdrop` | `false` | Click outside dismisses with result `'close'`. |
+| `dismissable` | `true` | When `false`, mandatory modal: no title-bar close button, Escape/backdrop inert. |
 
 ### Per-button glyph
 
