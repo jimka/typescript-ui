@@ -1258,7 +1258,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param id - The new unique identifier for this component.
      */
     setId(id: string): this {
+        const oldId = this.getId();
+
         super.setId(id);
+
+        Event.reindexComponent(oldId, id);
 
         // The per-component style rule is selector-scoped to `#<id>` and carries
         // `position: absolute` (plus every other rule-based style). It is created

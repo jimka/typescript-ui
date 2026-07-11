@@ -383,6 +383,34 @@ export namespace Event {
     }
 
     /**
+     * @internal Migrates a component's exact-target and subtree listener
+     * registrations from `oldId` to `newId` after its id changes. No-op when the
+     * ids are equal or the component has no registrations. Does not touch viewport
+     * listeners (dispatched by whole-map iteration, not by id).
+     */
+    export function reindexComponent(oldId: string, newId: string): void {
+        if (oldId === newId) {
+            return;
+        }
+
+        for (const typeMap of listenerMap.values()) {
+            const compFunc = typeMap.get(oldId);
+            if (compFunc) {
+                typeMap.set(newId, compFunc);
+                typeMap.delete(oldId);
+            }
+        }
+
+        for (const typeMap of subtreeListenerMap.values()) {
+            const compFunc = typeMap.get(oldId);
+            if (compFunc) {
+                typeMap.set(newId, compFunc);
+                typeMap.delete(oldId);
+            }
+        }
+    }
+
+    /**
      * Registers a viewport-level listener that fires for all matching events regardless of target element.
      *
      * @param component - The component to associate the listener with.

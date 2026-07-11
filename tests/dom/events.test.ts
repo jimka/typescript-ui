@@ -303,3 +303,157 @@ describe('Modelled event delivery — polite propagation', () => {
         expect(nativeStops).toBe(1);
     });
 });
+
+describe('Modelled event delivery — setId reindex', () => {
+    afterEach(() => DOM.reset());
+
+    // Case 1: an exact-target listener registered before setId still fires
+    // after the id changes, because reindexComponent moves its listenerMap
+    // entry from the old id to the new id.
+    it('keeps an exact-target listener firing after setId changes the id', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let runs = 0;
+        let seenThis: unknown = null;
+
+        Event.addListener(comp, type, function (this: unknown): void {
+            runs += 1;
+            seenThis = this;
+        });
+
+        comp.setId('reindex-exact-new-id');
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type));
+
+        expect(runs).toBe(1);
+        expect(seenThis).toBe(comp);
+    });
+
+    // Case 2: a subtree listener registered before setId still fires for a
+    // descendant event after the ancestor's id changes.
+    it('keeps a subtree listener firing after setId changes the ancestor id', () => {
+        installTestDOM(CONFIG);
+
+        const root  = new Component({});
+        const child = new Component({});
+        const type  = uniqueType();
+
+        root.getElement(true);
+        root.addComponent(child);
+
+        let runs = 0;
+
+        Event.addSubtreeListener(root, type, () => { runs += 1; });
+
+        root.setId('reindex-subtree-new-id');
+
+        DOM.sink.dispatchEvent(child.getElement()!, makeEvent(child.getElement()!, type));
+
+        expect(runs).toBe(1);
+    });
+
+    // Case 3: removeListener still finds and removes an exact-target
+    // registration after setId re-keys it to the new id.
+    it('lets removeListener remove an exact-target listener after setId', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+        const h    = (): void => { runs += 1; };
+        let   runs = 0;
+
+        comp.getElement(true);
+
+        Event.addListener(comp, type, h);
+        comp.setId('reindex-exact-remove-new-id');
+        Event.removeListener(comp, type, h);
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type));
+
+        expect(runs).toBe(0);
+    });
+
+    // Case 4: removeSubtreeListener still finds and removes a subtree
+    // registration after setId re-keys it to the new id.
+    it('lets removeSubtreeListener remove a subtree listener after setId', () => {
+        installTestDOM(CONFIG);
+
+        const root  = new Component({});
+        const child = new Component({});
+        const type  = uniqueType();
+        const h     = (): void => { runs += 1; };
+        let   runs  = 0;
+
+        root.getElement(true);
+        root.addComponent(child);
+
+        Event.addSubtreeListener(root, type, h);
+        root.setId('reindex-subtree-remove-new-id');
+        Event.removeSubtreeListener(root, type, h);
+
+        DOM.sink.dispatchEvent(child.getElement()!, makeEvent(child.getElement()!, type));
+
+        expect(runs).toBe(0);
+    });
+
+    // Case 5: setId to the SAME id must not self-destruct the registration —
+    // a naive set-then-delete on equal keys would wipe out a live listener.
+    it('keeps a listener alive when setId is called with the same id', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let runs = 0;
+
+        Event.addListener(comp, type, () => { runs += 1; });
+
+        comp.setId(comp.getId());
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type));
+
+        expect(runs).toBe(1);
+    });
+
+    // Case 6: setId on a component with no registrations at all is a
+    // harmless no-op.
+    it('does not throw when setId is called on a component with no listeners', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+
+        comp.getElement(true);
+
+        expect(() => comp.setId('reindex-no-listeners-new-id')).not.toThrow();
+    });
+
+    // Case 7: a viewport listener is never keyed by id at dispatch, so setId
+    // must neither help nor harm it — regression guard for the exclusion.
+    it('leaves a viewport listener unaffected by setId', () => {
+        installTestDOM(CONFIG);
+
+        const listening = new Component({});
+        const unrelated = new Component({});
+        const type      = uniqueType();
+
+        listening.getElement(true);
+        unrelated.getElement(true);
+
+        let runs = 0;
+
+        Event.addViewportListener(listening, type, () => { runs += 1; });
+
+        listening.setId('reindex-viewport-new-id');
+
+        DOM.sink.dispatchEvent(unrelated.getElement()!, makeEvent(unrelated.getElement()!, type));
+
+        expect(runs).toBe(1);
+    });
+});
