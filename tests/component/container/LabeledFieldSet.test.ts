@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Component } from '~/core/Component';
 import { LabeledFieldSet } from '~/component/container/LabeledFieldSet';
+import { TextField } from '~/component/input/TextField';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -80,5 +81,38 @@ describe('LabeledFieldSet field structure', () => {
         // Both field components are present in the child list.
         expect(children).toContain(a);
         expect(children).toContain(b);
+    });
+});
+
+describe('LabeledFieldSet min-height tracks content, not a fixed floor', () => {
+    afterEach(() => DOM.reset());
+
+    it('drops the base FieldSet 100px min floor for a small form', () => {
+        installTestDOM(CONFIG);
+
+        const form = new LabeledFieldSet('Small', {
+            rows: [[{ title: 'Name', component: new Component() }]],
+        });
+
+        // With minSize cleared, the min purely reflects the grid content
+        // (legend clearance + insets + one row) instead of the base
+        // FieldSet's fixed 100px floor.
+        expect(form.getMinSize()!.height).toBeLessThan(100);
+    });
+
+    it('never reports a min below the summed content of several stacked fields', () => {
+        installTestDOM(CONFIG);
+
+        const FIELD_COUNT = 3;
+        const fields       = Array.from({ length: FIELD_COUNT }, () => new TextField());
+
+        const form = new LabeledFieldSet('Fields', {
+            rows: fields.map(field => [{ title: 'Field', component: field }]),
+        });
+
+        const perFieldMin = fields[0].getMinSize()!.height;
+
+        expect(perFieldMin).toBeGreaterThan(0);
+        expect(form.getMinSize()!.height).toBeGreaterThanOrEqual(FIELD_COUNT * perFieldMin);
     });
 });

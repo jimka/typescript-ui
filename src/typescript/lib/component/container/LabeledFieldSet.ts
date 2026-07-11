@@ -59,14 +59,16 @@ export interface LabeledFieldSetOptions extends FieldSetOptions {
 
 /**
  * Subclass defaults layered under the caller's options. Clears the base
- * FieldSet's fixed 200x200 preferred size: a form is exactly as large as its
- * computed grid content, so the fixed value would otherwise pad a short form
- * with dead space at the bottom. With it cleared, `Component.getPreferredSize`
- * falls through to the internal grid, whose `getPreferredSize` already adds the
- * legend clearance and insets.
+ * FieldSet's fixed 200x200 preferred size and fixed 100x100 min size: a
+ * labeled fieldset is exactly as large as its computed grid content, so the
+ * fixed values would otherwise pad a short form with dead space (preferred)
+ * or force a min floor no tiny form needs (min). With both cleared,
+ * `Component.getPreferredSize` / `getMinSize` fall through to the internal
+ * grid, whose reports already add the legend clearance and insets.
  */
 const _defaultLabeledFieldSetOptions: Partial<LabeledFieldSetOptions> = {
     preferredSize: undefined,
+    minSize:       undefined,
 };
 
 /**
