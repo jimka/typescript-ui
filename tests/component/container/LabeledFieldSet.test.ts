@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Component } from '~/core/Component';
-import { FormFieldSet } from '~/component/container/FormFieldSet';
+import { LabeledFieldSet } from '~/component/container/LabeledFieldSet';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -13,29 +13,29 @@ const CONFIG = {
     themeVars:       {},
 };
 
-describe('FormFieldSet columns', () => {
+describe('LabeledFieldSet columns', () => {
     afterEach(() => DOM.reset());
 
     it('defaults columns to 1', () => {
         installTestDOM(CONFIG);
 
-        expect(new FormFieldSet('Form').getColumns()).toBe(1);
+        expect(new LabeledFieldSet('Form').getColumns()).toBe(1);
     });
 
     it('reflects the configured column count', () => {
         installTestDOM(CONFIG);
 
-        expect(new FormFieldSet('Form', { columns: 2 }).getColumns()).toBe(2);
+        expect(new LabeledFieldSet('Form', { columns: 2 }).getColumns()).toBe(2);
     });
 });
 
-describe('FormFieldSet field structure', () => {
+describe('LabeledFieldSet field structure', () => {
     afterEach(() => DOM.reset());
 
     it('addField appends a label + the field component and is chainable', () => {
         installTestDOM(CONFIG);
 
-        const form  = new FormFieldSet('Form');
+        const form  = new LabeledFieldSet('Form');
         const input = new Component();
 
         // The legend is appended directly via DOM (not addComponent), so the
@@ -55,7 +55,7 @@ describe('FormFieldSet field structure', () => {
     it('addFullWidthRow appends one spanning component and is chainable', () => {
         installTestDOM(CONFIG);
 
-        const form = new FormFieldSet('Form');
+        const form = new LabeledFieldSet('Form');
         const wide = new Component();
 
         expect(form.addFullWidthRow(wide)).toBe(form);
@@ -66,7 +66,7 @@ describe('FormFieldSet field structure', () => {
     it('addRow flows the given pairs and is chainable', () => {
         installTestDOM(CONFIG);
 
-        const form = new FormFieldSet('Form', { columns: 2 });
+        const form = new LabeledFieldSet('Form', { columns: 2 });
         const a    = new Component();
         const b    = new Component();
 

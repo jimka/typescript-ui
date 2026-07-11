@@ -2,8 +2,8 @@
 
 export { FieldSet } from '~/component/container/FieldSet.js';
 export type { FieldSetOptions } from '~/component/container/FieldSet.js';
-export { FormFieldSet } from '~/component/container/FormFieldSet.js';
-export type { FormFieldSetOptions, FormFieldDescriptor, FormRowDescriptor } from '~/component/container/FormFieldSet.js';
+export { LabeledFieldSet } from '~/component/container/LabeledFieldSet.js';
+export type { LabeledFieldSetOptions, LabeledFieldDescriptor, LabeledRowDescriptor } from '~/component/container/LabeledFieldSet.js';
 export { Legend } from '~/component/container/Legend.js';
 export type { LegendOptions } from '~/component/container/Legend.js';
 export { MenuItem } from '~/component/container/MenuItem.js';

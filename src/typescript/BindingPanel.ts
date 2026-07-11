@@ -6,7 +6,7 @@ import { HBox, VBox } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { Checkbox, ComboBox, DateField, FileDropZone, FileField, Text, TextField, TimeField } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
-import { FormFieldSet } from '@jimka/typescript-ui/component/container';
+import { LabeledFieldSet } from '@jimka/typescript-ui/component/container';
 class BindingPanel extends Panel {
 
     constructor() {
@@ -147,10 +147,10 @@ class BindingPanel extends Panel {
         buttonRow.addComponent(commitButton);
         buttonRow.addComponent(rejectButton);
 
-        // A single-column FormFieldSet formalises the labelled-form pattern: each
+        // A single-column LabeledFieldSet formalises the labelled-form pattern: each
         // row is one title/field pair (titles hug their text, inputs take the
         // slack), and the status line and button bar each span the full width.
-        const fieldSet = new FormFieldSet("Information", {
+        const fieldSet = new LabeledFieldSet("Information", {
             rows: [
                 [{ title: "Record",        component: recordCombo }],
                 [{ title: "Name",          component: nameField }],
@@ -166,13 +166,13 @@ class BindingPanel extends Panel {
 
         this.addComponent(fieldSet);
 
-        // A two-column FormFieldSet (unbound) demonstrating the multi-column
+        // A two-column LabeledFieldSet (unbound) demonstrating the multi-column
         // layout: pairs flow across two logical columns that line up row-by-row,
         // a short row leaves its trailing column empty, and a note spans the full
         // width. Capped wider than the single-column form to fit two columns.
         const WIDE_FIELDSET_MAX_WIDTH = 600;
 
-        const addressForm = new FormFieldSet("Address (2-column demo)", {
+        const addressForm = new LabeledFieldSet("Address (2-column demo)", {
             columns: 2,
             rows: [
                 [{ title: "First",   component: new TextField()             }, { title: "Last",    component: new TextField() }],
@@ -203,7 +203,7 @@ class BindingPanel extends Panel {
             Notification.show('Dropped/picked ' + files.length + ' image(s).', 'info');
         });
 
-        const fileForm = new FormFieldSet('File inputs', {
+        const fileForm = new LabeledFieldSet('File inputs', {
             rows: [
                 [{ title: 'Attachment', component: singleFile }],
                 { component: dropZone, fullWidth: true },
