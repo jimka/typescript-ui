@@ -574,6 +574,14 @@ export interface DOMSink {
     focus(handle: Handle, options?: { preventScroll?: boolean }): void;
 
     /**
+     * Requests a native form submission on a `<form>` element, firing the
+     * cancelable `submit` event and running constraint validation.
+     *
+     * @param handle - The form element to submit.
+     */
+    requestSubmit(handle: Handle): void;
+
+    /**
      * Removes browser focus from an element.
      *
      * @param handle - The element to blur.
@@ -1413,6 +1421,11 @@ export class ProductionDOMSink implements DOMSink {
     /** @inheritDoc */
     focus(handle: Handle, options?: { preventScroll?: boolean }): void {
         (_registry.resolve(handle) as HTMLElement).focus(options);
+    }
+
+    /** @inheritDoc */
+    requestSubmit(handle: Handle): void {
+        (_registry.resolve(handle) as HTMLFormElement).requestSubmit();
     }
 
     /** @inheritDoc */
