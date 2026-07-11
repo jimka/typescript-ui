@@ -51,9 +51,31 @@ const result = await Dialog.show({
 
 Opening a dialog fades the panel in from `opacity: 0` + `scale(0.97)` to `opacity: 1` + `scale(1)` over 150ms; the backdrop fades in lockstep. Closing reverses the same transition — fade out + slight scale-down. `prefers-reduced-motion: reduce` skips both transitions: the dialog snaps in on open and is removed synchronously on close.
 
+## Severity tone
+
+Set `severity` to `'info'`, `'success'`, `'warning'`, or `'error'` to tint the title bar and show a matching leading glyph. An explicit severity overrides the tone otherwise derived from the buttons, so an error dialog reads as one regardless of its footer:
+
+```typescript
+await Dialog.show({
+    title:    'Connection failed',
+    message:  'Host not allowed.',
+    severity: 'error',
+    buttons:  [{ text: 'OK', result: 'confirm', primary: true }],
+});
+```
+
+`Dialog.info`, `Dialog.success`, `Dialog.warning`, and `Dialog.error` are one-shot conveniences for exactly that — a severity-toned dialog with a single OK button, resolving when the user acknowledges it:
+
+```typescript
+await Dialog.error('Connection failed', 'Host not allowed.');
+await Dialog.success('Saved', 'Your changes have been stored.');
+await Dialog.warning('Unsaved changes', 'They will be lost if you continue.');
+await Dialog.info('Import complete', 'Loaded 1,204 rows.');
+```
+
 ## Decorating the title bar
 
-`Dialog.getTitleBar()` returns the title-bar component for callers that need to tint or decorate the header — for example, the notification detail dialog paints the title bar with the severity's colour tokens and mounts a matching glyph:
+For tones beyond the four severities, `Dialog.getTitleBar()` returns the title-bar component so callers can tint or decorate the header directly:
 
 ```typescript
 const dialog = Dialog({ title: 'Information', /* … */ });
@@ -79,6 +101,7 @@ See [`DialogConfig`](/api/overlay/interfaces/DialogConfig) for the full option l
 | `width` / `height` | `480` / auto (clamped to `320 × 160` minimums) | Dialog panel size in pixels. |
 | `closeOnBackdrop` | `false` | Click outside dismisses with result `'close'`. |
 | `dismissable` | `true` | When `false`, mandatory modal: no title-bar close button, Escape/backdrop inert. |
+| `severity` | — | Title-bar tone (`'info'` / `'success'` / `'warning'` / `'error'`); tints the header and shows a matching glyph, overriding the button-derived tone. |
 
 ### Per-button glyph
 
