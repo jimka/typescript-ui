@@ -86,6 +86,7 @@ export default defineConfig({
                     { text: 'TabCloseButton', link: '/components/TabCloseButton' },
                 ] },
                 { text: 'Inputs', collapsed: false, items: [
+                    { text: 'Form',              link: '/components/Form' },
                     { text: 'TextField',         link: '/components/TextField' },
                     { text: 'TextArea',          link: '/components/TextArea' },
                     { text: 'PasswordField',     link: '/components/PasswordField' },

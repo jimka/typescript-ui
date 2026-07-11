@@ -32,6 +32,7 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Mutually-exclusive group of toggle buttons → **ButtonGroup** · `@jimka/typescript-ui/overlay` · Manages mutual exclusivity among a set of RadioButton or ToggleButton instances. · docs/components/ButtonGroup.md
 
 ### Inputs / Forms
+- Semantic <form> container with submit handling → **Form** · `@jimka/typescript-ui/core` · A Panel that bakes the semantic `<form>` tag and wires the native `submit` event to a single `onSubmit` callback. · docs/components/Form.md
 - Push button → **Button** · `@jimka/typescript-ui/component/button` · A push button component with a text label and configurable pressed-state appearance. · docs/components/Button.md
 - Two-state toggle button → **ToggleButton** · `@jimka/typescript-ui/component/button` · A toggle button component that switches between selected and unselected states on each click. · docs/components/ToggleButton.md
 - Button with a primary action plus a dropdown menu → **SplitButton** · `@jimka/typescript-ui/component/button` · A push button with a trailing dropdown chevron. The main button face fires the primary `"action"` event exactly like `Button`; clicking the… · docs/components/SplitButton.md

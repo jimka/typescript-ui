@@ -45,6 +45,7 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | --- | --- |
 | [`AbstractInput`](/api/component/input/classes/AbstractInput) | Abstract base for every value-bearing input — Bindable, listeners, enabled/read-only |
 | [`AbstractPickerField`](/api/component/input/classes/AbstractPickerField) | Abstract base for date/time/datetime picker fields — shares PickerInput + PickerButton chrome |
+| [`Form`](/components/Form) | `Panel` bearing a semantic `<form>` tag and native submit-event wiring |
 | [`PickerInput`](/api/component/input/classes/PickerInput) | Internal text input used inside the picker fields |
 | [`PickerButton`](/api/component/input/classes/PickerButton) | Internal glyph button used to the right of a picker field's input |
 | [`TextField`](/api/component/input/classes/TextField) | Single-line text input |
