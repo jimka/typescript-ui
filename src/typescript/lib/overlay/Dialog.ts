@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { Panel } from "~/core/Panel.js";
 import { Animation } from "~/core/Animation.js";
 import { Event } from "~/core/Event.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
@@ -491,7 +492,7 @@ const DEFAULT_BUTTONS: DialogButtonConfig[] = [
 class Dialog extends Component implements DismissableLayer {
 
     private readonly _titleBar        : DialogTitleBar;
-    private readonly _contentContainer: Component;
+    private readonly _contentContainer: Panel;
     private readonly _buttonRow       : DialogButtonRow;
     private readonly _backdrop        : DialogBackdrop;
     private readonly _config          : DialogConfig;
@@ -541,12 +542,20 @@ class Dialog extends Component implements DismissableLayer {
 
         this.applyHeaderVariant(this.computeHeaderVariant(buttons));
 
-        this._contentContainer = new Component();
-        this._contentContainer.setLayoutManager(new Fit());
-        // Vertical scrolling only — a horizontal scrollbar would cover the
-        // bottom rows of body text and is rarely useful for dialog content.
-        this._contentContainer.setOverflowY("auto");
-        this._contentContainer.setOverflowX("hidden");
+        // A Panel (not a bare Component) so the content area is a real scroll
+        // region: `autoScroll: "y"` opts it into the framework's overflow
+        // handling, and — because Panel does not clamp itself to its content size
+        // (`clampsToContentSize` is false) — a dialog capped shorter than its
+        // content (see resizeToContent) shrinks this container to the available
+        // space and scrolls, instead of a bare Component flooring to its content
+        // height and clipping. Vertical only: a horizontal scrollbar would cover
+        // the bottom rows of body text and is rarely useful for dialog content.
+        // Zero insets so content sits flush, matching the former bare container.
+        this._contentContainer = new Panel({
+            autoScroll:    "y",
+            layoutManager: new Fit(),
+            insets:        new Insets(0, 0, 0, 0),
+        });
 
         if (config.contentComponent) {
             this._contentContainer.addComponent(config.contentComponent);
@@ -944,10 +953,17 @@ class Dialog extends Component implements DismissableLayer {
     }
 
     /**
-     * Re-centers the dialog and resizes the backdrop when the viewport changes.
+     * Re-fits the dialog to the resized viewport: {@link Dialog.resizeToContent}
+     * grows it back toward its content when the viewport gained room, or caps it
+     * (so the content area scrolls) when the viewport shrank below the content —
+     * keeping the dialog within the viewport instead of overflowing it. The
+     * backdrop is resized to the new viewport and the panel re-centred (again
+     * unconditionally here, since `resizeToContent` skips re-centring when the
+     * height is unchanged).
      */
     private onViewportResize(): void {
         this._backdrop.resize();
+        this.resizeToContent();
         this.center();
     }
 
@@ -1015,6 +1031,20 @@ class Dialog extends Component implements DismissableLayer {
      */
     getContentComponent(): Component {
         return this._contentContainer;
+    }
+
+    /**
+     * The dialog sizes itself explicitly — its height is computed to fit its
+     * content at construction and re-fit (capped to the viewport) in
+     * {@link Dialog.resizeToContent} — so it must not additionally floor itself
+     * to its content's min-size. If it did, a dialog whose content is taller
+     * than the viewport could not shrink to the capped height, and its
+     * `autoScroll` content container would never get the constrained space it
+     * needs to scroll (it would clip instead). The `MIN_DIALOG_HEIGHT` floor is
+     * applied explicitly wherever the height is set.
+     */
+    protected clampsToContentSize(): boolean {
+        return false;
     }
 
     /**
