@@ -186,7 +186,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     }
 
     /**
-     * Mirrors the preferred and max size from the inner [`TextField`](/api/component/input/classes/TextField) onto this component
+     * Mirrors the preferred, max, and min size from the inner [`TextField`](/api/component/input/classes/TextField) onto this component
      * so that parent layout managers can calculate the correct row height.
      *
      * Called at construction time and after each theme change.
@@ -194,6 +194,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     private syncSizeFromTextField(): void {
         const pref = this._textField.getPreferredSize();
         const max  = this._textField.getMaxSize();
+        const min  = this._textField.getMinSize();
 
         if (pref) {
             this.setPreferredSize(pref.width, pref.height);
@@ -201,6 +202,12 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
 
         if (max) {
             this.setMaxSize(max.width, max.height);
+        }
+
+        // Mirrors the inner field's min so the composite is non-squishable
+        // like a bare TextField, not just visually preferred at one line.
+        if (min) {
+            this.setMinSize(min.width, min.height);
         }
     }
 

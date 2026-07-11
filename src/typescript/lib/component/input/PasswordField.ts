@@ -72,6 +72,10 @@ class PasswordField extends TextInput<PasswordFieldOptions> {
 
         this.setPreferredSize(200, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
+        // Min-height pinned to the single-line box so the field can't be
+        // vertically compressed below one line; min-width 0 keeps it
+        // horizontally flexible.
+        this.setMinSize(0, h);
     }
 }
 
