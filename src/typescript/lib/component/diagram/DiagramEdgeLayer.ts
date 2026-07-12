@@ -255,9 +255,10 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
     }
 
     /**
-     * Defines the existing default arrowhead `<marker>` into `defs`. Unchanged
-     * from before crow's-foot markers existed — `orient="auto"` since it is
-     * only ever used at `marker-end`.
+     * Defines the default arrowhead `<marker>` into `defs`. `orient="auto-start-
+     * reverse"` so the one definition serves both `marker-end` (unreversed, the
+     * common case) and `marker-start` (auto-flipped to point back out of the
+     * source node) — e.g. a data-flow edge that draws its arrow at the source end.
      *
      * @param defs - The `<defs>` element to append into.
      */
@@ -270,7 +271,7 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
             markerHeight: String(ARROW_SIZE),
             refX:         String(ARROW_SIZE),
             refY:         String(ARROW_SIZE / 2),
-            orient:       "auto",
+            orient:       "auto-start-reverse",
             markerUnits:  "userSpaceOnUse",
         } });
 
