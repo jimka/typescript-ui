@@ -219,10 +219,10 @@ class Menu extends Component implements DismissableLayer {
         this.resumeLayout();
 
         const contentWidth = this.layOutColumns();
+        const naturalWidth = this._menuWidth ?? contentWidth;
 
-        this.setWidth(this._menuWidth ?? contentWidth);
+        this.setWidth(naturalWidth);
 
-        const width       = this.getWidth();
         const totalHeight = this.getPreferredSize()?.height ?? 0;
 
         const el = this.getElement(true)!;
@@ -234,9 +234,26 @@ class Menu extends Component implements DismissableLayer {
         // VIEWPORT_MARGIN`, so `available` equals `totalHeight` exactly and no
         // spurious scrollbar appears. `show()` only ever grows the menu downward
         // from the clamped top (never flipped above the cursor), so the room
-        // below it is the correct available height.
-        const clamped   = clampIntoViewport(x, y, { width, height: totalHeight }, vp, VIEWPORT_MARGIN);
-        const available = vp.height - clamped.y - VIEWPORT_MARGIN;
+        // below it is the correct available height. Width does not affect the
+        // vertical clamp, so `available` is derived from the natural width and
+        // stays correct after the scrollbar-gutter widening below.
+        const available = vp.height
+            - clampIntoViewport(x, y, { width: naturalWidth, height: totalHeight }, vp, VIEWPORT_MARGIN).y
+            - VIEWPORT_MARGIN;
+
+        // When the content is taller than the room below, `applyViewportHeightClamp`
+        // caps the height and the `overflow-y: auto` scrollbar engages. Reserve
+        // its width as a right inset — and widen the content-sized panel to
+        // match — so items lay out beside the native scrollbar instead of
+        // beneath it. `Component.getInnerSize` subtracts the inset, so the VBox
+        // stretches items to `naturalWidth`, unchanged from the no-scroll case.
+        const gutter = totalHeight > available ? DOM.source.getScrollBarWidth() : 0;
+
+        this.setInsets(new Insets(4, gutter, 4, 0));
+        this.setWidth(naturalWidth + gutter);
+
+        const width   = this.getWidth();
+        const clamped = clampIntoViewport(x, y, { width, height: totalHeight }, vp, VIEWPORT_MARGIN);
 
         this.setX(clamped.x);
         this.setY(clamped.y);

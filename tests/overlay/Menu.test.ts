@@ -491,3 +491,53 @@ describe('Menu as DismissableLayer', () => {
         expect(onClose).toHaveBeenCalledOnce();
     });
 });
+
+describe('Menu vertical-scroll scrollbar gutter', () => {
+    afterEach(() => DOM.reset());
+
+    // Ten identical items with a right-aligned shortcut, so the natural content
+    // width is the same whether the menu fits or scrolls.
+    const items: MenuItemConfig[] = Array.from({ length: 10 }, (_, i) => ({
+        text:     `Item number ${i}`,
+        shortcut: '⌘K',
+    }));
+
+    it('reserves no gutter when the menu fits without scrolling', () => {
+        installTestDOM(CONFIG); // 800px tall — 10 * 24px items fit easily
+
+        const menu = new Menu();
+        menu.show(10, 10, items);
+
+        expect(menu.getInsets().getRight()).toBe(0);
+
+        menu.hide();
+    });
+
+    it('reserves a scrollbar-width right gutter when the menu overflows vertically', () => {
+        // Measure the natural (non-scrolling) width of the same items first.
+        installTestDOM(CONFIG);
+        const fit = new Menu();
+        fit.show(10, 10, items);
+        const naturalWidth = fit.getWidth();
+        expect(fit.getInsets().getRight()).toBe(0);
+        fit.hide();
+        DOM.reset();
+
+        // A short viewport forces the same items to overflow and scroll.
+        installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
+        const sbw = DOM.source.getScrollBarWidth();
+        expect(sbw).toBeGreaterThan(0);
+
+        const scroll = new Menu();
+        scroll.show(10, 10, items);
+
+        // The gutter is reserved as a right inset so items never lay out under
+        // the native scrollbar, and the panel is widened to keep the item
+        // content area at its natural width.
+        expect(scroll.getInsets().getRight()).toBe(sbw);
+        expect(scroll.getWidth()).toBe(naturalWidth + sbw);
+        expect(scroll.getWidth() - scroll.getInsets().getRight()).toBe(naturalWidth);
+
+        scroll.hide();
+    });
+});
