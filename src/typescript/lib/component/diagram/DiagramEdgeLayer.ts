@@ -117,30 +117,60 @@ export interface DiagramEdgeRoute {
 }
 
 /**
- * The midpoint used to place an edge's optional label: the middle bend point
- * when the route has an odd bend count centred on one, else the midpoint of
- * the first section's start/end points. A simple, deterministic placement —
- * exact label layout is a manual visual-tuning step.
+ * The point used to place an edge's optional label: the halfway point *along the
+ * routed polyline* (start → bend points → end), measured by arc length. This
+ * stays visually centred on the edge even when it bends — a bend point can sit
+ * far off centre and drag the label toward one endpoint.
  *
  * @param sections - The edge's routed sections.
  * @returns The label anchor point.
  */
 function labelPoint(sections: ElkEdgeSection[]): ElkPoint {
     const section = sections[0];
-    const bends   = section?.bendPoints ?? [];
-
-    if (bends.length > 0) {
-        return bends[Math.floor((bends.length - 1) / 2)];
-    }
 
     if (!section) {
         return { x: 0, y: 0 };
     }
 
-    return {
-        x: (section.startPoint.x + section.endPoint.x) / 2,
-        y: (section.startPoint.y + section.endPoint.y) / 2,
-    };
+    const points = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint];
+
+    return midpointAlong(points);
+}
+
+/**
+ * The point half the total length along a polyline, interpolated within the
+ * segment that straddles the midpoint.
+ *
+ * @param points - The polyline vertices, in order (length >= 1).
+ * @returns The arc-length midpoint.
+ */
+function midpointAlong(points: ElkPoint[]): ElkPoint {
+    const segmentLength = (a: ElkPoint, b: ElkPoint): number => Math.hypot(b.x - a.x, b.y - a.y);
+
+    let total = 0;
+
+    for (let i = 1; i < points.length; i++) {
+        total += segmentLength(points[i - 1], points[i]);
+    }
+
+    let remaining = total / 2;
+
+    for (let i = 1; i < points.length; i++) {
+        const length = segmentLength(points[i - 1], points[i]);
+
+        if (length >= remaining) {
+            const t = length === 0 ? 0 : remaining / length;
+
+            return {
+                x: points[i - 1].x + (points[i].x - points[i - 1].x) * t,
+                y: points[i - 1].y + (points[i].y - points[i - 1].y) * t,
+            };
+        }
+
+        remaining -= length;
+    }
+
+    return points[points.length - 1];
 }
 
 /**
