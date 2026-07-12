@@ -540,4 +540,27 @@ describe('Menu vertical-scroll scrollbar gutter', () => {
 
         scroll.hide();
     });
+
+    it('reserves the gutter when a reused menu grows from fitting to scrolling', () => {
+        installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
+        const sbw = DOM.source.getScrollBarWidth();
+
+        const menu = new Menu();
+
+        // First open: three 24px items in a 120px viewport — fits, no gutter.
+        menu.show(10, 10, items.slice(0, 3));
+        expect(menu.getInsets().getRight()).toBe(0);
+        const fitHeight = menu.getHeight();
+        menu.hide();
+
+        // Reopen the SAME instance with all ten items — now overflows. The gutter
+        // must be reserved on this transition too (not just on a fresh instance),
+        // and the panel must grow to fill the available height rather than staying
+        // stuck at the first, shorter size.
+        menu.show(10, 10, items);
+        expect(menu.getInsets().getRight()).toBe(sbw);
+        expect(menu.getHeight()).toBeGreaterThan(fitHeight);
+
+        menu.hide();
+    });
 });
