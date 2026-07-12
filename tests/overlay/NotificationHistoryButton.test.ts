@@ -55,6 +55,10 @@ describe('NotificationHistoryButton', () => {
         expect(new NotificationHistoryButton({ glyph: 'circle-check' }).getGlyph()?.getGlyphName()).toBe('circle-check');
     });
 
+    it('carries an accessible label', () => {
+        expect(new NotificationHistoryButton().getAria().getLabel()).toBe('Notification history');
+    });
+
     it('builds a single disabled item for the empty history', () => {
         const items = buildItems(new NotificationHistoryButton());
         expect(items).toHaveLength(1);
