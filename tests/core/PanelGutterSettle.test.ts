@@ -37,6 +37,20 @@ function seedLastCount(panel: _Panel, n: number): void {
     (panel as unknown as { _lastChildCount: number })._lastChildCount = n;
 }
 
+/** Seeds the panel's last-seen content extent (as a prior layout pass would). */
+function seedLastExtent(panel: _Panel, width: number, height: number): void {
+    (panel as unknown as { _lastContentExtent: { width: number; height: number } })._lastContentExtent = { width, height };
+}
+
+/**
+ * Lights a shadow edge so `showsScrollAffordance` reports an on-screen scroll
+ * affordance — the offline DOM models no overflow, so this stands in for the
+ * gutter/shadow a real overflowing pass would have left.
+ */
+function seedAffordance(panel: _Panel): void {
+    (panel as unknown as { _shadowEdges: { top: number; bottom: number; left: number; right: number } })._shadowEdges = { top: 0, bottom: 50, left: 0, right: 0 };
+}
+
 describe('Panel — gutter/shadow settle on shrink', () => {
     it('schedules one follow-up pass after a child-count decrease (autoScroll)', () => {
         const panel = new _Panel({ autoScroll: 'y' });
@@ -68,6 +82,38 @@ describe('Panel — gutter/shadow settle on shrink', () => {
         panel.addComponent(new Component());
 
         seedLastCount(panel, 1);             // grew from 1 to 2
+        const spy = vi.spyOn(panel, 'scheduleLayout');
+
+        settle(panel);
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('schedules a follow-up when nested content shrinks (preferred extent drops) with the child count unchanged', () => {
+        const panel = new _Panel({ autoScroll: 'y' });
+        panel.addComponent(new Component());
+
+        // A prior overflowing pass left an affordance on screen and recorded a
+        // far taller content extent; the direct child count is unchanged because
+        // the shrink happened inside a descendant (the FilterDialog case).
+        seedAffordance(panel);
+        seedLastExtent(panel, 10_000, 10_000);
+        seedLastCount(panel, 1);
+
+        const spy = vi.spyOn(panel, 'scheduleLayout');
+
+        settle(panel);
+        expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not read the extent (nor schedule) when no scroll affordance is showing', () => {
+        const panel = new _Panel({ autoScroll: 'y' });
+        panel.addComponent(new Component());
+
+        // Extent would look shrunk, but with no affordance on screen there is
+        // nothing stale to settle, so the extent path is skipped entirely.
+        seedLastExtent(panel, 10_000, 10_000);
+        seedLastCount(panel, 1);
+
         const spy = vi.spyOn(panel, 'scheduleLayout');
 
         settle(panel);
