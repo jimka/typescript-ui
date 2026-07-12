@@ -11,6 +11,7 @@ import { TextField } from '~/component/input/TextField';
 import { NumberedList } from '~/component/list/NumberedList';
 import { NumberedListItemStyle } from '~/component/list/NumberedListItemStyle';
 import { TabCloseButton } from '~/component/button/TabCloseButton';
+import { NotificationHistoryButton } from '~/overlay/NotificationHistoryButton';
 import { Button } from '~/component/button/Button';
 import { Drawer } from '~/overlay/Drawer';
 import { Popover } from '~/overlay/Popover';
@@ -169,6 +170,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'Button flat',                  resolve: () => new Button({ text: 'x' }).isFlat(),                         expected: false },
     { label: 'TabCloseButton glyph',         resolve: () => new TabCloseButton().getGlyph()?.getGlyphName(),            expected: 'xmark' },
     { label: 'TabCloseButton preferredSize', resolve: () => sizeTuple(new TabCloseButton().getPreferredSize()),         expected: [16, 16] },
+    { label: 'NotificationHistoryButton glyph', resolve: () => new NotificationHistoryButton().getGlyph()?.getGlyphName(), expected: 'clock-rotate-left' },
     { label: 'AnimatedDropdown visible',     resolve: () => new AnimatedDropdown().isVisible(),                         expected: false },
     { label: 'LineChart showLegend',         resolve: () => new LineChart({}).isShowLegend(),                           expected: true },
     { label: 'LineChart legendPosition',     resolve: () => new LineChart({}).getLegendPosition(),                      expected: 'right' },

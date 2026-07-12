@@ -27,7 +27,27 @@ Glyph.register(circle_info, circle_check, triangle_exclamation, circle_exclamati
  */
 export type NotificationType = 'info' | 'success' | 'warning' | 'error';
 
-const BADGE_GLYPH: Record<NotificationType, string> = {
+/**
+ * A single captured notification, retained in the in-session history returned
+ * by {@link Notification.getHistory}.
+ *
+ * @category Core
+ */
+export interface NotificationRecord {
+    /** The full (un-truncated) message text passed to {@link Notification.show}. */
+    readonly message: string;
+    /** The severity type the toast was shown with. */
+    readonly type: NotificationType;
+    /** Epoch milliseconds (`Date.now()`) when the toast was shown. */
+    readonly timestamp: number;
+}
+
+/**
+ * Maps a notification severity to its registry glyph name. Exported (module,
+ * not barrel — so it stays out of the public API docs) so the notification
+ * history menu reuses the same severity-icon mapping rather than duplicating it.
+ */
+export const BADGE_GLYPH: Record<NotificationType, string> = {
     info:    "circle-info",
     success: "circle-check",
     warning: "triangle-exclamation",
@@ -81,6 +101,12 @@ export class Notification extends Component {
     private static readonly Z_INDEX: number        = 10002;
 
     private static activeNotifications: Notification[] = [];
+
+    // The most-recent notifications retained by the in-session history. A fixed
+    // ring cap keeps memory trivial and the history menu scrollable-but-finite;
+    // oldest entries are evicted first.
+    private static readonly HISTORY_CAP: number = 50;
+    private static history: NotificationRecord[] = [];
 
     // The auto-dismiss timer of every visible notification is paused while
     // either of these counters is positive. `hoverCount` tracks how many
@@ -212,6 +238,8 @@ export class Notification extends Component {
      *   Pass `0` for a persistent notification. Defaults to `3000`.
      */
     static show(message: string, type: NotificationType = 'info', duration: number = 3000): void {
+        Notification.record(message, type);
+
         const n = new Notification(message, type);
 
         Notification.activeNotifications.push(n);
@@ -235,6 +263,35 @@ export class Notification extends Component {
                 n.pauseTimer();
             }
         }
+    }
+
+    /**
+     * Appends one entry to the in-session history, evicting the oldest once the
+     * {@link HISTORY_CAP} ceiling is exceeded. Called by {@link show} for every
+     * toast; browsing history via {@link showDetail} deliberately does not
+     * record, so "history = everything ever shown this session, one entry per
+     * `show()`".
+     *
+     * @param message - The full message text.
+     * @param type - The severity type.
+     */
+    private static record(message: string, type: NotificationType): void {
+        Notification.history.push({ message, type, timestamp: Date.now() });
+
+        if (Notification.history.length > Notification.HISTORY_CAP) {
+            Notification.history.shift();
+        }
+    }
+
+    /**
+     * Returns the in-session notification history, oldest first, capped at the
+     * most recent 50 entries. The returned array is a defensive copy — mutating
+     * it does not affect the retained history.
+     *
+     * @returns A copy of the history entries, oldest first.
+     */
+    static getHistory(): readonly NotificationRecord[] {
+        return [...Notification.history];
     }
 
     /**
@@ -422,21 +479,35 @@ export class Notification extends Component {
     }
 
     /**
-     * Opens a modal detail dialog showing the full (un-truncated) message text.
-     * Active notification timers are paused while the dialog is open and clamped
-     * to a minimum of 8 seconds when the dialog is dismissed.
+     * Opens the modal detail dialog for this toast's full (un-truncated) message.
+     * Delegates to {@link showDetail}; a double-click on the toast body routes
+     * here.
      */
     private openDetail(): void {
+        Notification.showDetail(this._fullMessage, this._type);
+    }
+
+    /**
+     * Opens a modal detail dialog showing the full message text — the same dialog
+     * a live toast opens on double-click. Active notification timers are paused
+     * while the dialog is open and clamped to a minimum of 8 seconds when the
+     * dialog is dismissed. Does not itself record a history entry, so re-opening a
+     * past notification from the history menu leaves the history unchanged.
+     *
+     * @param message - The full message text to display.
+     * @param type - The severity type; controls the title and title-bar tint.
+     */
+    static showDetail(message: string, type: NotificationType): void {
         Notification.pauseAll();
 
-        const content = new Text(this._fullMessage);
+        const content = new Text(message);
         content.setAutoMeasure(false);
         content.setWhiteSpace("pre-wrap");
         content.setWordBreak("break-word");
         content.setPadding(new Insets(16, 16, 16, 16));
 
         const dialog = new _Dialog({
-            title:            DETAIL_TITLE[this._type],
+            title:            DETAIL_TITLE[type],
             contentComponent: content,
             buttons:          [{ ...DialogButtons.Close, primary: true }],
             width:            420,
@@ -445,14 +516,14 @@ export class Notification extends Component {
 
         // Tint the title bar to match the notification's severity colours.
         const titleBar = dialog.getTitleBar();
-        titleBar.setBackgroundColor(`var(--ts-ui-notification-${this._type}-bg)`);
-        titleBar.getTitleText().setForegroundColor(`var(--ts-ui-notification-${this._type}-border)`);
-        titleBar.setGlyph(BADGE_GLYPH[this._type]);
+        titleBar.setBackgroundColor(`var(--ts-ui-notification-${type}-bg)`);
+        titleBar.getTitleText().setForegroundColor(`var(--ts-ui-notification-${type}-border)`);
+        titleBar.setGlyph(BADGE_GLYPH[type]);
 
         const titleGlyph = titleBar.getGlyph();
 
         if (titleGlyph !== null) {
-            titleGlyph.setForegroundColor(`var(--ts-ui-notification-${this._type}-border)`);
+            titleGlyph.setForegroundColor(`var(--ts-ui-notification-${type}-border)`);
         }
 
         dialog.show().then(() => Notification.resumeAll());

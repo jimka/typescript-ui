@@ -19,6 +19,7 @@ import {
     Drawer,
     Menu,
     Notification,
+    NotificationHistoryButton,
     Popover,
     Rail,
     Tooltip,
@@ -1011,6 +1012,10 @@ class MiscPanel extends Panel {
             Notification.show("Connection failed. Please try again.", "error");
         });
         leftColumn.addComponent(buttonNotificationStack);
+
+        // Reviews the notifications shown above: opens a menu of the in-session
+        // history, newest first, each row re-opening that notification's detail.
+        leftColumn.addComponent(new NotificationHistoryButton());
 
         // Mixed-case fruits so the *CaseSensitive match modes produce a
         // visibly-different result set than the default case-insensitive ones.
