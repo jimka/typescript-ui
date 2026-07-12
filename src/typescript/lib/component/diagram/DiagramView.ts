@@ -538,6 +538,39 @@ class DiagramView extends Panel<DiagramViewOptions> {
     }
 
     /**
+     * Scrolls the viewport so the given node is centred, without changing the
+     * selection or emitting any event. No-op for an unknown id or before the
+     * first layout has positioned the node. Pair with {@link selectNode} to both
+     * highlight and reveal.
+     *
+     * @param id - The node id to centre, or a no-op when not found.
+     *
+     * @returns This view, for method chaining.
+     */
+    revealNode(id: string): this {
+        const component = this._nodeComponents.get(id);
+
+        if (!component) {
+            return this;
+        }
+
+        const zoom = this.getZoom();
+
+        // Node centre in scaled (on-screen) coordinates; the inverse of
+        // _handleWheel's graphX = (pointer + scroll) / zoom. Nodes carry unscaled
+        // graph coords via getX/getY under the content host's scale(zoom).
+        const centreX = (component.getX() + component.getWidth()  / 2) * zoom;
+        const centreY = (component.getY() + component.getHeight() / 2) * zoom;
+
+        // Scroll so the node centre lands at the viewport centre; the DOM clamps
+        // the scroll offsets to their valid range on write-back.
+        this.setScrollLeft(Math.max(0, centreX - this.getWidth()  / 2));
+        this.setScrollTop (Math.max(0, centreY - this.getHeight() / 2));
+
+        return this;
+    }
+
+    /**
      * Updates the selection state and toggles each node's selected visual.
      *
      * @param id - The node id to select, or `null` to clear.

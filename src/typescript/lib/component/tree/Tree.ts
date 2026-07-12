@@ -139,6 +139,29 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         return this;
     }
 
+    /**
+     * Expands every node that has (already-loaded) children, so the whole tree
+     * is flattened and visible. Does not load lazy branches and does not change
+     * the selection or emit any event.
+     *
+     * @returns This tree, for method chaining.
+     */
+    expandAll(): this {
+        const addExpandable = (nodes: TreeNode[]): void => {
+            for (const node of nodes) {
+                if (node.children && node.children.length > 0) {
+                    this._expandedNodes.add(node);
+                    addExpandable(node.children);
+                }
+            }
+        };
+
+        addExpandable(this._nodes);
+        this._reflattenAndRender();
+
+        return this;
+    }
+
     /** Returns the fixed row height every tree row is laid out at. */
     protected getRowHeight(): number {
         return ROW_HEIGHT;
