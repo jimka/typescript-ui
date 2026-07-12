@@ -69,6 +69,18 @@ Notification.resumeAll();
 
 `resumeAll` restarts each timer with at least 8 seconds remaining, so the user has time to read the stack after the modal closes.
 
+## Reviewing past notifications
+
+Toasts auto-dismiss, so a user who glances away misses them. Drop a [`NotificationHistoryButton`](/components/NotificationHistoryButton) into a toolbar to give them a way back: it opens a menu of the notifications shown this session (newest first, with severity badge and relative time), and activating a row re-opens that notification's full message in a modal detail dialog.
+
+```typescript
+import { NotificationHistoryButton } from '@jimka/typescript-ui/overlay';
+
+toolbar.addComponent(new NotificationHistoryButton());
+```
+
+Capture is automatic — every `Notification.show()` is recorded, so nothing else is needed. To read the history programmatically, use [`Notification.getHistory()`](/api/overlay/classes/Notification#gethistory), which returns the retained records (oldest first) as a read-only copy. History is in-session only and bounded to the most recent 50 entries.
+
 ## Anti-patterns
 
 - **Don't block** — for confirmation prompts use [`Dialog`](/recipes/dialog-modal), not a toast.
@@ -82,4 +94,5 @@ Each severity has its own background and border tokens — see [Theming](/concep
 ## See also
 
 - [Notification](/components/Notification)
+- [NotificationHistoryButton](/components/NotificationHistoryButton) — review and re-open past notifications
 - [Dialog modal](/recipes/dialog-modal) — for confirmations and form prompts

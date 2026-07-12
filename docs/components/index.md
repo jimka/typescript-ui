@@ -22,6 +22,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`Tooltip`](/api/overlay/classes/Tooltip) | Singleton hover hint, attach via `Tooltip.attach(component, text)` |
 | [`Popover`](/components/Popover) | Anchored, non-modal floating bubble with arrow tail and dismiss modes |
 | [`Notification`](/api/overlay/classes/Notification) | Static toast — `Notification.show(message, type, duration?)` |
+| [`NotificationHistoryButton`](/api/overlay/classes/NotificationHistoryButton) | Button opening a menu of recent notifications to review and re-open |
 | [`AnimatedDropdown`](/api/core/classes/AnimatedDropdown) | Floating-panel base with shared fade lifecycle |
 
 ## Buttons

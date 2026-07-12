@@ -27,7 +27,8 @@ Notification.show(
 - **Severity badge** — every toast leads with an SVG glyph that matches its severity (`info`, `success`, `warning`, `error`). The badge is tinted with the severity's border-colour token so it pulls together with the rest of the toast.
 - **Hover-pause is global** — hovering *any* toast pauses *every* visible toast's timer. The timers resume only when the pointer leaves the last hovered toast. New toasts shown during the paused window start paused too.
 - **Two-line clamp** — long messages are clamped to two lines with a trailing ellipsis (`-webkit-line-clamp: 2`). The fixed 64px toast height stays predictable; the full message is reachable via the detail dialog (below).
-- **Double-click detail** — double-clicking the toast opens a modal dialog showing the full un-truncated message. The dialog's title bar is tinted with the severity's colours and carries the same badge glyph.
+- **Double-click detail** — double-clicking the toast opens a modal dialog showing the full un-truncated message. The dialog's title bar is tinted with the severity's colours and carries the same badge glyph. The same dialog can be opened for any message/type via the static [`Notification.showDetail(message, type)`](/api/overlay/classes/Notification#showdetail).
+- **In-session history** — every `Notification.show()` is recorded (message, type, timestamp) into a bounded history of the most recent 50 toasts, readable via [`Notification.getHistory()`](/api/overlay/classes/Notification#gethistory). Drop a [`NotificationHistoryButton`](/components/NotificationHistoryButton) into your UI to let users review and re-open past notifications.
 - **Stacking** — multiple toasts stack upward from the bottom-right corner.
 - **Entrance + exit animation** — toasts slide in from the right and fade in over 200ms when they appear, and slide back out + fade over 200ms when dismissed.
 - **Manual dismiss** — every toast renders a × button (labelled "Dismiss notification" for assistive tech). The stack collapses upward once the exit transition completes. Both entrance and exit honour `prefers-reduced-motion: reduce`.
@@ -57,3 +58,4 @@ Each severity has its own background and border tokens — see the `notification
 
 - [API: Notification](/api/overlay/classes/Notification)
 - [API: NotificationType](/api/overlay/type-aliases/NotificationType)
+- [NotificationHistoryButton](/components/NotificationHistoryButton) — review and re-open past notifications

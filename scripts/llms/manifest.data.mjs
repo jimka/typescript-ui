@@ -103,6 +103,7 @@ export const groups = [
         { task: "Anchored floating popover", symbol: "Popover" },
         { task: "Hover tooltip", symbol: "Tooltip" },
         { task: "Transient toast notification", symbol: "Notification" },
+        { task: "Browse / re-open past notifications", symbol: "NotificationHistoryButton" },
     ] },
 
     { name: "Data layer", entries: [
