@@ -22,6 +22,18 @@ const EDGE_STROKE = "var(--ts-ui-diagram-edge, var(--ts-ui-border-color, rgb(120
 /** Edge path stroke width in pixels — a hairline that reads at any zoom. */
 const EDGE_STROKE_WIDTH = "1.5";
 
+/** Font size (px) of an edge's mid-route label. */
+const LABEL_FONT_SIZE = "12";
+
+/**
+ * Background colour and width (px) of the halo drawn behind an edge label. The
+ * label text is painted `stroke`-then-`fill` (`paint-order`), so this
+ * background-coloured stroke masks the edge line running under the glyphs — the
+ * label reads clearly instead of being crossed out by the edge.
+ */
+const LABEL_HALO       = "var(--ts-ui-diagram-bg, var(--ts-ui-panel-bg, rgb(255, 255, 255)))";
+const LABEL_HALO_WIDTH = "4";
+
 /** Arrowhead marker box size in user units (matches the `refX`/`refY` below). */
 const ARROW_SIZE = 8;
 
@@ -411,7 +423,13 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
                 x:                String(point.x),
                 y:                String(point.y),
                 fill:             EDGE_STROKE,
-                "font-size":      "10",
+                // Background-coloured halo painted first, so the edge line under the
+                // glyphs is masked and the label reads clearly (not crossed out).
+                stroke:           LABEL_HALO,
+                "stroke-width":   LABEL_HALO_WIDTH,
+                "stroke-linejoin": "round",
+                "paint-order":    "stroke",
+                "font-size":      LABEL_FONT_SIZE,
                 "text-anchor":    "middle",
                 "dominant-baseline": "central",
             },
