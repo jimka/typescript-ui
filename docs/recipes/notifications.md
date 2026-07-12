@@ -71,7 +71,7 @@ Notification.resumeAll();
 
 ## Reviewing past notifications
 
-Toasts auto-dismiss, so a user who glances away misses them. Drop a [`NotificationHistoryButton`](/components/NotificationHistoryButton) into a toolbar to give them a way back: it opens a menu of the notifications shown this session (newest first, with severity badge and relative time), and activating a row re-opens that notification's full message in a modal detail dialog.
+Toasts auto-dismiss, so a user who glances away misses them. Drop a [`NotificationHistoryButton`](/components/NotificationHistoryButton) into a toolbar to give them a way back: it opens a menu of the notifications shown this session (chronological, latest at the bottom and scrolled there on open, each with a severity badge and relative time), and activating a row re-opens that notification's full message in a modal detail dialog.
 
 ```typescript
 import { NotificationHistoryButton } from '@jimka/typescript-ui/overlay';
