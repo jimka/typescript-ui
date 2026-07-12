@@ -1119,6 +1119,24 @@ class MiscPanel extends Panel {
         });
         leftColumn.addComponent(buttonDialogNonDismissable);
 
+        // The severity-toned OK dialogs — one per Dialog.info/success/warning/error
+        // shorthand (each tints the title bar and shows a matching glyph).
+        const buttonDialogInfo = new Button("Dialog — info");
+        buttonDialogInfo.on("action", () => void Dialog.info('Import complete', 'Loaded 1,204 rows.'));
+        leftColumn.addComponent(buttonDialogInfo);
+
+        const buttonDialogSuccess = new Button("Dialog — success");
+        buttonDialogSuccess.on("action", () => void Dialog.success('Saved', 'Your changes have been stored.'));
+        leftColumn.addComponent(buttonDialogSuccess);
+
+        const buttonDialogWarning = new Button("Dialog — warning");
+        buttonDialogWarning.on("action", () => void Dialog.warning('Unsaved changes', 'They will be lost if you continue.'));
+        leftColumn.addComponent(buttonDialogWarning);
+
+        const buttonDialogError = new Button("Dialog — error");
+        buttonDialogError.on("action", () => void Dialog.error('Connection failed', 'Host not allowed.'));
+        leftColumn.addComponent(buttonDialogError);
+
         const formNameField  = new TextField({ placeholder: 'Name' });
         const formEmailField = new TextField({ placeholder: 'Email' });
 

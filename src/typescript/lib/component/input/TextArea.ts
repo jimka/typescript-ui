@@ -26,6 +26,16 @@ export interface TextAreaOptions extends TextInputOptions {
 const _defaultTextAreaOptions: Partial<TextAreaOptions> = {
     tag:             "textarea",
     cursor:          "text",
+    // Override Component's `overflow: "hidden"` default so the underlying
+    // native `<textarea>` scrolls its own overflowing content (as a real
+    // textarea does) instead of being clipped. `auto` shows a scrollbar per
+    // axis only when that axis overflows — with the default soft wrap only the
+    // vertical bar appears, once the text is taller than the box. The effective
+    // default is honoured end-to-end: `applyStyle` writes it AND attaches the
+    // eased wheel scroller from it (see Component.applyOverflowStyles), so no
+    // constructor work is needed. Kept a class-level default, so an explicit
+    // caller `overflow` still wins.
+    overflow:        "auto",
     padding:         new Insets(3, 3, 3, 3),
     preferredSize:   { width: 200, height: 200 },
     minSize:         { width: 100, height: 100 },

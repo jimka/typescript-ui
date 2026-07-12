@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { Panel } from "~/core/Panel.js";
 import { Animation } from "~/core/Animation.js";
 import { Event } from "~/core/Event.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
@@ -18,10 +19,12 @@ import { callable } from "~/core/Callable.js";
 import { xmark } from "~/glyphs/solid/xmark.js";
 import { circle_check } from "~/glyphs/solid/circle_check.js";
 import { circle_info } from "~/glyphs/solid/circle_info.js";
+import { triangle_exclamation } from "~/glyphs/solid/triangle_exclamation.js";
+import { circle_exclamation } from "~/glyphs/solid/circle_exclamation.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 
-Glyph.register(xmark, circle_check, circle_info);
+Glyph.register(xmark, circle_check, circle_info, triangle_exclamation, circle_exclamation);
 
 /**
  * The result produced when a dialog is dismissed.
@@ -56,6 +59,16 @@ export interface DialogButtonConfig {
 }
 
 /**
+ * Severity tone for a dialog's title bar, mirroring
+ * [`NotificationType`](/api/core/type-aliases/NotificationType). When set it
+ * tints the header and shows a matching leading glyph, taking precedence over
+ * the tone otherwise derived from the buttons.
+ *
+ * @category Core
+ */
+export type DialogSeverity = 'info' | 'success' | 'warning' | 'error';
+
+/**
  * Configuration object passed to `new Dialog(config)` or `Dialog.show(config)`.
  *
  * @category Core
@@ -84,6 +97,13 @@ export interface DialogConfig {
      * of `closeOnBackdrop`). Defaults to `true`.
      */
     dismissable?     : boolean;
+    /**
+     * Optional severity tone for the title bar (`'info'`, `'success'`,
+     * `'warning'`, `'error'`). When set it tints the header and shows a matching
+     * leading glyph, overriding the tone derived from the buttons. Omit for the
+     * default button-derived chrome.
+     */
+    severity?        : DialogSeverity;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,6 +123,14 @@ const MIN_CONTENT_HEIGHT: number = 80;
 // Minimum gap kept between a content-resized dialog and each viewport edge, so a
 // dialog grown to tall content never runs flush to the top/bottom of the screen.
 const DIALOG_VIEWPORT_MARGIN: number = 24;
+
+// Leading title-bar glyph per severity tone, mirroring Notification's badges.
+const SEVERITY_GLYPH: Record<DialogSeverity, string> = {
+    info:    "circle-info",
+    success: "circle-check",
+    warning: "triangle-exclamation",
+    error:   "circle-exclamation",
+};
 
 /**
  * Shared duration (ms) for the dialog entrance/exit transition. The backdrop
@@ -491,7 +519,7 @@ const DEFAULT_BUTTONS: DialogButtonConfig[] = [
 class Dialog extends Component implements DismissableLayer {
 
     private readonly _titleBar        : DialogTitleBar;
-    private readonly _contentContainer: Component;
+    private readonly _contentContainer: Panel;
     private readonly _buttonRow       : DialogButtonRow;
     private readonly _backdrop        : DialogBackdrop;
     private readonly _config          : DialogConfig;
@@ -539,14 +567,28 @@ class Dialog extends Component implements DismissableLayer {
         this._titleBar = new DialogTitleBar(config.title, () => this.hide('close'), config.dismissable !== false);
         this.addComponent(this._titleBar, { placement: Placement.NORTH });
 
-        this.applyHeaderVariant(this.computeHeaderVariant(buttons));
+        // An explicit severity tone wins over the tone derived from the buttons,
+        // so an error/warning dialog reads as such regardless of its footer.
+        if (config.severity) {
+            this.applySeverityHeader(config.severity);
+        } else {
+            this.applyHeaderVariant(this.computeHeaderVariant(buttons));
+        }
 
-        this._contentContainer = new Component();
-        this._contentContainer.setLayoutManager(new Fit());
-        // Vertical scrolling only — a horizontal scrollbar would cover the
-        // bottom rows of body text and is rarely useful for dialog content.
-        this._contentContainer.setOverflowY("auto");
-        this._contentContainer.setOverflowX("hidden");
+        // A Panel (not a bare Component) so the content area is a real scroll
+        // region: `autoScroll: "y"` opts it into the framework's overflow
+        // handling, and — because Panel does not clamp itself to its content size
+        // (`clampsToContentSize` is false) — a dialog capped shorter than its
+        // content (see resizeToContent) shrinks this container to the available
+        // space and scrolls, instead of a bare Component flooring to its content
+        // height and clipping. Vertical only: a horizontal scrollbar would cover
+        // the bottom rows of body text and is rarely useful for dialog content.
+        // Zero insets so content sits flush, matching the former bare container.
+        this._contentContainer = new Panel({
+            autoScroll:    "y",
+            layoutManager: new Fit(),
+            insets:        new Insets(0, 0, 0, 0),
+        });
 
         if (config.contentComponent) {
             this._contentContainer.addComponent(config.contentComponent);
@@ -621,6 +663,29 @@ class Dialog extends Component implements DismissableLayer {
             if (headerGlyph !== null) {
                 headerGlyph.setForegroundColor(fgVar);
             }
+        }
+    }
+
+    /**
+     * Tints the title bar for an explicit {@link DialogSeverity}, reusing the
+     * notification severity palette and leading glyph (matching the
+     * notification-detail dialog). The border colour doubles as the title-text
+     * and glyph foreground, as it does for a notification.
+     *
+     * @param severity - The severity tone to apply.
+     */
+    private applySeverityHeader(severity: DialogSeverity): void {
+        const bgVar = `var(--ts-ui-notification-${severity}-bg)`;
+        const fgVar = `var(--ts-ui-notification-${severity}-border)`;
+
+        this._titleBar.setBackgroundColor(bgVar);
+        this._titleBar.getTitleText().setForegroundColor(fgVar);
+        this._titleBar.setGlyph(SEVERITY_GLYPH[severity]);
+
+        const headerGlyph = this._titleBar.getGlyph();
+
+        if (headerGlyph !== null) {
+            headerGlyph.setForegroundColor(fgVar);
         }
     }
 
@@ -944,10 +1009,17 @@ class Dialog extends Component implements DismissableLayer {
     }
 
     /**
-     * Re-centers the dialog and resizes the backdrop when the viewport changes.
+     * Re-fits the dialog to the resized viewport: {@link Dialog.resizeToContent}
+     * grows it back toward its content when the viewport gained room, or caps it
+     * (so the content area scrolls) when the viewport shrank below the content —
+     * keeping the dialog within the viewport instead of overflowing it. The
+     * backdrop is resized to the new viewport and the panel re-centred (again
+     * unconditionally here, since `resizeToContent` skips re-centring when the
+     * height is unchanged).
      */
     private onViewportResize(): void {
         this._backdrop.resize();
+        this.resizeToContent();
         this.center();
     }
 
@@ -1015,6 +1087,20 @@ class Dialog extends Component implements DismissableLayer {
      */
     getContentComponent(): Component {
         return this._contentContainer;
+    }
+
+    /**
+     * The dialog sizes itself explicitly — its height is computed to fit its
+     * content at construction and re-fit (capped to the viewport) in
+     * {@link Dialog.resizeToContent} — so it must not additionally floor itself
+     * to its content's min-size. If it did, a dialog whose content is taller
+     * than the viewport could not shrink to the capped height, and its
+     * `autoScroll` content container would never get the constrained space it
+     * needs to scroll (it would clip instead). The `MIN_DIALOG_HEIGHT` floor is
+     * applied explicitly wherever the height is set.
+     */
+    protected clampsToContentSize(): boolean {
+        return false;
     }
 
     /**
@@ -1130,6 +1216,90 @@ class Dialog extends Component implements DismissableLayer {
         });
 
         return result === 'confirm';
+    }
+
+    /**
+     * Displays a severity-toned dialog with a single OK button and resolves once
+     * the user acknowledges it. Shared by the {@link Dialog.info} /
+     * {@link Dialog.success} / {@link Dialog.warning} / {@link Dialog.error}
+     * shorthands.
+     *
+     * @param severity - The title-bar severity tone (see {@link DialogConfig.severity}).
+     * @param title - Text displayed in the title bar.
+     * @param message - Body message shown in the content area.
+     */
+    private static async alert(severity: DialogSeverity, title: string, message: string): Promise<void> {
+        await Dialog.show({
+            title,
+            message,
+            severity,
+            buttons: [{ ...DialogButtons.Ok, primary: true }],
+        });
+    }
+
+    /**
+     * Displays an info-toned dialog with a single OK button and resolves once the
+     * user acknowledges it.
+     *
+     * @param title - Text displayed in the title bar.
+     * @param message - Body message shown in the content area.
+     *
+     * @example
+     * ```typescript
+     * await Dialog.info('Import complete', 'Loaded 1,204 rows.');
+     * ```
+     */
+    static info(title: string, message: string): Promise<void> {
+        return Dialog.alert('info', title, message);
+    }
+
+    /**
+     * Displays a success-toned dialog with a single OK button and resolves once
+     * the user acknowledges it.
+     *
+     * @param title - Text displayed in the title bar.
+     * @param message - Body message shown in the content area.
+     *
+     * @example
+     * ```typescript
+     * await Dialog.success('Saved', 'Your changes have been stored.');
+     * ```
+     */
+    static success(title: string, message: string): Promise<void> {
+        return Dialog.alert('success', title, message);
+    }
+
+    /**
+     * Displays a warning-toned dialog with a single OK button and resolves once
+     * the user acknowledges it.
+     *
+     * @param title - Text displayed in the title bar.
+     * @param message - Body message shown in the content area.
+     *
+     * @example
+     * ```typescript
+     * await Dialog.warning('Unsaved changes', 'They will be lost if you continue.');
+     * ```
+     */
+    static warning(title: string, message: string): Promise<void> {
+        return Dialog.alert('warning', title, message);
+    }
+
+    /**
+     * Displays an error-toned dialog with a single OK button and resolves once
+     * the user acknowledges it. The title bar carries the error severity tint and
+     * glyph (see {@link DialogConfig.severity}).
+     *
+     * @param title - Text displayed in the title bar.
+     * @param message - Body message shown in the content area.
+     *
+     * @example
+     * ```typescript
+     * await Dialog.error('Connection failed', 'Host not allowed.');
+     * ```
+     */
+    static error(title: string, message: string): Promise<void> {
+        return Dialog.alert('error', title, message);
     }
 }
 
