@@ -81,6 +81,9 @@ class Menu extends Component implements DismissableLayer {
     private _menuWidth: number | null = null;
     private _rebuildOnClose: (() => void) | null = null;
     private _currentOpener: Handle | null = null;
+    // Rebuild-mode: when true, each show() scrolls the menu to the bottom after
+    // layout so the latest (bottom-most) items are visible on open.
+    private _scrollToBottomOnShow: boolean = false;
 
     /**
      * Constructs a Menu. With no arguments, a rebuild-mode (right-click context)
@@ -219,10 +222,18 @@ class Menu extends Component implements DismissableLayer {
         this.resumeLayout();
 
         const contentWidth = this.layOutColumns();
+        const naturalWidth = this._menuWidth ?? contentWidth;
 
-        this.setWidth(this._menuWidth ?? contentWidth);
+        this.setWidth(naturalWidth);
 
-        const width       = this.getWidth();
+        // A reused menu still carries the previous show's max-height — set by
+        // `applyViewportHeightClamp` to that show's available room. Because
+        // `getPreferredSize` clamps to the component's own max, leaving it in
+        // place would cap the new content at the old height, so a menu that
+        // grew past its previous size would neither expand nor reserve a
+        // scrollbar gutter on reopen. Clear it before measuring.
+        this.setMaxSize(Number.MAX_VALUE, Number.MAX_VALUE);
+
         const totalHeight = this.getPreferredSize()?.height ?? 0;
 
         const el = this.getElement(true)!;
@@ -234,9 +245,26 @@ class Menu extends Component implements DismissableLayer {
         // VIEWPORT_MARGIN`, so `available` equals `totalHeight` exactly and no
         // spurious scrollbar appears. `show()` only ever grows the menu downward
         // from the clamped top (never flipped above the cursor), so the room
-        // below it is the correct available height.
-        const clamped   = clampIntoViewport(x, y, { width, height: totalHeight }, vp, VIEWPORT_MARGIN);
-        const available = vp.height - clamped.y - VIEWPORT_MARGIN;
+        // below it is the correct available height. Width does not affect the
+        // vertical clamp, so `available` is derived from the natural width and
+        // stays correct after the scrollbar-gutter widening below.
+        const available = vp.height
+            - clampIntoViewport(x, y, { width: naturalWidth, height: totalHeight }, vp, VIEWPORT_MARGIN).y
+            - VIEWPORT_MARGIN;
+
+        // When the content is taller than the room below, `applyViewportHeightClamp`
+        // caps the height and the `overflow-y: auto` scrollbar engages. Reserve
+        // its width as a right inset — and widen the content-sized panel to
+        // match — so items lay out beside the native scrollbar instead of
+        // beneath it. `Component.getInnerSize` subtracts the inset, so the VBox
+        // stretches items to `naturalWidth`, unchanged from the no-scroll case.
+        const gutter = totalHeight > available ? DOM.source.getScrollBarWidth() : 0;
+
+        this.setInsets(new Insets(4, gutter, 4, 0));
+        this.setWidth(naturalWidth + gutter);
+
+        const width   = this.getWidth();
+        const clamped = clampIntoViewport(x, y, { width, height: totalHeight }, vp, VIEWPORT_MARGIN);
 
         this.setX(clamped.x);
         this.setY(clamped.y);
@@ -256,6 +284,15 @@ class Menu extends Component implements DismissableLayer {
         // paints in front of it.
         LayerManager.register(this);
         this.setZIndex(LayerManager.getZIndex(this));
+
+        // Optionally reveal the bottom of the list on open (e.g. a history menu
+        // whose latest entries sit at the bottom). Flush the scheduled layout
+        // first so the item heights are committed and `getMaxScrollTop` is
+        // accurate; when nothing overflows the offset is 0 and this is a no-op.
+        if (this._scrollToBottomOnShow) {
+            this.flushLayout();
+            this.setScrollTop(this.getMaxScrollTop());
+        }
 
         return this;
     }
@@ -352,6 +389,27 @@ class Menu extends Component implements DismissableLayer {
     }
 
     /**
+     * Controls whether the menu scrolls to the bottom of its item list each time
+     * it is shown. **Rebuild-mode only.**
+     *
+     * Use this for a menu whose latest entries sit at the bottom (e.g. a
+     * chronological notification history), so the most recent items are visible
+     * on open rather than the user having to scroll down. A no-op when the list
+     * fits without scrolling.
+     *
+     * @param value - `true` to scroll to the bottom on every show.
+     *
+     * @returns This menu, for method chaining.
+     */
+    setScrollToBottomOnShow(value: boolean): this {
+        this.assertRebuildMode("setScrollToBottomOnShow");
+
+        this._scrollToBottomOnShow = value;
+
+        return this;
+    }
+
+    /**
      * Opens this panel positioned below the anchor element (top-level) or to the
      * right of the parent panel (submenu). Appends to `document.documentElement`.
      * **Persistent-mode only.**
@@ -368,6 +426,11 @@ class Menu extends Component implements DismissableLayer {
         if (this._itemsProvider) {
             this.rebuildPersistentItems(this._itemsProvider());
         }
+
+        // Clear the previous open's max-height (set by `applyViewportHeightClamp`)
+        // before measuring, so a provider-sourced dropdown that grew reflects its
+        // new content height rather than being capped at the old available room.
+        this.setMaxSize(Number.MAX_VALUE, Number.MAX_VALUE);
 
         const totalHeight = this.getPreferredSize()?.height ?? (this._menuItems.length * MenuItem.HEIGHT + 8);
         const width       = this.getWidth();

@@ -59,6 +59,12 @@ export interface MenuItemConfig {
      * precedence over `icon` when both are provided.
      */
     glyph?: string;
+    /**
+     * Optional colour for the leading `glyph`, overriding the item's default
+     * foreground (e.g. a severity tint). Any CSS colour string. Ignored when the
+     * row has no `glyph`.
+     */
+    glyphColor?: string;
     /** When present this item opens a submenu rather than calling `action`. */
     submenu?: MenuConfig;
     /** When `true` the item renders as a separator; all other fields are ignored. */
@@ -211,6 +217,11 @@ class MenuItem extends Component {
             this._iconGlyph = new Glyph(config.glyph);
             this._iconGlyph.setPointerEvents("none");
             this._iconGlyph.setPreferredSize(16, 16);
+
+            if (config.glyphColor) {
+                this._iconGlyph.setForegroundColor(config.glyphColor);
+            }
+
             this.addComponent(this._iconGlyph);
         } else {
             this._iconText = new Text(config.icon ?? "");

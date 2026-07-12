@@ -45,6 +45,7 @@ describe('Menu mode guards', () => {
         expect(() => menu.show(0, 0, [])).toThrow(/rebuild mode/);
         expect(() => menu.hide()).toThrow(/rebuild mode/);
         expect(() => menu.setMenuWidth(100)).toThrow(/rebuild mode/);
+        expect(() => menu.setScrollToBottomOnShow(true)).toThrow(/rebuild mode/);
         expect(() => menu.toggleFor(DOM.sink.createElement('div'), 0, 0, [])).toThrow(/rebuild mode/);
     });
 });
@@ -489,5 +490,91 @@ describe('Menu as DismissableLayer', () => {
         // Persistent mode routes requestClose to the MenuBar's onClose (which owns
         // the close()/unregister), mirroring the old window-blur / outside path.
         expect(onClose).toHaveBeenCalledOnce();
+    });
+});
+
+describe('Menu vertical-scroll scrollbar gutter', () => {
+    afterEach(() => DOM.reset());
+
+    // Ten identical items with a right-aligned shortcut, so the natural content
+    // width is the same whether the menu fits or scrolls.
+    const items: MenuItemConfig[] = Array.from({ length: 10 }, (_, i) => ({
+        text:     `Item number ${i}`,
+        shortcut: '⌘K',
+    }));
+
+    it('reserves no gutter when the menu fits without scrolling', () => {
+        installTestDOM(CONFIG); // 800px tall — 10 * 24px items fit easily
+
+        const menu = new Menu();
+        menu.show(10, 10, items);
+
+        expect(menu.getInsets().getRight()).toBe(0);
+
+        menu.hide();
+    });
+
+    it('reserves a scrollbar-width right gutter when the menu overflows vertically', () => {
+        // Measure the natural (non-scrolling) width of the same items first.
+        installTestDOM(CONFIG);
+        const fit = new Menu();
+        fit.show(10, 10, items);
+        const naturalWidth = fit.getWidth();
+        expect(fit.getInsets().getRight()).toBe(0);
+        fit.hide();
+        DOM.reset();
+
+        // A short viewport forces the same items to overflow and scroll.
+        installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
+        const sbw = DOM.source.getScrollBarWidth();
+        expect(sbw).toBeGreaterThan(0);
+
+        const scroll = new Menu();
+        scroll.show(10, 10, items);
+
+        // The gutter is reserved as a right inset so items never lay out under
+        // the native scrollbar, and the panel is widened to keep the item
+        // content area at its natural width.
+        expect(scroll.getInsets().getRight()).toBe(sbw);
+        expect(scroll.getWidth()).toBe(naturalWidth + sbw);
+        expect(scroll.getWidth() - scroll.getInsets().getRight()).toBe(naturalWidth);
+
+        scroll.hide();
+    });
+
+    it('shows cleanly with scroll-to-bottom enabled (bottom offset verified live)', () => {
+        // TestDOM reports scrollHeight === clientHeight, so the browser's
+        // clamp-to-bottom is not observable offline; this guards that enabling
+        // the option exercises the flush + setScrollTop path without throwing.
+        installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
+
+        const menu = new Menu().setScrollToBottomOnShow(true);
+        expect(() => menu.show(10, 10, items)).not.toThrow();
+        expect(typeof menu.getScrollTop()).toBe('number');
+
+        menu.hide();
+    });
+
+    it('reserves the gutter when a reused menu grows from fitting to scrolling', () => {
+        installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
+        const sbw = DOM.source.getScrollBarWidth();
+
+        const menu = new Menu();
+
+        // First open: three 24px items in a 120px viewport — fits, no gutter.
+        menu.show(10, 10, items.slice(0, 3));
+        expect(menu.getInsets().getRight()).toBe(0);
+        const fitHeight = menu.getHeight();
+        menu.hide();
+
+        // Reopen the SAME instance with all ten items — now overflows. The gutter
+        // must be reserved on this transition too (not just on a fresh instance),
+        // and the panel must grow to fill the available height rather than staying
+        // stuck at the first, shorter size.
+        menu.show(10, 10, items);
+        expect(menu.getInsets().getRight()).toBe(sbw);
+        expect(menu.getHeight()).toBeGreaterThan(fitHeight);
+
+        menu.hide();
     });
 });

@@ -73,6 +73,7 @@ export default defineConfig({
                     { text: 'Tooltip',          link: '/components/Tooltip' },
                     { text: 'Popover',          link: '/components/Popover' },
                     { text: 'Notification',     link: '/components/Notification' },
+                    { text: 'NotificationHistoryButton', link: '/components/NotificationHistoryButton' },
                     { text: 'AnimatedDropdown', link: '/components/AnimatedDropdown' },
                 ] },
                 { text: 'Buttons', collapsed: false, items: [
