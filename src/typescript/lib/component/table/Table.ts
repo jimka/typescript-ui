@@ -460,6 +460,29 @@ class Table extends Component<TableOptions> {
     }
 
     /**
+     * Selects the given record — or clears the selection when `null` — and
+     * scrolls it into view, driving the selection programmatically without the
+     * caller reaching into the private body. This is the read/write counterpart
+     * to {@link getSelectedRecord}: use it to sync the table to an external
+     * selection (a linked tree/diagram, a master/detail view). Fires the
+     * `"selection"` event like a user click, so a caller that drives it in
+     * response to its own `"selection"` handler must guard against re-entrancy.
+     *
+     * @param record - The record to select and reveal, or `null` to clear.
+     *
+     * @returns This table, for method chaining.
+     */
+    selectRecord(record: ModelRecord | null): this {
+        if (record) {
+            this._body.scrollToRecord(record);
+        }
+
+        this._body.selectRecord(record);
+
+        return this;
+    }
+
+    /**
      * Persists all pending store changes to the server via the configured proxy.
      *
      * @returns A Promise that resolves when the sync operation completes.
