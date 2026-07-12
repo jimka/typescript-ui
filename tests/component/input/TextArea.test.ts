@@ -31,3 +31,21 @@ describe('TextArea constructor text', () => {
         expect(new TextArea().getValue()).toBe('');
     });
 });
+
+describe('TextArea overflow default', () => {
+    // TextArea overrides Component's `overflow: "hidden"` default with `"auto"`
+    // so the native <textarea> scrolls its own overflowing content rather than
+    // clipping it. Both axes report `"auto"`.
+    it('defaults both overflow axes to auto so it scrolls its content', () => {
+        const area = new TextArea();
+
+        expect(area.getOverflowY()).toBe('auto');
+        expect(area.getOverflowX()).toBe('auto');
+    });
+
+    // The scrollable overflow is a class-level default, not written into the
+    // instance options, so an explicit caller overflow still wins.
+    it('lets an explicit overflow option override the auto default', () => {
+        expect(new TextArea('', { overflow: 'hidden' }).getOverflowY()).toBe('hidden');
+    });
+});
