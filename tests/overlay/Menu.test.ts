@@ -45,6 +45,7 @@ describe('Menu mode guards', () => {
         expect(() => menu.show(0, 0, [])).toThrow(/rebuild mode/);
         expect(() => menu.hide()).toThrow(/rebuild mode/);
         expect(() => menu.setMenuWidth(100)).toThrow(/rebuild mode/);
+        expect(() => menu.setScrollToBottomOnShow(true)).toThrow(/rebuild mode/);
         expect(() => menu.toggleFor(DOM.sink.createElement('div'), 0, 0, [])).toThrow(/rebuild mode/);
     });
 });
@@ -539,6 +540,19 @@ describe('Menu vertical-scroll scrollbar gutter', () => {
         expect(scroll.getWidth() - scroll.getInsets().getRight()).toBe(naturalWidth);
 
         scroll.hide();
+    });
+
+    it('shows cleanly with scroll-to-bottom enabled (bottom offset verified live)', () => {
+        // TestDOM reports scrollHeight === clientHeight, so the browser's
+        // clamp-to-bottom is not observable offline; this guards that enabling
+        // the option exercises the flush + setScrollTop path without throwing.
+        installTestDOM({ ...CONFIG, viewport: { width: 1280, height: 120 } });
+
+        const menu = new Menu().setScrollToBottomOnShow(true);
+        expect(() => menu.show(10, 10, items)).not.toThrow();
+        expect(typeof menu.getScrollTop()).toBe('number');
+
+        menu.hide();
     });
 
     it('reserves the gutter when a reused menu grows from fitting to scrolling', () => {

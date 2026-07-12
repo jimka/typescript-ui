@@ -81,6 +81,9 @@ class Menu extends Component implements DismissableLayer {
     private _menuWidth: number | null = null;
     private _rebuildOnClose: (() => void) | null = null;
     private _currentOpener: Handle | null = null;
+    // Rebuild-mode: when true, each show() scrolls the menu to the bottom after
+    // layout so the latest (bottom-most) items are visible on open.
+    private _scrollToBottomOnShow: boolean = false;
 
     /**
      * Constructs a Menu. With no arguments, a rebuild-mode (right-click context)
@@ -282,6 +285,15 @@ class Menu extends Component implements DismissableLayer {
         LayerManager.register(this);
         this.setZIndex(LayerManager.getZIndex(this));
 
+        // Optionally reveal the bottom of the list on open (e.g. a history menu
+        // whose latest entries sit at the bottom). Flush the scheduled layout
+        // first so the item heights are committed and `getMaxScrollTop` is
+        // accurate; when nothing overflows the offset is 0 and this is a no-op.
+        if (this._scrollToBottomOnShow) {
+            this.flushLayout();
+            this.setScrollTop(this.getMaxScrollTop());
+        }
+
         return this;
     }
 
@@ -372,6 +384,27 @@ class Menu extends Component implements DismissableLayer {
         this.assertRebuildMode("setMenuWidth");
 
         this._menuWidth = width;
+
+        return this;
+    }
+
+    /**
+     * Controls whether the menu scrolls to the bottom of its item list each time
+     * it is shown. **Rebuild-mode only.**
+     *
+     * Use this for a menu whose latest entries sit at the bottom (e.g. a
+     * chronological notification history), so the most recent items are visible
+     * on open rather than the user having to scroll down. A no-op when the list
+     * fits without scrolling.
+     *
+     * @param value - `true` to scroll to the bottom on every show.
+     *
+     * @returns This menu, for method chaining.
+     */
+    setScrollToBottomOnShow(value: boolean): this {
+        this.assertRebuildMode("setScrollToBottomOnShow");
+
+        this._scrollToBottomOnShow = value;
 
         return this;
     }

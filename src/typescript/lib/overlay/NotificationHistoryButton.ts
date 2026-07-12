@@ -55,11 +55,13 @@ export interface NotificationHistoryButtonOptions extends ButtonOptions {}
 
 /**
  * A trigger button that opens a menu of recent notifications. The menu lists the
- * in-session {@link Notification} history newest-first — each row showing the
- * notification's severity badge, its message, and how long ago it was shown.
- * Activating a row re-opens that notification's full message in the same modal
- * detail dialog a live toast opens on double-click; it does not re-show a toast,
- * so browsing history has no effect on the history itself.
+ * in-session {@link Notification} history in chronological order (latest at the
+ * bottom) and opens scrolled to the bottom, so the most recent entries are
+ * visible first — each row showing the notification's severity badge, its
+ * message, and how long ago it was shown. Activating a row re-opens that
+ * notification's full message in the same modal detail dialog a live toast opens
+ * on double-click; it does not re-show a toast, so browsing history has no effect
+ * on the history itself.
  *
  * Place one wherever a persistent affordance for reviewing past notifications is
  * wanted, e.g. in a toolbar.
@@ -112,13 +114,16 @@ class NotificationHistoryButton extends Button<NotificationHistoryButtonOptions>
 
         const rect = DOM.source.getViewportRect(this);
 
-        this._menu ??= new Menu();
+        // The history is chronological (latest at the bottom), so open scrolled to
+        // the bottom to reveal the most recent entries.
+        this._menu ??= new Menu().setScrollToBottomOnShow(true);
         this._menu.toggleFor(el, rect.left, rect.bottom, this.buildItems());
     }
 
     /**
-     * Builds the menu item configs from the current notification history, newest
-     * first. Returns a single disabled placeholder when the history is empty.
+     * Builds the menu item configs from the current notification history in
+     * chronological order (oldest first, latest at the bottom). Returns a single
+     * disabled placeholder when the history is empty.
      *
      * @returns The menu item descriptors for the current history.
      */
@@ -131,8 +136,9 @@ class NotificationHistoryButton extends Button<NotificationHistoryButtonOptions>
 
         const now = Date.now();
 
-        // Newest first: history is stored oldest-first.
-        return history.slice().reverse().map(record => ({
+        // History is stored oldest-first; keep that order so the latest entries
+        // sit at the bottom (the menu opens scrolled there).
+        return history.map(record => ({
             glyph:    BADGE_GLYPH[record.type],
             text:     record.message,
             shortcut: formatRelativeTime(record.timestamp, now),

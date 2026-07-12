@@ -66,13 +66,13 @@ describe('NotificationHistoryButton', () => {
         expect(items[0].enabled).toBe(false);
     });
 
-    it('builds items newest-first', () => {
+    it('builds items oldest-first (latest at the bottom)', () => {
         setHistory([
             { message: 'a', type: 'info', timestamp: 1 },
             { message: 'b', type: 'error', timestamp: 2 },
         ]);
         const items = buildItems(new NotificationHistoryButton());
-        expect(items.map(i => i.text)).toEqual(['b', 'a']);
+        expect(items.map(i => i.text)).toEqual(['a', 'b']);
     });
 
     it('maps each record to badge glyph, message, relative time, and an action', () => {
