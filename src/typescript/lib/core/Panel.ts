@@ -136,11 +136,22 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     // Runtime-only: never touched during the super cascade (the overlay only
     // exists post-render), so a plain initialiser is safe here.
     private _shadowOverlayStyle: InlineStyle       = new InlineStyle();
-    private _shadowEdges:        ScrollShadowEdges = { top: 0, bottom: 0, left: 0, right: 0 };
+    // Read during the super-time options cascade (setAutoScroll → doLayout →
+    // scheduleGutterSettleOnShrink → showsScrollAffordance inspects the edges),
+    // so `declare`d and seeded in `applyOptions` to dodge the class-field
+    // super-cascade trap, exactly like `_scrollbarGutter`.
+    declare private _shadowEdges: ScrollShadowEdges;
     // Child count observed on the previous layout pass, so a shrink (removed
     // children) can force one follow-up gutter/shadow re-measure. See
     // `scheduleGutterSettleOnShrink`.
     private _lastChildCount:     number            = 0;
+
+    // Content preferred extent observed on the previous layout pass while a
+    // scroll affordance was showing, so a shrink that happens inside a nested
+    // descendant (whose removal leaves this panel's own child count unchanged)
+    // still forces the follow-up re-measure. See `scheduleGutterSettleOnShrink`.
+    // `declare`d + seeded in `applyOptions` for the same super-cascade reason.
+    declare private _lastContentExtent: { width: number; height: number };
 
     /**
      * Creates a panel with 4-pixel insets on all sides by default.
@@ -173,6 +184,13 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // `"none"` transition, and the `declare`d field would otherwise be
         // undefined at first dispatch.
         this.setScrollbarGutter(0, 0);
+
+        // Seed the shadow-edge and content-extent caches for the same reason:
+        // `setAutoScroll` below triggers a `doLayout` whose
+        // `scheduleGutterSettleOnShrink` reads both, and their `declare`d fields
+        // would otherwise be undefined during this super-time cascade.
+        this._shadowEdges       = { top: 0, bottom: 0, left: 0, right: 0 };
+        this._lastContentExtent = { width: 0, height: 0 };
 
         // Always dispatch `setAutoScroll` — the `?? "none"` covers the
         // no-option default. Routing through the setter (even for the
@@ -383,33 +401,80 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
-     * Forces one follow-up layout pass after this panel's child count drops,
-     * so a shrink that brings overflowing content back within the viewport
-     * re-clears the reserved scrollbar gutter and scroll shadow.
+     * Forces one follow-up layout pass after this panel's content shrinks, so a
+     * shrink that brings overflowing content back within the viewport re-clears
+     * the reserved scrollbar gutter and scroll shadow.
      *
      * `measureScrollbarGutter` only reschedules a pass when the gutter *value*
-     * it reads changes. When children are removed, the overflow→fit transition
+     * it reads changes. When content is removed, the overflow→fit transition
      * often has not settled on the pass that runs immediately after the
-     * removal — the gutter reads its old (overflowing) value, sees no change,
-     * and schedules nothing, so the stale gutter and shadow linger until some
-     * later unrelated layout re-measures. A child-count decrease is a reliable
-     * "content may have shrunk" signal available at layout time, so schedule
-     * one more pass; the next frame re-measures against the settled content and
-     * clears anything no longer needed.
+     * removal — the DOM `scrollHeight` still reads its old (overflowing) value,
+     * so both the gutter and the shadow measure stale, see no change, and
+     * schedule nothing; the stale gutter and shadow then linger until some later
+     * unrelated layout (or a scroll event) re-measures. So this schedules one
+     * more pass off a signal that *is* accurate at layout time — the content's
+     * preferred extent, which drops synchronously when content is removed — and
+     * the next frame re-measures against the settled content and clears anything
+     * no longer needed.
      *
-     * Bounded and non-looping: it fires only on the pass *after* a decrease
-     * (the follow-up pass sees an unchanged count), and never for a `"none"`
-     * panel, which reserves no gutter and paints no shadow.
+     * Two shrink signals are used. A direct-child-count drop is the cheap common
+     * case. But content can also shrink inside a nested descendant (e.g. rows
+     * removed from a grid several levels down), leaving this panel's own child
+     * count unchanged; a drop in the panel's preferred extent catches that. The
+     * preferred-extent read is gated behind an actually-showing scroll affordance
+     * (a reserved gutter or a painted shadow edge) so it costs nothing on the
+     * overwhelming majority of layouts, where there is nothing to settle.
+     *
+     * Bounded and non-looping: it fires only on the pass *after* a shrink (the
+     * follow-up pass sees an unchanged count and extent), and never for a
+     * `"none"` panel, which reserves no gutter and paints no shadow.
      */
     private scheduleGutterSettleOnShrink(): void {
-        const count  = this.getComponents().length;
-        const shrank = count < this._lastChildCount;
+        if (this._autoScroll === "none") {
+            return;
+        }
+
+        const count       = this.getComponents().length;
+        const childShrank  = count < this._lastChildCount;
 
         this._lastChildCount = count;
 
-        if (shrank && this._autoScroll !== "none") {
+        // A shrink inside a nested descendant leaves `count` unchanged, so also
+        // watch the preferred extent — but only while a scroll affordance is on
+        // screen, since that is the only state a shrink could leave stale.
+        let contentShrank = false;
+
+        if (this.showsScrollAffordance()) {
+            const preferred = this.getPreferredSize();
+            const width     = preferred ? preferred.width  : 0;
+            const height    = preferred ? preferred.height : 0;
+
+            contentShrank = width < this._lastContentExtent.width
+                         || height < this._lastContentExtent.height;
+
+            this._lastContentExtent = { width, height };
+        }
+
+        if (childShrank || contentShrank) {
             this.scheduleLayout();
         }
+    }
+
+    /**
+     * Whether this panel is currently painting a scroll affordance — a reserved
+     * scrollbar gutter or any lit shadow edge. Used by
+     * {@link Panel.scheduleGutterSettleOnShrink} to decide whether a shrink could
+     * have left a stale gutter/shadow worth re-measuring.
+     *
+     * @returns `true` when a gutter is reserved or any shadow edge is lit.
+     */
+    private showsScrollAffordance(): boolean {
+        return this._scrollbarGutter.right > 0
+            || this._scrollbarGutter.bottom > 0
+            || this._shadowEdges.top    > 0
+            || this._shadowEdges.bottom > 0
+            || this._shadowEdges.left   > 0
+            || this._shadowEdges.right  > 0;
     }
 
     /**
