@@ -139,10 +139,13 @@ class NotificationHistoryButton extends Button<NotificationHistoryButtonOptions>
         // History is stored oldest-first; keep that order so the latest entries
         // sit at the bottom (the menu opens scrolled there).
         return history.map(record => ({
-            glyph:    BADGE_GLYPH[record.type],
-            text:     record.message,
-            shortcut: formatRelativeTime(record.timestamp, now),
-            action:   () => Notification.showDetail(record.message, record.type),
+            glyph:      BADGE_GLYPH[record.type],
+            // Tint the badge with the severity's border token — the same colour
+            // the live toast's badge uses.
+            glyphColor: `var(--ts-ui-notification-${record.type}-border)`,
+            text:       record.message,
+            shortcut:   formatRelativeTime(record.timestamp, now),
+            action:     () => Notification.showDetail(record.message, record.type),
         }));
     }
 }

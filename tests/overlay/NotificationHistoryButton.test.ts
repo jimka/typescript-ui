@@ -20,7 +20,7 @@ function setHistory(records: NotificationRecord[]): void {
 // buildItems() is private; exercise it through a cast — it is the pure read the
 // menu is built from.
 function buildItems(button: NotificationHistoryButton) {
-    return (button as unknown as { buildItems: () => Array<{ text?: string; glyph?: string; shortcut?: string; enabled?: boolean; action?: () => void }> }).buildItems();
+    return (button as unknown as { buildItems: () => Array<{ text?: string; glyph?: string; glyphColor?: string; shortcut?: string; enabled?: boolean; action?: () => void }> }).buildItems();
 }
 
 describe('formatRelativeTime', () => {
@@ -75,11 +75,12 @@ describe('NotificationHistoryButton', () => {
         expect(items.map(i => i.text)).toEqual(['a', 'b']);
     });
 
-    it('maps each record to badge glyph, message, relative time, and an action', () => {
+    it('maps each record to badge glyph, severity colour, message, time, and an action', () => {
         setHistory([{ message: 'saved', type: 'success', timestamp: Date.now() }]);
         const [item] = buildItems(new NotificationHistoryButton());
 
         expect(item.glyph).toBe(BADGE_GLYPH.success);
+        expect(item.glyphColor).toBe('var(--ts-ui-notification-success-border)');
         expect(item.text).toBe('saved');
         expect(typeof item.shortcut).toBe('string');
         expect(typeof item.action).toBe('function');

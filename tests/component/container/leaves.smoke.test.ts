@@ -10,6 +10,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { Legend } from '~/component/container/Legend';
 import { MenuSeparator } from '~/component/container/MenuSeparator';
 import { MenuItem } from '~/component/container/MenuItem';
+import { Glyph } from '~/component/display/Glyph';
+import { circle_check } from '~/glyphs/solid/circle_check';
 import { WindowHeader } from '~/component/container/WindowHeader';
 import { AccordionHeader } from '~/component/container/AccordionHeader';
 import { SplitGutter } from '~/component/container/SplitGutter';
@@ -112,5 +114,20 @@ describe('MenuItem pure boolean getters', () => {
         // getBaseline is intentionally NOT tested: it reads native text metrics
         // that the modelled source cannot supply, so it belongs to a real
         // browser run.
+    });
+});
+
+describe('MenuItem glyph colour', () => {
+    afterEach(() => DOM.reset());
+
+    it('applies config.glyphColor to the leading glyph, and leaves it unset otherwise', () => {
+        installTestDOM(CONFIG);
+        Glyph.register(circle_check);
+
+        const tinted = new MenuItem({ text: 'A', glyph: 'circle-check', glyphColor: 'rgb(1, 2, 3)' }, () => {}) as any;
+        const plain  = new MenuItem({ text: 'B', glyph: 'circle-check' }, () => {}) as any;
+
+        expect(tinted._iconGlyph.getForegroundColor()).toBe('rgb(1, 2, 3)');
+        expect(plain._iconGlyph.getForegroundColor()).toBeNull();
     });
 });
