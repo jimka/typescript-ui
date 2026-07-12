@@ -19,7 +19,7 @@ new NotificationHistoryButton({ glyph: 'bell', description: 'History' });
 ## Behavior
 
 - **Opens a menu of recent notifications** — clicking the button toggles a menu anchored under its bottom-left corner. A second click, an outside click, or `Escape` dismisses it.
-- **Chronological, latest at the bottom** — history is listed oldest-first, and the menu opens **scrolled to the bottom** so the most recent entries are visible immediately. Each row shows the notification's **severity badge**, its **message**, and a **relative time** (`just now`, `5m ago`, `2h ago`, `3d ago`).
+- **Chronological, latest at the bottom** — history is listed oldest-first, and the menu opens **scrolled to the bottom** so the most recent entries are visible immediately. Each row shows the notification's **colour-coded severity badge** (matching the toast's), its **message**, and a **relative time** (`just now`, `5m ago`, `2h ago`, `3d ago`).
 - **Re-open a past notification** — activating a row opens that notification's full, un-truncated message in the same modal detail dialog a live toast opens on double-click. It does **not** re-show a toast and does **not** add a new history entry, so browsing has no effect on the history.
 - **Rebuilt on every open** — the menu is regenerated each time it opens, so relative times and newly-shown notifications are always current.
 - **Empty state** — with no notifications yet, the menu shows a single disabled `No notifications yet` row.
