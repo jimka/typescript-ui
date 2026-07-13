@@ -480,6 +480,32 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Moves keyboard focus into the active editing surface, placing a caret
+     * ready for typing: the Lexical contenteditable in WYSIWYG mode (building
+     * and mounting the editor if needed), or the source `CodeEditor` in
+     * `"source"` mode.
+     *
+     * Overrides {@link Component.focus}, whose default focuses this component's
+     * own host element — the `Card` wrapper — which would leave the caret out of
+     * the nested contenteditable the typing must land in. In WYSIWYG mode it
+     * defers to Lexical's own `focus`, which both focuses the root element and
+     * sets a selection so a caret appears without a click.
+     *
+     * @param preventScroll - Forwarded to the source `CodeEditor` in `"source"`
+     *   mode; ignored in WYSIWYG mode, where Lexical manages its own focus scroll.
+     * @returns This component, for method chaining.
+     */
+    focus(preventScroll: boolean = false): this {
+        if (this.getMode() === "source") {
+            this._codeEditor.focus(preventScroll);
+        } else {
+            this.ensureEditor().focus();
+        }
+
+        return this;
+    }
+
+    /**
      * Toggles bold on the current selection. No-op (without throwing) when there
      * is no range selection.
      *
