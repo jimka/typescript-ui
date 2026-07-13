@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
 import { Accordion } from '~/layout/Accordion';
@@ -157,6 +157,32 @@ describe('Accordion manager — open/close coordination + events', () => {
 
         expect(acc.isSectionOpen(1)).toBe(false);
         expect(calls).toEqual([[1, false]]);
+    });
+
+    // A toggle changes the accordion's own preferred/min height, so it must relay
+    // an intrinsic-size change up to the host — the hook a scrolling ancestor
+    // listens on to refresh its scrollbar. Without it the host only re-lays-out
+    // on a later resize, leaving overflowed content clipped (see
+    // Component.notifyIntrinsicSizeChanged).
+    it('openSection relays an intrinsic-size change to the host', () => {
+        const { acc, host } = threeClosed(false);
+        const notified = vi.fn();
+        (host as unknown as { _onPreferredSizeChange: (() => void) | null })._onPreferredSizeChange = notified;
+
+        acc.openSection(1);
+
+        expect(notified).toHaveBeenCalled();
+    });
+
+    it('closeSection relays an intrinsic-size change to the host', () => {
+        const { acc, host } = threeClosed(false);
+        acc.openSection(1);
+        const notified = vi.fn();
+        (host as unknown as { _onPreferredSizeChange: (() => void) | null })._onPreferredSizeChange = notified;
+
+        acc.closeSection(1);
+
+        expect(notified).toHaveBeenCalled();
     });
 
     it('singleOpen: opening a section closes every other open one (others first, target last)', () => {
