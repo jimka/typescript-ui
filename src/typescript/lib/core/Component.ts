@@ -4761,6 +4761,31 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Signals that this component's own preferred and minimum sizes changed for
+     * a reason the framework cannot observe through {@link setPreferredSize} /
+     * {@link setMinSize} — typically a layout manager whose intrinsic sizing
+     * depends on internal state (e.g. an {@link Accordion} opening or closing a
+     * section changes the height it wants). Fires the same upward relay a
+     * {@link setPreferredSize} call would (installed by the parent in
+     * `wireChild`), so every ancestor — and in particular a scrolling host —
+     * re-lays-out and recomputes its overflow.
+     *
+     * `scheduleLayout` alone is not enough here: it re-lays-out this component's
+     * own subtree inside its *unchanged* bounds, but never tells the parent the
+     * component now wants a different size, so an `autoScroll` ancestor's
+     * scrollbar goes stale until the next resize forces a top-down pass. A no-op
+     * when the component has no wired parent.
+     *
+     * @returns This component, for method chaining.
+     */
+    notifyIntrinsicSizeChanged(): this {
+        this._onPreferredSizeChange?.();
+        this._onConstraintSizeChange?.();
+
+        return this;
+    }
+
+    /**
      * Runs a callback once, after the next batched layout flush completes.
      *
      * Layout is coalesced onto an animation frame (see {@link scheduleLayout}),

@@ -266,7 +266,7 @@ class Accordion extends LayoutManager {
             }
         }
 
-        this.getContainer()?.scheduleLayout();
+        this.relayoutHost();
 
         return this;
     }
@@ -332,7 +332,7 @@ class Accordion extends LayoutManager {
             header.setCompact(value);
         }
 
-        this.getContainer()?.scheduleLayout();
+        this.relayoutHost();
 
         return this;
     }
@@ -438,7 +438,7 @@ class Accordion extends LayoutManager {
     setSpacing(spacing: number): this {
         this._spacing = spacing;
 
-        this.getContainer()?.scheduleLayout();
+        this.relayoutHost();
 
         return this;
     }
@@ -733,6 +733,22 @@ class Accordion extends LayoutManager {
     }
 
     /**
+     * Re-lays-out the host after a change to the accordion's own intrinsic
+     * height — an open/close, or a header-metric change (compact, spacing,
+     * single-open). `scheduleLayout` alone only re-fits the sections inside the
+     * accordion's unchanged bounds; `notifyIntrinsicSizeChanged` additionally
+     * tells the ancestors — notably a scrolling host — that the accordion's
+     * preferred/min height moved, so they re-lay-out and refresh their
+     * scrollbars instead of going stale until the next viewport resize.
+     */
+    private relayoutHost(): void {
+        const container = this.getContainer();
+
+        container?.scheduleLayout();
+        container?.notifyIntrinsicSizeChanged();
+    }
+
+    /**
      * Opens the section at the given index.
      *
      * @param index - Zero-based section index.
@@ -757,7 +773,7 @@ class Accordion extends LayoutManager {
         this._openState[index] = true;
         this._headers[index].setExpanded(true);
         this.emit("sectiontoggle", index, true);
-        this.getContainer()?.scheduleLayout();
+        this.relayoutHost();
 
         return this;
     }
@@ -776,7 +792,7 @@ class Accordion extends LayoutManager {
         this._openState[index] = false;
         this._headers[index].setExpanded(false);
         this.emit("sectiontoggle", index, false);
-        this.getContainer()?.scheduleLayout();
+        this.relayoutHost();
 
         return this;
     }
@@ -1527,7 +1543,7 @@ class Accordion extends LayoutManager {
         this._openState[index] = nowOpen;
         this._headers[index].setExpanded(nowOpen);
         this.emit("sectiontoggle", index, nowOpen);
-        this.getContainer()?.scheduleLayout();
+        this.relayoutHost();
     }
 
     /**
