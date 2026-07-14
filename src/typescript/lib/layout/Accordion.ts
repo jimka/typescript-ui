@@ -1884,8 +1884,18 @@ class Accordion extends LayoutManager {
 
     /**
      * The height an open section's content renders at: its preferred height
-     * shrunk toward its minimum by `shrinkRatio`. Falls back to 100px when the
-     * section reports no preferred height.
+     * shrunk toward its minimum by `shrinkRatio`, then clamped to its merged
+     * `[min, max]`. Falls back to 100px when the section reports no preferred
+     * height.
+     *
+     * The clamp matters because `getPreferredSize` clamps only to a component's
+     * *own* min/max constraints, not the merged {@link Component.getMinSize} /
+     * {@link Component.getMaxSize} that fold in child-derived limits (e.g. a
+     * Panel wrapping a fixed-row List, or a form whose fields floor its height).
+     * Without it, a section whose preferred sits outside its real `[min, max]`
+     * would render its wrapper past that bound while the content self-clamped
+     * inside — and the drag-backed resizable path (which does respect the merged
+     * bounds) then disagreed, making a resizable toggle resize the section.
      *
      * @param component - The section content component.
      * @param shrinkRatio - The container-driven shrink ratio in `[0, 1]`.
@@ -1897,7 +1907,11 @@ class Accordion extends LayoutManager {
         const min = component.getMinSize();
         const contentMin = min ? min.height : 0;
 
-        return contentPref - shrinkRatio * (contentPref - contentMin);
+        const shrunk = contentPref - shrinkRatio * (contentPref - contentMin);
+        const max = component.getMaxSize();
+        const capped = max ? Math.min(shrunk, max.height) : shrunk;
+
+        return Math.max(capped, contentMin);
     }
 
     /**

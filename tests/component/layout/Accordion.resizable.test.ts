@@ -9,6 +9,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
 import { Accordion } from '~/layout/Accordion';
+import { Fit } from '~/layout/Fit';
 import { AccordionConstraints } from '~/layout/AccordionConstraints';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
@@ -383,6 +384,74 @@ describe('Accordion fill — respects maxSize (non-resizable)', () => {
         // stays as slack rather than padding B's wrapper past its content max.
         expect(wrappers[1].getHeight()).toBeLessThanOrEqual(90 + 1e-6);
         expect(b.getHeight()).toBeCloseTo(90, 5);
+    });
+});
+
+describe('Accordion — resizable/non-resizable size parity', () => {
+    /** A Fit container whose own preferred is `pref` but whose *merged* min/max
+     *  come from a child — mirroring the demo sections where getPreferredSize
+     *  (own-constraint only) disagrees with the merged getMinSize/getMaxSize. */
+    function childBoundedSection(pref: number, childMin: number, childMax: number): Container {
+        const section = new Container({ preferredSize: { width: 100, height: pref }, layoutManager: new Fit() });
+        const child = content({ width: 100, height: pref }, { width: 40, height: childMin });
+        child.setMaxSize(10000, childMax);
+        section.addComponent(child);
+        section.getElement(true);
+        return section;
+    }
+
+    it('toggling resizable leaves every open section height unchanged, even when a section preferred sits outside its merged [min,max]', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setFillHeight(true); // bottommost (D) absorbs the leftover, like the demo
+        const host = hostAccordion(400, 800, acc); // budget = 800 - 5*30 = 650 (underflow: D fills)
+        const a = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        // C mirrors Recent Items: preferred 150 but merged max 142 (capped child).
+        const c = childBoundedSection(150, 10, 142);
+        // E mirrors Personal Info: preferred 100 but merged min 130 (child floor).
+        const e = childBoundedSection(100, 130, 10000);
+        const b = content({ width: 100, height: 110 }, { width: 40, height: 10 });
+        const d = content({ width: 100, height: 86 }, { width: 40, height: 10 });
+        expect(c.getPreferredSize()?.height).toBe(150); // own preferred, unclamped by child
+        expect(c.getMaxSize()?.height).toBe(142);       // merged max from the capped child
+        expect(e.getPreferredSize()?.height).toBe(100); // own preferred, unclamped by child
+        expect(e.getMinSize()?.height).toBe(130);       // merged min from the child floor
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.addComponent(c, constraints('C', true));
+        host.addComponent(e, constraints('E', true));
+        host.addComponent(d, constraints('D', true));
+
+        // Measure the wrappers (the visible section regions), not the content
+        // components: a content component self-clamps its own height via setHeight,
+        // so it reads the same in both modes, but the wrapper renders whatever
+        // height the layout asked for — the mismatch is the on-screen toggle glitch.
+        const wrappers = (acc as unknown as { _panelWrappers: Component[] })._panelWrappers;
+
+        host.doLayout(); // non-resizable
+        const off = wrappers.map(w => w.getHeight());
+
+        acc.setResizable(true);
+        host.doLayout(); // resizable
+        const on = wrappers.map(w => w.getHeight());
+
+        acc.setResizable(false);
+        host.doLayout(); // back to non-resizable
+        const offAgain = wrappers.map(w => w.getHeight());
+
+        // Both modes respect the merged bounds: C never renders past its max (142),
+        // E never renders below its min (130) ...
+        expect(off[2]).toBeCloseTo(142, 5);
+        expect(off[3]).toBeCloseTo(130, 5);
+        // ... and toggling resizable is a no-op for every section.
+        for (let i = 0; i < off.length; i++) {
+            expect(on[i]).toBeCloseTo(off[i], 5);
+            expect(offAgain[i]).toBeCloseTo(off[i], 5);
+        }
+        // Sanity: the open heights fill the budget in both modes.
+        expect(off.reduce((s, h) => s + h, 0)).toBeCloseTo(650, 4);
+        expect(on.reduce((s, h) => s + h, 0)).toBeCloseTo(650, 4);
     });
 });
 
