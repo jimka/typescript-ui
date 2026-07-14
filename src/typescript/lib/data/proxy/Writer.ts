@@ -3,6 +3,15 @@
 import { ModelRecord } from '~/data/ModelRecord.js';
 
 /**
+ * The proxy operation a {@link Writer} is serializing for. `AjaxProxy` passes
+ * this so a mode-aware writer can tell a create (which always needs the full
+ * record) from an update (which may send only what changed).
+ *
+ * @category Data
+ */
+export type WriteOperation = 'create' | 'update';
+
+/**
  * Serializes a record (or batch of records) into a request body string.
  *
  * @remarks
@@ -18,19 +27,47 @@ export interface Writer {
      * Serializes a single record into a request body string.
      *
      * @param record - The record to serialize.
+     * @param operation - Optional. The proxy operation this write is for.
      *
      * @returns The serialized request body.
      */
-    writeRecord(record: ModelRecord): string;
+    writeRecord(record: ModelRecord, operation?: WriteOperation): string;
 
     /**
      * Serializes a batch of records into a request body string.
      *
      * @param records - The records to serialize.
+     * @param operation - Optional. The proxy operation this write is for.
      *
      * @returns The serialized request body.
      */
-    writeRecords(records: ModelRecord[]): string;
+    writeRecords(records: ModelRecord[], operation?: WriteOperation): string;
+}
+
+/**
+ * How {@link JsonWriter} chooses which fields to serialize on an update.
+ *
+ * - `'full'` — the historical behaviour: `record.getData()`, every field.
+ * - `'dirty'` — only the fields changed since the last commit, plus the
+ *   primary key (so a batch update, which carries no id in the URL, stays
+ *   identifiable). Ignored for `create`, which always sends the full record —
+ *   a new record has no committed baseline to diff against.
+ *
+ * @category Data
+ */
+export type JsonWriterMode = 'full' | 'dirty';
+
+/**
+ * Construction-time options for {@link JsonWriter}.
+ *
+ * @category Data
+ */
+export interface JsonWriterOptions {
+    /**
+     * Which fields to serialize on an update. Defaults to `'full'`. See
+     * {@link JsonWriterMode}.
+     */
+    mode?: JsonWriterMode;
 }
 
 /**
@@ -39,31 +76,59 @@ export interface Writer {
  *
  * @remarks
  * Reproduces the historical inline {@link AjaxProxy} body serialization so
- * existing callers and tests are unaffected.
+ * existing callers and tests are unaffected. Set `mode: 'dirty'` to send only
+ * changed fields (plus the primary key) on updates.
  *
  * @category Data
  */
 export class JsonWriter implements Writer {
 
+    private _mode: JsonWriterMode;
+
     /**
-     * Serializes a single record as `JSON.stringify(record.getData())`.
+     * Constructs a JsonWriter from the given options.
      *
-     * @param record - The record to serialize.
-     *
-     * @returns The serialized request body.
+     * @param options - Optional. The serialization {@link JsonWriterMode | mode}.
      */
-    writeRecord(record: ModelRecord): string {
-        return JSON.stringify(record.getData());
+    constructor(options?: JsonWriterOptions) {
+        this._mode = options?.mode ?? 'full';
     }
 
     /**
-     * Serializes a batch as a JSON array of the records' data objects.
+     * Serializes a single record as `JSON.stringify(dataFor(record, operation))`.
      *
-     * @param records - The records to serialize.
+     * @param record - The record to serialize.
+     * @param operation - Optional. The proxy operation this write is for.
      *
      * @returns The serialized request body.
      */
-    writeRecords(records: ModelRecord[]): string {
-        return JSON.stringify(records.map(record => record.getData()));
+    writeRecord(record: ModelRecord, operation?: WriteOperation): string {
+        return JSON.stringify(this.dataFor(record, operation));
+    }
+
+    /**
+     * Serializes a batch as a JSON array of each record's serialized data.
+     *
+     * @param records - The records to serialize.
+     * @param operation - Optional. The proxy operation this write is for.
+     *
+     * @returns The serialized request body.
+     */
+    writeRecords(records: ModelRecord[], operation?: WriteOperation): string {
+        return JSON.stringify(records.map(record => this.dataFor(record, operation)));
+    }
+
+    /**
+     * Chooses a record's serialized field data for the configured mode and
+     * operation.
+     *
+     * @param record - The record being serialized.
+     * @param operation - The proxy operation this write is for.
+     *
+     * @returns `record.getChangedData()` when `mode` is `'dirty'` and
+     *   `operation` is `'update'`; otherwise `record.getData()`.
+     */
+    private dataFor(record: ModelRecord, operation?: WriteOperation): Record<string, any> {
+        return this._mode === 'dirty' && operation === 'update' ? record.getChangedData() : record.getData();
     }
 }

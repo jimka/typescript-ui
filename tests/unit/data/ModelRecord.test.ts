@@ -233,6 +233,25 @@ describe('ModelRecord', () => {
         });
     });
 
+    describe('getChangedData', () => {
+        it('returns the changed field plus the primary key', () => {
+            const model = new Model([{ name: 'id' }, { name: 'name' }], 'id');
+            const r = new ModelRecord(model, { id: 3, name: 'Ann' });
+            r.set('name', 'Bob');
+            expect(r.getChangedData()).toEqual({ name: 'Bob', id: 3 });
+        });
+        it('returns just the primary key for a clean record', () => {
+            const model = new Model([{ name: 'id' }, { name: 'name' }], 'id');
+            const r = new ModelRecord(model, { id: 3, name: 'Ann' });
+            expect(r.getChangedData()).toEqual({ id: 3 });
+        });
+        it('omits the primary key when the model defines none', () => {
+            const r = makeRecord({ name: 'Alice' });
+            r.set('name', 'Bob');
+            expect(r.getChangedData()).toEqual({ name: 'Bob' });
+        });
+    });
+
     describe('getInternalId', () => {
         it('assigns a unique, monotonic id per record', () => {
             const a = makeRecord();
