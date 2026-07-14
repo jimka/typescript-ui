@@ -6,6 +6,10 @@ Release history. For breaking-change details by version, see [Migration](/refere
 
 The package is at version `0.0.0` — pre-release, not yet published. Until a `0.x` or `1.0.0` is tagged, anything here may change without a migration note. Highlights below describe work-in-progress capabilities of the development snapshot, not stable contracts.
 
+**`Panel` gains a `flush` option for rail-style zero-inset containers** (additive — new `PanelOptions` field, no behaviour change for existing panels):
+
+- **New `flush?: boolean` construction option on [`Panel`](/api/core/classes/Panel)** seeds the panel's default content insets to zero instead of the usual `(4, 4, 4, 4)`, giving a fixed-width strip (an activity rail, a narrow `Border`/`VBox` region) a declarative way to sit flush against its host without the `setInsets(new Insets(0, 0, 0, 0))` workaround. Construction-time only, defaults to `false`; a caller-supplied `insets` still wins over `flush`.
+
 **Accordion resizable sections and weighted fill** (additive feature + `setFillHeight` behaviour change):
 
 - **New [`Accordion.setResizable`](/api/layout/classes/Accordion#setresizable).** With resizable on, a draggable [`SplitGutter`](/api/component/container/classes/SplitGutter) appears between every adjacent pair of open sections, letting the user trade height between them. A drag chains nearest-first across the open set — when the closest section reaches its min/max the next one takes over — and reversing the drag moves the closest section first, with overshoot past a fully maxed/minned chain retained as a dead zone so the cursor stays glued to the handle (matching [`Split`](/api/layout/classes/Split)). The drag-backed split survives a section closing and reopening and rescales when the container resizes. See [Resizable sections](/layouts/Accordion#resizable-sections).
