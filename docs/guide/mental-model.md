@@ -127,6 +127,7 @@ There is no auto-reflow when you change a child's preferred size. **You must cal
 ## Next steps
 
 - [Component lifecycle](/concepts/component-lifecycle) — construction → render → layout → destroy.
+- [Constructing components](/concepts/construction) — callable shorthand and the callable-vs-`new` rule.
 - [Layout system](/concepts/layout-system) — how a layout manager resolves constraints.
 - [Sizing](/concepts/sizing) — preferred / min / max / fixed sizes in detail.
 - [Theming](/concepts/theming) — runtime-switchable design tokens.

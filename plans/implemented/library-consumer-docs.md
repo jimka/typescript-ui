@@ -71,7 +71,7 @@ Sections:
    const table = Table(store);                                          // callable — Component subclass
    ```
 
-4. **Why it works / how to tell** — one short paragraph: the callable form comes from [`callable()`](/api/core/classes/Callable) (a `Proxy` forwarding `[[Call]]` to `Reflect.construct`), which is why `instanceof`, `new`, and `extends` all still work on the wrapped export. The rule for telling whether an export is callable: its module wraps the class and re-exports the wrapper as the public name (the raw class ships as `_Foo`, the callable wrapper as `Foo`). The `data/` layer never applies this wrapper. (Cite [Callable.ts](src/typescript/lib/core/Callable.ts).)
+4. **Why it works / how to tell** — one short paragraph: the callable form comes from [`callable()`](/api/core/functions/callable) (a `Proxy` forwarding `[[Call]]` to `Reflect.construct`), which is why `instanceof`, `new`, and `extends` all still work on the wrapped export. The rule for telling whether an export is callable: its module wraps the class and re-exports the wrapper as the public name (the raw class ships as `_Foo`, the callable wrapper as `Foo`). The `data/` layer never applies this wrapper. (Cite [Callable.ts](src/typescript/lib/core/Callable.ts).)
 
 5. **See also** — links to `/recipes/component-options`, `/guide/mental-model#jsx-shaped-without-jsx`, `/concepts/data-binding`.
 
@@ -118,7 +118,7 @@ Sections:
 
 ## Ordered Implementation Steps
 
-1. **Create `docs/concepts/construction.md`** with the Page 1 outline above. Use root-absolute links without `.md` (site uses `cleanUrls`), e.g. `/recipes/component-options`, `/guide/mental-model#jsx-shaped-without-jsx`, `/api/core/classes/Callable`. Match the existing concept-page tone (short, declarative, code-first).
+1. **Create `docs/concepts/construction.md`** with the Page 1 outline above. Use root-absolute links without `.md` (site uses `cleanUrls`), e.g. `/recipes/component-options`, `/guide/mental-model#jsx-shaped-without-jsx`, `/api/core/functions/callable`. Match the existing concept-page tone (short, declarative, code-first).
 
 2. **Create `docs/recipes/local-development.md`** with the Page 2 outline above. Keep the Vite block identical in spirit to [sqladmin/frontend/vite.config.ts](../sqladmin/frontend/vite.config.ts); do not invent settings not present there.
 

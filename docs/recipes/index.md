@@ -26,3 +26,7 @@ Task-oriented end-to-end snippets. Each recipe walks from imports through behavi
 ## Construction patterns
 
 - [Construct components from an options object](/recipes/component-options) — pass styling and behavioural defaults to any component constructor instead of chaining setters.
+
+## Local development
+
+- [Linking a local library checkout](/recipes/local-development) — Vite config for consuming a `file:` symlinked checkout.

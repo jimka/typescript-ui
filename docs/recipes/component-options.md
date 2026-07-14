@@ -216,7 +216,7 @@ const personModel = new Model({
 });
 ```
 
-Data-layer classes (`Model`, `Store`, `MemoryStore`, `AjaxStore`, `Proxy`) are not currently part of the callable wrapper — they still require `new`. The options-bag pattern is identical regardless.
+Data-layer classes (`Model`, `Store`, `MemoryStore`, `AjaxStore`, `Proxy`) are not currently part of the callable wrapper — they still require `new`. The options-bag pattern is identical regardless. See [Constructing components](/concepts/construction) for the full callable-vs-`new` reference.
 
 Store options accepted by every `AbstractStoreOptions` consumer: `pageSize`, `page`, `sorters`, `filters`, `autoLoad`, `listeners`. The `autoLoad: true` flag triggers `load()` from the constructor — registered `listeners` fire as expected.
 
@@ -245,7 +245,7 @@ panel instanceof Panel;        // true
 class MyPanel extends Panel {} // still works
 ```
 
-Both forms compile and behave identically; pick whichever reads better at the call site. The bare-call form composes naturally with the `components: [...]` option to express a full UI tree as a single expression. See [Mental model — JSX-shaped, without JSX](/guide/mental-model#jsx-shaped-without-jsx) for the underlying mechanism.
+Both forms compile and behave identically; pick whichever reads better at the call site. The bare-call form composes naturally with the `components: [...]` option to express a full UI tree as a single expression. See [Mental model — JSX-shaped, without JSX](/guide/mental-model#jsx-shaped-without-jsx) for the underlying mechanism, and [Constructing components](/concepts/construction) for the authoritative list of which exports are callable.
 
 ## Forwarding options from a subclass via `super(options)`
 
