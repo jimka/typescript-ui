@@ -228,6 +228,20 @@ class BindingPanel extends Panel {
 
         this.addComponent(bareGrid);
 
+        // ── Empty-title notch collapse demo ──────────────────────────────────
+
+        // A LabeledFieldSet with no title: the <legend> notch collapses (see
+        // FieldSet.setDisplayed), so the top border renders continuous instead
+        // of reserving a gap for an empty legend. Visual manual-verify surface
+        // for that fix — compare its unbroken top border against the titled
+        // fieldsets above.
+        const untitledForm = new LabeledFieldSet('', {
+            rows: [[{ title: 'Note', component: new TextField() }]],
+        });
+        untitledForm.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
+
+        this.addComponent(untitledForm);
+
         // ── Wire up interactions ─────────────────────────────────────────────
 
         commitButton.on("action", () => {
