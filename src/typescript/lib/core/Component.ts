@@ -430,6 +430,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             insets       : new Insets(0, 0, 0, 0),
             minSize      : { width: 0, height: 0 },
             maxSize      : { width: UNBOUNDED, height: UNBOUNDED },
+            // `hidden` is deliberate and load-bearing beyond just clipping: it
+            // visually EXPOSES layout-calculation bugs. When a layout lays a
+            // child out larger than the box its parent sized for it — i.e. when
+            // `getPreferredSize`/`getMinSize` under-report what `doLayout`
+            // actually produces — the overflow is clipped rather than silently
+            // spilling, so the size-negotiation mistake shows up on screen
+            // instead of hiding. Don't relax this to "fix" a clip; find the
+            // preferred-vs-doLayout discrepancy it revealed.
             overflow     : "hidden",
             zIndex       : 0,
             displayed    : true,
