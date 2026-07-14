@@ -4,8 +4,8 @@ import { ModelRecord } from '~/data/ModelRecord.js';
 import { StoreOperation } from '~/data/AbstractStore.js';
 import { Proxy, ReadParams } from '~/data/proxy/Proxy.js';
 import { AjaxError } from '~/data/proxy/AjaxError.js';
-import { Reader, JsonReader } from '~/data/proxy/Reader.js';
-import { Writer, JsonWriter } from '~/data/proxy/Writer.js';
+import { Reader, JsonReader, JsonReaderMode } from '~/data/proxy/Reader.js';
+import { Writer, JsonWriter, JsonWriterMode } from '~/data/proxy/Writer.js';
 
 /**
  * Construction-time options for {@link AjaxProxy}.
@@ -21,6 +21,18 @@ export interface AjaxProxyOptions {
     headers?: Record<string, string>;
     reader?: Reader;
     writer?: Writer;
+
+    /**
+     * Parse mode for the default {@link JsonReader}. Forwarded only when no
+     * `reader` is supplied — a custom reader owns its own configuration.
+     */
+    readMode?: JsonReaderMode;
+
+    /**
+     * Serialization mode for the default {@link JsonWriter}. Forwarded only
+     * when no `writer` is supplied — a custom writer owns its own configuration.
+     */
+    writeMode?: JsonWriterMode;
 
     /**
      * Whether to advertise the batch hooks (`createBatch`/`updateBatch`/`destroyBatch`).
@@ -77,8 +89,8 @@ export class AjaxProxy extends Proxy {
         this._createMethod = options.createMethod ?? 'POST';
         this._updateMethod = options.updateMethod ?? 'PUT';
         this._headers = options.headers ?? {};
-        this._reader = options.reader ?? new JsonReader({ root: options.root });
-        this._writer = options.writer ?? new JsonWriter();
+        this._reader = options.reader ?? new JsonReader({ root: options.root, mode: options.readMode });
+        this._writer = options.writer ?? new JsonWriter({ mode: options.writeMode });
 
         if (options.batch === false) {
             this.disableBatch();
@@ -209,7 +221,7 @@ export class AjaxProxy extends Proxy {
         const response = await fetch(this._url, {
             method: this._createMethod,
             headers: { 'Content-Type': 'application/json', ...this._headers },
-            body: this._writer.writeRecord(record)
+            body: this._writer.writeRecord(record, 'create')
         });
 
         if (!response.ok) {
@@ -233,7 +245,7 @@ export class AjaxProxy extends Proxy {
         const response = await fetch(`${this._url}/${record.getId()}`, {
             method: this._updateMethod,
             headers: { 'Content-Type': 'application/json', ...this._headers },
-            body: this._writer.writeRecord(record)
+            body: this._writer.writeRecord(record, 'update')
         });
 
         if (!response.ok) {
@@ -279,7 +291,7 @@ export class AjaxProxy extends Proxy {
         const response = await fetch(this._url, {
             method: this._createMethod,
             headers: { 'Content-Type': 'application/json', ...this._headers },
-            body: this._writer.writeRecords(records)
+            body: this._writer.writeRecords(records, 'create')
         });
 
         if (!response.ok) {
@@ -301,7 +313,7 @@ export class AjaxProxy extends Proxy {
         const response = await fetch(this._url, {
             method: this._updateMethod,
             headers: { 'Content-Type': 'application/json', ...this._headers },
-            body: this._writer.writeRecords(records)
+            body: this._writer.writeRecords(records, 'update')
         });
 
         if (!response.ok) {

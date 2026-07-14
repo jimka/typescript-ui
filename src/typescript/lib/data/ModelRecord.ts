@@ -491,6 +491,34 @@ export class ModelRecord {
     }
 
     /**
+     * Returns the changed-field new values for a dirty-only update body, always
+     * including the primary-key field so a batch update (no id in the URL) stays
+     * identifiable.
+     *
+     * @remarks
+     * Empty of changes only when the record is clean, in which case only the
+     * primary-key entry (if any) is returned.
+     *
+     * @returns A plain object of changed field name to its new value, plus the
+     *   primary-key field when the model defines one.
+     */
+    getChangedData(): Record<string, any> {
+        const data: Record<string, any> = {};
+
+        for (const [field, change] of Object.entries(this.getChanges())) {
+            data[field] = change.new;
+        }
+
+        const pkField = this._model.getPrimaryKeyField();
+
+        if (pkField) {
+            data[pkField.getName()] = this._data[pkField.getName()];
+        }
+
+        return data;
+    }
+
+    /**
      * Returns true if any field has been changed since the last commit.
      *
      * @returns True if the record has uncommitted changes, false otherwise.

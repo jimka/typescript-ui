@@ -28,6 +28,26 @@ export class AjaxStore extends AbstractStore {
     readonly proxy: AjaxProxy;
 
     /**
+     * @deprecated Pass a single {@link AjaxStoreOptions} bag instead. The
+     * positional `(model, proxyOptions)` form cannot carry store-level options
+     * such as `pageSize` / `remoteSort` / `remoteFilter`, which are silently
+     * ignored.
+     *
+     * @param model - The Model that defines the record schema.
+     * @param proxyOptions - The AjaxProxy options specifying the endpoint URL and HTTP options.
+     */
+    constructor(model: Model, proxyOptions?: AjaxProxyOptions);
+
+    /**
+     * Constructs an AjaxStore from a single {@link AjaxStoreOptions} bag,
+     * combining the record schema, the proxy configuration, and any
+     * store-level options.
+     *
+     * @param options - The {@link AjaxStoreOptions} bag.
+     */
+    constructor(options: AjaxStoreOptions);
+
+    /**
      * Constructs an AjaxStore with the given model and AjaxProxy configuration.
      *
      * @param modelOrOptions - The Model that defines the record schema, or an {@link AjaxStoreOptions} bag.

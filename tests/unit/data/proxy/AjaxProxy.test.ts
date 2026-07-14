@@ -210,6 +210,90 @@ describe('AjaxProxy', () => {
         await expect(proxy.createBatch([new ModelRecord(MODEL, { name: 'A' })])).rejects.toThrow('status 500');
     });
 
+    describe('writeMode', () => {
+        it("writeMode: 'dirty' sends only changed fields plus the pk on update()", async () => {
+            const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: 3 }));
+            vi.stubGlobal('fetch', fetchMock);
+
+            const proxy  = new AjaxProxy({ url: '/api/users', writeMode: 'dirty' });
+            const record = new ModelRecord(MODEL, { id: 3, name: 'Ann' });
+            record.set('name', 'Bob');
+            await proxy.update(record);
+
+            expect(fetchMock).toHaveBeenCalledWith('/api/users/3', expect.objectContaining({
+                method: 'PUT',
+                body  : JSON.stringify({ name: 'Bob', id: 3 }),
+            }));
+        });
+
+        it("writeMode: 'dirty' sends only changed fields plus the pk on updateBatch()", async () => {
+            const fetchMock = vi.fn().mockResolvedValue(okResponse([{ id: 3 }]));
+            vi.stubGlobal('fetch', fetchMock);
+
+            const proxy  = new AjaxProxy({ url: '/api/users', writeMode: 'dirty' });
+            const record = new ModelRecord(MODEL, { id: 3, name: 'Ann' });
+            record.set('name', 'Bob');
+            await proxy.updateBatch([record]);
+
+            expect(fetchMock).toHaveBeenCalledWith('/api/users', expect.objectContaining({
+                method: 'PUT',
+                body  : JSON.stringify([{ name: 'Bob', id: 3 }]),
+            }));
+        });
+
+        it("writeMode: 'dirty' still sends the full record on create()", async () => {
+            const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: 1 }));
+            vi.stubGlobal('fetch', fetchMock);
+
+            const proxy  = new AjaxProxy({ url: '/api/users', writeMode: 'dirty' });
+            const record = new ModelRecord(MODEL, { name: 'Zoe' });
+            await proxy.create(record);
+
+            expect(fetchMock).toHaveBeenCalledWith('/api/users', expect.objectContaining({
+                method: 'POST',
+                body  : JSON.stringify(record.getData()),
+            }));
+        });
+
+        it('writeMode is ignored when a custom writer is supplied', async () => {
+            const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: 3 }));
+            vi.stubGlobal('fetch', fetchMock);
+
+            const writer: Writer = {
+                writeRecord: (): string => 'CUSTOM',
+                writeRecords: (): string => '[]',
+            };
+            const proxy  = new AjaxProxy({ url: '/api/users', writeMode: 'dirty', writer });
+            const record = new ModelRecord(MODEL, { id: 3, name: 'Ann' });
+            await proxy.update(record);
+
+            expect(fetchMock).toHaveBeenCalledWith('/api/users/3', expect.objectContaining({ body: 'CUSTOM' }));
+        });
+    });
+
+    describe('readMode', () => {
+        it("readMode: 'detect' parses an unpaginated envelope without a page size", async () => {
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse({ data: [{ id: 1 }], total: 5 })));
+
+            const proxy = new AjaxProxy({ url: '/api/users', readMode: 'detect' });
+            const rows  = await proxy.read();
+
+            expect(rows).toEqual([{ id: 1 }]);
+            expect(proxy.getLastTotalCount()).toBe(5);
+        });
+
+        it('readMode is ignored when a custom reader is supplied', async () => {
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse({ anything: true })));
+
+            const reader: Reader = {
+                read: (_raw, _paginated): ReadResult => ({ records: [{ id: 9 }] }),
+            };
+            const proxy = new AjaxProxy({ url: '/api/users', readMode: 'detect', reader });
+
+            expect(await proxy.read()).toEqual([{ id: 9 }]);
+        });
+    });
+
     it('create() routes the body through a custom writer', async () => {
         const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: 1 }));
         vi.stubGlobal('fetch', fetchMock);

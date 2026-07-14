@@ -104,4 +104,49 @@ describe('JsonReader', () => {
         expect(reader.read([{ id: 1 }], false)).toEqual({ records: [{ id: 1 }] });
         expect(reader.read({ data: [{ id: 1 }], total: 1 }, true).total).toBe(1);
     });
+    it("mode 'auto' (default) still throws on an unpaginated envelope body", () => {
+        const reader = new JsonReader();
+        expect(() => reader.read({ data: [] }, false)).toThrow(/not an array and no root/);
+    });
+
+    // --- mode 'detect': shape decides, independent of the paginated flag ---
+    describe("mode 'detect'", () => {
+        it('parses an unpaginated envelope by shape, with no page size needed', () => {
+            const reader = new JsonReader({ rootProperty: 'rows', totalProperty: 'totalCount', mode: 'detect' });
+            expect(reader.read({ rows: [{ id: 1 }], totalCount: 5 }, false)).toEqual({
+                records: [{ id: 1 }],
+                total: 5,
+                success: undefined,
+                message: undefined,
+            });
+        });
+        it('parses a top-level array by shape, regardless of paginated', () => {
+            const reader = new JsonReader({ mode: 'detect' });
+            expect(reader.read([{ id: 1 }, { id: 2 }], true)).toEqual({ records: [{ id: 1 }, { id: 2 }] });
+            expect(reader.read([{ id: 1 }, { id: 2 }], false)).toEqual({ records: [{ id: 1 }, { id: 2 }] });
+        });
+        it('unwraps root before deciding array vs envelope', () => {
+            const reader = new JsonReader({ root: 'result', mode: 'detect' });
+            expect(reader.read({ result: [{ id: 1 }] }, false)).toEqual({ records: [{ id: 1 }] });
+            expect(reader.read({ result: { data: [{ id: 1 }], total: 3 } }, false)).toEqual({
+                records: [{ id: 1 }],
+                total: 3,
+                success: undefined,
+                message: undefined,
+            });
+        });
+    });
+
+    // --- sharper error messages ---
+    describe('sharper error messages', () => {
+        it("the unpaginated no-root throw mentions mode:'detect' and setPageSize()", () => {
+            const reader = new JsonReader();
+            expect(() => reader.read({ data: [] }, false))
+                .toThrow(/mode:'detect'.*rootProperty.*setPageSize\(\)/s);
+        });
+        it("the paginated non-envelope throw mentions mode:'array'", () => {
+            const reader = new JsonReader();
+            expect(() => reader.read(42, true)).toThrow(/mode:'array'/);
+        });
+    });
 });

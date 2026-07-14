@@ -53,10 +53,14 @@ export interface Reader {
  *   envelope on every read (paginated or not), decoupling the parse shape from
  *   whether this particular read carried `page`/`pageSize`.
  * - `'array'` — always parse a top-level (optionally `root`-unwrapped) array.
+ * - `'detect'` — parse by the response's own shape: an array parses as an
+ *   array, a non-null object parses as an envelope, independent of whether
+ *   this read was paginated. For a server that returns an envelope even on an
+ *   unpaginated read.
  *
  * @category Data
  */
-export type JsonReaderMode = 'auto' | 'envelope' | 'array';
+export type JsonReaderMode = 'auto' | 'detect' | 'envelope' | 'array';
 
 /**
  * Construction-time options for {@link JsonReader}.
@@ -70,7 +74,8 @@ export interface JsonReaderOptions {
     /**
      * Which parse to use. Defaults to `'auto'` (envelope when paginated, array
      * otherwise). Set `'envelope'` or `'array'` to fix the shape independently
-     * of the read's pagination — see {@link JsonReaderMode}.
+     * of the read's pagination, or `'detect'` to let the response's own shape
+     * decide — see {@link JsonReaderMode}.
      */
     mode?          : JsonReaderMode;
 }
@@ -131,13 +136,21 @@ export class JsonReader implements Reader {
      * @remarks
      * With the default `'auto'` mode the parse follows `paginated`: an envelope
      * when paginated, a top-level array otherwise. `'envelope'` / `'array'`
-     * force the shape regardless of `paginated`. Envelope parsing reads
+     * force the shape regardless of `paginated`. `'detect'` instead peeks at the
+     * (optionally `root`-unwrapped) response shape: an array parses as an array,
+     * a non-null object parses as an envelope. Envelope parsing reads
      * `rootProperty` as the records array and `totalProperty` as the count from
      * the (optionally `root`-unwrapped) object; array parsing unwraps `root` to
      * an array, or falls back to a top-level array. Throws an `Error` on an
      * unexpected shape.
      */
     read(raw: any, paginated: boolean): ReadResult {
+        if (this._mode === 'detect') {
+            const peeked = this._root ? raw?.[this._root] : raw;
+
+            return Array.isArray(peeked) ? this.readArray(raw) : this.readEnvelope(raw);
+        }
+
         const envelope = this._mode === 'envelope' || (this._mode === 'auto' && paginated);
 
         return envelope ? this.readEnvelope(raw) : this.readArray(raw);
@@ -154,7 +167,8 @@ export class JsonReader implements Reader {
         const envelope = this._root ? raw[this._root] : raw;
 
         if (envelope == null || typeof envelope !== 'object') {
-            throw new Error(`AjaxProxy: paginated response is not an envelope object`);
+            throw new Error(`AjaxProxy: paginated response is not an envelope object — if the server returns a `
+                + `top-level array, set mode:'array'`);
         }
 
         const data  = envelope[this._rootProperty];
@@ -191,7 +205,9 @@ export class JsonReader implements Reader {
         }
 
         if (!Array.isArray(raw)) {
-            throw new Error(`AjaxProxy: response is not an array and no root was specified`);
+            throw new Error(`AjaxProxy: response is not an array and no root was specified — if the server `
+                + `returns a { data, total } envelope, set mode:'detect' (or mode:'envelope' / a rootProperty), `
+                + `or enable pagination with setPageSize()`);
         }
 
         return { records: raw };

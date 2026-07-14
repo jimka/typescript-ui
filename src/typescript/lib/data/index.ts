@@ -34,4 +34,4 @@ export type { WebStorageProxyOptions, WebStorageProxyConfig } from '~/data/proxy
 export { JsonReader } from '~/data/proxy/Reader.js';
 export type { Reader, ReadResult, JsonReaderOptions, JsonReaderMode } from '~/data/proxy/Reader.js';
 export { JsonWriter } from '~/data/proxy/Writer.js';
-export type { Writer } from '~/data/proxy/Writer.js';
+export type { Writer, WriteOperation, JsonWriterMode, JsonWriterOptions } from '~/data/proxy/Writer.js';

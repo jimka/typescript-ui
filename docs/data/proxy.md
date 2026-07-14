@@ -79,6 +79,10 @@ If `root` is configured, the envelope is read from `json[root]` first, then
 via `getTotalCount()` and `getTotalPages()`, and on the proxy itself via
 [`getLastTotalCount()`](/api/data/classes/Proxy#getlasttotalcount).
 
+If the server always returns an envelope — even on an unpaginated read — set
+`readMode: 'detect'` (see [Reader & Writer](#reader-writer) below) so the parse
+follows the response's own shape instead of `setPageSize()`.
+
 ### Remote sort & filter
 
 By default a store sorts and filters its records client-side. Set
@@ -182,6 +186,54 @@ A custom reader returns a normalized
 [`ReadResult`](/api/data/interfaces/ReadResult) (`{ records, total?, success?,
 message? }`); a custom writer returns the request-body string for a record or
 batch.
+
+### Reader mode: shape-driven parsing
+
+[`JsonReaderMode`](/api/data/type-aliases/JsonReaderMode) defaults to `'auto'`
+(envelope when the read is paginated, array otherwise — the legacy behaviour).
+Set `'envelope'` or `'array'` to force the shape regardless of pagination, or
+`'detect'` to let the response's own shape decide: an array parses as an
+array, a non-null object parses as an envelope, independent of whether the
+read carried `page`/`pageSize`. `'detect'` is the fix for a server that always
+wraps its response, even on an unpaginated read:
+
+```typescript
+const store = new AjaxStore({
+    model: PersonModel,
+    proxy: { url: '/api/people', readMode: 'detect' },
+});
+await store.load();
+// → GET /api/people (no page/pageSize)
+// → response { data: [...], total: 1234 } still parses as an envelope
+```
+
+`AjaxProxyOptions.readMode` forwards to the default `JsonReader` only; pass a
+`mode` directly to `JsonReader` when supplying a custom `reader`.
+
+### Writer mode: dirty-only updates
+
+[`JsonWriterMode`](/api/data/type-aliases/JsonWriterMode) defaults to `'full'`
+— `JSON.stringify(record.getData())`, the whole record. Set `'dirty'` to send
+only the fields changed since the last commit, plus the primary key, on an
+**update**; a `create` always sends the full record, since a new record has no
+committed baseline to diff against. The primary key is always included so a
+batch update — which PUTs to the collection URL with no id in it — stays
+identifiable:
+
+```typescript
+const store = new AjaxStore({
+    model: PersonModel,
+    proxy: { url: '/api/people', writeMode: 'dirty' },
+});
+const [person] = store.getRecords();
+person.set('name', 'New Name');
+await store.sync();
+// → PUT /api/people/{id} body: { name: 'New Name', id: <pk> }
+```
+
+`AjaxProxyOptions.writeMode` forwards to the default `JsonWriter` only; pass a
+`mode` directly to `JsonWriter` when supplying a custom `writer`. The
+underlying value is [`ModelRecord.getChangedData()`](/api/data/classes/ModelRecord#getchangeddata).
 
 ## Custom proxies
 
