@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Body, DOM } from '@jimka/typescript-ui/core';
+import { Body, DOM, FocusHistory } from '@jimka/typescript-ui/core';
 import { Tab } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { VBoxPanel } from "./VBoxPanel.js";
@@ -37,6 +37,8 @@ DOM.source.getScrollBarWidth();
 (window as any).bench = Benchmark;
 
 let body = Body.getInstance();
+
+FocusHistory.enable();
 
 let layoutManager = new Tab();
 body.setLayoutManager(layoutManager);

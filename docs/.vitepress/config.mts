@@ -235,6 +235,7 @@ export default defineConfig({
                     { text: 'Custom brand theme',  link: '/recipes/custom-theme' },
                     { text: 'Keyboard shortcuts', link: '/recipes/keyboard-shortcuts' },
                     { text: 'Drag-and-drop',      link: '/recipes/drag-and-drop' },
+                    { text: 'Focus history',      link: '/recipes/focus-history' },
                 ] },
                 { text: 'Construction patterns', collapsed: false, items: [
                     { text: 'Component constructor options', link: '/recipes/component-options' },
