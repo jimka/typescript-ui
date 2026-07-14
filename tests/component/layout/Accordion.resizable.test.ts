@@ -365,25 +365,51 @@ describe('Accordion fill — respects maxSize (non-resizable)', () => {
         expect(a.getHeight() + b.getHeight()).toBeCloseTo(budget, 5); // fill invariant holds
     });
 
-    it('setFillHeight caps the bottommost section at its max instead of over-padding it', () => {
+    it('setFillHeight spreads the slack equally across all open sections (unweighted → equal slices)', () => {
         installTestDOM(CONFIG);
         const acc = new Accordion();
         acc.setHeaderHeight(HEADER);
         acc.setFillHeight(true);
-        const host = hostAccordion(400, 400, acc); // budget = 340
+        const host = hostAccordion(400, 400, acc); // budget = 400 - 3*30 = 310
         const a = content({ width: 100, height: 50 }, { width: 40, height: 10 });
         const b = content({ width: 100, height: 50 }, { width: 40, height: 10 });
-        b.setMaxSize(10000, 90); // bottommost fill target capped at 90
+        const c = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.addComponent(c, constraints('C', true));
+        host.doLayout();
+
+        const budget = 400 - 3 * HEADER; // 310
+        // Every open section (all unweighted → equal weight) takes an equal slice
+        // of the 160px slack: each ends at 50 + 160/3.
+        expect(a.getHeight()).toBeCloseTo(50 + 160 / 3, 4);
+        expect(b.getHeight()).toBeCloseTo(50 + 160 / 3, 4);
+        expect(c.getHeight()).toBeCloseTo(50 + 160 / 3, 4);
+        expect(a.getHeight() + b.getHeight() + c.getHeight()).toBeCloseTo(budget, 4);
+    });
+
+    it('setFillHeight caps a section at its max and re-shares the surplus among the other sections', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setFillHeight(true);
+        const host = hostAccordion(400, 400, acc); // budget = 400 - 2*30 = 340
+        const a = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        b.setMaxSize(10000, 90); // one section capped at 90
         host.addComponent(a, constraints('A', true));
         host.addComponent(b, constraints('B', true));
         host.doLayout();
 
+        const budget = 400 - 2 * HEADER; // 340
         const wrappers = (acc as unknown as { _panelWrappers: Component[] })._panelWrappers;
 
-        // B (the fill target) is capped at its max; the leftover it cannot take
-        // stays as slack rather than padding B's wrapper past its content max.
+        // B is capped at its max; the surplus it cannot take is re-shared to A
+        // (the fill invariant holds), not left as slack.
         expect(wrappers[1].getHeight()).toBeLessThanOrEqual(90 + 1e-6);
         expect(b.getHeight()).toBeCloseTo(90, 5);
+        expect(a.getHeight()).toBeCloseTo(budget - 90, 5); // absorbs B's surplus
+        expect(a.getHeight() + b.getHeight()).toBeCloseTo(budget, 5);
     });
 });
 
@@ -440,10 +466,11 @@ describe('Accordion — resizable/non-resizable size parity', () => {
         host.doLayout(); // back to non-resizable
         const offAgain = wrappers.map(w => w.getHeight());
 
-        // Both modes respect the merged bounds: C never renders past its max (142),
-        // E never renders below its min (130) ...
+        // Both modes respect the merged bounds: C never renders past its max (142;
+        // its max headroom is 0 so fill can't grow it), E never below its min (130,
+        // though setFillHeight's spread-all lets it grow above that) ...
         expect(off[2]).toBeCloseTo(142, 5);
-        expect(off[3]).toBeCloseTo(130, 5);
+        expect(off[3]).toBeGreaterThanOrEqual(130 - 1e-6);
         // ... and toggling resizable is a no-op for every section.
         for (let i = 0; i < off.length; i++) {
             expect(on[i]).toBeCloseTo(off[i], 5);

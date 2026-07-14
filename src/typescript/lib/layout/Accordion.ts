@@ -512,16 +512,18 @@ class Accordion extends LayoutManager {
     /**
      * Returns whether fill mode is on.
      *
-     * @returns True if the bottommost open section absorbs leftover height.
+     * @returns True if open sections grow to absorb the container's leftover height.
      */
     isFillHeight(): boolean {
         return this._fillHeight;
     }
 
     /**
-     * Sets fill mode. When on, the bottommost open section grows to fill the
-     * container's leftover height (IDE/dock-panel style) instead of every open
-     * section sitting at its preferred height — only meaningful when the host
+     * Sets fill mode. When on, every open section grows to absorb the
+     * container's leftover height, sharing it in proportion to their
+     * `fillWeight` (unweighted sections count equally, so equal weights get
+     * equal slices) and each capped at its own max — instead of every open
+     * section sitting at its preferred height. Only meaningful when the host
      * stretches the accordion beyond its preferred height. No effect when the
      * content already overflows.
      *
@@ -1373,8 +1375,9 @@ class Accordion extends LayoutManager {
         const shrinkRatio = this.computeShrinkRatio(components, containerSize);
 
         // Fill: open sections grow to absorb the container's leftover height
-        // (underflow) — by per-section fillWeight, or the bottommost when
-        // setFillHeight is on. The counterpart to shrink: when the content
+        // (underflow) — split across the sections by fillWeight, with
+        // setFillHeight opting every open section in at an equal default weight.
+        // The counterpart to shrink: when the content
         // overflows, shrinkRatio > 0 and the leftover is <= 0, so the fill map is
         // empty and the two policies never both apply.
         const fills = this.computeFill(components, containerSize, shrinkRatio);
@@ -1920,11 +1923,17 @@ class Accordion extends LayoutManager {
      * open sections underflow the container (`leftover > 0`); on overflow the
      * leftover is `<= 0` so fill yields nothing and shrink handles the fit.
      *
-     * Sections with a positive `fillWeight` constraint split the leftover in
-     * proportion to their weights — so a single weighted section (in any
-     * position, not just the bottommost) fills all the slack and equal weights
-     * share it. When no section is weighted, the legacy `setFillHeight` mode
-     * gives the whole leftover to the bottommost open section.
+     * Each open section's effective fill weight is its explicit `fillWeight`
+     * constraint, or — when {@link setFillHeight} is on — a default of `1` so
+     * every unweighted open section shares the slack equally. The leftover is
+     * then split across all sections with a positive effective weight in
+     * proportion to those weights, each capped at its own max (a capped
+     * section's surplus is re-shared among the rest; see
+     * {@link distributeFillWithinMax}). So `setFillHeight` spreads the slack
+     * across every open section (equal weights → equal slices) rather than
+     * padding a single one, and per-section `fillWeight` still targets or biases
+     * specific sections. With neither, nothing fills and the slack stays as
+     * trailing space.
      *
      * @param components - The container's child components.
      * @param containerSize - The container's inner size, or null.
@@ -1941,9 +1950,7 @@ class Accordion extends LayoutManager {
 
         let used = 0;
         let displayed = 0;
-        let bottommostOpen = -1;
-        let bottommostHeadroom = Number.POSITIVE_INFINITY;
-        const weighted: Array<{ index: number; weight: number; headroom: number }> = [];
+        const recipients: Array<{ index: number; weight: number; headroom: number }> = [];
         let weightTotal = 0;
 
         for (let i = 0; i < components.length; i++) {
@@ -1961,12 +1968,14 @@ class Accordion extends LayoutManager {
             if (this._openState[i]) {
                 const contentHeight = this.openContentHeight(components[i], shrinkRatio);
                 used += contentHeight;
-                bottommostOpen = i;
-                bottommostHeadroom = this.fillHeadroom(components[i], contentHeight);
 
-                const weight = (this.getLayoutConstraints(components[i]) as AccordionConstraints | undefined)?.fillWeight ?? 0;
+                // Explicit fillWeight wins; otherwise setFillHeight opts every
+                // open section in at weight 1 so the slack spreads equally.
+                const explicit = (this.getLayoutConstraints(components[i]) as AccordionConstraints | undefined)?.fillWeight ?? 0;
+                const weight = explicit > 0 ? explicit : (this._fillHeight ? 1 : 0);
+
                 if (weight > 0) {
-                    weighted.push({ index: i, weight, headroom: this.fillHeadroom(components[i], contentHeight) });
+                    recipients.push({ index: i, weight, headroom: this.fillHeadroom(components[i], contentHeight) });
                     weightTotal += weight;
                 }
             }
@@ -1974,24 +1983,14 @@ class Accordion extends LayoutManager {
 
         const leftover = containerSize.height - used;
 
-        if (leftover <= 0) {
+        if (leftover <= 0 || weightTotal <= 0) {
             return fills;
         }
 
-        // Cap each recipient's fill at its own max so an open section is never
-        // padded past its maximum height; the weighted case re-shares a capped
-        // section's surplus among the rest (see distributeFillWithinMax), while
-        // setFillHeight's single target simply keeps only what it can absorb and
-        // leaves the rest as slack.
-        if (weightTotal > 0) {
-            return this.distributeFillWithinMax(weighted, leftover);
-        }
-
-        if (this._fillHeight && bottommostOpen !== -1) {
-            fills.set(bottommostOpen, Math.min(leftover, bottommostHeadroom));
-        }
-
-        return fills;
+        // Split the slack across the recipients by weight, each capped at its own
+        // max so an open section is never padded past its maximum height; a
+        // capped section's surplus is re-shared among the rest.
+        return this.distributeFillWithinMax(recipients, leftover);
     }
 
     /**

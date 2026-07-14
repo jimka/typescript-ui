@@ -299,10 +299,10 @@ describe('Accordion manager — fill-weight distribution', () => {
         expect(b.getHeight()).toBe(50 + LEFTOVER / 2);
     });
 
-    it('with no weighted section, setFillHeight gives the leftover to the bottommost open section', () => {
+    it('with no weighted section, setFillHeight spreads the leftover equally across all open sections', () => {
         const { a, b } = twoOpen({ fillHeight: true });
-        expect(a.getHeight()).toBe(50);
-        expect(b.getHeight()).toBe(50 + LEFTOVER);
+        expect(a.getHeight()).toBe(50 + LEFTOVER / 2);
+        expect(b.getHeight()).toBe(50 + LEFTOVER / 2);
     });
 
     it('on overflow the fill map is empty — shrink and fill never both apply', () => {
