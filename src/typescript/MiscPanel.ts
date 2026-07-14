@@ -465,6 +465,12 @@ class MiscPanel extends Panel {
                 // mandatory while Active (predicate-only, so no header
                 // asterisk — Frank's empty Score still tints since he's
                 // Active, but Bob's/Eve's don't since they're inactive).
+                // LastSeen's `requiredPredicate` (mandatory while Active)
+                // additionally demos required-empty composing with a
+                // grouped column's `groupColor`: David's and Frank's empty
+                // LastSeen (both Active) show the required tint, while
+                // Alice's/Carol's filled LastSeen restores the Activity
+                // group tint rather than going transparent.
                 const spec: ColumnSpec = {
                     rowReadOnly: (r) => r.get('locked') === true,
                     columns: [
@@ -474,7 +480,7 @@ class MiscPanel extends Panel {
                         { field: 'Role'    , minWidth: 140, required: true, values: [{ value: 'dev', label: 'Developer' }, { value: 'qa', label: 'QA Engineer' }, { value: 'pm', label: 'Project Manager' }] },
                         { field: 'Joined'  , minWidth: 120, readOnly: true,       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
                         { field: 'Meeting' , minWidth: 100, showSeconds: true,    group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
-                        { field: 'LastSeen', minWidth: 160,                       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
+                        { field: 'LastSeen', minWidth: 160, requiredPredicate: (r) => r.get('Active') === true, group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)' },
                         { field: 'Notes'   , hidden  : true                                                                                                },
                         { field: 'locked'  , hidden  : true                                                                                                },
                     ],
