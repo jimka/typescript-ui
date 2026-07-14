@@ -8,7 +8,7 @@ export type { RowReparentDetail } from '~/component/table/TreeTable.js';
 export { TreeTablePanel } from '~/component/table/TreeTablePanel.js';
 export type { TreeTableSpec } from '~/component/table/TreeTableSpec.js';
 export { Column } from '~/component/table/Column.js';
-export type { ColumnConfig, ColumnSpec, ComboOption } from '~/component/table/ColumnConfig.js';
+export type { CellType, ColumnConfig, ColumnSpec, ComboOption } from '~/component/table/ColumnConfig.js';
 export { TableExporter } from '~/component/table/TableExporter.js';
 export type { ExportOptions } from '~/component/table/TableExporter.js';
 export { TableHeader } from '~/component/table/Header.js';
@@ -34,6 +34,7 @@ export { TimeCell } from '~/component/table/cell/Time.js';
 export { DateTimeCell } from '~/component/table/cell/DateTime.js';
 export { GlyphCell } from '~/component/table/cell/Glyph.js';
 export { ComboCell } from '~/component/table/cell/Combo.js';
+export { DynamicCell } from '~/component/table/cell/Dynamic.js';
 
 export { CellEditor } from '~/component/table/cell/editor/CellEditor.js';
 export type { ForwardedKeyDetail } from '~/component/table/cell/editor/CellEditor.js';

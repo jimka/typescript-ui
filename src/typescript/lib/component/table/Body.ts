@@ -496,11 +496,15 @@ class Body extends VirtualRowView<Row> {
 
     /**
      * Registers a per-column [`ComboEditor`](/api/component/table/classes/ComboEditor)
-     * factory on the editor pool for every column declaring `values`. The
-     * factory closes over that column's resolved option set, so each combo
-     * column borrows an editor wired to its own choices under the
+     * factory on the editor pool for every column declaring `values`, plus
+     * every column declaring `cellValues` (a per-record `DynamicCell` combo
+     * column). The factory closes over that column's resolved option set —
+     * an empty seed for `cellValues` columns, since the real per-row options
+     * are injected at edit time by `DynamicCell.prepareEditor` — so each
+     * combo column borrows an editor wired to its own choices under the
      * `combo:<field>` key returned by
-     * [`ComboCell.getEditorKey`](/api/component/table/classes/ComboCell#geteditorkey).
+     * [`ComboCell.getEditorKey`](/api/component/table/classes/ComboCell#geteditorkey)
+     * or `DynamicCell.getEditorKey`.
      *
      * `register` overwrites and drops any cached editor, so re-applying
      * configs with new options rebuilds the editor on the next edit.
@@ -513,6 +517,8 @@ class Body extends VirtualRowView<Row> {
 
             if (values && values.length > 0) {
                 this._editorPool.register(`combo:${field}`, () => new ComboEditor(values));
+            } else if (config.cellValues) {
+                this._editorPool.register(`combo:${field}`, () => new ComboEditor([]));
             }
         }
     }

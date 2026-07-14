@@ -71,7 +71,7 @@ export const groups = [
     ] },
 
     { name: "Data / Tables / Trees", entries: [
-        { task: "Editable data grid / spreadsheet-style table", symbol: "Table" },
+        { task: "Editable data grid / spreadsheet-style table, with per-column or per-cell editor/renderer types", symbol: "Table", doc: "docs/components/Table.md" },
         { task: "Store-bound table with a scroll frame and toolbar", symbol: "TablePanel" },
         { task: "Table whose rows form an expandable tree", symbol: "TreeTable" },
         { task: "Expandable tree of nodes", symbol: "Tree" },

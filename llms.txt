@@ -53,7 +53,7 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - File chooser field → **FileField** · `@jimka/typescript-ui/component/input` · A styled file-selection control: a trigger `Button` that opens the OS file picker, plus a filename label. Wraps a hidden native `<input typ… · docs/components/FileField.md
 
 ### Data / Tables / Trees
-- Editable data grid / spreadsheet-style table → **Table** · `@jimka/typescript-ui/component/table` · A data-bound table component rendered as an HTML `<table>` element. · docs/components/Table.md
+- Editable data grid / spreadsheet-style table, with per-column or per-cell editor/renderer types → **Table** · `@jimka/typescript-ui/component/table` · A data-bound table component rendered as an HTML `<table>` element. · docs/components/Table.md
 - Store-bound table with a scroll frame and toolbar → **TablePanel** · `@jimka/typescript-ui/component/table` · A composite panel that combines a Table with an add/remove/sync toolbar. · docs/components/TablePanel.md
 - Table whose rows form an expandable tree → **TreeTable** · `@jimka/typescript-ui/component/table` · A data-bound table whose rows form a parent/child hierarchy. · docs/components/TreeTable.md
 - Expandable tree of nodes → **Tree** · `@jimka/typescript-ui/component/tree` · A hierarchical data view with collapsible nodes and virtual scrolling. · docs/components/Tree.md

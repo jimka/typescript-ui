@@ -113,6 +113,32 @@ describe('ComboRenderer value->label mapping', () => {
     });
 });
 
+describe('ComboRenderer.setOptions', () => {
+    it('rebuilds the value->label map and re-renders the cached value against it', () => {
+        const r = new ComboRenderer(COUNTRIES);
+
+        r.setValue('AU');
+        expect(renderedText(r)).toBe('Australia');
+
+        r.setOptions([{ value: 'AU', label: 'Australie' }, { value: 'SE', label: 'Suède' }]);
+
+        expect(r.getValue()).toBe('AU'); // getValue unchanged
+        expect(renderedText(r)).toBe('Australie'); // label refreshed under the new set
+    });
+
+    it('a value present under the new set renders that set\'s label even if absent from the old one', () => {
+        const r = new ComboRenderer(COUNTRIES);
+
+        r.setValue('dev');
+        expect(renderedText(r)).toBe('dev'); // outside COUNTRIES: raw value
+
+        r.setOptions([{ value: 'dev', label: 'Developer' }]);
+
+        expect(r.getValue()).toBe('dev');
+        expect(renderedText(r)).toBe('Developer');
+    });
+});
+
 describe('ComboEditor value round-trip', () => {
     it('a fresh editor caches null', () => {
         expect(new ComboEditor(COUNTRIES).getValue()).toBe(null);
@@ -131,6 +157,21 @@ describe('ComboEditor value round-trip', () => {
         e.setValue('SE');
         e.setValue(null);
         expect(e.getValue()).toBe(null);
+    });
+});
+
+describe('ComboEditor.setOptions', () => {
+    it('rebuilds the dropdown items and preserves the current selection', () => {
+        const e = new ComboEditor(COUNTRIES);
+
+        e.setValue('AU');
+        e.setOptions([{ value: 'dev', label: 'Developer' }, { value: 'qa', label: 'QA' }]);
+
+        expect(e.getValue()).toBe('AU'); // getValue unchanged
+        expect((e as any)._combo.getItems()).toEqual([
+            { key: 'dev', label: 'Developer' },
+            { key: 'qa',  label: 'QA' },
+        ]);
     });
 });
 

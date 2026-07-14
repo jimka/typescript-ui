@@ -6,6 +6,7 @@ import { AbstractModel } from "~/data/AbstractModel.js";
 import { Field } from "~/data/Field.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Cell } from "~/component/table/cell/Cell.js";
+import { DynamicCell } from "~/component/table/cell/Dynamic.js";
 import { DefaultCell } from "~/component/table/cell/Default.js";
 import { StringCell } from "~/component/table/cell/String.js";
 import { BooleanCell } from "~/component/table/cell/Boolean.js";
@@ -66,10 +67,9 @@ class Row extends Component {
 
             for (let idx in fields) {
                 let field = fields[idx];
-                let value = this._data ? this._data.get(field.getName()) : undefined;
                 let cell  = Row.createCellForField(field, columnConfigs);
 
-                cell.setValue(value);
+                this.bindCell(cell, this._data, field.getName());
                 cell.on("commit", (newValue) => {
                     if (this._data) {
                         this._data.set(field.getName(), newValue);
@@ -161,7 +161,7 @@ class Row extends Component {
         const names = this._fieldNames;
 
         for (let i = 0; i < names.length; i++) {
-            cells[i].setValue(record.get(names[i]));
+            this.bindCell(cells[i], record, names[i]);
         }
 
         this.updateVisualState();
@@ -314,9 +314,10 @@ class Row extends Component {
             // its field-type-driven cell. Discard a surviving cell whose
             // kind no longer matches the current config so it rebuilds with
             // the right renderer + editor; commit any in-flight edit first.
-            const wantsCombo = (columnConfigs.get(fieldName)?.values?.length ?? 0) > 0;
+            const wantsCombo   = (columnConfigs.get(fieldName)?.values?.length ?? 0) > 0;
+            const wantsDynamic = !!columnConfigs.get(fieldName)?.cellType;
 
-            if (cell && wantsCombo !== (cell instanceof ComboCell)) {
+            if (cell && (wantsCombo !== (cell instanceof ComboCell) || wantsDynamic !== (cell instanceof DynamicCell))) {
                 if (cell.isEditing()) {
                     cell.commitEdit();
                 }
@@ -359,7 +360,7 @@ class Row extends Component {
 
             if (isNew) {
                 this.addComponent(cell, { data: field });
-                cell.setValue(this._data ? this._data.get(fieldName) : undefined);
+                this.bindCell(cell, this._data, fieldName);
             }
         }
 
@@ -376,6 +377,23 @@ class Row extends Component {
         this._fieldNames = targetFields.map(f => f.getName());
 
         return this;
+    }
+
+    /**
+     * Routes a cell's value-set for one field: a {@link DynamicCell} resolves
+     * its per-record variant via `bindRecord`, while every other cell keeps
+     * the plain `setValue` path.
+     *
+     * @param cell - The cell to bind.
+     * @param record - The record to bind, or undefined to clear the cell.
+     * @param fieldName - The field this cell presents.
+     */
+    private bindCell(cell: Cell<any>, record: ModelRecord | undefined, fieldName: string): void {
+        if (cell instanceof DynamicCell && record) {
+            cell.bindRecord(record);
+        } else {
+            cell.setValue(record ? record.get(fieldName) : undefined);
+        }
     }
 
     /**
@@ -397,6 +415,10 @@ class Row extends Component {
         // rebind to the renderer.
         if (config?.renderer) {
             return new Cell("td", config.renderer());
+        }
+
+        if (config?.cellType) {
+            return new DynamicCell(field.getName(), field.getType(), config);
         }
 
         const values = config?.values;

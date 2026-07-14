@@ -121,6 +121,26 @@ class ComboEditor extends CellEditor<String | null> {
     }
 
     /**
+     * Rebuilds the dropdown's item list from a new option set, preserving
+     * the currently selected value, so a shared editor can be reused across
+     * rows whose combo options differ.
+     *
+     * @param optionList - The new option set; same shape as the constructor
+     *   argument.
+     * @returns This editor, for method chaining.
+     */
+    setOptions(optionList: Array<ComboOption | string>): this {
+        const items: Array<SelectableListItem> = normalizeComboOptions(optionList).map(
+            option => ({ key: option.value, label: option.label }),
+        );
+
+        this._combo.setItems(items);
+        this._combo.setValue(this._value === null ? "" : String(this._value));
+
+        return this;
+    }
+
+    /**
      * Caches the combo box's current value and asks the active cell to
      * commit. Shared by the selection (`"action"`) and blur paths; an empty
      * selection commits as `null`. Re-entrant-safe: once the cell has
