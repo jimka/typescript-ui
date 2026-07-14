@@ -99,6 +99,7 @@ class TestHandleTable {
     private readonly _stubs = new Map<Handle, HandleStub>();
     private readonly _parents = new Map<Handle, Handle>();
     private readonly _byId = new Map<string, Handle>();
+    private readonly _connected = new Set<Handle>();
     private _focus: Handle | null = null;
     private _next = 1;
 
@@ -225,6 +226,31 @@ class TestHandleTable {
      */
     focus(): Handle | null {
         return this._focus;
+    }
+
+    /**
+     * Marks a handle connected/disconnected, seeded by {@link setConnected}.
+     *
+     * @param handle - The handle to mark.
+     * @param connected - Whether it should read as connected.
+     */
+    setConnected(handle: Handle, connected: boolean): void {
+        if (connected) {
+            this._connected.add(handle);
+        } else {
+            this._connected.delete(handle);
+        }
+    }
+
+    /**
+     * Reads a handle's connectivity, seeded by {@link setConnected}. Default
+     * `false` — unseeded handles read as disconnected (today's behaviour).
+     *
+     * @param handle - The handle to query.
+     * @returns Whether the handle is marked connected.
+     */
+    isConnected(handle: Handle): boolean {
+        return this._connected.has(handle);
     }
 }
 
@@ -820,9 +846,9 @@ export class ModelledDOMSource implements DOMSource {
         return { offsetTop: px(stub.styleTop), offsetHeight: px(stub.styleHeight) };
     }
 
-    /** The modelled source never attaches elements to a document. */
-    isConnected(_handle: Handle): boolean {
-        return false;
+    /** Reads the connectivity seeded by {@link setConnected} (default `false`). */
+    isConnected(handle: Handle): boolean {
+        return _table.isConnected(handle);
     }
 
     /** Reads the value recorded onto the stub by the recording sink. */
@@ -1134,13 +1160,17 @@ export function installTestDOM(config: ModelledDOMConfig): RecordingDOMSink {
  *
  * @param target - The element handle the event targets.
  * @param type - The event type (e.g. `"click"`).
- * @param init - Optional `clientX`/`clientY`/`key`/`keyCode`/`button`/`detail` fields.
+ * @param init - Optional `clientX`/`clientY`/`key`/`keyCode`/`button`/`detail`/
+ * `code`/modifier-key fields.
  * @returns The synthetic event.
  */
 export function makeEvent(
     target: Handle,
     type: string,
-    init?: { clientX?: number; clientY?: number; key?: string; keyCode?: number; button?: number; detail?: unknown }
+    init?: {
+        clientX?: number; clientY?: number; key?: string; keyCode?: number; button?: number; detail?: unknown;
+        code?: string; ctrlKey?: boolean; altKey?: boolean; shiftKey?: boolean; metaKey?: boolean;
+    }
 ): Event {
     const sentinel: SentinelTarget = { [SENTINEL_TARGET]: target };
 
@@ -1153,6 +1183,11 @@ export function makeEvent(
         keyCode:         init?.keyCode,
         button:          init?.button,
         detail:          init?.detail,
+        code:            init?.code,
+        ctrlKey:         init?.ctrlKey ?? false,
+        altKey:          init?.altKey ?? false,
+        shiftKey:        init?.shiftKey ?? false,
+        metaKey:         init?.metaKey ?? false,
         stopPropagation: function (): void {},
         preventDefault:  function (): void {},
     };
@@ -1173,6 +1208,18 @@ export function setNaturalSize(handle: Handle, width: number, height: number): v
 
     stub.naturalWidth  = width;
     stub.naturalHeight = height;
+}
+
+/**
+ * Seeds a handle's connectivity, read back by
+ * {@link ModelledDOMSource.isConnected} (which has no live document to check
+ * against). Default `false` — a handle is disconnected until marked otherwise.
+ *
+ * @param handle - The element handle.
+ * @param connected - Whether it should read as connected.
+ */
+export function setConnected(handle: Handle, connected: boolean): void {
+    _table.setConnected(handle, connected);
 }
 
 /**
