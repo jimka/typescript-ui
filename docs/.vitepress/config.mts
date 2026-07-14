@@ -120,6 +120,7 @@ export default defineConfig({
                     { text: 'MarkdownEditor',  link: '/components/MarkdownEditor' },
                     { text: 'FieldSet',        link: '/components/FieldSet' },
                     { text: 'LabeledFieldSet', link: '/components/LabeledFieldSet' },
+                    { text: 'LabeledGrid',     link: '/components/LabeledGrid' },
                     { text: 'Legend',          link: '/components/Legend' },
                     { text: 'ProgressBar',     link: '/components/ProgressBar' },
                     { text: 'ProgressSpinner', link: '/components/ProgressSpinner' },

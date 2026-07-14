@@ -6,7 +6,7 @@ import { HBox, VBox } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { Checkbox, ComboBox, DateField, FileDropZone, FileField, Text, TextField, TimeField } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
-import { LabeledFieldSet } from '@jimka/typescript-ui/component/container';
+import { LabeledFieldSet, LabeledGrid } from '@jimka/typescript-ui/component/container';
 class BindingPanel extends Panel {
 
     constructor() {
@@ -212,6 +212,35 @@ class BindingPanel extends Panel {
         fileForm.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
 
         this.addComponent(fileForm);
+
+        // ── Chrome-less LabeledGrid demo ─────────────────────────────────────
+
+        // A bare LabeledGrid — the same baseline-aligned title/field layout as
+        // LabeledFieldSet, but rendered as a plain <div> with no border and no
+        // legend. Useful when the fieldset chrome isn't wanted.
+        const bareGrid = new LabeledGrid({
+            rows: [
+                [{ title: 'Quantity', component: new TextField() }],
+                [{ title: 'Unit',     component: new TextField() }],
+            ],
+        });
+        bareGrid.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
+
+        this.addComponent(bareGrid);
+
+        // ── Empty-title notch collapse demo ──────────────────────────────────
+
+        // A LabeledFieldSet with no title: the <legend> notch collapses (see
+        // FieldSet.setDisplayed), so the top border renders continuous instead
+        // of reserving a gap for an empty legend. Visual manual-verify surface
+        // for that fix — compare its unbroken top border against the titled
+        // fieldsets above.
+        const untitledForm = new LabeledFieldSet('', {
+            rows: [[{ title: 'Note', component: new TextField() }]],
+        });
+        untitledForm.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
+
+        this.addComponent(untitledForm);
 
         // ── Wire up interactions ─────────────────────────────────────────────
 

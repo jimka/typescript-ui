@@ -69,3 +69,38 @@ describe('FieldSet perimeter and size', () => {
         expect(fs.getMinSize()).toEqual({ width: 100, height: 100 });
     });
 });
+
+describe('FieldSet empty-legend notch collapse', () => {
+    afterEach(() => DOM.reset());
+
+    it('adds no legend clearance when the title is empty', () => {
+        installTestDOM(CONFIG);
+
+        const fs = new FieldSet();
+
+        expect(fs.getPerimeterSize().top).toBe(fs.getInsets()!.getTop());
+        expect(fs.getMinSize()).toEqual({ width: 100, height: 100 });
+    });
+
+    it('still adds the legend clearance fallback when the title is non-empty', () => {
+        installTestDOM(CONFIG);
+
+        const fs = new FieldSet('Group');
+
+        const insetTop = fs.getInsets()!.getTop();
+
+        expect(fs.getPerimeterSize().top).toBe(insetTop + LEGEND_CLEARANCE_FALLBACK);
+    });
+
+    it('returns clearance to 0 after the title is cleared back to empty', () => {
+        installTestDOM(CONFIG);
+
+        const fs = new FieldSet('X');
+
+        expect(fs.getPerimeterSize().top).toBe(fs.getInsets()!.getTop() + LEGEND_CLEARANCE_FALLBACK);
+
+        fs.setTitle('');
+
+        expect(fs.getPerimeterSize().top).toBe(fs.getInsets()!.getTop());
+    });
+});

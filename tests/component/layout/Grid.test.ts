@@ -126,6 +126,60 @@ describe('Grid placement geometry', () => {
     });
 });
 
+describe('Grid baselineAlign preferred size reserves the baseline spread', () => {
+    afterEach(() => DOM.reset());
+
+    // A baseline-aligned row's height is `max(tallestCell, rowAscent + rowDescent)`:
+    // when two cells share a height but sit on different baselines, aligning them
+    // needs the highest ascent PLUS the deepest descent, which exceeds the tallest
+    // cell. doLayout accounts for that spread; getPreferredSize / getMinSize must
+    // report the same, or a parent sizes the grid too short and doLayout overflows
+    // the box it was given.
+    it('does not lay content out past the grid preferred height', () => {
+        installTestDOM(CONFIG);
+
+        const grid = new Grid({
+            baselineAlign: true,
+            columns:       2,
+            rows:          1,
+            spacing:       0,
+            rowTracks:     [{ mode: 'content' }],
+            columnTracks:  [{ mode: 'content' }, { mode: 'weight', value: 1 }],
+        });
+
+        // Two equal-height cells with mismatched baselines: ascent 13 from the
+        // first, descent 13 (16 − 3) from the second → a 26px baseline spread,
+        // 10px taller than either 16px cell.
+        const high = new Component({ preferredSize: { width: 10, height: 16 } });
+        const low  = new Component({ preferredSize: { width: 10, height: 16 } });
+        high.getBaseline = () => 13;
+        low.getBaseline  = () => 3;
+
+        const host = new Container({ layoutManager: grid });
+        host.getElement(true);
+        host.clearInsets();
+        host.addComponent(high);
+        host.addComponent(low);
+
+        const pref = grid.getPreferredSize()!;
+
+        // The reported preferred height must cover the baseline spread doLayout
+        // reserves — not just the tallest cell.
+        expect(pref.height).toBe(26);
+
+        // Sizing the host to that preferred height, no cell may overflow it.
+        host.setWidth(pref.width);
+        host.setHeight(pref.height);
+        host.doLayout();
+
+        const inner = host.getInnerSize()!;
+
+        for (const cell of [high, low]) {
+            expect(cell.getY() + cell.getHeight()).toBeLessThanOrEqual(inner.height);
+        }
+    });
+});
+
 describe('Grid overflow inflation', () => {
     afterEach(() => DOM.reset());
 

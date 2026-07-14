@@ -57,6 +57,7 @@ class FieldSet extends Component {
         super(options, { ..._defaultFieldSetOptions, ...(subclassDefaults ?? {}) });
 
         this._legend.setText(title);
+        this._legend.setDisplayed(title !== "");
     }
 
     /**
@@ -91,6 +92,7 @@ class FieldSet extends Component {
      */
     setTitle(title: string) : this {
         this._legend.setText(title);
+        this._legend.setDisplayed(title !== "");
         this.clampLegendWidth();
 
         return this;
@@ -110,6 +112,10 @@ class FieldSet extends Component {
      * clamp once a width exists.
      */
     private clampLegendWidth(): this {
+        if (this.getTitle() === "") {
+            return this;
+        }
+
         const width = this.getWidth();
         if (width <= 0) {
             return this;
@@ -133,6 +139,10 @@ class FieldSet extends Component {
      * @returns The minimum `{width, height}`, ensuring the legend's text fits.
      */
     getMinSize(): Size | null {
+        if (this.getTitle() === "") {
+            return super.getMinSize();
+        }
+
         const baseMin   = super.getMinSize();
         const legendMin = this._legend.getMinSize();
         if (!legendMin) {
@@ -191,6 +201,10 @@ class FieldSet extends Component {
      * @returns The legend clearance in pixels.
      */
     private legendClearance(): number {
+        if (this.getTitle() === "") {
+            return 0;
+        }
+
         if (this._legendClearance != null) {
             return this._legendClearance;
         }

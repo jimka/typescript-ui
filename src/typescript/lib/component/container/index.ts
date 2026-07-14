@@ -3,7 +3,9 @@
 export { FieldSet } from '~/component/container/FieldSet.js';
 export type { FieldSetOptions } from '~/component/container/FieldSet.js';
 export { LabeledFieldSet } from '~/component/container/LabeledFieldSet.js';
-export type { LabeledFieldSetOptions, LabeledFieldDescriptor, LabeledRowDescriptor } from '~/component/container/LabeledFieldSet.js';
+export type { LabeledFieldSetOptions } from '~/component/container/LabeledFieldSet.js';
+export { LabeledGrid } from '~/component/container/LabeledGrid.js';
+export type { LabeledGridOptions, LabeledFieldDescriptor, LabeledRowDescriptor } from '~/component/container/LabeledGrid.js';
 export { Legend } from '~/component/container/Legend.js';
 export type { LegendOptions } from '~/component/container/Legend.js';
 export { MenuItem } from '~/component/container/MenuItem.js';
