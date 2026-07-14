@@ -2,7 +2,7 @@
 
 [`LabeledFieldSet`](/api/component/container/classes/LabeledFieldSet) is a [`FieldSet`](/components/FieldSet) whose content is a baseline-aligned form of title/field pairs. It formalises the common labelled-form pattern: each row pairs a label with its input, titles hug their text while inputs share a common right edge, and rows line up across multiple side-by-side columns.
 
-Internally it is a single baseline-aligned [`Grid`](/api/layout/classes/Grid) with `2 × columns` grid-columns — a content-sized title track and a weight-sized input track per logical column — so you never hand-maintain track configuration or row counts.
+Internally it composes a [`LabeledGrid`](/components/LabeledGrid) — a single baseline-aligned [`Grid`](/api/layout/classes/Grid) with `2 × columns` grid-columns, a content-sized title track and a weight-sized input track per logical column — inside its `<fieldset>` chrome, so you never hand-maintain track configuration or row counts.
 
 ## Usage
 
@@ -52,4 +52,5 @@ form.addFullWidthRow(noteField);       // spans both columns
 
 - [API: LabeledFieldSet](/api/component/container/classes/LabeledFieldSet)
 - [`FieldSet`](/components/FieldSet) — the bordered, legend-titled base container.
+- [`LabeledGrid`](/components/LabeledGrid) — the chrome-less grid this component composes.
 - [`Grid`](/api/layout/classes/Grid) — the baseline-aligned layout used internally.
