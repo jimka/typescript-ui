@@ -143,3 +143,4 @@ status.getAria().setRole('status');
 - [API: Aria](/api/core/classes/Aria), [AriaRole](/api/core/type-aliases/AriaRole), [AriaSort](/api/core/type-aliases/AriaSort)
 - [API: RovingTabIndex](/api/core/classes/RovingTabIndex)
 - [`ButtonGroup`](/components/ButtonGroup) — uses `RovingTabIndex` internally
+- [Focus history navigation](/recipes/focus-history) — a keyboard back/forward accelerator over the app's focus trail, an opt-in aid for keyboard navigation
