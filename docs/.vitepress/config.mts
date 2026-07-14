@@ -46,6 +46,7 @@ export default defineConfig({
                 { text: 'Concepts', items: [
                     { text: 'Overview',            link: '/concepts/' },
                     { text: 'Component lifecycle', link: '/concepts/component-lifecycle' },
+                    { text: 'Constructing components', link: '/concepts/construction' },
                     { text: 'Layout system',       link: '/concepts/layout-system' },
                     { text: 'Sizing',              link: '/concepts/sizing' },
                     { text: 'Events',              link: '/concepts/events' },
@@ -239,6 +240,9 @@ export default defineConfig({
                 ] },
                 { text: 'Construction patterns', collapsed: false, items: [
                     { text: 'Component constructor options', link: '/recipes/component-options' },
+                ] },
+                { text: 'Local development', collapsed: false, items: [
+                    { text: 'Linking a local library checkout', link: '/recipes/local-development' },
                 ] },
             ],
             '/reference/': [
