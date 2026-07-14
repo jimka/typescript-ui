@@ -85,6 +85,42 @@ describe('LabeledGrid field structure', () => {
     });
 });
 
+describe('LabeledGrid content stays within its preferred height', () => {
+    afterEach(() => DOM.reset());
+
+    // Regression: a field whose input sits on a very different baseline from its
+    // label makes the baseline-aligned row taller than either cell. The grid's
+    // preferred height must reserve that spread, so when a parent (e.g. the
+    // composing LabeledFieldSet) sizes the grid to its preferred height the last
+    // row is not laid out past — and clipped by — the grid's own box.
+    it('does not lay a mismatched-baseline row out past its preferred height', () => {
+        installTestDOM(CONFIG);
+
+        // An input the same height as its label but on a much lower baseline:
+        // ascent from the label, descent from the input → a spread taller than
+        // either cell.
+        const input = new Component({ preferredSize: { width: 10, height: 16 } });
+        input.getBaseline = () => 3;
+
+        const grid = new LabeledGrid({
+            rows: [[{ title: 'Field', component: input }]],
+        });
+
+        grid.getElement(true);
+
+        const pref = grid.getPreferredSize()!;
+        grid.setWidth(pref.width);
+        grid.setHeight(pref.height);
+        grid.doLayout();
+
+        const inner = grid.getInnerSize()!;
+
+        for (const cell of grid.getComponents()) {
+            expect(cell.getY() + cell.getHeight()).toBeLessThanOrEqual(inner.height);
+        }
+    });
+});
+
 describe('LabeledGrid declarative rows', () => {
     afterEach(() => DOM.reset());
 

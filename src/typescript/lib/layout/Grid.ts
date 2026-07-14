@@ -855,6 +855,12 @@ class Grid extends LayoutManager {
         const columns: number[] = new Array(cols).fill(0);
         const rowSizes: number[] = new Array(rows).fill(0);
 
+        // Baseline mode only: per-row preferred heights + baselines, so the row
+        // content size can fold in the baseline spread `doLayout` reserves (see
+        // below). Left empty when `baselineAlign` is off.
+        const rowHeights:   number[][]              = this._baselineAlign ? Array.from({ length: rows }, () => []) : [];
+        const rowBaselines: Array<Array<number | null>> = this._baselineAlign ? Array.from({ length: rows }, () => []) : [];
+
         let flowCol = 0;
         let flowRow = 0;
 
@@ -893,6 +899,30 @@ class Grid extends LayoutManager {
 
             if (rowSpan === 1 && r < rows) {
                 rowSizes[r] = Math.max(rowSizes[r], h);
+
+                if (this._baselineAlign) {
+                    // Pair the preferred height with the baseline, exactly as
+                    // `doLayout` does — the cell's placed height and baseline
+                    // together set the row's ascent/descent.
+                    rowHeights[r].push(preferred ? preferred.height : 0);
+                    rowBaselines[r].push(component.getBaseline());
+                }
+            }
+        }
+
+        // A baseline-aligned row is `max(tallestCell, rowAscent + rowDescent)`
+        // (see `doLayout`): cells on mismatched baselines need the highest ascent
+        // plus the deepest descent, which can exceed the tallest cell. Fold that
+        // spread into the measured row size so `getPreferredSize` / `getMinSize`
+        // reserve what `doLayout` actually lays out, rather than under-reporting
+        // and letting the content overflow the box the parent sized from it.
+        if (this._baselineAlign) {
+            for (let r = 0; r < rows; r += 1) {
+                const { rowAscent, rowDescent } = this.computeRowMetrics(rowHeights[r], rowBaselines[r]);
+
+                if (rowAscent !== null) {
+                    rowSizes[r] = Math.max(rowSizes[r], rowAscent + rowDescent);
+                }
             }
         }
 
