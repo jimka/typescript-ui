@@ -436,6 +436,123 @@ describe('Accordion resizable — [min,max] constraints in the distribution', ()
     });
 });
 
+describe('Accordion resizable — drag growth chains past maxed sections', () => {
+    type Drag = {
+        onGutterDragStart(index: number, position: number): void;
+        onGutterDrag(index: number, position: number): void;
+    };
+
+    /** Three open sections A/B/C at 100px each (budget 300), with B pinned at its max. */
+    function threeWithMaxedMiddle(): { acc: Accordion; a: Component; b: Component; c: Component } {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 390, acc); // budget = 390 - 3*30 = 300
+        const a = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        b.setMaxSize(10000, 100); // B cannot grow past 100 (its current height)
+        const c = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.addComponent(c, constraints('C', true));
+        host.doLayout();
+        return { acc, a, b, c };
+    }
+
+    it('shrinking the bottom section grows the section above the maxed middle one', () => {
+        const { acc, a, b, c } = threeWithMaxedMiddle();
+        const drag = acc as unknown as Drag;
+
+        drag.onGutterDragStart(1, 0); // gutter between B and C
+        drag.onGutterDrag(1, 30);     // pull down 30: C shrinks, B is maxed → A grows
+
+        expect(c.getHeight()).toBeCloseTo(70, 5);
+        expect(b.getHeight()).toBeCloseTo(100, 5);   // maxed middle unchanged
+        expect(a.getHeight()).toBeCloseTo(130, 5);   // grows past the maxed B
+        expect(a.getHeight() + b.getHeight() + c.getHeight()).toBeCloseTo(300, 5);
+    });
+
+    it('shrinking the top section grows the section below the maxed middle one', () => {
+        const { acc, a, b, c } = threeWithMaxedMiddle();
+        const drag = acc as unknown as Drag;
+
+        drag.onGutterDragStart(0, 0); // gutter between A and B
+        drag.onGutterDrag(0, -30);    // pull up 30: A shrinks, B is maxed → C grows
+
+        expect(a.getHeight()).toBeCloseTo(70, 5);
+        expect(b.getHeight()).toBeCloseTo(100, 5);   // maxed middle unchanged
+        expect(c.getHeight()).toBeCloseTo(130, 5);   // grows past the maxed B
+        expect(a.getHeight() + b.getHeight() + c.getHeight()).toBeCloseTo(300, 5);
+    });
+
+    /** Three open sections A/B/C at 100px each (budget 300), with B pinned at its min. */
+    function threeWithMinnedMiddle(): { acc: Accordion; a: Component; b: Component; c: Component } {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 390, acc); // budget = 300
+        const a = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 100 }, { width: 40, height: 100 }); // min == current: cannot shrink
+        const c = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.addComponent(c, constraints('C', true));
+        host.doLayout();
+        return { acc, a, b, c };
+    }
+
+    it('expanding the bottom section shrinks the section above the minned middle one', () => {
+        const { acc, a, b, c } = threeWithMinnedMiddle();
+        const drag = acc as unknown as Drag;
+
+        drag.onGutterDragStart(1, 0); // gutter between B and C
+        drag.onGutterDrag(1, -30);    // pull up 30: C grows, B is minned → A shrinks
+
+        expect(c.getHeight()).toBeCloseTo(130, 5);
+        expect(b.getHeight()).toBeCloseTo(100, 5);   // minned middle unchanged
+        expect(a.getHeight()).toBeCloseTo(70, 5);    // shrinks past the minned B
+        expect(a.getHeight() + b.getHeight() + c.getHeight()).toBeCloseTo(300, 5);
+    });
+
+    it('expanding the top section shrinks the section below the minned middle one', () => {
+        const { acc, a, b, c } = threeWithMinnedMiddle();
+        const drag = acc as unknown as Drag;
+
+        drag.onGutterDragStart(0, 0); // gutter between A and B
+        drag.onGutterDrag(0, 30);     // pull down 30: A grows, B is minned → C shrinks
+
+        expect(a.getHeight()).toBeCloseTo(130, 5);
+        expect(b.getHeight()).toBeCloseTo(100, 5);   // minned middle unchanged
+        expect(c.getHeight()).toBeCloseTo(70, 5);    // shrinks past the minned B
+        expect(a.getHeight() + b.getHeight() + c.getHeight()).toBeCloseTo(300, 5);
+    });
+
+    it('a drag with no maxed neighbour still trades only with the immediate section', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 390, acc);
+        const a = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        const c = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.addComponent(c, constraints('C', true));
+        host.doLayout();
+
+        const drag = acc as unknown as Drag;
+        drag.onGutterDragStart(1, 0); // gutter between B and C
+        drag.onGutterDrag(1, 30);     // B not maxed → B grows, C shrinks, A untouched
+
+        expect(a.getHeight()).toBeCloseTo(100, 5); // outside the pair, untouched
+        expect(b.getHeight()).toBeCloseTo(130, 5);
+        expect(c.getHeight()).toBeCloseTo(70, 5);
+    });
+});
+
 describe('Accordion resizable — lightweight drag path', () => {
     type DragInternals = {
         onGutterDragStart(index: number, position: number): void;
