@@ -496,8 +496,12 @@ class MiscPanel extends Panel {
                 // Active) actually fires — a bare addRow({}) would leave
                 // Active `undefined`, which is not `=== true`, and Score
                 // would never tint. With Active seeded, both Role (static
-                // `required`) and Score (predicate) tint alongside the
-                // row-level green tint.
+                // `required`) and Score (predicate) tint. addRow() also
+                // selects the new record, and Body paints a selected row's
+                // background blue ahead of the green new-row tint (existing,
+                // unrelated selection-precedence behaviour) — click any
+                // other row afterward to deselect and see the required tint
+                // layered on the green new-row background instead of blue.
                 const addRowBtn = new Button("Add row (demos new-row + required tint)");
                 addRowBtn.on("action", () => specTable.addRow({ Active: true }));
 
