@@ -44,7 +44,7 @@ const table = Table(store);                                          // callable
 
 ## Why it works / how to tell
 
-The callable form comes from [`callable()`](/api/core/classes/Callable) — a `Proxy` whose `apply` trap forwards to `Reflect.construct`, which is why `instanceof`, `new`, and `extends` all still work on the wrapped export. The rule for telling whether an export is callable: its module wraps the class and re-exports the wrapper under the public name — the raw class ships as `_Foo`, the callable wrapper as `Foo`. The `data/` layer never applies this wrapper.
+The callable form comes from [`callable()`](/api/core/functions/callable) — a `Proxy` whose `apply` trap forwards to `Reflect.construct`, which is why `instanceof`, `new`, and `extends` all still work on the wrapped export. The rule for telling whether an export is callable: its module wraps the class and re-exports the wrapper under the public name — the raw class ships as `_Foo`, the callable wrapper as `Foo`. The `data/` layer never applies this wrapper.
 
 ## See also
 
