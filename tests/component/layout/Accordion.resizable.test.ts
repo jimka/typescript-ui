@@ -5,7 +5,7 @@
 // mirroring Split.test.ts's `(split as any).onDragStart(...)` pattern) since
 // real pointer/touch events are outside the offline DOM harness — see the
 // manual-verify note at the bottom of this file.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
 import { Accordion } from '~/layout/Accordion';
@@ -338,6 +338,230 @@ describe('Accordion resizable — drag apportionment', () => {
 
         expect(a.getHeight() + b.getHeight()).toBeCloseTo(pairTotalBefore, 5);
         expect(c.getHeight()).toBeCloseTo(cBefore, 5);
+    });
+});
+
+describe('Accordion resizable — lightweight drag path', () => {
+    type DragInternals = {
+        onGutterDragStart(index: number, position: number): void;
+        onGutterDrag(index: number, position: number): void;
+        _resizeGutters: Array<{ getY(): number; isVisible(): boolean }>;
+        _headers: Component[];
+        _panelWrappers: Component[];
+    };
+
+    /** Build a resizable accordion with `count` open sections and lay it out once. */
+    function openLayout(count: number, hostHeight: number, min = 10): { acc: Accordion; host: Container; sections: Component[] } {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, hostHeight, acc);
+        const sections: Component[] = [];
+        for (let i = 0; i < count; i++) {
+            const c = content({ width: 100, height: 60 }, { width: 40, height: min });
+            host.addComponent(c, constraints(`S${i}`, true));
+            sections.push(c);
+        }
+        host.doLayout();
+        return { acc, host, sections };
+    }
+
+    it('a drag updates the pair directly, without running a full container relayout', () => {
+        const { acc, host, sections: [a, b] } = openLayout(2, 300, 20);
+        const drag = acc as unknown as DragInternals;
+
+        const aBefore = a.getHeight();
+        const bBefore = b.getHeight();
+        const total = aBefore + bBefore;
+
+        const doLayoutSpy = vi.spyOn(host, 'doLayout');
+
+        drag.onGutterDragStart(0, 0);
+        drag.onGutterDrag(0, 30); // boundary 30px down: A grows, B shrinks
+
+        // The lightweight path writes only the dragged band — no full relayout.
+        expect(doLayoutSpy).not.toHaveBeenCalled();
+        expect(a.getHeight()).toBeGreaterThan(aBefore);
+        expect(b.getHeight()).toBeLessThan(bBefore);
+        expect(a.getHeight() + b.getHeight()).toBeCloseTo(total, 5);
+    });
+
+    it('conserves the pair sum across a range of deltas', () => {
+        const { acc, sections: [a, b] } = openLayout(2, 300, 20);
+        const drag = acc as unknown as DragInternals;
+        const total = a.getHeight() + b.getHeight();
+
+        for (const delta of [-40, 15, 30, 8]) {
+            drag.onGutterDragStart(0, 0);
+            drag.onGutterDrag(0, delta);
+            expect(a.getHeight() + b.getHeight()).toBeCloseTo(total, 5);
+        }
+    });
+
+    it('clamps the lower section at its min on the direct-write path', () => {
+        const { acc, sections: [a, b] } = openLayout(2, 300, 20);
+        const drag = acc as unknown as DragInternals;
+        const total = a.getHeight() + b.getHeight();
+
+        drag.onGutterDragStart(0, 0);
+        drag.onGutterDrag(0, 10000); // far past B's floor
+
+        expect(b.getHeight()).toBeCloseTo(20, 5);
+        expect(a.getHeight()).toBeCloseTo(total - 20, 5);
+    });
+
+    it('keeps the boundary gutter glued to the new content bottom', () => {
+        const { acc, sections: [a] } = openLayout(2, 300, 20);
+        const drag = acc as unknown as DragInternals;
+
+        drag.onGutterDragStart(0, 0);
+        drag.onGutterDrag(0, 25);
+
+        const gutter = drag._resizeGutters[0];
+        const upperWrapper = drag._panelWrappers[0];
+        expect(gutter.getY()).toBeCloseTo(upperWrapper.getY() + a.getHeight() - 6, 5); // RESIZE_GUTTER_SIZE = 6
+    });
+
+    it('leaves sections outside the dragged pair untouched', () => {
+        const { acc, sections: [, , c] } = openLayout(3, 300);
+        const drag = acc as unknown as DragInternals;
+
+        const cHeightBefore = c.getHeight();
+        const cHeaderYBefore = drag._headers[2].getY();
+
+        drag.onGutterDragStart(0, 0); // gutter 0 = A/B boundary
+        drag.onGutterDrag(0, 20);
+
+        expect(c.getHeight()).toBeCloseTo(cHeightBefore, 5);
+        expect(drag._headers[2].getY()).toBeCloseTo(cHeaderYBefore, 5);
+    });
+
+    it('slides a displayed closed section that sits between the dragged pair', () => {
+        // A open, B closed, C open → gutter 0's pair is {upper: A, lower: C},
+        // spanning the closed B. Growing A must push B's header (and C) down.
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 300, acc);
+        const a = content({ width: 100, height: 60 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 60 }, { width: 40, height: 10 });
+        const c = content({ width: 100, height: 60 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', false)); // closed, but displayed
+        host.addComponent(c, constraints('C', true));
+        host.doLayout();
+
+        const drag = acc as unknown as DragInternals;
+        const bHeaderYBefore = drag._headers[1].getY();
+        const aBefore = a.getHeight();
+        const pairTotal = a.getHeight() + c.getHeight();
+
+        drag.onGutterDragStart(0, 0);
+        drag.onGutterDrag(0, 20);
+
+        const delta = a.getHeight() - aBefore;
+        expect(drag._headers[1].getY()).toBeCloseTo(bHeaderYBefore + delta, 5);
+        expect(a.getHeight() + c.getHeight()).toBeCloseTo(pairTotal, 5);
+    });
+
+    it('a full doLayout after a drag preserves the dragged ratio', () => {
+        const { acc, host, sections: [a, b] } = openLayout(2, 300, 20);
+        const drag = acc as unknown as DragInternals;
+
+        drag.onGutterDragStart(0, 0);
+        drag.onGutterDrag(0, 40);
+
+        const ratio = a.getHeight() / b.getHeight();
+
+        host.doLayout();
+
+        expect(a.getHeight() / b.getHeight()).toBeCloseTo(ratio, 5);
+        expect(a.getHeight() + b.getHeight()).toBeCloseTo(300 - 2 * HEADER, 5);
+    });
+});
+
+describe('Accordion transitions — off by default (snap on relayout)', () => {
+    type WithSections = { _headers: Component[]; _panelWrappers: Component[] };
+
+    function build(): { acc: Accordion; host: Container; a: Component; b: Component } {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(400, 200, acc);
+        const a = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.doLayout();
+        return { acc, host, a, b };
+    }
+
+    it('sections carry no CSS transition after their first layout', () => {
+        const { acc, a, b } = build();
+        const internals = acc as unknown as WithSections;
+
+        for (const header of internals._headers) {
+            expect(header.getTransition()).toBe('none');
+        }
+
+        for (const wrapper of internals._panelWrappers) {
+            expect(wrapper.getTransition()).toBe('none');
+        }
+
+        expect(a.getTransition()).toBe('none');
+        expect(b.getTransition()).toBe('none');
+    });
+
+    it('a container resize relayout leaves transitions off (so it snaps, not animates)', () => {
+        const { acc, host, a, b } = build();
+
+        host.setHeight(400);
+        host.doLayout();
+
+        const internals = acc as unknown as WithSections;
+
+        for (const header of internals._headers) {
+            expect(header.getTransition()).toBe('none');
+        }
+
+        for (const wrapper of internals._panelWrappers) {
+            expect(wrapper.getTransition()).toBe('none');
+        }
+
+        expect(a.getTransition()).toBe('none');
+        expect(b.getTransition()).toBe('none');
+    });
+
+    it('a resizable gutter carries no CSS transition by default', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 400, acc);
+        for (let i = 0; i < 3; i++) {
+            host.addComponent(content({ width: 100, height: 60 }, { width: 40, height: 10 }), constraints(`S${i}`, true));
+        }
+        host.doLayout();
+
+        const gutters = (acc as unknown as { _resizeGutters: Component[] })._resizeGutters;
+        for (const gutter of gutters.filter(g => (g as unknown as { isVisible(): boolean }).isVisible())) {
+            expect(gutter.getTransition()).toBe('none');
+        }
+    });
+
+    it('an open/close toggle enables the wrapper transition for the animation', () => {
+        const { acc, a } = build();
+        const internals = acc as unknown as WithSections & { onHeaderClicked(i: number): void };
+
+        // Close section A: primeWrapper must turn its wrapper transition on so
+        // the height animation runs (transitions are otherwise off).
+        internals.onHeaderClicked(0);
+
+        expect(internals._panelWrappers[0].getTransition()).not.toBe('none');
+        expect(internals._panelWrappers[0].getTransition()).toContain('height');
+        expect(a.getTransition()).toContain('height');
     });
 });
 

@@ -191,6 +191,11 @@ class Accordion extends LayoutManager {
     private _dragOriginPointer: number = 0;
     private _dragOriginUpper: number = 0;
     private _dragOriginLower: number = 0;
+    // Open/close toggle animations currently in flight. Transitions are off by
+    // default (so resize and drag relayouts snap); a toggle enables them and the
+    // global disable waits until this returns to zero — single-open mode primes
+    // several sections at once, and the first to finish must not snap the rest.
+    private _toggleAnimations: number = 0;
     // Stable bound reference so add/removeViewportListener target the same
     // callback; Accordion is a LayoutManager, not a Component, so it cannot
     // key the registration on `this` the way every Component call site does —
@@ -1166,11 +1171,11 @@ class Accordion extends LayoutManager {
 
         header.setAnimationTiming(this._animationDuration, ACCORDION_EASING);
 
-        // Headers slide vertically with the panels opening or closing above them
-        // — without animating `top`, headers below a toggled section snap to
-        // their final position while the panel height transitions, which reads
-        // as broken motion.
-        header.setTransition(this.buildHeaderTransition());
+        // Transitions are off by default so resize and drag relayouts snap;
+        // `primeWrapper` turns the header's `top` transition on only for the
+        // duration of an open/close toggle (headers below a toggled section
+        // slide with the panel height instead of snapping to their final spot).
+        header.setTransition("none");
 
         const title = header.getTitleButton();
 
@@ -1197,9 +1202,11 @@ class Accordion extends LayoutManager {
         // reflow during the height transition without affecting the rest of the document.
         wrapper.setContain("layout paint");
 
-        // `height` animates this wrapper's own grow/shrink; `top` animates wrappers
-        // below a toggled section so they slide with the headers instead of jumping.
-        wrapper.setTransition(this.buildWrapperTransition());
+        // Off by default (relayouts snap); `primeWrapper` enables it for a
+        // toggle. `height` animates this wrapper's own grow/shrink; `top`
+        // animates wrappers below a toggled section so they slide with the
+        // headers instead of jumping.
+        wrapper.setTransition("none");
 
         DOM.sink.appendChild(container.getElement()!, header.getElement(true)!);
         DOM.sink.appendChild(container.getElement()!, wrapper.getElement(true)!);
@@ -1207,14 +1214,13 @@ class Accordion extends LayoutManager {
         // Reparent content element into wrapper so overflow:hidden clips it during animation.
         DOM.sink.appendChild(wrapper.getElement()!, component.getElement()!);
 
-        // The content animates its own height in lockstep with the wrapper.
-        // Without this the content height is written instantly (see doLayout), so
-        // an open section that must *shrink* — e.g. a fill-mode sibling giving
-        // back its leftover height when a lower section opens — snaps to its final
-        // height while only the wrapper's `overflow: hidden` clip animates, which
-        // reads as the panel above the toggled one jumping. `primeWrapper`
-        // suppresses this transition under reduced motion alongside the wrapper's.
-        component.setTransition(this.buildContentTransition());
+        // Off by default (relayouts snap); `primeWrapper` enables it for a
+        // toggle so the content animates its own height in lockstep with the
+        // wrapper. Without it, an open section that must *shrink* during a toggle
+        // — e.g. a fill-mode sibling giving back its leftover height when a lower
+        // section opens — would snap to its final height while only the wrapper's
+        // `overflow: hidden` clip animates, reading as the panel above jumping.
+        component.setTransition("none");
 
         this._openState.push(initiallyOpen);
         this._headers.push(header);
@@ -1268,6 +1274,48 @@ class Accordion extends LayoutManager {
         }
 
         return { width: maxWidth, height: 0 };
+    }
+
+    /**
+     * Writes one section's header, wrapper, and content geometry and returns the
+     * vertical cursor after it (the wrapper's bottom edge). Shared by
+     * {@link doLayout}'s main loop and the lightweight drag path so their
+     * geometry can never drift. Does not reflow the content — the caller decides
+     * between an immediate and a shrink-deferred `component.doLayout()`.
+     *
+     * @param index - Section index into `_headers` / `_panelWrappers`.
+     * @param component - The section's content component.
+     * @param top - The header's top edge.
+     * @param panelHeight - The wrapper height (0 for a closed section).
+     * @param contentHeight - The content height (preferred height for a closed section).
+     * @param width - The header/wrapper/content width.
+     * @param left - The header/wrapper left edge.
+     * @returns The vertical cursor after this section (its wrapper's bottom edge).
+     */
+    private placeSection(index: number, component: Component, top: number, panelHeight: number, contentHeight: number, width: number, left: number): number {
+        const header = this._headers[index];
+        const wrapper = this._panelWrappers[index];
+        const headerHeight = this.effectiveHeaderHeight();
+
+        header.setX(left);
+        header.setY(top);
+        header.setWidth(width);
+        header.setHeight(headerHeight);
+        header.doLayout();
+
+        const wrapperTop = top + headerHeight;
+
+        wrapper.setX(left);
+        wrapper.setY(wrapperTop);
+        wrapper.setWidth(width);
+        wrapper.setHeight(panelHeight);
+
+        component.setX(0);
+        component.setY(0);
+        component.setWidth(width);
+        component.setHeight(contentHeight);
+
+        return wrapperTop + panelHeight;
     }
 
     /**
@@ -1366,14 +1414,6 @@ class Accordion extends LayoutManager {
 
             displayedSoFar += 1;
 
-            header.setX(insets.getLeft());
-            header.setY(y);
-            header.setWidth(containerWidth);
-            header.setHeight(this.effectiveHeaderHeight());
-            header.doLayout();
-
-            y += this.effectiveHeaderHeight();
-
             // Open sections take their preferred height, shrunk toward their min
             // by the container-driven ratio so the accordion fits its host.
             // Closed sections keep their content at preferred height so the
@@ -1392,36 +1432,15 @@ class Accordion extends LayoutManager {
             const panelHeight   = isOpen ? openHeight  : 0;
             const contentHeight = isOpen ? openHeight  : contentPref;
 
-            // A resizable gutter sits between this open section and the
-            // previous open one (if any), overlaying the previous section's
-            // content bottom — placed now because that bottom edge is already
-            // known, and this section's own geometry isn't needed for it.
-            if (isOpen && resizeHeights) {
-                if (previousOpenComponent !== null) {
-                    const gutter = this.getOrCreateResizeGutter(placedGutterCount);
-
-                    gutter.setX(insets.getLeft());
-                    gutter.setY(previousOpenBottom - RESIZE_GUTTER_SIZE);
-                    gutter.setWidth(containerWidth);
-                    gutter.setHeight(RESIZE_GUTTER_SIZE);
-                    gutter.setVisible(true);
-
-                    this._gutterPairs[placedGutterCount] = { upper: previousOpenComponent, lower: component };
-                    placedGutterCount += 1;
-                }
-
-                previousOpenComponent = component;
-                previousOpenBottom = y + panelHeight;
+            // A resizable gutter sits between this open section and the previous
+            // open one (if any), overlaying the previous section's content
+            // bottom — placed now because that bottom edge (`previousOpenBottom`)
+            // is already known, and this section's own geometry isn't needed.
+            if (isOpen && resizeHeights && previousOpenComponent !== null) {
+                this.placeGutter(placedGutterCount, previousOpenBottom, containerWidth, insets.getLeft());
+                this._gutterPairs[placedGutterCount] = { upper: previousOpenComponent, lower: component };
+                placedGutterCount += 1;
             }
-
-            wrapper.setX(insets.getLeft());
-            wrapper.setY(y);
-            wrapper.setWidth(containerWidth);
-            wrapper.setHeight(panelHeight);
-
-            component.setX(0);
-            component.setY(0);
-            component.setWidth(containerWidth);
 
             // A shrinking open section keeps its interior laid out at the current
             // (larger) height for the duration of the shrink — the wrapper's
@@ -1430,12 +1449,13 @@ class Accordion extends LayoutManager {
             // height-driven interior (a Tree/Table sizes its scroll viewport to the
             // height it is given) even though the content box itself animates via its
             // own height transition. Growing, closing, and reduced motion all take
-            // the immediate path so newly revealed space fills at once.
+            // the immediate path so newly revealed space fills at once. Read before
+            // placeSection overwrites the content height.
             const shrinking = isOpen
                 && !Animation.isReducedMotion()
                 && contentHeight < component.getHeight();
 
-            component.setHeight(contentHeight);
+            const cursor = this.placeSection(i, component, y, panelHeight, contentHeight, containerWidth, insets.getLeft());
 
             if (shrinking) {
                 Animation.afterTransition({
@@ -1449,7 +1469,12 @@ class Accordion extends LayoutManager {
                 component.doLayout();
             }
 
-            y += panelHeight;
+            if (isOpen && resizeHeights) {
+                previousOpenComponent = component;
+                previousOpenBottom = cursor;
+            }
+
+            y = cursor;
         }
 
         // Gutters not placed this pass (resizable off, or a pair whose upper
@@ -1467,14 +1492,10 @@ class Accordion extends LayoutManager {
      * appending it to the container's DOM on first use. Mirrors the lazy
      * gutter creation in `Split.doLayout`.
      *
-     * The gutter's `top` transition is set once here, at creation — like
-     * `createSection` sets each header's transition once rather than every
-     * `doLayout` pass — not in the per-layout placement block. A drag-driven
-     * layout (`onGutterDrag` calls `getContainer().doLayout()` on every
-     * pointer move) would otherwise re-apply the animated transition on top
-     * of the `"none"` `onGutterDragStart` suppressed, making the dragged
-     * handle itself lag the cursor even though the sections it resizes stay
-     * instant.
+     * The gutter's `top` transition is off by default so drags and resizes
+     * snap; `primeWrapper` turns it on only for the duration of an open/close
+     * toggle, so the boundary handle slides with the sections it sits between
+     * during the animation but tracks the cursor instantly during a drag.
      *
      * @param index - The gutter's position in the pool (and in `_gutterPairs`).
      * @returns The gutter for this index.
@@ -1489,7 +1510,7 @@ class Accordion extends LayoutManager {
         const container = this.getContainer()!;
         const gutter = new SplitGutter("vertical", { collapsible: false, expandedBackground: "transparent" });
 
-        gutter.setTransition(this.buildHeaderTransition());
+        gutter.setTransition("none");
         gutter.on("dragstart", (position: number) => this.onGutterDragStart(index, position));
         gutter.on("drag", (position: number) => this.onGutterDrag(index, position));
 
@@ -1501,13 +1522,31 @@ class Accordion extends LayoutManager {
     }
 
     /**
+     * Positions and shows the pooled gutter at `index`, overlaying the upper
+     * section's content bottom edge. Shared by {@link doLayout} and the
+     * lightweight drag path; `_gutterPairs` bookkeeping stays with the caller.
+     *
+     * @param index - The gutter's pool index.
+     * @param upperBottom - The upper section's content bottom edge.
+     * @param width - The gutter width.
+     * @param left - The gutter left edge.
+     */
+    private placeGutter(index: number, upperBottom: number, width: number, left: number): void {
+        const gutter = this.getOrCreateResizeGutter(index);
+
+        gutter.setX(left);
+        gutter.setY(upperBottom - RESIZE_GUTTER_SIZE);
+        gutter.setWidth(width);
+        gutter.setHeight(RESIZE_GUTTER_SIZE);
+        gutter.setVisible(true);
+    }
+
+    /**
      * Captures the drag origin when a resizable gutter's drag begins: the
      * absolute pointer coordinate and the current heights of the two adjacent
-     * open sections. Mirrors {@link Split.onDragStart}. Also suppresses every
-     * section's (and gutter's) transition for the duration of the drag —
-     * reusing the reduced-motion suppress pattern from {@link primeWrapper} —
-     * so the `doLayout` writes each `onGutterDrag` triggers land instantly
-     * instead of animating every frame and lagging the cursor.
+     * open sections. Mirrors {@link Split.onDragStart}. Transitions are already
+     * off outside a toggle, so each {@link onGutterDrag} write lands instantly
+     * without any per-drag suppression.
      *
      * @param gutterIndex - The dragged gutter's position in `_gutterPairs`.
      * @param position - The absolute pointer coordinate (`clientY`) at drag start.
@@ -1524,18 +1563,6 @@ class Accordion extends LayoutManager {
         this._dragOriginPointer = position;
         this._dragOriginUpper = pair.upper.getHeight();
         this._dragOriginLower = pair.lower.getHeight();
-
-        const components = this.getContainer()?.getComponents() ?? [];
-
-        for (let i = 0; i < this._headers.length; i++) {
-            this._headers[i].setTransition("none");
-            this._panelWrappers[i].setTransition("none");
-            components[i]?.setTransition("none");
-        }
-
-        for (const gutter of this._resizeGutters) {
-            gutter.setTransition("none");
-        }
 
         // Accordion is a LayoutManager, not a Component, so it cannot key this
         // registration on `this` the way every other `Event.addViewportListener`
@@ -1559,6 +1586,14 @@ class Accordion extends LayoutManager {
      * upper height is derived from the drag origin, clamped against both
      * sections' `[min, max]` while conserving their combined size, and the
      * pair's stored sizes are updated so the next layout preserves the ratio.
+     *
+     * Because the drag conserves the pair's combined height, only the boundary
+     * between the two sections moves — everything above the upper section and
+     * below the lower section is unchanged. So instead of a full container
+     * relayout on every pointer move, this writes only the affected band (the
+     * upper section, the gutter, any displayed closed sections between the pair,
+     * and the lower section) through the shared {@link placeSection} /
+     * {@link placeGutter} helpers, keeping the handle pinned to the cursor.
      *
      * @param gutterIndex - The dragged gutter's position in `_gutterPairs`.
      * @param position - The absolute pointer coordinate (`clientY`) for this move.
@@ -1603,13 +1638,45 @@ class Accordion extends LayoutManager {
         this._resizeSizes.set(pair.upper, newUpper / this._resizeFactor);
         this._resizeSizes.set(pair.lower, newLower / this._resizeFactor);
 
-        this.getContainer()?.doLayout();
+        const components = this.getContainer()?.getComponents() ?? [];
+        const upperIndex = components.indexOf(pair.upper);
+        const lowerIndex = components.indexOf(pair.lower);
+
+        if (upperIndex === -1 || lowerIndex === -1) {
+            return;
+        }
+
+        // Boundary travel this move, in rendered px; read before placeSection
+        // overwrites the upper section's height.
+        const delta = newUpper - pair.upper.getHeight();
+        const left = this._panelWrappers[upperIndex].getX();
+        const width = this._panelWrappers[upperIndex].getWidth();
+
+        // Upper section: its header top is unchanged; only its height grows/shrinks.
+        this.placeSection(upperIndex, pair.upper, this._headers[upperIndex].getY(), newUpper, newUpper, width, left);
+        pair.upper.doLayout();
+
+        // Move the boundary gutter to the upper section's new content bottom.
+        const upperBottom = this._panelWrappers[upperIndex].getY() + newUpper;
+
+        this.placeGutter(gutterIndex, upperBottom, width, left);
+
+        // Any displayed closed sections between the pair slide with the boundary
+        // (an empty loop in the common case where the pair is adjacent).
+        for (let i = upperIndex + 1; i < lowerIndex; i++) {
+            this._headers[i].setY(this._headers[i].getY() + delta);
+            this._panelWrappers[i].setY(this._panelWrappers[i].getY() + delta);
+        }
+
+        // Lower section: shifted down by delta and resized to newLower.
+        this.placeSection(lowerIndex, pair.lower, this._headers[lowerIndex].getY() + delta, newLower, newLower, width, left);
+        pair.lower.doLayout();
     }
 
     /**
-     * Ends a resizable-gutter drag: removes the viewport listeners and
-     * restores every section's (and gutter's) transition that
-     * {@link onGutterDragStart} suppressed.
+     * Ends a resizable-gutter drag: removes the viewport listeners and clears
+     * the captured drag pair. Transitions stay off (their default outside a
+     * toggle), so there is nothing to restore.
      */
     private onGutterDragEnd(): void {
         const container = this.getContainer();
@@ -1618,18 +1685,6 @@ class Accordion extends LayoutManager {
             Event.removeViewportListener(container, "mouseup", this._boundOnGutterDragEnd);
             Event.removeViewportListener(container, "touchend", this._boundOnGutterDragEnd);
             Event.removeViewportListener(container, "touchcancel", this._boundOnGutterDragEnd);
-        }
-
-        const components = container?.getComponents() ?? [];
-
-        for (let i = 0; i < this._headers.length; i++) {
-            this._headers[i].setTransition(this.buildHeaderTransition());
-            this._panelWrappers[i].setTransition(this.buildWrapperTransition());
-            components[i]?.setTransition(this.buildContentTransition());
-        }
-
-        for (const gutter of this._resizeGutters) {
-            gutter.setTransition(this.buildHeaderTransition());
         }
 
         this._dragUpper = null;
@@ -1957,12 +2012,18 @@ class Accordion extends LayoutManager {
      * for the cases where `transitionend` never fires — toggling a section
      * whose height didn't change, tab-switch mid-transition, …
      *
-     * Under `prefers-reduced-motion: reduce` the will-change hint is skipped
-     * entirely, and the inline `transition` on every header and panel wrapper
-     * is set to `"none"` so the upcoming `doLayout` writes — wrapper height,
-     * plus the `top` of every header and wrapper below the toggled section —
-     * land instantly. Transitions are restored on the next frame so subsequent
-     * toggles animate normally.
+     * Transitions are off by default (so resize and drag relayouts snap), so a
+     * toggle must turn them on before its `doLayout` writes land and off again
+     * when the animation completes. Enabling covers every header, panel wrapper,
+     * content component, and gutter (a toggle moves the wrapper's height, the
+     * `top` of every header + wrapper below it, and each open section's content
+     * height). The global disable is gated on the `_toggleAnimations` counter:
+     * single-open mode primes several sections in one gesture, so the first
+     * animation to finish must not snap the others still in flight — only the
+     * last (`_toggleAnimations` back to zero) turns transitions off.
+     *
+     * Under `prefers-reduced-motion: reduce` transitions stay off (their
+     * default) and nothing is enabled, so the toggle's writes land instantly.
      *
      * Mirrors the `transitionend`-with-fallback pattern in
      * [`Animation.play`](/api/core/namespaces/Animation/functions/play) so
@@ -1971,45 +2032,44 @@ class Accordion extends LayoutManager {
      * @param index - Zero-based index of the section whose wrapper to prime.
      */
     private primeWrapper(index: number): void {
-        const wrapper = this._panelWrappers[index];
-
+        // Reduced motion leaves transitions off (their default), so the toggle's
+        // doLayout writes land instantly — there is nothing to prime.
         if (Animation.isReducedMotion()) {
-            // A toggle moves this wrapper's height AND the top of every header
-            // + wrapper below it, plus each open section's content height, so all
-            // of those transitions need suppressing for the upcoming doLayout
-            // writes to land instantly.
-            const components = this.getContainer()?.getComponents() ?? [];
-
-            for (let i = 0; i < this._headers.length; i++) {
-                this._headers[i].setTransition("none");
-                this._panelWrappers[i].setTransition("none");
-                components[i]?.setTransition("none");
-            }
-
-            DOM.sink.requestAnimationFrame(() => {
-                for (let i = 0; i < this._headers.length; i++) {
-                    this._headers[i].setTransition(this.buildHeaderTransition());
-                    this._panelWrappers[i].setTransition(this.buildWrapperTransition());
-                    components[i]?.setTransition(this.buildContentTransition());
-                }
-            });
-
             return;
         }
 
+        const wrapper = this._panelWrappers[index];
+        const container = this.getContainer();
+
+        this.setSectionTransitions(true);
+
         // Give the container's own height the same transition so the outer
-        // layout's instant resize (triggered when the parent re-queries our
+        // layout's resize (triggered when the parent re-queries our
         // `getPreferredSize` after the open state flips) animates in lockstep
         // with the wrappers and headers inside. Without this, the container
         // (which defaults to `overflow: hidden`) snaps to the closed size and
         // clips the still-animating sections — they vanish for ~75% of the
         // duration and pop back in near the end. Cleared on cleanup so
         // unrelated height changes (window resize, etc.) stay instant.
-        const container = this.getContainer();
-
         container?.setTransition(`height ${this._animationDuration}ms ${ACCORDION_EASING}`);
 
         wrapper.setWillChange("height");
+
+        // Commit the just-enabled transitions as the animation's "before" frame
+        // *before* the toggle's geometry change lands. That change can run
+        // synchronously in this same task (relayoutHost -> notifyIntrinsicSize-
+        // Changed re-lays out the accordion), and a CSS transition enabled and
+        // triggered in one task never animates — the browser only ever sees the
+        // after-state. A single forced layout read flushes the transition style
+        // as the pre-toggle snapshot so the upcoming height change animates from
+        // it. (Transitions are off outside a toggle, so nothing else pays this.)
+        const element = container?.getElement();
+
+        if (element) {
+            DOM.source.getElementRect(element);
+        }
+
+        this._toggleAnimations += 1;
 
         Animation.afterTransition({
             component:        wrapper,
@@ -2018,9 +2078,39 @@ class Accordion extends LayoutManager {
             fallbackBufferMs: 40,
             onComplete:       () => {
                 wrapper.setWillChange(null);
-                container?.setTransition(null);
+                this._toggleAnimations -= 1;
+
+                // Only the last toggle to complete turns transitions back off,
+                // so an earlier finisher can't snap sections still animating.
+                if (this._toggleAnimations <= 0) {
+                    this._toggleAnimations = 0;
+                    this.setSectionTransitions(false);
+                    container?.setTransition(null);
+                }
             },
         });
+    }
+
+    /**
+     * Installs or removes the open/close animation transitions on every header,
+     * panel wrapper, content component, and resize gutter. Enabled by
+     * `primeWrapper` for the duration of a toggle; off otherwise so resize and
+     * drag relayouts snap to their final geometry.
+     *
+     * @param enabled - True to install the animated transitions, false to clear them.
+     */
+    private setSectionTransitions(enabled: boolean): void {
+        const components = this.getContainer()?.getComponents() ?? [];
+
+        for (let i = 0; i < this._headers.length; i++) {
+            this._headers[i].setTransition(enabled ? this.buildHeaderTransition() : "none");
+            this._panelWrappers[i].setTransition(enabled ? this.buildWrapperTransition() : "none");
+            components[i]?.setTransition(enabled ? this.buildContentTransition() : "none");
+        }
+
+        for (const gutter of this._resizeGutters) {
+            gutter.setTransition(enabled ? this.buildHeaderTransition() : "none");
+        }
     }
 
     /**
