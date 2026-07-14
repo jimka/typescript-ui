@@ -127,7 +127,7 @@ All cases are unit-testable against `getInsets()` / `getContentInsets()` (no DOM
 - **Explicit `insets` wins over `flush`.** `new Panel({ flush: true, insets: new Insets(2, 2, 2, 2) }).getInsets()` returns `(2, 2, 2, 2)`.
 - **Explicit `insets` wins without `flush` too** (regression guard for the existing precedence): `new Panel({ insets: new Insets(1,1,1,1) }).getInsets()` returns `(1,1,1,1)`.
 - **`_defaultPanelOptions` is not mutated.** After constructing a `flush` panel, a subsequent `new Panel()` still reports `(4, 4, 4, 4)` (guards against accidental shared-const mutation).
-- **Rail composes with a host layout (manual verify).** In the demo/app: a fixed-width `Panel({ flush: true, layoutManager: BorderLayout() })` hosting a WEST vertical `ToolBar` keeps a constant rail width across a collapse/expand of an adjacent region — matching the removed `setInsets(0,0,0,0)` workaround. This is UI geometry; verify visually rather than in a unit test.
+- **Rail composes with a host layout.** A `Panel({ flush: true, layoutManager: Fit() })` hosting a content-sized child, docked at `Placement.WEST` in a `Border`-managed host, reports the child's bare preferred width (not `+8` for insets) and holds it across a sibling region's collapse/expand — matching the removed `setInsets(0,0,0,0)` workaround. Contrary to the original plan draft, this is unit-testable offline against the project's existing `Border` geometry test harness (`installTestDOM` + `setRegionCollapsed`, see `tests/component/layout/Border.test.ts`) — no real browser or "manual verify" is needed, since `Border.doLayout` computes region geometry from `getPreferredSize()`/`getContentInsets()` alone, without reading live DOM metrics.
 
 ---
 
@@ -137,7 +137,7 @@ All cases are unit-testable against `getInsets()` / `getContentInsets()` (no DOM
 - `vitest run tests/core/PanelFlushInsets.test.ts` — the cases above pass.
 - `npm run test` — full suite still green (no existing panel passes `flush`, so behaviour is unchanged for all of them; confirms no accidental default shift).
 - `npm run docs:build` — finishes with **zero** warnings (CODE_CONVENTIONS.md requirement after touching public JSDoc).
-- Manual: exercise the activity-rail scenario in the `sqladmin` demo (or a `Border`-host panel in the library demo) and confirm a `flush` rail stays pixel-constant across collapse/expand.
+- The `Border`-hosted rail composition case above is covered by an automated test in `tests/core/PanelFlushInsets.test.ts` (no manual/visual step needed — see *Expected Behaviour*).
 
 ---
 
@@ -154,7 +154,7 @@ All cases are unit-testable against `getInsets()` / `getContentInsets()` (no DOM
 
 - **Shared-const mutation.** Must spread into a new object, never write onto `_defaultPanelOptions`; the *"not mutated"* test guards this.
 - **`forward-super-options` lint.** The rule inspects that `options` is forwarded to `super` unchanged; only the second (defaults) argument may be computed. Keep the first argument as the bare `options`.
-- **Subclass inset defaults.** `StatusBar`/`FieldSet` pass their own inset defaults through `subclassDefaults`; spreading `flushDefault` last means `flush: true` on such a subclass zeroes them — acceptable (explicit opt-in, default-off), but note it so it isn't mistaken for a bug.
+- **Subclass inset defaults.** A `Panel` subclass that passes its own inset default through `subclassDefaults` — e.g. [`DiagramNode`](src/typescript/lib/component/diagram/DiagramNode.ts#L35) (`_defaultDiagramNodeOptions.insets = new Insets(4, 8, 4, 8)`, its node-chrome breathing room) — has that default overridden when spreading `flushDefault` last: `flush: true` on such a subclass zeroes it too. Acceptable (explicit opt-in, default-off), but note it so it isn't mistaken for a bug. (`StatusBar` and `FieldSet` are not examples of this — neither extends `Panel`, so neither's options type carries `flush` at all.)
 
 ---
 
