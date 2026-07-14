@@ -1396,7 +1396,6 @@ class Accordion extends LayoutManager {
                     gutter.setY(previousOpenBottom - RESIZE_GUTTER_SIZE);
                     gutter.setWidth(containerWidth);
                     gutter.setHeight(RESIZE_GUTTER_SIZE);
-                    gutter.setTransition(this.buildHeaderTransition());
                     gutter.setVisible(true);
 
                     this._gutterPairs[placedGutterCount] = { upper: previousOpenComponent, lower: component };
@@ -1460,6 +1459,15 @@ class Accordion extends LayoutManager {
      * appending it to the container's DOM on first use. Mirrors the lazy
      * gutter creation in `Split.doLayout`.
      *
+     * The gutter's `top` transition is set once here, at creation — like
+     * `createSection` sets each header's transition once rather than every
+     * `doLayout` pass — not in the per-layout placement block. A drag-driven
+     * layout (`onGutterDrag` calls `getContainer().doLayout()` on every
+     * pointer move) would otherwise re-apply the animated transition on top
+     * of the `"none"` `onGutterDragStart` suppressed, making the dragged
+     * handle itself lag the cursor even though the sections it resizes stay
+     * instant.
+     *
      * @param index - The gutter's position in the pool (and in `_gutterPairs`).
      * @returns The gutter for this index.
      */
@@ -1473,6 +1481,7 @@ class Accordion extends LayoutManager {
         const container = this.getContainer()!;
         const gutter = new SplitGutter("vertical", { collapsible: false, expandedBackground: "transparent" });
 
+        gutter.setTransition(this.buildHeaderTransition());
         gutter.on("dragstart", (position: number) => this.onGutterDragStart(index, position));
         gutter.on("drag", (position: number) => this.onGutterDrag(index, position));
 
