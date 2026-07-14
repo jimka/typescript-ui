@@ -20,6 +20,7 @@ describe('Column constructor defaults', () => {
         expect(col.getHeaderGlyph()).toBe(null);
         expect(col.getGroup()).toBe(null);
         expect(col.getGroupColor()).toBe(null);
+        expect(col.isRequired()).toBe(false);
     });
 
     it('round-trips every provided config field through its getter', () => {
@@ -33,6 +34,7 @@ describe('Column constructor defaults', () => {
             headerGlyph: 'star',
             group:       'g1',
             groupColor:  '#abc',
+            required:    true,
         };
         const col = new Column(new Field({ name: 'x' }), config);
 
@@ -44,6 +46,13 @@ describe('Column constructor defaults', () => {
         expect(col.getHeaderGlyph()).toBe('star');
         expect(col.getGroup()).toBe('g1');
         expect(col.getGroupColor()).toBe('#abc');
+        expect(col.isRequired()).toBe(true);
+    });
+
+    it('isRequired() reflects required:false explicitly, distinct from omitted', () => {
+        const col = new Column(new Field({ name: 'x' }), { field: 'x', required: false });
+
+        expect(col.isRequired()).toBe(false);
     });
 
     it('exposes the field it was constructed with', () => {

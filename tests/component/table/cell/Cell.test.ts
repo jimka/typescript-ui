@@ -83,3 +83,74 @@ describe('Cell.startEdit scroll-into-view ordering', () => {
         expect(() => cell.startEdit()).not.toThrow();
     });
 });
+
+// Background/cursor precedence: readOnly ▸ requiredEmpty ▸ base. `setReadOnly`
+// and `setRequiredEmpty` share one resolver (`_applyStateTint`) so the two
+// states compose instead of fighting over the background write.
+describe('Cell background/cursor state precedence', () => {
+    const BASE_TOKEN          = 'var(--ts-ui-table-cell-bg, transparent)';
+    const READONLY_TOKEN      = 'var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))';
+    const REQUIRED_EMPTY_TOKEN = 'var(--ts-ui-table-cell-required-empty-bg, rgba(220, 60, 60, 0.10))';
+
+    it('starts on the base background token', () => {
+        const cell = editableCell();
+
+        expect(cell.getBackgroundColor()).toBe(BASE_TOKEN);
+    });
+
+    it('resolves readOnly ▸ requiredEmpty ▸ base in that precedence order', () => {
+        const cell = editableCell();
+
+        cell.setRequiredEmpty(true);
+        expect(cell.getBackgroundColor()).toBe(REQUIRED_EMPTY_TOKEN);
+
+        // readOnly wins over requiredEmpty.
+        cell.setReadOnly(true);
+        expect(cell.getBackgroundColor()).toBe(READONLY_TOKEN);
+
+        // Falls back to requiredEmpty once readOnly clears.
+        cell.setReadOnly(false);
+        expect(cell.getBackgroundColor()).toBe(REQUIRED_EMPTY_TOKEN);
+
+        // Falls back to base once requiredEmpty clears too.
+        cell.setRequiredEmpty(false);
+        expect(cell.getBackgroundColor()).toBe(BASE_TOKEN);
+    });
+
+    it('setBaseBackground changes the fallback (e.g. a groupColor tint), and requiredEmpty restores it rather than going transparent', () => {
+        const cell = editableCell();
+
+        cell.setBaseBackground('rgb(1,2,3)');
+        expect(cell.getBackgroundColor()).toBe('rgb(1,2,3)');
+
+        cell.setRequiredEmpty(true);
+        expect(cell.getBackgroundColor()).toBe(REQUIRED_EMPTY_TOKEN);
+
+        cell.setRequiredEmpty(false);
+        expect(cell.getBackgroundColor()).toBe('rgb(1,2,3)');
+    });
+
+    it('setRequiredEmpty is idempotent: re-setting the current value does not re-write the background', () => {
+        const cell = editableCell();
+
+        cell.setRequiredEmpty(true);
+
+        const spy = vi.spyOn(cell, 'setBackgroundColor');
+        cell.setRequiredEmpty(true);
+
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('a read-only cell shows the default cursor; requiredEmpty and base both clear the cursor', () => {
+        const cell = editableCell();
+
+        cell.setRequiredEmpty(true);
+        expect(cell.getCursor()).toBeNull();
+
+        cell.setReadOnly(true);
+        expect(cell.getCursor()).toBe('default');
+
+        cell.setReadOnly(false);
+        expect(cell.getCursor()).toBeNull();
+    });
+});

@@ -199,6 +199,38 @@ export interface ColumnConfig {
      * encountered value in the run wins.
      */
     groupColor  ?: string;
+
+    /**
+     * When `true`, marks this column required: the header renders a
+     * trailing asterisk, and every row's cell in this column tints with
+     * `--ts-ui-table-cell-required-empty-bg` while its bound value is
+     * empty (`null`, `undefined`, or `''`). Composes with
+     * {@link ColumnConfig.requiredPredicate} via OR for the empty-cell
+     * tint, but drives the header asterisk alone — the header cell has
+     * no bound record to evaluate a per-record predicate against.
+     *
+     * Defaults to `false`.
+     */
+    required ?: boolean;
+    /**
+     * Per-record required predicate, evaluated per record on every
+     * rebind. Returns `true` to mark this column's cell required for
+     * the given record. Composes with {@link ColumnConfig.required} via
+     * OR for the empty-cell tint; does NOT drive the header asterisk
+     * (the header has no bound record).
+     *
+     * The predicate fires on every row rebind: when scrolling pulls
+     * new records into the visible window, when the store emits
+     * `'datachange'` (which
+     * [`notifyRecordChanged`](/api/data/classes/AbstractStore#notifyRecordChanged)
+     * does), or when columns are hidden / shown. It MUST be O(1) and
+     * pure — read fields off `record`, return a boolean, do not call
+     * back into the store, do not allocate, do not perform DOM work.
+     *
+     * This is a visual affordance only: it does not block commits or
+     * integrate with store-level validation.
+     */
+    requiredPredicate ?: (record: ModelRecord) => boolean;
 }
 
 /**

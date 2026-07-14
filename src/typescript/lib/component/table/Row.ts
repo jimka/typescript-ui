@@ -84,7 +84,7 @@ class Row extends Component {
                 // border on theme change, so this background sticks.
                 const groupColor = columnConfigs.get(field.getName())?.groupColor;
                 if (groupColor) {
-                    cell.setBackgroundColor(groupColor);
+                    cell.setBaseBackground(groupColor);
                 }
 
                 // Read-only wins over groupColor: this write lands
@@ -343,7 +343,7 @@ class Row extends Component {
             const groupColor = columnConfigs.get(fieldName)?.groupColor;
 
             if (groupColor) {
-                cell.setBackgroundColor(groupColor);
+                cell.setBaseBackground(groupColor);
             }
 
             // Wrap the tree-column cell only when it's newly created —

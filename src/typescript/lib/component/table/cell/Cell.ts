@@ -34,6 +34,8 @@ export type CellEvent = "commit" | "editend";
 export class Cell<T> extends Component {
 
     private _readOnly: boolean;
+    private _requiredEmpty: boolean = false;
+    private _baseBackground: string = 'var(--ts-ui-table-cell-bg, transparent)';
     private _renderer: CellRenderer<T>;
     private _editor: CellEditor<T> | undefined;
     private _editorPool: CellEditorPool | null = null;
@@ -226,6 +228,10 @@ export class Cell<T> extends Component {
      * commit fires the cell's `onCommit` callback (and any cascading
      * store-event refresh) as if the user had blurred the editor.
      *
+     * Read-only wins over the required-empty tint set via
+     * {@link Cell.setRequiredEmpty} — a read-only cell cannot be
+     * filled, so nagging it with a required tint would be misleading.
+     *
      * @param value - `true` to mark read-only, `false` to restore the
      *   default editable appearance.
      * @returns This cell, for method chaining.
@@ -256,15 +262,72 @@ export class Cell<T> extends Component {
             this.detachEditor();
         }
 
-        if (value) {
-            this.setBackgroundColor('var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))');
-            this.setCursor('default');
-        } else {
-            this.setBackgroundColor('var(--ts-ui-table-cell-bg, transparent)');
-            this.clearCursor();
-        }
+        this._applyStateTint();
 
         return this;
+    }
+
+    /**
+     * Sets whether this cell shows the required-empty tint — a visual
+     * cue that a required column's cell currently holds an empty value.
+     * Sourced from `--ts-ui-table-cell-required-empty-bg`. Idempotent —
+     * passing the current value short-circuits before any style writes.
+     *
+     * Body rows call this from their per-rebind resolution based on the
+     * column's `ColumnConfig.required` flag and `requiredPredicate`.
+     * Read-only wins over this tint via {@link Cell.setReadOnly}'s
+     * precedence in {@link Cell._applyStateTint}.
+     *
+     * @param value - `true` to show the required-empty tint, `false` to
+     *   restore the cell's base background.
+     * @returns This cell, for method chaining.
+     */
+    setRequiredEmpty(value: boolean): this {
+        if (this._requiredEmpty === value) {
+            return this;
+        }
+
+        this._requiredEmpty = value;
+        this._applyStateTint();
+
+        return this;
+    }
+
+    /**
+     * Sets the background this cell falls back to when neither
+     * read-only nor required-empty applies — e.g. a column's
+     * `groupColor` tint. {@link Row} routes its group-color write
+     * through this setter (instead of `setBackgroundColor` directly)
+     * so a filled cell in a grouped, required column restores its
+     * group tint rather than going transparent.
+     *
+     * @param color - The CSS color string to use as the base background.
+     * @returns This cell, for method chaining.
+     */
+    setBaseBackground(color: string): this {
+        this._baseBackground = color;
+        this._applyStateTint();
+
+        return this;
+    }
+
+    /**
+     * Resolves this cell's background + cursor from precedence
+     * read-only ▸ required-empty ▸ base background, and writes the
+     * result. The single owner of the cell's background so the
+     * read-only and required-empty states cannot fight over it.
+     */
+    private _applyStateTint(): void {
+        if (this._readOnly) {
+            this.setBackgroundColor('var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))');
+            this.setCursor('default');
+        } else if (this._requiredEmpty) {
+            this.setBackgroundColor('var(--ts-ui-table-cell-required-empty-bg, rgba(220, 60, 60, 0.10))');
+            this.clearCursor();
+        } else {
+            this.setBackgroundColor(this._baseBackground);
+            this.clearCursor();
+        }
     }
 
     /**

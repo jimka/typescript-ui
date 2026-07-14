@@ -779,6 +779,8 @@ class Body extends VirtualRowView<Row> {
 
             this.afterRowBound(row, dataIndex, wasRebound);
 
+            this.applyRequiredEmptyState(row, records[dataIndex]);
+
             this.positionRow(i, dataIndex * rowHeight, rowWidth);
 
             const cells = row.getComponents();
@@ -1098,6 +1100,54 @@ class Body extends VirtualRowView<Row> {
             const union      = colStatic || rowOverride || cellPredOk;
 
             cell.setReadOnly(union);
+        }
+    }
+
+    /**
+     * Returns whether `value` counts as "empty" for the required-cell
+     * tint: `null`, `undefined`, or `''`. `0` and `false` are legit
+     * values and are NOT empty; an unset boolean (`null`/`undefined`,
+     * rendered indeterminate) IS empty.
+     *
+     * @param value - The raw record value to test.
+     * @returns `true` when the value is empty.
+     */
+    private static isEmptyValue(value: unknown): boolean {
+        return value === null || value === undefined || value === '';
+    }
+
+    /**
+     * Computes the required union per cell and forwards it, AND-ed with
+     * emptiness, to {@link Cell.setRequiredEmpty}. Unlike
+     * {@link applyReadOnlyState}, this runs on every render (not gated
+     * on `wasRebound`) because the tint depends on the cell's current
+     * value, which changes on in-place edits — a commit cascades
+     * through `store.notifyRecordChanged` back into a `renderWindow`
+     * pass, and this must re-run then to clear a filled cell's tint.
+     * `setRequiredEmpty` is idempotent, so an unchanged cell costs one
+     * comparison.
+     *
+     * The union is OR-composed from two sources:
+     *
+     * 1. Column-level static flag from {@link ColumnConfig.required}.
+     * 2. Per-column per-record predicate from
+     *    {@link ColumnConfig.requiredPredicate}.
+     *
+     * @param row - The pool row being rendered.
+     * @param record - The record currently bound to that row.
+     */
+    private applyRequiredEmptyState(row: Row, record: ModelRecord): void {
+        const cells      = row.getComponents() as Cell<any>[];
+        const fieldNames = row.getFieldNames();
+
+        for (let i = 0; i < cells.length; i++) {
+            const fieldName = fieldNames[i];
+            const config    = this._columnConfigs.get(fieldName);
+            const required  = config?.required === true
+                           || config?.requiredPredicate?.(record) === true;
+            const empty     = Body.isEmptyValue(record.get(fieldName));
+
+            cells[i].setRequiredEmpty(required && empty);
         }
     }
 
