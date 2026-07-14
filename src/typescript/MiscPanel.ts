@@ -483,6 +483,18 @@ class MiscPanel extends Panel {
                 let specTable = new Table(specStore, spec);
                 specTable.setExportMenuEnabled(true);
 
+                // Demos the required-empty tint stacking on top of the
+                // new-row green row tint. Role/Score are left unset on the
+                // freshly `markAsNew()`d record, and Active is seeded `true`
+                // so Score's `requiredPredicate` (mandatory only while
+                // Active) actually fires — a bare addRow({}) would leave
+                // Active `undefined`, which is not `=== true`, and Score
+                // would never tint. With Active seeded, both Role (static
+                // `required`) and Score (predicate) tint alongside the
+                // row-level green tint.
+                const addRowBtn = new Button("Add row (demos new-row + required tint)");
+                addRowBtn.on("action", () => specTable.addRow({ Active: true }));
+
                 // Demo the store's aggregation + grouping API: average/max over
                 // the numeric Score column, plus per-group counts bucketed by the
                 // Active flag. getGroups() keys are the String() of each value.
@@ -507,6 +519,7 @@ class MiscPanel extends Panel {
                 const wrapper = Panel({
                     layoutManager: new VBox({ stretching: true }),
                     components: [
+                        addRowBtn,
                         { component: specTable, constraints: { weight: 1 } },
                         statusBar
                     ]
