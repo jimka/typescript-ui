@@ -33,21 +33,29 @@ describe('LabeledFieldSet columns', () => {
 describe('LabeledFieldSet field structure', () => {
     afterEach(() => DOM.reset());
 
+    it('composes a single internal LabeledGrid, starting empty', () => {
+        installTestDOM(CONFIG);
+
+        const form = new LabeledFieldSet('Form');
+
+        // The fieldset's own framework-layout child list holds only the
+        // wrapping LabeledGrid (installed via a Fit layout); the grid cells
+        // live one level down, on the internal grid itself.
+        expect(form.getComponents().length).toBe(1);
+        expect(form.getGrid().getComponents().length).toBe(0);
+    });
+
     it('addField appends a label + the field component and is chainable', () => {
         installTestDOM(CONFIG);
 
         const form  = new LabeledFieldSet('Form');
         const input = new Component();
 
-        // The legend is appended directly via DOM (not addComponent), so the
-        // framework-layout child list contains only grid cells.
-        expect(form.getComponents().length).toBe(0);
-
         expect(form.addField('Name', input)).toBe(form);
 
         // One pair adds two cells: a Text label and the input. The input is the
         // second of the two and order is preserved.
-        const children = form.getComponents();
+        const children = form.getGrid().getComponents();
 
         expect(children.length).toBe(2);
         expect(children[1]).toBe(input);
@@ -61,7 +69,7 @@ describe('LabeledFieldSet field structure', () => {
 
         expect(form.addFullWidthRow(wide)).toBe(form);
 
-        expect(form.getComponents()).toContain(wide);
+        expect(form.getGrid().getComponents()).toContain(wide);
     });
 
     it('addRow flows the given pairs and is chainable', () => {
@@ -76,11 +84,19 @@ describe('LabeledFieldSet field structure', () => {
             { title: 'B', component: b },
         ])).toBe(form);
 
-        const children = form.getComponents();
+        const children = form.getGrid().getComponents();
 
         // Both field components are present in the child list.
         expect(children).toContain(a);
         expect(children).toContain(b);
+    });
+
+    it('getGrid returns the internal LabeledGrid', () => {
+        installTestDOM(CONFIG);
+
+        const form = new LabeledFieldSet('Form');
+
+        expect(form.getComponents()).toContain(form.getGrid());
     });
 });
 
@@ -95,8 +111,8 @@ describe('LabeledFieldSet min-height tracks content, not a fixed floor', () => {
         });
 
         // With minSize cleared, the min purely reflects the grid content
-        // (legend clearance + insets + one row) instead of the base
-        // FieldSet's fixed 100px floor.
+        // (legend clearance + insets + one row, forwarded through Fit)
+        // instead of the base FieldSet's fixed 100px floor.
         expect(form.getMinSize()!.height).toBeLessThan(100);
     });
 
