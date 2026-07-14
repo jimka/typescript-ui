@@ -86,6 +86,7 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `table.row.selected` | `--ts-ui-table-row-selected` | Background tint of the currently selected table row |
 | `table.row.new` | `--ts-ui-table-row-new` | Background tint of unsaved new records |
 | `table.row.dirty` | `--ts-ui-table-row-dirty` | Background tint of locally modified records |
+| `table.cell.requiredEmptyBackground` | `--ts-ui-table-cell-required-empty-bg` | Background tint of an empty cell in a `ColumnConfig.required` / `requiredPredicate` column |
 | `contextMenu.background` | `--ts-ui-context-menu-bg` | Background of the [`Menu`](/api/overlay/classes/Menu) panel in rebuild mode (right-click) |
 | `contextMenu.border` | `--ts-ui-context-menu-border` | Border color of the rebuild-mode `Menu` panel |
 | `contextMenu.shadow` | `--ts-ui-context-menu-shadow` | Drop shadow of the rebuild-mode `Menu` panel |
