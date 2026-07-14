@@ -15,7 +15,6 @@ import { BooleanEditor } from '~/component/table/cell/editor/Boolean';
 import { NumberRenderer } from '~/component/table/cell/renderer/Number';
 import { ComboRenderer } from '~/component/table/cell/renderer/Combo';
 import { ComboEditor } from '~/component/table/cell/editor/Combo';
-import { CellEditorPool } from '~/component/table/cell/editor/CellEditorPool';
 import { Row } from '~/component/table/Row';
 import { StringCell } from '~/component/table/cell/String';
 import { ComboCell } from '~/component/table/cell/Combo';
