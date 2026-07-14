@@ -36,17 +36,25 @@ const store = new MemoryStore({
 
 ## Load from a REST endpoint
 
-[`AjaxStore`](/api/data/classes/AjaxStore) is a convenience subclass that wires an [`AjaxProxy`](/api/data/classes/AjaxProxy) internally — pass the proxy config straight to the store:
+[`AjaxStore`](/api/data/classes/AjaxStore) is a convenience subclass that wires an [`AjaxProxy`](/api/data/classes/AjaxProxy) internally. Prefer a single options bag, which combines the proxy config with store-level options such as `pageSize` / `remoteSort` / `remoteFilter`:
 
 ```typescript
 import { AjaxStore } from '@jimka/typescript-ui/data';
-const store = new AjaxStore(PersonModel, {
-    url:  '/api/people',
-    root: 'data',     // extracts response.data array
+const store = new AjaxStore({
+    model: PersonModel,
+    proxy: {
+        url:  '/api/people',
+        root: 'data',     // extracts response.data array
+    },
 });
 
 await store.load();
 ```
+
+The positional `new AjaxStore(model, proxyOptions)` form still works but is
+**deprecated**: it has no parameter for store-level options, so `pageSize` /
+`remoteSort` / `remoteFilter` are silently ignored if you pass them there —
+use the bag form above instead.
 
 If you prefer to wire the proxy yourself (for example to share one `AjaxProxy` instance across stores), use [`Store`](/api/data/classes/Store) directly:
 
