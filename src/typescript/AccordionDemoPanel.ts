@@ -33,6 +33,7 @@ class AccordionDemoPanel extends Panel {
     private themedToggle:     Button;
     private spacingToggle:    Button;
     private fillToggle:       Button;
+    private resizableToggle:  Button;
 
     constructor() {
         super();
@@ -73,6 +74,9 @@ class AccordionDemoPanel extends Panel {
 
         this.fillToggle = new Button("Fill: ON");
         toolbar.addComponent(this.fillToggle);
+
+        this.resizableToggle = new Button("Resizable: OFF");
+        toolbar.addComponent(this.resizableToggle);
 
         this.addComponent(toolbar);
 
@@ -150,6 +154,14 @@ class AccordionDemoPanel extends Panel {
 
             this.accordion.getAccordion().setFillHeight(next);
             this.fillToggle.setText(`Fill: ${next ? 'ON' : 'OFF'}`);
+            this.doLayout();
+        });
+
+        this.resizableToggle.on("action", () => {
+            const next = !this.accordion.getAccordion().isResizable();
+
+            this.accordion.getAccordion().setResizable(next);
+            this.resizableToggle.setText(`Resizable: ${next ? 'ON' : 'OFF'}`);
             this.doLayout();
         });
 

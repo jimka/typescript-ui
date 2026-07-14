@@ -46,7 +46,8 @@ sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 | `compact` | `setCompact` / `isCompact` | `false` | Denser headers — a smaller default header height plus tighter padding. See [Compact mode](#compact-mode). |
 | `chevronSide` | `setChevronSide` / `getChevronSide` | `"end"` | Which end of each header the chevron sits at. The label always stays left-aligned. |
 | `chevronGlyph` | `setChevronGlyph` / `getChevronGlyph` | `"▶"` | The character drawn as the chevron (rotates 90° when expanded). |
-| `fillHeight` | `setFillHeight` / `isFillHeight` | `false` | The bottommost open section absorbs the container's leftover height. See [Fill mode](#fill-mode). |
+| `fillHeight` | `setFillHeight` / `isFillHeight` | `false` | Open sections grow to absorb the container's leftover height, sharing it by `fillWeight`. See [Fill mode](#fill-mode). |
+| `resizable` | `setResizable` / `isResizable` | `false` | Draggable gutters between adjacent open sections, letting the user trade height between them. See [Resizable sections](#resizable-sections). |
 | `toolsVisibility` | `setToolsVisibility` / `getToolsVisibility` | `"hover"` | When per-section header tools are shown. See [Header tools](#header-tools). |
 | `listeners` | `on("sectiontoggle", fn)` | — | `{ sectiontoggle }` callback bag (see [Toggle callback](#toggle-callback)). |
 
@@ -103,7 +104,25 @@ sidebar.addComponent(prefs, new AccordionConstraints('Preferences', false, 'gear
 
 ## Fill mode
 
-By default every open section sits at its preferred height. With `fillHeight` on, the **bottommost open section grows to absorb the container's leftover height** (IDE/dock-panel style) — useful when the host stretches the accordion taller than its preferred height (e.g. inside a [`VBox`](/api/layout/classes/VBox) with `stretching`). Fill is the underflow counterpart to the shrink behaviour described under [Sizing](#sizing): when the content already overflows there is no leftover, so fill is a no-op and the two never both apply. When several sections are open, only the bottommost fills; the rest take their preferred height.
+By default every open section sits at its preferred height. With `fillHeight` on, **every open section grows to absorb the container's leftover height**, sharing it in proportion to each section's [`fillWeight`](/api/layout/classes/AccordionConstraints#fillweight) constraint — unweighted sections count equally, so with no weights set the slack is split into equal slices. Each recipient is capped at its own max height; a section that hits its max has its surplus re-shared among the rest, so the sections always fill the container without any one being padded past its maximum. Fill is useful when the host stretches the accordion taller than its preferred height (e.g. inside a [`VBox`](/api/layout/classes/VBox) with `stretching`), and is the underflow counterpart to the shrink behaviour described under [Sizing](#sizing): when the content already overflows there is no leftover, so fill is a no-op and the two never both apply.
+
+`fillWeight` can also be set **without** `fillHeight` to fill from only specific sections (a single weighted section absorbs all the slack, in any position — not just the bottommost); when combined with `fillHeight`, the explicit weights bias the shares while unweighted sections still take a default weight of `1`.
+
+## Resizable sections
+
+With `resizable` on, a thin draggable gutter appears between every adjacent pair of **open** sections, letting the user trade height between them:
+
+```typescript
+accordion.setResizable(true);
+```
+
+The gutter reuses [`SplitGutter`](/api/component/container/classes/SplitGutter) — the same divider [`Split`](/api/layout/classes/Split) uses — but overlays the bottom edge of the upper section's content rather than sitting in the layout flow, so it reserves no height budget of its own.
+
+The first resizable layout **seeds** each open section's height from exactly what `fillWeight`/`fillHeight` would have given it, so with a fill option on (or when the content overflows) turning `resizable` on is visually seamless. Note that resizable mode always rescales the open set to fill the container, so if *no* fill option is set — where the non-resizable layout leaves trailing slack below the sections — enabling `resizable` grows the sections to close that gap. From then on, a drag is the authoritative split — it overrides the seeded ratio the same way a `Split` gutter-drag overrides its pane's resize weight. The dragged ratio survives a section closing and reopening (a closed section keeps its stored height, ready to reapply on reopen) and rescales proportionally when the container is resized.
+
+No gutter appears with fewer than two open sections, and none ever appears under [`singleOpen`](#usage) (which never has more than one section open at a time) — both are documented no-ops, not errors.
+
+Resizable sections and [`Split`](/api/layout/classes/Split) solve different problems: reach for `resizable` when you want the accordion's own collapsible sections to also be reapportionable, and compose with `Split` instead when you want independent draggable panes that are not collapsible sections at all.
 
 ## Expand / collapse all
 

@@ -22,12 +22,13 @@ export class AccordionConstraints extends LayoutConstraints {
 
     /**
      * Share of the container's leftover height this section absorbs when the open
-     * sections underflow. `0` (the default) sits at preferred height; a positive
-     * weight grows the section by its fraction of the total fill weight, so a
-     * single weighted section fills all the slack and equal weights split it. Lets
-     * a section other than the bottommost fill — the general form of
-     * {@link Accordion.setFillHeight}, and the reason a filling section no longer
-     * needs an outsized preferred height to win the shrink.
+     * sections underflow. `0` (the default) leaves this section's weight to
+     * {@link Accordion.setFillHeight} — which opts every open section in at an
+     * equal default weight when on, or nothing when off. A positive weight grows
+     * the section by its fraction of the total fill weight (each recipient capped
+     * at its max), so a single weighted section fills all the slack and equal
+     * weights split it, and it biases the share when combined with
+     * `setFillHeight`.
      */
     fillWeight?: number;
 

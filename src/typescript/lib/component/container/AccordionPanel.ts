@@ -41,6 +41,8 @@ export interface AccordionPanelOptions extends ContainerOptions {
     sections?:        AccordionSectionConfig[];
     /** Mirrors `Accordion.setSingleOpen` — only one section open at a time. */
     singleOpen?:      boolean;
+    /** Mirrors `Accordion.setResizable` — draggable gutters between open sections. */
+    resizable?:       boolean;
     /** Optional callback fired when a section opens or closes. */
     onSectionToggle?: SectionToggleCallback;
 }
@@ -93,6 +95,10 @@ class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOpti
 
         if (options?.singleOpen !== undefined) {
             this.getAccordion().setSingleOpen(options.singleOpen);
+        }
+
+        if (options?.resizable !== undefined) {
+            this.getAccordion().setResizable(options.resizable);
         }
 
         if (options?.sections) {

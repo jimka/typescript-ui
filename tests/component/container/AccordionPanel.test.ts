@@ -128,6 +128,25 @@ describe('AccordionPanel section state', () => {
         expect(acc.isSectionOpen(2)).toBe(true);
     });
 
+    it('forwards the resizable option to the accordion', () => {
+        installTestDOM(CONFIG);
+
+        const acc = realise(new AccordionPanel({
+            resizable: true,
+            sections:  threeSections(),
+        })).getAccordion();
+
+        expect(acc.isResizable()).toBe(true);
+    });
+
+    it('defaults resizable to off when the option is omitted', () => {
+        installTestDOM(CONFIG);
+
+        const acc = realise(new AccordionPanel({ sections: threeSections() })).getAccordion();
+
+        expect(acc.isResizable()).toBe(false);
+    });
+
     it('collapseAll closes every section', () => {
         installTestDOM(CONFIG);
 
