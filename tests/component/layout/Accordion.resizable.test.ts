@@ -341,6 +341,56 @@ describe('Accordion resizable — drag apportionment', () => {
     });
 });
 
+describe('Accordion resizable — [min,max] constraints in the distribution', () => {
+    type Sizes = { _resizeSizes: Map<Component, number> };
+
+    it('never allocates an open section more than its maxSize, redistributing the surplus', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 600, acc); // budget = 600 - 2*30 = 540
+        const a = content({ width: 100, height: 80 }, { width: 40, height: 10 });
+        a.setMaxSize(10000, 100); // cap A's height at 100 (width left unbounded)
+        const b = content({ width: 100, height: 80 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.doLayout();
+
+        const budget = 600 - 2 * HEADER;
+        expect(a.getHeight()).toBeLessThanOrEqual(100 + 1e-6); // never stretched past max
+        expect(a.getHeight()).toBeCloseTo(100, 5);             // capped at max
+        expect(b.getHeight()).toBeCloseTo(budget - 100, 5);    // B absorbs the surplus
+        expect(a.getHeight() + b.getHeight()).toBeCloseTo(budget, 5); // fill invariant holds
+    });
+
+    it('redistributes a min floor so open heights still sum to the budget (no overflow past the box)', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 260, acc); // budget = 260 - 2*30 = 200
+        const a = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 60 }, { width: 40, height: 60 }); // min height 60
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.doLayout();
+
+        // Simulate A having absorbed most of the space into its stored size — as
+        // fill does when the accordion underflowed before the container shrank.
+        // B's rescaled share now falls below its own min, forcing a floor.
+        const sizes = (acc as unknown as Sizes)._resizeSizes;
+        sizes.set(a, 1000);
+        sizes.set(b, 20);
+        host.doLayout();
+
+        const budget = 260 - 2 * HEADER; // 200
+        expect(b.getHeight()).toBeCloseTo(60, 5);              // B floored to its min
+        expect(a.getHeight()).toBeCloseTo(budget - 60, 5);     // A gives up the excess
+        expect(a.getHeight() + b.getHeight()).toBeCloseTo(budget, 5); // sum stays == budget
+    });
+});
+
 describe('Accordion resizable — lightweight drag path', () => {
     type DragInternals = {
         onGutterDragStart(index: number, position: number): void;

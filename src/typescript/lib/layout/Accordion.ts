@@ -1923,29 +1923,99 @@ class Accordion extends LayoutManager {
             }
         }
 
-        let stored = 0;
+        return this.distributeWithinConstraints(components, openIndices, openBudget);
+    }
 
-        for (const i of openIndices) {
-            stored += this._resizeSizes.get(components[i]) ?? 0;
+    /**
+     * Splits `openBudget` across the open sections in proportion to their
+     * stored sizes, clamped to each section's `[min, max]` height. A section
+     * whose proportional share would fall outside its bounds is pinned at the
+     * violated bound and removed from the budget; the remaining sections then
+     * re-share what is left, iterating until every free section fits. This
+     * keeps the open heights summing to `openBudget` — so the stack neither
+     * overflows the container (a min floor pushing content past the box) nor
+     * leaves it under-filled — while never stretching a section past its max
+     * or compressing it below its min. It generalises {@link onGutterDrag}'s
+     * per-pair `[min, max]` clamp to the whole open set, so a full layout and a
+     * drag agree on the constraints (a section rendered past its max otherwise
+     * snapped down the instant its gutter was grabbed).
+     *
+     * When the constraints make an exact fill impossible — the mins already
+     * exceed the budget, or the maxes cannot reach it — the pinned sizes stand:
+     * the stack over- or under-fills, which the host clips/scrolls or leaves as
+     * slack, matching the `getMinSize` contract.
+     *
+     * Also caches {@link _resizeFactor} — the stored→rendered scale of the
+     * *unpinned* sections, which is the mapping a drag moves within.
+     *
+     * @param components - The container's content components, section-ordered.
+     * @param openIndices - Indices of the open sections to distribute across.
+     * @param openBudget - The height available to the open sections' content.
+     * @returns A map from section index to its clamped content height.
+     */
+    private distributeWithinConstraints(components: Component[], openIndices: number[], openBudget: number): Map<number, number> {
+        const heights = new Map<number, number>();
+        const free = new Set<number>(openIndices);
+        let remaining = openBudget;
+        let freeFactor = 1;
+
+        // At most one section is pinned per pass, so this settles in at most
+        // `openIndices.length` passes.
+        for (;;) {
+            let freeStored = 0;
+
+            for (const i of free) {
+                freeStored += this._resizeSizes.get(components[i]) ?? 0;
+            }
+
+            freeFactor = freeStored > 0 ? remaining / freeStored : 0;
+            let pinned = false;
+
+            for (const i of free) {
+                const component = components[i];
+                const share = (this._resizeSizes.get(component) ?? 0) * freeFactor;
+                const min = component.getMinSize();
+                const max = component.getMaxSize();
+                const lo = min ? min.height : 0;
+                const hi = max ? max.height : Number.POSITIVE_INFINITY;
+
+                if (share < lo) {
+                    heights.set(i, lo);
+                    remaining -= lo;
+                    free.delete(i);
+                    pinned = true;
+
+                    break;
+                }
+
+                if (share > hi) {
+                    heights.set(i, hi);
+                    remaining -= hi;
+                    free.delete(i);
+                    pinned = true;
+
+                    break;
+                }
+            }
+
+            if (!pinned) {
+                for (const i of free) {
+                    heights.set(i, (this._resizeSizes.get(components[i]) ?? 0) * freeFactor);
+                }
+
+                break;
+            }
+
+            if (free.size === 0) {
+                break;
+            }
         }
 
-        const factor = stored > 0 ? openBudget / stored : 0;
+        // Cached for onGutterDrag, which converts its rendered-pixel drag math
+        // back to the stored scale before writing into `_resizeSizes`.
+        this._resizeFactor = freeFactor > 0 ? freeFactor : 1;
 
-        // Cached for onGutterDrag, which must convert its rendered-pixel drag
-        // math back to this stored scale before writing into _resizeSizes.
-        this._resizeFactor = factor > 0 ? factor : 1;
-
-        const result = new Map<number, number>();
-
-        for (const i of openIndices) {
-            const component = components[i];
-            const min = component.getMinSize();
-            const height = (this._resizeSizes.get(component) ?? 0) * factor;
-
-            result.set(i, Math.max(height, min ? min.height : 0));
-        }
-
-        return result;
+        return heights;
     }
 
     /**
