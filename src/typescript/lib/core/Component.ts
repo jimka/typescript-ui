@@ -3579,10 +3579,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Sets the CSS `transition` shorthand on the component's CSS rule. Use
+     * Sets the CSS `transition` shorthand on the component's inline style. Use
      * this to declare a property-by-property crossfade ahead of state writes
-     * (e.g. setting a `transition: background-color 120ms ease-out` rule and
-     * then later calling `setBackgroundColor` to fire the crossfade).
+     * (e.g. setting a `transition: background-color 120ms ease-out` and then
+     * later calling `setBackgroundColor` to fire the crossfade).
+     *
+     * The value is written **inline**, not to the component's `#id` rule,
+     * because the render-time style pass replays the cached transition inline
+     * on every render — and inline beats an `#id` rule. Writing to the rule
+     * here would let that inline replay of a construction-time value shadow
+     * every later runtime change, so a component that declared a transition at
+     * construction could never re-set it. Inline keeps the setter and the
+     * replay on the same seam.
      *
      * @param value - A CSS transition shorthand (e.g. `"transform 120ms ease-out"`).
      *
@@ -3594,13 +3602,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._transition = value;
-        this.setElementCSSRule("transition", value);
+        this.setElementStyle("transition", value);
 
         return this;
     }
 
     /**
-     * Removes the CSS `transition` property from the component's CSS rule.
+     * Removes the CSS `transition` property from the component's inline style.
      *
      * @returns This component, for method chaining.
      */
@@ -3610,7 +3618,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._transition = null;
-        this.setElementCSSRule("transition", null);
+        this.setElementStyle("transition", null);
 
         return this;
     }
