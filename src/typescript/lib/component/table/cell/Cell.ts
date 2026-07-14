@@ -275,8 +275,8 @@ export class Cell<T> extends Component {
      *
      * Body rows call this from their per-rebind resolution based on the
      * column's `ColumnConfig.required` flag and `requiredPredicate`.
-     * Read-only wins over this tint via {@link Cell.setReadOnly}'s
-     * precedence in {@link Cell._applyStateTint}.
+     * Read-only wins over this tint — see {@link Cell.setReadOnly}'s
+     * precedence note.
      *
      * @param value - `true` to show the required-empty tint, `false` to
      *   restore the cell's base background.
