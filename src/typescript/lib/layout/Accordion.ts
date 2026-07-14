@@ -3,6 +3,7 @@
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { AccordionConstraints } from "~/layout/AccordionConstraints.js";
 import { AccordionHeader } from "~/component/container/AccordionHeader.js";
+import { SplitGutter } from "~/component/container/SplitGutter.js";
 import { Animation } from "~/core/Animation.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
@@ -46,6 +47,14 @@ const ACCORDION_EASING: string = "cubic-bezier(0.4, 0, 0.6, 1)";
  * consumer has not pinned an explicit header height via `setHeaderHeight`.
  */
 const COMPACT_HEADER_HEIGHT: number = 22;
+
+/**
+ * Thickness (px) of a resizable-mode drag gutter. It overlays the bottom edge
+ * of the upper open section's content and reserves NO layout budget, so the
+ * open-content sizing math (`computeShrinkRatio`/`computeFill`/
+ * `computeResizableHeights`) is unaffected by whether gutters are shown.
+ */
+const RESIZE_GUTTER_SIZE: number = 6;
 
 /**
  * Themed-mode CSS values for the accordion theme tokens, with fallbacks
@@ -94,6 +103,11 @@ export interface AccordionOptions extends LayoutManagerOptions {
     spacing?:           number;
     themed?:            boolean;
     fillHeight?:        boolean;
+    /**
+     * Opts into draggable gutters between adjacent open sections, letting the
+     * user trade height between them. See {@link Accordion.setResizable}.
+     */
+    resizable?:         boolean;
     /**
      * Multi-event listener bag dispatched to {@link Accordion.on} at
      * construction time.
@@ -153,6 +167,27 @@ class Accordion extends LayoutManager {
     private _toolsVisibility: "always" | "hover" = "hover";
     private _hoveredHeader: number = -1;
     private _listeners: ListenerBag<AccordionEvent> = new ListenerBag<AccordionEvent>();
+    private _resizable: boolean = false;
+    // User-dragged (or fill-seeded) content heights per open section, absolute
+    // px summing to the open budget when written. Keyed by Component
+    // (reorder-safe, like Split._sizes); pruned each resizable layout for
+    // removed components. A closed section keeps its entry frozen for reopen.
+    private _resizeSizes: Map<Component, number> = new Map<Component, number>();
+    // Gutter pool, reused across layouts; one shown per adjacent open-section pair.
+    private _resizeGutters: SplitGutter[] = [];
+    // Rebuilt each layout: for gutter i, the two content components it resizes.
+    private _gutterPairs: Array<{ upper: Component; lower: Component }> = [];
+    // Drag origin captured on gutter dragstart.
+    private _dragUpper: Component | null = null;
+    private _dragLower: Component | null = null;
+    private _dragOriginPointer: number = 0;
+    private _dragOriginUpper: number = 0;
+    private _dragOriginLower: number = 0;
+    // Stable bound reference so add/removeViewportListener target the same
+    // callback; Accordion is a LayoutManager, not a Component, so it cannot
+    // key the registration on `this` the way every Component call site does —
+    // see the Potential Challenges drift note in the resizable-sections plan.
+    private _boundOnGutterDragEnd: () => void = () => this.onGutterDragEnd();
 
     constructor(options?: AccordionOptions) {
         // LayoutManager's constructor takes no options; applied via applyOptions below.
@@ -208,6 +243,10 @@ class Accordion extends LayoutManager {
 
         if (options.fillHeight !== undefined) {
             this.setFillHeight(options.fillHeight);
+        }
+
+        if (options.resizable !== undefined) {
+            this.setResizable(options.resizable);
         }
 
         if (options.listeners !== undefined) {
@@ -465,6 +504,35 @@ class Accordion extends LayoutManager {
      */
     setFillHeight(value: boolean): this {
         this._fillHeight = value;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns whether resizable mode is on.
+     *
+     * @returns True if draggable gutters appear between adjacent open sections.
+     */
+    isResizable(): boolean {
+        return this._resizable;
+    }
+
+    /**
+     * Sets resizable mode. When on, a draggable gutter appears between every
+     * adjacent pair of open sections, letting the user trade height between
+     * them; the split starts from the section's usual `fillWeight`/`fillHeight`
+     * distribution and is overridden by the drag from then on. No gutter
+     * appears with fewer than two open sections, or under {@link setSingleOpen}
+     * (which never has more than one section open).
+     *
+     * @param value - True to enable resizable mode.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setResizable(value: boolean): this {
+        this._resizable = value;
 
         this.getContainer()?.scheduleLayout();
 
@@ -921,6 +989,15 @@ class Accordion extends LayoutManager {
         this._panelWrappers = [];
         this._openState = [];
 
+        for (const gutter of this._resizeGutters) {
+            DOM.sink.removeElement(gutter.getElement()!);
+            gutter.destroy();
+        }
+
+        this._resizeGutters = [];
+        this._resizeSizes.clear();
+        this._gutterPairs = [];
+
         super.detach();
 
         return this;
@@ -1232,8 +1309,26 @@ class Accordion extends LayoutManager {
         // empty and the two policies never both apply.
         const fills = this.computeFill(components, containerSize, shrinkRatio);
 
+        // Resizable mode: open sections' content heights come from the
+        // drag-backed distribution instead of `openContentHeight + fill`.
+        // `null` when inactive (off, no size yet, or nothing open), in which
+        // case the loop below falls back to the legacy formula unchanged.
+        const resizeHeights = this.computeResizableHeights(components, containerSize, shrinkRatio, fills);
+
         let y = insets.getTop();
         let displayedSoFar = 0;
+
+        // Resizable gutter placement: a gutter is placed between each
+        // consecutive pair of open sections, overlaying the upper section's
+        // content bottom edge (see RESIZE_GUTTER_SIZE) — it reserves no
+        // layout space, so this bookkeeping only decides gutter geometry, not
+        // section geometry. `previousOpen*` persists across closed sections,
+        // so a closed section between two open ones does not get its own
+        // gutter — the boundary handle stays at the upper open section's own
+        // content bottom.
+        let previousOpenComponent: Component | null = null;
+        let previousOpenBottom = 0;
+        let placedGutterCount = 0;
 
         for (let i = 0; i < components.length; i++) {
             const component = components[i];
@@ -1280,13 +1375,37 @@ class Accordion extends LayoutManager {
             // vanishing followed by an empty wrapper sliding shut.
             const preferred = component.getPreferredSize();
             const contentPref = preferred ? preferred.height : 100;
-            let openHeight = this.openContentHeight(component, shrinkRatio);
 
-            // Fill: add this section's share of the container's leftover height.
-            openHeight += fills.get(i) ?? 0;
+            // Resizable mode supplies the open height directly (drag-backed,
+            // rescaled to the current budget); otherwise fall back to the
+            // preferred height shrunk toward min, plus this section's fill share.
+            const openHeight = resizeHeights?.get(i) ?? (this.openContentHeight(component, shrinkRatio) + (fills.get(i) ?? 0));
 
             const panelHeight   = isOpen ? openHeight  : 0;
             const contentHeight = isOpen ? openHeight  : contentPref;
+
+            // A resizable gutter sits between this open section and the
+            // previous open one (if any), overlaying the previous section's
+            // content bottom — placed now because that bottom edge is already
+            // known, and this section's own geometry isn't needed for it.
+            if (isOpen && resizeHeights) {
+                if (previousOpenComponent !== null) {
+                    const gutter = this.getOrCreateResizeGutter(placedGutterCount);
+
+                    gutter.setX(insets.getLeft());
+                    gutter.setY(previousOpenBottom - RESIZE_GUTTER_SIZE);
+                    gutter.setWidth(containerWidth);
+                    gutter.setHeight(RESIZE_GUTTER_SIZE);
+                    gutter.setTransition(this.buildHeaderTransition());
+                    gutter.setVisible(true);
+
+                    this._gutterPairs[placedGutterCount] = { upper: previousOpenComponent, lower: component };
+                    placedGutterCount += 1;
+                }
+
+                previousOpenComponent = component;
+                previousOpenBottom = y + panelHeight;
+            }
 
             wrapper.setX(insets.getLeft());
             wrapper.setY(y);
@@ -1325,6 +1444,173 @@ class Accordion extends LayoutManager {
 
             y += panelHeight;
         }
+
+        // Gutters not placed this pass (resizable off, or a pair whose upper
+        // section closed/dropped out) sit hidden in the pool for reuse rather
+        // than being torn down.
+        this._gutterPairs.length = placedGutterCount;
+
+        for (let i = placedGutterCount; i < this._resizeGutters.length; i++) {
+            this._resizeGutters[i].setVisible(false);
+        }
+    }
+
+    /**
+     * Returns the pooled resizable-mode gutter at `index`, creating and
+     * appending it to the container's DOM on first use. Mirrors the lazy
+     * gutter creation in `Split.doLayout`.
+     *
+     * @param index - The gutter's position in the pool (and in `_gutterPairs`).
+     * @returns The gutter for this index.
+     */
+    private getOrCreateResizeGutter(index: number): SplitGutter {
+        const existing = this._resizeGutters[index];
+
+        if (existing) {
+            return existing;
+        }
+
+        const container = this.getContainer()!;
+        const gutter = new SplitGutter("vertical", { collapsible: false, expandedBackground: "transparent" });
+
+        gutter.on("dragstart", (position: number) => this.onGutterDragStart(index, position));
+        gutter.on("drag", (position: number) => this.onGutterDrag(index, position));
+
+        DOM.sink.appendChild(container.getElement()!, gutter.getElement(true)!);
+
+        this._resizeGutters.push(gutter);
+
+        return gutter;
+    }
+
+    /**
+     * Captures the drag origin when a resizable gutter's drag begins: the
+     * absolute pointer coordinate and the current heights of the two adjacent
+     * open sections. Mirrors {@link Split.onDragStart}. Also suppresses every
+     * section's (and gutter's) transition for the duration of the drag —
+     * reusing the reduced-motion suppress pattern from {@link primeWrapper} —
+     * so the `doLayout` writes each `onGutterDrag` triggers land instantly
+     * instead of animating every frame and lagging the cursor.
+     *
+     * @param gutterIndex - The dragged gutter's position in `_gutterPairs`.
+     * @param position - The absolute pointer coordinate (`clientY`) at drag start.
+     */
+    private onGutterDragStart(gutterIndex: number, position: number): void {
+        const pair = this._gutterPairs[gutterIndex];
+
+        if (!pair) {
+            return;
+        }
+
+        this._dragUpper = pair.upper;
+        this._dragLower = pair.lower;
+        this._dragOriginPointer = position;
+        this._dragOriginUpper = pair.upper.getHeight();
+        this._dragOriginLower = pair.lower.getHeight();
+
+        const components = this.getContainer()?.getComponents() ?? [];
+
+        for (let i = 0; i < this._headers.length; i++) {
+            this._headers[i].setTransition("none");
+            this._panelWrappers[i].setTransition("none");
+            components[i]?.setTransition("none");
+        }
+
+        for (const gutter of this._resizeGutters) {
+            gutter.setTransition("none");
+        }
+
+        // Accordion is a LayoutManager, not a Component, so it cannot key this
+        // registration on `this` the way every other `Event.addViewportListener`
+        // call site does (they call it from inside a Component, on themselves).
+        // The container Component it is attached to is the stable key instead —
+        // the same "arbitrary Component key" shape `DragManager` uses from
+        // module-level code. `_boundOnGutterDragEnd` is a field so add/remove
+        // share one reference regardless of which component's `apply` invokes it.
+        const container = this.getContainer();
+
+        if (container) {
+            Event.addViewportListener(container, "mouseup", this._boundOnGutterDragEnd);
+            Event.addViewportListener(container, "touchend", this._boundOnGutterDragEnd);
+            Event.addViewportListener(container, "touchcancel", this._boundOnGutterDragEnd);
+        }
+    }
+
+    /**
+     * Adjusts the two sections adjacent to a resizable gutter when it is
+     * dragged, mirroring {@link Split.onDrag} on the vertical axis: the new
+     * upper height is derived from the drag origin, clamped against both
+     * sections' `[min, max]` while conserving their combined size, and the
+     * pair's stored sizes are updated so the next layout preserves the ratio.
+     *
+     * @param gutterIndex - The dragged gutter's position in `_gutterPairs`.
+     * @param position - The absolute pointer coordinate (`clientY`) for this move.
+     */
+    private onGutterDrag(gutterIndex: number, position: number): void {
+        const pair = this._gutterPairs[gutterIndex];
+
+        if (!pair || pair.upper !== this._dragUpper || pair.lower !== this._dragLower) {
+            return;
+        }
+
+        const total  = this._dragOriginUpper + this._dragOriginLower;
+        const offset = position - this._dragOriginPointer;
+
+        const upperMin = pair.upper.getMinSize();
+        const lowerMin = pair.lower.getMinSize();
+        const upperMax = pair.upper.getMaxSize();
+        const lowerMax = pair.lower.getMaxSize();
+
+        const minUpper = upperMin ? upperMin.height : 0;
+        const minLower = lowerMin ? lowerMin.height : 0;
+        const maxUpper = upperMax ? upperMax.height : Number.POSITIVE_INFINITY;
+        const maxLower = lowerMax ? lowerMax.height : Number.POSITIVE_INFINITY;
+
+        // Clamp the new upper height to its own [min, max] AND to the room the
+        // lower section's [min, max] leaves, keeping the pair's combined size
+        // (`total`) constant.
+        const loUpper = Math.max(minUpper, total - maxLower);
+        const hiUpper = Math.min(maxUpper, total - minLower);
+
+        let newUpper = this._dragOriginUpper + offset;
+        newUpper = Math.max(loUpper, Math.min(hiUpper, newUpper));
+
+        const newLower = total - newUpper;
+
+        this._resizeSizes.set(pair.upper, newUpper);
+        this._resizeSizes.set(pair.lower, newLower);
+
+        this.getContainer()?.doLayout();
+    }
+
+    /**
+     * Ends a resizable-gutter drag: removes the viewport listeners and
+     * restores every section's (and gutter's) transition that
+     * {@link onGutterDragStart} suppressed.
+     */
+    private onGutterDragEnd(): void {
+        const container = this.getContainer();
+
+        if (container) {
+            Event.removeViewportListener(container, "mouseup", this._boundOnGutterDragEnd);
+            Event.removeViewportListener(container, "touchend", this._boundOnGutterDragEnd);
+            Event.removeViewportListener(container, "touchcancel", this._boundOnGutterDragEnd);
+        }
+
+        const components = container?.getComponents() ?? [];
+
+        for (let i = 0; i < this._headers.length; i++) {
+            this._headers[i].setTransition(this.buildHeaderTransition());
+            this._panelWrappers[i].setTransition(this.buildWrapperTransition());
+            components[i]?.setTransition(this.buildContentTransition());
+        }
+
+        for (const gutter of this._resizeGutters) {
+            gutter.setTransition(this.buildHeaderTransition());
+        }
+
+        this._dragUpper = null;
+        this._dragLower = null;
     }
 
     /**
@@ -1488,6 +1774,95 @@ class Accordion extends LayoutManager {
         }
 
         return fills;
+    }
+
+    /**
+     * Computes each open section's content height in resizable mode, keyed by
+     * container index. Supersedes the `openContentHeight + fill` path when
+     * active: a section with no stored size yet is seeded from what that
+     * legacy path would have given it (so turning resizable on is visually
+     * seamless), then every open section's stored size is rescaled by
+     * `openBudget / storedTotal` so the set always fills the container without
+     * rewriting the stored ratio — a drag ({@link onGutterDrag}) is the only
+     * thing that changes the ratio itself. Also prunes `_resizeSizes` entries
+     * for components no longer in `components`.
+     *
+     * @param components - The container's content components, section-ordered.
+     * @param containerSize - The container's inner size; `null` short-circuits
+     *   to `null` (caller falls back to the legacy path).
+     * @param shrinkRatio - The container-driven shrink ratio, used only to seed
+     *   a not-yet-stored section from the legacy formula.
+     * @param fills - The legacy fill map, used only to seed a not-yet-stored
+     *   section from the legacy formula.
+     * @returns A map from container index to content height for every open
+     *   section, or `null` when resizable mode is inactive, there is no
+     *   container size, or no section is open (the caller keeps the legacy
+     *   `openContentHeight + fill` path in all three cases).
+     */
+    private computeResizableHeights(components: Component[], containerSize: Size | null, shrinkRatio: number, fills: Map<number, number>): Map<number, number> | null {
+        if (!this._resizable || !containerSize) {
+            return null;
+        }
+
+        for (const stored of [...this._resizeSizes.keys()]) {
+            if (!components.includes(stored)) {
+                this._resizeSizes.delete(stored);
+            }
+        }
+
+        let headerTotal = 0;
+        let displayedSoFar = 0;
+        const openIndices: number[] = [];
+
+        for (let i = 0; i < components.length; i++) {
+            if (!components[i].isDisplayed()) {
+                continue;
+            }
+
+            if (displayedSoFar > 0) {
+                headerTotal += this._spacing;
+            }
+
+            displayedSoFar += 1;
+            headerTotal += this.effectiveHeaderHeight();
+
+            if (this._openState[i]) {
+                openIndices.push(i);
+            }
+        }
+
+        if (openIndices.length === 0) {
+            return null;
+        }
+
+        const openBudget = containerSize.height - headerTotal;
+
+        for (const i of openIndices) {
+            const component = components[i];
+
+            if (!this._resizeSizes.has(component)) {
+                this._resizeSizes.set(component, this.openContentHeight(component, shrinkRatio) + (fills.get(i) ?? 0));
+            }
+        }
+
+        let stored = 0;
+
+        for (const i of openIndices) {
+            stored += this._resizeSizes.get(components[i]) ?? 0;
+        }
+
+        const factor = stored > 0 ? openBudget / stored : 0;
+        const result = new Map<number, number>();
+
+        for (const i of openIndices) {
+            const component = components[i];
+            const min = component.getMinSize();
+            const height = (this._resizeSizes.get(component) ?? 0) * factor;
+
+            result.set(i, Math.max(height, min ? min.height : 0));
+        }
+
+        return result;
     }
 
     /**
