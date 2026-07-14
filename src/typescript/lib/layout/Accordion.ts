@@ -198,14 +198,12 @@ class Accordion extends LayoutManager {
     // reentrancy guard); the pointer coordinate at the previous move (the drag
     // is applied incrementally, frame by frame, so a reversed drag responds
     // closest-section-first); and — so the drag can chain across sections at
-    // their min/max and restore toward the start on reversal — every open
-    // section's index and its drag-start height, plus the dragged gutter's
+    // their min/max — every open section's index plus the dragged gutter's
     // position in that open list.
     private _dragUpper: Component | null = null;
     private _dragLower: Component | null = null;
     private _dragLastPointer: number = 0;
     private _dragOpenIndices: number[] = [];
-    private _dragOriginHeights: number[] = [];
     private _dragGutterUpperPos: number = 0;
     // Open/close toggle animations currently in flight. Transitions are off by
     // default (so resize and drag relayouts snap); a toggle enables them and the
@@ -1598,15 +1596,13 @@ class Accordion extends LayoutManager {
 
         const components = this.getContainer()?.getComponents() ?? [];
 
-        // Snapshot the open sections (index + height) so the drag can chain
-        // growth outward from the gutter across sections already at their max.
+        // Snapshot the open sections' indices so the drag can chain growth
+        // outward from the gutter across sections already at their max.
         this._dragOpenIndices = [];
-        this._dragOriginHeights = [];
 
         for (let i = 0; i < components.length; i++) {
             if (components[i].isDisplayed() && this._openState[i]) {
                 this._dragOpenIndices.push(i);
-                this._dragOriginHeights.push(components[i].getHeight());
             }
         }
 
@@ -1668,7 +1664,6 @@ class Accordion extends LayoutManager {
 
         const components = container.getComponents();
         const openIndices = this._dragOpenIndices;
-        const origins = this._dragOriginHeights;
         const upperPos = this._dragGutterUpperPos;
 
         // Applied incrementally: this frame's pointer travel is distributed on
@@ -1724,8 +1719,8 @@ class Accordion extends LayoutManager {
 
         const newHeights = current.slice();
 
-        this.distributeDragChain(growGroup, current, origins, delta, +1, mins, maxs, newHeights);
-        this.distributeDragChain(shrinkGroup, current, origins, delta, -1, mins, maxs, newHeights);
+        this.distributeDragChain(growGroup, current, delta, +1, mins, maxs, newHeights);
+        this.distributeDragChain(shrinkGroup, current, delta, -1, mins, maxs, newHeights);
 
         const openHeightByIndex = new Map<number, number>();
 
@@ -1752,15 +1747,16 @@ class Accordion extends LayoutManager {
     /**
      * Distributes `delta` px across `group` (nearest-first), growing
      * (`sign +1`) or shrinking (`sign -1`) each section within its `[min, max]`.
-     * Restoring a section toward its drag-start height takes priority over
-     * pushing it past that height: the pass runs the whole group back toward
-     * their origins first, then a second pass extends past them. So a reversed
-     * drag returns the nearest section to where it started before touching the
-     * next, and a net-zero drag lands back on the drag-start layout.
+     * The nearest section to the gutter absorbs the travel first, spilling to
+     * the next only once it hits its bound. This is purely a function of the
+     * live heights — the drag keeps no memory of where each section started, so
+     * reversing the pointer simply moves the boundary the other way and the
+     * closest section grows/shrinks first in that new direction too (never a
+     * "rewind" that returns a far section toward its start height before the
+     * near one has finished moving).
      *
      * @param group - Open positions to distribute across, nearest-to-gutter first.
      * @param current - Each open position's current height.
-     * @param origins - Each open position's drag-start height (the restore target).
      * @param delta - Total height to distribute across the group.
      * @param sign - `+1` to grow the sections, `-1` to shrink them.
      * @param mins - Each open position's minimum height.
@@ -1768,29 +1764,21 @@ class Accordion extends LayoutManager {
      * @param out - Result heights (seeded to `current`), indexed by open position;
      *   mutated in place.
      */
-    private distributeDragChain(group: number[], current: number[], origins: number[], delta: number, sign: number, mins: number[], maxs: number[], out: number[]): void {
-        // Room to move `pos` back toward its origin (tier 1) versus past it
-        // toward its bound (tier 2); the two sum to the section's total room.
-        const restoreRoom = (pos: number): number =>
-            sign > 0 ? Math.max(0, origins[pos] - current[pos]) : Math.max(0, current[pos] - origins[pos]);
-
-        const extendRoom = (pos: number): number =>
-            sign > 0
-                ? Math.max(0, maxs[pos] - Math.max(current[pos], origins[pos]))
-                : Math.max(0, Math.min(current[pos], origins[pos]) - mins[pos]);
+    private distributeDragChain(group: number[], current: number[], delta: number, sign: number, mins: number[], maxs: number[], out: number[]): void {
+        // Room left to grow toward max (sign +1) or shrink toward min (sign -1).
+        const room = (pos: number): number =>
+            sign > 0 ? Math.max(0, maxs[pos] - current[pos]) : Math.max(0, current[pos] - mins[pos]);
 
         let remaining = delta;
 
-        for (const room of [restoreRoom, extendRoom]) {
-            for (const pos of group) {
-                if (remaining <= DRAG_DISTRIBUTION_EPSILON) {
-                    return;
-                }
-
-                const take = Math.min(remaining, room(pos));
-                out[pos] += sign * take;
-                remaining -= take;
+        for (const pos of group) {
+            if (remaining <= DRAG_DISTRIBUTION_EPSILON) {
+                return;
             }
+
+            const take = Math.min(remaining, room(pos));
+            out[pos] += sign * take;
+            remaining -= take;
         }
     }
 

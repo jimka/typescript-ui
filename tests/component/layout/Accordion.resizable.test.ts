@@ -559,7 +559,7 @@ describe('Accordion resizable — drag growth chains past maxed sections', () =>
         expect(a.getHeight()).toBeCloseTo(150, 5);
     });
 
-    it('a fully reversed drag restores the original layout', () => {
+    it('reversing a drag lets the closest section absorb the travel (no rewind to origin)', () => {
         installTestDOM(CONFIG);
         const acc = new Accordion();
         acc.setHeaderHeight(HEADER);
@@ -575,12 +575,49 @@ describe('Accordion resizable — drag growth chains past maxed sections', () =>
 
         const drag = acc as unknown as Drag;
         drag.onGutterDragStart(0, 0);
-        drag.onGutterDrag(0, 80); // expand
-        drag.onGutterDrag(0, 0);  // fully reverse to the start
+        drag.onGutterDrag(0, 80); // expand A: B -> min 50, C -> 70
+        drag.onGutterDrag(0, 0);  // reverse the pointer all the way back to the start
 
-        expect(a.getHeight()).toBeCloseTo(100, 5);
-        expect(b.getHeight()).toBeCloseTo(100, 5);
-        expect(c.getHeight()).toBeCloseTo(100, 5);
+        // The drag keeps no memory of the start heights, so reversing simply moves
+        // the boundary the other way: the section nearest the gutter (B) absorbs all
+        // the returning travel, growing past its start height, while C stays where the
+        // forward drag left it. A "rewind to origin" (A=B=C=100) is explicitly wrong.
+        expect(a.getHeight()).toBeCloseTo(100, 5); // A back to its start (the gutter returned)
+        expect(b.getHeight()).toBeCloseTo(130, 5); // closest section absorbs the reversal
+        expect(c.getHeight()).toBeCloseTo(70, 5);  // furthest section untouched on the way back
+    });
+
+    it('reversing an upper-group drag grows the closest section, not the furthest (no rewind)', () => {
+        // Mirror of the closest-first case on the UPPER chain: expand the bottom
+        // section upward so the sections ABOVE it shrink, then reverse mid-motion.
+        // Reproduces the AccordionDemoPanel report (expand About up -> Recent to min,
+        // Preferences shrinks; reversing must grow Recent first, not Preferences).
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 390, acc); // budget = 300
+        const a = content({ width: 100, height: 100 }, { width: 40, height: 10 }); // Preferences (top)
+        const b = content({ width: 100, height: 100 }, { width: 40, height: 50 }); // Recent (min 50)
+        const c = content({ width: 100, height: 100 }, { width: 40, height: 10 }); // About (bottom)
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.addComponent(c, constraints('C', true));
+        host.doLayout();
+
+        const drag = acc as unknown as Drag;
+        drag.onGutterDragStart(1, 0); // gutter between B (Recent) and C (About)
+        drag.onGutterDrag(1, -80);    // expand About up 80: Recent -> min 50, then Preferences shrinks
+
+        expect(b.getHeight()).toBeCloseTo(50, 5);  // Recent at its min
+        expect(a.getHeight()).toBeCloseTo(70, 5);  // Preferences took the overflow
+        expect(c.getHeight()).toBeCloseTo(180, 5);
+
+        drag.onGutterDrag(1, -20); // reverse by 60 in the same motion
+
+        expect(b.getHeight()).toBeCloseTo(110, 5); // Recent (closest) absorbs the reversal
+        expect(a.getHeight()).toBeCloseTo(70, 5);  // Preferences (furthest) untouched — no rewind
+        expect(c.getHeight()).toBeCloseTo(120, 5);
     });
 
     it('a drag with no maxed neighbour still trades only with the immediate section', () => {
