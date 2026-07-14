@@ -620,6 +620,44 @@ describe('Accordion resizable — drag growth chains past maxed sections', () =>
         expect(c.getHeight()).toBeCloseTo(120, 5);
     });
 
+    it('overshooting a fully-exhausted chain leaves a dead zone the pointer must retrace before the gutter moves', () => {
+        // Split/Border keep the handle glued to the cursor by clamping an absolute
+        // origin+offset; the incremental chain reproduces that by advancing its
+        // tracked pointer only by the travel actually applied. Overshoot past a
+        // maxed/minned chain is retained, so reversing does nothing until the
+        // pointer retraces the overshoot back to where the chain hit its limit.
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 390, acc); // budget = 300
+        const a = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        const c = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.addComponent(c, constraints('C', true));
+        host.doLayout();
+
+        const drag = acc as unknown as Drag;
+        drag.onGutterDragStart(0, 0);
+        drag.onGutterDrag(0, 180); // expand A fully: B and C both bottom out at min 10
+        expect(a.getHeight()).toBeCloseTo(280, 5);
+        expect(b.getHeight()).toBeCloseTo(10, 5);
+        expect(c.getHeight()).toBeCloseTo(10, 5);
+
+        drag.onGutterDrag(0, 250); // overshoot far past the limit — nothing left to give
+        expect(a.getHeight()).toBeCloseTo(280, 5);
+
+        drag.onGutterDrag(0, 240); // reverse, but still inside the dead zone → no movement
+        expect(a.getHeight()).toBeCloseTo(280, 5);
+
+        drag.onGutterDrag(0, 150); // pointer retraces past the limit point (180) → gutter moves 30
+        expect(a.getHeight()).toBeCloseTo(250, 5);
+        expect(b.getHeight()).toBeCloseTo(40, 5);
+        expect(c.getHeight()).toBeCloseTo(10, 5);
+    });
+
     it('a drag with no maxed neighbour still trades only with the immediate section', () => {
         installTestDOM(CONFIG);
         const acc = new Accordion();

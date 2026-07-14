@@ -1668,8 +1668,9 @@ class Accordion extends LayoutManager {
 
         // Applied incrementally: this frame's pointer travel is distributed on
         // top of the live heights, so a reversed drag responds nearest-first.
+        // `_dragLastPointer` is advanced below by only the travel actually applied,
+        // not the raw pointer position — see the note next to `delta`.
         const frameDelta = position - this._dragLastPointer;
-        this._dragLastPointer = position;
 
         // Snapshot each open section's live height and bounds once — `getMinSize`
         // / `getMaxSize` recurse through the content's own layout, so reading them
@@ -1716,6 +1717,14 @@ class Accordion extends LayoutManager {
         // This frame's boundary travel, capped by how much the growth chain can
         // still absorb and the shrink chain can still give up.
         const delta = Math.max(0, Math.min(Math.abs(frameDelta), growRoom, shrinkRoom));
+
+        // Advance the tracked pointer only by the travel actually applied. When the
+        // chain is fully maxed/minned, `delta` is 0 and the pointer stays put, so
+        // dragging further past the limit accrues a dead zone the pointer must
+        // retrace before the gutter moves again — keeping the cursor glued to the
+        // handle on reversal instead of the handle jumping to a far-off cursor.
+        // (Split/Border get this for free from their absolute origin+offset model.)
+        this._dragLastPointer += Math.sign(frameDelta) * delta;
 
         const newHeights = current.slice();
 
