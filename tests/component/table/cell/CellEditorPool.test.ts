@@ -17,6 +17,7 @@ import { NumberEditor } from '~/component/table/cell/editor/Number';
 import { DateEditor } from '~/component/table/cell/editor/Date';
 import { TimeEditor } from '~/component/table/cell/editor/Time';
 import { DateTimeEditor } from '~/component/table/cell/editor/DateTime';
+import { ComboEditor } from '~/component/table/cell/editor/Combo';
 import type { Cell } from '~/component/table/cell/Cell';
 
 const CONFIG = {
@@ -90,5 +91,17 @@ describe('CellEditorPool.register override', () => {
         pool.register('custom', () => new MarkerEditor());
 
         expect(pool.acquire('custom', CELL)).toBeInstanceOf(MarkerEditor);
+    });
+
+    it('registers and acquires a namespaced `combo:<field>` key, as ComboCell/DynamicCell do', () => {
+        const pool = new CellEditorPool();
+
+        pool.register('combo:owner', () => new ComboEditor([{ value: 'a', label: 'A' }]));
+
+        const first  = pool.acquire('combo:owner', CELL);
+        const second = pool.acquire('combo:owner', CELL);
+
+        expect(first).toBeInstanceOf(ComboEditor);
+        expect(first).toBe(second);
     });
 });

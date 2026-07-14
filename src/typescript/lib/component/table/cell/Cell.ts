@@ -343,6 +343,7 @@ export class Cell<T> extends Component {
         const editor = this._activeEditor;
         const renderer = this._renderer;
 
+        this.prepareEditor(editor);
         editor.setValue(renderer.getValue());
 
         this.getLayoutManager().setVisibleComponentId(editor.getId());
@@ -517,5 +518,38 @@ export class Cell<T> extends Component {
      */
     getEditor() {
         return this._editor;
+    }
+
+    /**
+     * Swaps which renderer is this cell's active display + commit target.
+     *
+     * @param renderer - The renderer to make active.
+     * @param isNewChild - `true` the first time `renderer` is shown on this
+     *   cell: it is parented via `addComponent` and wired for double-click
+     *   activation, mirroring the wiring the constructor does for the
+     *   initial renderer. `false` for a renderer already parented on an
+     *   earlier swap.
+     */
+    protected setActiveRenderer(renderer: CellRenderer<T>, isNewChild: boolean): void {
+        if (isNewChild) {
+            this.addComponent(renderer);
+
+            // Internal cell-editor wiring: listens on a privately-owned child;
+            // see the cell-editor carve-out in ARCHITECTURE.md.
+            Event.addListener(renderer, 'dblclick', () => this.startEdit());
+        }
+
+        this._renderer = renderer;
+        this.getLayoutManager().setVisibleComponentId(renderer.getId());
+    }
+
+    /**
+     * Hook run immediately before the acquired editor receives the
+     * renderer's value in {@link Cell.startEdit}. Default is a no-op.
+     *
+     * @param _editor - The editor about to be shown, not yet holding a value.
+     */
+    protected prepareEditor(_editor: CellEditor<T>): void {
+        // no-op by default
     }
 }

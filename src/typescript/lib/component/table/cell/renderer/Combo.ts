@@ -84,6 +84,27 @@ class ComboRenderer extends CellRenderer<String | null> {
 
         return this;
     }
+
+    /**
+     * Rebuilds the value-to-label map from a new option set and re-renders
+     * the cached value against it, so a shared renderer can be reused
+     * across rows whose combo options differ.
+     *
+     * @param optionList - The new option set; same shape as the constructor
+     *   argument.
+     * @returns This renderer, for method chaining.
+     */
+    setOptions(optionList: Array<ComboOption | string>): this {
+        this._map.clear();
+
+        for (const option of normalizeComboOptions(optionList)) {
+            this._map.set(option.value, option.label);
+        }
+
+        this.setValue(this._value);
+
+        return this;
+    }
 }
 
 const ComboRendererCallable = callable(ComboRenderer);

@@ -2,6 +2,7 @@
 
 import type { ModelRecord } from "~/data/ModelRecord.js";
 import type { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
+import type { FieldType } from "~/data/Field.js";
 
 /**
  * One selectable option for a constrained-choice (combo-box) column.
@@ -41,6 +42,14 @@ export function normalizeComboOptions(options: Array<ComboOption | string>): Arr
             : { value: option.value, label: option.label ?? option.value },
     );
 }
+
+/**
+ * The cell variant a per-cell resolver may select. Extends {@link FieldType}
+ * with `'combo'` for a constrained-choice (combo-box) cell.
+ *
+ * @category Components
+ */
+export type CellType = FieldType | 'combo';
 
 /**
  * Presentation configuration for a single table column.
@@ -127,6 +136,29 @@ export interface ColumnConfig {
      * leaves the column on its field-type-driven cell.
      */
     values      ?: Array<ComboOption | string>;
+    /**
+     * Per-cell (per-record) variant resolver. Returns which built-in cell
+     * type to render/edit for THIS row's cell, or `null` to fall back to
+     * the column's field-type-driven cell. Its presence switches the
+     * column onto a dynamic, per-record cell.
+     *
+     * The resolver fires on every row rebind — when scrolling pulls new
+     * records into the visible window, when the store emits
+     * `'datachange'`, or when columns are hidden / shown. It MUST be O(1)
+     * and pure — read fields off `record`, return a variant, do not call
+     * back into the store, do not allocate, do not perform DOM work.
+     *
+     * Heterogeneous columns (rows that commit different native types)
+     * must declare the field `'auto'` so commits are not coerced to one
+     * type.
+     */
+    cellType   ?: (record: ModelRecord) => CellType | null;
+    /**
+     * Per-cell combo options, consulted only when {@link ColumnConfig.cellType}
+     * returns `'combo'` for the record. Each entry is a plain string or a
+     * {@link ComboOption}. Absent/empty yields an empty dropdown.
+     */
+    cellValues ?: (record: ModelRecord) => Array<ComboOption | string> | undefined;
     /**
      * Custom cell-renderer factory for this column. When present it overrides
      * both the `values` (combo) routing and the field-type-driven cell: every
