@@ -300,6 +300,45 @@ describe('Accordion resizable — drag apportionment', () => {
         expect(b.getHeight()).toBeCloseTo(20, 5);
         expect(a.getHeight()).toBeCloseTo(total - 20, 5);
     });
+
+    it('with 3+ open sections and no fillWeight (rendered scale != stored scale), a drag conserves the dragged pair\'s sum and leaves the untouched section alone', () => {
+        // No fillWeight/fillHeight means the seeded _resizeSizes do not sum to
+        // the open budget on their own — computeResizableHeights rescales them
+        // by a factor != 1 at render time. onGutterDrag must convert its
+        // rendered-pixel drag math back to that stored scale before writing,
+        // or the untouched third section drifts too (see the fix commit for
+        // "resizable gutter transition lagging" — this pins the companion
+        // rendered/stored scale bug found in the same audit pass).
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 300, acc); // budget = 300 - 3*30 = 210
+        const a = content({ width: 100, height: 60 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 60 }, { width: 40, height: 10 });
+        const c = content({ width: 100, height: 60 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.addComponent(c, constraints('C', true));
+        host.doLayout();
+
+        const cBefore = c.getHeight();
+        const pairTotalBefore = a.getHeight() + b.getHeight();
+
+        const accAny = acc as unknown as {
+            onGutterDragStart(index: number, position: number): void;
+            onGutterDrag(index: number, position: number): void;
+            onGutterDragEnd(): void;
+        };
+
+        accAny.onGutterDragStart(0, 0); // gutter 0 sits between A and B
+        accAny.onGutterDrag(0, 20);
+        accAny.onGutterDragEnd();
+        host.doLayout();
+
+        expect(a.getHeight() + b.getHeight()).toBeCloseTo(pairTotalBefore, 5);
+        expect(c.getHeight()).toBeCloseTo(cBefore, 5);
+    });
 });
 
 // Manual verification (not exercisable by the DOM test harness — see

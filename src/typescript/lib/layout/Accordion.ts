@@ -173,6 +173,14 @@ class Accordion extends LayoutManager {
     // (reorder-safe, like Split._sizes); pruned each resizable layout for
     // removed components. A closed section keeps its entry frozen for reopen.
     private _resizeSizes: Map<Component, number> = new Map<Component, number>();
+    // The `openBudget / storedTotal` scale factor computeResizableHeights last
+    // applied — i.e. `rendered height == _resizeSizes value * _resizeFactor`.
+    // Only 1 when the open set's stored sizes already sum to the budget (the
+    // common fillWeight/fillHeight-seeded case); otherwise onGutterDrag needs
+    // it to convert its rendered-pixel drag math back to _resizeSizes' stored
+    // scale — writing rendered values directly would silently rescale the
+    // whole open set (including untouched sections) on the next layout.
+    private _resizeFactor: number = 1;
     // Gutter pool, reused across layouts; one shown per adjacent open-section pair.
     private _resizeGutters: SplitGutter[] = [];
     // Rebuilt each layout: for gutter i, the two content components it resizes.
@@ -1586,8 +1594,14 @@ class Accordion extends LayoutManager {
 
         const newLower = total - newUpper;
 
-        this._resizeSizes.set(pair.upper, newUpper);
-        this._resizeSizes.set(pair.lower, newLower);
+        // `newUpper`/`newLower` are rendered pixels (the drag math above runs
+        // in on-screen scale against real min/max thresholds); `_resizeSizes`
+        // holds pre-factor stored values (see `_resizeFactor`), so divide back
+        // down before writing — otherwise the pair's stored sum drifts off the
+        // rest of the open set's, and the next layout's `openBudget / stored`
+        // rescale distorts every open section, not just this dragged pair.
+        this._resizeSizes.set(pair.upper, newUpper / this._resizeFactor);
+        this._resizeSizes.set(pair.lower, newLower / this._resizeFactor);
 
         this.getContainer()?.doLayout();
     }
@@ -1861,6 +1875,11 @@ class Accordion extends LayoutManager {
         }
 
         const factor = stored > 0 ? openBudget / stored : 0;
+
+        // Cached for onGutterDrag, which must convert its rendered-pixel drag
+        // math back to this stored scale before writing into _resizeSizes.
+        this._resizeFactor = factor > 0 ? factor : 1;
+
         const result = new Map<number, number>();
 
         for (const i of openIndices) {
