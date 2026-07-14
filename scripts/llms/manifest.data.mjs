@@ -41,6 +41,7 @@ export const groups = [
     { name: "Containers / Windows", entries: [
         { task: "Group labelled form fields in a bordered box", symbol: "FieldSet" },
         { task: "Auto-build a labelled form from a field descriptor list", symbol: "LabeledFieldSet" },
+        { task: "Line up labelled components without a border/legend", symbol: "LabeledGrid" },
         { task: "Self-managing tab container (add/close/select tabs)", symbol: "TabPanel" },
         { task: "Self-managing accordion of collapsible sections", symbol: "AccordionPanel" },
         { task: "Bottom status bar with segments", symbol: "StatusBar" },
