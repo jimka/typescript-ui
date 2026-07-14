@@ -213,19 +213,22 @@ export interface ColumnConfig {
      */
     required ?: boolean;
     /**
-     * Per-record required predicate, evaluated per record on every
-     * rebind. Returns `true` to mark this column's cell required for
-     * the given record. Composes with {@link ColumnConfig.required} via
-     * OR for the empty-cell tint; does NOT drive the header asterisk
-     * (the header has no bound record).
+     * Per-record required predicate. Returns `true` to mark this
+     * column's cell required for the given record. Composes with
+     * {@link ColumnConfig.required} via OR for the empty-cell tint;
+     * does NOT drive the header asterisk (the header has no bound
+     * record).
      *
-     * The predicate fires on every row rebind: when scrolling pulls
-     * new records into the visible window, when the store emits
-     * `'datachange'` (which
+     * Unlike {@link ColumnConfig.cellReadOnly}, this predicate fires on
+     * every visible-window render pass, not just on row rebind —
+     * scrolling pulls new records in, the store emitting `'datachange'`
+     * (which
      * [`notifyRecordChanged`](/api/data/classes/AbstractStore#notifyRecordChanged)
-     * does), or when columns are hidden / shown. It MUST be O(1) and
-     * pure — read fields off `record`, return a boolean, do not call
-     * back into the store, do not allocate, do not perform DOM work.
+     * does) triggers one, columns hiding / showing triggers one, AND a
+     * plain in-place cell edit re-runs it too, since the empty-cell
+     * tint must track the live value. It MUST be O(1) and pure — read
+     * fields off `record`, return a boolean, do not call back into the
+     * store, do not allocate, do not perform DOM work.
      *
      * This is a visual affordance only: it does not block commits or
      * integrate with store-level validation.
