@@ -1002,6 +1002,15 @@ class Accordion extends LayoutManager {
     detach(): this {
         const container = this.getContainer();
 
+        // A detach mid-drag would otherwise leak the viewport listeners
+        // registered in onGutterDragStart and strand the drag pair. `_dragUpper`
+        // is non-null only while a drag is live (set alongside those listeners),
+        // so end the drag first — and only then, so we never touch the viewport
+        // map when no accordion drag is active.
+        if (this._dragUpper) {
+            this.onGutterDragEnd();
+        }
+
         for (let i = 0; i < this._headers.length; i++) {
             const components = container ? container.getComponents() : [];
             const component = components[i];
@@ -1709,12 +1718,15 @@ class Accordion extends LayoutManager {
         let growRoom = 0;
         let shrinkRoom = 0;
 
+        // Per-section room, floored at 0 to match distributeDragChain's `room()`,
+        // so a section momentarily out of bounds can't contribute negative room
+        // and under-report what the chain can actually absorb.
         for (const pos of growGroup) {
-            growRoom += maxs[pos] - current[pos];
+            growRoom += Math.max(0, maxs[pos] - current[pos]);
         }
 
         for (const pos of shrinkGroup) {
-            shrinkRoom += current[pos] - mins[pos];
+            shrinkRoom += Math.max(0, current[pos] - mins[pos]);
         }
 
         // This frame's boundary travel, capped by how much the growth chain can

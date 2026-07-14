@@ -919,6 +919,35 @@ describe('Accordion resizable — lightweight drag path', () => {
     });
 });
 
+describe('Accordion resizable — teardown', () => {
+    type DragTeardown = {
+        onGutterDragStart(index: number, position: number): void;
+        detach(): void;
+        _dragUpper: Component | null;
+        _dragLower: Component | null;
+    };
+
+    it('detaching mid-drag ends the in-flight drag (clears the drag pair)', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 300, acc);
+        host.addComponent(content({ width: 100, height: 60 }, { width: 40, height: 10 }), constraints('A', true));
+        host.addComponent(content({ width: 100, height: 60 }, { width: 40, height: 10 }), constraints('B', true));
+        host.doLayout();
+
+        const drag = acc as unknown as DragTeardown;
+        drag.onGutterDragStart(0, 0); // begins a drag: captures the pair + registers viewport listeners
+        expect(drag._dragUpper).not.toBeNull();
+
+        drag.detach(); // detaching mid-drag must end the drag, not strand it
+
+        expect(drag._dragUpper).toBeNull();
+        expect(drag._dragLower).toBeNull();
+    });
+});
+
 describe('Accordion transitions — off by default (snap on relayout)', () => {
     type WithSections = { _headers: Component[]; _panelWrappers: Component[] };
 
