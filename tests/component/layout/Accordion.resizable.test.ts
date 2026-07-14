@@ -529,6 +529,60 @@ describe('Accordion resizable — drag growth chains past maxed sections', () =>
         expect(a.getHeight() + b.getHeight() + c.getHeight()).toBeCloseTo(300, 5);
     });
 
+    it('reversing a drag restores the closest section first, not the furthest', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 390, acc); // budget = 300
+        const a = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 100 }, { width: 40, height: 50 }); // min 50
+        const c = content({ width: 100, height: 100 }, { width: 40, height: 10 }); // min 10
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.addComponent(c, constraints('C', true));
+        host.doLayout();
+
+        const drag = acc as unknown as Drag;
+        drag.onGutterDragStart(0, 0); // gutter between A and B
+        drag.onGutterDrag(0, 80);     // expand A down 80: B shrinks to its min, then C shrinks
+
+        expect(b.getHeight()).toBeCloseTo(50, 5); // B at its min
+        expect(c.getHeight()).toBeCloseTo(70, 5); // C took the overflow
+
+        // Reverse toward the start: the closest section (B) must grow back first,
+        // leaving the furthest (C) untouched until B is restored.
+        drag.onGutterDrag(0, 50); // frameDelta -30
+
+        expect(b.getHeight()).toBeCloseTo(80, 5);  // closest grows first
+        expect(c.getHeight()).toBeCloseTo(70, 5);  // furthest untouched
+        expect(a.getHeight()).toBeCloseTo(150, 5);
+    });
+
+    it('a fully reversed drag restores the original layout', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(400, 390, acc); // budget = 300
+        const a = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 100 }, { width: 40, height: 50 });
+        const c = content({ width: 100, height: 100 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.addComponent(c, constraints('C', true));
+        host.doLayout();
+
+        const drag = acc as unknown as Drag;
+        drag.onGutterDragStart(0, 0);
+        drag.onGutterDrag(0, 80); // expand
+        drag.onGutterDrag(0, 0);  // fully reverse to the start
+
+        expect(a.getHeight()).toBeCloseTo(100, 5);
+        expect(b.getHeight()).toBeCloseTo(100, 5);
+        expect(c.getHeight()).toBeCloseTo(100, 5);
+    });
+
     it('a drag with no maxed neighbour still trades only with the immediate section', () => {
         installTestDOM(CONFIG);
         const acc = new Accordion();

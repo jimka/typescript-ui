@@ -194,13 +194,16 @@ class Accordion extends LayoutManager {
     private _resizeGutters: SplitGutter[] = [];
     // Rebuilt each layout: for gutter i, the two content components it resizes.
     private _gutterPairs: Array<{ upper: Component; lower: Component }> = [];
-    // Drag origin captured on gutter dragstart. The dragged pair (for the
-    // reentrancy guard), the pointer origin, and — so the drag can chain growth
-    // past sections already at their max — every open section's index and its
-    // height at drag start, plus the dragged gutter's position in that open list.
+    // Drag state captured on gutter dragstart. The dragged pair (for the
+    // reentrancy guard); the pointer coordinate at the previous move (the drag
+    // is applied incrementally, frame by frame, so a reversed drag responds
+    // closest-section-first); and — so the drag can chain across sections at
+    // their min/max and restore toward the start on reversal — every open
+    // section's index and its drag-start height, plus the dragged gutter's
+    // position in that open list.
     private _dragUpper: Component | null = null;
     private _dragLower: Component | null = null;
-    private _dragOriginPointer: number = 0;
+    private _dragLastPointer: number = 0;
     private _dragOpenIndices: number[] = [];
     private _dragOriginHeights: number[] = [];
     private _dragGutterUpperPos: number = 0;
@@ -1615,7 +1618,7 @@ class Accordion extends LayoutManager {
 
         this._dragUpper = pair.upper;
         this._dragLower = pair.lower;
-        this._dragOriginPointer = position;
+        this._dragLastPointer = position;
 
         // Accordion is a LayoutManager, not a Component, so it cannot key this
         // registration on `this` the way every other `Event.addViewportListener`
@@ -1667,18 +1670,26 @@ class Accordion extends LayoutManager {
         const openIndices = this._dragOpenIndices;
         const origins = this._dragOriginHeights;
         const upperPos = this._dragGutterUpperPos;
-        const offset = position - this._dragOriginPointer;
 
-        const minAt = (pos: number): number => {
-            const min = components[openIndices[pos]].getMinSize();
+        // Applied incrementally: this frame's pointer travel is distributed on
+        // top of the live heights, so a reversed drag responds nearest-first.
+        const frameDelta = position - this._dragLastPointer;
+        this._dragLastPointer = position;
+
+        // Snapshot each open section's live height and bounds once — `getMinSize`
+        // / `getMaxSize` recurse through the content's own layout, so reading them
+        // per pointer move (not per lookup) keeps the drag cheap.
+        const current = openIndices.map((ci): number => components[ci].getHeight());
+        const mins = openIndices.map((ci): number => {
+            const min = components[ci].getMinSize();
 
             return min ? min.height : 0;
-        };
-        const maxAt = (pos: number): number => {
-            const max = components[openIndices[pos]].getMaxSize();
+        });
+        const maxs = openIndices.map((ci): number => {
+            const max = components[ci].getMaxSize();
 
             return max ? max.height : Number.POSITIVE_INFINITY;
-        };
+        });
 
         // The two chains fanning out from the gutter, each ordered nearest-first.
         const upperGroup: number[] = [];
@@ -1693,48 +1704,28 @@ class Accordion extends LayoutManager {
         }
 
         // Dragging down grows the upper group and shrinks the lower one; up reverses it.
-        const growGroup   = offset >= 0 ? upperGroup : lowerGroup;
-        const shrinkGroup = offset >= 0 ? lowerGroup : upperGroup;
+        const growGroup   = frameDelta >= 0 ? upperGroup : lowerGroup;
+        const shrinkGroup = frameDelta >= 0 ? lowerGroup : upperGroup;
 
         let growRoom = 0;
         let shrinkRoom = 0;
 
         for (const pos of growGroup) {
-            growRoom += maxAt(pos) - origins[pos];
+            growRoom += maxs[pos] - current[pos];
         }
 
         for (const pos of shrinkGroup) {
-            shrinkRoom += origins[pos] - minAt(pos);
+            shrinkRoom += current[pos] - mins[pos];
         }
 
-        // Boundary travel, capped by how much the growth chain can absorb and
-        // the shrink chain can give up.
-        const delta = Math.max(0, Math.min(Math.abs(offset), growRoom, shrinkRoom));
+        // This frame's boundary travel, capped by how much the growth chain can
+        // still absorb and the shrink chain can still give up.
+        const delta = Math.max(0, Math.min(Math.abs(frameDelta), growRoom, shrinkRoom));
 
-        const newHeights = origins.slice();
-        let remaining = delta;
+        const newHeights = current.slice();
 
-        for (const pos of growGroup) {
-            const take = Math.min(remaining, maxAt(pos) - origins[pos]);
-            newHeights[pos] = origins[pos] + take;
-            remaining -= take;
-
-            if (remaining <= DRAG_DISTRIBUTION_EPSILON) {
-                break;
-            }
-        }
-
-        remaining = delta;
-
-        for (const pos of shrinkGroup) {
-            const give = Math.min(remaining, origins[pos] - minAt(pos));
-            newHeights[pos] = origins[pos] - give;
-            remaining -= give;
-
-            if (remaining <= DRAG_DISTRIBUTION_EPSILON) {
-                break;
-            }
-        }
+        this.distributeDragChain(growGroup, current, origins, delta, +1, mins, maxs, newHeights);
+        this.distributeDragChain(shrinkGroup, current, origins, delta, -1, mins, maxs, newHeights);
 
         const openHeightByIndex = new Map<number, number>();
 
@@ -1756,6 +1747,51 @@ class Accordion extends LayoutManager {
             false,
             false,
         );
+    }
+
+    /**
+     * Distributes `delta` px across `group` (nearest-first), growing
+     * (`sign +1`) or shrinking (`sign -1`) each section within its `[min, max]`.
+     * Restoring a section toward its drag-start height takes priority over
+     * pushing it past that height: the pass runs the whole group back toward
+     * their origins first, then a second pass extends past them. So a reversed
+     * drag returns the nearest section to where it started before touching the
+     * next, and a net-zero drag lands back on the drag-start layout.
+     *
+     * @param group - Open positions to distribute across, nearest-to-gutter first.
+     * @param current - Each open position's current height.
+     * @param origins - Each open position's drag-start height (the restore target).
+     * @param delta - Total height to distribute across the group.
+     * @param sign - `+1` to grow the sections, `-1` to shrink them.
+     * @param mins - Each open position's minimum height.
+     * @param maxs - Each open position's maximum height.
+     * @param out - Result heights (seeded to `current`), indexed by open position;
+     *   mutated in place.
+     */
+    private distributeDragChain(group: number[], current: number[], origins: number[], delta: number, sign: number, mins: number[], maxs: number[], out: number[]): void {
+        // Room to move `pos` back toward its origin (tier 1) versus past it
+        // toward its bound (tier 2); the two sum to the section's total room.
+        const restoreRoom = (pos: number): number =>
+            sign > 0 ? Math.max(0, origins[pos] - current[pos]) : Math.max(0, current[pos] - origins[pos]);
+
+        const extendRoom = (pos: number): number =>
+            sign > 0
+                ? Math.max(0, maxs[pos] - Math.max(current[pos], origins[pos]))
+                : Math.max(0, Math.min(current[pos], origins[pos]) - mins[pos]);
+
+        let remaining = delta;
+
+        for (const room of [restoreRoom, extendRoom]) {
+            for (const pos of group) {
+                if (remaining <= DRAG_DISTRIBUTION_EPSILON) {
+                    return;
+                }
+
+                const take = Math.min(remaining, room(pos));
+                out[pos] += sign * take;
+                remaining -= take;
+            }
+        }
     }
 
     /**
