@@ -7,6 +7,7 @@ If you are new here, start with the [mental model](/guide/mental-model) in the G
 ## Pages
 
 - [Component lifecycle](/concepts/component-lifecycle) — construction, render, `doLayout`, dispose.
+- [Constructing components](/concepts/construction) — callable shorthand, options bags, and which exports need `new`.
 - [Layout system](/concepts/layout-system) — how `LayoutManager` resolves fill / anchor constraints.
 - [Sizing](/concepts/sizing) — preferred / min / max / fixed sizes.
 - [Events](/concepts/events) — `addListener` vs `addSubtreeListener`, hover quirks.
