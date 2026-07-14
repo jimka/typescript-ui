@@ -341,6 +341,51 @@ describe('Accordion resizable — drag apportionment', () => {
     });
 });
 
+describe('Accordion fill — respects maxSize (non-resizable)', () => {
+    it('weighted fill never over-fills a capped section and redistributes the surplus to the other weighted section', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER); // NOT resizable
+        const host = hostAccordion(400, 400, acc); // budget = 400 - 2*30 = 340
+        const a = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        a.setMaxSize(10000, 100); // cap A's height at 100
+        const b = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true, 1)); // fillWeight 1
+        host.addComponent(b, constraints('B', true, 1)); // fillWeight 1
+        host.doLayout();
+
+        const budget = 400 - 2 * HEADER;
+        const wrappers = (acc as unknown as { _panelWrappers: Component[] })._panelWrappers;
+
+        // A's section (wrapper) must not be padded past A's own max.
+        expect(wrappers[0].getHeight()).toBeLessThanOrEqual(100 + 1e-6);
+        expect(a.getHeight()).toBeCloseTo(100, 5);
+        expect(b.getHeight()).toBeCloseTo(240, 5);                    // absorbs A's surplus fill
+        expect(a.getHeight() + b.getHeight()).toBeCloseTo(budget, 5); // fill invariant holds
+    });
+
+    it('setFillHeight caps the bottommost section at its max instead of over-padding it', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setFillHeight(true);
+        const host = hostAccordion(400, 400, acc); // budget = 340
+        const a = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 50 }, { width: 40, height: 10 });
+        b.setMaxSize(10000, 90); // bottommost fill target capped at 90
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.doLayout();
+
+        const wrappers = (acc as unknown as { _panelWrappers: Component[] })._panelWrappers;
+
+        // B (the fill target) is capped at its max; the leftover it cannot take
+        // stays as slack rather than padding B's wrapper past its content max.
+        expect(wrappers[1].getHeight()).toBeLessThanOrEqual(90 + 1e-6);
+        expect(b.getHeight()).toBeCloseTo(90, 5);
+    });
+});
+
 describe('Accordion resizable — [min,max] constraints in the distribution', () => {
     type Sizes = { _resizeSizes: Map<Component, number> };
 

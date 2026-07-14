@@ -1810,7 +1810,8 @@ class Accordion extends LayoutManager {
         let used = 0;
         let displayed = 0;
         let bottommostOpen = -1;
-        const weighted: Array<{ index: number; weight: number }> = [];
+        let bottommostHeadroom = Number.POSITIVE_INFINITY;
+        const weighted: Array<{ index: number; weight: number; headroom: number }> = [];
         let weightTotal = 0;
 
         for (let i = 0; i < components.length; i++) {
@@ -1826,12 +1827,14 @@ class Accordion extends LayoutManager {
             used += this.effectiveHeaderHeight();
 
             if (this._openState[i]) {
-                used += this.openContentHeight(components[i], shrinkRatio);
+                const contentHeight = this.openContentHeight(components[i], shrinkRatio);
+                used += contentHeight;
                 bottommostOpen = i;
+                bottommostHeadroom = this.fillHeadroom(components[i], contentHeight);
 
                 const weight = (this.getLayoutConstraints(components[i]) as AccordionConstraints | undefined)?.fillWeight ?? 0;
                 if (weight > 0) {
-                    weighted.push({ index: i, weight });
+                    weighted.push({ index: i, weight, headroom: this.fillHeadroom(components[i], contentHeight) });
                     weightTotal += weight;
                 }
             }
@@ -1843,12 +1846,90 @@ class Accordion extends LayoutManager {
             return fills;
         }
 
+        // Cap each recipient's fill at its own max so an open section is never
+        // padded past its maximum height; the weighted case re-shares a capped
+        // section's surplus among the rest (see distributeFillWithinMax), while
+        // setFillHeight's single target simply keeps only what it can absorb and
+        // leaves the rest as slack.
         if (weightTotal > 0) {
-            for (const { index, weight } of weighted) {
-                fills.set(index, leftover * (weight / weightTotal));
+            return this.distributeFillWithinMax(weighted, leftover);
+        }
+
+        if (this._fillHeight && bottommostOpen !== -1) {
+            fills.set(bottommostOpen, Math.min(leftover, bottommostHeadroom));
+        }
+
+        return fills;
+    }
+
+    /**
+     * How much fill a section can still absorb before reaching its maximum
+     * height — the gap between its max and the content height it already takes
+     * without any fill. Unbounded when the section declares no max.
+     *
+     * @param component - The open section's content component.
+     * @param contentHeight - The section's fill-free content height.
+     * @returns The absorbable headroom in pixels, or `Infinity` when unbounded.
+     */
+    private fillHeadroom(component: Component, contentHeight: number): number {
+        const max = component.getMaxSize();
+
+        return max ? Math.max(0, max.height - contentHeight) : Number.POSITIVE_INFINITY;
+    }
+
+    /**
+     * Splits `leftover` fill across the weighted recipients in proportion to
+     * their weights, capping each at its remaining headroom (`max − content`)
+     * and re-sharing a capped recipient's surplus among the rest. Mirrors
+     * {@link distributeWithinConstraints} for the fill path so a weighted
+     * section is never padded past its max; any surplus the remaining
+     * recipients cannot absorb stays as slack.
+     *
+     * @param recipients - The weighted open sections: index, weight, headroom.
+     * @param leftover - The container's leftover height to distribute.
+     * @returns A map from section index to the extra height it absorbs.
+     */
+    private distributeFillWithinMax(recipients: Array<{ index: number; weight: number; headroom: number }>, leftover: number): Map<number, number> {
+        const fills = new Map<number, number>();
+        const free = new Set(recipients);
+        let remaining = leftover;
+
+        for (;;) {
+            let freeWeight = 0;
+
+            for (const r of free) {
+                freeWeight += r.weight;
             }
-        } else if (this._fillHeight && bottommostOpen !== -1) {
-            fills.set(bottommostOpen, leftover);
+
+            if (freeWeight <= 0) {
+                break;
+            }
+
+            const perWeight = remaining / freeWeight;
+            let capped = false;
+
+            for (const r of free) {
+                if (r.weight * perWeight > r.headroom) {
+                    fills.set(r.index, r.headroom);
+                    remaining -= r.headroom;
+                    free.delete(r);
+                    capped = true;
+
+                    break;
+                }
+            }
+
+            if (!capped) {
+                for (const r of free) {
+                    fills.set(r.index, r.weight * perWeight);
+                }
+
+                break;
+            }
+
+            if (free.size === 0) {
+                break;
+            }
         }
 
         return fills;
