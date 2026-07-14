@@ -50,6 +50,8 @@ const table = Table(store, {
 | `cellReadOnly` | Optional predicate `(record) => boolean`. When it returns `true` for a record, this column's cell on that record's row renders read-only. Composes with `readOnly` and `ColumnSpec.rowReadOnly` (cell is read-only when ANY of the three says so). |
 | `showSeconds` | For `time` / `datetime` columns: include seconds. |
 | `values` | When present, the column renders as a constrained-choice (combo-box) cell regardless of the field's type — see [Combo columns](#combo-columns). |
+| `cellType` | Per-record variant resolver `(record) => CellType \| null`. When present, the column renders a different built-in cell variant per row — see [Per-cell cell types](#per-cell-cell-types). |
+| `cellValues` | Per-record combo options `(record) => Array<ComboOption \| string> \| undefined`, consulted only when `cellType` resolves to `'combo'` for that record. |
 | `headerGlyph` | Registry glyph name shown to the left of the header text. |
 | `group` | Parent-header group name. See [Parent headers](#parent-headers). |
 | `groupColor` | Optional background color for the parent-header cell. |
@@ -83,6 +85,35 @@ const table = Table(store, {
 - The **value** — the option's `value` string — is what is stored on the record and round-tripped on commit. The cell shows the matching **label**; a stored value outside the option set renders as the raw value rather than blanking.
 - Double-clicking a combo cell opens the dropdown; picking an option (mouse or keyboard) commits it. The column honours `readOnly` / `cellReadOnly` / `rowReadOnly` like any other cell.
 - `values` keys are strings. A combo column over a numeric field stores the chosen key verbatim as a string; convert on read if you need a number.
+
+## Per-cell cell types
+
+`values` and the field-type switch pick one cell variant for an entire column. `cellType` picks the variant **per record**, so a single column can mix a checkbox, a combo, and a number input across its rows — the driving case is a Property/Value grid whose one `value` column must render differently depending on which property the row represents:
+
+```typescript
+import { Table } from '@jimka/typescript-ui/component/table';
+import type { CellType } from '@jimka/typescript-ui/component/table';
+
+const OWNER_OPTIONS    = [{ value: 'alice', label: 'Alice' }, { value: 'bob', label: 'Bob' }];
+const DATATYPE_OPTIONS = [{ value: 'string', label: 'String' }, { value: 'number', label: 'Number' }];
+
+const table = Table(store, {
+    columns: [
+        { field: 'property', readOnly: true },
+        {
+            field: 'value',
+            cellType:   (r) => r.get('kind') as CellType,   // 'boolean' | 'number' | 'combo' | …
+            cellValues: (r) => r.get('property') === 'Owner' ? OWNER_OPTIONS : DATATYPE_OPTIONS,
+        },
+    ],
+});
+```
+
+- `CellType` is `FieldType | 'combo'` — `'string'`, `'number'`, `'boolean'`, `'date'`, `'time'`, `'datetime'`, `'glyph'`, or `'combo'`. Returning `null` (or leaving a case unhandled) falls back to the column's field-type-driven cell.
+- `cellValues` is consulted only for rows where `cellType` resolves to `'combo'`; every combo row in the column still shares one pooled editor, reconfigured with that row's options on each edit — so declaring different `cellValues` per row (like `OWNER_OPTIONS` vs `DATATYPE_OPTIONS` above) does not fragment the pool.
+- A column whose rows commit different native types (boolean in one row, number in another) **must** declare the field `'auto'` (the default `Field` type) — a `boolean`/`number`/`string` field type coerces every commit to that one type, corrupting the other rows' values.
+- `readOnly` / `cellReadOnly` / `rowReadOnly` compose with a `cellType` column exactly as with any other cell.
+- The boolean variant has no separate edit cycle — clicking the checkbox commits immediately, mirroring plain boolean columns.
 
 ## Parent headers
 
