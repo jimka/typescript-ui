@@ -88,6 +88,15 @@ export interface PanelOptions extends ContainerOptions {
      * `autoScroll === "none"` (a non-scrolling panel never shows them).
      */
     scrollShadows?: boolean;
+
+    /**
+     * When `true`, the panel's default content insets are zero instead of the
+     * usual `(4, 4, 4, 4)` — the rail-style default for a fixed-width strip
+     * (activity rail, narrow Border/VBox region) that must sit flush against
+     * its host and keep a constant width. Construction-time only; a
+     * caller-supplied `insets` still wins. Defaults to `false`.
+     */
+    flush?: boolean;
 }
 
 /**
@@ -111,6 +120,10 @@ const _defaultPanelOptions: Partial<PanelOptions> = {
  *
  * `Panel` also exposes `setAutoScroll` to opt the container into native
  * browser scrolling when its children overflow the allocated rect.
+ *
+ * Pass `flush: true` to opt a panel into zero default insets instead of the
+ * 4px default, for rail-style fixed-width strips that must sit flush against
+ * their host.
  *
  * @category Core
  */
@@ -159,12 +172,19 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * @param options - Optional. Construction-time options applied to the panel.
      *   `options.tag` overrides the default `"div"` tag for subclasses that need
      *   a different element (e.g. `"header"`, `"section"`). `options.insets`
-     *   overrides the default `(4, 4, 4, 4)` perimeter.
+     *   overrides the default `(4, 4, 4, 4)` perimeter. `options.flush` zeroes
+     *   that default instead (a caller-supplied `insets` still wins).
      */
     constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        // `flush` seeds a zero-inset default; a caller-supplied `insets` still
+        // wins because Component.applyOptions dispatches setInsets only when
+        // options.insets is defined, overriding whatever default we pick here.
+        const flushDefault: Partial<TOptions> =
+            options?.flush ? ({ insets: new Insets(0, 0, 0, 0) } as Partial<TOptions>) : {};
+
         super(
             options,
-            { ..._defaultPanelOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
+            { ..._defaultPanelOptions, ...(subclassDefaults ?? {}), ...flushDefault } as Partial<TOptions>,
         );
     }
 
