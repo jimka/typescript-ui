@@ -249,9 +249,9 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
     /**
      * Overrides the chevron's `transform` transition timing so it matches the
      * duration and easing of the owning Accordion's panel-height transition.
-     * Routes through [`Component.setTransition`](/api/core/classes/Component#settransition), which writes to the
-     * indicator's own per-instance CSS rule — each instance keeps its own
-     * timing without affecting siblings.
+     * Routes through [`Component.setTransition`](/api/core/classes/Component#settransition), which writes the
+     * shorthand to the indicator's own inline style — each instance keeps its
+     * own timing without affecting siblings.
      *
      * @param durationMs - Transition duration in milliseconds.
      * @param easing - CSS easing function string.
