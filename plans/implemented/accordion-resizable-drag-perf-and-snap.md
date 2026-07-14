@@ -30,6 +30,19 @@ Today `primeWrapper`'s reduced-motion branch sets transitions to `"none"` for on
 
 ### Lightweight drag path writes only the affected band; shared `placeSection`/`placeGutter`
 
+> **Superseded by later work.** This section describes the *original* two-section
+> band-shift drag this plan shipped. The drag was subsequently generalized (in
+> follow-up commits, not this plan) to a nearest-first chain across the whole open
+> set: `onGutterDrag` distributes each frame's pointer delta through
+> `distributeDragChain` — the section nearest the gutter absorbs the travel first,
+> spilling to the next once it hits its min/max — and re-places every displayed
+> section through the shared `layoutSections` helper rather than only the dragged
+> pair. The perf goal below still holds (the drag path skips
+> `getPreferredSize`/`computeShrinkRatio`/`computeFill`/`computeResizableHeights`
+> and reflows only the sections whose height changed), and the shared
+> `placeSection`/`placeGutter` primitives are unchanged; only the "just the pair +
+> intervening band" claim in this and the next section is out of date.
+
 A gutter drag *conserves* the pair's combined height (`onGutterDrag` already computes `newUpper + newLower = total`, both clamped to `[min, max]`). Therefore the bottom of the lower section — and everything below it — is unchanged, and everything above the upper section is unchanged. Only the upper section grows/shrinks, the boundary (gutter) moves, and everything strictly between the upper wrapper's bottom and the lower section shifts by `delta = newUpper − currentUpperHeight`. The drag path writes exactly that, using the same `placeSection`/`placeGutter` helpers `doLayout` uses, so full-layout geometry and drag geometry can never diverge. No `getPreferredSize`, no `computeShrinkRatio`/`computeFill`/`computeResizableHeights`, no touching other sections. This mirrors `Split.onDrag` ([Split.ts:737](src/typescript/lib/layout/Split.ts#L737)), which resizes only its two adjacent panes and moves the gutter directly.
 
 ### The band, not just the adjacent pair
