@@ -202,12 +202,12 @@ export interface ColumnConfig {
 
     /**
      * When `true`, marks this column required: the header renders a
-     * trailing asterisk, and every row's cell in this column tints with
-     * `--ts-ui-table-cell-required-empty-bg` while its bound value is
-     * empty (`null`, `undefined`, or `''`). Composes with
+     * trailing asterisk, and every row's cell in this column outlines
+     * with `--ts-ui-table-cell-required-outline` while its bound value
+     * is empty (`null`, `undefined`, or `''`). Composes with
      * {@link ColumnConfig.requiredPredicate} via OR for the empty-cell
-     * tint, but drives the header asterisk alone — the header cell has
-     * no bound record to evaluate a per-record predicate against.
+     * outline, but drives the header asterisk alone — the header cell
+     * has no bound record to evaluate a per-record predicate against.
      *
      * Defaults to `false`.
      */
@@ -215,7 +215,7 @@ export interface ColumnConfig {
     /**
      * Per-record required predicate. Returns `true` to mark this
      * column's cell required for the given record. Composes with
-     * {@link ColumnConfig.required} via OR for the empty-cell tint;
+     * {@link ColumnConfig.required} via OR for the empty-cell outline;
      * does NOT drive the header asterisk (the header has no bound
      * record).
      *
@@ -226,9 +226,9 @@ export interface ColumnConfig {
      * [`notifyRecordChanged`](/api/data/classes/AbstractStore#notifyRecordChanged)
      * does) triggers one, columns hiding / showing triggers one, AND a
      * plain in-place cell edit re-runs it too, since the empty-cell
-     * tint must track the live value. It MUST be O(1) and pure — read
-     * fields off `record`, return a boolean, do not call back into the
-     * store, do not allocate, do not perform DOM work.
+     * outline must track the live value. It MUST be O(1) and pure —
+     * read fields off `record`, return a boolean, do not call back
+     * into the store, do not allocate, do not perform DOM work.
      *
      * This is a visual affordance only: it does not block commits or
      * integrate with store-level validation.

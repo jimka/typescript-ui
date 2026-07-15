@@ -84,58 +84,69 @@ describe('Cell.startEdit scroll-into-view ordering', () => {
     });
 });
 
-// Background/cursor precedence: readOnly ▸ requiredEmpty ▸ base. `setReadOnly`
-// and `setRequiredEmpty` share one resolver (`_applyStateTint`) so the two
-// states compose instead of fighting over the background write.
-describe('Cell background/cursor state precedence', () => {
-    const BASE_TOKEN          = 'var(--ts-ui-table-cell-bg, transparent)';
-    const READONLY_TOKEN      = 'var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))';
-    const REQUIRED_EMPTY_TOKEN = 'var(--ts-ui-table-cell-required-empty-bg, rgba(220, 60, 60, 0.10))';
+// Background/cursor precedence: readOnly ▸ base. The required-empty state is
+// a separate outline overlay (not a background contender) that only shows
+// while NOT read-only. `setReadOnly` and `setRequiredEmpty` share one
+// resolver (`_applyStateTint`) so the two states compose instead of fighting
+// over either write.
+describe('Cell background/cursor/outline state precedence', () => {
+    const BASE_TOKEN     = 'var(--ts-ui-table-cell-bg, transparent)';
+    const READONLY_TOKEN = 'var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))';
+    const REQUIRED_OUTLINE = 'inset 0 0 0 1px var(--ts-ui-table-cell-required-outline, rgba(220, 60, 60, 0.6))';
 
-    it('starts on the base background token', () => {
+    it('starts on the base background token with no outline', () => {
         const cell = editableCell();
 
         expect(cell.getBackgroundColor()).toBe(BASE_TOKEN);
+        expect(cell.getShadow()).toBeNull();
     });
 
-    it('resolves readOnly ▸ requiredEmpty ▸ base in that precedence order', () => {
+    it('requiredEmpty shows the outline without touching the background', () => {
         const cell = editableCell();
 
         cell.setRequiredEmpty(true);
-        expect(cell.getBackgroundColor()).toBe(REQUIRED_EMPTY_TOKEN);
-
-        // readOnly wins over requiredEmpty.
-        cell.setReadOnly(true);
-        expect(cell.getBackgroundColor()).toBe(READONLY_TOKEN);
-
-        // Falls back to requiredEmpty once readOnly clears.
-        cell.setReadOnly(false);
-        expect(cell.getBackgroundColor()).toBe(REQUIRED_EMPTY_TOKEN);
-
-        // Falls back to base once requiredEmpty clears too.
-        cell.setRequiredEmpty(false);
         expect(cell.getBackgroundColor()).toBe(BASE_TOKEN);
+        expect(cell.getShadow()).toBe(REQUIRED_OUTLINE);
+
+        cell.setRequiredEmpty(false);
+        expect(cell.getShadow()).toBeNull();
     });
 
-    it('setBaseBackground changes the fallback (e.g. a groupColor tint), and requiredEmpty restores it rather than going transparent', () => {
+    it('readOnly wins over the requiredEmpty outline: hides the outline and paints the readonly background', () => {
+        const cell = editableCell();
+
+        cell.setRequiredEmpty(true);
+        cell.setReadOnly(true);
+        expect(cell.getBackgroundColor()).toBe(READONLY_TOKEN);
+        expect(cell.getShadow()).toBeNull();
+
+        // Outline returns once readOnly clears, requiredEmpty still set.
+        cell.setReadOnly(false);
+        expect(cell.getBackgroundColor()).toBe(BASE_TOKEN);
+        expect(cell.getShadow()).toBe(REQUIRED_OUTLINE);
+    });
+
+    it('setBaseBackground changes the fallback (e.g. a groupColor tint); the requiredEmpty outline layers on top without altering it', () => {
         const cell = editableCell();
 
         cell.setBaseBackground('rgb(1,2,3)');
         expect(cell.getBackgroundColor()).toBe('rgb(1,2,3)');
 
         cell.setRequiredEmpty(true);
-        expect(cell.getBackgroundColor()).toBe(REQUIRED_EMPTY_TOKEN);
+        expect(cell.getBackgroundColor()).toBe('rgb(1,2,3)');
+        expect(cell.getShadow()).toBe(REQUIRED_OUTLINE);
 
         cell.setRequiredEmpty(false);
         expect(cell.getBackgroundColor()).toBe('rgb(1,2,3)');
+        expect(cell.getShadow()).toBeNull();
     });
 
-    it('setRequiredEmpty is idempotent: re-setting the current value does not re-write the background', () => {
+    it('setRequiredEmpty is idempotent: re-setting the current value does not re-write the shadow', () => {
         const cell = editableCell();
 
         cell.setRequiredEmpty(true);
 
-        const spy = vi.spyOn(cell, 'setBackgroundColor');
+        const spy = vi.spyOn(cell, 'setShadow');
         cell.setRequiredEmpty(true);
 
         expect(spy).not.toHaveBeenCalled();

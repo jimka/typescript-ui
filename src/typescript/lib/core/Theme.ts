@@ -353,14 +353,14 @@ export interface Theme {
             stripe        : string;
         };
         cell: {
-            height                 : string;
-            padding                : number;
-            background             : string;
-            readonlyBackground     : string;
-            requiredEmptyBackground: string;
-            color                  : string;
-            border                 : string;
-            editorBorderColor      : string;
+            height                    : string;
+            padding                   : number;
+            background                : string;
+            readonlyBackground        : string;
+            requiredEmptyOutlineColor : string;
+            color                     : string;
+            border                    : string;
+            editorBorderColor         : string;
         };
         resizeHandle: {
             width : string;
@@ -1039,7 +1039,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-table-cell-height'                : theme.table.cell.height,
         '--ts-ui-table-cell-bg'                    : theme.table.cell.background,
         '--ts-ui-table-cell-readonly-bg'           : theme.table.cell.readonlyBackground,
-        '--ts-ui-table-cell-required-empty-bg'     : theme.table.cell.requiredEmptyBackground,
+        '--ts-ui-table-cell-required-outline'      : theme.table.cell.requiredEmptyOutlineColor,
         '--ts-ui-table-cell-color'                 : theme.table.cell.color,
         '--ts-ui-table-cell-border'                : theme.table.cell.border,
         '--ts-ui-table-cell-editor-border'         : theme.table.cell.editorBorderColor,

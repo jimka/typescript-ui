@@ -449,9 +449,8 @@ describe('Body.isEmptyValue', () => {
     });
 });
 
-describe('Body required-empty cell tint resolution', () => {
-    const BASE_TOKEN           = 'var(--ts-ui-table-cell-bg, transparent)';
-    const REQUIRED_EMPTY_TOKEN = 'var(--ts-ui-table-cell-required-empty-bg, rgba(220, 60, 60, 0.10))';
+describe('Body required-empty cell outline resolution', () => {
+    const REQUIRED_OUTLINE = 'inset 0 0 0 1px var(--ts-ui-table-cell-required-outline, rgba(220, 60, 60, 0.6))';
 
     const REQ_MODEL = new Model([
         { name: 'a',         type: 'string', order: 0 },
@@ -498,35 +497,35 @@ describe('Body required-empty cell tint resolution', () => {
         };
     }
 
-    it('tints a statically required column\'s cell when its value is empty', async () => {
+    it('outlines a statically required column\'s cell when its value is empty', async () => {
         const { newRow, newFields } = await bodyWithRequiredConfig();
 
         const cell = newRow[newFields.indexOf('reqField')];
-        expect(cell.getBackgroundColor()).toBe(REQUIRED_EMPTY_TOKEN);
+        expect(cell.getShadow()).toBe(REQUIRED_OUTLINE);
     });
 
-    it('does not tint a statically required column once its value is filled', async () => {
+    it('does not outline a statically required column once its value is filled', async () => {
         const { filledRow, filledFields } = await bodyWithRequiredConfig();
 
         const cell = filledRow[filledFields.indexOf('reqField')];
-        expect(cell.getBackgroundColor()).toBe(BASE_TOKEN);
+        expect(cell.getShadow()).toBeNull();
     });
 
-    it('tints a predicate-required column\'s empty cell only for records the predicate matches', async () => {
+    it('outlines a predicate-required column\'s empty cell only for records the predicate matches', async () => {
         const { newRow, newFields, filledRow, filledFields } = await bodyWithRequiredConfig();
 
         const matched   = newRow[newFields.indexOf('predField')];
         const unmatched = filledRow[filledFields.indexOf('predField')];
 
-        expect(matched.getBackgroundColor()).toBe(REQUIRED_EMPTY_TOKEN);
-        // Empty too, but the predicate doesn't match this record — no tint.
-        expect(unmatched.getBackgroundColor()).toBe(BASE_TOKEN);
+        expect(matched.getShadow()).toBe(REQUIRED_OUTLINE);
+        // Empty too, but the predicate doesn't match this record — no outline.
+        expect(unmatched.getShadow()).toBeNull();
     });
 
-    it('never tints a plain (non-required) column even when its value is empty', async () => {
+    it('never outlines a plain (non-required) column even when its value is empty', async () => {
         const { newRow, newFields } = await bodyWithRequiredConfig();
 
         const cell = newRow[newFields.indexOf('plainField')];
-        expect(cell.getBackgroundColor()).toBe(BASE_TOKEN);
+        expect(cell.getShadow()).toBeNull();
     });
 });

@@ -438,7 +438,7 @@ class MiscPanel extends Panel {
                     { Name: "David", Active: true , Score: 61,   Role: "dev", Joined: null                  , Meeting: new Date(1970, 0, 1, 11, 15, 40), LastSeen: null                          , Notes: "Check in soon"  , locked: false },
                     { Name: "Eve"  , Active: false, Score: 45,   Role: "qa" , Joined: new Date(2023,  4,  9), Meeting: new Date(1970, 0, 1, 16, 45, 50), LastSeen: new Date(2024,  5,  1,  9,  0), Notes: "At risk"        , locked: false },
                     // Freshly onboarded, not yet fully filled out: demos the
-                    // required-cell tint on both Role (static `required`) and
+                    // required-cell outline on both Role (static `required`) and
                     // Score (`requiredPredicate`, mandatory only while Active).
                     { Name: "Frank", Active: true , Score: null, Role: ""   , Joined: new Date(2024,  8,  1), Meeting: null                        , LastSeen: null                          , Notes: "Just joined"    , locked: false },
                 ]);
@@ -461,16 +461,16 @@ class MiscPanel extends Panel {
                 // record whose Active flag is false). Role's `required` and
                 // Score's `requiredPredicate` demo the required-cell
                 // affordance: Role always needs a value (header asterisk +
-                // empty-cell tint on Frank, who has none yet); Score is only
+                // empty-cell outline on Frank, who has none yet); Score is only
                 // mandatory while Active (predicate-only, so no header
-                // asterisk — Frank's empty Score still tints since he's
+                // asterisk — Frank's empty Score still outlines since he's
                 // Active, but Bob's/Eve's don't since they're inactive).
                 // LastSeen's `requiredPredicate` (mandatory while Active)
-                // additionally demos required-empty composing with a
-                // grouped column's `groupColor`: David's and Frank's empty
-                // LastSeen (both Active) show the required tint, while
-                // Alice's/Carol's filled LastSeen restores the Activity
-                // group tint rather than going transparent.
+                // additionally demos the required-empty outline composing
+                // with a grouped column's `groupColor` background: David's
+                // and Frank's empty LastSeen (both Active) show the outline
+                // on top of the Activity group tint; Alice's/Carol's filled
+                // LastSeen shows just the group tint, no outline.
                 const spec: ColumnSpec = {
                     rowReadOnly: (r) => r.get('locked') === true,
                     columns: [
@@ -489,20 +489,21 @@ class MiscPanel extends Panel {
                 let specTable = new Table(specStore, spec);
                 specTable.setExportMenuEnabled(true);
 
-                // Demos the required-empty tint stacking on top of the
+                // Demos the required-empty outline stacking on top of the
                 // new-row green row tint. Role/Score are left unset on the
                 // freshly `markAsNew()`d record, and Active is seeded `true`
                 // so Score's `requiredPredicate` (mandatory only while
                 // Active) actually fires — a bare addRow({}) would leave
                 // Active `undefined`, which is not `=== true`, and Score
-                // would never tint. With Active seeded, both Role (static
-                // `required`) and Score (predicate) tint. addRow() also
+                // would never outline. With Active seeded, both Role (static
+                // `required`) and Score (predicate) outline. addRow() also
                 // selects the new record, and Body paints a selected row's
                 // background blue ahead of the green new-row tint (existing,
                 // unrelated selection-precedence behaviour) — click any
-                // other row afterward to deselect and see the required tint
-                // layered on the green new-row background instead of blue.
-                const addRowBtn = new Button("Add row (demos new-row + required tint)");
+                // other row afterward to deselect and see the required
+                // outline layered on the green new-row background instead
+                // of blue.
+                const addRowBtn = new Button("Add row (demos new-row + required outline)");
                 addRowBtn.on("action", () => specTable.addRow({ Active: true }));
 
                 // Demo the store's aggregation + grouping API: average/max over

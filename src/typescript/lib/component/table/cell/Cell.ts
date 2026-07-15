@@ -228,9 +228,9 @@ export class Cell<T> extends Component {
      * commit fires the cell's `onCommit` callback (and any cascading
      * store-event refresh) as if the user had blurred the editor.
      *
-     * Read-only wins over the required-empty tint set via
+     * Read-only wins over the required-empty outline set via
      * {@link Cell.setRequiredEmpty} — a read-only cell cannot be
-     * filled, so nagging it with a required tint would be misleading.
+     * filled, so ringing it as required would be misleading.
      *
      * @param value - `true` to mark read-only, `false` to restore the
      *   default editable appearance.
@@ -268,18 +268,18 @@ export class Cell<T> extends Component {
     }
 
     /**
-     * Sets whether this cell shows the required-empty tint — a visual
+     * Sets whether this cell shows the required-empty outline — a visual
      * cue that a required column's cell currently holds an empty value.
-     * Sourced from `--ts-ui-table-cell-required-empty-bg`. Idempotent —
+     * Sourced from `--ts-ui-table-cell-required-outline`. Idempotent —
      * passing the current value short-circuits before any style writes.
      *
      * Body rows call this from their per-rebind resolution based on the
      * column's `ColumnConfig.required` flag and `requiredPredicate`.
-     * Read-only wins over this tint — see {@link Cell.setReadOnly}'s
+     * Read-only wins over this outline — see {@link Cell.setReadOnly}'s
      * precedence note.
      *
-     * @param value - `true` to show the required-empty tint, `false` to
-     *   restore the cell's base background.
+     * @param value - `true` to show the required-empty outline, `false`
+     *   to hide it.
      * @returns This cell, for method chaining.
      */
     setRequiredEmpty(value: boolean): this {
@@ -294,12 +294,13 @@ export class Cell<T> extends Component {
     }
 
     /**
-     * Sets the background this cell falls back to when neither
-     * read-only nor required-empty applies — e.g. a column's
-     * `groupColor` tint. {@link Row} routes its group-color write
-     * through this setter (instead of `setBackgroundColor` directly)
-     * so a filled cell in a grouped, required column restores its
-     * group tint rather than going transparent.
+     * Sets the background this cell falls back to when not read-only —
+     * e.g. a column's `groupColor` tint. {@link Row} routes its
+     * group-color write through this setter (instead of
+     * `setBackgroundColor` directly) so a filled cell in a grouped,
+     * required column restores its group tint rather than going
+     * transparent (the required-empty outline is a separate overlay
+     * and does not affect the background).
      *
      * @param color - The CSS color string to use as the base background.
      * @returns This cell, for method chaining.
@@ -313,20 +314,29 @@ export class Cell<T> extends Component {
 
     /**
      * Resolves this cell's background + cursor from precedence
-     * read-only ▸ required-empty ▸ base background, and writes the
-     * result. The single owner of the cell's background so the
-     * read-only and required-empty states cannot fight over it.
+     * read-only ▸ base background, and separately resolves the
+     * required-empty outline (shown only when required-empty and NOT
+     * read-only). The single owner of both so the read-only and
+     * required-empty states cannot fight over either.
      */
     private _applyStateTint(): void {
         if (this._readOnly) {
             this.setBackgroundColor('var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))');
             this.setCursor('default');
-        } else if (this._requiredEmpty) {
-            this.setBackgroundColor('var(--ts-ui-table-cell-required-empty-bg, rgba(220, 60, 60, 0.10))');
-            this.clearCursor();
         } else {
             this.setBackgroundColor(this._baseBackground);
             this.clearCursor();
+        }
+
+        // Read-only wins: a read-only cell cannot be filled, so ringing it
+        // as required would be misleading. Uses an inset box-shadow (the
+        // same "border via shadow" idiom the cell editors use for their own
+        // focus border) rather than the CSS `outline` property, which
+        // `Body._updateFocusStyle` already owns for the keyboard-focus ring.
+        if (this._requiredEmpty && !this._readOnly) {
+            this.setShadow('inset 0 0 0 1px var(--ts-ui-table-cell-required-outline, rgba(220, 60, 60, 0.6))');
+        } else {
+            this.clearShadow();
         }
     }
 

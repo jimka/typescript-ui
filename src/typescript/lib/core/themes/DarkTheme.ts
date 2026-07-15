@@ -140,12 +140,12 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
             stripe        : 'rgba(255, 255, 255, 0.045)',
         },
         cell  : {
-            background             : 'transparent',
-            readonlyBackground     : 'rgba(255, 255, 255, 0.04)',
-            requiredEmptyBackground: 'rgba(255, 90, 90, 0.14)',
-            color                  : 'inherit',
-            border                 : 'none',
-            editorBorderColor      : 'rgba(30, 100, 200, 0.8)',
+            background                : 'transparent',
+            readonlyBackground        : 'rgba(255, 255, 255, 0.04)',
+            requiredEmptyOutlineColor : 'rgba(255, 90, 90, 0.8)',
+            color                     : 'inherit',
+            border                    : 'none',
+            editorBorderColor         : 'rgba(30, 100, 200, 0.8)',
         },
         resizeHandle: {
             color : 'rgba(255, 255, 255, 0.25)',
