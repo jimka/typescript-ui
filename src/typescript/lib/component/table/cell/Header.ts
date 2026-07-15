@@ -91,6 +91,7 @@ class HeaderCell extends DefaultCell {
     private _headerGlyph: string | null = null;
     private _headerGlyphInstance: Glyph | null = null;
     private _columnFocused: boolean = false;
+    private _required: boolean = false;
 
     /**
      * Creates a header cell with bold text and wires up the sort click listener.
@@ -268,9 +269,7 @@ class HeaderCell extends DefaultCell {
     setSortState(state: 'asc' | 'desc', priority?: number | null): this {
         this._sortState = { state, priority: priority ?? null };
 
-        const arrow = state === 'asc' ? ' ▲' : ' ▼';
-
-        this.getRenderer().getText().setText(this._text + arrow);
+        this._renderTitle();
         this.getAria().setSort(state === 'asc' ? 'ascending' : 'descending');
 
         this._priorityBadge.setPriority(priority ?? null);
@@ -297,12 +296,44 @@ class HeaderCell extends DefaultCell {
     clearSortState(): this {
         this._sortState = null;
 
-        this.getRenderer().getText().setText(this._text);
+        this._renderTitle();
         this.getAria().setSort('none');
 
         this._priorityBadge.clearPriority();
 
         return this;
+    }
+
+    /**
+     * Sets whether this header cell shows the required-column asterisk
+     * suffix. Driven by the column's static `ColumnConfig.required`
+     * flag only — the header has no bound record to evaluate a
+     * per-record `requiredPredicate` against.
+     *
+     * @param value - `true` to show the asterisk, `false` to hide it.
+     * @returns This cell, for method chaining.
+     */
+    setRequired(value: boolean): this {
+        this._required = value;
+        this._renderTitle();
+
+        return this;
+    }
+
+    /**
+     * Composes the header label from the base title plus the required
+     * asterisk (` *`, when `_required`) and the sort arrow (` ▲`/` ▼`,
+     * when a sort state is active), and writes it to the renderer.
+     * Shared by {@link setSortState}, {@link clearSortState}, and
+     * {@link setRequired} so the two suffixes never clobber each other.
+     */
+    private _renderTitle(): void {
+        const arrow = this._sortState
+            ? (this._sortState.state === 'asc' ? ' ▲' : ' ▼')
+            : '';
+        const req = this._required ? ' *' : '';
+
+        this.getRenderer().getText().setText(this._text + req + arrow);
     }
 
     /**

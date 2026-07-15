@@ -432,11 +432,15 @@ class MiscPanel extends Panel {
                 let specStore = new MemoryStore(specModel);
 
                 specStore.add([
-                    { Name: "Alice", Active: true , Score: 95, Role: "dev", Joined: new Date(2021,  2, 15), Meeting: new Date(1970, 0, 1,  9, 30, 20), LastSeen: new Date(2024,  0, 10, 14, 25), Notes: "Top performer"  , locked: false },
-                    { Name: "Bob"  , Active: false, Score: 72, Role: "qa" , Joined: new Date(2022,  7,  3), Meeting: new Date(1970, 0, 1, 14,  0, 30), LastSeen: new Date(2024,  3, 22,  8, 10), Notes: "Needs follow-up", locked: true  },
-                    { Name: "Carol", Active: true , Score: 88, Role: "pm" , Joined: new Date(2020, 11, 20), Meeting: null                        , LastSeen: new Date(2023, 11,  5, 17, 45)    , Notes: "On track"       , locked: false },
-                    { Name: "David", Active: true , Score: 61, Role: "dev", Joined: null                  , Meeting: new Date(1970, 0, 1, 11, 15, 40), LastSeen: null                          , Notes: "Check in soon"  , locked: false },
-                    { Name: "Eve"  , Active: false, Score: 45, Role: "qa" , Joined: new Date(2023,  4,  9), Meeting: new Date(1970, 0, 1, 16, 45, 50), LastSeen: new Date(2024,  5,  1,  9,  0), Notes: "At risk"        , locked: false },
+                    { Name: "Alice", Active: true , Score: 95,   Role: "dev", Joined: new Date(2021,  2, 15), Meeting: new Date(1970, 0, 1,  9, 30, 20), LastSeen: new Date(2024,  0, 10, 14, 25), Notes: "Top performer"  , locked: false },
+                    { Name: "Bob"  , Active: false, Score: 72,   Role: "qa" , Joined: new Date(2022,  7,  3), Meeting: new Date(1970, 0, 1, 14,  0, 30), LastSeen: new Date(2024,  3, 22,  8, 10), Notes: "Needs follow-up", locked: true  },
+                    { Name: "Carol", Active: true , Score: 88,   Role: "pm" , Joined: new Date(2020, 11, 20), Meeting: null                        , LastSeen: new Date(2023, 11,  5, 17, 45)    , Notes: "On track"       , locked: false },
+                    { Name: "David", Active: true , Score: 61,   Role: "dev", Joined: null                  , Meeting: new Date(1970, 0, 1, 11, 15, 40), LastSeen: null                          , Notes: "Check in soon"  , locked: false },
+                    { Name: "Eve"  , Active: false, Score: 45,   Role: "qa" , Joined: new Date(2023,  4,  9), Meeting: new Date(1970, 0, 1, 16, 45, 50), LastSeen: new Date(2024,  5,  1,  9,  0), Notes: "At risk"        , locked: false },
+                    // Freshly onboarded, not yet fully filled out: demos the
+                    // required-cell outline on both Role (static `required`) and
+                    // Score (`requiredPredicate`, mandatory only while Active).
+                    { Name: "Frank", Active: true , Score: null, Role: ""   , Joined: new Date(2024,  8,  1), Meeting: null                        , LastSeen: null                          , Notes: "Just joined"    , locked: false },
                 ]);
 
                 // TODO: Will this lead to a race condition if we don't 'await'?
@@ -454,17 +458,29 @@ class MiscPanel extends Panel {
                 // rowReadOnly demos the spec-level predicate (Bob is locked so
                 // every cell on his row is read-only); Score's cellReadOnly
                 // demos the per-cell predicate (Score is read-only on any
-                // record whose Active flag is false).
+                // record whose Active flag is false). Role's `required` and
+                // Score's `requiredPredicate` demo the required-cell
+                // affordance: Role always needs a value (header asterisk +
+                // empty-cell outline on Frank, who has none yet); Score is only
+                // mandatory while Active (predicate-only, so no header
+                // asterisk — Frank's empty Score still outlines since he's
+                // Active, but Bob's/Eve's don't since they're inactive).
+                // LastSeen's `requiredPredicate` (mandatory while Active)
+                // additionally demos the required-empty outline composing
+                // with a grouped column's `groupColor` background: David's
+                // and Frank's empty LastSeen (both Active) show the outline
+                // on top of the Activity group tint; Alice's/Carol's filled
+                // LastSeen shows just the group tint, no outline.
                 const spec: ColumnSpec = {
                     rowReadOnly: (r) => r.get('locked') === true,
                     columns: [
                         { field: 'Name'    , minWidth: 150, headerGlyph: 'xmark', group: 'Identity', unhideable: true                                     },
                         { field: 'Active'  , maxWidth: 100,                       group: 'Identity'                                                       },
-                        { field: 'Score'   , maxWidth: 100, cellReadOnly: (r) => r.get('Active') === false                                                 },
-                        { field: 'Role'    , minWidth: 140, values: [{ value: 'dev', label: 'Developer' }, { value: 'qa', label: 'QA Engineer' }, { value: 'pm', label: 'Project Manager' }] },
+                        { field: 'Score'   , maxWidth: 100, cellReadOnly: (r) => r.get('Active') === false, requiredPredicate: (r) => r.get('Active') === true },
+                        { field: 'Role'    , minWidth: 140, required: true, values: [{ value: 'dev', label: 'Developer' }, { value: 'qa', label: 'QA Engineer' }, { value: 'pm', label: 'Project Manager' }] },
                         { field: 'Joined'  , minWidth: 120, readOnly: true,       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
                         { field: 'Meeting' , minWidth: 100, showSeconds: true,    group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
-                        { field: 'LastSeen', minWidth: 160,                       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
+                        { field: 'LastSeen', minWidth: 160, requiredPredicate: (r) => r.get('Active') === true, group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)' },
                         { field: 'Notes'   , hidden  : true                                                                                                },
                         { field: 'locked'  , hidden  : true                                                                                                },
                     ],
@@ -472,6 +488,23 @@ class MiscPanel extends Panel {
 
                 let specTable = new Table(specStore, spec);
                 specTable.setExportMenuEnabled(true);
+
+                // Demos the required-empty outline stacking on top of the
+                // new-row green row tint. Role/Score are left unset on the
+                // freshly `markAsNew()`d record, and Active is seeded `true`
+                // so Score's `requiredPredicate` (mandatory only while
+                // Active) actually fires — a bare addRow({}) would leave
+                // Active `undefined`, which is not `=== true`, and Score
+                // would never outline. With Active seeded, both Role (static
+                // `required`) and Score (predicate) outline. addRow() also
+                // selects the new record, and Body paints a selected row's
+                // background blue ahead of the green new-row tint (existing,
+                // unrelated selection-precedence behaviour) — click any
+                // other row afterward to deselect and see the required
+                // outline layered on the green new-row background instead
+                // of blue.
+                const addRowBtn = new Button("Add row (demos new-row + required outline)");
+                addRowBtn.on("action", () => specTable.addRow({ Active: true }));
 
                 // Demo the store's aggregation + grouping API: average/max over
                 // the numeric Score column, plus per-group counts bucketed by the
@@ -497,6 +530,7 @@ class MiscPanel extends Panel {
                 const wrapper = Panel({
                     layoutManager: new VBox({ stretching: true }),
                     components: [
+                        addRowBtn,
                         { component: specTable, constraints: { weight: 1 } },
                         statusBar
                     ]

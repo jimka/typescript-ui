@@ -48,6 +48,8 @@ const table = Table(store, {
 | `unhideable` | When `true`, the user cannot hide this column from the context menu. Takes precedence over `hidden`. |
 | `readOnly` | When `true`, every cell in this column is display-only — double-click does not start an editor, and the cell renders with a subtle grey tint sourced from `--ts-ui-table-cell-readonly-bg`. Selection, keyboard navigation, sort, resize, and export still work. |
 | `cellReadOnly` | Optional predicate `(record) => boolean`. When it returns `true` for a record, this column's cell on that record's row renders read-only. Composes with `readOnly` and `ColumnSpec.rowReadOnly` (cell is read-only when ANY of the three says so). |
+| `required` | When `true`, the header shows a trailing asterisk and every empty cell in this column renders with an outline sourced from `--ts-ui-table-cell-required-outline`. |
+| `requiredPredicate` | Optional predicate `(record) => boolean`. When it returns `true` for a record, this column's cell on that record's row outlines when empty. Composes with `required` via OR for the outline; does NOT drive the header asterisk (the header has no bound record). |
 | `showSeconds` | For `time` / `datetime` columns: include seconds. |
 | `values` | When present, the column renders as a constrained-choice (combo-box) cell regardless of the field's type — see [Combo columns](#combo-columns). |
 | `cellType` | Per-record variant resolver `(record) => CellType \| null`. When present, the column renders a different built-in cell variant per row — see [Per-cell cell types](#per-cell-cell-types). |
@@ -61,6 +63,8 @@ const table = Table(store, {
 `ColumnSpec.rowReadOnly` is an optional predicate `(record) => boolean`. When it returns `true` for a record, every cell in that record's row renders read-only with the grey tint, regardless of the column's own `readOnly` flag. The predicate runs on every row rebind; it must be O(1) and pure. Mutating a store-owned record auto-refreshes the table; call [`store.notifyRecordChanged(record)`](/api/data/classes/AbstractStore#notifyRecordChanged) only for an unowned record or to force a refresh.
 
 A cell is read-only when its column's `readOnly` flag is `true`, OR the spec's `rowReadOnly(record)` returns `true`, OR the column's `cellReadOnly(record)` returns `true`. The grey tint is the same in all three cases.
+
+A column is required when its `required` flag is `true`, OR its `requiredPredicate(record)` returns `true`; the outline applies only while the bound value is empty (`null`, `undefined`, or `''` — `0` and `false` are legit values, not empty). The header asterisk reflects the static `required` flag alone, since the header has no bound record to evaluate a per-record predicate against. A read-only cell never shows the required outline — it can't be filled, so ringing it would be misleading. This is a visual affordance only: it does not block commits or integrate with store-level validation.
 
 ## Combo columns
 

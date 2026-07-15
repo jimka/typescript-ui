@@ -461,6 +461,12 @@ class TableHeader extends Component {
             if (groupColor) {
                 cell.setBackgroundColor(groupColor);
             }
+
+            // Re-applied on every sync (unconditionally, not gated on
+            // an `isRequired()` truthy check) so a config swap that
+            // clears `required` also clears the asterisk on a
+            // surviving cell — mirrors the group-tint cadence above.
+            cell.setRequired(col?.isRequired() ?? false);
         }
 
         // Re-order children to the new visible-field display order so

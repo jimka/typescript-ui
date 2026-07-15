@@ -83,3 +83,85 @@ describe('Cell.startEdit scroll-into-view ordering', () => {
         expect(() => cell.startEdit()).not.toThrow();
     });
 });
+
+// Background/cursor precedence: readOnly ▸ base. The required-empty state is
+// a separate outline overlay (not a background contender) that only shows
+// while NOT read-only. `setReadOnly` and `setRequiredEmpty` share one
+// resolver (`_applyStateTint`) so the two states compose instead of fighting
+// over either write.
+describe('Cell background/cursor/outline state precedence', () => {
+    const BASE_TOKEN     = 'var(--ts-ui-table-cell-bg, transparent)';
+    const READONLY_TOKEN = 'var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))';
+    const REQUIRED_OUTLINE = 'inset 0 0 0 1px var(--ts-ui-table-cell-required-outline, rgba(220, 60, 60, 0.6))';
+
+    it('starts on the base background token with no outline', () => {
+        const cell = editableCell();
+
+        expect(cell.getBackgroundColor()).toBe(BASE_TOKEN);
+        expect(cell.getShadow()).toBeNull();
+    });
+
+    it('requiredEmpty shows the outline without touching the background', () => {
+        const cell = editableCell();
+
+        cell.setRequiredEmpty(true);
+        expect(cell.getBackgroundColor()).toBe(BASE_TOKEN);
+        expect(cell.getShadow()).toBe(REQUIRED_OUTLINE);
+
+        cell.setRequiredEmpty(false);
+        expect(cell.getShadow()).toBeNull();
+    });
+
+    it('readOnly wins over the requiredEmpty outline: hides the outline and paints the readonly background', () => {
+        const cell = editableCell();
+
+        cell.setRequiredEmpty(true);
+        cell.setReadOnly(true);
+        expect(cell.getBackgroundColor()).toBe(READONLY_TOKEN);
+        expect(cell.getShadow()).toBeNull();
+
+        // Outline returns once readOnly clears, requiredEmpty still set.
+        cell.setReadOnly(false);
+        expect(cell.getBackgroundColor()).toBe(BASE_TOKEN);
+        expect(cell.getShadow()).toBe(REQUIRED_OUTLINE);
+    });
+
+    it('setBaseBackground changes the fallback (e.g. a groupColor tint); the requiredEmpty outline layers on top without altering it', () => {
+        const cell = editableCell();
+
+        cell.setBaseBackground('rgb(1,2,3)');
+        expect(cell.getBackgroundColor()).toBe('rgb(1,2,3)');
+
+        cell.setRequiredEmpty(true);
+        expect(cell.getBackgroundColor()).toBe('rgb(1,2,3)');
+        expect(cell.getShadow()).toBe(REQUIRED_OUTLINE);
+
+        cell.setRequiredEmpty(false);
+        expect(cell.getBackgroundColor()).toBe('rgb(1,2,3)');
+        expect(cell.getShadow()).toBeNull();
+    });
+
+    it('setRequiredEmpty is idempotent: re-setting the current value does not re-write the shadow', () => {
+        const cell = editableCell();
+
+        cell.setRequiredEmpty(true);
+
+        const spy = vi.spyOn(cell, 'setShadow');
+        cell.setRequiredEmpty(true);
+
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('a read-only cell shows the default cursor; requiredEmpty and base both clear the cursor', () => {
+        const cell = editableCell();
+
+        cell.setRequiredEmpty(true);
+        expect(cell.getCursor()).toBeNull();
+
+        cell.setReadOnly(true);
+        expect(cell.getCursor()).toBe('default');
+
+        cell.setReadOnly(false);
+        expect(cell.getCursor()).toBeNull();
+    });
+});

@@ -25,6 +25,7 @@ export class Column {
     private _headerGlyph : string | null;
     private _group       : string | null;
     private _groupColor  : string | null;
+    private _required    : boolean;
 
     /**
      * Constructs a Column from a field and an optional presentation config.
@@ -42,6 +43,7 @@ export class Column {
         this._headerGlyph = config?.headerGlyph ?? null;
         this._group       = config?.group ?? null;
         this._groupColor  = config?.groupColor ?? null;
+        this._required    = config?.required ?? false;
     }
 
     /**
@@ -154,6 +156,18 @@ export class Column {
      */
     getGroupColor(): string | null {
         return this._groupColor;
+    }
+
+    /**
+     * Returns whether this column is marked required in the spec. Drives
+     * the header asterisk; the per-record `requiredPredicate` composes
+     * with this flag for the empty-cell tint but does not affect this
+     * accessor.
+     *
+     * @returns `true` when the spec declared `required: true`.
+     */
+    isRequired(): boolean {
+        return this._required;
     }
 
     /**

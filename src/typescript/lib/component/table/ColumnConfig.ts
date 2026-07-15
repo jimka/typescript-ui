@@ -199,6 +199,41 @@ export interface ColumnConfig {
      * encountered value in the run wins.
      */
     groupColor  ?: string;
+
+    /**
+     * When `true`, marks this column required: the header renders a
+     * trailing asterisk, and every row's cell in this column outlines
+     * with `--ts-ui-table-cell-required-outline` while its bound value
+     * is empty (`null`, `undefined`, or `''`). Composes with
+     * {@link ColumnConfig.requiredPredicate} via OR for the empty-cell
+     * outline, but drives the header asterisk alone — the header cell
+     * has no bound record to evaluate a per-record predicate against.
+     *
+     * Defaults to `false`.
+     */
+    required ?: boolean;
+    /**
+     * Per-record required predicate. Returns `true` to mark this
+     * column's cell required for the given record. Composes with
+     * {@link ColumnConfig.required} via OR for the empty-cell outline;
+     * does NOT drive the header asterisk (the header has no bound
+     * record).
+     *
+     * Unlike {@link ColumnConfig.cellReadOnly}, this predicate fires on
+     * every visible-window render pass, not just on row rebind —
+     * scrolling pulls new records in, the store emitting `'datachange'`
+     * (which
+     * [`notifyRecordChanged`](/api/data/classes/AbstractStore#notifyRecordChanged)
+     * does) triggers one, columns hiding / showing triggers one, AND a
+     * plain in-place cell edit re-runs it too, since the empty-cell
+     * outline must track the live value. It MUST be O(1) and pure —
+     * read fields off `record`, return a boolean, do not call back
+     * into the store, do not allocate, do not perform DOM work.
+     *
+     * This is a visual affordance only: it does not block commits or
+     * integrate with store-level validation.
+     */
+    requiredPredicate ?: (record: ModelRecord) => boolean;
 }
 
 /**

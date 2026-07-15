@@ -141,11 +141,12 @@ export const ClassicTheme: Theme = defineTheme(BaseTheme, {
             stripe        : 'rgba(0, 0, 0, 0.035)',
         },
         cell  : {
-            background        : 'transparent',
-            readonlyBackground: 'rgba(0, 0, 0, 0.04)',
-            color             : 'inherit',
-            border            : 'none',
-            editorBorderColor : 'rgba(30, 100, 200, 0.6)',
+            background                : 'transparent',
+            readonlyBackground        : 'rgba(0, 0, 0, 0.04)',
+            requiredEmptyOutlineColor : 'rgba(220, 60, 60, 0.6)',
+            color                     : 'inherit',
+            border                    : 'none',
+            editorBorderColor         : 'rgba(30, 100, 200, 0.6)',
         },
         resizeHandle: {
             color : 'rgba(0, 0, 0, 0.2)',

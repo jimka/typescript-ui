@@ -18,6 +18,8 @@ import { Body, resolveClickedColumn } from '~/component/table/Body';
 import type { CellClickEvent } from '~/component/table/Body';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
+import type { Cell } from '~/component/table/cell/Cell';
+import type { ColumnConfig } from '~/component/table/ColumnConfig';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -425,5 +427,105 @@ describe('Body cellclick event', () => {
         (b as any).onRowClick(row, makeEvent(row.getElement(), 'click'));
 
         expect(seen).toHaveLength(0);
+    });
+});
+
+describe('Body.isEmptyValue', () => {
+    it('treats null, undefined, and the empty string as empty', () => {
+        const isEmptyValue = (Body as any).isEmptyValue;
+
+        expect(isEmptyValue(null)).toBe(true);
+        expect(isEmptyValue(undefined)).toBe(true);
+        expect(isEmptyValue('')).toBe(true);
+    });
+
+    it('does not treat 0, false, a non-empty string, or a single space as empty', () => {
+        const isEmptyValue = (Body as any).isEmptyValue;
+
+        expect(isEmptyValue(0)).toBe(false);
+        expect(isEmptyValue(false)).toBe(false);
+        expect(isEmptyValue('x')).toBe(false);
+        expect(isEmptyValue(' ')).toBe(false);
+    });
+});
+
+describe('Body required-empty cell outline resolution', () => {
+    const REQUIRED_OUTLINE = 'inset 0 0 0 1px var(--ts-ui-table-cell-required-outline, rgba(220, 60, 60, 0.6))';
+
+    const REQ_MODEL = new Model([
+        { name: 'a',         type: 'string', order: 0 },
+        { name: 'reqField',  type: 'string', order: 1 },
+        { name: 'predField', type: 'string', order: 2 },
+        { name: 'plainField', type: 'string', order: 3 },
+    ], 'a');
+
+    /**
+     * Builds a materialised Body over `REQ_MODEL` with `reqField` marked
+     * statically required and `predField` required only for the record
+     * whose `a` is `'new'`, then renders one record with every field
+     * empty and one record with `reqField` filled (`predField` stays
+     * empty but its predicate doesn't match, so it must not tint).
+     */
+    async function bodyWithRequiredConfig(): Promise<{ b: Body; newRow: Cell<any>[]; newFields: string[]; filledRow: Cell<any>[]; filledFields: string[] }> {
+        const store = new MemoryStore(REQ_MODEL, [
+            { a: 'new',      reqField: '', predField: '', plainField: '' },
+            { a: 'existing', reqField: 'filled', predField: '', plainField: '' },
+        ]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(400);
+        b.setHeight(200);
+
+        const configs = new Map<string, ColumnConfig>([
+            ['reqField',  { field: 'reqField',  required: true }],
+            ['predField', { field: 'predField', requiredPredicate: (record) => record.get('a') === 'new' }],
+        ]);
+        b.setColumnConfigs(configs);
+
+        const rows = (b as any).getRowPool();
+        const newRow    = rows.find((r: any) => r.getData()?.get('a') === 'new');
+        const filledRow = rows.find((r: any) => r.getData()?.get('a') === 'existing');
+
+        return {
+            b,
+            newRow:       newRow.getComponents() as Cell<any>[],
+            newFields:    newRow.getFieldNames(),
+            filledRow:    filledRow.getComponents() as Cell<any>[],
+            filledFields: filledRow.getFieldNames(),
+        };
+    }
+
+    it('outlines a statically required column\'s cell when its value is empty', async () => {
+        const { newRow, newFields } = await bodyWithRequiredConfig();
+
+        const cell = newRow[newFields.indexOf('reqField')];
+        expect(cell.getShadow()).toBe(REQUIRED_OUTLINE);
+    });
+
+    it('does not outline a statically required column once its value is filled', async () => {
+        const { filledRow, filledFields } = await bodyWithRequiredConfig();
+
+        const cell = filledRow[filledFields.indexOf('reqField')];
+        expect(cell.getShadow()).toBeNull();
+    });
+
+    it('outlines a predicate-required column\'s empty cell only for records the predicate matches', async () => {
+        const { newRow, newFields, filledRow, filledFields } = await bodyWithRequiredConfig();
+
+        const matched   = newRow[newFields.indexOf('predField')];
+        const unmatched = filledRow[filledFields.indexOf('predField')];
+
+        expect(matched.getShadow()).toBe(REQUIRED_OUTLINE);
+        // Empty too, but the predicate doesn't match this record — no outline.
+        expect(unmatched.getShadow()).toBeNull();
+    });
+
+    it('never outlines a plain (non-required) column even when its value is empty', async () => {
+        const { newRow, newFields } = await bodyWithRequiredConfig();
+
+        const cell = newRow[newFields.indexOf('plainField')];
+        expect(cell.getShadow()).toBeNull();
     });
 });
