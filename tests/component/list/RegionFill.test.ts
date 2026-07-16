@@ -4,6 +4,7 @@ import { Border } from '~/layout/Border';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { Placement } from '~/primitive/Placement';
 import { DOM } from '~/core/DOM';
+import { UNBOUNDED } from '~/primitive/Size';
 import { _List } from '~/component/list/List';
 import { _MultiSelectList } from '~/component/list/MultiSelectList';
 import { _Table } from '~/component/table/Table';
@@ -21,12 +22,12 @@ const CONFIG = {
 };
 
 // Region geometry the fill behaviour is measured against. 400 is the region
-// height the list must fill; 288 is the content-derived height a 13-item list
-// reports (and self-clamped to before this change) — observed live against the
-// real List under the TestDOM font metrics.
+// height the list must fill. Since the row height cap was removed, each row
+// reports an unbounded max, so a populated list's VBox saturates to an
+// unbounded content max — region-fill now falls out of the default clamping
+// rather than the former clampsToContentSize-decoupled reporting.
 const REGION_HEIGHT = 400;
 const REGION_WIDTH = 600;
-const CONTENT_HEIGHT_13 = 288;
 
 function placement(p: Placement): LayoutConstraints {
     return Object.assign(new LayoutConstraints(), { placement: p });
@@ -129,7 +130,7 @@ describe('List fills a stretching layout region (region-fill-max-size)', () => {
         expect(list.getHeight()).toBe(REGION_HEIGHT);
     });
 
-    it('still reports the content-derived getMaxSize (reporting decoupled from self-clamp)', () => {
+    it('reports an unbounded getMaxSize (rows no longer cap their height)', () => {
         installTestDOM(CONFIG);
 
         const h = host();
@@ -138,8 +139,10 @@ describe('List fills a stretching layout region (region-fill-max-size)', () => {
         h.addComponent(list, placement(Placement.CENTER));
         h.doLayout();
 
-        // The merged max report is unchanged; only the self-clamp policy changed.
-        expect(list.getMaxSize()!.height).toBe(CONTENT_HEIGHT_13);
+        // Rows report an unbounded max, so the list's VBox saturates to an
+        // unbounded content max — the finite content-derived report that used to
+        // crush a resizable Accordion section is gone.
+        expect(list.getMaxSize()!.height).toBe(UNBOUNDED);
     });
 
     it('Table already fills a stretching CENTER region (guard, no Table change)', () => {

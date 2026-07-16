@@ -17,6 +17,7 @@ import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
 import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
+import { Text } from "~/component/input/Text.js";
 
 /**
  * One entry in a [`List`](/api/component/list/classes/List) /
@@ -112,6 +113,19 @@ export interface AbstractSelectableListOptions extends AbstractInputOptions {
         change?:  (value: any) => void;
         binding?: () => void;
     };
+    /**
+     * Muted placeholder text shown inside the scroll area when the list is
+     * empty. Opt-in: with neither `emptyText` nor `emptyComponent` set, an empty
+     * list has no placeholder child.
+     */
+    emptyText?:      string;
+    /**
+     * Factory for a custom empty-state placeholder, shown inside the scroll area
+     * when the list is empty. Takes precedence over `emptyText`. The returned
+     * component should report an unbounded max (the `Component` default) so the
+     * empty list still fills its region and drag-resizes.
+     */
+    emptyComponent?: () => Component;
 }
 
 /**
@@ -272,7 +286,12 @@ class SelectableListRow extends Component {
 
         this.getAria().setRole("option");
         this.setPreferredSize(0, ROW_HEIGHT_PX);
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, ROW_HEIGHT_PX);
+        // Do NOT cap the row's max height. A finite per-row height max makes the
+        // list's VBox sum to a finite content max (VBox.aggregateMaxSize), which
+        // shrink-wraps the whole list to its content and breaks stretch/scroll
+        // and the accordion's resizable drag. The row is already pinned to
+        // ROW_HEIGHT_PX by its preferredSize above; leave its max unbounded (the
+        // Component default).
         this.setPadding(new Insets(0, 8, 0, 8));
         // Component's framework default writes `cursor: default` as an
         // inline style, which would beat the `.SelectableListRow` class rule
@@ -622,6 +641,10 @@ abstract class AbstractSelectableList<
      */
     protected _selectFollowsFocus: boolean = true;
     protected _innerPanel:   Panel;
+    /** Cached empty-state placeholder, built lazily on first need; null until then. */
+    private _emptyPlaceholder: Component | null = null;
+    /** Whether `_emptyPlaceholder` is currently a child of `_innerPanel`. */
+    private _placeholderAttached: boolean = false;
     private _storeRefresh:   (() => void) | null   = null;
     /**
      * Factory producing each row's content renderer. Defaults to a label
@@ -680,7 +703,14 @@ abstract class AbstractSelectableList<
         });
         this.addComponent(this._innerPanel);
 
-        this.setMinSize(100, 100);
+        // Default floor, but let a caller-supplied minSize option win. The
+        // super() cascade writes `_options.minSize` only when the caller passed
+        // one (the class default {0,0} lives in the defaults bag, not `_options`),
+        // so its presence means "caller set it". maxSize stays unbounded.
+        if (this._options.minSize === undefined) {
+            // 100×100 keeps a short empty/placeholder list a usable size.
+            this.setMinSize(100, 100);
+        }
 
         Event.addListener(this, "keydown", this.handleKeyDown);
 
@@ -708,21 +738,14 @@ abstract class AbstractSelectableList<
         if (this._options.readOnly !== undefined) {
             this.applyReadOnly(this._options.readOnly);
         }
-    }
 
-    /**
-     * Overrides {@link Component.clampsToContentSize} to `false`: a list fits
-     * the space its parent's layout manager allocates — filling a stretching
-     * region (a Border WEST/CENTER, a Fit/Box cell) rather than capping at its
-     * inner VBox's content height — and scrolls the overflow via the inner
-     * panel's `autoScroll`. Only an explicit {@link Component.setMaxSize} /
-     * {@link Component.setMinSize} remains a hard ceiling or floor.
-     *
-     * @returns `false`, so size clamping uses the list's own explicit
-     *   constraints only, not its content-derived ones.
-     */
-    protected clampsToContentSize(): boolean {
-        return false;
+        // Dispatch the empty-state options last, after items/store — a list built
+        // *with* items must show no placeholder. Needed because an empty list
+        // configured with only `emptyText`/`emptyComponent` never calls syncRows
+        // during construction.
+        if (this._options.emptyText !== undefined || this._options.emptyComponent !== undefined) {
+            this.syncEmptyPlaceholder();
+        }
     }
 
     /**
@@ -778,8 +801,128 @@ abstract class AbstractSelectableList<
         if (options.glyphField      !== undefined) this._options.glyphField      = options.glyphField;
         if (options.tooltipField    !== undefined) this._options.tooltipField    = options.tooltipField;
         if (options.rendererFactory !== undefined) this._options.rendererFactory = options.rendererFactory;
+        if (options.emptyText       !== undefined) this._options.emptyText       = options.emptyText;
+        if (options.emptyComponent  !== undefined) this._options.emptyComponent  = options.emptyComponent;
 
         return this;
+    }
+
+    /**
+     * Sets the muted placeholder text shown inside the scroll area when the list
+     * is empty. Pass `null` to clear it. Takes effect immediately: an already
+     * empty list shows (or drops) the placeholder on the next layout.
+     *
+     * @param text - The placeholder text, or `null` to remove it.
+     *
+     * @returns This component, for method chaining.
+     */
+    setEmptyText(text: string | null): this {
+        this._options.emptyText = text ?? undefined;
+        this.resetEmptyPlaceholder();
+        this.syncEmptyPlaceholder();
+
+        return this;
+    }
+
+    /**
+     * Returns the configured empty-state placeholder text.
+     *
+     * @returns The placeholder text, or `null` if none is set.
+     */
+    getEmptyText(): string | null {
+        return this._options.emptyText ?? null;
+    }
+
+    /**
+     * Sets a factory for a custom empty-state placeholder, shown inside the
+     * scroll area when the list is empty. Takes precedence over
+     * {@link setEmptyText}. Pass `null` to clear it. The returned component
+     * should report an unbounded max so the empty list still fills its region.
+     *
+     * @param factory - The placeholder factory, or `null` to remove it.
+     *
+     * @returns This component, for method chaining.
+     */
+    setEmptyComponent(factory: (() => Component) | null): this {
+        this._options.emptyComponent = factory ?? undefined;
+        this.resetEmptyPlaceholder();
+        this.syncEmptyPlaceholder();
+
+        return this;
+    }
+
+    /**
+     * Returns the configured empty-state placeholder factory.
+     *
+     * @returns The placeholder factory, or `null` if none is set.
+     */
+    getEmptyComponent(): (() => Component) | null {
+        return this._options.emptyComponent ?? null;
+    }
+
+    /**
+     * Adds or removes the empty-state placeholder against the current item
+     * count. Attaches the placeholder (building it lazily on first need) to
+     * `_innerPanel` when an empty-state is configured and the list is empty;
+     * detaches it otherwise. A no-op when no empty-state is configured — an
+     * opted-out empty list keeps no placeholder child.
+     *
+     * Called at the tail of {@link syncRows}, from the empty-state setters, and
+     * once at construction for a list built empty with an empty-state option.
+     */
+    protected syncEmptyPlaceholder(): void {
+        const configured = this._options.emptyComponent !== undefined || this._options.emptyText !== undefined;
+        const wants      = configured && this._items.length === 0;
+
+        if (wants) {
+            if (!this._emptyPlaceholder) {
+                this._emptyPlaceholder = this.buildEmptyPlaceholder();
+            }
+
+            if (!this._placeholderAttached) {
+                // weight: 1 makes the single child absorb all leftover main-axis
+                // (height) space so the placeholder fills the scroll area; the
+                // inner VBox's stretching:true fills the width.
+                this._innerPanel.addComponent(this._emptyPlaceholder, { weight: 1 });
+                this._placeholderAttached = true;
+            }
+        } else if (this._placeholderAttached && this._emptyPlaceholder) {
+            this._innerPanel.removeComponent(this._emptyPlaceholder);
+            this._placeholderAttached = false;
+        }
+    }
+
+    /**
+     * Builds the empty-state placeholder: the `emptyComponent` factory's output
+     * if set, otherwise a muted, horizontally-centered single-line `Text` from
+     * `emptyText` using the list-scoped disabled token.
+     *
+     * @returns The placeholder component.
+     */
+    private buildEmptyPlaceholder(): Component {
+        const factory = this._options.emptyComponent;
+        if (factory) {
+            return factory();
+        }
+
+        const text = new Text(this._options.emptyText ?? "", { textAlign: "center" });
+        text.setForegroundColor("var(--ts-ui-list-row-disabled-color, rgb(170, 170, 170))");
+
+        return text;
+    }
+
+    /**
+     * Detaches the cached placeholder (if attached) and drops it, so the next
+     * {@link syncEmptyPlaceholder} rebuilds it from the current options. Used by
+     * the empty-state setters when the configuration changes.
+     */
+    private resetEmptyPlaceholder(): void {
+        if (this._placeholderAttached && this._emptyPlaceholder) {
+            this._innerPanel.removeComponent(this._emptyPlaceholder);
+            this._placeholderAttached = false;
+        }
+
+        this._emptyPlaceholder = null;
     }
 
     /**
@@ -1257,6 +1400,13 @@ abstract class AbstractSelectableList<
             }
             this._rowPool.splice(newLen);
         }
+
+        // Toggle the empty-state placeholder against the new item count. Runs
+        // after the row reconciliation, so on a 0→N transition the rows are in
+        // place before the placeholder is dropped (and on N→0, dropped rows are
+        // gone before the placeholder attaches). syncRows runs inside a paused
+        // layout, so the transient coexistence never renders.
+        this.syncEmptyPlaceholder();
     }
 
     /**
