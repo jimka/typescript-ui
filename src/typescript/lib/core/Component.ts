@@ -3464,10 +3464,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * is redirected to horizontal.
      *
      * @param e - The wheel event.
+     *
+     * @remarks An axis counts as scrollable only when it has somewhere to go:
+     * a scrollable overflow style is necessary but not sufficient, since an
+     * `auto` axis whose content fits has no extent to move through. Claiming
+     * such an axis would strand the wheel — the dispatch is descendant-first,
+     * so an ancestor scroll region that *can* move (the capped content area
+     * around a Dialog's `autoScroll` panel, say) is reached later and would
+     * find the event already consumed. Ignoring it lets the wheel chain
+     * outward, as it does natively.
      */
     private onWheelScroll(e: WheelEvent): void {
-        const canX = this.isOverflowScrollable(this.getOverflowX());
-        const canY = this.isOverflowScrollable(this.getOverflowY());
+        const canX = this.isOverflowScrollable(this.getOverflowX()) && this.getMaxScrollLeft() > 0;
+        const canY = this.isOverflowScrollable(this.getOverflowY()) && this.getMaxScrollTop()  > 0;
 
         let dx = canX ? e.deltaX : 0;
         let dy = canY ? e.deltaY : 0;
