@@ -39,7 +39,7 @@ const STATUS_BAR_SPACING: number = 4;
  * @category Components
  */
 export interface StatusBarOptions extends ContainerOptions {
-    /** Initial transient message shown in the left zone. */
+    /** Initial transient message shown at the start of the row. */
     message?:        string;
     /**
      * Fallback message restored when a timed {@link StatusBar.setMessage}
