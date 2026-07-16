@@ -12,7 +12,8 @@ import { Tooltip } from "~/overlay/Tooltip.js";
 import { Type } from "~/core/Type.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Fit } from "~/layout/Fit.js";
-import { VBox } from "~/layout/VBox.js";
+import { _VBox } from "~/layout/VBox.js";
+import { Size } from "~/primitive/Size.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
@@ -66,6 +67,14 @@ export type SelectableListItemSpec = String | SelectableListItem;
  * page size from this constant divided into the visible viewport height.
  */
 const ROW_HEIGHT_PX = 22;
+
+/**
+ * Horizontal padding on each side of a row, between the row edge and its
+ * renderer. Read by {@link SelectableListRow.publishContentWidth} to convert a
+ * renderer's content width into the row's own natural width, so keep it in step
+ * with the row's `setPadding` call.
+ */
+const ROW_PADDING_X_PX = 8;
 
 /**
  * Maximum time (in milliseconds) between successive printable-character
@@ -126,6 +135,12 @@ export interface AbstractSelectableListOptions extends AbstractInputOptions {
      * empty list still fills its region and drag-resizes.
      */
     emptyComponent?: () => Component;
+    /**
+     * Construction-time shortcut for
+     * [`setHorizontalScrolling`](/api/component/list/classes/List#sethorizontalscrolling).
+     * Defaults to `false` — a label wider than the row ellipsises.
+     */
+    horizontalScrolling?: boolean;
 }
 
 /**
@@ -292,7 +307,7 @@ class SelectableListRow extends Component {
         // and the accordion's resizable drag. The row is already pinned to
         // ROW_HEIGHT_PX by its preferredSize above; leave its max unbounded (the
         // Component default).
-        this.setPadding(new Insets(0, 8, 0, 8));
+        this.setPadding(new Insets(0, ROW_PADDING_X_PX, 0, ROW_PADDING_X_PX));
         // Component's framework default writes `cursor: default` as an
         // inline style, which would beat the `.SelectableListRow` class rule
         // — set the inline cursor explicitly so rows show the hand
@@ -340,6 +355,28 @@ class SelectableListRow extends Component {
             Tooltip.detach(this);
             this._tooltipAttached = false;
         }
+    }
+
+    /**
+     * Returns the row's natural width — its renderer's content width plus the
+     * row's own horizontal padding — i.e. the width at which the bound item
+     * renders without clipping.
+     *
+     * Read by {@link ListRowColumn.computeTotalMinSize}, and only while the
+     * owning list scrolls horizontally, so a list with the setting off never
+     * calls this and never makes its renderers measure.
+     *
+     * Deliberately *not* published as the row's `minSize`: a minimum is a
+     * constraint that propagates outward (`VBox.getMinSize` → the inner
+     * `Panel` → the list's `Fit` → `Component.clampWidth`), so a wide row would
+     * inflate the whole `List` element inside its host rather than scroll
+     * within it. The natural width is an input to the column's own overflow
+     * inflation only.
+     *
+     * @returns The row's natural width in pixels.
+     */
+    getNaturalWidth(): number {
+        return this._renderer.getContentWidth() + ROW_PADDING_X_PX * 2;
     }
 
     /**
@@ -572,6 +609,64 @@ class SelectableListRow extends Component {
 }
 
 /**
+ * The row stack inside a list's scroll panel: a `VBox` that additionally knows
+ * how wide its rows want to be.
+ *
+ * Exists for one reason — the framework's cross-axis overflow inflation reads
+ * the children's *minimum* width (`LayoutManager.inflateForOverflow` →
+ * {@link computeTotalMinSize}), but a row's natural width must not become a
+ * minimum. A minimum propagates outward — `VBox.getMinSize` → the scroll
+ * `Panel` → the list's `Fit` → `Component.clampWidth` — and would inflate the
+ * `List` element itself inside its host, so a long label would widen the whole
+ * rail instead of scrolling inside it.
+ *
+ * Overriding `computeTotalMinSize` alone separates the two: the inflation
+ * target picks up the widest row's natural width, while `getMinSize` (untouched
+ * from `VBox`) keeps reporting the rows' real minimum of zero. So the column
+ * lays out wide and scrolls, and nothing outside the scroll panel ever learns
+ * of the content's width.
+ *
+ * Inert unless the host has opted into horizontal overflow — `inflateForOverflow`
+ * ignores an axis the host does not scroll, so with `horizontalScrolling` off
+ * this behaves exactly as a plain `VBox` and never measures a renderer.
+ */
+class ListRowColumn extends _VBox {
+
+    /**
+     * Widens the inflation target to the widest row's natural width, so a list
+     * scrolling horizontally lays its rows out at full content width.
+     *
+     * @returns The children's combined min size, with the width raised to the
+     *   widest row's natural width.
+     */
+    protected computeTotalMinSize(): Size {
+        const total     = super.computeTotalMinSize();
+        const container = this.getContainer();
+
+        // Only the X-overflow path consumes the width, and the scan below makes
+        // every row measure its renderer — so skip it whenever the host isn't
+        // scrolling X. Not merely an optimisation: a list has always scrolled Y,
+        // so `inflateForOverflow` calls this on every layout of every list, and
+        // an ungated scan would put a per-row text measure into all of them.
+        if (!container || !this.isOverflowingX()) {
+            return total;
+        }
+
+        let natural = 0;
+
+        for (const component of container.getLaidOutComponents()) {
+            // The empty-state placeholder shares the column with the rows and has
+            // no natural width to contribute — it tracks the viewport instead.
+            if (component instanceof SelectableListRow) {
+                natural = Math.max(natural, component.getNaturalWidth());
+            }
+        }
+
+        return { width: Math.max(total.width, natural), height: total.height };
+    }
+}
+
+/**
  * Owner-supplied gesture callbacks for a {@link SelectableListRow}, each invoked
  * with the row's current pool index and the originating mouse event. The row
  * owns no selection or event-dispatch logic itself — it forwards to the list.
@@ -640,6 +735,13 @@ abstract class AbstractSelectableList<
      * focus highlight; Enter / Space / click still commit.
      */
     protected _selectFollowsFocus: boolean = true;
+    /**
+     * Whether over-long rows scroll horizontally instead of ellipsising.
+     * Written only by {@link setHorizontalScrolling}, dispatched from the
+     * constructor body once `_innerPanel` exists, so the field-initializer
+     * default survives the `super()` cascade without a `declare`.
+     */
+    private _horizontalScrolling: boolean = false;
     protected _innerPanel:   Panel;
     /** Cached empty-state placeholder, built lazily on first need; null until then. */
     private _emptyPlaceholder: Component | null = null;
@@ -697,7 +799,7 @@ abstract class AbstractSelectableList<
         // it into the framework's native-overflow path; `VBox` lays the
         // rows out vertically full-width with no gap.
         this._innerPanel = new Panel({
-            layoutManager: new VBox({ spacing: 0, stretching: true }),
+            layoutManager: new ListRowColumn({ spacing: 0, stretching: true }),
             autoScroll:    "y",
             insets:        new Insets(0, 0, 0, 0),
         });
@@ -721,6 +823,10 @@ abstract class AbstractSelectableList<
         // `setItems` below) with the caller's renderer on first paint.
         if (this._options.rendererFactory !== undefined) {
             this.setRendererFactory(this._options.rendererFactory);
+        }
+
+        if (this._options.horizontalScrolling !== undefined) {
+            this.setHorizontalScrolling(this._options.horizontalScrolling);
         }
 
         if (this._options.store !== undefined && this._options.displayField !== undefined) {
@@ -804,7 +910,58 @@ abstract class AbstractSelectableList<
         if (options.emptyText       !== undefined) this._options.emptyText       = options.emptyText;
         if (options.emptyComponent  !== undefined) this._options.emptyComponent  = options.emptyComponent;
 
+        if (options.horizontalScrolling !== undefined) this._options.horizontalScrolling = options.horizontalScrolling;
+
         return this;
+    }
+
+    /**
+     * Sets whether a row wider than the viewport scrolls horizontally instead of
+     * ellipsising.
+     *
+     * Off by default, which is the behaviour every list has always had: rows track
+     * the viewport width and a label too long for its row clips with an ellipsis.
+     * That is the right default for a narrow rail, and for the dropdown surfaces
+     * (`ComboBox`, `AutoCompleteField`) where a horizontal bar under a popup reads
+     * as a glitch. Turn it on for a list whose labels carry meaning past the
+     * truncation point — a file path, a query — and whose host is too narrow to
+     * show them.
+     *
+     * When on, every row is sized to the widest bound row's natural width (see
+     * {@link ListItemRenderer.getContentWidth}) or the viewport, whichever is
+     * larger, and the scroll area raises a horizontal scrollbar once the content
+     * exceeds it. Rows stay full-width relative to each other, so the selection
+     * wash still spans the whole row when scrolled. A custom renderer that does
+     * not override `getContentWidth` reports no intrinsic width, so its rows stay
+     * at the viewport width and nothing scrolls.
+     *
+     * @param value - True to scroll over-long rows horizontally.
+     *
+     * @returns This component, for method chaining.
+     */
+    setHorizontalScrolling(value: boolean): this {
+        if (this._horizontalScrolling === value) {
+            return this;
+        }
+
+        this._horizontalScrolling = value;
+
+        // `"auto"` adds the X axis to the Y the list has always scrolled. That
+        // alone drives everything: it is what lets `ListRowColumn` inflate past
+        // the viewport, and what raises the bar once the rows do.
+        this._innerPanel.setAutoScroll(value ? "auto" : "y");
+        this.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns whether over-long rows scroll horizontally rather than ellipsising.
+     *
+     * @returns True when horizontal scrolling is on.
+     */
+    isHorizontalScrolling(): boolean {
+        return this._horizontalScrolling;
     }
 
     /**
