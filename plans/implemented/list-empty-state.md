@@ -258,9 +258,16 @@ Read the file first: [`frontend/src/shell/QueriesView.ts`](../../../sqladmin/.wo
 |---|---|
 | Modify | `typescript-ui`: `src/typescript/lib/component/list/AbstractSelectableList.ts` (options, fields, empty-state methods, minSize guard, breadcrumb; ensure row `setMaxSize` + `clampsToContentSize` override removed) |
 | Modify | `typescript-ui`: `tests/component/list/List.test.ts` (or a new sibling) — unit tests per *Expected Behaviour* |
+| Modify | `typescript-ui`: `tests/component/list/RegionFill.test.ts` — **drift, see below**: flip the `still reports the content-derived getMaxSize` case (L132–143, asserts `288`) to expect `UNBOUNDED`, and refresh the header rationale (L23–30) + that test's name. The 7 region-fill cases stay green (fill now comes from rows reporting unbounded max, not from `clampsToContentSize`-decoupled reporting). |
 | Modify | `sqladmin`: `frontend/src/shell/QueriesView.ts` (single-list rewrite; drop hint swap, null-guards, `hintText`, unused imports) |
 
 No files created or deleted. `List.ts` / `MultiSelectList.ts` are **not** touched (options inherited).
+
+### Drift — `RegionFill.test.ts` reverses a prior tested decision
+
+`RegionFill.test.ts` was added when `clampsToContentSize() === false` was introduced as the region-fill fix. It encodes that design: rows stay capped → a populated list keeps reporting a *finite* content max (`CONTENT_HEIGHT_13 = 288`), and `clampsToContentSize=false` decouples the self-clamp so the list still fills its region. Test #7 (`still reports the content-derived getMaxSize`, L132–143) asserts that finite report explicitly.
+
+This plan reverses the *mechanism*: uncap the rows (populated content max → `UNBOUNDED`) and drop `clampsToContentSize`. Region-fill is preserved (verified case-by-case: 7 of 8 tests still pass), but test #7 fails by design — reporting a finite content max is the exact behavior that caused the accordion crush this plan fixes. Test #7 must flip to `UNBOUNDED`; the other cases stay as regression guards under the new mechanism.
 
 ---
 
