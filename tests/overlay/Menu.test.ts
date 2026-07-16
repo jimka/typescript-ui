@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Menu } from '~/overlay/Menu';
 import { MenuItem, MenuItemConfig } from '~/component/container/MenuItem';
 import { DOM } from '~/core/DOM';
+import type { Rect } from '~/core/DOM';
 import { LayerManager } from '~/core/LayerManager';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -17,6 +18,21 @@ const CONFIG = {
 // VIEWPORT_MARGIN mirrored from Menu (private const) — a documented cosmetic
 // breathing-room constant, not a positioning magic number.
 const VIEWPORT_MARGIN = 4;
+
+/** Builds a full Rect from its four edges (width/height derived). Mirrors the
+ *  idiom in tests/overlay/OverlayPosition.test.ts. */
+function rect(left: number, top: number, right: number, bottom: number): Rect {
+    return {
+        x:      left,
+        y:      top,
+        left,
+        top,
+        right,
+        bottom,
+        width:  right - left,
+        height: bottom - top,
+    };
+}
 
 /** Bracket-accesses the private placeVertically with explicit numeric args. */
 function placeVertically(m: Menu, growTop: number, anchorTop: number, total: number, vpHeight: number): number {
@@ -46,7 +62,7 @@ describe('Menu mode guards', () => {
         expect(() => menu.hide()).toThrow(/rebuild mode/);
         expect(() => menu.setMenuWidth(100)).toThrow(/rebuild mode/);
         expect(() => menu.setScrollToBottomOnShow(true)).toThrow(/rebuild mode/);
-        expect(() => menu.toggleFor(DOM.sink.createElement('div'), 0, 0, [])).toThrow(/rebuild mode/);
+        expect(() => menu.toggleFor(DOM.sink.createElement('div'), rect(0, 0, 0, 0), [])).toThrow(/rebuild mode/);
     });
 });
 
@@ -576,5 +592,202 @@ describe('Menu vertical-scroll scrollbar gutter', () => {
         expect(menu.getHeight()).toBeGreaterThan(fitHeight);
 
         menu.hide();
+    });
+});
+
+describe('Menu rect-anchored toggleFor', () => {
+    afterEach(() => DOM.reset());
+
+    it('flips a short menu above a trigger flush at the bottom of the viewport', () => {
+        installTestDOM(CONFIG);
+
+        const menu    = new Menu();
+        const opener  = DOM.sink.createElement('div');
+        const trigger = rect(100, 772, 200, 796);
+
+        menu.toggleFor(opener, trigger, [{ text: 'A' }, { text: 'B' }]);
+
+        // Today it lands over the trigger — this is the bug's regression test.
+        expect(menu.getY() + menu.getHeight()).toBe(772);
+        expect(menu.getY()).toBeLessThan(772);
+    });
+
+    it('a long menu (60 items) flips, clamps to the room above, and scrolls', () => {
+        installTestDOM(CONFIG);
+
+        const menu    = new Menu();
+        const opener  = DOM.sink.createElement('div');
+        const trigger = rect(100, 772, 200, 796);
+        const items   = Array.from({ length: 60 }, (_, i) => ({ text: `Item ${i}` }));
+
+        menu.toggleFor(opener, trigger, items);
+
+        expect(menu.getY()).toBe(VIEWPORT_MARGIN);
+        expect(menu.getMaxSize()!.height).toBe(772 - VIEWPORT_MARGIN);
+        expect(menu.getHeight()).toBeLessThanOrEqual(772 - VIEWPORT_MARGIN);
+        // Its bottom never crosses the trigger's top.
+        expect(menu.getY() + menu.getHeight()).toBeLessThanOrEqual(772);
+    });
+
+    it('opens below a trigger that has room below it', () => {
+        installTestDOM(CONFIG);
+
+        const menu    = new Menu();
+        const opener  = DOM.sink.createElement('div');
+        const trigger = rect(100, 100, 200, 124);
+
+        menu.toggleFor(opener, trigger, [{ text: 'A' }]);
+
+        expect(menu.getY()).toBe(124);
+    });
+
+    it('reserves the scrollbar gutter on the flipped side when the content overflows above', () => {
+        installTestDOM(CONFIG);
+
+        const menu    = new Menu();
+        const opener  = DOM.sink.createElement('div');
+        const trigger = rect(100, 772, 200, 796);
+        const items   = Array.from({ length: 60 }, (_, i) => ({ text: `Item ${i}` }));
+
+        menu.toggleFor(opener, trigger, items);
+
+        // `available` came from the room above, so the overflow (and therefore
+        // the gutter) is detected against the correct side.
+        expect(menu.getInsets().getRight()).toBe(DOM.source.getScrollBarWidth());
+    });
+
+    it('clamps the horizontal position without affecting the flipped vertical position', () => {
+        installTestDOM(CONFIG);
+
+        const menu    = new Menu();
+        const opener  = DOM.sink.createElement('div');
+        const trigger = rect(1270, 772, 1290, 796);
+
+        menu.toggleFor(opener, trigger, [{ text: 'A' }]);
+
+        expect(menu.getX()).toBe(1280 - menu.getWidth() - VIEWPORT_MARGIN);
+    });
+
+    it('toggle identity: same opener closes, a different opener re-shows for it', () => {
+        installTestDOM(CONFIG);
+
+        const menu     = new Menu();
+        const openerA  = DOM.sink.createElement('div');
+        const openerB  = DOM.sink.createElement('div');
+        const trigger  = rect(100, 100, 200, 124);
+
+        menu.toggleFor(openerA, trigger, [{ text: 'A' }]);
+        expect(LayerManager.getTopLayer()).toBe(menu);
+
+        // hide()'s fade-out defers setVisible(false), but unregister() (the
+        // toggle-shut signal) runs synchronously.
+        menu.toggleFor(openerA, trigger, [{ text: 'A' }]);
+        expect(LayerManager.getTopLayer()).not.toBe(menu);
+
+        menu.toggleFor(openerB, trigger, [{ text: 'A' }]);
+        expect(LayerManager.getTopLayer()).toBe(menu);
+    });
+});
+
+describe('Menu rect-anchored toggleFor — empty-list suppression', () => {
+    afterEach(() => DOM.reset());
+
+    it('opens nothing: not the top layer and not mounted', () => {
+        installTestDOM(CONFIG);
+
+        const menu    = new Menu();
+        const opener  = DOM.sink.createElement('div');
+        const trigger = rect(100, 100, 200, 124);
+
+        menu.toggleFor(opener, trigger, []);
+
+        expect(LayerManager.getTopLayer()).not.toBe(menu);
+        expect(menu.isVisible()).toBe(false);
+    });
+
+    it('contrasts with show(0, 0, []), which still mounts (the deliberate asymmetry)', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.show(0, 0, []);
+
+        expect(menu.isVisible()).toBe(true);
+
+        menu.hide();
+    });
+
+    it('fires onClose exactly once', () => {
+        installTestDOM(CONFIG);
+
+        const menu    = new Menu();
+        const opener  = DOM.sink.createElement('div');
+        const trigger = rect(100, 100, 200, 124);
+        const spy     = vi.fn();
+
+        menu.toggleFor(opener, trigger, [], spy);
+
+        expect(spy).toHaveBeenCalledOnce();
+    });
+
+    it('records no opener: the next toggleFor for the same opener opens rather than toggling shut', () => {
+        installTestDOM(CONFIG);
+
+        const menu    = new Menu();
+        const opener  = DOM.sink.createElement('div');
+        const trigger = rect(100, 100, 200, 124);
+
+        menu.toggleFor(opener, trigger, []);
+        expect(menu.isVisible()).toBe(false);
+
+        menu.toggleFor(opener, trigger, [{ text: 'A' }]);
+        expect(menu.isVisible()).toBe(true);
+    });
+
+    it('the toggle-shut branch still wins over the empty check', () => {
+        installTestDOM(CONFIG);
+
+        const menu    = new Menu();
+        const opener  = DOM.sink.createElement('div');
+        const trigger = rect(100, 100, 200, 124);
+
+        menu.toggleFor(opener, trigger, [{ text: 'A' }]);
+        expect(LayerManager.getTopLayer()).toBe(menu);
+
+        // A provider that has since gone empty must still close the panel it
+        // opened, rather than stranding it open. This fails if the empty check
+        // is hoisted above the toggle-shut branch.
+        menu.toggleFor(opener, trigger, []);
+        expect(LayerManager.getTopLayer()).not.toBe(menu);
+    });
+});
+
+describe('Menu show(x, y, …) — pointer-anchored regression', () => {
+    afterEach(() => DOM.reset());
+
+    it('a long menu still pins to the margin and caps its height (unchanged from before the flip path)', () => {
+        installTestDOM(CONFIG);
+
+        const menu  = new Menu();
+        const items = Array.from({ length: 60 }, (_, i) => ({ text: `Item ${i}` }));
+
+        menu.show(100, 100, items);
+
+        expect(menu.getY()).toBe(VIEWPORT_MARGIN);
+
+        const maxHeight = menu.getMaxSize()!.height;
+
+        expect(maxHeight).toBeLessThan(800);
+        expect(menu.getHeight()).toBeLessThanOrEqual(maxHeight);
+    });
+
+    it('a short menu places its top at the cursor y — never flipped above it', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.show(100, 100, [{ text: 'A' }, { text: 'B' }]);
+
+        expect(menu.getY()).toBe(100);
     });
 });

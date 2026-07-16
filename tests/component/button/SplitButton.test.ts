@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SplitButton } from '~/component/button/SplitButton';
 import { DOM } from '~/core/DOM';
+import { LayerManager } from '~/core/LayerManager';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -64,5 +65,21 @@ describe('SplitButton dropdown when unattached', () => {
 
         expect(btn.getElement()).toBeFalsy();
         expect(() => btn.getMenuItems()).not.toThrow();
+    });
+});
+
+describe('SplitButton chevron with no menuItems', () => {
+    it('opens no panel and spins the chevron back down', () => {
+        // Regression: a SplitButton whose _menuItems defaults to [] used to open
+        // an empty ~8px panel on a chevron press. Menu.toggleFor now suppresses
+        // the empty open and fires onClose, so the optimistic chevron spin-up in
+        // _toggleMenu reverts rather than stranding the caret pointing up.
+        const btn = new SplitButton('Save');
+
+        btn.getElement(true);
+        (btn as any)._toggleMenu();
+
+        expect(LayerManager.getTopLayer()).toBeNull();
+        expect((btn as any)._chevron.getTransform()).toBe('rotate(0deg)');
     });
 });

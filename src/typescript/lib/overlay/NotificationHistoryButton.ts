@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Button, ButtonOptions } from "~/component/button/Button.js";
-import { Menu } from "~/overlay/Menu.js";
+import { MenuButton, MenuButtonOptions } from "~/component/button/MenuButton.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { Notification, BADGE_GLYPH } from "~/overlay/Notification.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { clock_rotate_left } from "~/glyphs/solid/clock_rotate_left.js";
-import { DOM } from "~/core/DOM.js";
 import { callable } from "~/core/Callable.js";
 
 Glyph.register(clock_rotate_left);
@@ -45,13 +43,46 @@ export function formatRelativeTime(timestampMs: number, nowMs: number): string {
 }
 
 /**
+ * Builds the menu item configs from the current notification history in
+ * chronological order (oldest first, latest at the bottom). Returns a single
+ * disabled placeholder when the history is empty. Module-level (uses only
+ * statics), passed through {@link NotificationHistoryButton}'s subclass
+ * defaults bag so it is re-invoked on every open. Module-internal (not
+ * barrel-exported, so it stays out of the public API) — exported only so the
+ * unit tests can pin its pure mapping directly.
+ *
+ * @returns The menu item descriptors for the current history.
+ */
+export function buildHistoryItems(): MenuItemConfig[] {
+    const history = Notification.getHistory();
+
+    if (history.length === 0) {
+        return [{ text: "No notifications yet", enabled: false }];
+    }
+
+    const now = Date.now();
+
+    // History is stored oldest-first; keep that order so the latest entries
+    // sit at the bottom (the menu opens scrolled there).
+    return history.map(record => ({
+        glyph:      BADGE_GLYPH[record.type],
+        // Tint the badge with the severity's border token — the same colour
+        // the live toast's badge uses.
+        glyphColor: `var(--ts-ui-notification-${record.type}-border)`,
+        text:       record.message,
+        shortcut:   formatRelativeTime(record.timestamp, now),
+        action:     () => Notification.showDetail(record.message, record.type),
+    }));
+}
+
+/**
  * Construction-time options for {@link NotificationHistoryButton}. Inherits
- * every {@link ButtonOptions} field; a consumer-supplied `glyph` overrides the
- * default clock icon.
+ * every {@link MenuButtonOptions} field; a consumer-supplied `glyph` overrides
+ * the default clock icon.
  *
  * @category Components
  */
-export interface NotificationHistoryButtonOptions extends ButtonOptions {}
+export interface NotificationHistoryButtonOptions extends MenuButtonOptions {}
 
 /**
  * A trigger button that opens a menu of recent notifications. The menu lists the
@@ -73,80 +104,30 @@ export interface NotificationHistoryButtonOptions extends ButtonOptions {}
  *
  * @category Components
  */
-class NotificationHistoryButton extends Button<NotificationHistoryButtonOptions> {
-
-    // Lazily created on first open and reused across opens (rebuild-mode Menu
-    // rebuilds its items on every toggle, so relative times and new entries are
-    // always current).
-    private _menu: Menu | null = null;
-
-    private readonly _boundToggleMenu: () => void = () => this.toggleMenu();
+class NotificationHistoryButton extends MenuButton<NotificationHistoryButtonOptions> {
 
     /**
      * Creates a NotificationHistoryButton seeded with the `clock-rotate-left`
-     * glyph. A consumer-supplied `glyph` in `options` still wins.
+     * glyph, the history provider, and scroll-to-bottom-on-show. A
+     * consumer-supplied option in `options` still wins over these seeds.
      *
      * @param options - Optional button configuration.
      */
     constructor(options?: NotificationHistoryButtonOptions) {
-        // The seed glyph lives in the defaults bag so a caller `options.glyph`
-        // overrides it (Button resolves `options.glyph ?? _defaultOptions.glyph`).
-        super(undefined, options, { glyph: "clock-rotate-left" });
+        // Seeds live in the defaults bag so a caller's options still win.
+        // History is chronological (latest at the bottom), so open scrolled to
+        // the bottom; the provider re-runs per open so relative times stay current.
+        super(undefined, options, {
+            glyph:                "clock-rotate-left",
+            menuItems:            buildHistoryItems,
+            scrollToBottomOnShow: true,
+        });
 
         this.getAria().setLabel("Notification history");
-        this.on("action", this._boundToggleMenu);
 
-        // Button wires the listener bag only for a plain Button; as a subclass we
+        // MenuButton wires the bag only for a plain MenuButton; as a subclass we
         // wire our own so a consumer `listeners` option is not silently dropped.
         this.applyListeners(options?.listeners);
-    }
-
-    /**
-     * Toggles the history menu anchored under the button's bottom-left corner.
-     * No-op when the button is not yet attached (no anchor rect to read).
-     */
-    private toggleMenu(): void {
-        const el = this.getElement();
-
-        if (!el) {
-            return;
-        }
-
-        const rect = DOM.source.getViewportRect(this);
-
-        // The history is chronological (latest at the bottom), so open scrolled to
-        // the bottom to reveal the most recent entries.
-        this._menu ??= new Menu().setScrollToBottomOnShow(true);
-        this._menu.toggleFor(el, rect.left, rect.bottom, this.buildItems());
-    }
-
-    /**
-     * Builds the menu item configs from the current notification history in
-     * chronological order (oldest first, latest at the bottom). Returns a single
-     * disabled placeholder when the history is empty.
-     *
-     * @returns The menu item descriptors for the current history.
-     */
-    private buildItems(): MenuItemConfig[] {
-        const history = Notification.getHistory();
-
-        if (history.length === 0) {
-            return [{ text: "No notifications yet", enabled: false }];
-        }
-
-        const now = Date.now();
-
-        // History is stored oldest-first; keep that order so the latest entries
-        // sit at the bottom (the menu opens scrolled there).
-        return history.map(record => ({
-            glyph:      BADGE_GLYPH[record.type],
-            // Tint the badge with the severity's border token — the same colour
-            // the live toast's badge uses.
-            glyphColor: `var(--ts-ui-notification-${record.type}-border)`,
-            text:       record.message,
-            shortcut:   formatRelativeTime(record.timestamp, now),
-            action:     () => Notification.showDetail(record.message, record.type),
-        }));
     }
 }
 

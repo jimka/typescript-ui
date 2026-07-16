@@ -682,7 +682,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
         // toggleFor excludes the trigger from the menu's outside-click dismissal
         // and remembers it, so re-pressing the overflow button closes the menu
         // instead of the close-then-reopen flash a bare show() would produce.
-        menu.toggleFor(triggerEl, rect.left, rect.bottom, configs);
+        menu.toggleFor(triggerEl, rect, configs);
     }
 }
 
