@@ -341,10 +341,12 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
 
     /**
      * Places the dropdown relative to an anchor rect at its current
-     * width/height, with viewport clamping on both axes. Picks the better of
-     * "below" or "above" the anchor vertically (more available space wins
-     * when neither side fully fits), and clamps horizontally so the panel
-     * never extends past either viewport edge.
+     * width/height. Picks the better of "below" or "above" the anchor
+     * vertically (more available space wins when neither side fully fits).
+     * Horizontally the panel left-aligns to the anchor, flipping to
+     * right-align with the anchor's right edge when the left alignment
+     * would overflow the viewport, and clamping only when neither alignment
+     * fits.
      *
      * Callers set `setWidth`/`setHeight` first, then invoke this helper.
      *
@@ -356,8 +358,9 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
         const vp   = DOM.source.getViewportSize();
 
         // Vertical growth: prefer below, flip above when below overflows and
-        // above has room, clamp horizontally into the viewport. The flip/clamp
-        // geometry lives in the shared pure primitive.
+        // above has room. Horizontally: align to the anchor's left, flip to
+        // its right when that overflows, clamp only as a last resort. The
+        // flip/align/clamp geometry lives in the shared pure primitive.
         const { x, y } = positionAnchored(rect, size, vp, { axis: "vertical" });
 
         this.setX(x);

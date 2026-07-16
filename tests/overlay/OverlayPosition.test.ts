@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { positionAnchored, clampIntoViewport, positionFlexibleAnchored } from '~/core/OverlayPosition';
+import { positionAnchored, positionAligned, positionFlexibleAnchored } from '~/core/OverlayPosition';
 import type { Rect } from '~/core/DOM';
 import type { Size } from '~/primitive/Size';
 
@@ -69,7 +69,7 @@ describe('positionAnchored — vertical axis', () => {
         expect(p.y).toBe(0);
     });
 
-    it('clamps the cross axis into [margin, viewport - size - margin]', () => {
+    it('right-aligns the cross axis to the anchor when the near alignment overflows', () => {
         const vp     = size(1000, 800);
         // anchor.left = 960 would push a 150-wide element past the right edge.
         const anchor = rect(960, 100, 990, 130);
@@ -77,8 +77,9 @@ describe('positionAnchored — vertical axis', () => {
 
         const p = positionAnchored(anchor, el, vp, { axis: 'vertical', margin: 8 });
 
-        // x clamped to viewport.width - size.width - margin = 1000 - 150 - 8 = 842.
-        expect(p.x).toBe(842);
+        // x right-aligns to the anchor's right edge (990 − 150 = 840), rather
+        // than being pushed to the margin bound at 842.
+        expect(p.x).toBe(840);
     });
 });
 
@@ -130,42 +131,69 @@ describe('positionAnchored — horizontal axis', () => {
     });
 });
 
-describe('clampIntoViewport', () => {
-    it('returns a point already inside unchanged', () => {
-        const vp = size(1000, 800);
-        const p  = clampIntoViewport(120, 240, size(100, 50), vp);
+describe('positionAligned', () => {
+    const viewportExtent = 1280;
+    const extent          = 120;
 
-        expect(p).toEqual({ x: 120, y: 240 });
+    it('fits-far: the near alignment fits, so the near edges align', () => {
+        const p = positionAligned(200, 300, extent, viewportExtent, 4);
+
+        expect(p).toBe(200);
     });
 
-    it('never returns a coordinate below margin', () => {
-        const vp = size(1000, 800);
-        const p  = clampIntoViewport(-50, -20, size(100, 50), vp, 8);
+    it('flips: the near alignment overflows but the far alignment fits, so the far edges align', () => {
+        // Right edges flush at 1270 — report 1's fix.
+        const p = positionAligned(1200, 1270, extent, viewportExtent, 4);
 
-        expect(p.x).toBe(8);
-        expect(p.y).toBe(8);
+        expect(p).toBe(1150);
     });
 
-    it('never returns a coordinate past extent - size - margin', () => {
-        const vp = size(1000, 800);
-        const p  = clampIntoViewport(2000, 2000, size(100, 50), vp, 8);
+    it('fits-neither: the anchor\'s far edge is off-viewport, so it clamps at viewport - extent - margin', () => {
+        const p = positionAligned(1270, 1290, extent, viewportExtent, 4);
 
-        expect(p.x).toBe(1000 - 100 - 8);
-        expect(p.y).toBe(800 - 50 - 8);
+        expect(p).toBe(1156);
     });
 
-    it('pins the top-left to margin when the element is larger than the viewport', () => {
-        const vp = size(1000, 800);
-        // Element taller than the viewport minus margins: the naive upper bound
-        // (viewport - size - margin) falls below the margin. A raw clamp whose
-        // min > max would return that negative bound and push the element
-        // off-screen; the primitive must instead pin the top-left at the margin
-        // (top-aligned) and let the caller's height-cap / scroll carry the
-        // overflow — matching the bespoke Menu.show clamp it replaced.
-        const p = clampIntoViewport(200, 500, size(100, 968), vp, 4);
+    it('fits-neither: the near alignment violates the margin guard, so it clamps to the margin', () => {
+        const p = positionAligned(0, 100, extent, viewportExtent, 4);
 
-        expect(p.y).toBe(4);
-        expect(p.x).toBe(200);
+        expect(p).toBe(4);
+    });
+
+    it('fits-neither: the element is wider than the viewport, so it clamps to the margin', () => {
+        const p = positionAligned(200, 300, 1400, viewportExtent, 4);
+
+        expect(p).toBe(4);
+    });
+
+    it('zero-size anchor with room to the right: grows right from the point', () => {
+        const p = positionAligned(500, 500, extent, viewportExtent, 4);
+
+        expect(p).toBe(500);
+    });
+
+    it('zero-size anchor at the right edge: the far edge lands on the cursor (report 3)', () => {
+        const p = positionAligned(1270, 1270, extent, viewportExtent, 4);
+
+        expect(p).toBe(1150);
+    });
+
+    it('the flip is margin-independent', () => {
+        const p = positionAligned(1200, 1270, extent, viewportExtent, 0);
+
+        expect(p).toBe(1150);
+    });
+
+    it('always lands within [margin, viewportExtent - extent - margin] for an in-viewport anchor', () => {
+        const margin = 4;
+
+        for (const near of [0, 100, 500, 1000, 1200, 1279]) {
+            const far = Math.min(viewportExtent, near + 30);
+            const p   = positionAligned(near, far, extent, viewportExtent, margin);
+
+            expect(p).toBeGreaterThanOrEqual(margin);
+            expect(p).toBeLessThanOrEqual(Math.max(margin, viewportExtent - extent - margin));
+        }
     });
 });
 

@@ -22,6 +22,25 @@ const V_PADDING   = 8;
 const MAX_WIDTH   = 300;
 const ITEM_HEIGHT = 20;
 
+// The cursor clearance box, mirrored from Tooltip's private statics. It is
+// anchored on the pointer hotspot and asymmetric about it, because the glyph
+// hangs down-right of the hotspot — see Tooltip.ts for the reasoning.
+const CURSOR_LEFT  = 4;
+const CURSOR_RIGHT = 12;
+const CURSOR_UP    = 0;
+const CURSOR_DOWN  = 12;
+const CURSOR_GAP   = 2;
+
+// Placement offsets derived from the box: how far past the cursor the tooltip's
+// near edge sits when it fits, and how far before the cursor its far edge sits
+// when it flips. The unflipped 14 is unchanged from the point-anchored version;
+// the flipped sides are tighter, since no glyph reaches up or far left of the
+// hotspot to clear.
+const PAST_X   = CURSOR_RIGHT + CURSOR_GAP;
+const PAST_Y   = CURSOR_DOWN  + CURSOR_GAP;
+const BEFORE_X = CURSOR_LEFT  + CURSOR_GAP;
+const BEFORE_Y = CURSOR_UP    + CURSOR_GAP;
+
 // The modelled source measures a single line: height = ceil(ascent + descent).
 // `_perLineHeight()` ceils that, so per-line === measured single-line height.
 function perLine(): number {
@@ -162,7 +181,7 @@ describe('Tooltip.show', () => {
         expect((inst() as any).getY()).toBeGreaterThanOrEqual(0);
     });
 
-    it('clamps x and y to viewport - size for huge coordinates', () => {
+    it('flips a tooltip at the far viewport corner so it ends just before the cursor', () => {
         installTestDOM(CONFIG);
 
         Tooltip.show('Hello', 99999, 99999);
@@ -170,10 +189,64 @@ describe('Tooltip.show', () => {
         const w = inst().getWidth();
         const h = inst().getHeight();
 
-        // clampedX = min(x + offset, vp.width - w) then max(0, …); for a huge x
-        // the right-edge clamp wins, so x === vp.width - w.
-        expect((inst() as any).getX()).toBe(CONFIG.viewport.width - w);
-        expect((inst() as any).getY()).toBe(CONFIG.viewport.height - h);
+        // The cursor clamps to (1280, 800), then both axes flip: there is no
+        // room past the cursor, so the tooltip's far edge ends before it rather
+        // than growing off-screen or landing under the cursor.
+        expect((inst() as any).getX()).toBe(CONFIG.viewport.width - w - BEFORE_X);
+        expect((inst() as any).getY()).toBe(CONFIG.viewport.height - h - BEFORE_Y);
+    });
+
+    it('sits past the cursor when both axes fit (bit-identical to the point-anchored version)', () => {
+        installTestDOM(CONFIG);
+
+        Tooltip.show('Hello', 100, 100);
+
+        expect((inst() as any).getX()).toBe(100 + PAST_X);
+        expect((inst() as any).getY()).toBe(100 + PAST_Y);
+    });
+
+    it('flips horizontally near the right edge so the right edge clears the cursor by BEFORE_X (report 2)', () => {
+        installTestDOM(CONFIG);
+
+        Tooltip.show('Hello', 1270, 100);
+
+        const w = inst().getWidth();
+
+        // BEFORE_X, not PAST_X: the glyph reaches only CURSOR_LEFT px left of the
+        // hotspot, so a flipped tooltip hugs the cursor instead of standing off it
+        // by the full unflipped distance.
+        expect((inst() as any).getX()).toBe(1270 - w - BEFORE_X);
+    });
+
+    it('flips vertically near the bottom edge so the bottom edge clears the cursor by BEFORE_Y (report 2)', () => {
+        installTestDOM(CONFIG);
+
+        Tooltip.show('Hello', 100, 790);
+
+        const h = inst().getHeight();
+
+        // Nothing at all sits above the hotspot (CURSOR_UP is 0), so a tooltip
+        // flipped above the cursor stands off it by only the bare gap.
+        expect((inst() as any).getY()).toBe(790 - h - BEFORE_Y);
+    });
+
+    it('report-2 invariant: the cursor point is never inside the tooltip rect, for any in-viewport cursor', () => {
+        installTestDOM(CONFIG);
+
+        for (const x of [0, 320, 640, 960, 1279]) {
+            for (const y of [0, 200, 400, 600, 799]) {
+                Tooltip.show('Hi', x, y);
+
+                const tx = (inst() as any).getX();
+                const ty = (inst() as any).getY();
+                const w  = inst().getWidth();
+                const h  = inst().getHeight();
+
+                const cursorInside = x >= tx && x <= tx + w && y >= ty && y <= ty + h;
+
+                expect(cursorInside).toBe(false);
+            }
+        }
     });
 
     // NOTE (offline harness limit): the contract clause "when the widest line

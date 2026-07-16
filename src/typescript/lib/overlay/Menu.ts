@@ -4,7 +4,7 @@ import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle, Rect } from "~/core/DOM.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
-import { clampIntoViewport, positionFlexibleAnchored } from "~/core/OverlayPosition.js";
+import { positionAligned, positionFlexibleAnchored } from "~/core/OverlayPosition.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
 import { Insets } from "~/primitive/Insets.js";
 import type { Size } from "~/primitive/Size.js";
@@ -12,6 +12,7 @@ import { VBox } from "~/layout/VBox.js";
 import { MenuItem, MenuItemConfig } from "~/component/container/MenuItem.js";
 import { MenuSeparator } from "~/component/container/MenuSeparator.js";
 import { callable } from "~/core/Callable.js";
+import { Util } from "~/core/Util.js";
 
 /**
  * Pixel bounds a content-sized menu panel clamps to. Menus size to their widest
@@ -30,38 +31,39 @@ const MENU_ANIM_DURATION_MS = 120;
  *  inset used by other floating panels; purely cosmetic breathing room. */
 const VIEWPORT_MARGIN = 4;
 
-/** Where a rebuild-mode menu is anchored: at a cursor point, or against a trigger's rect. */
-type MenuAnchor =
-    | { kind: "pointer"; x: number; y: number }
-    | { kind: "rect";    rect: Rect };
-
 /** A resolved rebuild-mode placement: the panel's top-left plus the height room at it. */
 interface MenuPlacement { x: number; y: number; available: number; }
 
 /**
- * Resolves a rebuild-mode panel's placement for `anchor` at `size`. Pointer-anchored
- * menus clamp into the viewport without flipping; rect-anchored menus grow below the
- * trigger and flip above it when the room below is short.
+ * A zero-size rect at a cursor point. A cursor is a degenerate anchor: with
+ * `left === right` and `top === bottom`, the adjacency and alignment flips
+ * collapse to the same operation — grow down-right from the point, or end at it.
+ * That is native context-menu behaviour, so a pointer needs no separate path.
+ */
+function pointRect(x: number, y: number): Rect {
+    return { x, y, left: x, top: y, right: x, bottom: y, width: 0, height: 0 };
+}
+
+/**
+ * Resolves a rebuild-mode panel's placement against `anchorRect` at `size`.
+ * Vertically the panel is size-flexible (it caps its height and scrolls), so it
+ * grows below the anchor and flips to end at the anchor's top when the room below
+ * is short. Horizontally it is fixed-size (a natural width, no horizontal scroll),
+ * so its left edge aligns with the anchor's left and flips to align its right edge
+ * with the anchor's right when the left alignment overflows.
  *
- * @param anchor - The cursor point or trigger rect to place `size` against.
+ * @param anchorRect - The trigger rect, or a zero-size rect at the cursor.
  * @param size - The panel's current width/height to place.
- * @param vp - The viewport size to clamp/flip within.
+ * @param vp - The viewport size to flip/clamp within.
  * @returns The resolved top-left coordinate and the vertical room available there.
  */
-function resolvePlacement(anchor: MenuAnchor, size: Size, vp: Size): MenuPlacement {
-    if (anchor.kind === "pointer") {
-        const p = clampIntoViewport(anchor.x, anchor.y, size, vp, VIEWPORT_MARGIN);
+function resolvePlacement(anchorRect: Rect, size: Size, vp: Size): MenuPlacement {
+    const v = positionFlexibleAnchored(anchorRect.top, anchorRect.bottom, size.height, vp.height, VIEWPORT_MARGIN);
+    const x = positionAligned(anchorRect.left, anchorRect.right, size.width, vp.width, VIEWPORT_MARGIN);
 
-        return { x: p.x, y: p.y, available: vp.height - p.y - VIEWPORT_MARGIN };
-    }
-
-    const v = positionFlexibleAnchored(anchor.rect.top, anchor.rect.bottom, size.height, vp.height, VIEWPORT_MARGIN);
-
-    // ONLY the horizontal clamp is taken from clampIntoViewport. `v.start` is already
-    // final: re-clamping it would pin an over-tall flipped menu back to the top margin
-    // and let it grow down across the trigger — the bug this path exists to fix.
-    const x = clampIntoViewport(anchor.rect.left, v.start, size, vp, VIEWPORT_MARGIN).x;
-
+    // `available` is the room on the side the panel actually landed on — never
+    // re-derive it from `v.start`, which measures the wrong side for a flipped
+    // panel and lets an over-tall menu grow back across the cursor.
     return { x, y: v.start, available: v.available };
 }
 
@@ -206,7 +208,9 @@ class Menu extends Component implements DismissableLayer {
      * Shows the menu at the given viewport coordinates, replacing any previously
      * displayed items with the new list. **Rebuild-mode only.**
      *
-     * The menu is clamped to the visible viewport so it never overflows any edge.
+     * The menu grows down-right from the cursor; when there is no room it flips
+     * so its bottom / right edge ends at the cursor, never covering it. A menu
+     * taller than the room on the side it lands on is capped there and scrolls.
      *
      * @param x - Horizontal viewport coordinate (e.g. `MouseEvent.clientX`).
      * @param y - Vertical viewport coordinate (e.g. `MouseEvent.clientY`).
@@ -224,23 +228,33 @@ class Menu extends Component implements DismissableLayer {
     show(x: number, y: number, configs: MenuItemConfig[], onClose?: () => void, excludeEl?: Handle | null): this {
         this.assertRebuildMode("show");
 
-        return this.showAnchored({ kind: "pointer", x, y }, configs, onClose ?? null, excludeEl ?? null);
+        // The placement primitives only guarantee an on-screen result for an anchor
+        // inside the viewport. A cursor from a real event always is; show() is public,
+        // so pin it here rather than in showAnchored, which also takes real trigger
+        // rects that may legitimately extend past a viewport edge.
+        const vp = DOM.source.getViewportSize();
+
+        return this.showAnchored(
+            pointRect(Util.clamp(x, 0, vp.width), Util.clamp(y, 0, vp.height)),
+            configs, onClose ?? null, excludeEl ?? null,
+        );
     }
 
     /**
-     * Rebuild-mode geometry-and-content core shared by {@link show} (pointer-anchored,
-     * clamp-not-flip) and {@link toggleFor} (rect-anchored, flips above the trigger
-     * when the room below is short). Tears down and rebuilds the item list, then
-     * resolves `anchor` to a placement (clamped for a pointer, flip-aware for a
-     * rect) and applies the resulting position and height clamp.
+     * Rebuild-mode geometry-and-content core shared by {@link show} (pointer-anchored)
+     * and {@link toggleFor} (rect-anchored). Both grow down-right from `anchorRect`
+     * and flip per axis when the room runs short. Tears down and rebuilds the item
+     * list, then resolves `anchorRect` to a placement and applies the resulting
+     * position and height clamp.
      *
-     * @param anchor - The cursor point or trigger rect to place the panel against.
+     * @param anchorRect - The cursor point (as a zero-size rect) or trigger rect to
+     *   place the panel against.
      * @param configs - Ordered list of item descriptors to render.
      * @param onClose - Callback invoked once when the menu next closes, or `null`.
      * @param excludeEl - Element whose subtree is exempt from the outside-click
      *   check, or `null`.
      */
-    private showAnchored(anchor: MenuAnchor, configs: MenuItemConfig[], onClose: (() => void) | null, excludeEl: Handle | null): this {
+    private showAnchored(anchorRect: Rect, configs: MenuItemConfig[], onClose: (() => void) | null, excludeEl: Handle | null): this {
         this._rebuildOnClose = onClose;
         this._excludedEl = excludeEl;
 
@@ -296,7 +310,7 @@ class Menu extends Component implements DismissableLayer {
         // First pass at the natural width resolves the vertical room. Width does not
         // affect the vertical placement, so `available` stays correct after the
         // scrollbar-gutter widening below; only `x` needs the second pass.
-        const available = resolvePlacement(anchor, { width: naturalWidth, height: totalHeight }, vp).available;
+        const available = resolvePlacement(anchorRect, { width: naturalWidth, height: totalHeight }, vp).available;
 
         // When the content is taller than the room on the side the menu lands on,
         // `applyViewportHeightClamp` caps the height and the `overflow-y: auto`
@@ -310,7 +324,7 @@ class Menu extends Component implements DismissableLayer {
         this.setInsets(new Insets(4, gutter, 4, 0));
         this.setWidth(naturalWidth + gutter);
 
-        const placement = resolvePlacement(anchor, { width: this.getWidth(), height: totalHeight }, vp);
+        const placement = resolvePlacement(anchorRect, { width: this.getWidth(), height: totalHeight }, vp);
 
         this.setX(placement.x);
         this.setY(placement.y);
@@ -354,9 +368,11 @@ class Menu extends Component implements DismissableLayer {
      * of the *same* opener closes the menu instead of reopening it. Pressing a
      * *different* opener while the menu is open switches it to that opener. The
      * menu opens below `anchorRect` and flips above it when the room below is
-     * short. Plain {@link show} stays the right call for right-click context
-     * menus, which clamp (never flip) and should reposition — not close — on a
-     * repeat trigger.
+     * short, right-aligning to it when the left alignment overflows. Plain
+     * {@link show} stays the right call for right-click context menus, which
+     * should reposition — not close — on a repeat trigger; the remaining
+     * distinction from `toggleFor` is the toggle identity, the opener exclusion,
+     * and the empty-list suppression below.
      *
      * An empty `configs` opens nothing: the menu is not shown, `onClose` fires once
      * so the opener can revert an open-state affordance, and no opener state is
@@ -399,7 +415,7 @@ class Menu extends Component implements DismissableLayer {
         }
 
         // Closed, or open for a different opener: (re)show anchored for this one.
-        this.showAnchored({ kind: "rect", rect: anchorRect }, configs, onClose ?? null, openerEl);
+        this.showAnchored(anchorRect, configs, onClose ?? null, openerEl);
         this._currentOpener = openerEl;
 
         return this;

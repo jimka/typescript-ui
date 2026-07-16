@@ -2,6 +2,8 @@
 
 [`Tooltip`](/api/overlay/classes/Tooltip) is a singleton hover hint. Use `Tooltip.attach(component, text)` to wire a 500 ms delay tooltip onto any component, or `Tooltip.show` / `Tooltip.hide` for manual control.
 
+The tooltip appears offset down-right of the cursor, and flips to sit up-left of it near a viewport edge, so it never covers the pointer it's hinting at.
+
 ## Attach to a component
 
 ```typescript
