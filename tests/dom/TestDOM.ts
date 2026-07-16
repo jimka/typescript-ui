@@ -741,7 +741,11 @@ export class ModelledDOMSource implements DOMSource {
 
     measureText(text: string, options?: TextMeasureOptions): TextMetrics {
         const font       = this.font();
-        const lineHeight = font.ascent + font.descent;
+        const fontBox    = font.ascent + font.descent;
+        const lineHeight = Math.max(fontBox, this.resolveLineHeightPx(options?.lineHeight, fontBox));
+        // Mirror production: a line box taller than the font box splits the
+        // surplus evenly above and below, which lowers the baseline.
+        const baseline   = Math.round((lineHeight - fontBox) / 2 + font.ascent);
         let   width      = 0;
 
         for (const ch of text) {
@@ -761,15 +765,31 @@ export class ModelledDOMSource implements DOMSource {
             return {
                 width:    Math.ceil(maxWidth),
                 height:   Math.ceil(lineHeight * lines),
-                baseline: Math.round(font.ascent),
+                baseline,
             };
         }
 
         return {
             width:    Math.ceil(width),
             height:   Math.ceil(lineHeight),
-            baseline: Math.round(font.ascent),
+            baseline,
         };
+    }
+
+    /**
+     * Resolves a CSS `line-height` value to a pixel number for the modelled
+     * measurement path, falling back to the font box when the value is
+     * absent or not a bare pixel/unitless number (e.g. `normal`,
+     * `calc(...)`) — the model does not evaluate CSS expressions.
+     */
+    private resolveLineHeightPx(lineHeight: string | undefined, fontBox: number): number {
+        if (lineHeight === undefined) {
+            return fontBox;
+        }
+
+        const px = parseFloat(lineHeight);
+
+        return isNaN(px) ? fontBox : px;
     }
 
     resolveFontSizePx(fontSizeCSS: string): number {
