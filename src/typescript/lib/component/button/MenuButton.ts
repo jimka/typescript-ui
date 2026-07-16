@@ -168,6 +168,13 @@ class MenuButton<TOptions extends MenuButtonOptions = MenuButtonOptions> extends
         }
 
         this._menu ??= new Menu().setScrollToBottomOnShow(this.isScrollToBottomOnShow());
+
+        // Items are resolved eagerly as an argument, so a provider re-runs on
+        // every toggle — including a toggle that only closes the menu, whose
+        // result Menu.toggleFor discards. Keeping toggleFor the single source of
+        // truth for open-vs-close is worth that spare provider call; the
+        // alternative (asking the menu whether it is open before resolving)
+        // reintroduces the open-state desync toggleFor exists to avoid.
         this._menu.toggleFor(el, DOM.source.getViewportRect(this), this.resolveMenuItems());
     }
 

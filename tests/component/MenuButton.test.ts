@@ -177,7 +177,7 @@ describe('MenuButton opening the dropdown', () => {
         toggle(btn); // close, so this test leaves no menu registered behind it
     });
 
-    it('a provider is invoked per open, not once', () => {
+    it('re-invokes the provider on each open, so its items are never a one-time capture', () => {
         installTestDOM(CONFIG);
 
         const provider = vi.fn(() => [{ text: 'A' }]);
@@ -185,12 +185,21 @@ describe('MenuButton opening the dropdown', () => {
 
         btn.getElement(true);
 
-        toggle(btn); // open
-        toggle(btn); // close (toggle-shut)
-        toggle(btn); // open again
-        toggle(btn); // close, so this test leaves no menu registered behind it
+        toggle(btn); // open — the provider resolves the items for this open
+        expect(provider).toHaveBeenCalledTimes(1);
 
-        expect(provider).toHaveBeenCalledTimes(4);
+        toggle(btn); // close (toggle-shut)
+        toggle(btn); // open again — the provider re-runs rather than reusing the first result
+
+        // The reopen re-invoked the provider (count grew past 1), which is what
+        // keeps a provider's output fresh per open — e.g. NotificationHistoryButton's
+        // relative times. toggleMenu() resolves the items eagerly as an argument to
+        // toggleFor, so the intervening close ran the provider too; that is why the
+        // open/close/open drive lands on three calls, not two. The contract under
+        // test is the re-invocation, not the exact incidental close call.
+        expect(provider).toHaveBeenCalledTimes(3);
+
+        toggle(btn); // cleanup close, so this test leaves no menu registered behind it
     });
 
     it('new NotificationHistoryButton resolves glyph clock-rotate-left and an empty-history placeholder', () => {
