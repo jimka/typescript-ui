@@ -2380,6 +2380,18 @@ class Accordion extends LayoutManager {
                     this._toggleAnimations = 0;
                     this.setSectionTransitions(false);
                     container?.setTransition(null);
+
+                    // Re-lay-out the host now that the geometry has settled. The
+                    // toggle's own relayoutHost ran while this animation was
+                    // still in flight, so every DOM measurement it took saw the
+                    // pre-toggle extent: a scrolling host measured its scrollbar
+                    // gutter against content that was mid-transition and still
+                    // overflowing, and so kept reserving the gutter even though
+                    // the bar disappears once the animation lands. Nothing else
+                    // re-measures afterwards, so the stale reserve would linger
+                    // until some unrelated layout — in practice, the next toggle
+                    // — making the reclaim run one gesture behind.
+                    this.relayoutHost();
                 }
             },
         });
