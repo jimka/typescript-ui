@@ -44,6 +44,10 @@ panel.addComponent(tags);
 
 `MultiSelectList` inherits the `rendererFactory` option / `setRendererFactory` and the per-item `glyph` field from the shared list base, so a [`GlyphListItemRenderer`](/api/component/list/classes/GlyphListItemRenderer) paints an icon beside each row exactly as in [`List`](/components/List#item-renderers).
 
+## Horizontal scrolling
+
+`MultiSelectList` inherits the `horizontalScrolling` option / `setHorizontalScrolling` from the shared list base, and it behaves exactly as in [`List`](/components/List#horizontal-scrolling): off by default, so an over-long row truncates with an ellipsis until you opt into scrolling it.
+
 ## Binding
 
 `MultiSelectList` implements [`Bindable<string[]>`](/api/core/interfaces/Bindable) directly, so a [`Binding`](/api/core/classes/Binding) can wire it without explicit accessors:
