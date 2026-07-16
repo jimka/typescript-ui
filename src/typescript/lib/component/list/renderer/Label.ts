@@ -19,8 +19,9 @@ import { callable } from "~/core/Callable.js";
  * custom renderer is set. The label keeps `Text`'s default `truncate: true`, so
  * a label wider than its row clips with an ellipsis — reproducing the row
  * chrome the list carried before renderers existed. The label is sized to fill
- * the row in {@link layoutChildren} rather than to its natural width, because a
- * list stretches rows to full width instead of scrolling horizontally.
+ * the row in {@link layoutChildren} rather than to its natural width: the row
+ * is never narrower than {@link getContentWidth}, so filling it lets the
+ * selection wash span the whole row without clipping the text.
  *
  * @example
  * ```typescript
@@ -32,6 +33,13 @@ import { callable } from "~/core/Callable.js";
 class LabelListItemRenderer extends ListItemRenderer {
 
     private _label: Text;
+    /**
+     * Whether `_label`'s cached natural width matches the bound text. The label
+     * runs with `autoMeasure(false)`, so the measure is driven from
+     * {@link getContentWidth} rather than {@link update} — a list with
+     * horizontal scrolling off never asks, and so never pays for it.
+     */
+    private _measured: boolean = false;
 
     /**
      * Constructs a label renderer with an empty text node. The label is
@@ -63,6 +71,22 @@ class LabelListItemRenderer extends ListItemRenderer {
      */
     update(context: ListItemRenderContext): void {
         this._label.setText(context.item.label);
+        this._measured = false;
+    }
+
+    /**
+     * Returns the natural width of the bound label, measuring it on first ask
+     * after each {@link update}.
+     *
+     * @returns The label's natural width in pixels.
+     */
+    getContentWidth(): number {
+        if (!this._measured) {
+            this._label.measure();
+            this._measured = true;
+        }
+
+        return this._label.getPreferredSize()?.width ?? 0;
     }
 
     /**

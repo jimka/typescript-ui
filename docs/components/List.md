@@ -76,6 +76,34 @@ list.setStore(myStore, 'name', 'id', 'icon');
 
 A `List` fills the space its parent's layout manager allocates rather than shrink-wrapping to its rows: placed in a stretching region — a [`Border`](/api/layout/classes/Border) `WEST`/`CENTER`, a `Fit`/`Box` cell with a vertical fill — it grows to the region's full height and scrolls any overflow internally, instead of capping at its content height. An explicit `setMaxSize` / `setMinSize` (or the option-bag `maxSize` / `minSize`) still binds as a hard ceiling or floor. To size a free-standing list to its content instead, give it an explicit `preferredSize` and place it where the layout honours that (e.g. an `Absolute` cell).
 
+## Horizontal scrolling
+
+A row too narrow for its label truncates it with an ellipsis. That is the default, and it is usually what you want: most labels are identified by how they *start*, so trailing truncation keeps the part you navigate by. Turn it off with the `horizontalScrolling` option (or [`setHorizontalScrolling`](/api/component/list/classes/List#sethorizontalscrolling) at runtime) when the label's tail is what identifies it and the list is too narrow to show it — a SQL query where every row opens with `SELECT` and the `WHERE` clause is the identity, say:
+
+```typescript
+const list = List({ horizontalScrolling: true });
+```
+
+Every row is then sized to the widest bound row's natural width, or the viewport, whichever is larger, and the list raises a horizontal scrollbar once the rows exceed it. Rows stay full-width relative to each other, so the selection wash still spans the whole row when scrolled.
+
+Leave it off for a dropdown surface — [`ComboBox`](/api/component/input/classes/ComboBox) and [`AutoCompleteField`](/api/component/input/classes/AutoCompleteField) are built on `List`, and a horizontal scrollbar under a transient popup reads as a glitch. Bear in mind too that scrolling right hides the row's left edge, so it trades one truncation for another rather than removing it.
+
+A row's natural width comes from its renderer's [`getContentWidth`](/api/component/list/classes/ListItemRenderer#getcontentwidth). The built-in renderers implement it; a custom renderer inherits the base implementation, which reports no intrinsic width, so its rows stay at the viewport width and never scroll. Override it to opt a custom renderer in:
+
+```typescript
+class MyRenderer extends ListItemRenderer {
+    private _label: Text = new Text();
+
+    getContentWidth(): number {
+        return this._label.getPreferredSize()?.width ?? 0;
+    }
+
+    // update / layoutChildren as usual
+}
+```
+
+The measurement only runs while the option is on, so a list that truncates pays nothing for it.
+
 ## Theme tokens
 
 Visual chrome is driven by the [`Theme.list`](/api/core/interfaces/Theme) tokens — `--ts-ui-list-bg`, `--ts-ui-list-border`, `--ts-ui-list-row-hover-bg`, `--ts-ui-list-row-selected-bg`, `--ts-ui-list-row-selected-color`, `--ts-ui-list-row-focus-ring`, `--ts-ui-list-row-disabled-color`, and `--ts-ui-list-row-separator`. The separator token defaults to `transparent`; a theme can override it to a `1px solid rgba(...)` colour for a denser, ruled row look.

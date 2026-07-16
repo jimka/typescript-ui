@@ -51,6 +51,13 @@ class GlyphListItemRenderer extends ListItemRenderer {
     private _icon:         Glyph | null  = null;
     private _label:        Text;
     private _currentGlyph: string | null = null;
+    /**
+     * Whether `_label`'s cached natural width matches the bound text. The label
+     * runs with `autoMeasure(false)`, so the measure is driven from
+     * {@link getContentWidth} rather than {@link update} — a list with
+     * horizontal scrolling off never asks, and so never pays for it.
+     */
+    private _measured:     boolean       = false;
 
     /**
      * Constructs a glyph+label renderer with an empty label and no icon. Both
@@ -99,6 +106,26 @@ class GlyphListItemRenderer extends ListItemRenderer {
         }
 
         this._label.setText(context.item.label);
+        this._measured = false;
+    }
+
+    /**
+     * Returns the natural width of the bound content — the icon gutter, when an
+     * icon is bound, plus the label's natural width (measured on first ask
+     * after each {@link update}). Mirrors {@link layoutChildren}'s geometry, so
+     * a row sized to this width fits the icon and the whole label.
+     *
+     * @returns The bound content's natural width in pixels.
+     */
+    getContentWidth(): number {
+        if (!this._measured) {
+            this._label.measure();
+            this._measured = true;
+        }
+
+        const labelWidth = this._label.getPreferredSize()?.width ?? 0;
+
+        return (this._icon ? ICON_WIDTH : 0) + labelWidth;
     }
 
     /**

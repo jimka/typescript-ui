@@ -22,9 +22,9 @@ import { ListItemRenderContext } from "~/component/list/ListItemRenderContext.js
  *
  * Subclasses implement {@link update} and {@link layoutChildren}. See
  * [`LabelListItemRenderer`](/api/component/list/classes/LabelListItemRenderer)
- * for the canonical default. Unlike `TreeNodeRenderer` there is no
- * `getContentWidth` — a list stretches its rows to full width and never
- * computes a horizontal scroll extent.
+ * for the canonical default. {@link getContentWidth} is optional: it is read
+ * only by a list running with `horizontalScrolling` on, and the base
+ * implementation already reports "no intrinsic width".
  *
  * Not wrapped with `callable()` — abstract classes are never instantiated.
  *
@@ -45,6 +45,29 @@ export abstract class ListItemRenderer extends Component {
      * mapped to a different item.
      */
     abstract update(context: ListItemRenderContext): void;
+
+    /**
+     * Returns the natural width of the currently bound content — the width at
+     * which it renders without clipping.
+     *
+     * Read only by a list running with
+     * [`horizontalScrolling`](/api/component/list/classes/List#sethorizontalscrolling)
+     * on, which sizes every row to the widest value across the bound items so
+     * over-long content scrolls into view instead of ellipsising. A list with
+     * horizontal scrolling off — the default — never calls this, so a renderer
+     * that measures lazily pays nothing for it.
+     *
+     * The base implementation returns 0, meaning "no intrinsic width": rows
+     * stay at the viewport width and never extend the horizontal scroll extent.
+     * That keeps a custom renderer written against the previous contract
+     * working unchanged; override it to opt that renderer into horizontal
+     * scrolling.
+     *
+     * @returns The bound content's natural width in pixels, or 0 when unknown.
+     */
+    getContentWidth(): number {
+        return 0;
+    }
 
     /**
      * Positions this renderer's internal children within the given box.
