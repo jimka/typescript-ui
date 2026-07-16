@@ -17,10 +17,11 @@ const CONFIG = {
 
 // Contract constants mirrored from Tooltip (private statics). These are
 // documented sizing constants, not magic positioning px.
-const H_PADDING   = 16;
-const V_PADDING   = 8;
-const MAX_WIDTH   = 300;
-const ITEM_HEIGHT = 20;
+const H_PADDING     = 16;
+const V_PADDING     = 8;
+const MAX_WIDTH     = 300;
+const ITEM_HEIGHT   = 20;
+const CURSOR_OFFSET = 14;
 
 // The modelled source measures a single line: height = ceil(ascent + descent).
 // `_perLineHeight()` ceils that, so per-line === measured single-line height.
@@ -162,7 +163,7 @@ describe('Tooltip.show', () => {
         expect((inst() as any).getY()).toBeGreaterThanOrEqual(0);
     });
 
-    it('clamps x and y to viewport - size for huge coordinates', () => {
+    it('flips a tooltip at the far viewport corner so it ends CURSOR_OFFSET before the cursor', () => {
         installTestDOM(CONFIG);
 
         Tooltip.show('Hello', 99999, 99999);
@@ -170,10 +171,59 @@ describe('Tooltip.show', () => {
         const w = inst().getWidth();
         const h = inst().getHeight();
 
-        // clampedX = min(x + offset, vp.width - w) then max(0, …); for a huge x
-        // the right-edge clamp wins, so x === vp.width - w.
-        expect((inst() as any).getX()).toBe(CONFIG.viewport.width - w);
-        expect((inst() as any).getY()).toBe(CONFIG.viewport.height - h);
+        // The cursor clamps to (1280, 800), then both axes flip: there is no
+        // room past the cursor, so the tooltip's far edge ends CURSOR_OFFSET
+        // before it rather than growing off-screen or landing under the cursor.
+        expect((inst() as any).getX()).toBe(CONFIG.viewport.width - w - CURSOR_OFFSET);
+        expect((inst() as any).getY()).toBe(CONFIG.viewport.height - h - CURSOR_OFFSET);
+    });
+
+    it('sits CURSOR_OFFSET past the cursor when both axes fit (bit-identical to today)', () => {
+        installTestDOM(CONFIG);
+
+        Tooltip.show('Hello', 100, 100);
+
+        expect((inst() as any).getX()).toBe(100 + CURSOR_OFFSET);
+        expect((inst() as any).getY()).toBe(100 + CURSOR_OFFSET);
+    });
+
+    it('flips horizontally near the right edge so the right edge sits CURSOR_OFFSET left of the cursor (report 2)', () => {
+        installTestDOM(CONFIG);
+
+        Tooltip.show('Hello', 1270, 100);
+
+        const w = inst().getWidth();
+
+        expect((inst() as any).getX()).toBe(1270 - w - CURSOR_OFFSET);
+    });
+
+    it('flips vertically near the bottom edge so the bottom edge sits CURSOR_OFFSET above the cursor (report 2)', () => {
+        installTestDOM(CONFIG);
+
+        Tooltip.show('Hello', 100, 790);
+
+        const h = inst().getHeight();
+
+        expect((inst() as any).getY()).toBe(790 - h - CURSOR_OFFSET);
+    });
+
+    it('report-2 invariant: the cursor point is never inside the tooltip rect, for any in-viewport cursor', () => {
+        installTestDOM(CONFIG);
+
+        for (const x of [0, 320, 640, 960, 1279]) {
+            for (const y of [0, 200, 400, 600, 799]) {
+                Tooltip.show('Hi', x, y);
+
+                const tx = (inst() as any).getX();
+                const ty = (inst() as any).getY();
+                const w  = inst().getWidth();
+                const h  = inst().getHeight();
+
+                const cursorInside = x >= tx && x <= tx + w && y >= ty && y <= ty + h;
+
+                expect(cursorInside).toBe(false);
+            }
+        }
     });
 
     // NOTE (offline harness limit): the contract clause "when the widest line

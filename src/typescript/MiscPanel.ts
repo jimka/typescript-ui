@@ -640,8 +640,9 @@ class MiscPanel extends Panel {
 
         // A deliberately tall context menu (40 items) so it exceeds the
         // viewport height. Right-clicking near the bottom of the screen shows
-        // the menu clamp to the available room and scroll vertically rather
-        // than running off-screen with unreachable items.
+        // the menu flip so its bottom ends at the cursor and cap its height
+        // to scroll vertically rather than running off-screen with unreachable
+        // items or covering the cursor.
         const tallContextMenu = new Menu();
 
         const tallItems: MenuItemConfig[] = [];
@@ -651,7 +652,7 @@ class MiscPanel extends Panel {
         }
 
         const buttonTallContextMenu = new Button("Right-click for a tall (scrolling) menu");
-        Tooltip.attach(buttonTallContextMenu, "Right-click near the screen edge to see the menu clamp and scroll");
+        Tooltip.attach(buttonTallContextMenu, "Right-click near the screen edge to see the menu flip and scroll");
         Event.addListener(buttonTallContextMenu, "contextmenu", (e: MouseEvent) => {
             e.preventDefault();
             Tooltip.hide();

@@ -4,7 +4,7 @@ import { Component } from "~/core/Component.js";
 import { DOM, type Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { LayerManager } from "~/core/LayerManager.js";
-import { clampIntoViewport } from "~/core/OverlayPosition.js";
+import { positionAdjacent } from "~/core/OverlayPosition.js";
 import { Util } from "~/core/Util.js";
 import { Animation } from "~/core/Animation.js";
 import { Text } from "~/component/input/Text.js";
@@ -222,17 +222,17 @@ export class Tooltip extends Component {
 
         const vp = DOM.source.getViewportSize();
 
-        // Offset past the cursor, then clamp so the whole tooltip stays on-screen
-        // (no viewport margin — the tooltip may sit flush against an edge).
-        const placed = clampIntoViewport(
-            x + Tooltip.CURSOR_OFFSET,
-            y + Tooltip.CURSOR_OFFSET,
-            { width: tooltipWidth, height: tooltipHeight },
-            vp,
-        );
+        // Clamp the cursor into the viewport first: the flip primitive only guarantees
+        // an on-screen result for an in-viewport anchor, and show() is public.
+        const cx = Util.clamp(x, 0, vp.width);
+        const cy = Util.clamp(y, 0, vp.height);
 
-        inst.setX(placed.x);
-        inst.setY(placed.y);
+        // Sit CURSOR_OFFSET past the cursor, flipping to sit CURSOR_OFFSET *before* it
+        // when there is no room past — so the tooltip can never land under the cursor.
+        // The offset is the primitive's `gap`; no viewport margin, since the tooltip
+        // may sit flush against an edge.
+        inst.setX(positionAdjacent(cx, cx, tooltipWidth,  vp.width,  Tooltip.CURSOR_OFFSET));
+        inst.setY(positionAdjacent(cy, cy, tooltipHeight, vp.height, Tooltip.CURSOR_OFFSET));
 
         const el = inst.getElement(true)!;
 

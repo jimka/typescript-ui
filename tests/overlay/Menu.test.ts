@@ -214,7 +214,7 @@ describe('Menu content-based width', () => {
         expect(wide.getMenuWidth()).toBeLessThanOrEqual(360);
     });
 
-    it('pins a viewport-overflowing menu at the margin and caps its height to scroll', () => {
+    it('grows a viewport-overflowing menu down from the cursor and caps its height to scroll', () => {
         installTestDOM(CONFIG);
 
         // 60 items far exceed the 800px viewport, so the menu cannot fit.
@@ -223,14 +223,14 @@ describe('Menu content-based width', () => {
 
         menu.show(100, 100, items);
 
-        // The top pins at the margin (never off-screen negative), and the height
-        // is capped below the viewport so the overflow scrolls rather than
-        // spilling past the top edge with unreachable items.
-        expect(menu.getY()).toBe(VIEWPORT_MARGIN);
+        // The top no longer pins at the margin — it stays at the cursor, and the
+        // room BELOW the cursor (696px) is the height cap the overflow scrolls
+        // within, rather than pinning to the top margin and covering the cursor.
+        expect(menu.getY()).toBe(100);
 
         const maxHeight = menu.getMaxSize()!.height;
 
-        expect(maxHeight).toBeLessThan(800);
+        expect(maxHeight).toBe(696);
         expect(menu.getHeight()).toBeLessThanOrEqual(maxHeight);
     });
 });
@@ -668,6 +668,32 @@ describe('Menu rect-anchored toggleFor', () => {
         expect(menu.getX()).toBe(1280 - menu.getWidth() - VIEWPORT_MARGIN);
     });
 
+    it('right-aligns to a trigger near the right edge (report 1, horizontal)', () => {
+        installTestDOM(CONFIG);
+
+        const menu    = new Menu();
+        const opener  = DOM.sink.createElement('div');
+        const trigger = rect(1200, 100, 1270, 124);
+
+        menu.toggleFor(opener, trigger, [{ text: 'A' }]);
+
+        // Today it is pushed to 1280 - width - 4 instead of flush with trigger.right.
+        expect(menu.getX() + menu.getWidth()).toBe(1270);
+        expect(menu.getX()).toBe(1270 - menu.getWidth());
+    });
+
+    it('left-aligns to a trigger that has room to its right', () => {
+        installTestDOM(CONFIG);
+
+        const menu    = new Menu();
+        const opener  = DOM.sink.createElement('div');
+        const trigger = rect(100, 100, 200, 124);
+
+        menu.toggleFor(opener, trigger, [{ text: 'A' }]);
+
+        expect(menu.getX()).toBe(100);
+    });
+
     it('toggle identity: same opener closes, a different opener re-shows for it', () => {
         installTestDOM(CONFIG);
 
@@ -762,10 +788,93 @@ describe('Menu rect-anchored toggleFor — empty-list suppression', () => {
     });
 });
 
+describe('Menu pointer-anchored show — edge flip', () => {
+    afterEach(() => DOM.reset());
+
+    it('fits far on both axes: grows down-right from the cursor unchanged', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.show(100, 100, [{ text: 'A' }, { text: 'B' }]);
+
+        expect(menu.getX()).toBe(100);
+        expect(menu.getY()).toBe(100);
+    });
+
+    it('vertical fits-neither-far: flips so the bottom ends at the cursor (report 3, vertical)', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.show(100, 790, [{ text: 'A' }, { text: 'B' }]);
+
+        expect(menu.getY() + menu.getHeight()).toBe(790);
+        expect(menu.getY()).toBeLessThan(790);
+    });
+
+    it('horizontal flips so the right edge ends at the cursor (report 3, horizontal)', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.show(1270, 100, [{ text: 'A' }]);
+
+        expect(menu.getX() + menu.getWidth()).toBe(1270);
+    });
+
+    it('vertical fits-neither-side: available comes from the landed side, not re-derived from y (the trap)', () => {
+        installTestDOM(CONFIG);
+
+        const menu  = new Menu();
+        const items = Array.from({ length: 60 }, (_, i) => ({ text: `Item ${i}` }));
+
+        menu.show(100, 790, items);
+
+        // Re-deriving `available` from `y` would give 800 - 4 - 4 = 792, spanning
+        // [4, 796] — back over the cursor. The correct room above is 786.
+        expect(menu.getY()).toBe(VIEWPORT_MARGIN);
+        expect(menu.getMaxSize()!.height).toBe(786);
+        expect(menu.getY() + menu.getHeight()).toBeLessThanOrEqual(790);
+    });
+
+    it('an out-of-viewport cursor clamps into the viewport before growing down-right', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.show(-100, -100, [{ text: 'A' }, { text: 'B' }]);
+
+        // Cursor clamps to (0, 0). Vertically that fits far (positionFlexibleAnchored
+        // returns farEdge=0 directly), so y lands exactly at 0. Horizontally
+        // positionAligned's `nearEdge >= margin` guard rejects a near-align at 0
+        // (< VIEWPORT_MARGIN), and the far-align is off-viewport too, so it falls to
+        // the clampAxis fallback and pins at the margin — matching the pre-flip
+        // clamp-based pointer path's behaviour for this same call, which also
+        // pinned x to the margin (4).
+        expect(menu.getX()).toBe(VIEWPORT_MARGIN);
+        expect(menu.getY()).toBe(0);
+    });
+
+    it('the canonical repro: both axes end at the cursor, which is never covered', () => {
+        installTestDOM(CONFIG);
+
+        const menu  = new Menu();
+        const items = Array.from({ length: 60 }, (_, i) => ({ text: `Item ${i}` }));
+
+        menu.show(1270, 790, items);
+
+        expect(menu.getX() + menu.getWidth()).toBe(1270);
+        expect(menu.getY()).toBe(VIEWPORT_MARGIN);
+        expect(menu.getMaxSize()!.height).toBe(786);
+        expect(menu.getY() + menu.getHeight()).toBe(790);
+    });
+});
+
 describe('Menu show(x, y, …) — pointer-anchored regression', () => {
     afterEach(() => DOM.reset());
 
-    it('a long menu still pins to the margin and caps its height (unchanged from before the flip path)', () => {
+    it('a long menu stays below the cursor (roomier side) and caps its height to scroll', () => {
         installTestDOM(CONFIG);
 
         const menu  = new Menu();
@@ -773,7 +882,10 @@ describe('Menu show(x, y, …) — pointer-anchored regression', () => {
 
         menu.show(100, 100, items);
 
-        expect(menu.getY()).toBe(VIEWPORT_MARGIN);
+        // roomFar (800 - 100 - 4 = 696) >= roomNear (100 - 4 = 96): stays below
+        // the cursor rather than pinning to the top margin and covering it.
+        expect(menu.getY()).toBe(100);
+        expect(menu.getMaxSize()!.height).toBe(696);
 
         const maxHeight = menu.getMaxSize()!.height;
 

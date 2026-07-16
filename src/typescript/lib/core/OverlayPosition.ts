@@ -40,8 +40,10 @@ export interface AnchorOptions {
  * @param viewportExtent - The viewport's size on this axis.
  * @param gap - Gap in px kept between the anchor edge and the element.
  * @returns The chosen top-left coordinate on this axis.
+ *
+ * @category Core
  */
-function flipAxis(nearEdge: number, farEdge: number, extent: number, viewportExtent: number, gap: number): number {
+export function positionAdjacent(nearEdge: number, farEdge: number, extent: number, viewportExtent: number, gap: number): number {
     const farStart  = farEdge + gap;
     const spaceFar  = viewportExtent - farStart;
     const spaceNear = nearEdge - gap;
@@ -62,6 +64,52 @@ function flipAxis(nearEdge: number, farEdge: number, extent: number, viewportExt
     }
 
     return 0;
+}
+
+/**
+ * Chooses a top-left coordinate on the cross axis for a **fixed-size** element
+ * that ALIGNS WITH (and overlaps) its anchor rather than sitting beside it.
+ * Prefers the element's near edge flush with the anchor's near edge
+ * (`nearEdge`); flips to the element's FAR edge flush with the anchor's far
+ * edge (`farEdge - extent`) only when the near alignment overflows the
+ * viewport. This is alignment, not adjacency — the element overlaps the
+ * anchor either way; only which pair of edges is made flush changes. It is
+ * fixed-size and returns no `available` (contrast {@link
+ * positionFlexibleAnchored}); `margin` binds on **this** axis. When neither
+ * alignment fits on-screen (an anchor whose own far edge is off-viewport, or
+ * an element wider than the viewport), falls back to {@link clampAxis} — the
+ * right answer when no placement fits, not a flip substitute.
+ *
+ * @param nearEdge - The anchor's near edge (left / top) on this axis.
+ * @param farEdge - The anchor's far edge (right / bottom) on this axis.
+ * @param extent - The element's fixed size on this axis.
+ * @param viewportExtent - The viewport's size on this axis.
+ * @param margin - Viewport-edge margin in px kept on this axis.
+ * @returns The chosen top-left coordinate on this axis.
+ *
+ * @category Core
+ */
+export function positionAligned(
+    nearEdge: number, farEdge: number, extent: number, viewportExtent: number, margin: number,
+): number {
+    // Preferred: the element's near edge aligns with the anchor's near edge.
+    if (nearEdge >= margin && nearEdge + extent <= viewportExtent - margin) {
+        return nearEdge;
+    }
+
+    // Flipped: the element's FAR edge aligns with the anchor's far edge. Note this
+    // is alignment, not adjacency — the element overlaps the anchor either way; only
+    // which pair of edges is made flush changes.
+    const farStart = farEdge - extent;
+
+    if (farStart >= margin && farStart + extent <= viewportExtent - margin) {
+        return farStart;
+    }
+
+    // Neither alignment fits on-screen (an anchor whose own far edge is off-viewport,
+    // or an element wider than the viewport): fall back to the clamp. Clamping is the
+    // right answer when NO placement fits — it is only wrong as a substitute for a flip.
+    return clampAxis(nearEdge, extent, viewportExtent, margin);
 }
 
 /**
@@ -101,7 +149,7 @@ export interface FlexiblePlacement {
  * element — one whose extent may be capped and the overflow scrolled, rather
  * than being placed at a fixed size. Grows from `farEdge`; flips to end at
  * `nearEdge` only when the content overflows the far room **and** the near
- * side is roomier. Unlike {@link flipAxis}, the far-fits check is against the
+ * side is roomier. Unlike {@link positionAdjacent}, the far-fits check is against the
  * *room*, not the raw `extent` — so a flip that still doesn't fully fit on
  * the near side still flips (and clamps) rather than falling back to filling
  * the viewport over the anchor. The returned `available` is the room on the
@@ -144,9 +192,11 @@ export function positionFlexibleAnchored(
  * Places an element of `size` against `anchorRect` inside `viewport`. On the
  * primary axis it grows past the anchor's far edge (below / right), flipping to
  * the near edge (above / left) only when the far side lacks room AND the near
- * side has more; on the cross axis it aligns to the anchor's near edge and
- * clamps into the viewport. Pure — all viewport reads are supplied by the
- * caller, so it is directly unit-testable with no DOM.
+ * side has more; on the cross axis it aligns to the anchor's near edge,
+ * flipping to align with the anchor's far edge when the near alignment
+ * overflows, and clamping only when neither alignment fits. Pure — all
+ * viewport reads are supplied by the caller, so it is directly unit-testable
+ * with no DOM.
  *
  * @param anchorRect - The anchor element's bounding rect.
  * @param size - The element's width/height to place.
@@ -161,38 +211,14 @@ export function positionAnchored(anchorRect: Rect, size: Size, viewport: Size, o
     const margin = opts.margin ?? 0;
 
     if (opts.axis === "vertical") {
-        const y = flipAxis(anchorRect.top, anchorRect.bottom, size.height, viewport.height, gap);
-        const x = clampAxis(anchorRect.left, size.width, viewport.width, margin);
+        const y = positionAdjacent(anchorRect.top, anchorRect.bottom, size.height, viewport.height, gap);
+        const x = positionAligned(anchorRect.left, anchorRect.right, size.width, viewport.width, margin);
 
         return { x, y };
     }
 
-    const x = flipAxis(anchorRect.left, anchorRect.right, size.width, viewport.width, gap);
-    const y = clampAxis(anchorRect.top, size.height, viewport.height, margin);
+    const x = positionAdjacent(anchorRect.left, anchorRect.right, size.width, viewport.width, gap);
+    const y = positionAligned(anchorRect.top, anchorRect.bottom, size.height, viewport.height, margin);
 
     return { x, y };
-}
-
-/**
- * Clamps a top-left point so an element of `size` stays within
- * `[margin, extent - size - margin]` on both axes; when the element is larger
- * than that span the coordinate pins to `margin` (top-left-aligned) rather than
- * overflowing off-screen, leaving the caller's height-cap / scroll to carry the
- * overflow. Used by cursor-anchored overlays (context menu, tooltip) that clamp
- * without flipping. Pure — no DOM.
- *
- * @param x - The proposed left coordinate.
- * @param y - The proposed top coordinate.
- * @param size - The element's width/height.
- * @param viewport - The viewport size to clamp within.
- * @param margin - Viewport-edge margin in px kept on both axes. Default 0.
- * @returns The clamped `{ x, y }`.
- *
- * @category Core
- */
-export function clampIntoViewport(x: number, y: number, size: Size, viewport: Size, margin: number = 0): { x: number; y: number } {
-    return {
-        x: clampAxis(x, size.width,  viewport.width,  margin),
-        y: clampAxis(y, size.height, viewport.height, margin),
-    };
 }
