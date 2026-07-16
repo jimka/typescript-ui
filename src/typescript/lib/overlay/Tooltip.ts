@@ -102,7 +102,25 @@ export class Tooltip extends Component {
     private static readonly V_PADDING: number = 8;
     private static readonly MAX_WIDTH: number = 300;
     private static readonly ITEM_HEIGHT: number = 20;
-    private static readonly CURSOR_OFFSET: number = 14;
+
+    // Clearance kept free around the pointer *hotspot* (the arrow's tip, the
+    // hand's fingertip) — the coordinate `show` is handed. The cursor glyph
+    // hangs down and to the right of its hotspot, so this box is deliberately
+    // NOT centred on it: nothing sits above the tip, and only a few px reach
+    // left of it. A box symmetric about the hotspot would push a flipped
+    // tooltip visibly further from the cursor than an unflipped one, since the
+    // same gap spans glyph on one side and empty space on the other.
+    //
+    // These are clearance, not glyph metrics: DOWN is shorter than the ~24px
+    // glyph on purpose, so an unflipped tooltip keeps sitting alongside the
+    // pointer's lower half (where it tapers and hides nothing) rather than
+    // being pushed clear of it. No API reports the live cursor's size or
+    // hotspot, so the numbers approximate the platform defaults.
+    private static readonly CURSOR_LEFT: number = 4;
+    private static readonly CURSOR_RIGHT: number = 12;
+    private static readonly CURSOR_UP: number = 0;
+    private static readonly CURSOR_DOWN: number = 12;
+    private static readonly CURSOR_GAP: number = 2;
 
     private _text: Text;
 
@@ -162,12 +180,14 @@ export class Tooltip extends Component {
     /**
      * Immediately shows the tooltip with the given text near the specified coordinates.
      *
-     * The tooltip sits `CURSOR_OFFSET` past the cursor on each axis, flipping to sit
-     * `CURSOR_OFFSET` before it when there is no room past — so it never covers the
-     * cursor it's hinting at. A tooltip taller than roughly half the viewport (an
-     * unusually long multi-line label) can still saturate on-screen rather than
-     * flipping cleanly, since its height is uncapped and never scrolls; this is a
-     * known limitation, not a bug to fix here.
+     * The tooltip sits just past the cursor on each axis — down and to the right —
+     * flipping to sit just before it when there is no room past, so it never covers
+     * the cursor it's hinting at. The clearance is measured from a small box around
+     * the pointer hotspot rather than from the hotspot itself, so a flipped tooltip
+     * hugs the cursor as closely as an unflipped one. A tooltip taller than roughly
+     * half the viewport (an unusually long multi-line label) can still saturate
+     * on-screen rather than flipping cleanly, since its height is uncapped and never
+     * scrolls; this is a known limitation, not a bug to fix here.
      *
      * @param text - The string to display inside the tooltip.
      * @param x - Horizontal viewport coordinate for the tooltip origin.
@@ -234,12 +254,18 @@ export class Tooltip extends Component {
         const cx = Util.clamp(x, 0, vp.width);
         const cy = Util.clamp(y, 0, vp.height);
 
-        // Sit CURSOR_OFFSET past the cursor, flipping to sit CURSOR_OFFSET *before* it
-        // when there is no room past — so the tooltip can never land under the cursor.
-        // The offset is the primitive's `gap`; no viewport margin, since the tooltip
-        // may sit flush against an edge.
-        inst.setX(positionAdjacent(cx, cx, tooltipWidth,  vp.width,  Tooltip.CURSOR_OFFSET));
-        inst.setY(positionAdjacent(cy, cy, tooltipHeight, vp.height, Tooltip.CURSOR_OFFSET));
+        // Sit past the cursor's clearance box, flipping to sit *before* it when there
+        // is no room past — so the tooltip can never land under the cursor. The box
+        // (not the bare hotspot) is the anchor rect, which is what lets the two sides
+        // differ: the primitive applies one `gap` to whichever edge it picks, and the
+        // asymmetry the cursor actually has lives in the edges. No viewport margin,
+        // since the tooltip may sit flush against an edge.
+        inst.setX(positionAdjacent(
+            cx - Tooltip.CURSOR_LEFT, cx + Tooltip.CURSOR_RIGHT, tooltipWidth,  vp.width,  Tooltip.CURSOR_GAP,
+        ));
+        inst.setY(positionAdjacent(
+            cy - Tooltip.CURSOR_UP,   cy + Tooltip.CURSOR_DOWN,  tooltipHeight, vp.height, Tooltip.CURSOR_GAP,
+        ));
 
         const el = inst.getElement(true)!;
 
