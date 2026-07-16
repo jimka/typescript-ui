@@ -468,7 +468,7 @@ Documented limitation (do **not** try to fix): the invariant holds only while th
 2. `grep -rn 'clampIntoViewport' src/ tests/ docs/` — **zero matches**.
 3. `grep -rn 'MenuAnchor\|kind: "pointer"\|kind: "rect"' src/` — **zero matches**.
 4. `grep -rn 'flipAxis' src/ tests/` — **zero matches** (renamed to `positionAdjacent`).
-5. `grep -rn 'positionAligned' src/typescript/lib/` — **exactly 4 hits**: the definition, the two `positionAnchored` cross-axis call sites, and `Menu.resolvePlacement`.
+5. `grep -rn 'positionAligned' src/typescript/lib/` — **exactly 4 *semantic* hits**: the definition, the two `positionAnchored` cross-axis call sites, and `Menu.resolvePlacement`. **Correction found during implementation/audit:** the literal grep returns **5 lines**, not 4 — `Menu.ts` needs an `import { positionAligned, … }` line to use the exported symbol, and that import line also contains the string, in addition to its one call site. The plan's count only tallied definition/call sites and forgot the import; the actual usage is exactly the 4 sites named above, with zero functional discrepancy.
 6. `npm run lint` — clean (the `no-raw-dom` rule has an empty baseline).
 7. `npm test` — all green, including §1-§5 and every "untouched" test named above.
 8. `npm run docs:build` — zero TypeDoc warnings. `positionAligned` / `positionAdjacent` / `resolvePlacement` / `pointRect` / `showAnchored` are all internal (not barrel-exported), so public JSDoc must **describe** them in prose and never `{@link}` them (CODE_CONVENTIONS: *Don't `{@link}` internal symbols from public JSDoc*).
