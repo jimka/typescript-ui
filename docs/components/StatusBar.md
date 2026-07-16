@@ -20,15 +20,11 @@ sb.setMessage('Saved', 2000);
 
 ## Layout
 
-A `StatusBar` is split into three siblings of an outer [`HBox`](/api/layout/classes/HBox):
+A `StatusBar` wraps a single [`HBox`](/api/layout/classes/HBox) row: the message [`Text`](/api/component/input/classes/Text), a flex spacer, then the widgets added via `addRight`. `addLeft` inserts before the spacer, so left-added widgets sit between the message and the spacer while right-added widgets sit after it — the spacer absorbs the remaining width so the two groups sit at opposite ends of the strip.
 
-| Zone | Holds | Notes |
-| --- | --- | --- |
-| Left zone | Message [`Text`](/api/component/input/classes/Text) + widgets added via `addLeft` | Hugs its preferred width. |
-| Spacer | Empty [`Component`](/api/core/classes/Component) with `weight: 1` | Absorbs the remaining width so the left and right zones sit at opposite ends. |
-| Right zone | Widgets added via `addRight` | Hugs its preferred width. |
+Every widget in the row is baseline-aligned to the message text: a widget exposing a real baseline (`Text`, `Glyph`, `IconText`, a labelled `Button`, `ProgressBar`, `ProgressSpinner`, or a container laid out by an ordinary — not full-height-filling — `HBox`/`VBox`) lines its baseline up with the message's; a baseline-less widget is centred in the message's text line instead.
 
-The strip height is fixed at `22px` (the `STATUS_BAR_HEIGHT` constant, mirrored by the `--ts-ui-statusbar-height` theme token). Caller-added widgets should be small enough to fit in that row — the outer `HBox` runs in stretching mode and will clamp tall children to the bar's height.
+The strip height is fixed at `22px` (the `STATUS_BAR_HEIGHT` constant, mirrored by the `--ts-ui-statusbar-height` theme token), with a 1px top border, leaving a **21px** content band. Caller-added widgets must be no taller than 21px to fit without clipping. A stock `flat`+`compact` glyph-only `Button` is 22px and does not fit — call `pinGlyphSize(14)` to bring it to 20px before adding it.
 
 ## Common methods
 
@@ -39,14 +35,14 @@ The strip height is fixed at `22px` (the `STATUS_BAR_HEIGHT` constant, mirrored 
 | `clearMessage()` | Cancel any pending revert and revert to the default message immediately. |
 | `setDefaultMessage(text)` | Set the fallback message used when a timed `setMessage` expires. Pushes the new default into the visible Text when no transient message is in flight. |
 | `getDefaultMessage()` | Returns the configured default message. |
-| `addLeft(component)` | Append a component to the left zone. |
-| `addRight(component)` | Append a component to the right zone. |
-| `removeLeft(component)` | Remove a component from the left zone. |
-| `removeRight(component)` | Remove a component from the right zone. |
+| `addLeft(component)` | Insert a component before the flex spacer, after the message and any previously-added left widgets. |
+| `addRight(component)` | Append a component after the flex spacer. |
+| `removeLeft(component)` | Remove a component previously added via `addLeft`. |
+| `removeRight(component)` | Remove a component previously added via `addRight`. |
 
 ## Accessibility
 
-The whole strip is a single screen-reader live region: the root element carries `role="status"` and `aria-live="polite"`. Mutating a widget in either zone (for example flipping a "Disconnected" Text) announces politely without each widget opting in.
+The whole strip is a single screen-reader live region: the root element carries `role="status"` and `aria-live="polite"`. Mutating any widget in the bar (for example flipping a "Disconnected" Text) announces politely without each widget opting in.
 
 ## Theme tokens
 

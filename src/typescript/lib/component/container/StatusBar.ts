@@ -27,12 +27,19 @@ export const STATUS_BAR_HEIGHT: number = 22;
 const STATUS_BAR_BORDER_TOP_WIDTH: number = 1;
 
 /**
+ * Gap between adjacent status-bar widgets. Carries over the spacing the
+ * former per-zone `HBox`es used; the outer row previously used 0 because
+ * the zones butted against the flex spacer, which absorbs any gap anyway.
+ */
+const STATUS_BAR_SPACING: number = 4;
+
+/**
  * Construction-time options for {@link StatusBar}.
  *
  * @category Components
  */
 export interface StatusBarOptions extends ContainerOptions {
-    /** Initial transient message shown in the left zone. */
+    /** Initial transient message shown at the start of the row. */
     message?:        string;
     /**
      * Fallback message restored when a timed {@link StatusBar.setMessage}
@@ -57,18 +64,27 @@ const _defaultStatusBarOptions: Partial<StatusBarOptions> = {
  * A thin horizontal strip mounted at the bottom of a window or panel that
  * surfaces a transient status message and small persistent indicators.
  *
- * `StatusBar` extends [`Container`](/api/core/classes/Container) and wraps an
- * [`HBox`](/api/layout/classes/HBox) layout split into three siblings: a left
- * zone holding the message [`Text`](/api/component/input/classes/Text) plus
- * any caller-added widgets, a flex-weighted spacer, and a right zone for
- * persistent indicators. Insert additional widgets via `addLeft` / `addRight`
- * — for example an [`IconText`](/api/component/display/classes/IconText) for
- * a connection light, a small [`ProgressBar`](/api/component/display/classes/ProgressBar),
+ * `StatusBar` extends [`Container`](/api/core/classes/Container) and wraps a
+ * single, non-stretching [`HBox`](/api/layout/classes/HBox) row: the message
+ * [`Text`](/api/component/input/classes/Text), a flex spacer, then the
+ * right-hand widgets. Every widget in the row is baseline-aligned to the
+ * message text — a widget exposing a real baseline (`Text`, `Glyph`,
+ * `IconText`, a labelled `Button`, `ProgressBar`, `ProgressSpinner`, or a
+ * container laid out by a non-stretching `HBox`/`VBox`) lines its baseline up
+ * with the message's; a baseline-less widget is centred in the message's text
+ * line instead. Insert additional widgets via `addLeft` / `addRight` — for
+ * example an [`IconText`](/api/component/display/classes/IconText) for a
+ * connection light, a small [`ProgressBar`](/api/component/display/classes/ProgressBar),
  * or a [`ProgressSpinner`](/api/component/display/classes/ProgressSpinner).
  *
+ * Widgets must be no taller than **21px** (`STATUS_BAR_HEIGHT` minus the 1px
+ * top border) to fit without clipping. A stock `flat`+`compact` glyph-only
+ * `Button` is 22px and does not fit — call `pinGlyphSize(14)` to bring it to
+ * 20px before adding it.
+ *
  * The strip is a single screen-reader live region (`role="status"`,
- * `aria-live="polite"`) so widget mutations inside either zone announce
- * politely without per-widget opt-in.
+ * `aria-live="polite"`) so widget mutations announce politely without
+ * per-widget opt-in.
  *
  * @example
  * ```typescript
@@ -84,9 +100,8 @@ class StatusBar extends Container<StatusBarOptions> {
     private _message:        string         = "";
     private _defaultMessage: string         = "";
     private _messageTimer:   number | null  = null;
-    private _leftZone!:      Container;
-    private _rightZone!:     Container;
     private _messageText!:   Text;
+    private _spacer!:        Spacer;   // the flex pivot: left widgets before it, right widgets after
 
     /**
      * Constructs a `StatusBar` with optional initial message and default
@@ -98,10 +113,9 @@ class StatusBar extends Container<StatusBarOptions> {
     constructor(options?: StatusBarOptions) {
         super(options, _defaultStatusBarOptions);
 
-        const outer = new HBox();
-        outer.setComponentSpacing(0);
-        outer.setStretching(true);
-        this.setLayoutManager(outer);
+        const row = new HBox();
+        row.setComponentSpacing(STATUS_BAR_SPACING);   // 4 — the zones' former internal spacing
+        this.setLayoutManager(row);                    // stretching stays at its default (false) — that's what we want
 
         this.setBackgroundColor("var(--ts-ui-statusbar-bg, rgb(245, 245, 245))");
         this.setForegroundColor("var(--ts-ui-statusbar-color, rgb(60, 60, 60))");
@@ -109,26 +123,22 @@ class StatusBar extends Container<StatusBarOptions> {
         this.setMinSize(0,                       STATUS_BAR_HEIGHT);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, STATUS_BAR_HEIGHT);
 
-        this._leftZone  = new Container();
-        this._rightZone = new Container();
-
-        const leftBox = new HBox();
-        leftBox.setComponentSpacing(4);
-        leftBox.setStretching(true);
-        this._leftZone.setLayoutManager(leftBox);
-
-        const rightBox = new HBox();
-        rightBox.setComponentSpacing(4);
-        rightBox.setStretching(true);
-        this._rightZone.setLayoutManager(rightBox);
-
         this._messageText = new Text("");
+        // The bar's row anchor, not cosmetic padding: a 21px line box (the strip
+        // height minus its top border) gives this Text a 21px preferred height and
+        // a baseline of 16 rather than 16px/13. That deep baseline becomes the
+        // row's rowAscent — what every other widget aligns to — and the 21px line
+        // box is what makes the row exactly fill the band, so a baseline-less
+        // widget is centred against 21px rather than a shorter text line. HBox has
+        // no cross-axis centring (CENTER is inert in BoxLayout.crossPlacement), so
+        // this anchor is the only thing centring the bar's content. Removing it
+        // drops rowAscent to 13 and top-anchors the whole row.
         this._messageText.centerInHeight(STATUS_BAR_HEIGHT - STATUS_BAR_BORDER_TOP_WIDTH);
-        this._leftZone.addComponent(this._messageText);
 
-        this.addComponent(this._leftZone);
-        this.addComponent(Spacer.flex());
-        this.addComponent(this._rightZone);
+        this._spacer = Spacer.flex();
+
+        this.addComponent(this._messageText);
+        this.addComponent(this._spacer);
 
         this.getAria().setRole("status");
         this.getAria().setLive("polite");
@@ -163,23 +173,26 @@ class StatusBar extends Container<StatusBarOptions> {
     }
 
     /**
-     * Appends a component to the left zone, after the message
+     * Inserts a component before the flex pivot, after the message
      * [`Text`](/api/component/input/classes/Text) and any previously-added
-     * left widgets.
+     * left widgets. Baseline-aligned to the message text; widgets should be
+     * no taller than 21px (`STATUS_BAR_HEIGHT` minus the 1px top border).
      *
-     * @param component - The component to append. Widgets should be small —
+     * @param component - The component to insert. Widgets should be small —
      *   the bar height is fixed at {@link STATUS_BAR_HEIGHT}px.
      *
      * @returns This status bar, for method chaining.
      */
     addLeft(component: Component): this {
-        this._leftZone.addComponent(component);
+        this.insertComponent(component, this.getComponents().indexOf(this._spacer));
 
         return this;
     }
 
     /**
-     * Appends a component to the right zone.
+     * Appends a component after the flex pivot. Baseline-aligned to the
+     * message text; widgets should be no taller than 21px
+     * (`STATUS_BAR_HEIGHT` minus the 1px top border).
      *
      * @param component - The component to append. Widgets should be small —
      *   the bar height is fixed at {@link STATUS_BAR_HEIGHT}px.
@@ -187,35 +200,35 @@ class StatusBar extends Container<StatusBarOptions> {
      * @returns This status bar, for method chaining.
      */
     addRight(component: Component): this {
-        this._rightZone.addComponent(component);
+        this.addComponent(component);
 
         return this;
     }
 
     /**
-     * Removes a component from the left zone. No-op if `component` is not a
-     * left-zone child.
+     * Removes a component previously added via {@link addLeft}. No-op if
+     * `component` is not a child of this bar.
      *
      * @param component - The component to remove.
      *
      * @returns This status bar, for method chaining.
      */
     removeLeft(component: Component): this {
-        this._leftZone.removeComponent(component);
+        this.removeComponent(component);
 
         return this;
     }
 
     /**
-     * Removes a component from the right zone. No-op if `component` is not a
-     * right-zone child.
+     * Removes a component previously added via {@link addRight}. No-op if
+     * `component` is not a child of this bar.
      *
      * @param component - The component to remove.
      *
      * @returns This status bar, for method chaining.
      */
     removeRight(component: Component): this {
-        this._rightZone.removeComponent(component);
+        this.removeComponent(component);
 
         return this;
     }

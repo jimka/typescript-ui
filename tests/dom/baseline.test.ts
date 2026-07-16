@@ -60,4 +60,28 @@ describe('Offline text metrics via ModelledDOMSource', () => {
 
         expect(DOM.source.isModelled()).toBe(false);
     });
+
+    it('honours an explicit lineHeight, splitting the surplus into the baseline', () => {
+        installTestDOM(CONFIG);
+
+        // ascent 13, descent 3 -> font box 16. A 21px line box has 5px of
+        // surplus over the font box; production splits it evenly above and
+        // below, so the baseline drops by half: round(5/2 + 13) = 16.
+        const m = DOM.source.measureText('Hello', { lineHeight: '21px' });
+
+        expect(m.height).toBe(21);
+        expect(m.baseline).toBe(16);
+    });
+
+    it('falls back to the font box when lineHeight is absent or unparseable', () => {
+        installTestDOM(CONFIG);
+
+        const withoutOption = DOM.source.measureText('Hello');
+        const unparseable   = DOM.source.measureText('Hello', { lineHeight: 'normal' });
+
+        expect(withoutOption.height).toBe(16);
+        expect(withoutOption.baseline).toBe(13);
+        expect(unparseable.height).toBe(16);
+        expect(unparseable.baseline).toBe(13);
+    });
 });
