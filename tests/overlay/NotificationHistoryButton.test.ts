@@ -1,12 +1,12 @@
 //
 // SCOPE: the offline-testable slice of NotificationHistoryButton — the default
-// glyph, the relative-time formatter, and buildItems()'s pure mapping of the
-// history into menu-item configs (empty state, newest-first order, field
+// glyph, the relative-time formatter, and buildHistoryItems()'s pure mapping of
+// the history into menu-item configs (empty state, newest-first order, field
 // mapping). The actual menu open/anchor/dismiss and clicking a row to open the
 // detail dialog are DOM-/geometry-/LayerManager-driven and covered by the
 // plan's manual-verify steps, not here.
 import { describe, it, expect, beforeEach } from 'vitest';
-import { NotificationHistoryButton, formatRelativeTime } from '~/overlay/NotificationHistoryButton';
+import { NotificationHistoryButton, formatRelativeTime, buildHistoryItems } from '~/overlay/NotificationHistoryButton';
 import { Notification, BADGE_GLYPH, NotificationRecord } from '~/overlay/Notification';
 
 const MINUTE = 60_000;
@@ -15,12 +15,6 @@ const DAY    = 86_400_000;
 
 function setHistory(records: NotificationRecord[]): void {
     (Notification as unknown as { history: NotificationRecord[] }).history = records;
-}
-
-// buildItems() is private; exercise it through a cast — it is the pure read the
-// menu is built from.
-function buildItems(button: NotificationHistoryButton) {
-    return (button as unknown as { buildItems: () => Array<{ text?: string; glyph?: string; glyphColor?: string; shortcut?: string; enabled?: boolean; action?: () => void }> }).buildItems();
 }
 
 describe('formatRelativeTime', () => {
@@ -60,7 +54,7 @@ describe('NotificationHistoryButton', () => {
     });
 
     it('builds a single disabled item for the empty history', () => {
-        const items = buildItems(new NotificationHistoryButton());
+        const items = buildHistoryItems();
         expect(items).toHaveLength(1);
         expect(items[0].text).toBe('No notifications yet');
         expect(items[0].enabled).toBe(false);
@@ -71,13 +65,13 @@ describe('NotificationHistoryButton', () => {
             { message: 'a', type: 'info', timestamp: 1 },
             { message: 'b', type: 'error', timestamp: 2 },
         ]);
-        const items = buildItems(new NotificationHistoryButton());
+        const items = buildHistoryItems();
         expect(items.map(i => i.text)).toEqual(['a', 'b']);
     });
 
     it('maps each record to badge glyph, severity colour, message, time, and an action', () => {
         setHistory([{ message: 'saved', type: 'success', timestamp: Date.now() }]);
-        const [item] = buildItems(new NotificationHistoryButton());
+        const [item] = buildHistoryItems();
 
         expect(item.glyph).toBe(BADGE_GLYPH.success);
         expect(item.glyphColor).toBe('var(--ts-ui-notification-success-border)');
