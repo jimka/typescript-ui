@@ -566,7 +566,7 @@ Unit-testable:
 - **An empty provider opens nothing:** `new MenuButton({ menuItems: () => [] })`, attached and clicked → no menu is mounted, no throw. A subsequent click with a non-empty provider opens normally.
 - `isScrollToBottomOnShow()` is `false` by default; `true` for `new NotificationHistoryButton()` (registry row) and for `new MenuButton({ scrollToBottomOnShow: true })`.
 - Clicking an **unattached** button (no element) is a no-op — no menu is constructed, no throw.
-- A provider is invoked **per open**, not once: toggle open, close, open again → provider called twice (assert with `vi.fn()`; drive via the button's `"action"` path or `click()`).
+- A provider is **re-invoked on each open**, never captured once: toggle open, close, open again and the provider runs again for the second open (assert with `vi.fn()`; drive via the button's `"action"` path or `click()`). `toggleMenu` resolves the items eagerly as a `toggleFor` argument, so the intervening close runs the provider too — the open/close/open drive lands on three calls; the contract under test is the re-invocation on reopen, not the incidental close call.
 - `new NotificationHistoryButton()` still resolves `glyph === 'clock-rotate-left'` and, with an empty history, its provider returns the single disabled `"No notifications yet"` placeholder.
 - A consumer `listeners: { action: fn }` on `new MenuButton(…)` fires (bag not dropped), and on `new NotificationHistoryButton(…)` fires **exactly once** (not double-wired).
 
