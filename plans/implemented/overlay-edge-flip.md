@@ -382,7 +382,7 @@ inst.setY(positionAdjacent(cy, cy, tooltipHeight, vp.height, Tooltip.CURSOR_OFFS
 | Modify | `docs/components/Menu.md` |
 | Modify | `docs/components/Tooltip.md` |
 
-No new files. `src/typescript/lib/core/AnimatedDropdown.ts` is **not** modified — it consumes `positionAnchored` unchanged and inherits the cross-axis flip.
+No new files. `src/typescript/lib/core/AnimatedDropdown.ts` carries **no logic change** — it consumes `positionAnchored` unchanged and inherits the cross-axis flip. **Correction found by audit:** its `placeAnchored` JSDoc and inline comment described the cross axis as clamp-only, which this plan's own cross-axis change (see *Architecture Decisions*) made stale; that prose was fixed as a same-branch audit-fix commit (JSDoc/comment only, zero behaviour change), so the file is touched after all — just never for logic.
 
 ---
 
@@ -507,7 +507,7 @@ What does change is **behavioural prose for symbols that are public**:
 - [`src/typescript/lib/core/OverlayPosition.ts`](src/typescript/lib/core/OverlayPosition.ts) — `flipAxis` (44), `clampAxis` (82), `positionFlexibleAnchored` (126), `positionAnchored` (159), `clampIntoViewport` (193).
 - [`src/typescript/lib/overlay/Menu.ts`](src/typescript/lib/overlay/Menu.ts) — `VIEWPORT_MARGIN` (31), `MenuAnchor` (34), `resolvePlacement` (51), `show` (224), `showAnchored` (243), the geometry block (289-317), `toggleFor` (378), `placeVertically` (844, **unchanged**).
 - [`src/typescript/lib/overlay/Tooltip.ts`](src/typescript/lib/overlay/Tooltip.ts) — the sizing + placement block (189-235), `CURSOR_OFFSET` (105).
-- [`src/typescript/lib/core/AnimatedDropdown.ts`](src/typescript/lib/core/AnimatedDropdown.ts) — `placeAnchored` (354-367); read it to confirm it needs no edit.
+- [`src/typescript/lib/core/AnimatedDropdown.ts`](src/typescript/lib/core/AnimatedDropdown.ts) — `placeAnchored` (354-367); no logic edit needed, but its stale clamp-only doc comment was corrected (see *Files to Create / Modify / Delete*).
 - [`plans/implemented/menu-anchored-placement.md`](plans/implemented/menu-anchored-placement.md) — the shipped plan this extends. **Read it; do not edit it.**
 - [`tests/overlay/OverlayPosition.test.ts`](tests/overlay/OverlayPosition.test.ts) — the pure-primitive test idiom (`rect()` / `size()` helpers).
 - [`tests/overlay/Menu.test.ts`](tests/overlay/Menu.test.ts) — `CONFIG` / `installTestDOM`, the gutter and `toggleFor` suites the change must keep green.
