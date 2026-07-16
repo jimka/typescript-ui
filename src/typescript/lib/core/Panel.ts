@@ -406,6 +406,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // report the previous frame's dimensions and `measureScrollbarGutter`
         // wouldn't see the scrollbar transition.
         this.commitElementStyle();
+
+        // Re-size the scroll-shadow overlay against the just-committed geometry
+        // before measuring: it is the only in-flow child, so a stale height left
+        // over from the previous pass floors `scrollHeight` and fakes an overflow
+        // on every pass that shrinks the panel. See `resizeScrollShadowOverlay`.
+        this.resizeScrollShadowOverlay();
         this.measureScrollbarGutter();
 
         // Re-pin the overlay and recompute edge state against the freshly
@@ -738,6 +744,42 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
+     * Re-asserts the shadow overlay's size against the live viewport box (a
+     * no-op write unless it changed).
+     *
+     * The overlay is the panel's only in-flow child — every child *component*
+     * is absolutely positioned — so its height alone floors the element's
+     * `scrollHeight`. That makes its size load-bearing for
+     * {@link Panel.measureScrollbarGutter}, not merely cosmetic: while it
+     * carries the previous pass's height, a panel that just shrank reads
+     * `scrollHeight` (the stale, taller overlay) above `clientHeight` (the
+     * freshly committed height) and reserves a scrollbar gutter for an overflow
+     * that does not exist. Hence `doLayout` re-sizes the overlay *before* it
+     * measures, which is what keeps the "stays inside the viewport box, so it
+     * never extends the scrollable region" invariant true on the shrinking pass
+     * as well as the settled one.
+     *
+     * @param element - Optional. The panel element; falls back to the rendered
+     *   element. Passed explicitly from `init`, where `getElement` is not yet
+     *   populated.
+     */
+    private resizeScrollShadowOverlay(element?: Handle): void {
+        const el = element ?? this.getElement();
+        if (!el || !this._shadowOverlay) {
+            return;
+        }
+
+        const { clientWidth, clientHeight } = DOM.source.getScrollMetrics(el);
+
+        // Size the overlay to the viewport box; `position: sticky` keeps it
+        // pinned there as the content scrolls, so no transform is needed.
+        this._shadowOverlayStyle.setMany({
+            width:  clientWidth  + "px",
+            height: clientHeight + "px",
+        });
+    }
+
+    /**
      * Sizes the overlay to the live viewport and recomputes each edge's shadow
      * strength from its distance to that extreme. `sticky` handles the
      * positioning, so the per-scroll path only re-asserts the viewport size (a
@@ -756,12 +798,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
         const { scrollTop, scrollLeft, scrollWidth, scrollHeight, clientWidth, clientHeight } = DOM.source.getScrollMetrics(el);
 
-        // Size the overlay to the viewport box; `position: sticky` keeps it
-        // pinned there as the content scrolls, so no transform is needed.
-        this._shadowOverlayStyle.setMany({
-            width:  clientWidth  + "px",
-            height: clientHeight + "px",
-        });
+        this.resizeScrollShadowOverlay(el);
 
         const maxTop  = scrollHeight - clientHeight;
         const maxLeft = scrollWidth  - clientWidth;
