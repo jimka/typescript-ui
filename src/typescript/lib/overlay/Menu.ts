@@ -231,8 +231,8 @@ class Menu extends Component implements DismissableLayer {
      * Rebuild-mode geometry-and-content core shared by {@link show} (pointer-anchored,
      * clamp-not-flip) and {@link toggleFor} (rect-anchored, flips above the trigger
      * when the room below is short). Tears down and rebuilds the item list, then
-     * resolves `anchor` via {@link resolvePlacement} to position and height-clamp
-     * the panel.
+     * resolves `anchor` to a placement (clamped for a pointer, flip-aware for a
+     * rect) and applies the resulting position and height clamp.
      *
      * @param anchor - The cursor point or trigger rect to place the panel against.
      * @param configs - Ordered list of item descriptors to render.

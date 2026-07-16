@@ -10,7 +10,7 @@ import { NotificationHistoryButton } from '@jimka/typescript-ui/overlay';
 toolbar.addComponent(new NotificationHistoryButton());
 ```
 
-The button seeds itself with a clock glyph; pass any [`ButtonOptions`](/api/component/button/interfaces/ButtonOptions) to customise it (a consumer-supplied `glyph` overrides the default):
+`NotificationHistoryButton` extends [`MenuButton`](/components/MenuButton), so it opens below its bottom-left corner and **flips above the button** when the room below is short — the case for one placed in a bottom [`StatusBar`](/components/StatusBar). It seeds itself with a clock glyph and the history-items provider; pass any [`MenuButtonOptions`](/api/component/button/interfaces/MenuButtonOptions) to customise it (a consumer-supplied `glyph` overrides the default):
 
 ```typescript
 new NotificationHistoryButton({ glyph: 'bell', description: 'History' });

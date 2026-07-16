@@ -81,6 +81,7 @@ export default defineConfig({
                     { text: 'Button',         link: '/components/Button' },
                     { text: 'ToggleButton',   link: '/components/ToggleButton' },
                     { text: 'SplitButton',    link: '/components/SplitButton' },
+                    { text: 'MenuButton',     link: '/components/MenuButton' },
                     { text: 'RadioButton',    link: '/components/RadioButton' },
                     { text: 'ButtonGroup',    link: '/components/ButtonGroup' },
                     { text: 'SpinButton',     link: '/components/SpinButton' },

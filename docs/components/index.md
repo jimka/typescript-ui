@@ -32,6 +32,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`Button`](/api/component/button/classes/Button) | Standard click button |
 | [`ToggleButton`](/api/component/button/classes/ToggleButton) | Two-state press button |
 | [`SplitButton`](/api/component/button/classes/SplitButton) | Click button with a trailing dropdown-menu chevron |
+| [`MenuButton`](/api/component/button/classes/MenuButton) | Button whose click opens a dropdown menu, flipping above when the room below is short |
 | [`RadioButton`](/api/component/input/classes/RadioButton) | Single-selection radio (use with `ButtonGroup`) |
 | [`ButtonGroup`](/api/overlay/classes/ButtonGroup) | Enforces single selection across radio / toggle buttons |
 | [`SpinButton`](/api/component/input/classes/SpinButton) | Up / down arrow paired with a numeric field |
