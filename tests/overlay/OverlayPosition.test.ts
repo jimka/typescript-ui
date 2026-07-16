@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { positionAnchored, clampIntoViewport } from '~/core/OverlayPosition';
+import { positionAnchored, clampIntoViewport, positionFlexibleAnchored } from '~/core/OverlayPosition';
 import type { Rect } from '~/core/DOM';
 import type { Size } from '~/primitive/Size';
 
@@ -212,5 +212,62 @@ describe('positionAnchored — placeAnchored regression', () => {
         const legacy = legacyPlaceAnchored(anchor, el.width, el.height, vp.width, vp.height);
 
         expect(shared).toEqual(legacy);
+    });
+});
+
+describe('positionFlexibleAnchored', () => {
+    const viewportExtent = 800;
+    const viewportMargin = 4;
+
+    it('fits below: grows from farEdge with the room below as available', () => {
+        // roomFar = 800 - 100 - 4 = 696.
+        const p = positionFlexibleAnchored(90, 100, 200, viewportExtent, viewportMargin);
+
+        expect(p).toEqual({ start: 100, available: 696 });
+    });
+
+    it('overflows below, above roomier, and fits above: flips so the bottom meets nearEdge', () => {
+        // roomFar = 800 - 760 - 4 = 36; roomNear = 700 - 4 = 696. 300 > 36, roomFar < roomNear => flips.
+        const p = positionFlexibleAnchored(700, 760, 300, viewportExtent, viewportMargin);
+
+        expect(p).toEqual({ start: 400, available: 696 });
+    });
+
+    it('overflows both sides, above roomier: flips and clamps to the margin', () => {
+        // roomFar = 36; roomNear = 696. 900 > both => flips, clamps to the margin.
+        const p = positionFlexibleAnchored(700, 760, 900, viewportExtent, viewportMargin);
+
+        expect(p).toEqual({ start: 4, available: 696 });
+    });
+
+    it('tie (roomFar >= roomNear) with overflow: stays below despite overflowing', () => {
+        // roomFar = 800 - 400 - 4 = 396; roomNear = 400 - 4 = 396. Tie => stays below.
+        const p = positionFlexibleAnchored(400, 400, 1000, viewportExtent, viewportMargin);
+
+        expect(p).toEqual({ start: 400, available: 396 });
+    });
+
+    it('never flips off-screen when the anchor sits at the viewport top (roomNear negative)', () => {
+        // roomFar = 800 - 30 - 4 = 766; fits => stays below regardless of roomNear.
+        const p = positionFlexibleAnchored(0, 30, 200, viewportExtent, viewportMargin);
+
+        expect(p).toEqual({ start: 30, available: 766 });
+    });
+
+    it('handles the same near/far edge (submenu case)', () => {
+        // roomFar = 800 - 500 - 4 = 296; fits => stays below.
+        const p = positionFlexibleAnchored(500, 500, 100, viewportExtent, viewportMargin);
+
+        expect(p).toEqual({ start: 500, available: 296 });
+    });
+
+    it('the flip branch never returns a start below viewportMargin', () => {
+        // roomFar = 800 - 780 - 4 = 16; roomNear = 760 - 4 = 756. extent (900)
+        // overflows roomFar and roomFar < roomNear => flips; even though extent
+        // vastly exceeds roomNear too, start clamps to nearEdge - roomNear = margin.
+        const p = positionFlexibleAnchored(760, 780, 900, viewportExtent, viewportMargin);
+
+        expect(p.start).toBeGreaterThanOrEqual(viewportMargin);
+        expect(p).toEqual({ start: viewportMargin, available: 756 });
     });
 });

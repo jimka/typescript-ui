@@ -117,7 +117,7 @@ class NotificationHistoryButton extends Button<NotificationHistoryButtonOptions>
         // The history is chronological (latest at the bottom), so open scrolled to
         // the bottom to reveal the most recent entries.
         this._menu ??= new Menu().setScrollToBottomOnShow(true);
-        this._menu.toggleFor(el, rect.left, rect.bottom, this.buildItems());
+        this._menu.toggleFor(el, rect, this.buildItems());
     }
 
     /**

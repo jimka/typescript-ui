@@ -84,6 +84,63 @@ function clampAxis(value: number, size: number, extent: number, margin: number):
 }
 
 /**
+ * The chosen coordinate for a size-flexible anchored element, plus the room
+ * available on the side it landed on.
+ *
+ * @category Core
+ */
+export interface FlexiblePlacement {
+    /** Top-left coordinate on the primary axis. */
+    start:     number;
+    /** Room (px) on the side actually chosen — the caller's height/width cap. */
+    available: number;
+}
+
+/**
+ * Chooses a top-left coordinate on the primary axis for a **size-flexible**
+ * element — one whose extent may be capped and the overflow scrolled, rather
+ * than being placed at a fixed size. Grows from `farEdge`; flips to end at
+ * `nearEdge` only when the content overflows the far room **and** the near
+ * side is roomier. Unlike {@link flipAxis}, the far-fits check is against the
+ * *room*, not the raw `extent` — so a flip that still doesn't fully fit on
+ * the near side still flips (and clamps) rather than falling back to filling
+ * the viewport over the anchor. The returned `available` is the room on the
+ * chosen side, so a caller that caps the extent measures the correct side —
+ * re-deriving it from `start` would measure the wrong side for a flipped
+ * element. `viewportMargin` binds on **this** (primary) axis, unlike
+ * {@link positionAnchored}'s cross-axis-only `margin`. Always flush against
+ * the anchor edge — no `gap` parameter, because every current caller sits
+ * flush.
+ *
+ * @param nearEdge - The anchor's near edge (top / left) on this axis — the
+ *   edge a flipped element's far edge meets.
+ * @param farEdge - The anchor's far edge (bottom / right) on this axis — the
+ *   edge an unflipped element grows from.
+ * @param extent - The element's unclamped preferred size on this axis.
+ * @param viewportExtent - The viewport's size on this axis.
+ * @param viewportMargin - Viewport-edge margin in px kept on this axis.
+ * @returns The chosen coordinate and the room available at it.
+ *
+ * @category Core
+ */
+export function positionFlexibleAnchored(
+    nearEdge:       number,
+    farEdge:        number,
+    extent:         number,
+    viewportExtent: number,
+    viewportMargin: number,
+): FlexiblePlacement {
+    const roomFar  = viewportExtent - farEdge - viewportMargin;
+    const roomNear = nearEdge - viewportMargin;
+
+    if (extent <= roomFar || roomFar >= roomNear) {
+        return { start: farEdge, available: roomFar };
+    }
+
+    return { start: nearEdge - Math.min(extent, roomNear), available: roomNear };
+}
+
+/**
  * Places an element of `size` against `anchorRect` inside `viewport`. On the
  * primary axis it grows past the anchor's far edge (below / right), flipping to
  * the near edge (above / left) only when the far side lacks room AND the near
