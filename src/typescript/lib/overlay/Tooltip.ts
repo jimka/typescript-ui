@@ -162,6 +162,13 @@ export class Tooltip extends Component {
     /**
      * Immediately shows the tooltip with the given text near the specified coordinates.
      *
+     * The tooltip sits `CURSOR_OFFSET` past the cursor on each axis, flipping to sit
+     * `CURSOR_OFFSET` before it when there is no room past — so it never covers the
+     * cursor it's hinting at. A tooltip taller than roughly half the viewport (an
+     * unusually long multi-line label) can still saturate on-screen rather than
+     * flipping cleanly, since its height is uncapped and never scrolls; this is a
+     * known limitation, not a bug to fix here.
+     *
      * @param text - The string to display inside the tooltip.
      * @param x - Horizontal viewport coordinate for the tooltip origin.
      * @param y - Vertical viewport coordinate for the tooltip origin.
