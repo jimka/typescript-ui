@@ -288,10 +288,9 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // `doLayout` so trailing children land past `innerSize` when their
         // combined minSize exceeds the host's allocated rect, producing the
         // scrollbar the CSS `overflow: auto` above is waiting for.
-        const x = mode === "auto" || mode === "x" || mode === "both";
-        const y = mode === "auto" || mode === "y" || mode === "both";
+        const axes = this.scrollableAxes();
 
-        this.getLayoutManager()?.setOverflowing(x, y);
+        this.getLayoutManager()?.setOverflowing(axes.x, axes.y);
 
         // Re-evaluate the shadows for the new mode: a transition into `"none"`
         // tears the overlay down, a transition into a scrolling mode installs
@@ -535,6 +534,24 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
+     * Which axes the current `autoScroll` mode lets the user scroll along. The
+     * single source of truth behind the layout manager's overflow flags, the
+     * gutter measurement, and the shadow edges — all three must agree on what
+     * "scrollable" means or the panel paints an affordance for an axis that
+     * cannot move.
+     *
+     * @returns A flag per axis; `true` when that axis scrolls under the current mode.
+     */
+    private scrollableAxes(): { x: boolean; y: boolean } {
+        const mode = this._autoScroll;
+
+        return {
+            x: mode === "x" || mode === "auto" || mode === "both",
+            y: mode === "y" || mode === "auto" || mode === "both",
+        };
+    }
+
+    /**
      * Caches the new gutter for each axis. Internal — driven by
      * `measureScrollbarGutter` after a layout pass; consumers can't
      * configure this (it's derived from runtime DOM measurement, not a
@@ -583,13 +600,11 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             vReserved = true;
             hReserved = true;
         } else {
-            const vAxisEnabled = this._autoScroll === "y" || this._autoScroll === "auto";
-            const hAxisEnabled = this._autoScroll === "x" || this._autoScroll === "auto";
-
+            const axes    = this.scrollableAxes();
             const metrics = DOM.source.getScrollMetrics(el);
 
-            vReserved = vAxisEnabled && metrics.scrollHeight > metrics.clientHeight;
-            hReserved = hAxisEnabled && metrics.scrollWidth  > metrics.clientWidth;
+            vReserved = axes.y && metrics.scrollHeight > metrics.clientHeight;
+            hReserved = axes.x && metrics.scrollWidth  > metrics.clientWidth;
         }
 
         const newRight  = vReserved ? trackW : 0;
@@ -758,10 +773,19 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             return Math.max(0, Math.min(1, (distance - 1) / SCROLL_SHADOW_RAMP_PX));
         };
 
-        this.setShadowEdge("top",    "--ts-ss-top",    ramp(scrollTop));
-        this.setShadowEdge("bottom", "--ts-ss-bottom", ramp(maxTop  - scrollTop));
-        this.setShadowEdge("left",   "--ts-ss-left",   ramp(scrollLeft));
-        this.setShadowEdge("right",  "--ts-ss-right",  ramp(maxLeft - scrollLeft));
+        // A shadow says "there is more content this way, scroll to reach it", so
+        // only an axis the user can actually scroll may light its edges. A
+        // clipped axis still reports overflow through `scrollWidth` /
+        // `scrollHeight` — an `autoScroll: "y"` panel whose content is a few px
+        // wider than its post-gutter width reads a non-zero `maxLeft` — and
+        // ramping that would paint a right-edge fade promising content no
+        // gesture can reveal.
+        const axes = this.scrollableAxes();
+
+        this.setShadowEdge("top",    "--ts-ss-top",    axes.y ? ramp(scrollTop)           : 0);
+        this.setShadowEdge("bottom", "--ts-ss-bottom", axes.y ? ramp(maxTop  - scrollTop) : 0);
+        this.setShadowEdge("left",   "--ts-ss-left",   axes.x ? ramp(scrollLeft)          : 0);
+        this.setShadowEdge("right",  "--ts-ss-right",  axes.x ? ramp(maxLeft - scrollLeft): 0);
     }
 
     /**
