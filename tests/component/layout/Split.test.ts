@@ -208,6 +208,27 @@ describe('Split resize weights', () => {
         expect(split.getPaneSize(panes[1])!).toBeCloseTo(b0 + 90, 4);   // absorbed all
     });
 
+    it('an unset-weight pane stays flexible across a second layout beside an explicit weight-0 pane', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = hostSplit(new Split(), 2);
+        const panes = host.getComponents();
+
+        split.setPaneResizeWeight(panes[0], 0); // explicit pin
+        // panes[1] left unset — defaults to its current size
+        host.doLayout();
+
+        const a0 = split.getPaneSize(panes[0])!;
+        const b0 = split.getPaneSize(panes[1])!;
+
+        host.setWidth(490); // +90
+        host.doLayout();
+        host.doLayout(); // second pass — the refill must not misread the unset pane as pinned
+
+        expect(split.getPaneSize(panes[0])!).toBeCloseTo(a0, 4);        // pinned
+        expect(split.getPaneSize(panes[1])!).toBeCloseTo(b0 + 90, 4);   // absorbed all
+    });
+
     it('no weights set preserves the proportional rescale (ratio invariant across resize)', () => {
         installTestDOM(CONFIG);
 
@@ -270,6 +291,105 @@ describe('Split resize weights', () => {
         expect(b1).toBeGreaterThanOrEqual(0);
         expect(b1).toBeCloseTo(0, 4);
         expect(a1 + b1).toBeCloseTo(sum0 - 300, 4);
+    });
+
+    it('a weight-0 pane holds its px when the absorber saturates its min (regression)', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const sidebar = new Component({ preferredSize: { width: 100, height: 50 } });
+        const centre = new Component({ preferredSize: { width: 280, height: 50 } });
+        sidebar.setMinSize(40, 0);
+        centre.setMinSize(200, 0);
+        host.addComponent(sidebar, { weight: 0 });
+        host.addComponent(centre, { weight: 1 });
+        host.doLayout();
+
+        expect(split.getPaneSize(sidebar)!).toBeCloseTo(100, 4);
+
+        host.setWidth(250); // shrink far enough to drive centre below its 200 min
+        host.doLayout();
+        expect(split.getPaneSize(sidebar)!).toBeCloseTo(100, 4);   // pre-fix: 100 -> 82
+        host.doLayout();
+        expect(split.getPaneSize(sidebar)!).toBeCloseTo(100, 4);   // pre-fix: 82 -> 71.5
+        host.doLayout();
+        expect(split.getPaneSize(sidebar)!).toBeCloseTo(100, 4);
+    });
+
+    it('the pin is stable across a full shrink/regrow cycle (sqladmin sidebar pattern)', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(1000, 300);
+        const side = new Component({ preferredSize: { width: 240, height: 50 } });
+        const body = new Component({ preferredSize: { width: 756, height: 50 } });
+        side.setMinSize(48, 0);
+        body.setMinSize(400, 0);
+        host.addComponent(side, { weight: 0, collapsible: false });
+        host.addComponent(body, { weight: 1 });
+        host.doLayout();
+
+        for (const width of [800, 600, 500, 420, 600, 1000]) {
+            host.setWidth(width);
+            host.doLayout();
+            host.doLayout();
+            host.doLayout();
+
+            // Including 420, where body (176) is below its 400 min and clips per
+            // the size-constraints contract — side must still hold exactly.
+            expect(split.getPaneSize(side)!).toBeCloseTo(240, 4);
+        }
+    });
+
+    it('a weight-0 pane holds its px when the absorber saturates its max on grow', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const side = new Component({ preferredSize: { width: 100, height: 50 } });
+        const grow = new Component({ preferredSize: { width: 200, height: 50 }, maxSize: { width: 300, height: BIG } });
+        host.addComponent(side, { weight: 0 });
+        host.addComponent(grow, { weight: 1 });
+        host.doLayout();
+
+        const grow0 = split.getPaneSize(grow)!;
+
+        host.setWidth(600); // +200
+        host.doLayout();
+        expect(split.getPaneSize(side)!).toBeCloseTo(100, 4);
+        expect(split.getPaneSize(grow)!).toBeCloseTo(grow0 + 200, 4);   // absorbed the whole delta
+
+        // grow's *stored* px legitimately exceeds its 300 max from here on (the
+        // top-of-function clampMain caps it and the refill re-expands it each
+        // pass, and its own clampWidth caps the committed display) — assert only
+        // on the pin, per the plan's Expected Behaviour #3.
+        host.doLayout();
+        expect(split.getPaneSize(side)!).toBeCloseTo(100, 4);
+
+        host.doLayout();
+        expect(split.getPaneSize(side)!).toBeCloseTo(100, 4);
+    });
+
+    it('a hard min == max pin outranks a soft weight-0 pin', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = emptyHost(400, 300);
+        const hard = new Component({ preferredSize: { width: 40, height: 50 }, minSize: { width: 40, height: 0 }, maxSize: { width: 40, height: BIG } });
+        const soft = new Component({ preferredSize: { width: 100, height: 50 } });
+        host.addComponent(hard, { weight: 0 });
+        host.addComponent(soft, { weight: 0 }); // no flexible mass at all
+        host.doLayout();
+
+        expect(split.getPaneSize(hard)!).toBeCloseTo(40, 4);
+
+        const sum0 = split.getPaneSize(hard)! + split.getPaneSize(soft)!;
+
+        host.setWidth(300); // shrink by 100
+        host.doLayout();
+        host.doLayout();
+
+        // Naive widening of isPinnedMain breaks this: hard would read 113.14
+        // then 39.56 instead of holding at 40.
+        expect(split.getPaneSize(hard)!).toBeCloseTo(40, 4);
+        expect(split.getPaneSize(hard)! + split.getPaneSize(soft)!).toBeCloseTo(sum0 - 100, 4);
     });
 
     it('a resize preserves collapse state and the expanded panes still fill', () => {
