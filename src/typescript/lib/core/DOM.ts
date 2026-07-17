@@ -1064,6 +1064,18 @@ export interface DOMSource {
     querySelectorAll(root: Handle, selector: string): Handle[];
 
     /**
+     * Whether an element itself matches a selector. The self-test counterpart to
+     * {@link DOMSource.querySelector}, which only sees descendants — needed when
+     * a component's own root element is the candidate (a `TextField` renders as
+     * the `<input>` itself, with no focusable descendant to find).
+     *
+     * @param handle - The element to test.
+     * @param selector - The CSS selector.
+     * @returns `true` when the element matches.
+     */
+    matches(handle: Handle, selector: string): boolean;
+
+    /**
      * Returns an element's parent element, or null.
      *
      * @param handle - The element to read.
@@ -1860,6 +1872,11 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     querySelectorAll(root: Handle, selector: string): Handle[] {
         return Array.from((_registry.resolve(root) as ParentNode).querySelectorAll(selector), (node) => _registry.intern(node));
+    }
+
+    /** @inheritDoc */
+    matches(handle: Handle, selector: string): boolean {
+        return (_registry.resolve(handle) as Element).matches(selector);
     }
 
     /** @inheritDoc */

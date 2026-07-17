@@ -921,6 +921,11 @@ export class ModelledDOMSource implements DOMSource {
         return [];
     }
 
+    /** No selector engine offline; no element matches. */
+    matches(_handle: Handle, _selector: string): boolean {
+        return false;
+    }
+
     /** Returns the handle's recorded parent in the modelled tree. */
     getParentElement(handle: Handle): Handle | null {
         return _table.parent(handle);

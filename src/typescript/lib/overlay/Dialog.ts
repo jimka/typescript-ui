@@ -104,6 +104,14 @@ export interface DialogConfig {
      * default button-derived chrome.
      */
     severity?        : DialogSeverity;
+    /**
+     * Component to receive focus when the dialog opens, overriding the default
+     * (the first focusable element in the content region). Use it when the field
+     * that should take focus is not the first one — a form whose first control is
+     * a read-only summary, say. Ignored when the component has no focusable
+     * element on open, which falls back to the default order.
+     */
+    initialFocus?    : Component;
 }
 
 // ---------------------------------------------------------------------------
@@ -807,7 +815,12 @@ class Dialog extends Component implements DismissableLayer {
         Event.addViewportListener(this, 'keydown', this._boundKeyHandler);
         Event.addViewportListener(this, 'resize', this._boundResizeHandler);
 
-        this.focusFirst();
+        // Deferred past the scheduled layout: focusing synchronously here does
+        // land on the right element, but the first layout then wraps the content
+        // in its frame and re-parents the subtree into it. Moving a focused
+        // element out of the document blurs it — silently, with no blur event —
+        // so the focus is undone a frame later and lands nowhere.
+        Component.afterNextLayout(() => this.focusFirst());
     }
 
     /**
@@ -853,13 +866,24 @@ class Dialog extends Component implements DismissableLayer {
     }
 
     /**
-     * Moves initial focus into the dialog. Prefers the first focusable element
-     * in the content region, so a form field — not the title-bar close button,
-     * which is first in DOM order — receives focus on open. Falls back to the
-     * primary action button, then to the first focusable element anywhere in the
-     * dialog.
+     * Moves initial focus into the dialog. Prefers the configured
+     * `initialFocus` component, then the first focusable element in the content
+     * region, so a form field — not the title-bar close button, which is first in
+     * DOM order — receives focus on open. Falls back to the primary action
+     * button, then to the first focusable element anywhere in the dialog.
+     *
+     * @remarks Must run after the dialog's first layout, which re-parents the
+     * content into its frame and would blur anything focused before it.
      */
     private focusFirst(): void {
+        const requested = this.requestedFocusElement();
+
+        if (requested) {
+            DOM.sink.focus(requested);
+
+            return;
+        }
+
         const contentEl = this._contentContainer.getElement();
         const inContent = contentEl ? DOM.source.querySelectorAll(contentEl, FOCUSABLE_SELECTOR) : [];
 
@@ -883,6 +907,31 @@ class Dialog extends Component implements DismissableLayer {
         if (focusable.length > 0) {
             DOM.sink.focus(focusable[0]);
         }
+    }
+
+    /**
+     * Resolves the configured `initialFocus` component to the element that
+     * should take focus: the component's own root element when it is itself
+     * focusable (a `TextField` renders as the `<input>`), otherwise its first
+     * focusable descendant (a `Panel` wrapping a field).
+     *
+     * @returns The element to focus, or `null` when no `initialFocus` is
+     *   configured or it offers nothing focusable — both of which fall through
+     *   to the default order.
+     */
+    private requestedFocusElement(): Handle | null {
+        const component = this._config.initialFocus;
+        const element   = component?.getElement();
+
+        if (!element) {
+            return null;
+        }
+
+        if (DOM.source.matches(element, FOCUSABLE_SELECTOR)) {
+            return element;
+        }
+
+        return DOM.source.querySelector(element, FOCUSABLE_SELECTOR);
     }
 
     /**
