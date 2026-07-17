@@ -50,6 +50,18 @@ This is for a link inside a container that owns its own keyboard navigation and 
 
 It is **not** a disabled state: the link looks normal, and a host that routes its own clicks still acts on them.
 
+## Removing the underline
+
+The underline is a class-level rule (`.Link`), not per-instance state — one CSS rule serves every link on the page. A caller's `styleRules` entry is scoped to the component's id, and an id outranks a class, so passing one overrides it:
+
+```typescript
+const bare = Link('No underline', {
+    styleRules: [{ suffix: '', styles: { textDecoration: 'none' } }],
+});
+```
+
+There is deliberately no `--ts-ui-link-underline` theme token: an underline is not a colour, and the rule above is the escape hatch. The link colour *is* themeable, via `--ts-ui-link-color`.
+
 ## The hit area follows the parent
 
 The hit area equals the text only while the parent sizes the link to its preferred width. A `Fit` parent, or an `HBox`/`VBox` with `stretching: true`, widens the box — and the hit area with it. `HBox` and `VBox` default to `stretching: false`, so an ordinary row is safe:
