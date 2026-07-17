@@ -34,6 +34,7 @@ class AccordionDemoPanel extends Panel {
     private spacingToggle:    Button;
     private fillToggle:       Button;
     private resizableToggle:  Button;
+    private resizeLogText:    Text;
 
     constructor() {
         super();
@@ -80,6 +81,15 @@ class AccordionDemoPanel extends Panel {
 
         this.addComponent(toolbar);
 
+        // --- Resize event log (only meaningful once "Resizable" is toggled on) ---
+        const logRow = new Component({ preferredSize: { width: 0, height: 28 } });
+
+        logRow.setLayoutManager(new HBox());
+        logRow.addComponent(new Text("Last sectionresize:", { preferredSize: { width: 130, height: 28 } }));
+        this.resizeLogText = new Text("—", { preferredSize: { width: 400, height: 28 } });
+        logRow.addComponent(this.resizeLogText);
+        this.addComponent(logRow);
+
         // --- AccordionPanel ---
         this.accordion = new AccordionPanel({
             singleOpen: true,
@@ -99,6 +109,16 @@ class AccordionDemoPanel extends Panel {
             .setFillHeight(true)
             .setCompact(true)
             .setChevronSide("start");
+
+        // Fires once per completed resizable-gutter drag (only while
+        // "Resizable" is on); each entry's unit follows the section's weight,
+        // so an unweighted section reports "px" — see the Accordion docs'
+        // "Resizable sections" section.
+        this.accordion.getAccordion().on("sectionresize", sizes => {
+            const summary = sizes.map(size => `${size.unit}:${size.value.toFixed(1)}`).join(", ");
+
+            this.resizeLogText.setText(`[${summary}]`);
+        });
 
         // Weight 1 so the accordion fills the panel's remaining height below the
         // toolbar — giving fill mode the leftover space it expands an open
