@@ -15,7 +15,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export type SplitGutterEvent = "dragstart" | "drag" | "collapse";
+export type SplitGutterEvent = "dragstart" | "drag" | "dragend" | "collapse";
 
 /**
  * Maps each chevron direction to its opposite, used to flip the single
@@ -69,6 +69,7 @@ export interface SplitGutterOptions extends ComponentOptions {
     listeners?: {
         dragstart?: (position: number) => void;
         drag?:      (position: number) => void;
+        dragend?:   () => void;
         collapse?:  () => void;
     };
 }
@@ -423,13 +424,16 @@ class SplitGutter extends Component<SplitGutterOptions> {
      *   pointer coordinate (`clientX`/`clientY`) in the gutter's drag axis at
      *   the moment the drag begins; `"drag"` fires on each mousemove/touchmove
      *   during a drag, receiving the absolute pointer coordinate in that axis;
-     *   `"collapse"` fires when the gutter's chevron is double-clicked.
+     *   `"dragend"` fires once the drag ends (mouseup, touchend, or
+     *   touchcancel); `"collapse"` fires when the gutter's chevron is
+     *   double-clicked.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This gutter, for method chaining.
      */
     on(event: "dragstart",       listener: (position: number) => void): this;
     on(event: "drag",            listener: (position: number) => void): this;
+    on(event: "dragend",         listener: () => void): this;
     on(event: "collapse",        listener: () => void): this;
     on(event: SplitGutterEvent,  listener: Function): this {
         this._listeners.add(event, listener);
@@ -461,6 +465,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
      */
     protected emit(event: "dragstart",       position: number): void;
     protected emit(event: "drag",            position: number): void;
+    protected emit(event: "dragend"): void;
     protected emit(event: "collapse"): void;
     protected emit(event: SplitGutterEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
@@ -516,7 +521,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
     /**
      * Removes viewport listeners and restores body pointer events and the
-     * document element's cursor when drag ends.
+     * document element's cursor when drag ends, then fires `dragend`.
      */
     onDragStop() {
         Event.removeViewportListener(this, 'mouseup', this.onDragStop);
@@ -526,6 +531,8 @@ class SplitGutter extends Component<SplitGutterOptions> {
         Event.removeViewportListener(this, 'touchmove', this.onDrag);
 
         endPointerDrag();
+
+        this.emit("dragend");
     }
 
     /**

@@ -8,6 +8,7 @@ import { Animation } from "~/core/Animation.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
+import { LayoutSize, LayoutSizeUnit, toLayoutSizes, fromLayoutSizes, isRestorableSizes } from "~/layout/LayoutSizes.js";
 import { Size, UNBOUNDED } from "~/primitive/Size.js";
 import type { AxisEnd } from "~/primitive/Axis.js";
 import { callable } from "~/core/Callable.js";
@@ -19,7 +20,7 @@ import { Util } from "~/core/Util.js";
  *
  * @category Layouts
  */
-export type AccordionEvent = "sectiontoggle";
+export type AccordionEvent = "sectiontoggle" | "sectionresize";
 
 /**
  * Symmetric easing curve, shared between the panel wrapper height transition,
@@ -98,6 +99,17 @@ const THEMED_BORDER:        string = "var(--ts-ui-accordion-border, 1px solid rg
 export type SectionToggleCallback = (index: number, open: boolean) => void;
 
 /**
+ * Callback invoked once a completed resizable-gutter drag settles a
+ * section's sizes.
+ *
+ * @param sizes - The open sections' sizes after the drag, in child order —
+ *   the same array {@link Accordion.getSectionSizes} would return.
+ *
+ * @category Layouts
+ */
+export type SectionResizeCallback = (sizes: LayoutSize[]) => void;
+
+/**
  * Construction-time options for {@link Accordion}.
  *
  * @category Layouts
@@ -119,11 +131,17 @@ export interface AccordionOptions extends LayoutManagerOptions {
      */
     resizable?:         boolean;
     /**
+     * Section sizes to restore on the first resizable layout; discarded whole
+     * when stale. Only meaningful with `resizable`.
+     */
+    sectionSizes?:      LayoutSize[];
+    /**
      * Multi-event listener bag dispatched to {@link Accordion.on} at
      * construction time.
      */
     listeners?: {
         sectiontoggle?: SectionToggleCallback;
+        sectionresize?: SectionResizeCallback;
     };
 }
 
@@ -183,6 +201,11 @@ class Accordion extends LayoutManager {
     // (reorder-safe, like Split._sizes); pruned each resizable layout for
     // removed components. A closed section keeps its entry frozen for reopen.
     private _resizeSizes: Map<Component, number> = new Map<Component, number>();
+    // Sizes to restore on the first resizable layout that can resolve an open
+    // budget, taken from the `sectionSizes` option (or a direct
+    // `applySectionSizes` call before one is resolvable). Drained once,
+    // mirroring `Split._pendingSizes`.
+    private _pendingSectionSizes: LayoutSize[] | null = null;
     // The `openBudget / storedTotal` scale factor computeResizableHeights last
     // applied — i.e. `rendered height == _resizeSizes value * _resizeFactor`.
     // Only 1 when the open set's stored sizes already sum to the budget (the
@@ -285,14 +308,22 @@ class Accordion extends LayoutManager {
             this.setResizable(options.resizable);
         }
 
+        if (options.sectionSizes !== undefined) {
+            this._pendingSectionSizes = options.sectionSizes.map(size => ({ ...size }));
+        }
+
         if (options.listeners !== undefined) {
             const listeners = options.listeners;
 
             for (const event of Object.keys(listeners) as Array<keyof typeof listeners>) {
                 const listener = listeners[event];
 
+                // A union of two events' callback types no longer narrows to a
+                // single `on` overload; the cast mirrors `Component.applyListeners`'
+                // own `(this as any).on` — sound for the same reason: `event` and
+                // `listener` are still a matched pair from the same options key.
                 if (listener !== undefined) {
-                    this.on(event, listener);
+                    (this as any).on(event, listener);
                 }
             }
         }
@@ -949,16 +980,95 @@ class Accordion extends LayoutManager {
     }
 
     /**
+     * Resolves each section's persisted unit: `"px"` for a resize-pinned
+     * section (effective weight `0`, per {@link effectiveWeight}), `"ratio"`
+     * otherwise. `effectiveWeight` is `accordion-resize-weight`'s definition
+     * of a resize-pinned section — `weight` unset or `0`, with `fillHeight`
+     * off — so this is verbatim the predicate the layout itself pins by.
+     *
+     * @param components - The container's current content components, in
+     *   child order.
+     * @returns One unit per section, in the same order.
+     */
+    private sectionSizeUnits(components: Component[]): LayoutSizeUnit[] {
+        return components.map(component => (this.effectiveWeight(component) === 0 ? "px" : "ratio"));
+    }
+
+    /**
+     * Returns the sections' content sizes in child order, one entry per
+     * section (open or closed), for cross-session persistence: a
+     * resize-pinned section (effective weight `0`) reports `px`, every other
+     * section reports its `ratio` of the space the px sections leave.
+     *
+     * @remarks Reads `_resizeSizes` raw — never `getHeight()`, never
+     * `× _resizeFactor`. A pinned section's stored value is already its px
+     * (the pin block holds it at scale 1); `_resizeFactor` is one scalar
+     * across the *free* set, so it cancels within that subset and a whole-set
+     * read would need it, not a raw one; and a rendered height can be a
+     * transient min/max clamp `distributeWithinConstraints` applied for this
+     * pass only, which the stored value deliberately never carries forward.
+     *
+     * @returns One {@link LayoutSize} per section in child order; the
+     *   pending `sectionSizes` when one is still undrained; `[]` when
+     *   detached or the container has no sections.
+     */
+    getSectionSizes(): LayoutSize[] {
+        const container = this.getContainer();
+
+        if (!container) {
+            return [];
+        }
+
+        const components = container.getComponents();
+
+        if (components.length === 0) {
+            return [];
+        }
+
+        const units = this.sectionSizeUnits(components);
+
+        if (this._pendingSectionSizes !== null && isRestorableSizes(this._pendingSectionSizes, units)) {
+            return this._pendingSectionSizes.map(size => ({ ...size }));
+        }
+
+        return toLayoutSizes(units, components.map(component => this._resizeSizes.get(component) ?? 0));
+    }
+
+    /**
+     * Restores sizes captured by {@link getSectionSizes}, applied on the next
+     * resizable layout that can resolve the open budget (see
+     * {@link applyPendingSectionSizes}). Discarded whole unless every entry's
+     * unit matches the live section's weight (see the discard rule on
+     * {@link LayoutSize}).
+     *
+     * @param sizes - The persisted array to restore.
+     * @returns This layout manager, for method chaining.
+     */
+    applySectionSizes(sizes: LayoutSize[]): this {
+        // Deferred, not immediate: the correct base is `openBudget`, which only
+        // `computeResizableHeights` can resolve. The option and this setter share
+        // one drain, one base, and one discard rule.
+        this._pendingSectionSizes = sizes.map(size => ({ ...size }));
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
      * Registers a listener for one of this accordion's events.
      *
      * @param event - `"sectiontoggle"` fires whenever a section is opened or
      *   closed, receiving the zero-based section index and whether it is
-     *   now open.
+     *   now open; `"sectionresize"` fires once a completed resizable-gutter
+     *   drag settles a section's sizes, receiving the open sections' sizes
+     *   in child order.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This accordion, for method chaining.
      */
     on(event: "sectiontoggle", listener: SectionToggleCallback): this;
+    on(event: "sectionresize", listener: SectionResizeCallback): this;
     on(event: AccordionEvent,  listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -988,6 +1098,7 @@ class Accordion extends LayoutManager {
      * @param payload - Forwarded to each listener.
      */
     protected emit(event: "sectiontoggle", index: number, open: boolean): void;
+    protected emit(event: "sectionresize", sizes: LayoutSize[]): void;
     protected emit(event: AccordionEvent,  ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
@@ -1824,9 +1935,13 @@ class Accordion extends LayoutManager {
     /**
      * Ends a resizable-gutter drag: removes the viewport listeners and clears
      * the captured drag pair. Transitions stay off (their default outside a
-     * toggle), so there is nothing to restore.
+     * toggle), so there is nothing to restore. Fires `sectionresize` with the
+     * post-drag sizes when a drag was actually live — including on the
+     * `detach()` mid-drag path, which calls this before `_resizeSizes` is
+     * cleared, so the emitted sizes still reflect the drag.
      */
     private onGutterDragEnd(): void {
+        const wasDragging = this._dragUpper !== null;
         const container = this.getContainer();
 
         if (container) {
@@ -1837,6 +1952,10 @@ class Accordion extends LayoutManager {
 
         this._dragUpper = null;
         this._dragLower = null;
+
+        if (wasDragging) {
+            this.emit("sectionresize", this.getSectionSizes());
+        }
     }
 
     /**
@@ -2221,6 +2340,8 @@ class Accordion extends LayoutManager {
 
         const openBudget = containerSize.height - headerTotal;
 
+        this.applyPendingSectionSizes(components, openBudget);
+
         for (const i of openIndices) {
             const component = components[i];
 
@@ -2230,6 +2351,45 @@ class Accordion extends LayoutManager {
         }
 
         return this.distributeWithinConstraints(components, openIndices, openBudget);
+    }
+
+    /**
+     * Drains the `sectionSizes` option (or a pre-layout
+     * {@link applySectionSizes} call) into `_resizeSizes` on the first
+     * resizable layout that can resolve an open budget. Runs once: cleared
+     * unconditionally so a stale array is not retried on every later layout.
+     *
+     * @param components - The container's content components, section-ordered.
+     * @param openBudget - The height available to the open sections' content,
+     *   the base {@link fromLayoutSizes} seeds the ratio entries against.
+     */
+    private applyPendingSectionSizes(components: Component[], openBudget: number): void {
+        const pending = this._pendingSectionSizes;
+
+        if (pending === null) {
+            return;
+        }
+
+        this._pendingSectionSizes = null;
+
+        const units = this.sectionSizeUnits(components);
+
+        if (!isRestorableSizes(pending, units)) {
+            return;
+        }
+
+        const stored = fromLayoutSizes(pending, openBudget);
+
+        for (let idx = 0; idx < components.length; idx += 1) {
+            // A zero-size section is *removed* rather than stored as 0, so it falls
+            // back to the legacy `openContentHeight + fill` seed below instead of
+            // taking a zero share of the budget.
+            if (stored[idx] > 0) {
+                this._resizeSizes.set(components[idx], stored[idx]);
+            } else {
+                this._resizeSizes.delete(components[idx]);
+            }
+        }
     }
 
     /**

@@ -1189,6 +1189,409 @@ describe('Accordion transitions — off by default (snap on relayout)', () => {
     });
 });
 
+describe('Accordion section sizes (getSectionSizes / applySectionSizes)', () => {
+    // Mirrors the `treeInspFixture` shape from the weight-0 pin describe
+    // block above: a weighted `tree` section and an unweighted, resize-pinned
+    // `insp` section preferring 220px.
+    function treeInspFixture(hostHeight: number): { acc: Accordion; tree: Component; insp: Component; host: Container } {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(300, hostHeight, acc);
+        const tree = content({ width: 100, height: 96 }, { width: 40, height: 96 });
+        const insp = content({ width: 100, height: 220 }, { width: 40, height: 50 });
+        const treeConstraints = new AccordionConstraints('tree', true);
+
+        treeConstraints.weight = 1;
+        host.addComponent(tree, treeConstraints);
+        host.addComponent(insp, constraints('insp', true)); // no weight — resize-pinned
+
+        return { acc, tree, insp, host };
+    }
+
+    type DragHandle = {
+        onGutterDragStart(index: number, position: number): void;
+        onGutterDrag(index: number, position: number): void;
+        onGutterDragEnd(): void;
+    };
+
+    it('units follow the weight', () => {
+        const { acc, host } = treeInspFixture(900);
+        host.doLayout();
+
+        const sizes = acc.getSectionSizes();
+
+        expect(sizes.map(s => s.unit)).toEqual(['ratio', 'px']);
+        expect(sizes[1].value).toBeCloseTo(220, 5);
+    });
+
+    it('setFillHeight(true) flips the unpinned section to ratio', () => {
+        const { acc, host } = treeInspFixture(900);
+        acc.setFillHeight(true);
+        host.doLayout();
+
+        const sizes = acc.getSectionSizes();
+
+        expect(sizes.map(s => s.unit)).toEqual(['ratio', 'ratio']);
+    });
+
+    it('reads _resizeSizes raw, not the clamped rendered height (scale-honest under _resizeFactor)', () => {
+        // First layout at a generous height seeds `_resizeSizes` from each
+        // section's own preferred content height (unclamped — both fit
+        // comfortably). Shrinking the host on a second layout then forces
+        // distributeWithinConstraints' proportional pass to clamp `a`'s
+        // *rendered* height up to its min — but `_resizeSizes` is only ever
+        // seeded once and never rewritten by that pass, so the raw stored
+        // value stays at the first layout's larger, unclamped seed. Capturing
+        // that raw value (not `a.getHeight()`) is exactly what's under test.
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(300, 500, acc);
+        const a = content({ width: 100, height: 100 }, { width: 40, height: 80 });
+        const b = content({ width: 100, height: 300 }, { width: 40, height: 5 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.doLayout();
+
+        const internals = acc as unknown as { _resizeSizes: Map<Component, number> };
+        const storedA = internals._resizeSizes.get(a)!;
+
+        expect(storedA).toBeCloseTo(100, 5); // seeded from a's own preferred, well above its 80 min
+
+        host.setHeight(150); // budget now too tight for a's stored share to clear its min
+        host.doLayout();
+
+        expect(a.getHeight()).toBeCloseTo(80, 5); // rendered: clamped to min
+        expect(internals._resizeSizes.get(a)!).toBeCloseTo(storedA, 5); // stored: untouched by the clamp
+
+        const sizes = acc.getSectionSizes();
+
+        expect(sizes[0].value).toBeCloseTo(storedA, 5);
+        expect(sizes[0].value).not.toBeCloseTo(a.getHeight(), 0);
+    });
+
+    it('round-trips exactly for the pin at a different viewport', () => {
+        const { acc, host } = treeInspFixture(900);
+        host.doLayout();
+
+        const captured = acc.getSectionSizes();
+
+        const acc2 = new Accordion({ resizable: true, sectionSizes: captured });
+        acc2.setHeaderHeight(HEADER);
+        const host2 = hostAccordion(300, 500, acc2);
+        const tree2 = content({ width: 100, height: 96 }, { width: 40, height: 96 });
+        const insp2 = content({ width: 100, height: 220 }, { width: 40, height: 50 });
+        const treeConstraints2 = new AccordionConstraints('tree', true);
+        treeConstraints2.weight = 1;
+        host2.addComponent(tree2, treeConstraints2);
+        host2.addComponent(insp2, constraints('insp', true));
+        host2.doLayout();
+
+        expect(insp2.getHeight()).toBeCloseTo(220, 5);
+        expect(tree2.getHeight() + insp2.getHeight()).toBeCloseTo(500 - 2 * HEADER, 5);
+    });
+
+    it('round trip preserves the weighted sections\' ratio', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(300, 900, acc);
+        const pin = content({ width: 100, height: 220 }, { width: 40, height: 50 });
+        const a = content({ width: 100, height: 96 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 96 }, { width: 40, height: 10 });
+        const aConstraints = new AccordionConstraints('a', true);
+        const bConstraints = new AccordionConstraints('b', true);
+        aConstraints.weight = 1;
+        bConstraints.weight = 1;
+        host.addComponent(pin, constraints('pin', true));
+        host.addComponent(a, aConstraints);
+        host.addComponent(b, bConstraints);
+        host.doLayout();
+
+        // Drag the gutter between a and b so they land at an uneven (~3:1) split.
+        const drag = acc as unknown as DragHandle;
+        drag.onGutterDragStart(1, 0); // gutter between a (pos 1) and b (pos 2)
+        drag.onGutterDrag(1, 200);
+        drag.onGutterDragEnd();
+
+        const captured = acc.getSectionSizes();
+        const ratioBefore = captured[1].value / captured[2].value;
+
+        const acc2 = new Accordion({ resizable: true, sectionSizes: captured });
+        acc2.setHeaderHeight(HEADER);
+        const host2 = hostAccordion(300, 500, acc2);
+        const pin2 = content({ width: 100, height: 220 }, { width: 40, height: 50 });
+        const a2 = content({ width: 100, height: 96 }, { width: 40, height: 10 });
+        const b2 = content({ width: 100, height: 96 }, { width: 40, height: 10 });
+        host2.addComponent(pin2, constraints('pin', true));
+        host2.addComponent(a2, aConstraints);
+        host2.addComponent(b2, bConstraints);
+        host2.doLayout();
+
+        expect(pin2.getHeight()).toBeCloseTo(220, 5);
+        expect(a2.getHeight() / b2.getHeight()).toBeCloseTo(ratioBefore, 4);
+    });
+
+    it('a restore is scale-1: a second layout with no size change leaves heights identical', () => {
+        const { acc, host } = treeInspFixture(900);
+        host.doLayout();
+
+        const captured = acc.getSectionSizes();
+
+        const acc2 = new Accordion({ resizable: true, sectionSizes: captured });
+        acc2.setHeaderHeight(HEADER);
+        const host2 = hostAccordion(300, 900, acc2);
+        const tree2 = content({ width: 100, height: 96 }, { width: 40, height: 96 });
+        const insp2 = content({ width: 100, height: 220 }, { width: 40, height: 50 });
+        const treeConstraints2 = new AccordionConstraints('tree', true);
+        treeConstraints2.weight = 1;
+        host2.addComponent(tree2, treeConstraints2);
+        host2.addComponent(insp2, constraints('insp', true));
+        host2.doLayout(); // draining layout
+
+        const afterDrain = [tree2.getHeight(), insp2.getHeight()];
+
+        host2.doLayout(); // second layout, no size change
+
+        const afterSecond = [tree2.getHeight(), insp2.getHeight()];
+
+        expect(afterSecond).toEqual(afterDrain);
+    });
+
+    it('a drag survives the round trip', () => {
+        const { acc, insp, host } = treeInspFixture(900);
+        host.doLayout();
+
+        const drag = acc as unknown as DragHandle;
+        drag.onGutterDragStart(0, 500);
+        drag.onGutterDrag(0, 400); // drag up 100: insp grows
+        drag.onGutterDragEnd();
+
+        expect(insp.getHeight()).toBeCloseTo(320, 5);
+
+        const captured = acc.getSectionSizes();
+
+        const acc2 = new Accordion({ resizable: true, sectionSizes: captured });
+        acc2.setHeaderHeight(HEADER);
+        const host2 = hostAccordion(300, 700, acc2);
+        const tree2 = content({ width: 100, height: 96 }, { width: 40, height: 96 });
+        const insp2 = content({ width: 100, height: 220 }, { width: 40, height: 50 });
+        const treeConstraints2 = new AccordionConstraints('tree', true);
+        treeConstraints2.weight = 1;
+        host2.addComponent(tree2, treeConstraints2);
+        host2.addComponent(insp2, constraints('insp', true));
+        host2.doLayout();
+
+        expect(insp2.getHeight()).toBeCloseTo(320, 5);
+    });
+
+    it('discards a stale sectionSizes array whole — length mismatch', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion({
+            resizable: true,
+            sectionSizes: [{ unit: 'px', value: 220 }, { unit: 'ratio', value: 1 }],
+        });
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(300, 900, acc);
+        host.addComponent(content({ width: 100, height: 60 }, { width: 40, height: 10 }), constraints('A', true));
+        host.addComponent(content({ width: 100, height: 60 }, { width: 40, height: 10 }), constraints('B', true));
+        host.addComponent(content({ width: 100, height: 60 }, { width: 40, height: 10 }), constraints('C', true));
+        host.doLayout();
+
+        const sizes = acc.getSectionSizes();
+
+        expect(sizes.some(s => s.value === 220)).toBe(false);
+    });
+
+    it('discards a stale sectionSizes array whole — unit mismatch', () => {
+        installTestDOM(CONFIG);
+        // Saved as all-ratio; the live section 0 is now unweighted (resize-pinned, "px").
+        const acc = new Accordion({
+            resizable: true,
+            sectionSizes: [{ unit: 'ratio', value: 0.5 }, { unit: 'ratio', value: 0.5 }],
+        });
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(300, 900, acc);
+        const a = content({ width: 100, height: 220 }, { width: 40, height: 50 });
+        const b = content({ width: 100, height: 96 }, { width: 40, height: 10 });
+        const bConstraints = new AccordionConstraints('b', true);
+        bConstraints.weight = 1;
+        host.addComponent(a, constraints('a', true)); // unweighted — resize-pinned ("px")
+        host.addComponent(b, bConstraints);
+        host.doLayout();
+
+        // Discarded whole: normal fill-seeded layout, not the stale 0.5/0.5.
+        expect(a.getHeight()).toBeCloseTo(220, 5);
+    });
+
+    it('applySectionSizes is strict too — a length-mismatched array is discarded whole', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(300, 900, acc);
+        host.addComponent(content({ width: 100, height: 60 }, { width: 40, height: 10 }), constraints('A', true));
+        host.addComponent(content({ width: 100, height: 60 }, { width: 40, height: 10 }), constraints('B', true));
+        host.addComponent(content({ width: 100, height: 60 }, { width: 40, height: 10 }), constraints('C', true));
+        host.doLayout();
+
+        const before = acc.getSectionSizes();
+
+        acc.applySectionSizes([{ unit: 'ratio', value: 1 }]); // 1 entry against 3 sections
+        host.doLayout();
+
+        expect(acc.getSectionSizes()).toEqual(before);
+    });
+
+    it('getSectionSizes reads back before the draining layout', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(300, 900, acc);
+        const bConstraints = new AccordionConstraints('B', true);
+        bConstraints.weight = 1; // live units ["px", "ratio"], matching x below
+        host.addComponent(content({ width: 100, height: 60 }, { width: 40, height: 10 }), constraints('A', true));
+        host.addComponent(content({ width: 100, height: 60 }, { width: 40, height: 10 }), bConstraints);
+        host.doLayout();
+
+        const x = [{ unit: 'px' as const, value: 150 }, { unit: 'ratio' as const, value: 1 }];
+        acc.applySectionSizes(x);
+
+        expect(acc.getSectionSizes()).toEqual(x);
+    });
+
+    it('a zero-value entry falls back to the legacy seed instead of a zero share', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(300, 900, acc);
+        const a = content({ width: 100, height: 60 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 60 }, { width: 40, height: 10 });
+        host.addComponent(a, constraints('A', true));
+        host.addComponent(b, constraints('B', true));
+        host.doLayout();
+
+        acc.applySectionSizes([{ unit: 'px', value: 0 }, { unit: 'px', value: 400 }]);
+        host.doLayout();
+
+        expect(a.getHeight()).toBeGreaterThanOrEqual(10); // fell back to the min-respecting legacy seed, not 0
+    });
+
+    it('sectionSizes on a non-resizable accordion stays pending, then applies once resizable', () => {
+        installTestDOM(CONFIG);
+        const sectionSizes = [{ unit: 'px' as const, value: 220 }, { unit: 'ratio' as const, value: 1 }];
+        const acc = new Accordion({ sectionSizes }); // resizable defaults to false
+        acc.setHeaderHeight(HEADER);
+        const host = hostAccordion(300, 900, acc);
+        const tree = content({ width: 100, height: 96 }, { width: 40, height: 96 });
+        const insp = content({ width: 100, height: 220 }, { width: 40, height: 50 });
+        const treeConstraints = new AccordionConstraints('tree', true);
+        treeConstraints.weight = 1;
+        host.addComponent(tree, treeConstraints);
+        host.addComponent(insp, constraints('insp', true));
+        host.doLayout(); // computeResizableHeights returns early — no restore
+
+        acc.setResizable(true);
+        host.doLayout();
+
+        expect(insp.getHeight()).toBeCloseTo(220, 5);
+    });
+
+    it('sectionresize fires once at drag end, with the post-drag sizes', () => {
+        const { acc, host } = treeInspFixture(900);
+        host.doLayout();
+
+        const listener = vi.fn();
+        acc.on('sectionresize', listener);
+
+        const drag = acc as unknown as DragHandle;
+        drag.onGutterDragStart(0, 0);
+        drag.onGutterDrag(0, 30);
+        drag.onGutterDragEnd();
+
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(listener).toHaveBeenCalledWith(acc.getSectionSizes());
+    });
+
+    it('drag frames alone (no drag end) fire no sectionresize', () => {
+        const { acc, host } = treeInspFixture(900);
+        host.doLayout();
+
+        const listener = vi.fn();
+        acc.on('sectionresize', listener);
+
+        const drag = acc as unknown as DragHandle;
+        drag.onGutterDragStart(0, 0);
+        drag.onGutterDrag(0, 10);
+        drag.onGutterDrag(0, 20);
+        drag.onGutterDrag(0, 30);
+
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('onGutterDragEnd without a live drag is silent (the wasDragging guard)', () => {
+        const { acc, host } = treeInspFixture(900);
+        host.doLayout();
+
+        const listener = vi.fn();
+        acc.on('sectionresize', listener);
+
+        const drag = acc as unknown as DragHandle;
+        drag.onGutterDragEnd(); // no drag was ever started
+
+        expect(listener).not.toHaveBeenCalled();
+
+        // detach() calls onGutterDragEnd() mid-drag; with no live drag it must
+        // stay silent too.
+        acc.detach();
+
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('sectiontoggle stays untouched: opening/closing a section fires no sectionresize', () => {
+        const { acc, host } = treeInspFixture(900);
+        host.doLayout();
+
+        const toggleListener = vi.fn();
+        const resizeListener = vi.fn();
+        acc.on('sectiontoggle', toggleListener);
+        acc.on('sectionresize', resizeListener);
+
+        acc.closeSection(0);
+        host.doLayout();
+        acc.openSection(0);
+        host.doLayout();
+
+        expect(toggleListener).toHaveBeenCalledTimes(2);
+        expect(resizeListener).not.toHaveBeenCalled();
+    });
+
+    it('a closed section keeps its entry, restored on reopen', () => {
+        const { acc, insp, host } = treeInspFixture(900);
+        host.doLayout();
+
+        const before = acc.getSectionSizes();
+        const inspHeightBefore = insp.getHeight();
+
+        acc.closeSection(1);
+        host.doLayout();
+
+        const whileClosed = acc.getSectionSizes();
+        expect(whileClosed[1]).toEqual(before[1]); // frozen entry, same unit and value
+
+        acc.openSection(1);
+        host.doLayout();
+
+        expect(insp.getHeight()).toBeCloseTo(inspHeightBefore, 0);
+    });
+});
+
 // Manual verification (not exercisable by the DOM test harness — see
 // plans/implemented/accordion-resizable-sections.md "Expected Behaviour"):
 //   - Real pointer/touch drag on the boundary shows the ns-resize cursor,
