@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DefaultCell } from "~/component/table/cell/Default.js";
-import { ResizeHandle } from "~/component/table/cell/ResizeHandle.js";
+import { ResizeHandle, RESIZE_HANDLE_CURSOR } from "~/component/table/cell/ResizeHandle.js";
 import { SortPriorityBadge } from "~/component/table/cell/SortPriorityBadge.js";
 import { CellEvent } from "~/component/table/cell/Cell.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
+import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -452,9 +453,7 @@ class HeaderCell extends DefaultCell {
         Event.addViewportListener(this, 'mousemove', this.onResizeDrag);
         Event.addViewportListener(this, 'mouseup', this.onResizeDragStop);
 
-        // Suppresses pointer events on document.body (not a Component) for the
-        // duration of the column resize so the cursor can't snag on other cells.
-        DOM.sink.apply(DOM.source.getBody(), { style: { "pointerEvents": 'none' } });
+        beginPointerDrag(RESIZE_HANDLE_CURSOR);
     }
 
     private onResizeDrag(e: MouseEvent): void {
@@ -465,8 +464,7 @@ class HeaderCell extends DefaultCell {
         Event.removeViewportListener(this, 'mousemove', this.onResizeDrag);
         Event.removeViewportListener(this, 'mouseup', this.onResizeDragStop);
 
-        // Restores pointer events on document.body (not a Component) once the resize ends.
-        DOM.sink.apply(DOM.source.getBody(), { style: { "pointerEvents": '' } });
+        endPointerDrag();
 
         this._resizeHandle.dragEnd();
 

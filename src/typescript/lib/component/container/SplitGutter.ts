@@ -5,6 +5,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { CollapseButton, CollapseDirection } from "~/component/container/CollapseButton.js";
 import { Event } from "~/core/Event.js";
+import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { callable } from "~/core/Callable.js";
@@ -510,13 +511,12 @@ class SplitGutter extends Component<SplitGutterOptions> {
         Event.addViewportListener(this, 'mousemove', this.onDrag);
         Event.addViewportListener(this, 'touchmove', this.onDrag);
 
-        // Suppresses pointer events on document.body (not a Component) for the
-        // duration of the drag so the cursor can't snag on other elements.
-        DOM.sink.apply(DOM.source.getBody(), { style: { pointerEvents: "none" } });
+        beginPointerDrag(this.dragCursor());
     }
 
     /**
-     * Removes viewport listeners and restores body pointer events when drag ends.
+     * Removes viewport listeners and restores body pointer events and the
+     * document element's cursor when drag ends.
      */
     onDragStop() {
         Event.removeViewportListener(this, 'mouseup', this.onDragStop);
@@ -525,8 +525,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
         Event.removeViewportListener(this, 'mousemove', this.onDrag);
         Event.removeViewportListener(this, 'touchmove', this.onDrag);
 
-        // Restores pointer events on document.body (not a Component) once the drag ends.
-        DOM.sink.apply(DOM.source.getBody(), { style: { pointerEvents: "" } });
+        endPointerDrag();
     }
 
     /**
@@ -547,6 +546,16 @@ class SplitGutter extends Component<SplitGutterOptions> {
     }
 
     /**
+     * The resize cursor for this gutter's drag axis, shared by the hover state
+     * and the drag itself so the two can never disagree.
+     *
+     * @returns The CSS cursor naming the axis the gutter resizes along.
+     */
+    private dragCursor(): string {
+        return this._direction == "horizontal" ? "ew-resize" : "ns-resize";
+    }
+
+    /**
      * Applies the hover cursor for the gutter's current state. Only a movable
      * gutter in its divider state shows the axis resize cursor; a fixed Border
      * gutter, or a gutter in its collapsed strip state (which cannot be
@@ -554,7 +563,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
      */
     private applyCursor(): void {
         if (this._movable && !this._opaque) {
-            this.setCursor(this._direction == "horizontal" ? "ew-resize" : "ns-resize");
+            this.setCursor(this.dragCursor());
         } else {
             this.setCursor("default");
         }

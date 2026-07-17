@@ -4,6 +4,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
+import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 
@@ -230,9 +231,9 @@ class WindowBorder extends Component<WindowBorderOptions> {
         Event.addViewportListener(this, 'mousemove', this._fireDragListener);
         Event.addViewportListener(this, 'touchmove', this._fireDragListener);
 
-        // Suppresses pointer events on document.body (not a Component) for the
-        // duration of the drag so the cursor can't snag on other elements.
-        DOM.sink.apply(DOM.source.getBody(), { style: { pointerEvents: "none" } });
+        // A direction with no resize cursor of its own still suppresses body
+        // pointer events; it just has nothing to hold, so it keeps the default.
+        beginPointerDrag(this.dragCursor() ?? "default");
     }
 
     /**
@@ -245,12 +246,37 @@ class WindowBorder extends Component<WindowBorderOptions> {
         Event.removeViewportListener(this, 'mousemove', this._fireDragListener);
         Event.removeViewportListener(this, 'touchmove', this._fireDragListener);
 
-        // Restores pointer events on document.body (not a Component) once the drag ends.
-        DOM.sink.apply(DOM.source.getBody(), { style: { pointerEvents: "" } });
+        endPointerDrag();
 
         // Drop the snap-target highlight (if any) once the drag commits, so a
         // subsequent Ctrl-release on the same hover doesn't leave the strip glowing.
         this.setSnapTarget(false);
+    }
+
+    /**
+     * The resize cursor for the edge or corner this strip sits on, shared by the
+     * hover state and the drag itself so the two can never disagree.
+     *
+     * @returns The CSS cursor naming the resize axis, or `undefined` for a
+     *   direction that does not resize.
+     */
+    private dragCursor(): string | undefined {
+        switch (this._direction) {
+            case Direction.NORTH:
+            case Direction.SOUTH:
+                return "ns-resize";
+            case Direction.WEST:
+            case Direction.EAST:
+                return "ew-resize";
+            case Direction.NORTHWEST:
+            case Direction.SOUTHEAST:
+                return "nwse-resize";
+            case Direction.SOUTHWEST:
+            case Direction.NORTHEAST:
+                return "nesw-resize";
+        }
+
+        return undefined;
     }
 
     /**
@@ -261,26 +287,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
     render() {
         let element = super.render();
 
-        let cursor;
-        switch (this._direction) {
-            case Direction.NORTH:
-            case Direction.SOUTH:
-                cursor = "ns-resize";
-                break;
-            case Direction.WEST:
-            case Direction.EAST:
-                cursor = "ew-resize";
-                break;
-            case Direction.NORTHWEST:
-            case Direction.SOUTHEAST:
-                cursor = "nwse-resize";
-                break;
-            case Direction.SOUTHWEST:
-            case Direction.NORTHEAST:
-                cursor = "nesw-resize";
-                break;
-        }
-
+        const cursor = this.dragCursor();
         if (cursor) {
             this.setCursor(cursor);
         }

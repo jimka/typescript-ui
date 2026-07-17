@@ -32,6 +32,13 @@ interface ResizeHandleOptions extends ComponentOptions {
     };
 }
 
+/**
+ * The handle's themeable resize cursor. Exported so the host header can hold the
+ * same cursor for the duration of a column drag, when the handle itself is out
+ * of hit-testing and can no longer resolve it.
+ */
+const RESIZE_HANDLE_CURSOR = "var(--ts-ui-table-resize-handle-cursor, ew-resize)";
+
 let _classRule: StyleRule | null = null;
 
 /**
@@ -92,7 +99,7 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
 
         super({ tag: "div", ...(options ?? {}) });
 
-        this.setCursor("var(--ts-ui-table-resize-handle-cursor, ew-resize)");
+        this.setCursor(RESIZE_HANDLE_CURSOR);
         // 5 px-wide drag target with a 1 px colored stripe at the right
         // edge — `80%` of `5 px = 4 px` transparent, the remaining `20%`
         // is `1 px` of the resize-handle colour. Pairs with the 1 px
@@ -221,5 +228,6 @@ const ResizeHandleCallable = callable(ResizeHandle);
 type ResizeHandleCallable = ResizeHandle;
 export {
     ResizeHandle         as _ResizeHandle,
-    ResizeHandleCallable as ResizeHandle
+    ResizeHandleCallable as ResizeHandle,
+    RESIZE_HANDLE_CURSOR
 };
