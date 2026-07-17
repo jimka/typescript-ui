@@ -18,6 +18,13 @@ import type { AxisOrientation } from "~/primitive/Axis.js";
 // reservation and the gutter placement in `doLayout`.
 const GUTTER_SIZE = 4;
 
+// Probe weight for the refill's resize-pin test. Any positive value works: it
+// exists only so a pane with *no* weight set resolves through
+// `effectiveResizeWeight`'s fallback to a non-zero weight and stays flexible,
+// which leaves `=== 0` meaning an explicit pin (`setPaneResizeWeight(pane, 0)`
+// or a `weight: 0` constraint). A `0` probe here would pin every unset pane.
+const WEIGHT_UNSET_PROBE = 1;
+
 /**
  * Construction-time options for {@link Split}.
  *
@@ -415,6 +422,24 @@ class Split extends LayoutManager {
         const hi  = max ? (horizontal ? max.width : max.height) : Number.POSITIVE_INFINITY;
 
         return lo === hi;
+    }
+
+    /**
+     * True when the pane's px size is pinned by an explicit container-resize weight
+     * of `0` — the pin the delta-distribution block honours, so the refill must not
+     * undo it by rescaling the pane. Distinct from {@link isPinnedMain}: that is a
+     * single-point `[min, max]` range (one legal extent, never rescaled), this is a
+     * caller preference that yields when the container is too small to hold it.
+     *
+     * Resolves through the same precedence as the resize block (imperative weight,
+     * else `weight` constraint, else fallback), probing with a positive fallback so
+     * an unset pane reports flexible and only an explicit `0` reports pinned.
+     *
+     * @param pane - The pane to test.
+     * @returns True when the pane's effective resize weight is an explicit `0`.
+     */
+    private isResizePinnedMain(pane: Component): boolean {
+        return this.effectiveResizeWeight(pane, WEIGHT_UNSET_PROBE) === 0;
     }
 
     /**
@@ -1404,54 +1429,75 @@ class Split extends LayoutManager {
         // when a live min/max change re-clamped a pane (the resize block is skipped
         // then, because `available` is unchanged). `computeMainAxisSizes`/`doLayout`
         // place panes at their raw stored sizes, so a short sum strands a trailing
-        // gap. Normalise back to the `Σ == available` invariant — but hold panes
-        // pinned to a single point (`min == max`, a collapsed pane) at that value
-        // and rescale only the flexible panes to fill `available − Σpinned`, so a
-        // min=max collapse lands exactly instead of being scaled off its pin. With
-        // no pinned pane this is the original uniform refill, byte-for-byte.
-        let pinnedTotal   = 0;
-        let flexibleTotal = 0;
+        // gap. Normalise back to the `Σ == available` invariant — but hold the
+        // pinned panes and rescale only what can absorb. Panes fall in three
+        // tiers: single-point (min == max) pins never move; weight-0 pins hold
+        // their px while the container has room for them, and yield
+        // proportionally when it does not; everything else flexes. With no
+        // pinned pane of either kind this is the original uniform refill,
+        // byte-for-byte.
+        let pinnedTotal       = 0;
+        let weightPinnedTotal = 0;
+        let flexibleTotal     = 0;
 
         for (let idx = 0; idx < components.length; idx += 1) {
-            let stored = this._sizes.get(components[idx]) ?? 0;
+            let component = components[idx];
+            let stored = this._sizes.get(component) ?? 0;
 
-            if (this.isPinnedMain(components[idx], horizontal)) {
+            // A pane that is both single-point and weight-0 counts as single-point:
+            // the stronger pin wins, so the cascade below never yields its one extent.
+            if (this.isPinnedMain(component, horizontal)) {
                 pinnedTotal += stored;
+            } else if (this.isResizePinnedMain(component)) {
+                weightPinnedTotal += stored;
             } else {
                 flexibleTotal += stored;
             }
         }
 
-        if (flexibleTotal > 0 && available > 0) {
-            // `max(0, …)` squeezes the flexible panes to 0 when the pins alone
-            // exceed `available`; the committed `clampWidth`/`clampHeight` backstop
-            // then caps the pins' display.
-            let refill = Math.max(0, available - pinnedTotal) / flexibleTotal;
+        if (available > 0) {
+            // Room left after the single-point pins, which never yield.
+            let budget = Math.max(0, available - pinnedTotal);
+
+            // Per-tier refill scale; `1` holds the tier at its stored size.
+            let pinnedScale       = 1;
+            let weightPinnedScale = 1;
+            let flexibleScale     = 1;
+
+            if (flexibleTotal > 0 && budget >= weightPinnedTotal) {
+                // The budget covers the weight-0 pins: hold every pin and let the
+                // flexible panes take the remainder. With no weight-0 pane this is the
+                // original `max(0, available − Σpinned) / flexibleTotal`, byte-for-byte.
+                flexibleScale = (budget - weightPinnedTotal) / flexibleTotal;
+            } else if (weightPinnedTotal > 0) {
+                // Either nothing flexible is left, or the weight-0 pins alone overrun
+                // the budget. The flexible panes squeeze to 0 and the weight-0 pins
+                // yield proportionally — a weight-0 pin holds only while the container
+                // is large enough (`setPaneResizeWeight`). When there are no
+                // single-point pins and nothing flexible, this is the uniform rescale
+                // the all-weights-0 config has always produced.
+                flexibleScale     = 0;
+                weightPinnedScale = budget / weightPinnedTotal;
+            } else if (pinnedTotal > 0) {
+                // Every pane is single-point pinned: uniform fill — the only sane
+                // outcome when nothing can flex.
+                pinnedScale = available / pinnedTotal;
+            }
 
             for (let idx = 0; idx < components.length; idx += 1) {
                 let component = components[idx];
+                let stored = this._sizes.get(component);
 
-                if (this.isPinnedMain(component, horizontal)) {
+                if (stored == undefined) {
                     continue;
                 }
 
-                let stored = this._sizes.get(component);
+                let scale = this.isPinnedMain(component, horizontal)
+                    ? pinnedScale
+                    : (this.isResizePinnedMain(component) ? weightPinnedScale : flexibleScale);
 
-                if (stored != undefined) {
-                    this._sizes.set(component, stored * refill);
-                }
-            }
-        } else if (pinnedTotal > 0 && available > 0) {
-            // No flexible mass (every pane pinned): fall back to a uniform fill —
-            // the only sane outcome when nothing can flex.
-            let refill = available / pinnedTotal;
-
-            for (let idx = 0; idx < components.length; idx += 1) {
-                let component = components[idx];
-                let stored = this._sizes.get(component);
-
-                if (stored != undefined) {
-                    this._sizes.set(component, stored * refill);
+                if (scale !== 1) {
+                    this._sizes.set(component, stored * scale);
                 }
             }
         }
