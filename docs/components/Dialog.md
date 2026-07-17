@@ -102,6 +102,37 @@ See [`DialogConfig`](/api/overlay/interfaces/DialogConfig) for the full option l
 | `closeOnBackdrop` | `false` | Click outside dismisses with result `'close'`. |
 | `dismissable` | `true` | When `false`, mandatory modal: no title-bar close button, Escape/backdrop inert. |
 | `severity` | — | Title-bar tone (`'info'` / `'success'` / `'warning'` / `'error'`); tints the header and shows a matching glyph, overriding the button-derived tone. |
+| `initialFocus` | — | Component to focus on open, overriding the default (the first focusable element in the body). |
+
+### Initial focus
+
+A dialog focuses itself when it opens, so a form is ready to type into and Enter
+confirms it. The default order is the first focusable element in the body, then
+the primary button — which means a dialog whose body is a form needs no wiring at
+all:
+
+```typescript
+const name = new TextField({ placeholder: 'Query name' });
+const body = Panel({ layoutManager: new Fit() });
+body.addComponent(name);
+
+// `name` takes focus on open — it is the first focusable element in the body.
+await Dialog.show({
+    title:            'Save query as',
+    contentComponent: body,
+    buttons:          [DialogButtons.Cancel, { ...DialogButtons.Confirm, primary: true }],
+});
+```
+
+Set `initialFocus` when the field that should take focus is not the first one:
+
+```typescript
+await Dialog.show({
+    title:            'Connect',
+    contentComponent: form,
+    initialFocus:     passwordField,   // host is prefilled; start on the password
+});
+```
 
 ### Per-button glyph
 
