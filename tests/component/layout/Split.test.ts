@@ -884,3 +884,417 @@ describe('Split getMaxSize', () => {
         expect(split.getMaxSize()).toEqual({ width: UNBOUNDED, height: UNBOUNDED });
     });
 });
+
+describe('Split pane sizes (getPaneSizes / applyPaneSizes)', () => {
+    afterEach(() => DOM.reset());
+
+    // side/body/extra: side is resize-pinned (weight: 0), body flexible
+    // (weight: 1), extra flexible with no weight set at all — an unset
+    // weight is flexible, only an explicit 0 pins.
+    function threePaneHost(hostWidth: number): { host: Container; split: Split; side: Component; body: Component; extra: Component } {
+        const { host, split } = emptyHost(hostWidth, 300);
+        const side  = new Component({ preferredSize: { width: 400, height: 50 } });
+        const body  = new Component({ preferredSize: { width: 400, height: 50 } });
+        const extra = new Component({ preferredSize: { width: 400, height: 50 } });
+        host.addComponent(side, { weight: 0 });
+        host.addComponent(body, { weight: 1 });
+        host.addComponent(extra);
+        return { host, split, side, body, extra };
+    }
+
+    it('units follow the weight: unset is flexible, only an explicit 0 pins', () => {
+        installTestDOM(CONFIG);
+        const { host, split } = threePaneHost(1200);
+        host.doLayout();
+
+        const sizes = split.getPaneSizes();
+
+        expect(sizes.map(s => s.unit)).toEqual(['px', 'ratio', 'ratio']);
+    });
+
+    it('reports the pinned pane\'s px and the rest as a ratio of the remaining subset', () => {
+        installTestDOM(CONFIG);
+        // Both flexible panes carry the same explicit weight: unlike
+        // `threePaneHost` (which mixes an explicit weight with a genuinely
+        // unset one, and so is only used where the *unit* — not the
+        // numeric split — is under test), this keeps the pre-existing
+        // per-weight delta/slack distribution in recalculateSizes (unrelated
+        // to this plan) symmetric, so the two flexible panes land at an
+        // even 800/2 split, matching the plan's Expected Behaviour #18.
+        const { host, split } = emptyHost(1200, 300);
+        const side = new Component({ preferredSize: { width: 400, height: 50 } });
+        const body = new Component({ preferredSize: { width: 400, height: 50 } });
+        const extra = new Component({ preferredSize: { width: 400, height: 50 } });
+        host.addComponent(side, { weight: 0 });
+        host.addComponent(body, { weight: 1 });
+        host.addComponent(extra, { weight: 1 });
+        host.doLayout();
+
+        split.setPaneSize(side, 400);
+        host.doLayout();
+
+        const sizes = split.getPaneSizes();
+
+        expect(sizes[0]).toEqual({ unit: 'px', value: 400 });
+        expect(sizes[1].unit).toBe('ratio');
+        expect(sizes[2].unit).toBe('ratio');
+        expect(sizes[1].value).toBeCloseTo(0.5, 4);
+        expect(sizes[2].value).toBeCloseTo(0.5, 4);
+    });
+
+    it('an imperative setPaneResizeWeight(pane, 0) pin also reports px', () => {
+        installTestDOM(CONFIG);
+        const { host, split } = hostSplit(new Split(), 2);
+        const panes = host.getComponents();
+
+        split.setPaneResizeWeight(panes[0], 0);
+        host.doLayout();
+
+        const sizes = split.getPaneSizes();
+
+        expect(sizes[0].unit).toBe('px');
+        expect(sizes[1].unit).toBe('ratio');
+    });
+
+    it('round-trips exactly for the pin at a different viewport', () => {
+        installTestDOM(CONFIG);
+        const { host, split, side } = threePaneHost(1200);
+        // Drop the third pane so this mirrors the plan's two-pane scenario.
+        host.removeComponent(host.getComponents()[2]);
+        host.doLayout();
+
+        split.setPaneSize(side, 400);
+        host.doLayout();
+        expect(split.getPaneSize(side)!).toBeCloseTo(400, 4);
+
+        const captured = split.getPaneSizes();
+
+        // A fresh, non-restored Split at the new width establishes the
+        // available (net-of-gutters) main extent for two panes at that width,
+        // without hardcoding the gutter constant.
+        const control = emptyHost(800, 300);
+        control.host.addComponent(new Component({ preferredSize: { width: 400, height: 50 } }), { weight: 0 });
+        control.host.addComponent(new Component({ preferredSize: { width: 400, height: 50 } }), { weight: 1 });
+        control.host.doLayout();
+        const controlPanes = control.host.getComponents();
+        const totalAvailable = controlPanes[0].getWidth() + controlPanes[1].getWidth();
+
+        const split2 = new Split({ paneSizes: captured });
+        const host2 = new Container({ layoutManager: split2 });
+        host2.getElement(true);
+        host2.setWidth(800);
+        host2.setHeight(300);
+        const side2 = new Component({ preferredSize: { width: 400, height: 50 } });
+        const body2 = new Component({ preferredSize: { width: 400, height: 50 } });
+        host2.addComponent(side2, { weight: 0 });
+        host2.addComponent(body2, { weight: 1 });
+        host2.doLayout();
+
+        expect(side2.getWidth()).toBeCloseTo(400, 4);
+        expect(body2.getWidth()).toBeCloseTo(totalAvailable - 400, 4);
+    });
+
+    it('round trip preserves the weighted panes\' ratio', () => {
+        installTestDOM(CONFIG);
+        const { host, split } = emptyHost(1200, 300);
+        const side = new Component({ preferredSize: { width: 400, height: 50 } });
+        const a = new Component({ preferredSize: { width: 300, height: 50 } });
+        const b = new Component({ preferredSize: { width: 100, height: 50 } });
+        host.addComponent(side, { weight: 0 });
+        host.addComponent(a, { weight: 1 });
+        host.addComponent(b, { weight: 1 });
+        host.doLayout();
+
+        split.setPaneSize(side, 400);
+        host.doLayout();
+
+        const captured = split.getPaneSizes();
+        const ratioBefore = captured[1].value / captured[2].value;
+
+        const split2 = new Split({ paneSizes: captured });
+        const host2 = new Container({ layoutManager: split2 });
+        host2.getElement(true);
+        host2.setWidth(800);
+        host2.setHeight(300);
+        const side2 = new Component({ preferredSize: { width: 400, height: 50 } });
+        const a2 = new Component({ preferredSize: { width: 300, height: 50 } });
+        const b2 = new Component({ preferredSize: { width: 100, height: 50 } });
+        host2.addComponent(side2, { weight: 0 });
+        host2.addComponent(a2, { weight: 1 });
+        host2.addComponent(b2, { weight: 1 });
+        host2.doLayout();
+
+        expect(side2.getWidth()).toBeCloseTo(400, 4);
+        expect(a2.getWidth() / b2.getWidth()).toBeCloseTo(ratioBefore, 4);
+    });
+
+    it('a restore is scale-1: a second layout with no size change leaves widths identical', () => {
+        installTestDOM(CONFIG);
+        const { host, split, side } = threePaneHost(1200);
+        host.doLayout();
+        split.setPaneSize(side, 400);
+        host.doLayout();
+
+        const captured = split.getPaneSizes();
+
+        const split2 = new Split({ paneSizes: captured });
+        const host2 = new Container({ layoutManager: split2 });
+        host2.getElement(true);
+        host2.setWidth(1200);
+        host2.setHeight(300);
+        const panes2 = [
+            new Component({ preferredSize: { width: 400, height: 50 } }),
+            new Component({ preferredSize: { width: 400, height: 50 } }),
+            new Component({ preferredSize: { width: 400, height: 50 } }),
+        ];
+        host2.addComponent(panes2[0], { weight: 0 });
+        host2.addComponent(panes2[1], { weight: 1 });
+        host2.addComponent(panes2[2]);
+        host2.doLayout(); // draining layout
+
+        const widthsAfterDrain = panes2.map(p => p.getWidth());
+
+        host2.doLayout(); // second layout, no size change
+
+        const widthsAfterSecond = panes2.map(p => p.getWidth());
+
+        expect(widthsAfterSecond).toEqual(widthsAfterDrain);
+    });
+
+    it('discards a stale paneSizes array whole — length mismatch', () => {
+        installTestDOM(CONFIG);
+        const split = new Split({ paneSizes: [{ unit: 'px', value: 400 }, { unit: 'ratio', value: 1 }] });
+        const { host } = hostSplit(split, 3);
+        host.doLayout();
+
+        const sizes = split.getPaneSizes();
+
+        expect(sizes.some(s => s.value === 400)).toBe(false);
+    });
+
+    it('discards a stale paneSizes array whole — unit mismatch', () => {
+        installTestDOM(CONFIG);
+        const split = new Split({ paneSizes: [{ unit: 'ratio', value: 0.5 }, { unit: 'ratio', value: 0.5 }] });
+        const host = new Container({ layoutManager: split });
+        host.getElement(true);
+        host.setWidth(400);
+        host.setHeight(300);
+        const pinned = new Component({ preferredSize: { width: 100, height: 50 } });
+        const other  = new Component({ preferredSize: { width: 100, height: 50 } });
+        host.addComponent(pinned, { weight: 0 }); // live units are ["px", "ratio"], saved was all-ratio
+        host.addComponent(other, { weight: 1 });
+        host.doLayout();
+
+        // Discarded whole: normal first-layout sizing, not the stale 0.5/0.5.
+        expect(split.getPaneSize(pinned)!).toBeCloseTo(100, 4);
+    });
+
+    it('discards paneSizes with no positive entry', () => {
+        installTestDOM(CONFIG);
+        const split = new Split({ paneSizes: [{ unit: 'px', value: 0 }, { unit: 'ratio', value: 0 }] });
+        const { host } = hostSplit(split, 2);
+        host.doLayout();
+
+        const sizes = split.getPaneSizes();
+
+        expect(sizes.every(s => s.value >= 0)).toBe(true);
+        expect(sizes.some(s => s.value > 0)).toBe(true); // normal seeding fell back in
+    });
+
+    it('getPaneSizes is readable before the draining layout', () => {
+        installTestDOM(CONFIG);
+        const paneSizes = [{ unit: 'px' as const, value: 400 }, { unit: 'ratio' as const, value: 1 }];
+        const split = new Split({ paneSizes });
+        const host = new Container({ layoutManager: split });
+        host.getElement(true);
+        host.setWidth(400);
+        host.setHeight(300);
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }), { weight: 0 }); // unit "px" to match
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }), { weight: 1 });
+
+        expect(split.getPaneSizes()).toEqual(paneSizes);
+        host.doLayout();
+    });
+
+    it('the drain is once-only: a later applyPaneSizes call is not overridden by the option', () => {
+        installTestDOM(CONFIG);
+        const split = new Split({ paneSizes: [{ unit: 'px', value: 100 }, { unit: 'ratio', value: 1 }] });
+        const host = new Container({ layoutManager: split });
+        host.getElement(true);
+        host.setWidth(400);
+        host.setHeight(300);
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }), { weight: 0 }); // unit "px" to match
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }), { weight: 1 });
+        host.doLayout(); // drains the option
+
+        expect(split.getPaneSize(host.getComponents()[0])!).toBeCloseTo(100, 4);
+
+        split.applyPaneSizes([{ unit: 'px', value: 250 }, { unit: 'ratio', value: 1 }]);
+        host.doLayout();
+
+        expect(split.getPaneSize(host.getComponents()[0])!).toBeCloseTo(250, 4);
+
+        host.doLayout(); // a further layout must not re-apply the original option
+
+        expect(split.getPaneSize(host.getComponents()[0])!).toBeCloseTo(250, 4);
+    });
+
+    it('a container resize does not move the capture, and fires no paneresize', () => {
+        installTestDOM(CONFIG);
+        // Both flexible panes carry the same explicit weight, so the legacy
+        // per-weight delta-distribution pass in recalculateSizes (unrelated to
+        // this plan) apportions a resize between them identically to the
+        // uniform tier refill — keeping their ratio exactly invariant, which
+        // is the property under test. Mixing an explicit weight with a
+        // genuinely-unset one instead falls back to that pane's own stored
+        // px for the mid-resize apportionment (a separate, pre-existing
+        // mechanism), which does not hold ratio invariant on its own — not a
+        // regression this plan introduces, just not what this test targets.
+        const { host, split } = emptyHost(1200, 300);
+        const side = new Component({ preferredSize: { width: 400, height: 50 } });
+        const a    = new Component({ preferredSize: { width: 400, height: 50 } });
+        const b    = new Component({ preferredSize: { width: 400, height: 50 } });
+        host.addComponent(side, { weight: 0 });
+        host.addComponent(a, { weight: 1 });
+        host.addComponent(b, { weight: 1 });
+        host.doLayout();
+        split.setPaneSize(side, 400);
+        host.doLayout();
+
+        const listener = vi.fn();
+        split.on('paneresize', listener);
+
+        const before = split.getPaneSizes();
+
+        host.setWidth(800);
+        host.doLayout();
+
+        const after = split.getPaneSizes();
+
+        expect(after).toEqual(before);
+        expect(listener).not.toHaveBeenCalled();
+    });
+});
+
+describe('Split events', () => {
+    afterEach(() => DOM.reset());
+
+    it('panecollapse fires (index, collapsed) on setPaneCollapsed, and not on a redundant call', () => {
+        installTestDOM(CONFIG);
+        const { split } = hostSplit(new Split(), 2);
+        const listener = vi.fn();
+        split.on('panecollapse', listener);
+
+        split.setPaneCollapsed(0, true);
+        split.setPaneCollapsed(0, false);
+
+        expect(listener).toHaveBeenNthCalledWith(1, 0, true);
+        expect(listener).toHaveBeenNthCalledWith(2, 0, false);
+
+        listener.mockClear();
+        split.setPaneCollapsedImmediate(0, true); // sets the flag so the next call is genuinely redundant
+        listener.mockClear();
+        split.setPaneCollapsed(0, true); // already collapsed: the existing early-return guard
+
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('panecollapse fires on setPaneCollapsedImmediate', () => {
+        installTestDOM(CONFIG);
+        // In a 2-pane horizontal split the single gutter serves the leading
+        // pane (pane 0, default "west" direction) — see the
+        // 'Split non-collapsible pane' describe block above.
+        const { host, split } = emptyHost(400, 300);
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.doLayout();
+
+        const listener = vi.fn();
+        split.on('panecollapse', listener);
+
+        split.setPaneCollapsedImmediate(0, true);
+
+        expect(listener).toHaveBeenCalledWith(0, true);
+    });
+
+    it('setPaneCollapsedImmediate does not fire panecollapse when the pane cannot collapse (collapsible: false)', () => {
+        installTestDOM(CONFIG);
+        const { host, split } = emptyHost(400, 300);
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }), { collapsible: false });
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.doLayout();
+
+        const listener = vi.fn();
+        split.on('panecollapse', listener);
+
+        split.setPaneCollapsedImmediate(0, true); // collapsible: false — the existing guard returns first
+
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('paneresize fires once at drag end, with the post-drag sizes', () => {
+        installTestDOM(CONFIG);
+        const { host, split } = emptyHost(400, 300);
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.doLayout();
+
+        const listener = vi.fn();
+        split.on('paneresize', listener);
+
+        const gutter = (split as any)._gutters[0];
+        (split as any).onDragStart(host, gutter, 0);
+        (split as any).onDrag(host, gutter, 40);
+        gutter.onDragStop();
+
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(listener).toHaveBeenCalledWith(split.getPaneSizes());
+    });
+
+    it('drag alone (no drag end) fires no paneresize', () => {
+        installTestDOM(CONFIG);
+        const { host, split } = emptyHost(400, 300);
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host.doLayout();
+
+        const listener = vi.fn();
+        split.on('paneresize', listener);
+
+        const gutter = (split as any)._gutters[0];
+        (split as any).onDragStart(host, gutter, 0);
+        (split as any).onDrag(host, gutter, 10);
+        (split as any).onDrag(host, gutter, 20);
+        (split as any).onDrag(host, gutter, 30);
+
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('the listeners option bag is equivalent to on(), and off() removes the listener', () => {
+        installTestDOM(CONFIG);
+
+        const listener = vi.fn();
+        const split = new Split({ listeners: { paneresize: listener } });
+        const host2 = new Container({ layoutManager: split });
+        host2.getElement(true);
+        host2.setWidth(400);
+        host2.setHeight(300);
+        host2.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host2.addComponent(new Component({ preferredSize: { width: 100, height: 50 } }));
+        host2.doLayout();
+
+        const gutter = (split as any)._gutters[0];
+        (split as any).onDragStart(host2, gutter, 0);
+        (split as any).onDrag(host2, gutter, 20);
+        gutter.onDragStop();
+
+        expect(listener).toHaveBeenCalledTimes(1);
+
+        split.off('paneresize', listener);
+        (split as any).onDragStart(host2, gutter, 0);
+        (split as any).onDrag(host2, gutter, 40);
+        gutter.onDragStop();
+
+        expect(listener).toHaveBeenCalledTimes(1); // unchanged — removed listener not invoked
+    });
+});

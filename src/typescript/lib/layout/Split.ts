@@ -10,6 +10,8 @@ import { Size, UNBOUNDED } from "~/primitive/Size.js";
 import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
+import { LayoutSize, LayoutSizeUnit, toLayoutSizes, fromLayoutSizes, isRestorableSizes, normalizeRatios } from "~/layout/LayoutSizes.js";
 import type { AxisOrientation } from "~/primitive/Axis.js";
 
 // Pixel thickness of a single draggable gutter. The main-axis sizing math
@@ -26,6 +28,33 @@ const GUTTER_SIZE = 4;
 const WEIGHT_UNSET_PROBE = 1;
 
 /**
+ * String-literal union of the events emitted by {@link Split}.
+ *
+ * @category Layouts
+ */
+export type SplitEvent = "paneresize" | "panecollapse";
+
+/**
+ * Callback invoked once a completed gutter drag settles a pane's sizes.
+ *
+ * @param sizes - The panes' sizes after the drag, in child order — the same
+ *   array {@link Split.getPaneSizes} would return.
+ *
+ * @category Layouts
+ */
+export type PaneResizeCallback = (sizes: LayoutSize[]) => void;
+
+/**
+ * Callback invoked when a pane's collapsed state changes.
+ *
+ * @param index - Zero-based index of the toggled pane.
+ * @param collapsed - True if the pane is now collapsed.
+ *
+ * @category Layouts
+ */
+export type PaneCollapseCallback = (index: number, collapsed: boolean) => void;
+
+/**
  * Construction-time options for {@link Split}.
  *
  * @category Layouts
@@ -34,6 +63,16 @@ export interface SplitOptions extends LayoutManagerOptions {
     orientation?: AxisOrientation;
     /** Indices of panes to start collapsed (applied on first layout). */
     collapsedPanes?: number[];
+    /** Pane sizes to restore on first layout; discarded whole when stale. */
+    paneSizes?: LayoutSize[];
+    /**
+     * Multi-event listener bag dispatched to {@link Split.on} at
+     * construction time.
+     */
+    listeners?: {
+        paneresize?:   PaneResizeCallback;
+        panecollapse?: PaneCollapseCallback;
+    };
 }
 
 /**
@@ -68,6 +107,14 @@ class Split extends LayoutManager {
     // `collapsedPanes` option. Drained once because pane components aren't
     // resolvable from indices until the container has its children.
     private _pendingCollapsed: number[] = [];
+
+    private _listeners: ListenerBag<SplitEvent> = new ListenerBag<SplitEvent>();
+
+    // Sizes to restore on the first connected layout, taken from the
+    // `paneSizes` option (or a direct `applyPaneSizes` call before the
+    // container is attached). Drained once, mirroring `_pendingCollapsed`:
+    // panes aren't resolvable from indices until the container has children.
+    private _pendingSizes: LayoutSize[] | null = null;
 
     private _dragOriginPointer: number = 0;
     private _dragOriginLhsSize: number = 0;
@@ -111,6 +158,73 @@ class Split extends LayoutManager {
         if (options.collapsedPanes !== undefined) {
             this._pendingCollapsed = [...options.collapsedPanes];
         }
+
+        if (options.paneSizes !== undefined) {
+            this._pendingSizes = options.paneSizes.map(size => ({ ...size }));
+        }
+
+        if (options.listeners !== undefined) {
+            const listeners = options.listeners;
+
+            for (const event of Object.keys(listeners) as Array<keyof typeof listeners>) {
+                const listener = listeners[event];
+
+                // A union of two events' callback types no longer narrows to a
+                // single `on` overload; the cast mirrors `Component.applyListeners`'
+                // own `(this as any).on` — sound for the same reason: `event` and
+                // `listener` are still a matched pair from the same options key.
+                if (listener !== undefined) {
+                    (this as any).on(event, listener);
+                }
+            }
+        }
+    }
+
+    /**
+     * Registers a listener for one of this split's events.
+     *
+     * @param event - `"paneresize"` fires once a completed gutter drag
+     *   settles a pane's sizes, receiving the panes' sizes in child order;
+     *   `"panecollapse"` fires whenever a pane's collapsed state changes,
+     *   receiving the zero-based pane index and whether it is now collapsed.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This split, for method chaining.
+     */
+    on(event: "paneresize",   listener: PaneResizeCallback): this;
+    on(event: "panecollapse", listener: PaneCollapseCallback): this;
+    on(event: SplitEvent,     listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This split, for method chaining.
+     */
+    off(event: SplitEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "paneresize",   sizes: LayoutSize[]): void;
+    protected emit(event: "panecollapse", index: number, collapsed: boolean): void;
+    protected emit(event: SplitEvent,     ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
     }
 
     /**
@@ -263,6 +377,7 @@ class Split extends LayoutManager {
         }
 
         this._collapsed.set(pane, collapsed);
+        this.emit("panecollapse", index, collapsed);
 
         // Every box that moves: the panes (content re-laid-out each frame) and
         // the gutters (geometry only). The toggled pane is among them and also
@@ -530,9 +645,8 @@ class Split extends LayoutManager {
         }
 
         const sizes = components.map(component => this._sizes.get(component) ?? 0);
-        const sum   = sizes.reduce((total, size) => total + size, 0);
 
-        return sum > 0 ? sizes.map(size => size / sum) : components.map(() => 1 / components.length);
+        return normalizeRatios(sizes, components.length);
     }
 
     /**
@@ -649,9 +763,7 @@ class Split extends LayoutManager {
             return this;
         }
 
-        const weights = components.map((_, idx) => Math.max(0, ratios[idx] ?? 0));
-        const sum     = weights.reduce((total, weight) => total + weight, 0);
-        const norm    = sum > 0 ? weights.map(weight => weight / sum) : components.map(() => 1 / count);
+        const norm = normalizeRatios(ratios, count);
 
         // Seed the stored px against a positive base. When the container is laid
         // out, use its real net-of-gutters main extent so the next layout needs
@@ -667,6 +779,97 @@ class Split extends LayoutManager {
         });
 
         this._lastAvailableMain = base;
+
+        container.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Resolves each pane's persisted unit: `"px"` for a resize-pinned pane
+     * (explicit `weight: 0`, per {@link isResizePinnedMain}), `"ratio"`
+     * otherwise. The unit follows the weight, resolved by the same predicate
+     * the container-resize refill uses — so a pane the layout holds at its
+     * px is the pane persisted as px.
+     *
+     * @param components - The container's current panes, in child order.
+     * @returns One unit per pane, in the same order.
+     */
+    private paneSizeUnits(components: Component[]): LayoutSizeUnit[] {
+        return components.map(pane => (this.isResizePinnedMain(pane) ? "px" : "ratio"));
+    }
+
+    /**
+     * Returns the panes' sizes in child order, one entry per pane, for
+     * cross-session persistence: a resize-pinned pane (explicit `weight: 0`)
+     * reports `px`, every other pane reports its `ratio` of the space the
+     * px panes leave. This is the persistence surface — {@link getPaneRatios}
+     * is the weight-agnostic arrangement surface `LayoutSerialization` uses;
+     * do not use this one for same-session topology switching, or that one
+     * for cross-session persistence.
+     *
+     * @returns One {@link LayoutSize} per pane in child order; the pending
+     *   `paneSizes` when one is still undrained; `[]` when detached or the
+     *   container has no panes.
+     */
+    getPaneSizes(): LayoutSize[] {
+        const container = this.getContainer();
+
+        if (!container) {
+            return [];
+        }
+
+        const components = container.getComponents();
+
+        if (components.length === 0) {
+            return [];
+        }
+
+        const units = this.paneSizeUnits(components);
+
+        // An undrained restore has not reached `_sizes` yet; reporting the live
+        // state here would let a save overwrite the very state being restored.
+        if (this._pendingSizes !== null && isRestorableSizes(this._pendingSizes, units)) {
+            return this._pendingSizes.map(size => ({ ...size }));
+        }
+
+        return toLayoutSizes(units, components.map(pane => this._sizes.get(pane) ?? 0));
+    }
+
+    /**
+     * Restores sizes captured by {@link getPaneSizes} onto the live panes, by
+     * container child order. Discarded whole unless every entry's unit
+     * matches the live pane's weight (see the discard rule on
+     * {@link LayoutSize}) — a stale array leaves the panes exactly as though
+     * no restore were requested.
+     *
+     * @param sizes - The persisted array to restore.
+     * @returns This layout manager, for method chaining.
+     */
+    applyPaneSizes(sizes: LayoutSize[]): this {
+        const container = this.getContainer();
+
+        if (!container) {
+            return this;
+        }
+
+        const components = container.getComponents();
+        const units      = this.paneSizeUnits(components);
+
+        if (!isRestorableSizes(sizes, units)) {
+            return this;
+        }
+
+        const innerSize = container.getInnerSize();
+        const main      = innerSize ? (this._orientation === "horizontal" ? innerSize.width : innerSize.height) : 0;
+        const available = Math.max(0, main - this.gutterTotal(components.length));
+        const stored    = fromLayoutSizes(sizes, available);
+
+        components.forEach((pane, idx) => this.setPaneSize(pane, stored[idx]));
+
+        // Match `applyPaneRatios`: rebase so the next `recalculateSizes` treats the
+        // freshly-written sizes as the baseline instead of double-rescaling them.
+        this._lastAvailableMain = available > 0 ? available : 1;
 
         container.scheduleLayout();
 
@@ -708,6 +911,7 @@ class Split extends LayoutManager {
         }
 
         this._collapsed.set(pane, collapsed);
+        this.emit("panecollapse", index, collapsed);
 
         container.scheduleLayout();
 
@@ -807,6 +1011,15 @@ class Split extends LayoutManager {
 
         lhs.doLayout();
         rhs.doLayout();
+    }
+
+    /**
+     * Fires `paneresize` with the post-drag sizes once a gutter drag ends —
+     * the commit-grained signal a consumer persists, as opposed to the
+     * per-frame `drag` a gutter itself emits.
+     */
+    private onDragEnd(): void {
+        this.emit("paneresize", this.getPaneSizes());
     }
 
     /**
@@ -956,6 +1169,7 @@ class Split extends LayoutManager {
             gutter.on("drag", function (position: number) {
                 me.onDrag(<Component>container, gutter, position);
             });
+            gutter.on("dragend", () => this.onDragEnd());
             gutter.on("collapse", function () {
                 // The chevron toggles whichever neighbour this gutter serves —
                 // its leading pane by default, or a trailing pane that opted to
@@ -975,6 +1189,7 @@ class Split extends LayoutManager {
         let y = containerInsets.getTop();
 
         this.recalculateSizes();
+        this.applyPendingSizes();
         this.applyPendingCollapsed(components);
 
         const horizontal = this._orientation === "horizontal";
@@ -1147,6 +1362,25 @@ class Split extends LayoutManager {
             case "south": return "inset(100% 0 0 0)";
             default:      return "inset(0 100% 0 0)";
         }
+    }
+
+    /**
+     * Drains the `paneSizes` option (or a pre-layout {@link applyPaneSizes}
+     * call) into `_sizes` on the first layout, where {@link applyPaneSizes}
+     * can resolve the live panes and the container's main-axis budget. Runs
+     * once: `applyPaneSizes` re-validates against the live units and
+     * discards a stale array whole, so the drain needs no check of its own.
+     */
+    private applyPendingSizes(): void {
+        const pending = this._pendingSizes;
+
+        if (pending === null) {
+            return;
+        }
+
+        this._pendingSizes = null;
+
+        this.applyPaneSizes(pending);
     }
 
     /**

@@ -28,7 +28,8 @@ class SplitPanel extends Panel {
         northComponent.addComponent(sliderText);
 
         let southComponent = new Component();
-        southComponent.setLayoutManager(new Split());
+        let southSplit = new Split();
+        southComponent.setLayoutManager(southSplit);
         mainSplit.addComponent(southComponent);
 
         let list = new List();
@@ -52,8 +53,21 @@ class SplitPanel extends Panel {
         list.addItem("Twelve");
         list.addItem("Thirteen");
 
-        let textArea = new TextArea();
+        // Logs paneresize/panecollapse — the list pane is pinned (weight 0), so
+        // dragging its gutter reports a "px" entry that survives a window
+        // resize verbatim, while the text area / slider report "ratio" entries.
+        let textArea = new TextArea("Drag the list's gutter or collapse a pane to see paneresize / panecollapse events here.");
         southComponent.addComponent(textArea);
+
+        southSplit.on("paneresize", (sizes) => {
+            const summary = sizes.map(size => `${size.unit}:${size.value.toFixed(1)}`).join(", ");
+
+            textArea.setText(`${textArea.getText()}\npaneresize: [${summary}]`);
+        });
+
+        southSplit.on("panecollapse", (index, collapsed) => {
+            textArea.setText(`${textArea.getText()}\npanecollapse: pane ${index} ${collapsed ? "collapsed" : "expanded"}`);
+        });
 
         let slider = new Slider();
         sliderText.setText(slider.getValue().toString() + "%");

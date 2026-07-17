@@ -48,8 +48,9 @@ sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 | `chevronGlyph` | `setChevronGlyph` / `getChevronGlyph` | `"▶"` | The character drawn as the chevron (rotates 90° when expanded). |
 | `fillHeight` | `setFillHeight` / `isFillHeight` | `false` | Open sections grow to absorb the container's leftover height, sharing it by `weight`. See [Fill mode](#fill-mode). |
 | `resizable` | `setResizable` / `isResizable` | `false` | Draggable gutters between adjacent open sections, letting the user trade height between them. See [Resizable sections](#resizable-sections). |
+| `sectionSizes` | `applySectionSizes` / `getSectionSizes` | — | Section sizes to restore on the first resizable layout; discarded whole when stale. Only meaningful with `resizable`. See [Saving and restoring section sizes](#saving-and-restoring-section-sizes). |
 | `toolsVisibility` | `setToolsVisibility` / `getToolsVisibility` | `"hover"` | When per-section header tools are shown. See [Header tools](#header-tools). |
-| `listeners` | `on("sectiontoggle", fn)` | — | `{ sectiontoggle }` callback bag (see [Toggle callback](#toggle-callback)). |
+| `listeners` | `on("sectiontoggle", fn)` / `on("sectionresize", fn)` | — | `{ sectiontoggle, sectionresize }` callback bag (see [Toggle callback](#toggle-callback) / [Saving and restoring section sizes](#saving-and-restoring-section-sizes)). |
 
 > **The header is no longer a `Button`.** [`AccordionHeader`](/api/component/container/classes/AccordionHeader) is a styled [`Component`](/api/core/classes/Component) hosting an [`HBox`](/api/layout/classes/HBox) row — an optional leading glyph + a `chromeless` title button (the clickable toggle and focus target), the tool group, and the chevron cell. Because tools are *siblings* of the title button rather than descendants, a tool click is structurally not a header toggle — there is nothing to stop from propagating.
 
@@ -124,6 +125,27 @@ No gutter appears with fewer than two open sections, and none ever appears under
 
 Resizable sections and [`Split`](/api/layout/classes/Split) solve different problems: reach for `resizable` when you want the accordion's own collapsible sections to also be reapportionable, and compose with `Split` instead when you want independent draggable panes that are not collapsible sections at all.
 
+### Saving and restoring section sizes
+
+[`getSectionSizes`](/api/layout/classes/Accordion#getsectionsizes) / [`applySectionSizes`](/api/layout/classes/Accordion#applysectionsizes) and the `sectionSizes` option capture and restore open sections' content sizes for **cross-session persistence** — a consumer's own store, not built into the library. Each entry's unit follows the same `weight`/`fillHeight` rule the resize pin above reads: a resize-pinned section (`weight` unset or `0`, with `fillHeight` off) persists as **px**, restored verbatim regardless of the window size on reload; every other section persists as a **ratio** of the space the pinned sections leave. `sectionresize` fires once a completed gutter drag settles the sizes — never per frame — so a listener can persist on every commit without debouncing:
+
+```typescript
+import { LayoutSize } from '@jimka/typescript-ui/layout';
+
+accordion.on("sectionresize", (sizes: LayoutSize[]) => {
+    localStorage.setItem("sidebar-sections", JSON.stringify(sizes));
+});
+
+// On the next session:
+const saved = localStorage.getItem("sidebar-sections");
+const sidebar = Accordion({
+    resizable   : true,
+    sectionSizes: saved ? JSON.parse(saved) : undefined,
+});
+```
+
+`sectionSizes` is only meaningful **with `resizable`** — on a non-resizable accordion it stays pending until `setResizable(true)` enables the layout pass that can apply it. A saved array whose length or per-index unit no longer matches the live sections (e.g. a section's `weight` changed between releases) is **discarded whole**, and the accordion falls back to its normal seeded sizing.
+
 ## Expand / collapse all
 
 `expandAll()` opens every section; `collapseAll()` closes every section. Both emit `sectiontoggle` as they open/close sections and schedule a single layout pass. `expandAll()` respects single-open mode — under `singleOpen` it opens only the first section rather than leaving the last-opened one visible.
@@ -159,6 +181,8 @@ const accordion = new Accordion({ listeners: { sectiontoggle: onToggle } });
 accordion.on("sectiontoggle", onToggle);
 ```
 
+For persisting section *sizes* rather than open/closed state, see [Saving and restoring section sizes](#saving-and-restoring-section-sizes).
+
 ## Sizing
 
 The accordion's size hints follow its open state:
@@ -190,4 +214,6 @@ The duration and easing are a layout concern, not a theme concern — encoding t
 - [API: Accordion](/api/layout/classes/Accordion)
 - [API: AccordionConstraints](/api/layout/classes/AccordionConstraints)
 - [API: SectionToggleCallback](/api/layout/type-aliases/SectionToggleCallback)
+- [API: SectionResizeCallback](/api/layout/type-aliases/SectionResizeCallback)
+- [API: LayoutSize](/api/layout/type-aliases/LayoutSize) — the persisted-size vocabulary shared with [`Split`](/layouts/Split#saving-and-restoring-layout)
 - [`AccordionHeader`](/api/component/container/classes/AccordionHeader) — the section header
