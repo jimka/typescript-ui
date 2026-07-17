@@ -2,6 +2,7 @@
 
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 import { Text } from "~/component/input/Text.js";
+import { Link } from "~/component/input/Link.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -11,19 +12,24 @@ import { callable } from "~/core/Callable.js";
  */
 export interface LinkCellRendererOptions {
     /**
-     * CSS colour for the link text. Defaults to
-     * `var(--ts-ui-link-color, rgb(21, 101, 192))` so a theme can retint every
-     * link cell at once.
+     * CSS colour for the link text. Defaults to the theme-tinted colour of
+     * [`Link`](/api/component/input/classes/Link) itself, so leaving this unset
+     * keeps every link cell in step with every standalone link.
      */
     color ?: string;
 }
 
 /**
- * A display-only cell renderer that styles its string value as a link —
- * link-coloured, underlined, with a pointer cursor. Built for the
+ * A display-only cell renderer that presents its string value as a link.
+ * Built for the
  * [`ColumnConfig.renderer`](/api/component/table/interfaces/ColumnConfig#renderer)
  * seam so a column can present a clickable value without a custom renderer
  * subclass.
+ *
+ * Composes a [`Link`](/api/component/input/classes/Link) in its presentational
+ * (`interactive: false`) mode, so a link cell looks exactly like a standalone
+ * link but claims no `role`, takes no tab focus, and does no keyboard
+ * handling — all of which belong to the enclosing {@link Table}.
  *
  * The renderer is purely presentational: it does not handle the click itself.
  * Pair the column with the {@link Table} `"cellclick"` event and act on the
@@ -50,10 +56,14 @@ class LinkCellRenderer extends CellRenderer<String | null> {
     constructor(options?: LinkCellRendererOptions) {
         super();
 
-        this._text = new Text("", {
-            foregroundColor: options?.color ?? "var(--ts-ui-link-color, rgb(21, 101, 192))",
-            cursor:          "pointer",
-            styleRules:      [{ suffix: "", styles: { textDecoration: "underline" } }],
+        this._text = new Link("", {
+            // The Table owns keyboard nav (RovingTabIndex) and routes clicks
+            // through its own "cellclick", so the link must neither take tab
+            // focus nor wire its own keyboard handling.
+            interactive:     false,
+            // An unset `color` is gated out by applyOptions, so it falls
+            // through to Link's own class default rather than being pinned here.
+            foregroundColor: options?.color,
         });
         // Renderer Texts opt out of auto-measure — the host cell force-sizes them.
         this._text.setAutoMeasure(false);

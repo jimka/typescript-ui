@@ -8,6 +8,7 @@ import { ToolBar } from '~/component/menubar/ToolBar';
 import { SplitGutter } from '~/component/container/SplitGutter';
 import { HBox } from '~/layout/HBox';
 import { TextField } from '~/component/input/TextField';
+import { Link } from '~/component/input/Link';
 import { NumberedList } from '~/component/list/NumberedList';
 import { NumberedListItemStyle } from '~/component/list/NumberedListItemStyle';
 import { TabCloseButton } from '~/component/button/TabCloseButton';
@@ -182,6 +183,10 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'BarChart grouped (no data)',   resolve: () => new BarChart({}).isGrouped(),                               expected: false },
     { label: 'DiagramView zoom',             resolve: () => new DiagramView().getZoom(),                                expected: 1 },
     { label: 'MarkdownEditor readOnly',      resolve: () => new MarkdownEditor().getReadOnly(),                         expected: false },
+    { label: 'Link tag',                     resolve: () => new Link().getTag(),                                        expected: 'a' },
+    { label: 'Link foregroundColor',         resolve: () => new Link().getForegroundColor(),                            expected: 'var(--ts-ui-link-color, rgb(21, 101, 192))' },
+    { label: 'Link cursor',                  resolve: () => new Link().getCursor(),                                     expected: 'pointer' },
+    { label: 'Link interactive',             resolve: () => new Link().isInteractive(),                                 expected: true },
 ];
 
 describe('default-resolution registry: a bare construction resolves every class default', () => {

@@ -51,6 +51,7 @@ import {
     ComboBox,
     DateField,
     DateTimeField,
+    Link,
     NumberSpinner,
     RadioButton,
     Text,
@@ -1319,6 +1320,17 @@ class MiscPanel extends Panel {
         iconTextRow.addComponent(new IconText("xmark", "Close"));
         iconTextRow.addComponent(new IconText("arrow-right", "Next"));
         rightColumn.addComponent(iconTextRow);
+
+        // Link: the hit area is exactly the text. The HBox row is load-bearing —
+        // it sizes the link to its preferred (natural) width; a stretching
+        // parent would widen the box and the hit area with it.
+        const linkRow = new Component();
+        linkRow.setLayoutManager(new HBox());
+        linkRow.addComponent(new Text("Link:"));
+        linkRow.addComponent(new Link("Open the release notes", {
+            listeners: { action: () => Notification.show("Link actioned — click and Enter both land here.", "info") },
+        }));
+        rightColumn.addComponent(linkRow);
 
         const iconLabelField = new TextField();
         const iconLabelRow = new Component();

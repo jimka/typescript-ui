@@ -15,6 +15,8 @@ import { StringCell } from '~/component/table/cell/String';
 import { ComboCell } from '~/component/table/cell/Combo';
 import { CellRenderer } from '~/component/table/cell/renderer/CellRenderer';
 import { LinkCellRenderer } from '~/component/table/cell/renderer/Link';
+import { Link } from '~/component/input/Link';
+import { Text } from '~/component/input/Text';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ColumnConfig } from '~/component/table/ColumnConfig';
@@ -168,5 +170,38 @@ describe('LinkCellRenderer', () => {
         expect(cell.getRenderer()).toBeInstanceOf(LinkCellRenderer);
         expect(cell.getEditorKey()).toBe(null);
         expect((cell.getRenderer() as LinkCellRenderer).getValue()).toBe('orders');
+    });
+
+    it('composes a Link, which is still a Text for CellRenderer.doLayout', () => {
+        const text = new LinkCellRenderer().getText();
+
+        expect(text).toBeInstanceOf(Link);
+        // doLayout gates its vertical centring on `child instanceof Text`.
+        expect(text).toBeInstanceOf(Text);
+    });
+
+    it('keeps the inner link presentational so the cell never takes tab focus', () => {
+        const link = new LinkCellRenderer().getText() as Link;
+
+        // The link does carry a keydown listener — wired unconditionally — but
+        // with no tabindex it can never be a keydown target, and handleKeyDown
+        // returns early regardless. So the affordance, not the listener, is the
+        // contract worth pinning.
+        expect(link.isInteractive()).toBe(false);
+        expect(link.getAria().getRole()).toBe(null);
+        expect(link.getAria().getTabIndex()).toBe(null);
+    });
+
+    it('registers no action listener, so a click falls through to the Table', () => {
+        const r    = new LinkCellRenderer();
+        const link = r.getText() as Link;
+
+        r.setValue('orders');
+        link.getElement(true);
+
+        // The renderer only constructs the Link; the click is the Table's to
+        // route through "cellclick", so nothing here consumes it.
+        expect(() => link.click()).not.toThrow();
+        expect(r.getValue()).toBe('orders');
     });
 });
