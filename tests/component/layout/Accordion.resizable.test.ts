@@ -45,16 +45,16 @@ function content(pref: { width: number; height: number }, min?: { width: number;
     return c;
 }
 
-function constraints(label: string, open: boolean, fillWeight?: number): AccordionConstraints {
+function constraints(label: string, open: boolean, weight?: number): AccordionConstraints {
     const cons = new AccordionConstraints(label, open);
-    if (fillWeight !== undefined) cons.fillWeight = fillWeight;
+    if (weight !== undefined) cons.weight = weight;
     return cons;
 }
 
 afterEach(() => DOM.reset());
 
 describe('Accordion resizable — default off', () => {
-    it('doLayout is unchanged from the fillWeight split, and no gutters are created', () => {
+    it('doLayout is unchanged from the weight split, and no gutters are created', () => {
         installTestDOM(CONFIG);
         const acc = new Accordion();
         acc.setHeaderHeight(HEADER);
@@ -73,8 +73,8 @@ describe('Accordion resizable — default off', () => {
     });
 });
 
-describe('Accordion resizable — seed parity with fillWeight', () => {
-    it('first resizable doLayout yields the same heights the fillWeight split would', () => {
+describe('Accordion resizable — seed parity with weight', () => {
+    it('first resizable doLayout yields the same heights the weight split would', () => {
         installTestDOM(CONFIG);
         const acc = new Accordion();
         acc.setHeaderHeight(HEADER);
@@ -144,6 +144,132 @@ describe('Accordion resizable — rescale on container resize', () => {
     });
 });
 
+describe('Accordion resizable — weight-0 sections hold their px on container resize', () => {
+    // Mirrors sqladmin's TreeExplorerView shape: a weighted `tree` section
+    // (weight 1) and an unweighted `insp` section sized to its preferred
+    // content height. Pre-fix, `insp` drifted proportionally with `tree` on
+    // every container resize instead of holding its preferred 220px — see the
+    // plan's Overview for the measured pre-fix numbers.
+    function treeInspFixture(hostHeight: number): { acc: Accordion; tree: Component; insp: Component; host: Container } {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(300, hostHeight, acc);
+        const tree = content({ width: 100, height: 96 }, { width: 40, height: 96 });
+        const insp = content({ width: 100, height: 220 }, { width: 40, height: 50 });
+        const treeConstraints = new AccordionConstraints('tree', true);
+
+        treeConstraints.weight = 1;
+        host.addComponent(tree, treeConstraints);
+        host.addComponent(insp, constraints('insp', true)); // no weight — resize-pinned
+
+        return { acc, tree, insp, host };
+    }
+
+    it('insp holds its preferred 220px across a sequence of viewport resizes', () => {
+        const { tree, insp, host } = treeInspFixture(900);
+
+        for (const height of [900, 700, 500, 900]) {
+            host.setHeight(height);
+            host.doLayout();
+
+            expect(insp.getHeight()).toBeCloseTo(220, 5);
+            expect(tree.getHeight() + insp.getHeight()).toBeCloseTo(height - 2 * HEADER, 5);
+        }
+    });
+
+    it('a drag stays authoritative, and the pin then holds the dragged px', () => {
+        const { acc, tree, insp, host } = treeInspFixture(900);
+        host.doLayout();
+
+        const accAny = acc as unknown as {
+            onGutterDragStart(index: number, position: number): void;
+            onGutterDrag(index: number, position: number): void;
+            onGutterDragEnd(): void;
+        };
+
+        accAny.onGutterDragStart(0, 500);
+        accAny.onGutterDrag(0, 400); // drag up 100: insp (weight 0) still grows — a drag overrides the pin
+        accAny.onGutterDragEnd();
+
+        expect(insp.getHeight()).toBeCloseTo(320, 5);
+
+        host.setHeight(700);
+        host.doLayout();
+
+        // The pin now holds whatever px the drag gave it, not the original 220.
+        expect(insp.getHeight()).toBeCloseTo(320, 5);
+        expect(tree.getHeight() + insp.getHeight()).toBeCloseTo(700 - 2 * HEADER, 5);
+    });
+
+    it('setFillHeight makes every open section flexible, overriding the pin', () => {
+        const { acc, tree, insp, host } = treeInspFixture(900);
+
+        acc.setFillHeight(true);
+        host.doLayout();
+        host.setHeight(700);
+        host.doLayout();
+
+        // insp no longer holds 220 — it rescales proportionally with tree, because
+        // effectiveWeight resolves its unset weight to 1 once fillHeight is on.
+        expect(insp.getHeight()).not.toBeCloseTo(220, 1);
+        expect(tree.getHeight() + insp.getHeight()).toBeCloseTo(700 - 2 * HEADER, 5);
+    });
+
+    it('a pin yields when the budget cannot hold it', () => {
+        const { tree, insp, host } = treeInspFixture(900);
+        host.doLayout();
+
+        host.setHeight(240); // budget 180 < insp's pinned 220 — the pin must yield
+        host.doLayout();
+
+        const budget = 240 - 2 * HEADER;
+        expect(tree.getHeight() + insp.getHeight()).toBeCloseTo(budget, 5);
+        expect(tree.getHeight()).toBeGreaterThanOrEqual(96 - 1e-6);
+    });
+
+    it('a pin is clamped to its own min/max', () => {
+        const { tree, insp, host } = treeInspFixture(900);
+
+        insp.setMaxSize(10000, 150);
+        host.doLayout();
+
+        // The pin holds at insp's max (150), not its 220 stored size; tree absorbs the rest.
+        expect(insp.getHeight()).toBeCloseTo(150, 5);
+        expect(tree.getHeight() + insp.getHeight()).toBeCloseTo(900 - 2 * HEADER, 5);
+    });
+});
+
+describe('Accordion resizable — all-weighted sections are unaffected by pinning', () => {
+    it('two weight:1 sections rescale proportionally on resize, and nothing pins', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(300, 400, acc);
+        const a = content({ width: 100, height: 60 }, { width: 40, height: 10 });
+        const b = content({ width: 100, height: 60 }, { width: 40, height: 10 });
+        const aConstraints = new AccordionConstraints('A', true);
+        const bConstraints = new AccordionConstraints('B', true);
+
+        aConstraints.weight = 1;
+        bConstraints.weight = 1;
+        host.addComponent(a, aConstraints);
+        host.addComponent(b, bConstraints);
+        host.doLayout();
+
+        const ratioBefore = a.getHeight() / b.getHeight();
+
+        host.setHeight(200);
+        host.doLayout();
+
+        const budget = 200 - 2 * HEADER;
+        expect(a.getHeight() + b.getHeight()).toBeCloseTo(budget, 5);
+        expect(a.getHeight() / b.getHeight()).toBeCloseTo(ratioBefore, 5);
+    });
+});
+
 describe('Accordion resizable — min floor', () => {
     it('an open section never renders below its minHeight even when the stored ratio would push it lower', () => {
         installTestDOM(CONFIG);
@@ -188,6 +314,38 @@ describe('Accordion resizable — collapse frees space', () => {
         host.doLayout();
 
         expect(b.getHeight()).toBeCloseTo(bHeightBeforeClose, 0);
+    });
+
+    it('closing and reopening a pinned section restores its held px (mixed-weight)', () => {
+        installTestDOM(CONFIG);
+        const acc = new Accordion();
+        acc.setHeaderHeight(HEADER);
+        acc.setResizable(true);
+        const host = hostAccordion(300, 900, acc);
+        const tree = content({ width: 100, height: 96 }, { width: 40, height: 96 });
+        const insp = content({ width: 100, height: 220 }, { width: 40, height: 50 });
+        const extra = content({ width: 100, height: 60 }, { width: 40, height: 10 });
+        const treeConstraints  = new AccordionConstraints('tree', true);
+        const extraConstraints = new AccordionConstraints('extra', true);
+
+        treeConstraints.weight  = 1;
+        extraConstraints.weight = 1;
+        host.addComponent(tree, treeConstraints);
+        host.addComponent(insp, constraints('insp', true)); // no weight — resize-pinned
+        host.addComponent(extra, extraConstraints);
+        host.doLayout();
+
+        expect(insp.getHeight()).toBeCloseTo(220, 5);
+
+        acc.closeSection(1);
+        host.doLayout();
+
+        acc.openSection(1);
+        host.doLayout();
+
+        // The pinned section's closed _resizeSizes entry stays frozen (the pin
+        // block only visits open indices), so it reopens at its held 220px.
+        expect(insp.getHeight()).toBeCloseTo(220, 5);
     });
 });
 
@@ -302,8 +460,8 @@ describe('Accordion resizable — drag apportionment', () => {
         expect(a.getHeight()).toBeCloseTo(total - 20, 5);
     });
 
-    it('with 3+ open sections and no fillWeight (rendered scale != stored scale), a drag conserves the dragged pair\'s sum and leaves the untouched section alone', () => {
-        // No fillWeight/fillHeight means the seeded _resizeSizes do not sum to
+    it('with 3+ open sections and no weight (rendered scale != stored scale), a drag conserves the dragged pair\'s sum and leaves the untouched section alone', () => {
+        // No weight/fillHeight means the seeded _resizeSizes do not sum to
         // the open budget on their own — computeResizableHeights rescales them
         // by a factor != 1 at render time. onGutterDrag must convert its
         // rendered-pixel drag math back to that stored scale before writing,
@@ -351,8 +509,8 @@ describe('Accordion fill — respects maxSize (non-resizable)', () => {
         const a = content({ width: 100, height: 50 }, { width: 40, height: 10 });
         a.setMaxSize(10000, 100); // cap A's height at 100
         const b = content({ width: 100, height: 50 }, { width: 40, height: 10 });
-        host.addComponent(a, constraints('A', true, 1)); // fillWeight 1
-        host.addComponent(b, constraints('B', true, 1)); // fillWeight 1
+        host.addComponent(a, constraints('A', true, 1)); // weight 1
+        host.addComponent(b, constraints('B', true, 1)); // weight 1
         host.doLayout();
 
         const budget = 400 - 2 * HEADER;

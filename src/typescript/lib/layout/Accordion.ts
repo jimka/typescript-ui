@@ -12,6 +12,7 @@ import { Size, UNBOUNDED } from "~/primitive/Size.js";
 import type { AxisEnd } from "~/primitive/Axis.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import { Util } from "~/core/Util.js";
 
 /**
  * String-literal union of the events emitted by {@link Accordion}.
@@ -185,11 +186,19 @@ class Accordion extends LayoutManager {
     // The `openBudget / storedTotal` scale factor computeResizableHeights last
     // applied — i.e. `rendered height == _resizeSizes value * _resizeFactor`.
     // Only 1 when the open set's stored sizes already sum to the budget (the
-    // common fillWeight/fillHeight-seeded case); otherwise onGutterDrag needs
+    // common weight/fillHeight-seeded case); otherwise onGutterDrag needs
     // it to convert its rendered-pixel drag math back to _resizeSizes' stored
     // scale — writing rendered values directly would silently rescale the
     // whole open set (including untouched sections) on the next layout.
+    // Applies to the weighted sections only; a resize-pinned section renders
+    // at scale 1 (see `_resizePinned`).
     private _resizeFactor: number = 1;
+    // The open sections `distributeWithinConstraints` last held at their
+    // stored px (scale 1) instead of scaling by `_resizeFactor`. Read by
+    // `onGutterDrag`, which must divide each dragged section's rendered
+    // height by its own stored scale — `_resizeFactor` is no longer one
+    // global scalar once a pin is held.
+    private _resizePinned: Set<Component> = new Set<Component>();
     // Gutter pool, reused across layouts; one shown per adjacent open-section pair.
     private _resizeGutters: SplitGutter[] = [];
     // Rebuilt each layout: for gutter i, the two content components it resizes.
@@ -521,7 +530,7 @@ class Accordion extends LayoutManager {
     /**
      * Sets fill mode. When on, every open section grows to absorb the
      * container's leftover height, sharing it in proportion to their
-     * `fillWeight` (unweighted sections count equally, so equal weights get
+     * `weight` (unweighted sections count equally, so equal weights get
      * equal slices) and each capped at its own max — instead of every open
      * section sitting at its preferred height. Only meaningful when the host
      * stretches the accordion beyond its preferred height. No effect when the
@@ -551,7 +560,7 @@ class Accordion extends LayoutManager {
     /**
      * Sets resizable mode. When on, a draggable gutter appears between every
      * adjacent pair of open sections, letting the user trade height between
-     * them; the split starts from the section's usual `fillWeight`/`fillHeight`
+     * them; the split starts from the section's usual `weight`/`fillHeight`
      * distribution and is overridden by the drag from then on. No gutter
      * appears with fewer than two open sections, or under {@link setSingleOpen}
      * (which never has more than one section open).
@@ -1384,7 +1393,7 @@ class Accordion extends LayoutManager {
         const shrinkRatio = this.computeShrinkRatio(components, containerSize);
 
         // Fill: open sections grow to absorb the container's leftover height
-        // (underflow) — split across the sections by fillWeight, with
+        // (underflow) — split across the sections by weight, with
         // setFillHeight opting every open section in at an equal default weight.
         // The counterpart to shrink: when the content
         // overflows, shrinkRatio > 0 and the leftover is <= 0, so the fill map is
@@ -1749,8 +1758,14 @@ class Accordion extends LayoutManager {
         const openHeightByIndex = new Map<number, number>();
 
         for (let pos = 0; pos < openIndices.length; pos++) {
+            const component = components[openIndices[pos]];
+            // A pinned section renders at its stored px (scale 1); every other open
+            // section renders at stored × _resizeFactor. Dividing by the wrong one
+            // silently rescales the whole open set on the next layout.
+            const scale = this._resizePinned.has(component) ? 1 : this._resizeFactor;
+
             openHeightByIndex.set(openIndices[pos], newHeights[pos]);
-            this._resizeSizes.set(components[openIndices[pos]], newHeights[pos] / this._resizeFactor);
+            this._resizeSizes.set(component, newHeights[pos] / scale);
         }
 
         const insets = container.getContentInsets();
@@ -1935,7 +1950,7 @@ class Accordion extends LayoutManager {
      * open sections underflow the container (`leftover > 0`); on overflow the
      * leftover is `<= 0` so fill yields nothing and shrink handles the fit.
      *
-     * Each open section's effective fill weight is its explicit `fillWeight`
+     * Each open section's effective fill weight is its explicit `weight`
      * constraint, or — when {@link setFillHeight} is on — a default of `1` so
      * every unweighted open section shares the slack equally. The leftover is
      * then split across all sections with a positive effective weight in
@@ -1943,7 +1958,7 @@ class Accordion extends LayoutManager {
      * section's surplus is re-shared among the rest; see
      * {@link distributeFillWithinMax}). So `setFillHeight` spreads the slack
      * across every open section (equal weights → equal slices) rather than
-     * padding a single one, and per-section `fillWeight` still targets or biases
+     * padding a single one, and per-section `weight` still targets or biases
      * specific sections. With neither, nothing fills and the slack stays as
      * trailing space.
      *
@@ -1981,10 +1996,7 @@ class Accordion extends LayoutManager {
                 const contentHeight = this.openContentHeight(components[i], shrinkRatio);
                 used += contentHeight;
 
-                // Explicit fillWeight wins; otherwise setFillHeight opts every
-                // open section in at weight 1 so the slack spreads equally.
-                const explicit = (this.getLayoutConstraints(components[i]) as AccordionConstraints | undefined)?.fillWeight ?? 0;
-                const weight = explicit > 0 ? explicit : (this._fillHeight ? 1 : 0);
+                const weight = this.effectiveWeight(components[i]);
 
                 if (weight > 0) {
                     recipients.push({ index: i, weight, headroom: this.fillHeadroom(components[i], contentHeight) });
@@ -2003,6 +2015,76 @@ class Accordion extends LayoutManager {
         // max so an open section is never padded past its maximum height; a
         // capped section's surplus is re-shared among the rest.
         return this.distributeFillWithinMax(recipients, leftover);
+    }
+
+    /**
+     * Resolves an open section's effective weight — its explicit `weight`
+     * constraint, or a default of `1` when {@link setFillHeight} is on so every
+     * unweighted open section counts equally. `0` means unweighted: the section
+     * takes no share of the container's leftover height, and in resizable mode it
+     * holds its px across a container resize instead of rescaling with the rest.
+     *
+     * Reads the constraint as `?? 0`, matching the box managers — unlike `Split`,
+     * where an unset weight falls through to a proportional fallback.
+     *
+     * @param component - The open section's content component.
+     * @returns The effective weight; `0` when the section is unweighted.
+     */
+    private effectiveWeight(component: Component): number {
+        const explicit = this.getLayoutConstraints(component)?.weight ?? 0;
+
+        return explicit > 0 ? explicit : (this._fillHeight ? 1 : 0);
+    }
+
+    /**
+     * The open sections that hold their stored px across a container resize —
+     * those with an effective weight of `0`, so only the weighted sections absorb
+     * the change. Returns empty (so the whole open set rescales proportionally, as
+     * it always has) in the two cases where pinning cannot apply: no open section
+     * is weighted, so there is nothing to absorb the change; or the pins alone
+     * overrun the budget, where a pin must yield because geometry has to fill the
+     * container — mirroring `Split.setPaneResizeWeight`'s contract that a pin holds
+     * only while the container is large enough.
+     *
+     * @param components - The container's content components, section-ordered.
+     * @param openIndices - Indices of the open sections.
+     * @param openBudget - The height available to the open sections' content.
+     * @returns The pinned sections' indices, or an empty array.
+     */
+    private resizePinnedSections(components: Component[], openIndices: number[], openBudget: number): number[] {
+        const pinned: number[] = [];
+        let flexible = 0;
+        let pinnedTotal = 0;
+
+        for (const i of openIndices) {
+            if (this.effectiveWeight(components[i]) > 0) {
+                flexible += 1;
+            } else {
+                pinned.push(i);
+                pinnedTotal += this.clampSectionHeight(components[i], this._resizeSizes.get(components[i]) ?? 0);
+            }
+        }
+
+        if (flexible === 0 || pinnedTotal > openBudget) {
+            return [];
+        }
+
+        return pinned;
+    }
+
+    /**
+     * Clamps a candidate content height to a section's `[min, max]`, so a pin is
+     * held within the same bounds the proportional pass enforces.
+     *
+     * @param component - The open section's content component.
+     * @param value - The candidate content height in px.
+     * @returns The clamped content height.
+     */
+    private clampSectionHeight(component: Component, value: number): number {
+        const min = component.getMinSize();
+        const max = component.getMaxSize();
+
+        return Util.clamp(value, min ? min.height : 0, max ? max.height : Number.POSITIVE_INFINITY);
     }
 
     /**
@@ -2152,7 +2234,11 @@ class Accordion extends LayoutManager {
 
     /**
      * Splits `openBudget` across the open sections in proportion to their
-     * stored sizes, clamped to each section's `[min, max]` height. A section
+     * stored sizes, clamped to each section's `[min, max]` height. An unweighted
+     * open section (effective weight `0`) is first held at its stored px and
+     * removed from the budget, so only the weighted sections absorb a container
+     * resize; the split falls back to rescaling the whole set when no section is
+     * weighted or the pins overrun the budget. A section
      * whose proportional share would fall outside its bounds is pinned at the
      * violated bound and removed from the budget; the remaining sections then
      * re-share what is left, iterating until every free section fits. This
@@ -2182,6 +2268,21 @@ class Accordion extends LayoutManager {
         const free = new Set<number>(openIndices);
         let remaining = openBudget;
         let freeFactor = 1;
+
+        // Resize-pinned sections hold their stored px and leave the budget before the
+        // proportional pass, so only the weighted sections absorb a container resize.
+        // Empty unless the open set is mixed (some weighted, some not) — with no
+        // weighted section the whole set rescales proportionally, exactly as before.
+        this._resizePinned.clear();
+
+        for (const i of this.resizePinnedSections(components, openIndices, openBudget)) {
+            const height = this.clampSectionHeight(components[i], this._resizeSizes.get(components[i]) ?? 0);
+
+            heights.set(i, height);
+            remaining -= height;
+            free.delete(i);
+            this._resizePinned.add(components[i]);
+        }
 
         // At most one section is pinned per pass, so this settles in at most
         // `openIndices.length` passes.
