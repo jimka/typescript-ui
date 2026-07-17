@@ -72,6 +72,7 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | --- | --- |
 | [`Text`](/api/component/input/classes/Text) | Standalone text — the default for status, captions, body |
 | [`Label`](/api/component/input/classes/Label) | Text tied to a form control via the HTML `for` attribute |
+| [`Link`](/components/Link) | Clickable text link — hit area is exactly the text; activates on click or Enter |
 | [`Header`](/api/component/display/classes/Header) | Title-bar / panel header text |
 | [`Image`](/api/component/display/classes/Image) | `<img>` wrapper |
 | [`Canvas`](/components/Canvas) | `<canvas>` raster surface — draw in CSS px via an `onDraw` hook |

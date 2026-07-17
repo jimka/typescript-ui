@@ -110,6 +110,7 @@ export default defineConfig({
                     { text: 'Label',           link: '/components/Label' },
                     { text: 'Header',          link: '/components/Header' },
                     { text: 'Text',            link: '/components/Text' },
+                    { text: 'Link',            link: '/components/Link' },
                     { text: 'Image',           link: '/components/Image' },
                     { text: 'Canvas',          link: '/components/Canvas' },
                     { text: 'WebGLCanvas',     link: '/components/WebGLCanvas' },
