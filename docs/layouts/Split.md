@@ -97,6 +97,32 @@ Note the default is the **opposite** of [`Border`](/layouts/Border), where a
 region is non-collapsible until it opts in with `collapsible: true`; the two
 managers read the same constraint field with opposite defaults.
 
+## Saving and restoring layout
+
+[`getPaneSizes`](/api/layout/classes/Split#getpanesizes) / [`applyPaneSizes`](/api/layout/classes/Split#applypanesizes) and the `paneSizes` option capture and restore pane sizes for **cross-session persistence** — a consumer's own store (`localStorage`, a backend), not built into the library. Each entry's unit follows the pane's resize weight: a pane pinned with `weight: 0` (declaratively, or via `setPaneResizeWeight`) persists as **px** and restores at exactly that size regardless of the window size on reload — the pane exists precisely so it does not scale with the viewport. Every other pane persists as a **ratio** of the space the pinned panes leave. `paneresize` fires once a completed gutter drag settles the sizes — never per frame — and `panecollapse` fires whenever a pane's collapsed state changes, so a listener can persist on every commit without debouncing:
+
+```typescript
+import { LayoutSize } from '@jimka/typescript-ui/layout';
+
+split.on("paneresize", (sizes: LayoutSize[]) => {
+    localStorage.setItem("split-sizes", JSON.stringify(sizes));
+});
+split.on("panecollapse", (index, collapsed) => {
+    localStorage.setItem("split-collapsed", JSON.stringify({ index, collapsed }));
+});
+
+// On the next session:
+const saved = localStorage.getItem("split-sizes");
+const split = Split({
+    orientation: 'horizontal',
+    paneSizes  : saved ? JSON.parse(saved) : undefined,
+});
+```
+
+A saved array whose length or per-index unit no longer matches the live panes (e.g. a pane's `weight` changed between releases) is **discarded whole**, and the split falls back to its normal first-layout sizing — the same all-or-nothing rule `collapsedPanes` never needed because it carries no unit.
+
+> **`getPaneRatios` / `applyPaneRatios` are a different surface.** They serve [Layout serialization](/layouts/LayoutSerialization)'s same-session topology switching — a weight-agnostic ratio of the *whole* pane set, with no unit tag. Using them for cross-session persistence would restore a `weight: 0` pane at the wrong px on a differently-sized window; use `getPaneSizes` / `applyPaneSizes` for that instead.
+
 ## Common methods
 
 | Method | Purpose |
@@ -106,6 +132,8 @@ managers read the same constraint field with opposite defaults.
 | `getPaneSize(pane)` | Read a pane's stored main-axis size, or `undefined` when unset. |
 | `setPaneCollapsed(index, value)` | Collapse or restore the pane at `index`. |
 | `isPaneCollapsed(index)` | Whether the pane at `index` is collapsed. |
+| `getPaneSizes()` | Weight-aware, mixed-unit sizes for cross-session persistence. See [Saving and restoring layout](#saving-and-restoring-layout). |
+| `applyPaneSizes(sizes)` | Restore sizes captured by `getPaneSizes`. |
 
 ## Notes
 
@@ -117,6 +145,7 @@ managers read the same constraint field with opposite defaults.
 ## See also
 
 - [API: Split](/api/layout/classes/Split)
+- [API: LayoutSize](/api/layout/type-aliases/LayoutSize) — the persisted-size vocabulary `getPaneSizes` / `applyPaneSizes` share with [`Accordion`](/layouts/Accordion#saving-and-restoring-section-sizes)
 - [`SplitGutter`](/api/component/container/classes/SplitGutter) — the drag handle
 - [`Border`](/layouts/Border) — fixed dividers
 - [Layout serialization](/layouts/LayoutSerialization) — capture and restore pane ratios

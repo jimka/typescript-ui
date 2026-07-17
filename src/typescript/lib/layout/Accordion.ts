@@ -1036,10 +1036,9 @@ class Accordion extends LayoutManager {
 
     /**
      * Restores sizes captured by {@link getSectionSizes}, applied on the next
-     * resizable layout that can resolve the open budget (see
-     * {@link applyPendingSectionSizes}). Discarded whole unless every entry's
-     * unit matches the live section's weight (see the discard rule on
-     * {@link LayoutSize}).
+     * resizable layout that can resolve the open budget (the correct base
+     * for a ratio entry). Discarded whole unless every entry's unit matches
+     * the live section's weight (see the discard rule on {@link LayoutSize}).
      *
      * @param sizes - The persisted array to restore.
      * @returns This layout manager, for method chaining.
