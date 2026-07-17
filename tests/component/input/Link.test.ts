@@ -74,6 +74,13 @@ function pressKey(link: Link, key: string): void {
     Event.fireEvent(link, makeEvent(link.getElement(true)!, 'keydown', { key }) as any);
 }
 
+/** Every recorded style-rule write, as `[property, value]` pairs. */
+function ruleStyles(): unknown[][] {
+    return sink.writes
+        .filter((w) => w.op === 'setRuleStyle')
+        .map((w) => [w.args[0], w.args[1]]);
+}
+
 /** Latest recorded `setAttr` value for `attr` on any handle, or undefined. */
 function lastSetAttr(attr: string): unknown {
     let value: unknown;
@@ -122,18 +129,37 @@ describe('Link element and styling', () => {
         expect(makeLink('x').clearForegroundColor().getForegroundColor()).toBeNull();
     });
 
-    it('appends the underline rule without dropping a caller rule', () => {
+    it('dispatches a caller styleRules entry without adding an instance underline', () => {
         const link = makeLink('x', { styleRules: [{ suffix: ':hover', styles: { opacity: '0.8' } }] });
 
         // Rules are deferred until render, so materialise them before reading.
         link.getElement(true);
 
-        const styled = sink.writes
-            .filter((w) => w.op === 'setRuleStyle')
-            .map((w) => [w.args[0], w.args[1]]);
+        const styled = ruleStyles();
 
-        expect(styled).toContainEqual(['textDecoration', 'underline']);
         expect(styled).toContainEqual(['opacity', '0.8']);
+        // The underline is a class-level `.Link` rule registered once at module
+        // load, not per-instance state, so it must not appear among this
+        // instance's rules. (That rule predates the per-test sink, so it is not
+        // observable here — it is covered by manual verification.)
+        expect(styled).not.toContainEqual(['textDecoration', 'underline']);
+    });
+
+    it('scopes a caller rule to the id, which outranks the class-level underline', () => {
+        const link = makeLink('x', { styleRules: [{ suffix: '', styles: { textDecoration: 'none' } }] });
+
+        link.getElement(true);
+
+        // `#<id>` (1,0,0) beats `.Link` (0,1,0), so a caller can remove the
+        // underline. This pins the mechanism that makes the override possible;
+        // the cascade itself is the platform's guarantee.
+        const idScoped = sink.writes
+            .filter((w) => w.op === 'ensureStyleRule')
+            .map((w) => String(w.args[0]))
+            .filter((s) => s.startsWith('#'));
+
+        expect(idScoped.length).toBeGreaterThan(0);
+        expect(ruleStyles()).toContainEqual(['textDecoration', 'none']);
     });
 
     it('keeps its constructor text through the 3-arg super', () => {

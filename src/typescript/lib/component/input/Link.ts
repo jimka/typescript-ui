@@ -13,14 +13,37 @@ import type { ClickListener } from "~/component/button/Button.js";
 const LINK_COLOR_CSS = "var(--ts-ui-link-color, rgb(21, 101, 192))";
 
 /**
- * The link's focus mark. Uses `:focus-visible` rather than the `:focus` the
- * text inputs use: a link is activated by clicking it, and `:focus` would leave
- * the ring painted afterwards. A plain `outline` suffices — the `::after` ring
- * in `focusRing.ts` exists for composite inputs painting onto outer chrome,
- * whereas a link is a leaf element that focuses itself. `outlineOffset` keeps
- * the ring tight enough to survive an ancestor's `overflow: hidden`.
+ * The link's two class-level rules.
+ *
+ * The underline is constant for every link and varies per instance for none, so
+ * it is a rule on the class rather than per-instance state: it costs one CSS
+ * rule for the whole page instead of one per link, and it is not an options
+ * field, which would owe a typed setter, a getter and a cache it has no use
+ * for. A caller who wants it gone passes a `styleRules` entry — those compile
+ * to an `#<id>` selector, and an id outranks a class, so the caller's rule wins
+ * on specificity without any ordering subtlety.
+ *
+ * The focus mark uses `:focus-visible` rather than the `:focus` the text inputs
+ * use: a link is activated by clicking it, and `:focus` would leave the ring
+ * painted after the click. A plain `outline` suffices — the `::after` ring in
+ * `focusRing.ts` exists for composite inputs painting onto outer chrome,
+ * whereas a link is a leaf element that focuses itself. Note `outlineOffset`
+ * pushes the ring *outward*, so it does not protect against an ancestor's
+ * `overflow: hidden`; if clipping ever shows up, that `::after` inset ring is
+ * the fallback.
+ *
+ * Both rules key off `.Link`, which comes from the class name, so a subclass
+ * would not inherit them — `Link` is not designed for extension.
  */
 (() => {
+    new StyleRule({
+        scope:  "selector",
+        name:   ".Link",
+        styles: {
+            textDecoration: "underline",
+        },
+    });
+
     new StyleRule({
         scope:  "selector",
         name:   ".Link:focus-visible",
@@ -67,15 +90,17 @@ export interface LinkOptions extends TextOptions {
     listeners?: { action?: ClickListener };
 }
 
-// `tag`, `foregroundColor` and `cursor` are pure fallbacks: Component resolves
-// `tag` from `_defaultOptions`, and `applyStyle` re-reads the two folding
-// getters at render, so all three survive without an `applyOptions` dispatch.
+// Only getter-backed options belong here, which is what `_defaultOptions` is
+// for: Component resolves `tag` from it, and `applyStyle` re-reads the two
+// folding getters at render, so all three survive without an `applyOptions`
+// dispatch — and `clearForegroundColor()` still suppresses the default.
 // `interactive` is here so the always-dispatch `?? this.isInteractive()` in
 // applyOptions resolves the class default.
 //
-// `styleRules` must NOT be added here — `applyOptions` reads it only from the
-// caller's bag, never from the defaults, so a default would be dropped
-// silently. The underline rides the options bag in the constructor instead.
+// The underline is deliberately absent: it is constant styling, not per-instance
+// state, so it is a class-level rule above rather than an option. (`applyOptions`
+// reads `styleRules` only from the caller's bag, so a default here would be
+// dropped silently anyway.)
 const _defaultLinkOptions: Partial<LinkOptions> = {
     tag:             "a",
     foregroundColor: LINK_COLOR_CSS,
@@ -121,17 +146,7 @@ class Link extends Text<LinkOptions> {
     // applyOptions cascade wrote.
 
     constructor(text?: String, options?: LinkOptions) {
-        super(
-            text,
-            {
-                ...(options ?? {}),
-                styleRules: [
-                    ...(options?.styleRules ?? []),
-                    { suffix: "", styles: { textDecoration: "underline" } },
-                ],
-            },
-            _defaultLinkOptions,
-        );
+        super(text, options, _defaultLinkOptions);
 
         // Wired once for the component's whole life, regardless of
         // `interactive`: handleKeyDown self-guards, so the flag needs no
