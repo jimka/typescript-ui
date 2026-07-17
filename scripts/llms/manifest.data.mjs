@@ -55,6 +55,7 @@ export const groups = [
         { task: "Two-state toggle button", symbol: "ToggleButton" },
         { task: "Button with a primary action plus a dropdown menu", symbol: "SplitButton" },
         { task: "Button whose click opens a dropdown menu", symbol: "MenuButton" },
+        { task: "Clickable text link that activates in-app (click / Enter)", symbol: "Link" },
         { task: "Checkbox", symbol: "Checkbox" },
         { task: "Radio button (mutually exclusive within a group)", symbol: "RadioButton" },
         { task: "On/off switch", symbol: "Toggle" },

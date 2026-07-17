@@ -23,6 +23,7 @@ export type AriaRole =
     | 'treeitem'
     | 'group'
     | 'button'
+    | 'link'
     | 'region'
     | 'combobox'
     | 'listbox'
@@ -114,6 +115,20 @@ export class Aria {
      */
     getRole(): AriaRole | null {
         return this._role;
+    }
+
+    /**
+     * Removes the `role` attribute, clearing any role previously set with
+     * {@link setRole}. The null companion to `setRole`, which accepts no null —
+     * needed when a component drops an affordance it had claimed.
+     *
+     * @returns This Aria helper, for method chaining.
+     */
+    clearRole(): this {
+        this._role = null;
+        this._component.applyAriaAttribute("role", null);
+
+        return this;
     }
 
     /**

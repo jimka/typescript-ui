@@ -51,6 +51,7 @@ import {
     ComboBox,
     DateField,
     DateTimeField,
+    Link,
     NumberSpinner,
     RadioButton,
     Text,
@@ -74,6 +75,7 @@ import { FieldSet, Spacer, StatusBar } from '@jimka/typescript-ui/component/cont
 import type { MenuItemConfig } from '@jimka/typescript-ui/component/container';
 import {
     ColumnSpec,
+    LinkCellRenderer,
     Table,
     TablePanel,
     TreeTablePanel,
@@ -427,20 +429,21 @@ class MiscPanel extends Panel {
                     { name: "LastSeen"  , type: "datetime", description: "col7", order: 6 },
                     { name: "Notes"     , type: "string"  , description: "col4", order: 7 },
                     { name: "locked"    , type: "boolean" , description: "col8", order: 8 },
+                    { name: "Manager"   , type: "string"  , description: "col10", order: 9 },
                 ]);
 
                 let specStore = new MemoryStore(specModel);
 
                 specStore.add([
-                    { Name: "Alice", Active: true , Score: 95,   Role: "dev", Joined: new Date(2021,  2, 15), Meeting: new Date(1970, 0, 1,  9, 30, 20), LastSeen: new Date(2024,  0, 10, 14, 25), Notes: "Top performer"  , locked: false },
-                    { Name: "Bob"  , Active: false, Score: 72,   Role: "qa" , Joined: new Date(2022,  7,  3), Meeting: new Date(1970, 0, 1, 14,  0, 30), LastSeen: new Date(2024,  3, 22,  8, 10), Notes: "Needs follow-up", locked: true  },
-                    { Name: "Carol", Active: true , Score: 88,   Role: "pm" , Joined: new Date(2020, 11, 20), Meeting: null                        , LastSeen: new Date(2023, 11,  5, 17, 45)    , Notes: "On track"       , locked: false },
-                    { Name: "David", Active: true , Score: 61,   Role: "dev", Joined: null                  , Meeting: new Date(1970, 0, 1, 11, 15, 40), LastSeen: null                          , Notes: "Check in soon"  , locked: false },
-                    { Name: "Eve"  , Active: false, Score: 45,   Role: "qa" , Joined: new Date(2023,  4,  9), Meeting: new Date(1970, 0, 1, 16, 45, 50), LastSeen: new Date(2024,  5,  1,  9,  0), Notes: "At risk"        , locked: false },
+                    { Name: "Alice", Active: true , Score: 95,   Role: "dev", Joined: new Date(2021,  2, 15), Meeting: new Date(1970, 0, 1,  9, 30, 20), LastSeen: new Date(2024,  0, 10, 14, 25), Notes: "Top performer"  , locked: false, Manager: "Carol" },
+                    { Name: "Bob"  , Active: false, Score: 72,   Role: "qa" , Joined: new Date(2022,  7,  3), Meeting: new Date(1970, 0, 1, 14,  0, 30), LastSeen: new Date(2024,  3, 22,  8, 10), Notes: "Needs follow-up", locked: true  , Manager: "Alice" },
+                    { Name: "Carol", Active: true , Score: 88,   Role: "pm" , Joined: new Date(2020, 11, 20), Meeting: null                        , LastSeen: new Date(2023, 11,  5, 17, 45)    , Notes: "On track"       , locked: false, Manager: null    },
+                    { Name: "David", Active: true , Score: 61,   Role: "dev", Joined: null                  , Meeting: new Date(1970, 0, 1, 11, 15, 40), LastSeen: null                          , Notes: "Check in soon"  , locked: false, Manager: "Alice" },
+                    { Name: "Eve"  , Active: false, Score: 45,   Role: "qa" , Joined: new Date(2023,  4,  9), Meeting: new Date(1970, 0, 1, 16, 45, 50), LastSeen: new Date(2024,  5,  1,  9,  0), Notes: "At risk"        , locked: false, Manager: "Carol" },
                     // Freshly onboarded, not yet fully filled out: demos the
                     // required-cell outline on both Role (static `required`) and
                     // Score (`requiredPredicate`, mandatory only while Active).
-                    { Name: "Frank", Active: true , Score: null, Role: ""   , Joined: new Date(2024,  8,  1), Meeting: null                        , LastSeen: null                          , Notes: "Just joined"    , locked: false },
+                    { Name: "Frank", Active: true , Score: null, Role: ""   , Joined: new Date(2024,  8,  1), Meeting: null                        , LastSeen: null                          , Notes: "Just joined"    , locked: false, Manager: "Carol" },
                 ]);
 
                 // TODO: Will this lead to a race condition if we don't 'await'?
@@ -471,6 +474,16 @@ class MiscPanel extends Panel {
                 // and Frank's empty LastSeen (both Active) show the outline
                 // on top of the Activity group tint; Alice's/Carol's filled
                 // LastSeen shows just the group tint, no outline.
+                // Manager demos LinkCellRenderer against the "cellclick"
+                // handler below — the pairing the renderer is built for, since
+                // it styles the value but never handles the click itself. It
+                // reads as a reference to another row (Alice reports to Carol),
+                // mirroring the foreign-key columns this is used for. Carol's
+                // Manager is null, demoing the empty cell: no link text, and
+                // clicking it still reports through cellclick with an empty
+                // value. A custom-rendered cell carries no editor, so Manager
+                // is the one column here that never enters edit mode — even on
+                // an unlocked row.
                 const spec: ColumnSpec = {
                     rowReadOnly: (r) => r.get('locked') === true,
                     columns: [
@@ -481,6 +494,7 @@ class MiscPanel extends Panel {
                         { field: 'Joined'  , minWidth: 120, readOnly: true,       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
                         { field: 'Meeting' , minWidth: 100, showSeconds: true,    group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
                         { field: 'LastSeen', minWidth: 160, requiredPredicate: (r) => r.get('Active') === true, group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)' },
+                        { field: 'Manager' , minWidth: 120, renderer: () => new LinkCellRenderer()                                                        },
                         { field: 'Notes'   , hidden  : true                                                                                                },
                         { field: 'locked'  , hidden  : true                                                                                                },
                     ],
@@ -1319,6 +1333,17 @@ class MiscPanel extends Panel {
         iconTextRow.addComponent(new IconText("xmark", "Close"));
         iconTextRow.addComponent(new IconText("arrow-right", "Next"));
         rightColumn.addComponent(iconTextRow);
+
+        // Link: the hit area is exactly the text. The HBox row is load-bearing —
+        // it sizes the link to its preferred (natural) width; a stretching
+        // parent would widen the box and the hit area with it.
+        const linkRow = new Component();
+        linkRow.setLayoutManager(new HBox());
+        linkRow.addComponent(new Text("Link:"));
+        linkRow.addComponent(new Link("Open the release notes", {
+            listeners: { action: () => Notification.show("Link actioned — click and Enter both land here.", "info") },
+        }));
+        rightColumn.addComponent(linkRow);
 
         const iconLabelField = new TextField();
         const iconLabelRow = new Component();

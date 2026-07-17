@@ -4,6 +4,8 @@ export { Text } from '~/component/input/Text.js';
 export type { TextOptions } from '~/component/input/Text.js';
 export { Label } from '~/component/input/Label.js';
 export type { LabelOptions } from '~/component/input/Label.js';
+export { Link } from '~/component/input/Link.js';
+export type { LinkOptions, LinkEvent } from '~/component/input/Link.js';
 export { AbstractInput } from '~/component/input/AbstractInput.js';
 export type { AbstractInputOptions, AbstractInputEvent } from '~/component/input/AbstractInput.js';
 export { AbstractBooleanInput } from '~/component/input/AbstractBooleanInput.js';
