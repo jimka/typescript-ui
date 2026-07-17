@@ -64,10 +64,15 @@ export class LayoutConstraints {
      */
     transient?: boolean;
     /**
-     * A per-component distribution weight, read differently by two managers.
+     * A per-component distribution weight, read differently by three managers.
      * [`HBox`](/api/layout/classes/HBox) and [`VBox`](/api/layout/classes/VBox)
      * use it to share **extra main-axis space** among children (unset is treated
-     * as `0` — no share). [`Split`](/api/layout/classes/Split) uses it as the
+     * as `0` — no share). [`Accordion`](/api/layout/classes/Accordion) reads it
+     * the same way (`?? 0`) as an open section's share of the container's
+     * leftover height, defaulting to `1` when `Accordion.setFillHeight` is on;
+     * under `Accordion.setResizable` a `0` section additionally holds its px
+     * across a container resize while the weighted sections absorb the change.
+     * [`Split`](/api/layout/classes/Split) uses it as the
      * pane's **container-resize weight**: on a container resize the extent delta
      * is split across panes in proportion to this weight, so `0` pins a pane's px
      * size and a positive weight absorbs the change. Split reads the raw value,

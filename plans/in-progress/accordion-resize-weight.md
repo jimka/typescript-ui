@@ -380,3 +380,9 @@ The renamed constraint is public API on two export surfaces: `AccordionConstrain
 - **A demo for the mixed-weight path.** `AccordionDemoPanel` is `singleOpen` + `fillHeight`, so it cannot exercise a pin; adding a section-weight demo control is scope creep on an unrelated panel.
 - **Fixing the pre-existing `leaves.smoke.test.ts` typecheck errors** that block `npm test` on master. Unrelated (`MenuItem`), and outside this change's blast radius.
 - **Refactoring the min/max clamp loop** in `distributeWithinConstraints`. The pin block is inserted before it and reuses its exact shape; the loop body stays byte-for-byte.
+
+---
+
+## Implementation Notes
+
+- **`npm run docs:build`'s "zero warnings" bar is not literally met, but zero *new* warnings are introduced.** The build on this branch reports "0 errors and 163 warnings" — 162 are `Component.notifyIntrinsicSizeChanged`'s pre-existing `{@link Accordion}` JSDoc reference failing to resolve for every one of its inheritors (unrelated file, not touched by this plan) plus one pre-existing `MarkdownEditor.focus` link warning. Grepping the full warning list for `AccordionConstraints`, `AccordionPanel`, and `LayoutConstraints` (the three symbols this plan's public JSDoc touches) turns up none beyond that same generic `notifyIntrinsicSizeChanged` pattern on `AccordionPanel` — i.e. this plan's JSDoc changes resolve cleanly and add no warning of their own. Mirrors the `tsc` gate's existing "no new errors" framing; this is the docs-build analogue, just not called out as such in `## Verification`.

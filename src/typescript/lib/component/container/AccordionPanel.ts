@@ -4,6 +4,7 @@ import { Container, ContainerOptions } from "~/core/Container.js";
 import { Component } from "~/core/Component.js";
 import { Accordion, SectionToggleCallback } from "~/layout/Accordion.js";
 import { AccordionConstraints } from "~/layout/AccordionConstraints.js";
+import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -26,9 +27,9 @@ export interface AccordionSectionConfig {
      * Optional share of the accordion's leftover height this section fills when
      * the open sections underflow. `0`/omitted sits at preferred height; a
      * positive weight grows the section by its fraction of the total fill weight.
-     * See {@link AccordionConstraints.fillWeight}.
+     * See {@link LayoutConstraints.weight}.
      */
-    fillWeight?:    number;
+    weight?:        number;
 }
 
 /**
@@ -103,7 +104,7 @@ class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOpti
 
         if (options?.sections) {
             for (const section of options.sections) {
-                this.addSection(section.component, section.label, section.initiallyOpen, section.glyph, section.tools, section.fillWeight);
+                this.addSection(section.component, section.label, section.initiallyOpen, section.glyph, section.tools, section.weight);
             }
         }
 
@@ -120,17 +121,17 @@ class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOpti
      * @param initiallyOpen - Optional. Whether the section starts expanded; defaults to `false`.
      * @param glyph - Optional. Registry glyph name shown leading the header label.
      * @param tools - Optional. Per-section tool components for this header.
-     * @param fillWeight - Optional. Share of the accordion's leftover height this
+     * @param weight - Optional. Share of the accordion's leftover height this
      *   section fills when the open sections underflow (see
-     *   {@link AccordionConstraints.fillWeight}).
+     *   {@link LayoutConstraints.weight}).
      *
      * @returns This panel, for method chaining.
      */
-    addSection(component: Component, label: string, initiallyOpen?: boolean, glyph?: string, tools?: Component[], fillWeight?: number): this {
+    addSection(component: Component, label: string, initiallyOpen?: boolean, glyph?: string, tools?: Component[], weight?: number): this {
         const constraints = new AccordionConstraints(label, initiallyOpen, glyph, tools);
 
-        if (fillWeight !== undefined) {
-            constraints.fillWeight = fillWeight;
+        if (weight !== undefined) {
+            constraints.weight = weight;
         }
 
         this.addComponent(component, constraints);

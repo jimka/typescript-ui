@@ -206,11 +206,11 @@ describe('AccordionPanel per-section fill weights', () => {
     afterEach(() => DOM.reset());
 
     /** An open section whose content has a small fixed preferred height. */
-    function section(label: string, fillWeight?: number): AccordionSectionConfig {
+    function section(label: string, weight?: number): AccordionSectionConfig {
         const component = new Component();
         component.setPreferredSize(0, PREF);
 
-        return { label, component, initiallyOpen: true, fillWeight };
+        return { label, component, initiallyOpen: true, weight };
     }
 
     // The fixed preferred height each section's content starts at, before fill.

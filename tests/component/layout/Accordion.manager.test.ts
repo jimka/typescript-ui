@@ -39,9 +39,9 @@ function content(pref: { width: number; height: number }, min?: { width: number;
     return c;
 }
 
-function constraints(label: string, open: boolean, fillWeight?: number): AccordionConstraints {
+function constraints(label: string, open: boolean, weight?: number): AccordionConstraints {
     const cons = new AccordionConstraints(label, open);
-    if (fillWeight !== undefined) cons.fillWeight = fillWeight;
+    if (weight !== undefined) cons.weight = weight;
     return cons;
 }
 
@@ -235,13 +235,13 @@ describe('Accordion manager — open/close coordination + events', () => {
 describe('Accordion manager — shrink-ratio geometry', () => {
     // Single open section: header + content budget. pref 200, min 50.
     // totalPreferred = HEADER + 200, totalMin = HEADER + 50.
-    function oneOpen(hostHeight: number, fillWeight?: number): { acc: Accordion; a: Component } {
+    function oneOpen(hostHeight: number, weight?: number): { acc: Accordion; a: Component } {
         installTestDOM(CONFIG);
         const acc = new Accordion();
         acc.setHeaderHeight(HEADER);
         const host = hostAccordion(400, hostHeight, acc);
         const a = content({ width: 100, height: 200 }, { width: 40, height: 50 });
-        host.addComponent(a, constraints('A', true, fillWeight));
+        host.addComponent(a, constraints('A', true, weight));
         host.doLayout();
         return { acc, a };
     }
@@ -311,7 +311,7 @@ describe('Accordion manager — fill-weight distribution', () => {
         acc.setHeaderHeight(HEADER);
         const host = hostAccordion(400, 128, acc); // overflow budget from the shrink suite
         const a = content({ width: 100, height: 200 }, { width: 40, height: 50 });
-        host.addComponent(a, constraints('A', true, 1)); // fillWeight set but must be ignored
+        host.addComponent(a, constraints('A', true, 1)); // weight set but must be ignored
         host.doLayout();
 
         const totalPreferred = HEADER + 200;
