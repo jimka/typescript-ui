@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { _Dialog as Dialog, DialogButtons } from '~/overlay/Dialog';
 import { LayerManager } from '~/core/LayerManager';
-import { DOM } from '~/core/DOM';
+import { DOM, type Handle } from '~/core/DOM';
 import { Component } from '~/core/Component';
 import { _Button as Button } from '~/component/button/Button';
 import { _DialogBackdrop as DialogBackdrop } from '~/component/container/DialogBackdrop';
@@ -19,6 +19,10 @@ class TestDialog extends Dialog {
 
     public enter(e: KeyboardEvent): void {
         (this as any).onEnter(e);
+    }
+
+    public requestFocusEl(): Handle | null {
+        return (this as any).requestedFocusElement();
     }
 }
 
@@ -302,5 +306,93 @@ describe('Dialog — dismissable', () => {
         const dialog = new Dialog({ title: 'T', message: 'M', dismissable: false });
 
         expect(dialog.getDismissMode()).toBe('modal');
+    });
+});
+
+describe('Dialog — initial focus', () => {
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    it('open() defers focusFirst past the first layout instead of focusing synchronously', () => {
+        installTestDOM(CONFIG);
+
+        // The regression this guards: open() called focusFirst() inline, one line
+        // after scheduling the layout. The first layout wraps the content in its
+        // frame and re-parents the subtree, which blurs whatever was focused — so
+        // focusing synchronously here lands on an element that is torn out a frame
+        // later. Focus must be deferred to after that layout.
+        const scheduled: Array<() => void> = [];
+        vi.spyOn(Component, 'afterNextLayout').mockImplementation((cb: () => void) => { scheduled.push(cb); });
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        const focusFirst = vi.spyOn(dialog as any, 'focusFirst');
+
+        void dialog.show();
+
+        // Not focused inline during open()...
+        expect(focusFirst).not.toHaveBeenCalled();
+
+        // ...but scheduled to run once the layout has settled.
+        scheduled.forEach(cb => cb());
+
+        expect(focusFirst).toHaveBeenCalledTimes(1);
+    });
+
+    it('requestedFocusElement() is null when no initialFocus is configured', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+
+        expect(dialog.requestFocusEl()).toBeNull();
+    });
+
+    it('requestedFocusElement() is null when initialFocus has no element yet', () => {
+        installTestDOM(CONFIG);
+
+        // Configured, but never rendered — getElement() is undefined, so it falls
+        // through to the default order rather than focusing nothing.
+        const field = new Component();
+        const dialog = new TestDialog({ title: 'T', contentComponent: field, initialFocus: field });
+
+        expect(dialog.requestFocusEl()).toBeNull();
+    });
+
+    it('requestedFocusElement() returns the component root when it is itself focusable', () => {
+        installTestDOM(CONFIG);
+
+        // A TextField renders as the <input> itself, so its own root matches the
+        // focusable selector — the case DOM.source.matches exists to catch. A
+        // descendant-only query would miss it.
+        const field  = new Component();
+        const dialog = new TestDialog({ title: 'T', contentComponent: field, initialFocus: field });
+        const el     = field.getElement(true);
+        vi.spyOn(DOM.source, 'matches').mockReturnValue(true);
+
+        expect(dialog.requestFocusEl()).toBe(el);
+    });
+
+    it('requestedFocusElement() falls back to the first focusable descendant', () => {
+        installTestDOM(CONFIG);
+
+        // A Panel wrapping a field: the root is not focusable, but a descendant is.
+        const wrapper    = new Component();
+        const dialog     = new TestDialog({ title: 'T', contentComponent: wrapper, initialFocus: wrapper });
+        wrapper.getElement(true);
+        const descendant = DOM.sink.createElement('input');
+        vi.spyOn(DOM.source, 'matches').mockReturnValue(false);
+        vi.spyOn(DOM.source, 'querySelector').mockReturnValue(descendant);
+
+        expect(dialog.requestFocusEl()).toBe(descendant);
+    });
+
+    it('requestedFocusElement() is null when the component offers nothing focusable', () => {
+        installTestDOM(CONFIG);
+
+        const wrapper = new Component();
+        const dialog  = new TestDialog({ title: 'T', contentComponent: wrapper, initialFocus: wrapper });
+        wrapper.getElement(true);
+        vi.spyOn(DOM.source, 'matches').mockReturnValue(false);
+        vi.spyOn(DOM.source, 'querySelector').mockReturnValue(null);
+
+        expect(dialog.requestFocusEl()).toBeNull();
     });
 });
