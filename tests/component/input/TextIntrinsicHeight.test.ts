@@ -103,3 +103,33 @@ describe('VBox lays out a wrapping child tall enough not to clip', () => {
         expect(t.getHeight()).toBeGreaterThanOrEqual(wrapped);
     });
 });
+
+// Regression: setLineHeight unconditionally set `_measurementDirty` and called
+// `(parent ?? this).scheduleLayout()`, so a caller that re-applies the SAME
+// numeric line-height every layout pass — CellRenderer.doLayout does exactly
+// this to vertically centre cell text — re-armed the layout flush forever,
+// spinning a silent relayout loop (StringRenderer laid out ~90×/frame). A no-op
+// re-apply of an unchanged numeric line-height must schedule no layout.
+describe('Text.setLineHeight — idempotent re-apply (relayout-loop guard)', () => {
+    it('re-applying the same numeric line-height schedules no layout', () => {
+        const t = new Text('x');
+        t.getElement(true);
+        t.setLineHeight(20);   // first apply: leaves the additive-rule default
+
+        const spy = vi.spyOn(t, 'scheduleLayout');
+
+        t.setLineHeight(20);   // unchanged → must be a no-op
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('a changed numeric line-height still schedules layout', () => {
+        const t = new Text('x');
+        t.getElement(true);
+        t.setLineHeight(20);
+
+        const spy = vi.spyOn(t, 'scheduleLayout');
+
+        t.setLineHeight(28);   // genuine change → still relayouts
+        expect(spy).toHaveBeenCalled();
+    });
+});
