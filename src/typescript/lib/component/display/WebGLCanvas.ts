@@ -46,6 +46,13 @@ export interface WebGLCanvasOptions extends ComponentOptions {
 
     /** Per-frame draw hook. */
     onFrame?: WebGLFrameCallback;
+
+    /**
+     * Keeps the animation loop running while the canvas is not effectively
+     * on-screen (e.g. on an inactive `Tab` panel). Default `false`: the loop
+     * pauses automatically when hidden and resumes when shown again.
+     */
+    animateWhenHidden?: boolean;
 }
 
 /**
@@ -95,6 +102,13 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
 
     /** Active animation-frame handle; `null` when the loop is idle. */
     private _rafId: number | null = null;
+
+    /** Consumer/auto intent to animate; the loop actually runs only while also
+     *  effectively visible (or animateWhenHidden is set). Plain initializer:
+     *  never written during the super() cascade (only startAnimation /
+     *  stopAnimation, which run post-render, write it), so it needs no
+     *  `declare`. */
+    private _animationRequested = false;
 
     /** True between `webglcontextlost` and `webglcontextrestored`; frames skip. */
     private _contextLost: boolean = false;
@@ -147,6 +161,10 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
 
         if (options.onFrame !== undefined) {
             this.setOnFrame(options.onFrame);
+        }
+
+        if (options.animateWhenHidden !== undefined) {
+            this.setAnimateWhenHidden(options.animateWhenHidden);
         }
 
         return this;
@@ -220,48 +238,64 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
 
     /**
      * Starts the per-frame render loop. Idempotent: a second call while already
-     * animating does not schedule a second frame.
+     * animating does not schedule a second frame. Records the intent to
+     * animate; the loop only actually runs while the canvas is also
+     * effectively on-screen (or {@link setAnimateWhenHidden} opts out).
      *
      * @returns This component, for method chaining.
      */
     startAnimation(): this {
-        if (this._rafId !== null) {
-            return this;
-        }
-
-        const step = (): void => {
-            this.renderFrame();
-            this._rafId = DOM.sink.requestAnimationFrame(step);
-        };
-
-        this._rafId = DOM.sink.requestAnimationFrame(step);
+        this._animationRequested = true;
+        this.reconcileAnimation();
 
         return this;
     }
 
     /**
-     * Stops the per-frame render loop, cancelling any pending frame.
+     * Stops the per-frame render loop, cancelling any pending frame. Clears
+     * the intent to animate, so a later resize/show cannot resurrect it.
      *
      * @returns This component, for method chaining.
      */
     stopAnimation(): this {
-        if (this._rafId === null) {
-            return this;
-        }
-
-        DOM.sink.cancelAnimationFrame(this._rafId);
-        this._rafId = null;
+        this._animationRequested = false;
+        this.reconcileAnimation();
 
         return this;
     }
 
     /**
-     * Whether the per-frame render loop is currently running.
+     * Whether the per-frame render loop is currently running. `false` while
+     * paused for being effectively hidden, even if animation was requested.
      *
      * @returns `true` while animating.
      */
     isAnimating(): boolean {
         return this._rafId !== null;
+    }
+
+    /**
+     * Keeps the animation loop running while the canvas is not effectively
+     * on-screen. Reconciles immediately, so toggling it can start or pause
+     * the loop right away.
+     *
+     * @param value - `true` to animate regardless of visibility.
+     * @returns This component, for method chaining.
+     */
+    setAnimateWhenHidden(value: boolean): this {
+        this._options.animateWhenHidden = value;
+        this.reconcileAnimation();
+
+        return this;
+    }
+
+    /**
+     * Returns whether the animation loop keeps running while hidden.
+     *
+     * @returns `true` if the loop ignores effective visibility.
+     */
+    getAnimateWhenHidden(): boolean {
+        return this._options.animateWhenHidden ?? false;
     }
 
     /**
@@ -316,6 +350,7 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
     doLayout(): this {
         super.doLayout();
         this.syncBackingStore();
+        this.reconcileAnimation();
 
         return this;
     }
@@ -354,6 +389,49 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
         this.stopAnimation();
         super.destructor();
     }
+
+    /**
+     * Whether the loop should be scheduled right now: animation was
+     * requested, and either the canvas is effectively on-screen or the
+     * consumer opted out of pausing via `animateWhenHidden`.
+     */
+    private shouldAnimate(): boolean {
+        return this._animationRequested
+            && (this.getAnimateWhenHidden() || this.isEffectivelyVisible());
+    }
+
+    /**
+     * Brings the raw rAF loop into agreement with `shouldAnimate()`.
+     * Idempotent — safe to call every `doLayout` and from the option setter.
+     * A no-op during the construction cascade because `_animationRequested`
+     * is still false.
+     */
+    private reconcileAnimation(): void {
+        if (this.shouldAnimate()) {
+            if (this._rafId === null) {
+                this._rafId = DOM.sink.requestAnimationFrame(this.animationStep);
+            }
+        } else if (this._rafId !== null) {
+            DOM.sink.cancelAnimationFrame(this._rafId);
+            this._rafId = null;
+        }
+    }
+
+    /**
+     * One animation-frame step: self-pauses when it should no longer animate
+     * — the ONLY signal a hidden-tab surface receives, because `Tab` does not
+     * lay out an inactive panel — otherwise renders a frame and reschedules.
+     * Arrow field so the rAF callback keeps a stable bound ref.
+     */
+    private readonly animationStep = (): void => {
+        if (!this.shouldAnimate()) {
+            this._rafId = null;
+            return;
+        }
+
+        this.renderFrame();
+        this._rafId = DOM.sink.requestAnimationFrame(this.animationStep);
+    };
 
     /**
      * One frame: lazily runs `onContextInit` the first time (and after a

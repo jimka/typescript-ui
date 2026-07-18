@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Canvas } from '~/component/display/Canvas';
 import type { CanvasDrawCallback } from '~/component/display/Canvas';
+import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -152,6 +153,85 @@ describe('Canvas animation loop (U5, U6)', () => {
         (canvas as unknown as { destructor(): void }).destructor();
 
         expect(cancelCount(recorder)).toBe(1);
+    });
+});
+
+describe('Canvas pause-when-hidden (P1, P3-P6, P8)', () => {
+    const rafCount = (recorder: Recorder): number =>
+        recorder.writes.filter(w => w.op === 'requestAnimationFrame').length;
+
+    it('round-trips the animateWhenHidden option (P1)', () => {
+        expect(new Canvas({ animateWhenHidden: true }).getAnimateWhenHidden()).toBe(true);
+        expect(new Canvas().getAnimateWhenHidden()).toBe(false);
+
+        const canvas = new Canvas();
+        canvas.setAnimateWhenHidden(true);
+        expect(canvas.getAnimateWhenHidden()).toBe(true);
+
+        canvas.setAnimateWhenHidden(false);
+        expect(canvas.getAnimateWhenHidden()).toBe(false);
+    });
+
+    it('does not start when explicitly hidden (P3)', () => {
+        const canvas = new Canvas();
+        const recorder = DOM.sink as unknown as Recorder;
+
+        canvas.getElement(true);
+        canvas.setVisible(false);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(false);
+        expect(rafCount(recorder)).toBe(0);
+    });
+
+    it('does not start when a hidden ancestor makes it effectively hidden (P4)', () => {
+        const container = new Component({});
+        const canvas = new Canvas();
+
+        container.addComponent(canvas);
+        container.setVisible(false);
+
+        canvas.getElement(true);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(false);
+    });
+
+    it('resumes once shown again via doLayout (P5)', () => {
+        const canvas = new Canvas();
+        const recorder = DOM.sink as unknown as Recorder;
+
+        canvas.getElement(true);
+        canvas.setVisible(false);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(false);
+
+        canvas.setVisible(true);
+        canvas.doLayout();
+
+        expect(canvas.isAnimating()).toBe(true);
+        expect(rafCount(recorder)).toBe(1);
+    });
+
+    it('keeps animating while hidden when animateWhenHidden is set (P6)', () => {
+        const canvas = new Canvas({ animateWhenHidden: true });
+
+        canvas.getElement(true);
+        canvas.setVisible(false);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(true);
+    });
+
+    it('stays static across doLayout when never started (P8)', () => {
+        const canvas = new Canvas();
+
+        canvas.getElement(true);
+        canvas.doLayout();
+        canvas.doLayout();
+
+        expect(canvas.isAnimating()).toBe(false);
     });
 });
 
