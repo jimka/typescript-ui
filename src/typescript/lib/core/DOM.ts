@@ -1369,6 +1369,15 @@ export class ProductionDOMSink implements DOMSink {
 
     /** @inheritDoc */
     deleteStyleRule(selector: string): void {
+        // Best-effort cleanup reached from the component GC finalizer, which runs
+        // decoupled from the DOM lifecycle: at GC time this production sink may be
+        // active in a headless environment (the node test env, or after a
+        // DOM.reset()). With no document there is no shared sheet and nothing to
+        // delete, so no-op rather than dereference `document` in `mainSheet()`.
+        if (typeof document === "undefined") {
+            return;
+        }
+
         const sheet = this.mainSheet();
 
         for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {

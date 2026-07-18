@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { StyleRule, _ruleCacheHas } from '~/core/StyleTarget';
-import { DOM } from '~/core/DOM';
+import { DOM, ProductionDOMSink } from '~/core/DOM';
 import type { RecordingDOMSink } from '../dom/TestDOM';
 
 // Regression: a component-scoped style rule is keyed on the element's #id, and
@@ -81,5 +81,22 @@ describe('StyleRule — dispose', () => {
 
         expect(_ruleCacheHas('.dispose-test-rematerialise')).toBe(true);
         expect(sink.writes.filter((w) => w.op === 'ensureStyleRule' && w.args[0] === '.dispose-test-rematerialise').length).toBe(2);
+    });
+});
+
+// Regression: the component GC finalizer disposes a component's cached style-rule
+// selectors decoupled from the DOM lifecycle — it fires at an unpredictable GC
+// time, using whatever `DOM.sink` is then installed. In the node test env (no
+// `document`), or after `DOM.reset()` restores the production sink, that sink is a
+// `ProductionDOMSink`, so the finalizer's `deleteStyleRule` runs against it with no
+// document present. Rule disposal is best-effort cleanup (nothing to delete when
+// there is no shared sheet), so it must NOT throw a `ReferenceError: document is
+// not defined` — an unhandled exception that escapes into whatever suite happens
+// to be running when GC fires.
+describe('ProductionDOMSink.deleteStyleRule — headless resilience', () => {
+    it('does not throw when no document is present (GC-finalizer path)', () => {
+        const sink = new ProductionDOMSink();
+
+        expect(() => sink.deleteStyleRule('#some-component-id')).not.toThrow();
     });
 });
