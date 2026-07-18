@@ -394,6 +394,24 @@ class WindowHeader extends Header {
     }
 
     /**
+     * Swaps the minimize button's glyph between the "minimize" and "restore"
+     * icons. Called by the owning [`Window`](/api/overlay/classes/Window) when
+     * transitioning into and out of the `"minimized"` state — while minimized the
+     * window stays docked at header height with the button visible, so a restore
+     * glyph signals that pressing it un-minimizes (mirroring the maximize button's
+     * restore swap).
+     *
+     * @param name - Either `"window-minimize"` or `"window-restore"`.
+     *
+     * @returns This component, for method chaining.
+     */
+    setMinimizeButtonGlyph(name: "window-minimize" | "window-restore"): this {
+        this._minimizeButton.setGlyph(name);
+
+        return this;
+    }
+
+    /**
      * Registers a click listener on the window close button.
      *
      * @param listener - The callback to invoke when the close button is clicked.
