@@ -191,6 +191,32 @@ function _ruleFor(selector: string): CSSStyleRule {
 }
 
 /**
+ * Deletes the shared-stylesheet `CSSStyleRule` for a selector, if materialised,
+ * and evicts it from the module cache. The inverse of {@link _ruleFor}. A
+ * no-op when the selector was never materialised — the `_ruleCache.has` guard
+ * is the materialisation signal, so this never scans `cssRules` for a
+ * selector that was never inserted.
+ *
+ * @param selector - The CSS selector text to remove.
+ */
+export function disposeStyleRule(selector: string): void {
+    if (!_ruleCache.has(selector)) return;
+
+    DOM.sink.deleteStyleRule(selector);
+    _ruleCache.delete(selector);
+}
+
+/** Whether the module rule cache holds a rule for the selector; for tests only. @internal */
+export function _ruleCacheHas(selector: string): boolean {
+    return _ruleCache.has(selector);
+}
+
+/** Snapshot of the module rule cache's selectors; for tests only. @internal */
+export function _ruleCacheKeys(): readonly string[] {
+    return Array.from(_ruleCache.keys());
+}
+
+/**
  * Deferred-write buffer that materialises into a
  * [`CSSStyleRule`](https://developer.mozilla.org/en-US/docs/Web/API/CSSStyleRule)
  * on the framework's shared `<style id="Base">` stylesheet the first time
@@ -213,6 +239,7 @@ function _ruleFor(selector: string): CSSStyleRule {
  */
 class StyleRule extends StyleTarget<CSSStyleRule> {
     private _factory: () => CSSStyleRule;
+    private _selector: string;
 
     /**
      * Constructs a `StyleRule` for the given scoped selector and, optionally,
@@ -235,6 +262,7 @@ class StyleRule extends StyleTarget<CSSStyleRule> {
         super();
         const selector = _selectorOf(spec);
         this._factory  = () => _ruleFor(selector);
+        this._selector = selector;
 
         if (spec.styles) {
             this.setMany(spec.styles);
@@ -254,6 +282,23 @@ class StyleRule extends StyleTarget<CSSStyleRule> {
             this.materialize(this._factory());
         }
         return this._target!;
+    }
+
+    /** Returns this rule's CSS selector text. */
+    getSelector(): string {
+        return this._selector;
+    }
+
+    /**
+     * Deletes the materialised `CSSStyleRule` from the shared stylesheet and
+     * evicts it from the module cache, then resets to the unmaterialised state
+     * so a later {@link ensure} re-materialises. No-op if never materialised.
+     * Idempotent.
+     */
+    dispose(): void {
+        disposeStyleRule(this._selector);
+        this._target = null;
+        this._dirty  = {};
     }
 
     /** @inheritDoc */

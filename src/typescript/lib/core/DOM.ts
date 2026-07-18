@@ -515,6 +515,15 @@ export interface DOMSink {
     ensureStyleRule(selector: string): CSSStyleRule;
 
     /**
+     * Removes the shared-stylesheet `CSSStyleRule` for a selector, if present.
+     * The inverse of {@link ensureStyleRule}; scans `cssRules` for the matching
+     * `selectorText` and `deleteRule()`s it. A no-op when no rule matches.
+     *
+     * @param selector - The CSS selector text of the rule to remove.
+     */
+    deleteStyleRule(selector: string): void;
+
+    /**
      * Inserts a `@keyframes` block into the shared stylesheet if one with the
      * given name does not already exist (idempotent).
      *
@@ -1356,6 +1365,20 @@ export class ProductionDOMSink implements DOMSink {
         const insertedAt = sheet.insertRule(selector + "{}", sheet.cssRules.length);
 
         return sheet.cssRules[insertedAt] as CSSStyleRule;
+    }
+
+    /** @inheritDoc */
+    deleteStyleRule(selector: string): void {
+        const sheet = this.mainSheet();
+
+        for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {
+            const rule = sheet.cssRules[idx] as CSSStyleRule;
+
+            if (rule.selectorText === selector) {
+                sheet.deleteRule(idx);
+                return;
+            }
+        }
     }
 
     /** @inheritDoc */

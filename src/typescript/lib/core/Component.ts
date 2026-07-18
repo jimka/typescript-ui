@@ -15,7 +15,7 @@ import { Position } from "~/primitive/Position.js";
 import { Aria } from "~/core/Aria.js";
 import { Event } from "~/core/Event.js";
 import { SmoothScroller, consumeWheel, type ScrollAxis } from "~/core/SmoothScroller.js";
-import { StyleRule, InlineStyle } from "~/core/StyleTarget.js";
+import { StyleRule, InlineStyle, disposeStyleRule } from "~/core/StyleTarget.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 
@@ -250,9 +250,18 @@ function formatSizeAttr(width: number, height: number): string {
  * collectable). `release` is idempotent, so a handle already freed by the eager
  * `destructor` or an explicit dispose is a harmless no-op here.
  */
-const _componentFinalizer = new FinalizationRegistry<readonly Handle[]>((handles) => {
+type OwnedResources = {
+    readonly handles:   readonly Handle[];
+    readonly selectors: readonly string[];
+};
+
+const _componentFinalizer = new FinalizationRegistry<OwnedResources>(({ handles, selectors }) => {
     for (const handle of handles) {
         DOM.sink.release(handle);
+    }
+
+    for (const selector of selectors) {
+        disposeStyleRule(selector);
     }
 });
 
@@ -276,6 +285,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // base-class field, set before the constructor body runs applyOptions, so no
     // cascade-dispatched render can clobber it.
     private readonly _ownedHandles : Handle[]               = [];
+    // Component-scope selectors (#<uuid>[<suffix>]) this component allocated,
+    // for teardown deletion. Strings only (no back-reference to Component) so
+    // the GC finalizer can hold it without pinning the instance. Mirror of
+    // _ownedHandles.
+    private readonly _ownedSelectors : string[]             = [];
     private _tag                  : string                  = "div";
     private _attributes           : Map<string, string>;
     private _boxSizing            : string | null;
@@ -411,6 +425,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._components         = [];
         this._attributes         = new Map<string, string>();
         this._deferredStyleRules = new Map<string, StyleRule>();
+        this.trackSelector(this._styleRule.getSelector());
 
         // Constants without ComponentOptions counterpart.
         this._boxSizing     = "border-box";
@@ -629,6 +644,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             DOM.sink.removeElement(element);
         }
 
+        // Dispose this component's own style rules before the handle-release
+        // block below (rule disposal doesn't touch handles, so order relative
+        // to it doesn't matter — grouped here to keep both eager-teardown
+        // concerns together).
+        this._styleRule.dispose();
+
+        for (const rule of this._deferredStyleRules.values()) {
+            rule.dispose();
+        }
+
         // Eagerly release every remaining tracked handle (root and any
         // subclass-created children) and disarm the GC finalizer, then clear the
         // cache so a stale handle is never resolved.
@@ -653,12 +678,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     protected trackHandle(handle: Handle): Handle {
         if (this._ownedHandles.length === 0) {
-            _componentFinalizer.register(this, this._ownedHandles, this);
+            _componentFinalizer.register(this, { handles: this._ownedHandles, selectors: this._ownedSelectors }, this);
         }
 
         this._ownedHandles.push(handle);
 
         return handle;
+    }
+
+    /** Records a component-scope selector so both teardown paths delete it. */
+    private trackSelector(selector: string): void {
+        this._ownedSelectors.push(selector);
     }
 
     /**
@@ -743,6 +773,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (!rule) {
             rule = new StyleRule({ scope: "component", name: this.getId(), suffix: selectorSuffix, materialize: false });
             this._deferredStyleRules.set(selectorSuffix, rule);
+            this.trackSelector(rule.getSelector());
         }
 
         return rule;
@@ -1282,6 +1313,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // values are replayed from the component's fields by `applyStyle` at
         // render (and immediately below when already rendered).
         this._styleRule = new StyleRule({ scope: "component", name: id, materialize: false });
+        this.trackSelector(this._styleRule.getSelector());
 
         let element = this.getElement();
         if (!element) {
