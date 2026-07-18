@@ -1032,12 +1032,16 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
-     * Creates the sticky zero-size host and the two `Scrollbar` widgets, and
-     * hides the native bar. Idempotent: each piece is guarded by its own
-     * `null` check, so repeated calls neither stack a duplicate host/bar/
-     * listener nor re-hide an already-hidden native bar.
+     * Creates the inner scroll element (if absent), appends the two `Scrollbar`
+     * widgets as its siblings on the panel element, and hides the native bar.
+     * Idempotent: the element/bars/listener are each guarded by a `null` check,
+     * so repeated calls neither stack duplicates nor re-hide an already-hidden
+     * bar — but the inner element's per-axis overflow IS re-asserted on every
+     * call so a runtime `setAutoScroll` mode-to-mode change (which keeps the
+     * existing inner element) updates which axes scroll.
      *
-     * @param element - The rendered panel element to append the host into.
+     * @param element - The rendered panel element to append the inner scroller
+     *   and bars into.
      */
     private installOverlayScrollbars(element: Handle): void {
         if (!this._overlayScrollElement) {
@@ -1052,7 +1056,6 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             ensureOverlayScrollerClassRule();
 
             const inner = DOM.sink.createElement("div");
-            const axes  = this.scrollableAxes();
 
             // `width/height: 100%` fills the panel element's padding box (its
             // containing block, since every Component is positioned) so the
@@ -1065,8 +1068,6 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
                 top:       "0px",
                 width:     "100%",
                 height:    "100%",
-                overflowX: axes.x ? "auto" : "hidden",
-                overflowY: axes.y ? "auto" : "hidden",
             });
 
             // Hide the inner element's own native bar via the shared class rule
@@ -1081,6 +1082,17 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             this.trackHandle(inner);
             this._overlayScrollElement = inner;
         }
+
+        // Re-assert the inner element's per-axis overflow every call: on a
+        // runtime `setAutoScroll` mode-to-mode change the inner element already
+        // exists (no teardown), so the guard above is skipped — but the newly
+        // scrollable axis must flip from `hidden` to `auto` (and vice versa) or
+        // native wheel/keyboard scroll and the matching bar would be inert.
+        const axes = this.scrollableAxes();
+        this._overlayScrollStyle.setMany({
+            overflowX: axes.x ? "auto" : "hidden",
+            overflowY: axes.y ? "auto" : "hidden",
+        });
 
         if (!this._scrollbarV) {
             this._scrollbarV = new Scrollbar("vertical");

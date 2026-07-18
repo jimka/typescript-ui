@@ -117,6 +117,31 @@ describe('Panel — overlay scrollbar default', () => {
         expect(i._overlayScrollHandler).not.toBeNull();
     });
 
+    it('updates the inner scroller overflow axes on a runtime mode-to-mode change (no teardown)', () => {
+        // The inner element persists across a scrolling→scrolling mode switch
+        // (refreshOverlayScrollbars only tears down for "none"/native), so its
+        // per-axis overflow must be re-written to the new mode or the newly
+        // scrollable axis stays `hidden` and cannot scroll. Reachable at runtime
+        // via List.setHorizontalScrolling (autoScroll "y"→"auto").
+        const sink = installTestDOM(CONFIG);
+
+        const panel = new _Panel({ autoScroll: 'y' });
+        panel.getElement(true);
+
+        const inner = internals(panel)._overlayScrollElement!;
+        expect(lastStyle(sink, inner, 'overflowX')).toBe('hidden');
+        expect(lastStyle(sink, inner, 'overflowY')).toBe('auto');
+
+        panel.setAutoScroll('both');
+        expect(internals(panel)._overlayScrollElement).toBe(inner);   // same element, not re-created
+        expect(lastStyle(sink, inner, 'overflowX')).toBe('auto');
+        expect(lastStyle(sink, inner, 'overflowY')).toBe('auto');
+
+        panel.setAutoScroll('x');
+        expect(lastStyle(sink, inner, 'overflowX')).toBe('auto');
+        expect(lastStyle(sink, inner, 'overflowY')).toBe('hidden');
+    });
+
     it('routes getScrollElement() to the inner scroller in overlay mode, and to the panel element otherwise', () => {
         const overlay = new _Panel({ autoScroll: 'y' });
         overlay.getElement(true);
