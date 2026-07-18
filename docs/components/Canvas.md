@@ -44,12 +44,14 @@ chart.stopAnimation();
 | `redraw()` | Clear the surface (in CSS px) and re-invoke `onDraw` — force a repaint after mutating your own model. |
 | `getContext()` | The `CanvasRenderingContext2D` for one-off imperative drawing, or `null` offline / before first render. |
 | `startAnimation()` / `stopAnimation()` / `isAnimating()` | Drive (or halt) a per-frame redraw loop. |
+| `setAnimateWhenHidden(bool)` / `getAnimateWhenHidden()` | Keep the loop running while the canvas is not effectively on-screen (default `false`). |
 | `setPreferredSize(w, h)` | Give the surface a size (inherited from `Component`). |
 
 ## Notes
 
 - **Draw in CSS pixels.** The context is pre-scaled by the device-pixel ratio, so one unit is one CSS pixel and your drawing stays sharp on HiDPI displays with no manual scaling.
 - **`onDraw` survives resizes.** Reassigning the backing store on a resize (or DPI change) wipes it, so the component re-runs `onDraw` on the freshly-sized surface. Anything that must survive a resize belongs in `onDraw`; content drawn directly through `getContext()` is your responsibility to re-emit.
+- **The loop pauses while hidden.** By default, `startAnimation()` keeps the loop running only while the canvas is effectively on-screen — a canvas hidden by an ancestor's `setVisible(false)` (e.g. on an inactive `Tab` panel) auto-pauses, and resumes once shown again. Pass `animateWhenHidden: true` to keep animating regardless.
 - **Live-only.** A rendering context cannot be modelled offline or forwarded across a worker, so `getContext()` returns `null` and every draw path no-ops in a non-browser (SSR / test) environment. There is no offline raster output.
 - **No intrinsic size.** Unlike [`Image`](/components/Image), a canvas reports no natural size — give it a `preferredSize` or a stretching parent, or it collapses to `0 × 0` and draws nothing.
 

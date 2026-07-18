@@ -22,7 +22,7 @@ const surface = WebGLCanvas({
 panel.addComponent(surface);
 ```
 
-The render loop starts automatically once the component is mounted and laid out. Drive a static or on-demand surface explicitly:
+The render loop starts automatically once the component is mounted and laid out, and pauses automatically while the surface is not effectively on-screen (e.g. on an inactive `Tab` panel) — resuming once it's shown again. Drive a static or on-demand surface explicitly:
 
 ```typescript
 surface.stopAnimation();   // pause the per-frame loop
@@ -39,6 +39,7 @@ surface.startAnimation();  // resume it
 | `getOnFrame()` | The current frame hook, or `null`. |
 | `getContext()` | The `WebGL2RenderingContext` for direct access, or `null` offline / before first render. |
 | `startAnimation()` / `stopAnimation()` / `isAnimating()` | Drive (or halt) the per-frame render loop. |
+| `setAnimateWhenHidden(bool)` / `getAnimateWhenHidden()` | Keep the loop running while the surface is not effectively on-screen (default `false`). |
 | `setPreferredSize(w, h)` | Give the surface a size (inherited from `Component`). |
 
 ## Notes
@@ -48,7 +49,7 @@ surface.startAnimation();  // resume it
 - **Draw in `onFrame`.** The drawing-buffer viewport is already set in device pixels; the hook receives the logical (CSS-px) size for projection math. Resizing the surface resizes the drawing buffer and refreshes the viewport, but does **not** rebuild GL resources.
 - **Live-only.** A GL context cannot be modelled offline or forwarded across a worker, so `getContext()` returns `null` and every render path no-ops in a non-browser (SSR / test) environment.
 - **No intrinsic size.** Like [`Canvas`](/components/Canvas), a WebGL surface reports no natural size — give it a `preferredSize` or a stretching parent, or it collapses to `0 × 0` and draws nothing.
-- **Hidden-tab loops keep running.** A continuously-animating surface on a hidden-but-mounted in-app tab keeps its loop alive (only whole-page hiding self-throttles). Call `stopAnimation()` to pause it, `startAnimation()` to resume.
+- **The loop pauses while hidden.** By default, the render loop keeps running only while the surface is effectively on-screen — a surface hidden by an ancestor's `setVisible(false)` (e.g. on an inactive `Tab` panel) auto-pauses, and resumes once shown again. Pass `animateWhenHidden: true` to keep animating regardless.
 
 ## See also
 
