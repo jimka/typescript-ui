@@ -192,13 +192,18 @@ class Window extends AbstractWindow {
     }
 
     /**
-     * Swaps the header maximize button glyph to match the window state —
-     * `window-restore` when maximized, `window-maximize` otherwise.
+     * Swaps the header control glyphs to match the window state: the maximize
+     * button shows `window-restore` when maximized (else `window-maximize`), and
+     * the minimize button shows `window-restore` when minimized (else
+     * `window-minimize`). A minimized window stays docked at header height with
+     * both buttons visible, so reflecting the minimized state onto the minimize
+     * button keeps it symmetric with the maximize/restore swap.
      *
      * @param state - The window state being entered.
      */
     protected reflectMaximizeState(state: WindowState): void {
         this._header.setMaximizeButtonGlyph(state === "maximized" ? "window-restore" : "window-maximize");
+        this._header.setMinimizeButtonGlyph(state === "minimized" ? "window-restore" : "window-minimize");
     }
 
     /**
