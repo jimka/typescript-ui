@@ -4,8 +4,10 @@ import { Insets } from '~/primitive/Insets';
 import { UNBOUNDED } from '~/primitive/Size';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../dom/TestDOM';
+import { installTestDOM, RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
+import { _ruleCacheHas, _ruleCacheKeys } from '~/core/StyleTarget';
+import { Button } from '~/component/button/Button';
 
 const DOM_CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -279,5 +281,40 @@ describe('Component child lifecycle — wiring & teardown', () => {
         child.setMinSize(7, 7);
 
         expect(schedule).not.toHaveBeenCalled();
+    });
+});
+
+// Regression: destructor() must remove a component's per-instance stylesheet
+// rule(s), or the shared `Base` sheet grows unbounded across a render/discard
+// cycle (see plans/implemented/component-style-rule-disposal.md). Its own
+// describe block with explicit install/reset hooks — does not rely on the
+// nested-block hooks above.
+describe('Component — destructor disposes style rules', () => {
+    beforeEach(() => installTestDOM(DOM_CONFIG));
+    afterEach(() => DOM.reset());
+
+    it('evicts the component-scope rule from the style-rule cache and deletes it from the sink', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const c    = new Component({});
+        c.getElement(true);   // render -> materialises _styleRule
+        const id = c.getId();
+
+        expect(_ruleCacheHas('#' + id)).toBe(true);
+
+        (c as unknown as { destructor(): void }).destructor();
+
+        expect(_ruleCacheHas('#' + id)).toBe(false);
+        expect(_ruleCacheKeys().some((key) => key.startsWith('#' + id))).toBe(false);
+        expect(sink.writes).toContainEqual({ op: 'deleteStyleRule', args: ['#' + id] });
+    });
+
+    it('evicts a rendered Button\'s deferred :hover/:active rules too', () => {
+        const button = new Button({});
+        button.getElement(true);   // render -> materialises _styleRule + deferred rules
+        const id = button.getId();
+
+        (button as unknown as { destructor(): void }).destructor();
+
+        expect(_ruleCacheKeys().some((key) => key.startsWith('#' + id))).toBe(false);
     });
 });

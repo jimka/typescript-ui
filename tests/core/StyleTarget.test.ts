@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { StyleRule } from '~/core/StyleTarget';
+import { StyleRule, _ruleCacheHas } from '~/core/StyleTarget';
+import { DOM, ProductionDOMSink } from '~/core/DOM';
+import type { RecordingDOMSink } from '../dom/TestDOM';
 
 // Regression: a component-scoped style rule is keyed on the element's #id, and
 // the id is consumer-supplied (e.g. a Dock panel id "public.customers"). The
@@ -23,5 +25,78 @@ describe('StyleRule — component-scope selector escaping', () => {
         const rule = new StyleRule({ scope: 'component', name: 'public.customers', suffix: ':hover', materialize: false });
 
         expect(rule.ensure().selectorText).toBe('#public\\.customers:hover');
+    });
+});
+
+// Regression: teardown must remove a component's per-instance rule from the
+// shared stylesheet, or the sheet grows unbounded as components are discarded
+// (see plans/implemented/component-style-rule-disposal.md). Each case uses a
+// unique selector name — `_ruleCache` is module state that survives
+// `DOM.reset()`, so a shared name would let a leftover cache entry from a
+// prior test mask an `ensureStyleRule` op (a cache hit skips the sink call).
+describe('StyleRule — dispose', () => {
+    it('deletes the materialised rule from the sink and evicts the cache', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const rule = new StyleRule({ scope: 'selector', name: '.dispose-test-materialised', materialize: false });
+
+        rule.ensure();
+        expect(_ruleCacheHas('.dispose-test-materialised')).toBe(true);
+
+        rule.dispose();
+
+        expect(_ruleCacheHas('.dispose-test-materialised')).toBe(false);
+        expect(sink.writes).toContainEqual({ op: 'deleteStyleRule', args: ['.dispose-test-materialised'] });
+    });
+
+    it('is a no-op on a never-materialised rule', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const rule = new StyleRule({ scope: 'selector', name: '.dispose-test-unmaterialised', materialize: false });
+
+        rule.dispose();
+
+        expect(sink.writes.some((w) => w.op === 'deleteStyleRule')).toBe(false);
+        expect(_ruleCacheHas('.dispose-test-unmaterialised')).toBe(false);
+    });
+
+    it('is idempotent — a second call records no further deleteStyleRule op', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const rule = new StyleRule({ scope: 'selector', name: '.dispose-test-idempotent', materialize: false });
+
+        rule.ensure();
+        rule.dispose();
+        const deleteCount = sink.writes.filter((w) => w.op === 'deleteStyleRule').length;
+
+        rule.dispose();
+
+        expect(sink.writes.filter((w) => w.op === 'deleteStyleRule').length).toBe(deleteCount);
+    });
+
+    it('is not terminal — a later ensure() re-materialises', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const rule = new StyleRule({ scope: 'selector', name: '.dispose-test-rematerialise', materialize: false });
+
+        rule.ensure();
+        rule.dispose();
+        rule.ensure();
+
+        expect(_ruleCacheHas('.dispose-test-rematerialise')).toBe(true);
+        expect(sink.writes.filter((w) => w.op === 'ensureStyleRule' && w.args[0] === '.dispose-test-rematerialise').length).toBe(2);
+    });
+});
+
+// Regression: the component GC finalizer disposes a component's cached style-rule
+// selectors decoupled from the DOM lifecycle — it fires at an unpredictable GC
+// time, using whatever `DOM.sink` is then installed. In the node test env (no
+// `document`), or after `DOM.reset()` restores the production sink, that sink is a
+// `ProductionDOMSink`, so the finalizer's `deleteStyleRule` runs against it with no
+// document present. Rule disposal is best-effort cleanup (nothing to delete when
+// there is no shared sheet), so it must NOT throw a `ReferenceError: document is
+// not defined` — an unhandled exception that escapes into whatever suite happens
+// to be running when GC fires.
+describe('ProductionDOMSink.deleteStyleRule — headless resilience', () => {
+    it('does not throw when no document is present (GC-finalizer path)', () => {
+        const sink = new ProductionDOMSink();
+
+        expect(() => sink.deleteStyleRule('#some-component-id')).not.toThrow();
     });
 });

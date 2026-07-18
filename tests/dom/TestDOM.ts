@@ -370,6 +370,10 @@ export class RecordingDOMSink implements DOMSink {
         return { selectorText: selector, style: {} } as unknown as CSSStyleRule;
     }
 
+    deleteStyleRule(selector: string): void {
+        this.record('deleteStyleRule', selector);
+    }
+
     ensureKeyframes(name: string, _body: string): void {
         this.record('ensureKeyframes', name);
     }
