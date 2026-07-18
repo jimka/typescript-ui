@@ -301,36 +301,43 @@ describe('Panel — overlay scrollbar default', () => {
         expect(lastStyle(sink, inner!, 'height')).toBe('300px');   // no bottom bar → full height
     });
 
-    it('decides bar visibility against the current panel viewport, not the inner element\'s lagged size (resize)', () => {
-        // Regression: on a viewport expand, the inner scroll element's clientWidth
-        // lags one frame (this method sizes it), so reading it for the overflow
-        // test flickered a transient horizontal bar that could stick. Visibility
-        // must be judged against the always-current panel client box instead.
-        installTestDOM(CONFIG);
+    it('re-sizes the inner scroller to the CURRENT panel viewport on every layout (never lags a resize)', () => {
+        // The inner element's own client box is what the overflow test reads, so
+        // it must track the current viewport rather than the previous pass's
+        // size — otherwise a resize flickers a transient bar (expand: a stale-
+        // small box keeps a bar the widened viewport dropped; shrink: a stale-
+        // large box floors scrollWidth so content that now fits reads as
+        // overflowing). This pins the mechanism that keeps it fresh: the inner
+        // element is written to (viewport − gutter) on each layout. A vertical-
+        // only overflow (content fits horizontally) reserves a 12px right gutter,
+        // so the inner width tracks viewportW − 12 as the viewport grows/shrinks.
+        // (The transient itself is a write-then-read the offline stub can't model
+        // — it is verified live; this guards the sizing that prevents it.)
+        const sink = installTestDOM(CONFIG);
+        // Content fits horizontally (scrollWidth 100) but overflows vertically
+        // (scrollHeight 900 > clientHeight 300) → a right gutter, never a bottom.
+        const metrics = (viewportW: number) => ({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 100, scrollHeight: 900,
+            clientWidth: viewportW, clientHeight: 300,
+        });
+        const spy = vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue(metrics(400));
 
-        // Narrow start: content 300 overflows the 200 viewport on X → H bar shown.
-        stubMetrics({ scrollWidth: 300, clientWidth: 200, scrollHeight: 900, clientHeight: 300 });
         const panel = new _Panel({ autoScroll: 'auto' });
         panel.getElement(true);
+        const inner = internals(panel)._overlayScrollElement!;
         panel.doLayout();
-        expect(internals(panel)._scrollbarGutter.bottom).toBe(12);
+        expect(lastStyle(sink, inner, 'width')).toBe('388px');   // 400 − 12
 
-        // Expand: the panel element reports the new 400 viewport, but the inner
-        // element still reports its OLD inset clientWidth (188). Content (300)
-        // now fits the reduced viewport (400 − 12 = 388), so the H bar must hide
-        // on THIS pass — the fix ignores the stale inner clientWidth.
-        const panelEl = panel.getElement()!;
-        const innerEl = internals(panel)._overlayScrollElement!;
-        vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation((h: Handle) =>
-            h === panelEl
-                ? { scrollTop: 0, scrollLeft: 0, scrollWidth: 400, scrollHeight: 900, clientWidth: 400, clientHeight: 300 }
-                : { scrollTop: 0, scrollLeft: 0, scrollWidth: 300, scrollHeight: 900, clientWidth: 188, clientHeight: 288 },
-        );
+        spy.mockReturnValue(metrics(600));
         panel.doLayout();
+        expect(lastStyle(sink, inner, 'width')).toBe('588px');   // grow → tracks 600 − 12
 
-        expect(internals(panel)._scrollbarGutter.bottom).toBe(0);        // no transient H bar
-        expect(internals(panel)._scrollbarH!.isDisplayed()).toBe(false); // content fits current viewport
-        expect(internals(panel)._scrollbarV!.isDisplayed()).toBe(true);  // vertical still overflows
+        spy.mockReturnValue(metrics(200));
+        panel.doLayout();
+        expect(lastStyle(sink, inner, 'width')).toBe('188px');   // shrink → tracks 200 − 12, not stuck large
+
+        expect(internals(panel)._scrollbarGutter.bottom).toBe(0); // no spurious H bar at any size
     });
 
     it('auto-hides the bar for an axis whose content fits', () => {

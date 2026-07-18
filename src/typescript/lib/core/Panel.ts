@@ -1226,39 +1226,51 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         const trackW = this._scrollbarV.getTrackWidth();
 
         // Available viewport: the panel element's client box. The parent layout
-        // sizes the panel element before this runs, so `avail` is always current
-        // — it never lags a resize.
+        // sizes the panel element (and `doLayout` flushes it via
+        // `commitElementStyle`) before this runs, so `avail` is always current —
+        // it never lags a resize.
         const avail  = DOM.source.getScrollMetrics(panelEl);
         const availW = avail.clientWidth;
         const availH = avail.clientHeight;
 
-        // Content extent + offsets from the inner scroller. NB: only the content
-        // extent and scroll offsets are consumed — never the inner element's own
-        // `clientWidth`/`clientHeight`, which lag one frame behind a resize
-        // because this method sizes the inner element BELOW. Reading the inner
-        // client box for the visibility test flickered a transient bar during a
-        // resize (and could stick when no trailing settle pass ran); deciding
-        // against the always-current `avail` instead is what fixes that.
+        const curRight  = this._scrollbarGutter.right;
+        const curBottom = this._scrollbarGutter.bottom;
+
+        // Size the inner scroller to the CURRENT viewport (minus the currently
+        // reserved gutter) BEFORE reading its metrics, so its `clientWidth`/
+        // `clientHeight` — and thus `scrollWidth`/`scrollHeight`, which the
+        // browser floors at the client box — reflect THIS frame's viewport. The
+        // inner element otherwise carries the previous pass's size, which lags a
+        // resize in BOTH directions: on expand the stale-small client box kept a
+        // bar the widened viewport no longer needs; on shrink the stale-large
+        // client box floored `scrollWidth` so content that now fits still read as
+        // overflowing — each flickered a transient bar that could stick. A gutter
+        // change below re-sizes and reschedules, converging in one extra pass.
+        this._overlayScrollStyle.setMany({
+            width:  (availW - curRight)  + "px",
+            height: (availH - curBottom) + "px",
+        });
+
+        // Content extent, offsets, and the now-current inner client box.
         const m    = DOM.source.getScrollMetrics(innerEl);
         const axes = this.scrollableAxes();
 
-        // A bar shows when content exceeds the available viewport reduced by the
-        // cross-axis bar. The V<->H dependency is mutual (reserving one bar
-        // shrinks the other's viewport), so resolve it to a fixpoint — two
-        // rounds always converge (each bar can only flip on once).
-        let vVisible = false;
-        let hVisible = false;
-        for (let i = 0; i < 2; i++) {
-            vVisible = axes.y && m.scrollHeight > availH - (hVisible ? trackW : 0);
-            hVisible = axes.x && m.scrollWidth  > availW - (vVisible ? trackW : 0);
-        }
+        // A bar shows when content exceeds the inner scroller's (now current)
+        // viewport. The V<->H dependency — reserving one bar shrinks the other's
+        // viewport — settles across passes via the gutter-change reschedule
+        // below, the same one-extra-pass convergence the gutter always used.
+        const vVisible = axes.y && m.scrollHeight > m.clientHeight;
+        const hVisible = axes.x && m.scrollWidth  > m.clientWidth;
 
         const innerW = availW - (vVisible ? trackW : 0);
         const innerH = availH - (hVisible ? trackW : 0);
 
-        // Physically inset the inner scroller so overflowing content clips at
-        // the inner viewport edge and can never scroll under a bar.
-        this._overlayScrollStyle.setMany({ width: innerW + "px", height: innerH + "px" });
+        // Re-inset the inner scroller when this pass's gutter differs from the
+        // one the pre-read sizing used, so overflowing content clips at the inner
+        // viewport edge and can never scroll under a bar.
+        if (innerW !== availW - curRight || innerH !== availH - curBottom) {
+            this._overlayScrollStyle.setMany({ width: innerW + "px", height: innerH + "px" });
+        }
 
         // Bars occupy the reserved band at the trailing edges, sized to the
         // inner extent so each stops short of the shared corner. setMetrics
@@ -1278,7 +1290,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         const newRight  = vVisible ? trackW : 0;
         const newBottom = hVisible ? trackW : 0;
 
-        if (newRight !== this._scrollbarGutter.right || newBottom !== this._scrollbarGutter.bottom) {
+        if (newRight !== curRight || newBottom !== curBottom) {
             this.setScrollbarGutter(newRight, newBottom);
             this.scheduleLayout();
         }

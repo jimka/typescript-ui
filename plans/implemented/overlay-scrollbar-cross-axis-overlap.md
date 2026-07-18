@@ -370,17 +370,32 @@ which lag one frame behind a resize because the method sizes the inner element
 *after* reading it — so on the first pass after an expand, content that now fits
 the widened viewport was still judged against the old (smaller) inner width and
 kept its bar; during a continuous resize every frame is that stale first pass, so
-the bar persisted and stuck if no trailing settle pass ran. Fix: judge visibility
-against the **panel element's always-current client box** (`avail`, reduced by the
-cross-axis track) via a 2-round V<->H fixpoint, consuming only content extent and
-scroll offsets from the inner element — never its lagged client box; `setMetrics`
-now takes the same reduced viewport (`innerH`/`innerW`) so a bar's shown/hidden
-state and the reserved gutter still never disagree. This also made the visibility
-path offline-testable (a per-handle `getScrollMetrics` stub can model the stale
-inner size). Two tests that asserted the *old* overlay semantics — content filling
-the *full* client box shows no cross bar — were updated: under real space
-reservation such content overflows the V-reduced viewport and correctly shows a
-12px bar, while real stretched content (laid out to `getInnerSize` = viewport −
-gutter) fits the reduced viewport and shows none. Verified live: after an expand
-the H bar hides on the first pass with no transient, and a continuous expand never
-spuriously shows it.
+the bar persisted and stuck if no trailing settle pass ran.
+
+The first attempt judged visibility against the panel element's current client
+box (`avail`) reduced by the cross-axis track, reading only content extent from
+the inner element. That fixed *expand* but a later round of live testing found it
+still broke on *shrink*: `scrollWidth`/`scrollHeight` are floored by the browser
+at the inner element's own client box, so while the inner element still carried
+its stale-**large** pre-shrink size, `scrollWidth` read large and content that now
+fit still registered as overflowing — a symmetric spurious bar.
+
+Final unified fix (handles both directions): **size the inner scroll element to
+the current viewport minus the currently-reserved gutter BEFORE reading its
+metrics**, so its `clientWidth`/`clientHeight` — and therefore the floored
+`scrollWidth`/`scrollHeight` — reflect this frame's viewport, then use the direct
+`scrollWidth > clientWidth` / `scrollHeight > clientHeight` overflow test on those
+now-current values. `avail` (the panel element's client box, flushed each frame by
+`doLayout`'s `commitElementStyle`) drives the pre-read sizing; the V<->H mutual
+dependency settles across passes via the existing gutter-change reschedule (one
+extra pass), no fixpoint needed. `setMetrics` takes the final `innerH`/`innerW`.
+Two tests that asserted the *old* overlay semantics — content filling the *full*
+client box shows no cross bar — were updated: under real space reservation such
+content overflows the reduced viewport and correctly shows a 12px bar, while real
+stretched content (laid out to `getInnerSize` = viewport − gutter) fits and shows
+none. The resize transient is a write-then-read the offline stub can't model
+(escape hatch): the offline test pins the observable mechanism (the inner element
+is re-sized to viewport − gutter on every layout, tracking grow and shrink), and
+both directions were verified live — after an expand OR a shrink the gutter is
+correct on the first pass, and a continuous resize in either direction never
+shows a spurious bar.
