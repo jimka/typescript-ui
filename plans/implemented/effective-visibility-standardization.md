@@ -694,13 +694,21 @@ are recorded here per the *Test-first* escape-hatch discipline ("describe
 expected behaviour first, then implement, then verify — and say so
 explicitly"):
 
-1. **Real rAF pause.** Instrumented `window.requestAnimationFrame` while the
-   Misc tab (holding the animated `Canvas` and `WebGLCanvas` demos) was active:
-   ~900–1300 rAF calls/second. Switching to the "Binding" tab dropped this to
-   ~55–56 calls/second (the residual rate belongs to other framework/tab
-   machinery, not the two canvases); switching back to "Misc." restored the
-   ~900+/second rate. Confirms the rAF loop pauses/resumes with effective
-   visibility, not per-frame polling.
+1. **Real rAF pause.** Instrumented `window.requestAnimationFrame` with a
+   counting wrapper and measured deltas over 1-second windows via
+   `performance.now()`, isolating each step in a single script execution to
+   avoid tool-round-trip noise. On page load (only `WebGLCanvas`, which
+   auto-starts via `onFirstLayout`): 60 calls/sec — one 60Hz loop, as expected.
+   After clicking "Toggle canvas animation" to start the 2D `Canvas` demo too:
+   120 calls/sec — two 60Hz loops. Switching to the "Binding" tab: 12 calls/sec
+   (both loops paused; the residual 12/sec is unidentified but an order of
+   magnitude below the two-loop rate, not investigated further as it is outside
+   this plan's scope). Switching back to "Misc.": 118 calls/sec, matching the
+   pre-hide rate. Confirms the rAF loop pauses/resumes with effective
+   visibility, not per-frame polling. (An earlier, less rigorous pass at this
+   same check — instrumenting across separate tool calls with unaccounted
+   latency and without an isolated baseline — produced implausible ~900+/sec
+   figures; this measurement replaces it.)
 2. **ProgressSpinner CPU / animation freeze.** Located the spinner arc element
    by its `ts-ui-progress-spinner-rotate` keyframe name and read
    `getComputedStyle(el).animationPlayState`: `"running"` while the Misc tab is
@@ -723,7 +731,11 @@ explicitly"):
    the pause is written to, so a theme-driven re-flush does not resurrect a
    paused animation.
 
-One BLOCKING finding from the first audit cycle — the four manual-verify cases
-above were performed during initial implementation but not recorded anywhere
-on the branch — is what this section addresses; no code changed as a result,
-only this record.
+This section was added in response to the first audit cycle's BLOCKING
+finding — the four manual-verify cases above were performed during initial
+implementation but not recorded anywhere on the branch. The second audit
+cycle then found the recorded rAF numbers for case 1 implausible against the
+actual code (at most two 60Hz demo loops exist, nowhere near the originally
+claimed ~900–1300/sec); case 1 above has been replaced with a rigorous
+re-measurement, corrected accordingly. No source or test code changed as a
+result of either audit cycle — only this record.
