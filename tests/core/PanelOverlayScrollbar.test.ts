@@ -67,6 +67,8 @@ describe('Panel — overlay scrollbar default', () => {
     });
 
     it('stays inert while autoScroll is "none" (overlay default, non-scrolling panel)', () => {
+        const sink = installTestDOM(CONFIG);
+
         const panel = new _Panel();
         panel.getElement(true);
 
@@ -74,6 +76,14 @@ describe('Panel — overlay scrollbar default', () => {
         expect(i._overlayHost).toBeNull();
         expect(i._scrollbarV).toBeNull();
         expect(i._scrollbarH).toBeNull();
+
+        // Does not hide the native bar: the teardown guard's resting write
+        // (scrollbarWidth -> null, a harmless no-op un-hide) is fine, but
+        // "none" is never written for a panel that never installed.
+        const hidesScrollbarWidth = sink.writes.some(
+            (w) => w.op === 'setRuleStyle' && w.args[0] === 'scrollbarWidth' && w.args[1] === 'none'
+        );
+        expect(hidesScrollbarWidth).toBe(false);
     });
 
     it('installs both bars + host + handler once autoScroll and overlay style are both active', () => {
@@ -100,25 +110,45 @@ describe('Panel — overlay scrollbar default', () => {
     });
 
     it('tears down on transition to autoScroll("none") and on transition to scrollbarStyle("native")', () => {
+        // Genuinely overflowing (not the {0,0} resting gutter) so the
+        // teardown's gutter-clear write is exercised from a non-zero state,
+        // not a no-op. Re-install to capture the sink, then stub metrics
+        // against the freshly-installed DOM.source.
+        const sink = installTestDOM(CONFIG);
+        stubMetrics({ scrollHeight: 900, clientHeight: 300 });
+
         const panel = new _Panel({ autoScroll: 'y' });
         panel.getElement(true);
         expect(internals(panel)._overlayHost).not.toBeNull();
+        expect(internals(panel)._scrollbarGutter.right).toBe(12);
 
         panel.setAutoScroll('none');
         let i = internals(panel);
         expect(i._overlayHost).toBeNull();
         expect(i._scrollbarV).toBeNull();
         expect(i._scrollbarH).toBeNull();
+        expect(i._scrollbarGutter.right).toBe(0);
+        expect(i._scrollbarGutter.bottom).toBe(0);
+
+        // The native bar is un-hidden on teardown: the last scrollbarWidth
+        // write for this instance is the un-hide (null), not "none".
+        const scrollbarWidthWrites = sink.writes.filter(
+            (w) => w.op === 'setRuleStyle' && w.args[0] === 'scrollbarWidth'
+        );
+        expect(scrollbarWidthWrites.length).toBeGreaterThan(0);
+        expect(scrollbarWidthWrites[scrollbarWidthWrites.length - 1].args[1]).toBeNull();
 
         // Re-enter overlay mode, then tear down via the style switch instead.
         panel.setAutoScroll('y');
         expect(internals(panel)._overlayHost).not.toBeNull();
+        expect(internals(panel)._scrollbarGutter.right).toBe(12);
 
         panel.setScrollbarStyle('native');
         i = internals(panel);
         expect(i._overlayHost).toBeNull();
         expect(i._scrollbarV).toBeNull();
         expect(i._scrollbarH).toBeNull();
+        expect(i._scrollbarGutter.right).toBe(0);
 
         // Re-entering overlay while still scrollable re-installs.
         panel.setScrollbarStyle('overlay');
