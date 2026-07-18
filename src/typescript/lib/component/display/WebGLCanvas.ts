@@ -411,7 +411,11 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
             if (this._rafId === null) {
                 this._rafId = DOM.sink.requestAnimationFrame(this.animationStep);
             }
-        } else if (this._rafId !== null) {
+        } else if (this._rafId != null) {
+            // Loose comparison: during the super() cascade (a construction-time
+            // animateWhenHidden option), this class's own field initializers
+            // haven't run yet, so _rafId briefly reads as `undefined` rather than
+            // its declared `null` default — treat both as "nothing scheduled".
             DOM.sink.cancelAnimationFrame(this._rafId);
             this._rafId = null;
         }

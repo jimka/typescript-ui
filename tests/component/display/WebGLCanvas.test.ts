@@ -180,9 +180,12 @@ describe('WebGLCanvas animation loop (U5, U6)', () => {
     });
 });
 
-describe('WebGLCanvas pause-when-hidden (P1, P3-P6, P8)', () => {
+describe('WebGLCanvas pause-when-hidden (P1, P3-P8)', () => {
     const rafCount = (recorder: Recorder): number =>
         recorder.writes.filter(w => w.op === 'requestAnimationFrame').length;
+
+    const cancelCount = (recorder: Recorder): number =>
+        recorder.writes.filter(w => w.op === 'cancelAnimationFrame').length;
 
     it('round-trips the animateWhenHidden option (P1)', () => {
         expect(new WebGLCanvas({ animateWhenHidden: true }).getAnimateWhenHidden()).toBe(true);
@@ -194,6 +197,17 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P6, P8)', () => {
 
         canvas.setAnimateWhenHidden(false);
         expect(canvas.getAnimateWhenHidden()).toBe(false);
+    });
+
+    it('does not spuriously cancel during the super() cascade when animateWhenHidden is constructor-supplied', () => {
+        // setAnimateWhenHidden -> reconcileAnimation runs from inside applyOptions,
+        // before this class's own field initializers (_rafId, _animationRequested)
+        // have executed — regression guard for reading them mid-cascade.
+        const recorder = DOM.sink as unknown as Recorder;
+
+        new WebGLCanvas({ animateWhenHidden: true });
+
+        expect(cancelCount(recorder)).toBe(0);
     });
 
     it('does not start when explicitly hidden (P3)', () => {
@@ -246,6 +260,19 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P6, P8)', () => {
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(true);
+    });
+
+    it('a manual stop clears intent, so a later doLayout does not resurrect the loop (P7)', () => {
+        const canvas = new WebGLCanvas();
+        const recorder = DOM.sink as unknown as Recorder;
+
+        canvas.getElement(true);
+        canvas.startAnimation();
+        canvas.stopAnimation();
+        canvas.doLayout();
+
+        expect(canvas.isAnimating()).toBe(false);
+        expect(rafCount(recorder)).toBe(1);
     });
 
     it('stays static across doLayout when never started (P8)', () => {
