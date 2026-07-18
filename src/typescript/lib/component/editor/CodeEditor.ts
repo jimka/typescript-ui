@@ -4,7 +4,9 @@ import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
+import { consumeWheel } from "~/core/SmoothScroller.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { EditorView, keymap, drawSelection, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view";
@@ -135,6 +137,13 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
     /** Handle to detach the {@link ThemeManager.onThemeChange} listener on {@link CodeEditor.dispose}. */
     private readonly _unsubscribeTheme: () => void;
+
+    /**
+     * Stable reference for the subtree wheel-claim listener's add (in
+     * {@link CodeEditor.mount}) and remove (in {@link CodeEditor.dispose}); see
+     * {@link CodeEditor.claimScrollableWheel}.
+     */
+    private readonly _onWheelClaim: (e: WheelEvent) => void = (e) => this.claimScrollableWheel(e);
 
     /**
      * Constructs a code editor.
@@ -402,7 +411,49 @@ class CodeEditor extends Component<CodeEditorOptions> {
      */
     dispose(): void {
         this._unsubscribeTheme();
+
+        if (this._view) {
+            Event.removeSubtreeListener(this, "wheel", this._onWheelClaim);
+        }
+
         this._view?.destroy();
+    }
+
+    /**
+     * Marks a wheel event consumed (via {@link consumeWheel}) when CodeMirror's
+     * own scroller can move along the gesture's axis — WITHOUT
+     * `preventDefault()`, so CodeMirror still scrolls `.cm-scroller` natively.
+     *
+     * @param e - The wheel event reaching this editor's subtree.
+     *
+     * @remarks A floating overlay installs a wheel trap (see `WheelTrap`) that
+     * `preventDefault()`s any wheel no inner scroller claimed, so an unconsumed
+     * wheel cannot fall through to content behind the overlay. CodeMirror
+     * scrolls natively without going through the framework's eased scroller, so
+     * it never claims the wheel — and the trap, firing last as the outermost
+     * ancestor, would cancel the editor's native scroll. Claiming here (the
+     * subtree walk reaches this inner editor before the outer overlay) lets the
+     * native scroll proceed. Only an axis with somewhere to go is claimed; at a
+     * fits-in-box axis the wheel stays unclaimed so the trap still swallows it.
+     */
+    private claimScrollableWheel(e: WheelEvent): void {
+        const scroller = this._view?.scrollDOM;
+
+        if (!scroller) {
+            return;
+        }
+
+        const extentX = scroller.scrollWidth  > scroller.clientWidth;
+        const extentY = scroller.scrollHeight > scroller.clientHeight;
+
+        // shift+wheel with a bare vertical delta scrolls horizontally (native
+        // behaviour CodeMirror preserves), so it targets the horizontal axis.
+        const targetsHorizontal = e.deltaX !== 0 || (e.shiftKey && e.deltaY !== 0);
+        const targetsVertical   = e.deltaY !== 0 && !e.shiftKey;
+
+        if ((targetsVertical && extentY) || (targetsHorizontal && extentX)) {
+            consumeWheel(e);
+        }
     }
 
     /**
@@ -460,6 +511,11 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         if (this._view) {
             this.mountFlashOverlay(element);
+            // Claim wheels CodeMirror's own scroller will act on, so an
+            // enclosing overlay's wheel trap leaves this editor's native scroll
+            // alone (see claimScrollableWheel). Descendant-first subtree
+            // dispatch reaches this editor before the overlay, so the claim wins.
+            Event.addSubtreeListener(this, "wheel", this._onWheelClaim, { passive: false });
         }
 
         const language = this.getLanguage();
