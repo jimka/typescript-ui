@@ -16,6 +16,7 @@ import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { ScrollStrip } from '~/component/container/ScrollStrip';
 import { installTestDOM } from '../dom/TestDOM';
+import type { RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -50,6 +51,7 @@ type OverlayInternals = {
     _scrollbarV:            { getX(): number; getY(): number; getWidth(): number; getHeight(): number; isDisplayed(): boolean } | null;
     _scrollbarH:            { getX(): number; getY(): number; getWidth(): number; getHeight(): number; isDisplayed(): boolean } | null;
     _overlayScrollHandler:  (() => void) | null;
+    _shadowOverlay:         Handle | null;
     _onOverlayScrollV(position: number): void;
     _onOverlayScrollH(position: number): void;
     layoutOverlayScrollbars(element?: Handle): void;
@@ -273,5 +275,99 @@ describe('Panel — overlay scrollbar default', () => {
 
     it('ScrollStrip is forced native even though its Panel base defaults to overlay', () => {
         expect(new ScrollStrip().getScrollbarStyle()).toBe('native');
+    });
+});
+
+// Regression: the scroll-shadow overlay marks the CONTENT-viewport edge. With a
+// native bar, `clientWidth`/`clientHeight` already exclude the bar, so the
+// full-client-box overlay sat correctly inside it. In overlay mode the native
+// bar is hidden and the overlay Scrollbar is painted INSIDE `clientWidth` at the
+// trailing gutter, so a full-client-box shadow overlay bleeds its bottom/right
+// edge shadow under the translucent bar track (reads as "the shadow is on top of
+// the scrollbar"). The overlay must be inset by the reserved overlay gutter so
+// each edge shadow lands just inside its bar — and only in overlay mode, since
+// native `clientWidth`/`clientHeight` already exclude the OS bar.
+describe('Panel — scroll-shadow overlay is inset by the overlay-scrollbar gutter', () => {
+    /** Last committed value of a camelCase style key applied to a raw handle. */
+    function lastStyle(sink: RecordingDOMSink, handle: Handle, key: string): string | undefined {
+        let value: string | undefined;
+
+        for (const w of sink.writes) {
+            if (w.op === 'apply' && w.args[0] === handle) {
+                const patch = w.args[1] as { style?: Record<string, string | null> };
+
+                if (patch.style && key in patch.style) {
+                    value = patch.style[key] ?? undefined;
+                }
+            }
+        }
+
+        return value;
+    }
+
+    it('insets both edges by the 12px track when both axes overflow in overlay mode', () => {
+        const sink = installTestDOM(CONFIG);
+        stubMetrics({ scrollWidth: 900, clientWidth: 400, scrollHeight: 900, clientHeight: 300 });
+
+        const panel = new _Panel({ autoScroll: 'auto' });   // overlay by default
+        panel.getElement(true);
+        panel.doLayout();
+
+        const overlay = internals(panel)._shadowOverlay;
+        expect(overlay).not.toBeNull();
+
+        // clientWidth 400 - 12 track, clientHeight 300 - 12 track.
+        expect(lastStyle(sink, overlay!, 'width')).toBe('388px');
+        expect(lastStyle(sink, overlay!, 'height')).toBe('288px');
+    });
+
+    it('insets only the overflowing axis (vertical bar only → right inset, full height)', () => {
+        const sink = installTestDOM(CONFIG);
+        stubMetrics({ scrollHeight: 900, clientHeight: 300, scrollWidth: 400, clientWidth: 400 });
+
+        const panel = new _Panel({ autoScroll: 'y' });   // overlay by default
+        panel.getElement(true);
+        panel.doLayout();
+
+        const overlay = internals(panel)._shadowOverlay;
+
+        expect(lastStyle(sink, overlay!, 'width')).toBe('388px');   // right gutter reserved
+        expect(lastStyle(sink, overlay!, 'height')).toBe('300px');  // no bottom bar → no inset
+    });
+
+    it('hides the horizontal bar when content fills the client box but a vertical bar is present (no spurious cross-bar)', () => {
+        // Vertical-only overflow: content is exactly as wide as the client box
+        // (scrollWidth === clientWidth), so there is NO horizontal overflow. The
+        // vertical bar reserves a 12px gutter, shrinking the horizontal track to
+        // 388, but that must NOT make the horizontal bar consider itself
+        // overflowing — its visibility is judged against the full client
+        // viewport (400), not the cross-axis-reduced track (388). Otherwise a
+        // stray 12px horizontal bar paints over the bottom scroll shadow on every
+        // vertically-scrolling panel.
+        installTestDOM(CONFIG);
+        stubMetrics({ scrollHeight: 900, clientHeight: 300, scrollWidth: 400, clientWidth: 400 });
+
+        const panel = new _Panel({ autoScroll: 'auto' });   // overlay by default
+        panel.getElement(true);
+        panel.doLayout();
+
+        const i = internals(panel);
+        expect(i._scrollbarV!.isDisplayed()).toBe(true);    // real vertical overflow
+        expect(i._scrollbarH!.isDisplayed()).toBe(false);   // content fits the client box → hidden
+        expect(i._scrollbarGutter.bottom).toBe(0);          // and no bottom gutter reserved
+    });
+
+    it('does NOT inset in native mode — clientWidth already excludes the OS bar', () => {
+        const sink = installTestDOM(CONFIG);
+        stubMetrics({ scrollHeight: 900, clientHeight: 300, scrollWidth: 400, clientWidth: 400 });
+
+        const panel = new _Panel({ autoScroll: 'y', scrollbarStyle: 'native' });
+        panel.getElement(true);
+        panel.doLayout();
+
+        const overlay = internals(panel)._shadowOverlay;
+
+        expect(lastStyle(sink, overlay!, 'width')).toBe('400px');   // full client box, no inset
+        expect(lastStyle(sink, overlay!, 'height')).toBe('300px');
     });
 });

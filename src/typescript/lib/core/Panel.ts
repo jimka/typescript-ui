@@ -853,11 +853,22 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
         const { clientWidth, clientHeight } = DOM.source.getScrollMetrics(el);
 
+        // In overlay-scrollbar mode the native bar is hidden, so clientWidth /
+        // clientHeight still span the strip the overlay Scrollbar paints on.
+        // Inset the shadow overlay by the reserved overlay gutter so each edge
+        // shadow lands just inside its bar — aligned with the content viewport
+        // getInnerSize exposes — instead of bleeding under the translucent bar
+        // track (which reads as the shadow painting on top of the scrollbar).
+        // Native mode needs no inset: clientWidth / clientHeight already exclude
+        // the OS scrollbar, so the gutter there is physical, not overlaid.
+        const rightInset  = this._scrollbarStyle === "overlay" ? this._scrollbarGutter.right  : 0;
+        const bottomInset = this._scrollbarStyle === "overlay" ? this._scrollbarGutter.bottom : 0;
+
         // Size the overlay to the viewport box; `position: sticky` keeps it
         // pinned there as the content scrolls, so no transform is needed.
         this._shadowOverlayStyle.setMany({
-            width:  clientWidth  + "px",
-            height: clientHeight + "px",
+            width:  (clientWidth  - rightInset)  + "px",
+            height: (clientHeight - bottomInset) + "px",
         });
     }
 
@@ -1125,15 +1136,23 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         const { scrollTop, scrollLeft, clientW, clientH, contentW, contentH, vVisible, hVisible, effW, effH, trackW } =
             this.overlayMetrics(el);
 
+        // setWidth/setHeight take the cross-axis-reduced track length (effW/effH)
+        // so a bar stops short of the corner where both bars meet. setMetrics,
+        // though, takes the FULL client viewport (clientW/clientH) for its
+        // overflow test: a bar is visible iff content exceeds the client box, the
+        // same criterion as vVisible/hVisible. Feeding effW/effH there instead
+        // would show a spurious cross bar whenever content merely fills the client
+        // box while the other axis's bar is present (content == clientW > effW),
+        // painting a stray 12px bar over the trailing scroll shadow.
         this._scrollbarV.setX(clientW - trackW);
         this._scrollbarV.setY(0);
         this._scrollbarV.setHeight(effH);
-        this._scrollbarV.setMetrics(effH, contentH, scrollTop);
+        this._scrollbarV.setMetrics(clientH, contentH, scrollTop);
 
         this._scrollbarH.setX(0);
         this._scrollbarH.setY(clientH - trackW);
         this._scrollbarH.setWidth(effW);
-        this._scrollbarH.setMetrics(effW, contentW, scrollLeft);
+        this._scrollbarH.setMetrics(clientW, contentW, scrollLeft);
 
         const newRight  = vVisible ? trackW : 0;
         const newBottom = hVisible ? trackW : 0;
@@ -1157,10 +1176,11 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             return;
         }
 
-        const { scrollTop, scrollLeft, contentW, contentH, effW, effH } = this.overlayMetrics(el);
+        const { scrollTop, scrollLeft, clientW, clientH, contentW, contentH } = this.overlayMetrics(el);
 
-        this._scrollbarV.setMetrics(effH, contentH, scrollTop);
-        this._scrollbarH.setMetrics(effW, contentW, scrollLeft);
+        // Full client viewport for the overflow test, matching layoutOverlayScrollbars.
+        this._scrollbarV.setMetrics(clientH, contentH, scrollTop);
+        this._scrollbarH.setMetrics(clientW, contentW, scrollLeft);
     }
 }
 
