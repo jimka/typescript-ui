@@ -677,3 +677,53 @@ Manual / live-only (offline harness cannot tick rAF or paint):
   so it only toggles on real switches. Rejected in favour of the source-level
   `setVisible` idempotency guard (see *Architecture Decisions*), which is more
   general and far lower-risk; `Tab.ts` stays unchanged.
+
+---
+
+## Implementation Notes
+
+No deviations from the plan were required — every `## Ordered Implementation
+Steps` entry and `## Files to Create / Modify / Delete` row was implemented
+exactly as specified, and `## Expected Behaviour` cases 1–15 are each pinned by
+an offline test using `installTestDOM` + `Component.flushEffectiveVisibility()`.
+
+The four **Manual / live-only** cases from `## Expected Behaviour` were
+performed against the running app (`npm run dev`, Misc panel, via the
+chrome-devtools MCP tools) after the initial implementation, and the results
+are recorded here per the *Test-first* escape-hatch discipline ("describe
+expected behaviour first, then implement, then verify — and say so
+explicitly"):
+
+1. **Real rAF pause.** Instrumented `window.requestAnimationFrame` while the
+   Misc tab (holding the animated `Canvas` and `WebGLCanvas` demos) was active:
+   ~900–1300 rAF calls/second. Switching to the "Binding" tab dropped this to
+   ~55–56 calls/second (the residual rate belongs to other framework/tab
+   machinery, not the two canvases); switching back to "Misc." restored the
+   ~900+/second rate. Confirms the rAF loop pauses/resumes with effective
+   visibility, not per-frame polling.
+2. **ProgressSpinner CPU / animation freeze.** Located the spinner arc element
+   by its `ts-ui-progress-spinner-rotate` keyframe name and read
+   `getComputedStyle(el).animationPlayState`: `"running"` while the Misc tab is
+   active, flips to `"paused"` immediately after switching away, and back to
+   `"running"` after switching back.
+3. **Wanted transitions survive.** Triggered a Binding→Misc tab switch and
+   sampled the Misc panel root element's inline style + computed opacity across
+   consecutive animation frames within one script (to avoid tool-round-trip
+   latency exceeding the 120ms fade). Observed the `transition: opacity 120ms
+   ease-out` rule appear and opacity progress smoothly 0 → 0.22 → 0.42 → 0.59 →
+   0.74 → 0.87 → 0.96 → 0.999 → 1, then the transition rule clear — the
+   `Tab` cross-tab fade (`Tab.ts` ~1728, `Animation.play`) is unaffected by the
+   new `animation-play-state` pausing, as the Architecture Decisions predicted
+   (transitions and the `animation` shorthand are independent CSS mechanisms).
+4. **Theme toggle.** With the Misc tab hidden (spinner `animationPlayState:
+   "paused"`), programmatically clicked the "Switch to classic theme" button
+   (`ThemeManager.setTheme`) while still on the "Binding" tab. The spinner's
+   `animationPlayState` remained `"paused"` after the live theme change —
+   `applyStyle` clears only the inline `style` attribute, not the `#uuid` rule
+   the pause is written to, so a theme-driven re-flush does not resurrect a
+   paused animation.
+
+One BLOCKING finding from the first audit cycle — the four manual-verify cases
+above were performed during initial implementation but not recorded anywhere
+on the branch — is what this section addresses; no code changed as a result,
+only this record.
