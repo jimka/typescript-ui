@@ -163,6 +163,66 @@ describe('VirtualScroller getViewportWidth', () => {
     });
 });
 
+/** Reads a shadow edge's cached strength (0–100), as `setShadowEdge` caches it. */
+function shadowEdge(scroller: VirtualScroller, edge: 'top' | 'bottom' | 'left' | 'right'): number {
+    return (scroller as unknown as { _shadowEdges: Record<string, number> })._shadowEdges[edge];
+}
+
+describe('VirtualScroller scroll shadows', () => {
+    afterEach(() => DOM.reset());
+
+    it('lights the bottom edge but not the top when parked at the vertical origin', () => {
+        installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+
+        // Content taller than the owner (vertical overflow) and narrow enough
+        // that no horizontal bar appears.
+        scroller.layoutScrollbars(100, 1000);
+
+        expect(shadowEdge(scroller, 'top')).toBe(0);
+        expect(shadowEdge(scroller, 'bottom')).toBeGreaterThan(0);
+    });
+
+    it('flips top on and bottom off once scrolled to the vertical extreme', () => {
+        installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+
+        scroller.layoutScrollbars(100, 1000);
+        scroller.setScrollY(1000 - 400); // max vertical scroll
+
+        expect(shadowEdge(scroller, 'top')).toBeGreaterThan(0);
+        expect(shadowEdge(scroller, 'bottom')).toBe(0);
+    });
+
+    it('lights the right edge when content overflows horizontally at the origin', () => {
+        installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+
+        // Content wider than the owner (horizontal overflow), short enough that
+        // no vertical bar appears.
+        scroller.layoutScrollbars(1000, 100);
+
+        expect(shadowEdge(scroller, 'left')).toBe(0);
+        expect(shadowEdge(scroller, 'right')).toBeGreaterThan(0);
+    });
+
+    it('paints no edge when content fits the viewport on both axes', () => {
+        installTestDOM(CONFIG);
+
+        const { scroller } = makeScroller(200, 400);
+
+        scroller.layoutScrollbars(100, 300);
+
+        expect(shadowEdge(scroller, 'top')).toBe(0);
+        expect(shadowEdge(scroller, 'bottom')).toBe(0);
+        expect(shadowEdge(scroller, 'left')).toBe(0);
+        expect(shadowEdge(scroller, 'right')).toBe(0);
+    });
+});
+
 describe('VirtualScroller clampToContent', () => {
     afterEach(() => DOM.reset());
 

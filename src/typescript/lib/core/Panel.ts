@@ -8,29 +8,7 @@ import { InlineStyle } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
-
-/**
- * Reach in pixels of each scroll-edge shadow — used as the inset shadow's
- * offset, blur, and (negative) spread, so each edge's fade hugs its border and
- * dies out roughly this far inward.
- *
- * Fixed framework-side rather than themed, for the same reason the keyboard
- * focus indicator fixes its `2px` width (see `Theme.indicator.focus`): the
- * colour is the only part a theme needs to vary, and a constant keeps the
- * overlay's four-shadow geometry simple. `12px` reads as a soft edge cue
- * without masking a meaningful strip of content.
- */
-const SCROLL_SHADOW_EXTENT_PX = 12;
-
-/**
- * Distance in pixels over which an edge's shadow ramps from none to full as the
- * scroll position moves away from that edge's extreme. The strength is
- * `clamp(distanceFromExtreme / this, 0, 1)`, so the shadow fades in smoothly
- * just after leaving an edge and fades out as the opposite edge is approached,
- * instead of popping on/off at a single-pixel threshold. `40px` gives a visible
- * fade without staying faint through a meaningful amount of overflow.
- */
-const SCROLL_SHADOW_RAMP_PX = 40;
+import { scrollShadowBoxShadow, scrollShadowEdgeValue, scrollShadowRamp } from "~/core/ScrollShadow.js";
 
 /**
  * Per-edge shadow strength for a panel's scroll shadows, cached as a whole
@@ -680,7 +658,6 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     private createScrollShadowOverlay(element: Handle): void {
         const overlay = DOM.sink.createElement("div");
-        const extent  = SCROLL_SHADOW_EXTENT_PX + "px";
 
         this._shadowOverlayStyle.attach(overlay);
         this._shadowOverlayStyle.setMany({
@@ -700,15 +677,8 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             zIndex:        "1",
             // Four blurred inset shadows — one per edge — each gated by a local
             // custom property defaulting to `transparent` (flipped to the theme
-            // colour by `setShadowEdge`). The `-extent` spread keeps each
-            // shadow hugging its own edge while the equal blur fades it inward
-            // over `extent`px, so the edge reads as a soft cast shadow rather
-            // than the hard-terminated band a `linear-gradient` would paint.
-            boxShadow:
-                `inset 0 ${extent} ${extent} -${extent} var(--ts-ss-top, transparent),` +
-                `inset 0 -${extent} ${extent} -${extent} var(--ts-ss-bottom, transparent),` +
-                `inset ${extent} 0 ${extent} -${extent} var(--ts-ss-left, transparent),` +
-                `inset -${extent} 0 ${extent} -${extent} var(--ts-ss-right, transparent)`,
+            // colour by `setShadowEdge`). See `scrollShadowBoxShadow`.
+            boxShadow: scrollShadowBoxShadow(),
         });
 
         DOM.sink.appendChild(element, overlay);
@@ -803,12 +773,8 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         const maxTop  = scrollHeight - clientHeight;
         const maxLeft = scrollWidth  - clientWidth;
 
-        // Ramp an edge in by its distance past that extreme. The `- 1` folds in
-        // a sub-pixel epsilon: within 1px of an extreme the strength is 0, so a
-        // fractional scrollSize/clientSize mismatch can't leave a phantom fade.
-        const ramp = (distance: number): number => {
-            return Math.max(0, Math.min(1, (distance - 1) / SCROLL_SHADOW_RAMP_PX));
-        };
+        // Ramp an edge in by its distance past that extreme (see `scrollShadowRamp`).
+        const ramp = scrollShadowRamp;
 
         // A shadow says "there is more content this way, scroll to reach it", so
         // only an axis the user can actually scroll may light its edges. A
@@ -844,12 +810,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         }
 
         this._shadowEdges[edge] = percent;
-        this._shadowOverlayStyle.set(
-            property,
-            percent === 0
-                ? null
-                : `color-mix(in srgb, var(--ts-ui-scroll-shadow-color) ${percent}%, transparent)`,
-        );
+        this._shadowOverlayStyle.set(property, scrollShadowEdgeValue(percent));
     }
 }
 
