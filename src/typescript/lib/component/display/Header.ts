@@ -6,7 +6,6 @@ import { Insets } from "~/primitive/Insets.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import { FillType } from "~/layout/FillType.js";
 import { Placement } from "~/primitive/Placement.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { Container } from "~/core/Container.js";
 import { callable } from "~/core/Callable.js";
 
@@ -77,7 +76,7 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Container<T
         // is theme-bound, so a theme swap can change the label's measured height.
         // The insets are static (see `_defaultHeaderOptions`), so padding is not
         // re-derived here.
-        ThemeManager.onThemeChange(() => {
+        this.subscribeTheme(() => {
             this.updatePreferredSize();
         });
 

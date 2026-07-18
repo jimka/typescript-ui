@@ -8,6 +8,8 @@ import { installTestDOM, RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { _ruleCacheHas, _ruleCacheKeys } from '~/core/StyleTarget';
 import { Button } from '~/component/button/Button';
+import { ThemeManager } from '~/core/Theme';
+import { TextField } from '~/component/input/TextField';
 
 const DOM_CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -316,5 +318,62 @@ describe('Component — destructor disposes style rules', () => {
         (button as unknown as { destructor(): void }).destructor();
 
         expect(_ruleCacheKeys().some((key) => key.startsWith('#' + id))).toBe(false);
+    });
+});
+
+// Regression: a discarded onThemeChange disposer leaks the whole subtree it
+// belongs to (see plans/implemented/theme-listener-teardown-leak.md). Proves
+// the base `subscribeTheme` bag is populated and flushed by `destructor()`,
+// that `setBorder` subscribes only once across repeated calls, and that
+// `destructor()` recurses into `_components` so a discarded container's
+// subscribing descendants are released too.
+describe('Component — theme listener teardown', () => {
+    beforeEach(() => installTestDOM(DOM_CONFIG));
+    afterEach(() => DOM.reset());
+
+    it('flushes a bordered component\'s theme subscription on destructor', () => {
+        const base = ThemeManager._themeListenerCount();
+
+        const c = new Component({ border: '1px solid red' });
+        expect(ThemeManager._themeListenerCount()).toBe(base + 1);
+
+        (c as unknown as { destructor(): void }).destructor();
+        expect(ThemeManager._themeListenerCount()).toBe(base);
+    });
+
+    it('subscribes only once across repeated setBorder calls', () => {
+        const c = new Component({});
+        const b0 = ThemeManager._themeListenerCount();
+
+        c.setBorder('1px solid red');
+        c.setBorder('2px solid blue');
+
+        expect(ThemeManager._themeListenerCount()).toBe(b0 + 1);
+    });
+
+    it('recurses into children so a discarded container releases their subscriptions too', () => {
+        const base = ThemeManager._themeListenerCount();
+
+        const parent = new Component({});
+        parent.addComponent(new Component({ border: '1px solid red' }));
+        expect(ThemeManager._themeListenerCount()).toBe(base + 1);
+
+        (parent as unknown as { destructor(): void }).destructor();
+        expect(ThemeManager._themeListenerCount()).toBe(base);
+    });
+
+    it('releases a surface component\'s (TextField) theme subscriptions on destructor', () => {
+        const base = ThemeManager._themeListenerCount();
+
+        // +2, not +1: TextInput's default `border` option (TextInput.ts:72)
+        // dispatches setBorder during construction (Component's applyOptions
+        // always-dispatches a class-default border), which folds its own
+        // subscription into the bag, on top of TextField's own unconditional
+        // updateHeight subscription.
+        const t = new TextField({});
+        expect(ThemeManager._themeListenerCount()).toBe(base + 2);
+
+        (t as unknown as { destructor(): void }).destructor();
+        expect(ThemeManager._themeListenerCount()).toBe(base);
     });
 });

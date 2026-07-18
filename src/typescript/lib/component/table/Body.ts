@@ -141,7 +141,7 @@ class Body extends VirtualRowView<Row> {
 
         this._rowHeight = this.computeRowHeight();
 
-        ThemeManager.onThemeChange(() => {
+        this.subscribeTheme(() => {
             this._rowHeight = this.computeRowHeight();
             this._boundIndices.fill(-1);
             this.invalidateGeom();

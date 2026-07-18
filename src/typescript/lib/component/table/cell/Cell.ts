@@ -10,7 +10,6 @@ import { CellEditor, blurRelatedTargetHandle } from "~/component/table/cell/edit
 import type { ForwardedKeyDetail } from "~/component/table/cell/editor/CellEditor.js";
 import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
-import { ThemeManager } from "~/core/Theme.js";
 
 /**
  * String-literal union of the events emitted by {@link Cell}.
@@ -64,7 +63,7 @@ export class Cell<T> extends Component {
         this.setForegroundColor('var(--ts-ui-table-cell-color, inherit)');
         this.setBorder('var(--ts-ui-table-cell-border, none)');
 
-        ThemeManager.onThemeChange(() => this.setBorder('var(--ts-ui-table-cell-border, none)'));
+        this.subscribeTheme(() => this.setBorder('var(--ts-ui-table-cell-border, none)'));
 
         this.addComponent(renderer, rendererConstraints);
 

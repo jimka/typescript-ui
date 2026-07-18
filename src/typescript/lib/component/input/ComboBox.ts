@@ -14,7 +14,6 @@ import { SelectableListItem, SelectableListItemSpec } from "~/component/list/Abs
 import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
 import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
 import { List } from "~/component/list/List.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Fit } from "~/layout/Fit.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -648,7 +647,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         this.refreshLabel();
 
         this.updateHeight();
-        ThemeManager.onThemeChange(() => this.updateHeight());
+        this.subscribeTheme(() => this.updateHeight());
 
         Event.addListener(this, "click",   ()                 => this.toggleDropdown());
         Event.addListener(this, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));

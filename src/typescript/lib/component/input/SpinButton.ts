@@ -5,7 +5,6 @@ import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { AutoRepeat } from "~/core/AutoRepeat.js";
 import { Util } from "~/core/Util.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -82,7 +81,7 @@ class SpinButton extends Button<SpinButtonOptions> {
         });
 
         this.updateSize();
-        ThemeManager.onThemeChange(() => this.updateSize());
+        this.subscribeTheme(() => this.updateSize());
 
         // `clearShadow` / `clearPressedShadow` have no representable option
         // value (they write `box-shadow: none` and `_options.shadow = undefined`

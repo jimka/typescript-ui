@@ -83,7 +83,7 @@ export abstract class CellEditor<T> extends Component {
 
         applyPadding();
 
-        ThemeManager.onThemeChange(applyPadding);
+        this.subscribeTheme(applyPadding);
     }
 
     /**

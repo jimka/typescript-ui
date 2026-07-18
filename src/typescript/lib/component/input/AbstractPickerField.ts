@@ -7,7 +7,6 @@ import { PickerInput } from "~/component/input/PickerInput.js";
 import { PickerButton } from "~/component/input/PickerButton.js";
 import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { registerFocusWithinRing } from "~/component/input/focusRing.js";
 import { Util } from "~/core/Util.js";
 
@@ -103,7 +102,7 @@ abstract class AbstractPickerField<
         this.addComponent(this._button);
 
         this.updateHeight();
-        ThemeManager.onThemeChange(() => this.updateHeight());
+        this.subscribeTheme(() => this.updateHeight());
 
         Event.addListener(this._input,  "input",       ()                 => this.onInput());
         Event.addListener(this._input,  "blur",        ()                 => this.onBlur());

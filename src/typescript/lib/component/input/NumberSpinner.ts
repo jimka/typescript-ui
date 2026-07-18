@@ -10,7 +10,6 @@ import { VBox } from "~/layout/VBox.js";
 import { Insets } from "~/primitive/Insets.js";
 import { UNBOUNDED } from "~/primitive/Size.js";
 import { Util } from "~/core/Util.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { registerFocusWithinRing } from "~/component/input/focusRing.js";
 import { callable } from "~/core/Callable.js";
@@ -130,7 +129,7 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
         Event.addListener(this._input, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
 
         this.updateHeight();
-        ThemeManager.onThemeChange(() => this.updateHeight());
+        this.subscribeTheme(() => this.updateHeight());
 
         this.getAria().setRole("spinbutton");
         this.getAria().setValueNow(0);
