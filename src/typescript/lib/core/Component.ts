@@ -1584,6 +1584,30 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Walks this component and its ancestor chain, returning whether it is
+     * actually on-screen — as opposed to `isVisible()` / `isDisplayed()`, which
+     * report only this component's own state and don't see an ancestor that
+     * hides it. A `Tab` / `Card` hides an inactive panel with `setVisible(false)`
+     * (CSS `visibility: hidden`) while keeping its layout slot, so a descendant's
+     * own `isVisible()` stays `null` (inherit) even though it is not effectively
+     * shown; this walks up to catch that case.
+     *
+     * @returns `false` if this component or any ancestor is explicitly hidden
+     *   (`isVisible() === false`) or undisplayed (`!isDisplayed()`); `true`
+     *   otherwise.
+     */
+    protected isEffectivelyVisible(): boolean {
+        let node: Component | null = this;
+        while (node) {
+            if (node.isVisible() === false || !node.isDisplayed()) {
+                return false;
+            }
+            node = node.getParentComponent();
+        }
+        return true;
+    }
+
+    /**
      * Returns the component's insets (internal spacing used by layout managers).
      *
      * @returns The current Insets instance.
