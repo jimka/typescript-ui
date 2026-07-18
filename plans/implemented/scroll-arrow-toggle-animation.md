@@ -246,3 +246,35 @@ therefore visually fades the triangle — no transition on the glyph child is ne
 - **No runtime transition toggle / `setAnimated`-style API.** Scrollbars are not
   virtualized/re-bound per frame (the reason `Checkbox` needs `setAnimated`), so no
   runtime suppression surface is added.
+
+---
+
+## Implementation Notes
+
+- **Manual-verify (Expected Behaviour 6–7) done against a dedicated dev server, not
+  `localhost:8015`.** Port 8015 was already bound by another process (a different
+  worktree's dev server / prior session), so this worktree's own `vite` was started on
+  `--port 8017 --strictPort` instead, and torn down after verification. Confirmed live
+  via Chrome DevTools: `.ScrollArrowButton` computed style shows
+  `transition: color 0.12s ease-out` on both arrows; a fresh load of the "table (slow)"
+  window's `VirtualScroller` shows the start arrow already at the disabled colour
+  (`rgba(0, 0, 0, 0.18)`) with no fade-in on first paint; driving a real arrow's
+  `mousedown`/`mouseup` at the opposite extreme flipped both arrows' colours correctly
+  (`0.18` ↔ `0.55`).
+- **Manual-verify item 8 (reduced-motion) verified by code inspection, not live OS
+  toggle.** The Chrome DevTools MCP tooling available in this session has no
+  `prefers-reduced-motion` emulation control. The gate added
+  (`if (!Animation.isReducedMotion())`) is the identical, already-proven pattern
+  `Checkbox` / `Toggle` / `RadioButton` use in production — no new logic was
+  introduced for this case.
+- **`npm run docs:build`'s `vitepress build` step was OOM-killed in this environment**
+  (`Killed`, no vitepress error output), consistent with the pre-existing
+  memory-starved-WSL2 issue already on file for this project (`docs:build` needs
+  ~5 GB+ heap and this box's available RAM was ~5.9 GB with swap already exhausted by
+  concurrent processes). This reproduces with `NODE_OPTIONS` already set as high as
+  the script requires; it is an environment resource ceiling, not a defect introduced
+  by this change. `npm run docs:api` (the `typedoc` markdown-generation step that
+  actually validates JSDoc links and content) completed cleanly — 0 errors, and the
+  163 warnings present are pre-existing (`Accordion` link-resolution warnings in
+  unrelated table/tree/diagram files), none touching `Scrollbar.ts` or
+  `docs/components/Scrollbar.md`.

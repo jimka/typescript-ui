@@ -74,7 +74,7 @@ const plain = Scrollbar('vertical', { arrowsEnabled: false }); // opt out
 
 - **Step** — each click scrolls by `arrowStep` pixels (default `40`, roughly two rows at default font size).
 - **Hold-repeat** — press and hold an arrow to fire ticks at an accelerating cadence (400 ms initial interval, ×0.75 per tick, floored at 40 ms — the same cadence as [`SpinButton`](/api/component/input/classes/SpinButton)).
-- **Disabled at edges** — when scroll is already at the top / left, the start arrow dims to `--ts-ui-scrollbar-arrow-disabled-color` and ignores clicks; same for the end arrow at the bottom / right.
+- **Disabled at edges** — when scroll is already at the top / left, the start arrow dims to `--ts-ui-scrollbar-arrow-disabled-color` and ignores clicks; same for the end arrow at the bottom / right. Clicks are gated instantly, but the colour swap crossfades over 120 ms (same cadence as [`Checkbox`](/api/component/input/classes/Checkbox)'s state fade), suppressed under `prefers-reduced-motion: reduce`.
 - **Track-length** — when arrows are on, the thumb travel range and the track-click paging hit-test exclude the two `getTrackWidth()`-sized arrow regions. `setMetrics` keeps the thumb sized against the inner track length, not the outer bar.
 - **Runtime toggle** — `setArrowsEnabled(true|false)` is supported. The arrow components are built or torn down on the fly and `setMetrics` is re-run with the cached viewport / content / scroll-position triple so the thumb recomputes against the new track length.
 
