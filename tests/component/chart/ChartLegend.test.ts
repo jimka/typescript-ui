@@ -43,6 +43,31 @@ describe('ChartLegend.setEntries', () => {
         expect(legend.getOrientation()).toBe('horizontal');
         expect(legend.getComponents().length).toBe(1);
     });
+
+    it('is a no-op re-apply with fresh but value-equal entries (idempotency guard)', () => {
+        const legend = new _ChartLegend();
+
+        legend.setEntries([{ name: 'A', color: '#111' }, { name: 'B', color: '#222' }]);
+
+        const firstRow = legend.getComponents()[0];
+
+        legend.setEntries([{ name: 'A', color: '#111' }, { name: 'B', color: '#222' }]);
+
+        expect(legend.getComponents()[0]).toBe(firstRow);
+        expect(legend.getComponents().length).toBe(2);
+    });
+
+    it('rebuilds when only the effective hidden state flips', () => {
+        const legend = new _ChartLegend();
+
+        legend.setEntries([{ name: 'A', color: '#111' }]);
+
+        const firstRow = legend.getComponents()[0];
+
+        legend.setEntries([{ name: 'A', color: '#111', hidden: true }]);
+
+        expect(legend.getComponents()[0]).not.toBe(firstRow);
+    });
 });
 
 describe('ChartLegend toggle event', () => {

@@ -127,6 +127,10 @@ class ChartLegend extends Panel<ChartLegendOptions> {
      * @returns This legend, for method chaining.
      */
     setOrientation(orientation: ChartLegendOrientation): this {
+        if (this._orientation === orientation) {
+            return this;
+        }
+
         this._orientation = orientation;
 
         this.applyOrientationLayout();
@@ -161,6 +165,10 @@ class ChartLegend extends Panel<ChartLegendOptions> {
      * @returns This legend, for method chaining.
      */
     setEntries(entries: ChartLegendEntry[]): this {
+        if (this.entriesEqual(entries)) {
+            return this;
+        }
+
         this._entries = entries.map((e) => ({ ...e }));
 
         this.removeAllComponents();
@@ -183,6 +191,34 @@ class ChartLegend extends Panel<ChartLegendOptions> {
      */
     getEntries(): ChartLegendEntry[] {
         return this._entries.map((e) => ({ ...e }));
+    }
+
+    /**
+     * Reports whether `candidate` renders identically to the current entries —
+     * same length and, per index, equal name, colour, and effective hidden state
+     * (`undefined` hidden renders the same as `false`). Lets a no-op re-apply
+     * skip the teardown/rebuild that would relay a preferred-size change to the
+     * owning chart and re-arm the layout flush.
+     *
+     * @param candidate - The entries about to be applied.
+     *
+     * @returns `true` when `candidate` is value-equal to the current entries.
+     */
+    private entriesEqual(candidate: ChartLegendEntry[]): boolean {
+        if (candidate.length !== this._entries.length) {
+            return false;
+        }
+
+        for (let i = 0; i < candidate.length; i++) {
+            const a = candidate[i];
+            const b = this._entries[i];
+
+            if (a.name !== b.name || a.color !== b.color || (a.hidden ?? false) !== (b.hidden ?? false)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
