@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
@@ -51,6 +52,12 @@ const ARROW_REPEAT_FLOOR_MS   = 40;
 // a derived fraction of viewport so the step size stays predictable as content
 // grows. Owners can override via `setArrowStep(px)`.
 const DEFAULT_ARROW_STEP_PX = 40;
+
+// Crossfade duration for the arrow's enabled↔disabled colour swap. Matches the
+// 120 ms ease-out cadence Checkbox / Toggle / RadioButton use for their state
+// crossfades so the scrollbar's arrows read as the same UI vocabulary; short
+// enough to feel instant while softening the hard colour flip at each edge.
+const ARROW_FADE_DURATION_MS = 120;
 
 /**
  * Callback type fired by {@link Scrollbar} when the user drags the thumb or
@@ -131,6 +138,15 @@ class ScrollArrowButton extends Component {
         this.setCursor("default");
         this.setBackgroundColor("var(--ts-ui-scrollbar-arrow-bg, transparent)");
         this.setForegroundColor("var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))");
+
+        // Fade the enabled↔disabled colour swap in setDisabledState instead of a hard
+        // switch. Declared at construction (mirrors Checkbox's crossfade) so the initial
+        // colour — the start arrow's dim state set by Scrollbar.buildArrows before first
+        // paint — appears instantly, and only later at-edge toggles fade. Honours
+        // prefers-reduced-motion.
+        if (!Animation.isReducedMotion()) {
+            this.setTransition("color " + ARROW_FADE_DURATION_MS + "ms ease-out");
+        }
 
         // Fill the full TRACK_WIDTH × TRACK_WIDTH button so `text-align: center`
         // + `line-height: 1` (Glyph char-mode defaults) centre the character

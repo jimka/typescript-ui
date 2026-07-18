@@ -60,3 +60,70 @@ describe('Scrollbar arrow mousedown drives a scroll step', () => {
         expect(positions).toEqual([40]);
     });
 });
+
+const ENABLED_COLOR  = 'var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))';
+const DISABLED_COLOR = 'var(--ts-ui-scrollbar-arrow-disabled-color, rgba(0, 0, 0, 0.18))';
+
+// Pins the enabled↔disabled colour crossfade added on top of the instant
+// `_disabled` gating covered above: both arrows declare the fade transition
+// at construction, the disabled colour still lands at each extreme, and a
+// no-op `setMetrics` call doesn't redundantly rewrite the colour.
+describe('Scrollbar arrow enabled/disabled colour fade', () => {
+    afterEach(() => DOM.reset());
+
+    it('applies the disabled colour to the start arrow at the top extreme', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical', { arrowsEnabled: true });
+        bar.setHeight(400);
+        bar.setMetrics(200, 1000, 0); // scrolled to top
+
+        const [, arrowStart, arrowEnd] = bar.getComponents();
+
+        expect(arrowStart.getForegroundColor()).toBe(DISABLED_COLOR);
+        expect(arrowEnd.getForegroundColor()).toBe(ENABLED_COLOR);
+    });
+
+    it('flips the disabled colour to the end arrow at the bottom extreme', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical', { arrowsEnabled: true });
+        bar.setHeight(400);
+        bar.setMetrics(200, 1000, 0);   // top: start disabled
+        bar.setMetrics(200, 1000, 800); // bottom (maxScroll = 600): end disabled
+
+        const [, arrowStart, arrowEnd] = bar.getComponents();
+
+        expect(arrowStart.getForegroundColor()).toBe(ENABLED_COLOR);
+        expect(arrowEnd.getForegroundColor()).toBe(DISABLED_COLOR);
+    });
+
+    it('declares the 120ms colour crossfade transition on both arrows', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical', { arrowsEnabled: true });
+        const [, arrowStart, arrowEnd] = bar.getComponents();
+
+        expect(arrowStart.getTransition()).toBe('color 120ms ease-out');
+        expect(arrowEnd.getTransition()).toBe('color 120ms ease-out');
+    });
+
+    it('is idempotent: a repeated no-op setMetrics leaves colours unchanged and emits no scroll', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical', { arrowsEnabled: true });
+        bar.setHeight(400);
+        bar.setMetrics(200, 1000, 0);
+
+        const [, arrowStart, arrowEnd] = bar.getComponents();
+
+        const positions: number[] = [];
+        bar.on('scroll', (p: number) => positions.push(p));
+
+        bar.setMetrics(200, 1000, 0); // same metrics again
+
+        expect(arrowStart.getForegroundColor()).toBe(DISABLED_COLOR);
+        expect(arrowEnd.getForegroundColor()).toBe(ENABLED_COLOR);
+        expect(positions).toEqual([]);
+    });
+});
