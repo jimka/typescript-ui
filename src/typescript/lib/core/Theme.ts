@@ -1268,6 +1268,11 @@ export class ThemeManager {
         };
     }
 
+    /** Number of currently-registered theme-change listeners; for tests only. @internal */
+    static _themeListenerCount(): number {
+        return ThemeManager.themeListeners.length;
+    }
+
     /**
      * Applies a theme by writing CSS variables onto `:root` and updating body/html styles.
      *

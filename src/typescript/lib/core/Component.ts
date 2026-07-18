@@ -290,6 +290,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // the GC finalizer can hold it without pinning the instance. Mirror of
     // _ownedHandles.
     private readonly _ownedSelectors : string[]             = [];
+    // Disposers for every ThemeManager.onThemeChange subscription this
+    // component holds, released eagerly in destructor. Safe with a plain
+    // initializer for the same reason as _ownedHandles above: a base-class
+    // field set before applyOptions runs, so no cascade-dispatched setter can
+    // clobber it.
+    private readonly _themeCleanups : Array<() => void>      = [];
     private _tag                  : string                  = "div";
     private _attributes           : Map<string, string>;
     private _boxSizing            : string | null;
@@ -337,7 +343,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _disabledAttribute    : boolean                 = false;
     private _border               : BorderOptions | null     = null;
     private _borderWidths         : PerimeterSize | null      = null;
-    private _borderThemeCleanup    : (() => void) | null       = null;
+    private _borderThemeSubscribed : boolean                   = false;
     private _autoCommitStyle      : boolean                 = true;
     private _layoutPaused         : boolean                 = false;
     private _aria                : Aria | null             = null;
@@ -625,13 +631,37 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Subscribes to theme changes and records the disposer so it is released
+     * on teardown. Prefer this over calling `ThemeManager.onThemeChange`
+     * directly — a discarded disposer leaks the component, because the
+     * listener closure pins `this` in the static listener array for the life
+     * of the process.
+     *
+     * @param listener - Called after CSS variables have been updated, so `getComputedStyle` returns new values.
+     */
+    protected subscribeTheme(listener: () => void): void {
+        this._themeCleanups.push(ThemeManager.onThemeChange(listener));
+    }
+
+    /**
      * Removes the component's DOM element when the component is destroyed.
      */
     protected destructor() {
-        if (this._borderThemeCleanup) {
-            this._borderThemeCleanup();
-            this._borderThemeCleanup = null;
+        // Discard the subtree eagerly — a destroyed container destroys its
+        // children too. `removeComponent` never calls destructor (a removed
+        // child may be re-parented by a move), so recursion here only reaches
+        // descendants still present in `_components` at close time.
+        for (const child of this._components) {
+            child.destructor();
         }
+        this._components = [];
+
+        // Release every recorded theme subscription (includes border
+        // invalidation, folded into this bag by setBorder).
+        for (const dispose of this._themeCleanups) {
+            dispose();
+        }
+        this._themeCleanups.length = 0;
 
         // Tear any active clip / content frame down first (mirroring
         // removeElement) so each frame's wrapper is removed from the DOM and its
@@ -1920,8 +1950,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._border       = typeof options === "string" ? { border: options } : options;
         this._borderWidths = null;
 
-        if (!this._borderThemeCleanup) {
-            this._borderThemeCleanup = ThemeManager.onThemeChange(() => this._borderWidths = null);
+        if (!this._borderThemeSubscribed) {
+            this._borderThemeSubscribed = true;
+            this.subscribeTheme(() => this._borderWidths = null);
         }
 
         this.setElementCSSRules(borderToStyle(this._border));

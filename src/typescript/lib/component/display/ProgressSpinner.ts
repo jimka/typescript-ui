@@ -3,7 +3,6 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -91,7 +90,7 @@ class ProgressSpinner extends Component {
         this.setPreferredSize(this._size, this._size);
 
         if (this._trackThemeFontSize) {
-            ThemeManager.onThemeChange(() => {
+            this.subscribeTheme(() => {
                 if (!this._trackThemeFontSize) {
                     return;
                 }

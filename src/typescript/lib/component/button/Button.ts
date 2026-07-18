@@ -14,7 +14,6 @@ import { StyleRule } from "~/core/StyleTarget.js";
 import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { Util } from "~/core/Util.js";
 
@@ -516,7 +515,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // Re-fire the auto-sized recompute on theme changes so any
         // font-size / glyph-metric shifts cascade into the button's preferred
         // size without explicit consumer prodding.
-        ThemeManager.onThemeChange(this._onThemeChange);
+        this.subscribeTheme(this._onThemeChange);
 
         // Wire the listener bag — but only when this IS a plain Button.
         // Subclasses wire their own bag from their constructor body after their

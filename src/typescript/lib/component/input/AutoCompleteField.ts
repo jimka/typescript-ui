@@ -3,7 +3,6 @@
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { TextField } from "~/component/input/TextField.js";
 import { AutoCompleteDropdown } from "~/component/input/AutoCompleteDropdown.js";
@@ -119,7 +118,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
         this.addComponent(this._textField);
 
         this.syncSizeFromTextField();
-        ThemeManager.onThemeChange(() => this.syncSizeFromTextField());
+        this.subscribeTheme(() => this.syncSizeFromTextField());
 
         this._dropdown = new AutoCompleteDropdown(
             value => this.onSuggestionSelected(value),

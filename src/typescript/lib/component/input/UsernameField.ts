@@ -3,7 +3,6 @@
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { Util } from "~/core/Util.js";
 import { Insets } from "~/primitive/Insets.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -43,7 +42,7 @@ class UsernameField extends TextInput<UsernameFieldOptions> {
         super(options, _defaultUsernameFieldOptions);
 
         this.updateHeight();
-        ThemeManager.onThemeChange(() => this.updateHeight());
+        this.subscribeTheme(() => this.updateHeight());
 
         this.setType("text");
 
