@@ -1005,6 +1005,19 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      */
     setLineHeight(value: number | string): this {
         if (typeof value === 'number') {
+            // Idempotent re-apply: a no-op numeric line-height must not re-arm
+            // the layout flush. CellRenderer.doLayout syncs the Text child's
+            // line-height to the cell height on every pass; without this guard
+            // that unconditional scheduleLayout below re-dirtied the renderer
+            // each frame, spinning a silent CPU-pinning relayout loop. Only skip
+            // when already in pure-numeric mode with the same value (the initial
+            // additive-rule state has a non-null _lineHeightCSSRule, so the first
+            // apply still runs). Mirrors the framework's "unchanged value → early
+            // return before scheduleLayout" idiom (Card.setVisibleComponentId).
+            if (this._options.lineHeight === value && this._lineHeightCSSVar === null && this._lineHeightCSSRule === null) {
+                return this;
+            }
+
             this._options.lineHeight = value as TOptions["lineHeight"];
             this._lineHeightCSSVar    = null;
             this._lineHeightCSSRule   = null;

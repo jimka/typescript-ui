@@ -16,6 +16,7 @@ import { DateRenderer } from '~/component/table/cell/renderer/Date';
 import { TimeRenderer } from '~/component/table/cell/renderer/Time';
 import { DateTimeRenderer } from '~/component/table/cell/renderer/DateTime';
 import { GlyphRenderer } from '~/component/table/cell/renderer/Glyph';
+import { expectNoSelfReschedule } from '../../../helpers/layoutStability';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -72,6 +73,23 @@ describe('StringRenderer', () => {
         const r = new StringRenderer();
 
         expect(r.getText()).toBe((r as any)._text);
+    });
+
+    it('a settled renderer does not re-schedule its own layout (relayout-loop guard)', () => {
+        // CellRenderer.doLayout syncs the Text child's line-height to the cell
+        // height every pass; before the setLineHeight idempotency guard that
+        // re-armed the layout flush forever (a silent CPU-pinning relayout loop
+        // on every table/StringRenderer-bearing panel). A settled renderer laid
+        // out once more with no state change must dirty nothing.
+        const r = new StringRenderer();
+        r.setValue('hello');
+        r.getElement(true);
+        r.setWidth(120);
+        r.setHeight(24);
+
+        expectNoSelfReschedule(r as unknown as {
+            flushLayout(): unknown; doLayout(): unknown; scheduleLayout(): unknown;
+        });
     });
 });
 
