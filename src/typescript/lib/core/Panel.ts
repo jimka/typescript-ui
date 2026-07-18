@@ -9,6 +9,7 @@ import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { scrollShadowBoxShadow, scrollShadowEdgeValue, scrollShadowRamp } from "~/core/ScrollShadow.js";
+import { Scrollbar } from "~/component/container/Scrollbar.js";
 
 /**
  * Per-edge shadow strength for a panel's scroll shadows, cached as a whole
@@ -40,6 +41,23 @@ type ScrollShadowEdges = { top: number; bottom: number; left: number; right: num
 export type AutoScrollMode = "none" | "auto" | "x" | "y" | "both";
 
 /**
+ * Selects how a scrolling {@link Panel} renders its scrollbar.
+ *
+ * - `"overlay"` — the default. Scrolling stays native (`overflow: auto`), the
+ *   native scrollbar is hidden visually, and two custom `Scrollbar` widgets
+ *   are overlaid at the trailing edges, synced to the element's native
+ *   `scrollTop` / `scrollLeft`. Every native scroll behaviour (keyboard, find,
+ *   focus-scroll, caret scroll, assistive tech) is preserved.
+ * - `"native"` — the OS scrollbar renders as usual; the panel reserves the
+ *   measured native gutter width instead of the fixed overlay track width.
+ *
+ * Ignored while `autoScroll === "none"` (a non-scrolling panel shows neither).
+ *
+ * @category Core
+ */
+export type ScrollbarStyle = "native" | "overlay";
+
+/**
  * Construction-time options for {@link Panel}.
  *
  * @remarks `insets` is inherited from {@link ComponentOptions} but defaults to
@@ -66,6 +84,14 @@ export interface PanelOptions extends ContainerOptions {
      * `autoScroll === "none"` (a non-scrolling panel never shows them).
      */
     scrollShadows?: boolean;
+
+    /**
+     * Selects the scrollbar rendering for an `autoScroll` panel. Defaults to
+     * `"overlay"` — a scrolling panel hides its native bar and paints synced
+     * overlay `Scrollbar` widgets instead. Pass `"native"` to opt out and keep
+     * the OS scrollbar. Ignored while `autoScroll === "none"`.
+     */
+    scrollbarStyle?: ScrollbarStyle;
 
     /**
      * When `true`, the panel's default content insets are zero instead of the
@@ -144,6 +170,30 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     // `declare`d + seeded in `applyOptions` for the same super-cascade reason.
     declare private _lastContentExtent: { width: number; height: number };
 
+    // Overlay-scrollbar state. `_scrollbarStyle` is written by
+    // `setScrollbarStyle` during the super-time options cascade, and
+    // `_overlayHost` / `_scrollbarV` / `_scrollbarH` / `_overlayScrollHandler`
+    // are read (for the teardown guard) by the setter's install/refresh path
+    // it triggers — so all five are `declare`d and seeded in `applyOptions`
+    // for the same class-field super-cascade reason as the scroll-shadow
+    // fields above.
+    declare private _scrollbarStyle:       ScrollbarStyle;
+    declare private _overlayHost:          Handle | null;            // raw sticky wrapper div
+    declare private _scrollbarV:           Scrollbar | null;
+    declare private _scrollbarH:           Scrollbar | null;
+    declare private _overlayScrollHandler: (() => void) | null;      // native "scroll" -> sync
+
+    // Runtime-only: never touched during the super cascade (the overlay host
+    // only exists post-render), so a plain initialiser is safe here — mirrors
+    // `_shadowOverlayStyle`.
+    private _overlayHostStyle: InlineStyle = new InlineStyle();
+
+    // Bound scroll-forwarders wired to each overlay Scrollbar's "scroll"
+    // event. Named class fields (per ARCHITECTURE.md *Listeners must
+    // reference a named function*) so they are stable, removable references.
+    private _onOverlayScrollV = (position: number): void => { this.setScrollTop(position); };
+    private _onOverlayScrollH = (position: number): void => { this.setScrollLeft(position); };
+
     /**
      * Creates a panel with 4-pixel insets on all sides by default.
      *
@@ -206,6 +256,21 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // Always dispatch (default on) so the backing field is seeded through
         // the setter, mirroring the `setAutoScroll` cascade above.
         this.setScrollShadows(options.scrollShadows ?? true);
+
+        // Seed the `declare`d overlay fields before `setScrollbarStyle`
+        // dispatches — its refresh path (via `refreshOverlayScrollbars` ->
+        // `removeOverlayScrollbars`) reads them, and the `declare` leaves
+        // them `undefined` until first written.
+        this._overlayHost          = null;
+        this._scrollbarV           = null;
+        this._scrollbarH           = null;
+        this._overlayScrollHandler = null;
+
+        // Always dispatch so the backing field is seeded through the setter
+        // (default "overlay"), mirroring the `setAutoScroll` / `setScrollShadows`
+        // cascades above. Must run after `setAutoScroll` — the install path
+        // this triggers reads `_autoScroll`.
+        this.setScrollbarStyle(options.scrollbarStyle ?? "overlay");
 
         return this;
     }
@@ -275,6 +340,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // it. No-op before the element exists (creation is deferred to `init`).
         this.refreshScrollShadows();
 
+        // Same re-evaluation for the overlay scrollbar: a transition into
+        // `"none"` tears it down, a transition into a scrolling mode installs
+        // it (when `scrollbarStyle === "overlay"`). No-op before the element
+        // exists.
+        this.refreshOverlayScrollbars();
+
         return this;
     }
 
@@ -339,6 +410,35 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     getScrollShadows(): boolean {
         return this._scrollShadows;
+    }
+
+    /**
+     * Selects the scrollbar rendering for this panel — the overlay default
+     * (native scroll, hidden native bar, two synced `Scrollbar` widgets) or
+     * `"native"` to keep the OS scrollbar. Installs or tears down the overlay
+     * immediately when the element already exists; a no-op before render
+     * beyond caching the value (the first install happens in `init`).
+     *
+     * @param style - The {@link ScrollbarStyle} to apply.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setScrollbarStyle(style: ScrollbarStyle): this {
+        this._scrollbarStyle = style;
+
+        this.refreshOverlayScrollbars();
+
+        return this;
+    }
+
+    /**
+     * Returns the panel's current scrollbar style.
+     *
+     * @returns The cached {@link ScrollbarStyle}; `"overlay"` unless
+     * explicitly set to `"native"`.
+     */
+    getScrollbarStyle(): ScrollbarStyle {
+        return this._scrollbarStyle;
     }
 
     /**
@@ -502,6 +602,11 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             this.updateScrollShadows(resolved);
         }
 
+        if (resolved && this._scrollbarStyle === "overlay" && this._autoScroll !== "none") {
+            this.installOverlayScrollbars(resolved);
+            this.layoutOverlayScrollbars(resolved);
+        }
+
         return this;
     }
 
@@ -513,6 +618,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     protected destructor(): void {
         this.removeScrollShadows();
+        this.removeOverlayScrollbars();
 
         super.destructor();
     }
@@ -558,6 +664,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     private measureScrollbarGutter(): void {
         if (this._autoScroll === "none") {
+            return;
+        }
+
+        if (this._scrollbarStyle === "overlay") {
+            this.layoutOverlayScrollbars();
+
             return;
         }
 
@@ -811,6 +923,244 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
         this._shadowEdges[edge] = percent;
         this._shadowOverlayStyle.set(property, scrollShadowEdgeValue(percent));
+    }
+
+    /**
+     * Brings the overlay scrollbar into the state implied by the current
+     * `scrollbarStyle` / `autoScroll` settings: torn down when native or
+     * non-scrolling, otherwise installed and laid out. No-op before the
+     * element exists — `init` performs the first install once rendered.
+     */
+    private refreshOverlayScrollbars(): void {
+        if (this._scrollbarStyle !== "overlay" || this._autoScroll === "none") {
+            this.removeOverlayScrollbars();
+
+            return;
+        }
+
+        const element = this.getElement();
+        if (!element) {
+            return;
+        }
+
+        this.installOverlayScrollbars(element);
+        this.layoutOverlayScrollbars(element);
+    }
+
+    /**
+     * Creates the sticky zero-size host and the two `Scrollbar` widgets, and
+     * hides the native bar. Idempotent: each piece is guarded by its own
+     * `null` check, so repeated calls neither stack a duplicate host/bar/
+     * listener nor re-hide an already-hidden native bar.
+     *
+     * @param element - The rendered panel element to append the host into.
+     */
+    private installOverlayScrollbars(element: Handle): void {
+        if (!this._overlayHost) {
+            // A zero-size `position: sticky` host, inserted as the element's
+            // first child so its natural flow origin sits at the scroll-port
+            // origin — the compositor then keeps it pinned to the viewport as
+            // content scrolls, mirroring the scroll-shadow overlay's sticky
+            // pin. Zero width/height keeps it out of `scrollHeight`/
+            // `scrollWidth` (it adds no flow footprint); `overflow: visible`
+            // lets the absolutely-positioned bars inside paint outside it.
+            const host = DOM.sink.createElement("div");
+
+            this._overlayHostStyle.attach(host);
+            this._overlayHostStyle.setMany({
+                position: "sticky",
+                top:      "0px",
+                left:     "0px",
+                width:    "0px",
+                height:   "0px",
+                overflow: "visible",
+                zIndex:   "2",   // above the shadow overlay's z-index: 1
+            });
+
+            DOM.sink.insertBefore(element, host, DOM.source.getFirstChild(element));
+            this.trackHandle(host);
+            this._overlayHost = host;
+        }
+
+        if (!this._scrollbarV) {
+            this._scrollbarV = new Scrollbar("vertical");
+            DOM.sink.appendChild(this._overlayHost, this._scrollbarV.getElement(true)!);
+            this._scrollbarV.on("scroll", this._onOverlayScrollV);
+        }
+
+        if (!this._scrollbarH) {
+            this._scrollbarH = new Scrollbar("horizontal");
+            DOM.sink.appendChild(this._overlayHost, this._scrollbarH.getElement(true)!);
+            this._scrollbarH.on("scroll", this._onOverlayScrollH);
+        }
+
+        if (!this._overlayScrollHandler) {
+            const handler = (): void => {
+                this.syncOverlayScrollbars();
+            };
+
+            this._overlayScrollHandler = handler;
+            Event.addListener(this, "scroll", handler);
+        }
+
+        this.setNativeScrollbarHidden(true);
+    }
+
+    /**
+     * Tears the overlay scrollbar down: unwires the native scroll listener,
+     * detaches and discards both bars, removes the sticky host, un-hides the
+     * native bar, and clears any reserved gutter. Each step is guarded so
+     * this is safe to call before the overlay was ever created (e.g. during
+     * the construction cascade).
+     */
+    private removeOverlayScrollbars(): void {
+        if (this._overlayScrollHandler) {
+            Event.removeListener(this, "scroll", this._overlayScrollHandler);
+            this._overlayScrollHandler = null;
+        }
+
+        if (this._scrollbarV) {
+            this._scrollbarV.off("scroll", this._onOverlayScrollV);
+            this._scrollbarV.removeElement();
+            this._scrollbarV = null;
+        }
+
+        if (this._scrollbarH) {
+            this._scrollbarH.off("scroll", this._onOverlayScrollH);
+            this._scrollbarH.removeElement();
+            this._scrollbarH = null;
+        }
+
+        if (this._overlayHost) {
+            DOM.sink.removeElement(this._overlayHost);
+            this.untrackHandle(this._overlayHost);
+            DOM.sink.release(this._overlayHost);
+            this._overlayHost = null;
+
+            // The buffer was bound to the now-removed host; a fresh one is
+            // needed for any future re-install (mirrors `_shadowOverlayStyle`
+            // in `removeScrollShadows`).
+            this._overlayHostStyle = new InlineStyle();
+        }
+
+        this.setNativeScrollbarHidden(false);
+
+        // Unconditional (rather than gated on the previous value, as
+        // `setAutoScroll`'s native-path gutter-clear is): `setLayoutManager`
+        // can re-enter this teardown from inside `Component.applyOptions`'s
+        // own `layoutManager` option handling, before Panel's `applyOptions`
+        // body has seeded `_scrollbarGutter` at all. The assignment itself is
+        // a cheap plain-object write, so skipping the read-before-write
+        // avoids that ordering hazard for free.
+        this.setScrollbarGutter(0, 0);
+    }
+
+    /**
+     * Hides or restores the native scrollbar through the framework's deferred
+     * style seams — a `scrollbar-width: none` write on the component's own
+     * `#id` rule (Firefox / Chromium >= 121) plus a `#id::-webkit-scrollbar {
+     * display: none }` state rule (WebKit / older Blink).
+     *
+     * @param hidden - `true` to hide the native bar, `false` to restore it.
+     */
+    private setNativeScrollbarHidden(hidden: boolean): void {
+        this.setElementCSSRule("scrollbarWidth", hidden ? "none" : null);
+        this.createStyleRule("::-webkit-scrollbar").set("display", hidden ? "none" : null);
+    }
+
+    /**
+     * Reads the live scroll metrics and derives the per-axis overlay geometry
+     * from them: which bar is visible, and the effective (post-cross-axis-bar)
+     * viewport each bar's primary axis should be sized to. Single source of
+     * truth for {@link Panel.layoutOverlayScrollbars} and
+     * {@link Panel.syncOverlayScrollbars}, so the two never disagree about
+     * visibility or effective size.
+     *
+     * @param el - The panel element to read scroll metrics from.
+     *
+     * @returns The derived overlay metrics.
+     */
+    private overlayMetrics(el: Handle): {
+        scrollTop: number; scrollLeft: number;
+        clientW: number; clientH: number;
+        contentW: number; contentH: number;
+        vVisible: boolean; hVisible: boolean;
+        effW: number; effH: number;
+        trackW: number;
+    } {
+        const m      = DOM.source.getScrollMetrics(el);
+        const axes   = this.scrollableAxes();
+        const trackW = this._scrollbarV!.getTrackWidth();
+
+        const vVisible = axes.y && m.scrollHeight > m.clientHeight;
+        const hVisible = axes.x && m.scrollWidth  > m.clientWidth;
+
+        return {
+            scrollTop: m.scrollTop, scrollLeft: m.scrollLeft,
+            clientW:   m.clientWidth, clientH: m.clientHeight,
+            contentW:  m.scrollWidth, contentH: m.scrollHeight,
+            vVisible, hVisible, trackW,
+            effW: m.clientWidth  - (vVisible ? trackW : 0),
+            effH: m.clientHeight - (hVisible ? trackW : 0),
+        };
+    }
+
+    /**
+     * Positions and sizes both overlay bars at the viewport's trailing edges
+     * against the current scroll metrics, pushes their metrics, and reserves
+     * the scrollbar gutter accordingly — rescheduling a layout pass when the
+     * gutter changed. Called from `init` (first install) and from
+     * `measureScrollbarGutter`'s overlay branch (every `doLayout` pass).
+     *
+     * @param element - Optional. The panel element; falls back to the
+     *   rendered element. Passed explicitly from `init`, where `getElement`
+     *   is not yet populated.
+     */
+    private layoutOverlayScrollbars(element?: Handle): void {
+        const el = element ?? this.getElement();
+        if (!el || !this._scrollbarV || !this._scrollbarH) {
+            return;
+        }
+
+        const { scrollTop, scrollLeft, clientW, clientH, contentW, contentH, vVisible, hVisible, effW, effH, trackW } =
+            this.overlayMetrics(el);
+
+        this._scrollbarV.setX(clientW - trackW);
+        this._scrollbarV.setY(0);
+        this._scrollbarV.setHeight(effH);
+        this._scrollbarV.setMetrics(effH, contentH, scrollTop);
+
+        this._scrollbarH.setX(0);
+        this._scrollbarH.setY(clientH - trackW);
+        this._scrollbarH.setWidth(effW);
+        this._scrollbarH.setMetrics(effW, contentW, scrollLeft);
+
+        const newRight  = vVisible ? trackW : 0;
+        const newBottom = hVisible ? trackW : 0;
+
+        if (newRight !== this._scrollbarGutter.right || newBottom !== this._scrollbarGutter.bottom) {
+            this.setScrollbarGutter(newRight, newBottom);
+            this.scheduleLayout();
+        }
+    }
+
+    /**
+     * Re-pushes metrics (thumb size/position only) to both overlay bars
+     * against the live scroll offset. Called from the native `"scroll"`
+     * handler — geometry (bar position/size, reserved gutter) changes only on
+     * layout, so this never repositions or resizes the bars, and never
+     * schedules a layout.
+     */
+    private syncOverlayScrollbars(): void {
+        const el = this.getElement();
+        if (!el || !this._scrollbarV || !this._scrollbarH) {
+            return;
+        }
+
+        const { scrollTop, scrollLeft, contentW, contentH, effW, effH } = this.overlayMetrics(el);
+
+        this._scrollbarV.setMetrics(effH, contentH, scrollTop);
+        this._scrollbarH.setMetrics(effW, contentW, scrollLeft);
     }
 }
 

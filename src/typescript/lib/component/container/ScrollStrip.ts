@@ -142,6 +142,11 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
         this._arrowBackground ??= null;
         this._arrowStep ??= SCROLL_ARROW_STEP;
 
+        // ScrollStrip owns its own arrow paging + programmatic clip scroll, so
+        // it never wants a synced overlay bar; force native to opt out of the
+        // Panel default.
+        this.setScrollbarStyle("native");
+
         // The band element itself does not scroll (it hosts the fixed arrows); the
         // inner clip carries the overflow:hidden scroll-port. Both are transparent
         // so the owner's surface shows through.

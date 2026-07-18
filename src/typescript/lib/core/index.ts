@@ -19,7 +19,7 @@ export type { Comparator, Style, ComponentOptions, ComponentStyleRuleSpec, Const
 export { Container } from '~/core/Container.js';
 export type { ContainerOptions } from '~/core/Container.js';
 export { Panel } from '~/core/Panel.js';
-export type { AutoScrollMode, PanelOptions } from '~/core/Panel.js';
+export type { AutoScrollMode, PanelOptions, ScrollbarStyle } from '~/core/Panel.js';
 export { Form } from '~/core/Form.js';
 export type { FormOptions } from '~/core/Form.js';
 export { Aria } from '~/core/Aria.js';
