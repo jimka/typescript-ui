@@ -365,3 +365,30 @@ describe('BarChart mark set', () => {
         expect(createdTags(sink, 'rect')).toBe(2);
     });
 });
+
+// A settled chart laid out again with no state change must not dirty itself.
+// `doLayout` -> `reserveLegend` rebuilds the legend rows every pass; each
+// `addComponent` fires the legend's preferred-size relay, which `wireChild`
+// wired to `chart.scheduleLayout()` — re-arming the rAF flush forever and
+// pinning the CPU at ~one full relayout per frame with no visible change.
+describe('steady-state layout stability', () => {
+    it('does not re-schedule its own layout on a no-op doLayout (relayout-loop guard)', () => {
+        installTestDOM(CONFIG);
+
+        const chart = new _LineChart({
+            series:     [{ name: 'A', data: [{ x: 1, y: 2 }, { x: 3, y: 4 }] }],
+            showLegend: true,
+        });
+
+        chart.getElement(true);
+        chart.setWidth(400);
+        chart.setHeight(300);
+        chart.flushLayout();
+
+        const scheduleSpy = vi.spyOn(chart, 'scheduleLayout');
+
+        chart.doLayout();
+
+        expect(scheduleSpy).not.toHaveBeenCalled();
+    });
+});
