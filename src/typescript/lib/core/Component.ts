@@ -832,6 +832,20 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns the element that carries this component's native scroll — the
+     * target every scroll read/write, the child host, and the content frame
+     * resolve through. Defaults to the component's own element; a subclass whose
+     * scroll happens on an inner element (see [`Panel`](/api/core/classes/Panel)'s overlay-scrollbar
+     * mode) overrides this so all scroll plumbing follows the inner scroller
+     * without each call site needing to know about it.
+     *
+     * @returns The scroll-owning element handle, or undefined before render.
+     */
+    protected getScrollElement(): Handle | undefined {
+        return this.getElement();
+    }
+
+    /**
      * Removes the component's DOM element from the document.
      */
     removeElement(): this {
@@ -999,7 +1013,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setContentFrame(width: number, height: number): this {
-        const element = this.getElement();
+        const element = this.getScrollElement();
         if (!element) {
             return this;
         }
@@ -1052,7 +1066,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        const element = this.getElement();
+        const element = this.getScrollElement();
 
         if (element) {
             const scrollLeft = DOM.source.getScrollLeft(element);
@@ -1101,7 +1115,41 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *   undefined when the element is not yet in the DOM.
      */
     private getChildHost(): Handle | undefined {
-        return this._contentFrame ?? this.getElement();
+        return this._contentFrame ?? this.getScrollElement();
+    }
+
+    /**
+     * Moves this component's rendered content from one host element to another,
+     * preserving the source's native scroll offset across the move: the active
+     * content frame as a unit when one exists (see {@link setContentFrame}), else
+     * each child by its outermost {@link getAttachNode} node (so a clip-framed
+     * child stays wrapped). Used by a subclass that relocates the scroll host —
+     * see [`Panel`](/api/core/classes/Panel)'s overlay inner scroller, which shifts existing children
+     * onto the inner element on install and back onto the panel element on
+     * teardown — mirroring the re-parent dance {@link setContentFrame} performs.
+     *
+     * @param from - The element the content currently lives in (its scroll
+     *   offset is captured).
+     * @param to - The element to move the content into (the captured offset is
+     *   restored here).
+     */
+    protected reparentContent(from: Handle, to: Handle): void {
+        const scrollLeft = DOM.source.getScrollLeft(from);
+        const scrollTop  = DOM.source.getScrollTop(from);
+
+        if (this._contentFrame) {
+            DOM.sink.appendChild(to, this._contentFrame);
+        } else {
+            for (const component of this._components) {
+                const node = component.getAttachNode();
+
+                if (node) {
+                    DOM.sink.appendChild(to, node);
+                }
+            }
+        }
+
+        DOM.sink.apply(to, { scrollLeft, scrollTop });
     }
 
     /**
@@ -3144,7 +3192,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     setScrollLeft(value: number): this {
         this._wheelScroller?.reset();
 
-        const element = this.getElement();
+        const element = this.getScrollElement();
 
         if (element) {
             DOM.sink.apply(element, { scrollLeft: value });
@@ -3167,7 +3215,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     setScrollTop(value: number): this {
         this._wheelScroller?.reset();
 
-        const element = this.getElement();
+        const element = this.getScrollElement();
 
         if (element) {
             DOM.sink.apply(element, { scrollTop: value });
@@ -3193,7 +3241,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     syncScrollOffsets(): this {
         this._wheelScroller?.reset();
 
-        const element = this.getElement();
+        const element = this.getScrollElement();
 
         if (element) {
             this._scrollLeft = DOM.source.getScrollLeft(element);
@@ -3210,7 +3258,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The last-page `scrollLeft` in pixels, or 0 when nothing overflows.
      */
     getMaxScrollLeft(): number {
-        const element = this.getElement();
+        const element = this.getScrollElement();
         if (!element) {
             return 0;
         }
@@ -3227,7 +3275,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The last-page `scrollTop` in pixels, or 0 when nothing overflows.
      */
     getMaxScrollTop(): number {
-        const element = this.getElement();
+        const element = this.getScrollElement();
         if (!element) {
             return 0;
         }
@@ -3501,7 +3549,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private attachWheelScrolling(): void {
         this._wheelScroller = new SmoothScroller({
             read:  (axis) => {
-                const element = this.getElement();
+                const element = this.getScrollElement();
 
                 return element ? (axis === "x" ? DOM.source.getScrollLeft(element) : DOM.source.getScrollTop(element)) : 0;
             },
@@ -3531,7 +3579,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param value - The new offset in pixels.
      */
     private writeNativeScroll(axis: ScrollAxis, value: number): void {
-        const element = this.getElement();
+        const element = this.getScrollElement();
         if (!element) {
             return;
         }

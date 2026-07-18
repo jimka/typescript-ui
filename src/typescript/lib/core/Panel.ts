@@ -4,7 +4,7 @@ import { Container, ContainerOptions } from "~/core/Container.js";
 import { Insets } from "~/primitive/Insets";
 import { LayoutManager } from "~/layout/LayoutManager.js";
 import { Event } from "~/core/Event.js";
-import { InlineStyle } from "~/core/StyleTarget.js";
+import { InlineStyle, StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
@@ -114,6 +114,46 @@ const _defaultPanelOptions: Partial<PanelOptions> = {
 };
 
 /**
+ * Class applied to the raw inner scroll element of an overlay-mode panel. The
+ * inner element has no `#id` (it is not a `Component`), so its native bar is
+ * hidden through a shared class rule rather than the per-`#id`
+ * `setElementCSSRule` path the panel element uses — the framework's module-level
+ * shared class-rule pattern (as the focus-ring and `Component` class rules use).
+ */
+const OVERLAY_SCROLLER_CLASS = "PanelOverlayScroller";
+
+/** True once the shared inner-scroller class rules have been registered. */
+let overlayScrollerClassRuleReady = false;
+
+/**
+ * Registers, once, the shared class rules that hide the native scrollbar on an
+ * overlay panel's raw inner scroll element: `scrollbar-width: none` (Firefox /
+ * Chromium >= 121) plus a `::-webkit-scrollbar { display: none }` selector rule
+ * (WebKit / older Blink) — the two-write pair the panel element's
+ * `setNativeScrollbarHidden` uses, expressed as a shared class instead of a
+ * per-`#id` rule.
+ */
+function ensureOverlayScrollerClassRule(): void {
+    if (overlayScrollerClassRuleReady) {
+        return;
+    }
+
+    new StyleRule({
+        scope:  "class",
+        name:   OVERLAY_SCROLLER_CLASS,
+        styles: { scrollbarWidth: "none" },
+    });
+
+    new StyleRule({
+        scope:  "selector",
+        name:   `.${OVERLAY_SCROLLER_CLASS}::-webkit-scrollbar`,
+        styles: { display: "none" },
+    });
+
+    overlayScrollerClassRuleReady = true;
+}
+
+/**
  * A [`Container`](/api/core/classes/Container) subclass that applies a default 4-pixel inset on all sides.
  *
  * Use `Panel` as the base class for grouped UI containers where children
@@ -172,21 +212,21 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
     // Overlay-scrollbar state. `_scrollbarStyle` is written by
     // `setScrollbarStyle` during the super-time options cascade, and
-    // `_overlayHost` / `_scrollbarV` / `_scrollbarH` / `_overlayScrollHandler`
+    // `_overlayScrollElement` / `_scrollbarV` / `_scrollbarH` / `_overlayScrollHandler`
     // are read (for the teardown guard) by the setter's install/refresh path
     // it triggers — so all five are `declare`d and seeded in `applyOptions`
     // for the same class-field super-cascade reason as the scroll-shadow
     // fields above.
     declare private _scrollbarStyle:       ScrollbarStyle;
-    declare private _overlayHost:          Handle | null;            // raw sticky wrapper div
+    declare private _overlayScrollElement: Handle | null;            // raw inner scroll div (bars are its siblings)
     declare private _scrollbarV:           Scrollbar | null;
     declare private _scrollbarH:           Scrollbar | null;
     declare private _overlayScrollHandler: (() => void) | null;      // native "scroll" -> sync
 
-    // Runtime-only: never touched during the super cascade (the overlay host
-    // only exists post-render), so a plain initialiser is safe here — mirrors
-    // `_shadowOverlayStyle`.
-    private _overlayHostStyle: InlineStyle = new InlineStyle();
+    // Runtime-only: never touched during the super cascade (the inner scroll
+    // element only exists post-render), so a plain initialiser is safe here —
+    // mirrors `_shadowOverlayStyle`.
+    private _overlayScrollStyle: InlineStyle = new InlineStyle();
 
     // Bound scroll-forwarders wired to each overlay Scrollbar's "scroll"
     // event. Named class fields (per ARCHITECTURE.md *Listeners must
@@ -261,7 +301,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // dispatches — its refresh path (via `refreshOverlayScrollbars` ->
         // `removeOverlayScrollbars`) reads them, and the `declare` leaves
         // them `undefined` until first written.
-        this._overlayHost          = null;
+        this._overlayScrollElement = null;
         this._scrollbarV           = null;
         this._scrollbarH           = null;
         this._overlayScrollHandler = null;
@@ -335,16 +375,18 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
         this.getLayoutManager()?.setOverflowing(axes.x, axes.y);
 
-        // Re-evaluate the shadows for the new mode: a transition into `"none"`
-        // tears the overlay down, a transition into a scrolling mode installs
-        // it. No-op before the element exists (creation is deferred to `init`).
-        this.refreshScrollShadows();
-
-        // Same re-evaluation for the overlay scrollbar: a transition into
-        // `"none"` tears it down, a transition into a scrolling mode installs
-        // it (when `scrollbarStyle === "overlay"`). No-op before the element
-        // exists.
+        // Re-evaluate the overlay scrollbar for the new mode FIRST: a transition
+        // into `"none"` tears it (and the inner scroll element) down, a
+        // transition into a scrolling mode installs it (when
+        // `scrollbarStyle === "overlay"`). Must precede `refreshScrollShadows`
+        // so `getScrollElement()` already resolves to the inner element when the
+        // shadow refresh reads its scroll offsets. No-op before the element
+        // exists (creation is deferred to `init`).
         this.refreshOverlayScrollbars();
+
+        // Then re-evaluate the shadows for the new mode against the (now
+        // correct) scroll element.
+        this.refreshScrollShadows();
 
         return this;
     }
@@ -428,6 +470,11 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
         this.refreshOverlayScrollbars();
 
+        // Re-home the shadow metric source: an overlay<->native toggle changes
+        // which element `getScrollElement()` resolves to (inner element vs panel
+        // element), so the shadows must re-read from the new scroller.
+        this.refreshScrollShadows();
+
         return this;
     }
 
@@ -439,6 +486,19 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     getScrollbarStyle(): ScrollbarStyle {
         return this._scrollbarStyle;
+    }
+
+    /**
+     * Routes every scroll read/write, the child host, and the content frame to
+     * the inner scroll element while overlay mode is installed, and to the panel
+     * element otherwise (native mode, `autoScroll: "none"`, pre-render). This is
+     * the single seam that lets the overlay restructure move the actual scroller
+     * inward without each scroll-plumbing call site knowing about it.
+     *
+     * @returns The inner scroll element in overlay mode, else the panel element.
+     */
+    protected getScrollElement(): Handle | undefined {
+        return this._overlayScrollElement ?? this.getElement();
     }
 
     /**
@@ -597,14 +657,18 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // `_element` only after `render` returns), so hand the resolved
         // element straight to the installer instead of re-reading it.
         const resolved = element ?? this.getElement();
-        if (resolved && this._scrollShadows && this._autoScroll !== "none") {
-            this.installScrollShadows(resolved);
-            this.updateScrollShadows(resolved);
-        }
 
+        // Install the overlay scrollbars (which create the inner scroll element)
+        // BEFORE the scroll shadows, so `getScrollElement()` already resolves to
+        // the inner element when `updateScrollShadows` first reads its offsets.
         if (resolved && this._scrollbarStyle === "overlay" && this._autoScroll !== "none") {
             this.installOverlayScrollbars(resolved);
             this.layoutOverlayScrollbars(resolved);
+        }
+
+        if (resolved && this._scrollShadows && this._autoScroll !== "none") {
+            this.installScrollShadows(resolved);
+            this.updateScrollShadows(resolved);
         }
 
         return this;
@@ -755,7 +819,11 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             };
 
             this._shadowScrollHandler = handler;
-            Event.addListener(this, "scroll", handler);
+            // Subtree, not exact-target: in overlay mode the scroll fires on the
+            // id-less inner element, which only reaches the panel's id-keyed
+            // listener bag by climbing the subtree. Native mode's scroll fires on
+            // the panel element itself, which the subtree walk also matches.
+            Event.addSubtreeListener(this, "scroll", handler);
         }
     }
 
@@ -807,7 +875,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     private removeScrollShadows(): void {
         if (this._shadowScrollHandler) {
-            Event.removeListener(this, "scroll", this._shadowScrollHandler);
+            Event.removeSubtreeListener(this, "scroll", this._shadowScrollHandler);
             this._shadowScrollHandler = null;
         }
 
@@ -889,7 +957,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             return;
         }
 
-        const { scrollTop, scrollLeft, scrollWidth, scrollHeight, clientWidth, clientHeight } = DOM.source.getScrollMetrics(el);
+        // Read the scroll offsets and extents from the element that actually
+        // scrolls — the inner scroller in overlay mode (the panel element's own
+        // offsets are always 0 there), the panel element otherwise. The overlay
+        // is still sized against, and pinned to, the panel element (`el`).
+        const { scrollTop, scrollLeft, scrollWidth, scrollHeight, clientWidth, clientHeight } =
+            DOM.source.getScrollMetrics(this.getScrollElement() ?? el);
 
         this.resizeScrollShadowOverlay(el);
 
@@ -967,51 +1040,75 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * @param element - The rendered panel element to append the host into.
      */
     private installOverlayScrollbars(element: Handle): void {
-        if (!this._overlayHost) {
-            // A zero-size `position: sticky` host, inserted as the element's
-            // first child so its natural flow origin sits at the scroll-port
-            // origin — the compositor then keeps it pinned to the viewport as
-            // content scrolls, mirroring the scroll-shadow overlay's sticky
-            // pin. Zero width/height keeps it out of `scrollHeight`/
-            // `scrollWidth` (it adds no flow footprint); `overflow: visible`
-            // lets the absolutely-positioned bars inside paint outside it.
-            const host = DOM.sink.createElement("div");
+        if (!this._overlayScrollElement) {
+            // The native scroll happens on this inner element, physically inset
+            // by the reserved track (see `layoutOverlayScrollbars`) so content
+            // clips at the inner viewport edge and can never scroll under a bar.
+            // The bars are its SIBLINGS on the panel element (below), outside
+            // this element's overflow clip — the two-element structure
+            // `VirtualScroller` uses. The panel element keeps its own
+            // `overflow: auto` (inert: the inner element is absolute / out of
+            // flow and always fits, so the panel element never scrolls).
+            ensureOverlayScrollerClassRule();
 
-            this._overlayHostStyle.attach(host);
-            this._overlayHostStyle.setMany({
-                position: "sticky",
-                top:      "0px",
-                left:     "0px",
-                width:    "0px",
-                height:   "0px",
-                overflow: "visible",
-                zIndex:   "2",   // above the shadow overlay's z-index: 1
+            const inner = DOM.sink.createElement("div");
+            const axes  = this.scrollableAxes();
+
+            // `width/height: 100%` fills the panel element's padding box (its
+            // containing block, since every Component is positioned) so the
+            // first overflow read sees the full viewport; `layoutOverlayScrollbars`
+            // then overrides with the explicit post-gutter px size each pass.
+            this._overlayScrollStyle.attach(inner);
+            this._overlayScrollStyle.setMany({
+                position:  "absolute",
+                left:      "0px",
+                top:       "0px",
+                width:     "100%",
+                height:    "100%",
+                overflowX: axes.x ? "auto" : "hidden",
+                overflowY: axes.y ? "auto" : "hidden",
             });
 
-            DOM.sink.insertBefore(element, host, DOM.source.getFirstChild(element));
-            this.trackHandle(host);
-            this._overlayHost = host;
+            // Hide the inner element's own native bar via the shared class rule
+            // (it has no `#id`, so the panel element's per-`#id` path can't reach it).
+            DOM.sink.apply(inner, { addClass: [OVERLAY_SCROLLER_CLASS] });
+            DOM.sink.appendChild(element, inner);
+
+            // Shift the existing children (or the active content frame) onto the
+            // inner scroller, preserving the scroll offset across the host swap.
+            this.reparentContent(element, inner);
+
+            this.trackHandle(inner);
+            this._overlayScrollElement = inner;
         }
 
         if (!this._scrollbarV) {
             this._scrollbarV = new Scrollbar("vertical");
-            DOM.sink.appendChild(this._overlayHost, this._scrollbarV.getElement(true)!);
+            this._scrollbarV.setZIndex(2);   // above the shadow overlay's z-index: 1
+            DOM.sink.appendChild(element, this._scrollbarV.getElement(true)!);
             this._scrollbarV.on("scroll", this._onOverlayScrollV);
         }
 
         if (!this._scrollbarH) {
             this._scrollbarH = new Scrollbar("horizontal");
-            DOM.sink.appendChild(this._overlayHost, this._scrollbarH.getElement(true)!);
+            this._scrollbarH.setZIndex(2);
+            DOM.sink.appendChild(element, this._scrollbarH.getElement(true)!);
             this._scrollbarH.on("scroll", this._onOverlayScrollH);
         }
 
         if (!this._overlayScrollHandler) {
+            // Subtree, not exact-target: the inner scroll element is a raw,
+            // id-less div, so its native "scroll" only reaches the panel's
+            // id-keyed listener bag by climbing the subtree to the panel element
+            // (the same mechanism the wheel listener uses). The handler reads
+            // `getScrollElement()`, not the event target, so a nested
+            // descendant's scroll only triggers a harmless re-read.
             const handler = (): void => {
                 this.syncOverlayScrollbars();
             };
 
             this._overlayScrollHandler = handler;
-            Event.addListener(this, "scroll", handler);
+            Event.addSubtreeListener(this, "scroll", handler);
         }
 
         this.setNativeScrollbarHidden(true);
@@ -1026,7 +1123,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     private removeOverlayScrollbars(): void {
         if (this._overlayScrollHandler) {
-            Event.removeListener(this, "scroll", this._overlayScrollHandler);
+            Event.removeSubtreeListener(this, "scroll", this._overlayScrollHandler);
             this._overlayScrollHandler = null;
         }
 
@@ -1042,16 +1139,25 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             this._scrollbarH = null;
         }
 
-        if (this._overlayHost) {
-            DOM.sink.removeElement(this._overlayHost);
-            this.untrackHandle(this._overlayHost);
-            DOM.sink.release(this._overlayHost);
-            this._overlayHost = null;
+        if (this._overlayScrollElement) {
+            // Re-parent the children (or content frame) back onto the panel
+            // element — which resumes scrolling in native mode — before the
+            // inner element is destroyed, preserving the scroll offset.
+            const element = this.getElement();
 
-            // The buffer was bound to the now-removed host; a fresh one is
-            // needed for any future re-install (mirrors `_shadowOverlayStyle`
+            if (element) {
+                this.reparentContent(this._overlayScrollElement, element);
+            }
+
+            DOM.sink.removeElement(this._overlayScrollElement);
+            this.untrackHandle(this._overlayScrollElement);
+            DOM.sink.release(this._overlayScrollElement);
+            this._overlayScrollElement = null;
+
+            // The buffer was bound to the now-removed inner element; a fresh one
+            // is needed for any future re-install (mirrors `_shadowOverlayStyle`
             // in `removeScrollShadows`).
-            this._overlayHostStyle = new InlineStyle();
+            this._overlayScrollStyle = new InlineStyle();
         }
 
         this.setNativeScrollbarHidden(false);
@@ -1080,79 +1186,70 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
-     * Reads the live scroll metrics and derives the per-axis overlay geometry
-     * from them: which bar is visible, and the effective (post-cross-axis-bar)
-     * viewport each bar's primary axis should be sized to. Single source of
-     * truth for {@link Panel.layoutOverlayScrollbars} and
-     * {@link Panel.syncOverlayScrollbars}, so the two never disagree about
-     * visibility or effective size.
+     * Sizes the inner scroll element to the available viewport minus the track
+     * on each axis whose perpendicular bar is visible, positions both bars in
+     * the reserved band at the trailing edges, pushes their metrics, and
+     * reserves the matching gutter — rescheduling a layout pass when it changed.
+     * Called from `init` (first install) and from `measureScrollbarGutter`'s
+     * overlay branch (every `doLayout` pass).
      *
-     * @param el - The panel element to read scroll metrics from.
+     * The dual read is the crux: the **available viewport** comes from the panel
+     * element (which never scrolls, so its client box is the full viewport),
+     * while content extent, offsets, and the current inner client box come from
+     * the **inner scroll element**. Physically insetting the inner element is
+     * what makes overflowing content clip before the bar band instead of
+     * scrolling under it.
      *
-     * @returns The derived overlay metrics.
-     */
-    private overlayMetrics(el: Handle): {
-        scrollTop: number; scrollLeft: number;
-        clientW: number; clientH: number;
-        contentW: number; contentH: number;
-        vVisible: boolean; hVisible: boolean;
-        effW: number; effH: number;
-        trackW: number;
-    } {
-        const m      = DOM.source.getScrollMetrics(el);
-        const axes   = this.scrollableAxes();
-        const trackW = this._scrollbarV!.getTrackWidth();
-
-        const vVisible = axes.y && m.scrollHeight > m.clientHeight;
-        const hVisible = axes.x && m.scrollWidth  > m.clientWidth;
-
-        return {
-            scrollTop: m.scrollTop, scrollLeft: m.scrollLeft,
-            clientW:   m.clientWidth, clientH: m.clientHeight,
-            contentW:  m.scrollWidth, contentH: m.scrollHeight,
-            vVisible, hVisible, trackW,
-            effW: m.clientWidth  - (vVisible ? trackW : 0),
-            effH: m.clientHeight - (hVisible ? trackW : 0),
-        };
-    }
-
-    /**
-     * Positions and sizes both overlay bars at the viewport's trailing edges
-     * against the current scroll metrics, pushes their metrics, and reserves
-     * the scrollbar gutter accordingly — rescheduling a layout pass when the
-     * gutter changed. Called from `init` (first install) and from
-     * `measureScrollbarGutter`'s overlay branch (every `doLayout` pass).
-     *
-     * @param element - Optional. The panel element; falls back to the
-     *   rendered element. Passed explicitly from `init`, where `getElement`
-     *   is not yet populated.
+     * @param element - Optional. The panel element; falls back to the rendered
+     *   element. Passed explicitly from `init`, where `getElement` is not yet
+     *   populated.
      */
     private layoutOverlayScrollbars(element?: Handle): void {
-        const el = element ?? this.getElement();
-        if (!el || !this._scrollbarV || !this._scrollbarH) {
+        const panelEl = element ?? this.getElement();
+        const innerEl = this._overlayScrollElement;
+        if (!panelEl || !innerEl || !this._scrollbarV || !this._scrollbarH) {
             return;
         }
 
-        const { scrollTop, scrollLeft, clientW, clientH, contentW, contentH, vVisible, hVisible, effW, effH, trackW } =
-            this.overlayMetrics(el);
+        const trackW = this._scrollbarV.getTrackWidth();
 
-        // setWidth/setHeight take the cross-axis-reduced track length (effW/effH)
-        // so a bar stops short of the corner where both bars meet. setMetrics,
-        // though, takes the FULL client viewport (clientW/clientH) for its
-        // overflow test: a bar is visible iff content exceeds the client box, the
-        // same criterion as vVisible/hVisible. Feeding effW/effH there instead
-        // would show a spurious cross bar whenever content merely fills the client
-        // box while the other axis's bar is present (content == clientW > effW),
-        // painting a stray 12px bar over the trailing scroll shadow.
-        this._scrollbarV.setX(clientW - trackW);
+        // Available viewport: the panel element's client box (it never scrolls
+        // in overlay mode, so this is the full viewport the inner element and
+        // the bar band share).
+        const avail  = DOM.source.getScrollMetrics(panelEl);
+        const availW = avail.clientWidth;
+        const availH = avail.clientHeight;
+
+        // Content extent, offsets, and the inner element's CURRENT client box
+        // (last pass's inset size) from the inner scroller.
+        const m    = DOM.source.getScrollMetrics(innerEl);
+        const axes = this.scrollableAxes();
+
+        // A bar shows when content exceeds the inner scroller's own viewport.
+        const vVisible = axes.y && m.scrollHeight > m.clientHeight;
+        const hVisible = axes.x && m.scrollWidth  > m.clientWidth;
+
+        const innerW = availW - (vVisible ? trackW : 0);
+        const innerH = availH - (hVisible ? trackW : 0);
+
+        // Physically inset the inner scroller so overflowing content clips at
+        // the inner viewport edge and can never scroll under a bar.
+        this._overlayScrollStyle.setMany({ width: innerW + "px", height: innerH + "px" });
+
+        // Bars occupy the reserved band at the trailing edges, sized to the
+        // inner extent so each stops short of the shared corner. setMetrics
+        // takes the inner element's OWN client box as the viewport (the same
+        // criterion as vVisible/hVisible), so a bar's visibility and the
+        // reserved gutter never disagree.
+        this._scrollbarV.setX(innerW);
         this._scrollbarV.setY(0);
-        this._scrollbarV.setHeight(effH);
-        this._scrollbarV.setMetrics(clientH, contentH, scrollTop);
+        this._scrollbarV.setHeight(innerH);
+        this._scrollbarV.setMetrics(m.clientHeight, m.scrollHeight, m.scrollTop);
 
         this._scrollbarH.setX(0);
-        this._scrollbarH.setY(clientH - trackW);
-        this._scrollbarH.setWidth(effW);
-        this._scrollbarH.setMetrics(clientW, contentW, scrollLeft);
+        this._scrollbarH.setY(innerH);
+        this._scrollbarH.setWidth(innerW);
+        this._scrollbarH.setMetrics(m.clientWidth, m.scrollWidth, m.scrollLeft);
 
         const newRight  = vVisible ? trackW : 0;
         const newBottom = hVisible ? trackW : 0;
@@ -1164,23 +1261,22 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
-     * Re-pushes metrics (thumb size/position only) to both overlay bars
-     * against the live scroll offset. Called from the native `"scroll"`
-     * handler — geometry (bar position/size, reserved gutter) changes only on
-     * layout, so this never repositions or resizes the bars, and never
-     * schedules a layout.
+     * Re-pushes metrics (thumb size/position only) to both overlay bars against
+     * the inner scroller's live scroll offset. Called from the native `"scroll"`
+     * handler — geometry (bar position/size, reserved gutter, inner element
+     * size) changes only on layout, so this never repositions or resizes
+     * anything and never schedules a layout.
      */
     private syncOverlayScrollbars(): void {
-        const el = this.getElement();
-        if (!el || !this._scrollbarV || !this._scrollbarH) {
+        const innerEl = this._overlayScrollElement;
+        if (!innerEl || !this._scrollbarV || !this._scrollbarH) {
             return;
         }
 
-        const { scrollTop, scrollLeft, clientW, clientH, contentW, contentH } = this.overlayMetrics(el);
+        const m = DOM.source.getScrollMetrics(innerEl);
 
-        // Full client viewport for the overflow test, matching layoutOverlayScrollbars.
-        this._scrollbarV.setMetrics(clientH, contentH, scrollTop);
-        this._scrollbarH.setMetrics(clientW, contentW, scrollLeft);
+        this._scrollbarV.setMetrics(m.clientHeight, m.scrollHeight, m.scrollTop);
+        this._scrollbarH.setMetrics(m.clientWidth,  m.scrollWidth,  m.scrollLeft);
     }
 }
 
