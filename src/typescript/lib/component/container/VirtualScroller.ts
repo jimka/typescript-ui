@@ -7,6 +7,10 @@ import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { SmoothScroller, consumeWheel } from "~/core/SmoothScroller.js";
 import { Scrollbar } from "~/component/container/Scrollbar.js";
+import { scrollShadowBoxShadow, scrollShadowEdgeValue, scrollShadowRamp } from "~/core/ScrollShadow.js";
+
+/** Per-edge scroll-shadow strength cache, quantised to a whole percent (0–100). */
+type ScrollShadowEdges = { top: number; bottom: number; left: number; right: number };
 
 // VirtualScroller is a plain helper, not a Component: it owns and lays out raw
 // `clipBox` / `rowsContainer` `HTMLElement`s it creates directly, so the
@@ -53,6 +57,8 @@ export class VirtualScroller {
     private _contentWidth   : number = 0;
     private _contentHeight  : number = 0;
     private _smooth         : SmoothScroller;
+    private _shadowOverlay  : Handle;
+    private _shadowEdges     : ScrollShadowEdges = { top: 0, bottom: 0, left: 0, right: 0 };
 
     /**
      * Constructs a VirtualScroller and attaches it to the owner element.
@@ -86,6 +92,27 @@ export class VirtualScroller {
         DOM.sink.apply(container, { style: { position: "absolute", top: "0", left: "0", width: "100%", transform: "translate3d(0, 0, 0)", willChange: "transform" } });
         DOM.sink.appendChild(clipBox, container);
         this._rowsContainer = container;
+
+        // Position-aware edge shadows, matching the native-scroll `Panel` cue.
+        // The overlay is a sibling of `rowsContainer` inside the `clipBox`, so it
+        // is clipped to the effective viewport and — being outside the scrolled
+        // `rowsContainer` — is not shifted by the scroll transform; sizing it to
+        // 100% tracks the clip box that `layoutScrollbars` resizes to the
+        // effective viewport. It paints above the rows (appended last) and is
+        // inert to the pointer. Each edge is a `box-shadow` layer gated by a
+        // custom property; `updateShadows` flips the property per scroll/resize.
+        const shadowOverlay = DOM.sink.createElement("div");
+        DOM.sink.apply(shadowOverlay, { style: {
+            position:      "absolute",
+            top:           "0",
+            left:          "0",
+            width:         "100%",
+            height:        "100%",
+            pointerEvents: "none",
+            boxShadow:     scrollShadowBoxShadow(),
+        } });
+        DOM.sink.appendChild(clipBox, shadowOverlay);
+        this._shadowOverlay = shadowOverlay;
 
         // Drives wheel-initiated scrolling through an eased RAF loop. The seam
         // delegates to the existing setScrollX/Y (which clamp, write the
@@ -136,7 +163,7 @@ export class VirtualScroller {
      * @returns The scroller's owned element handles.
      */
     ownedHandles(): readonly Handle[] {
-        return [this._clipBox, this._rowsContainer];
+        return [this._clipBox, this._rowsContainer, this._shadowOverlay];
     }
 
     /**
@@ -385,6 +412,11 @@ export class VirtualScroller {
         // full owner size, matching the previous `width/height: 100%`
         // behaviour.
         DOM.sink.apply(this._clipBox, { style: { width: effW + "px", height: effH + "px" } });
+
+        // Content size / viewport may have changed without the scroll position
+        // moving (so `updateTransform` did not run above) — refresh the shadow
+        // edges against the new extremes.
+        this.updateShadows();
     }
 
     /**
@@ -393,6 +425,49 @@ export class VirtualScroller {
      */
     private updateTransform(): void {
         DOM.sink.apply(this._rowsContainer, { style: { transform: `translate3d(${-this._scrollX}px, ${-this._scrollY}px, 0)` } });
+        this.updateShadows();
+    }
+
+    /**
+     * Recomputes each scroll-shadow edge's strength from the current scroll
+     * position, content size, and effective viewport, then lights only the
+     * edges that have hidden content past them. Cheap on a no-op scroll: an
+     * edge whose quantised strength is unchanged skips the DOM write (see
+     * {@link setShadowEdge}). Called on every scroll ({@link updateTransform})
+     * and whenever the content/viewport metrics change ({@link layoutScrollbars}).
+     */
+    private updateShadows(): void {
+        const { effW, effH } = this.computeScrollbarVisibility(this._contentWidth, this._contentHeight);
+
+        const maxX = Math.max(0, this._contentWidth  - effW);
+        const maxY = Math.max(0, this._contentHeight - effH);
+
+        this.setShadowEdge("top",    "--ts-ss-top",    scrollShadowRamp(this._scrollY));
+        this.setShadowEdge("bottom", "--ts-ss-bottom", scrollShadowRamp(maxY - this._scrollY));
+        this.setShadowEdge("left",   "--ts-ss-left",   scrollShadowRamp(this._scrollX));
+        this.setShadowEdge("right",  "--ts-ss-right",  scrollShadowRamp(maxX - this._scrollX));
+    }
+
+    /**
+     * Sets a single edge's shadow strength by scaling the theme shadow colour
+     * toward transparent. Strength is quantised to a whole percent so an
+     * in-ramp scroll only repaints when the visible strength actually changes;
+     * at zero the property is unset so the `box-shadow` layer falls back to
+     * `transparent`.
+     *
+     * @param edge - The edge whose cached strength this updates.
+     * @param property - The overlay custom property backing that edge's shadow.
+     * @param strength - The target strength in the range 0–1.
+     */
+    private setShadowEdge(edge: keyof ScrollShadowEdges, property: string, strength: number): void {
+        const percent = Math.round(strength * 100);   // quantise: 0–1 → 0–100%
+
+        if (this._shadowEdges[edge] === percent) {
+            return;
+        }
+
+        this._shadowEdges[edge] = percent;
+        DOM.sink.apply(this._shadowOverlay, { style: { [property]: scrollShadowEdgeValue(percent) } });
     }
 
     /**

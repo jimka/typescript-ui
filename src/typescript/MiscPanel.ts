@@ -785,6 +785,69 @@ class MiscPanel extends Panel {
         });
         leftColumn.addComponent(buttonTree);
 
+        // Large-tree demo — exercises the virtual-scroll path at scale: hundreds
+        // of rows (vertical overflow → scroll shadows) whose label widths vary
+        // widely, with the very widest labels buried deep in the list so the
+        // horizontal content width is only discovered after scrolling (→ the H
+        // scrollbar must hold that width, not jitter with the visible rows).
+        const buttonBigTree = new Button("Show large tree (variable-width rows)");
+        buttonBigTree.on("action", () => {
+            const win = new Window("Tree — large dataset");
+            win.setX(240);
+            win.setY(120);
+            win.setWidth(360);
+            win.setHeight(480);
+
+            win.setContentFactory(() => {
+                const SECTION_COUNT = 40;
+                const LONG_SUFFIX   = " — a long descriptive label that overflows the tree horizontally";
+
+                // Builds `count` leaves whose labels vary in length: most are
+                // short, every seventh gets a long suffix (so the visible window
+                // holds a mix of widths as it scrolls), and every leaf in the
+                // deep `extraWide` section gets a double-length label — the
+                // widest rows in the whole tree, far enough down that they are
+                // off-screen at the top.
+                const makeLeaves = (section: number, count: number): TreeNode[] => {
+                    const leaves: TreeNode[] = [];
+                    for (let i = 0; i < count; i++) {
+                        let label = `Item ${section}.${i}`;
+                        if (section === 31) {
+                            label += LONG_SUFFIX + LONG_SUFFIX;
+                        } else if (i % 7 === 3) {
+                            label += LONG_SUFFIX;
+                        }
+                        leaves.push({ label });
+                    }
+
+                    return leaves;
+                };
+
+                const treeData: TreeNode[] = [];
+                for (let s = 0; s < SECTION_COUNT; s++) {
+                    const childCount = 6 + (s % 6) * 3;   // 6..21 leaves, varies per section
+                    const children   = makeLeaves(s, childCount);
+
+                    // Give every fourth section a nested sub-folder so indentation
+                    // (and thus row width) also varies with depth.
+                    if (s % 4 === 0) {
+                        children.splice(2, 0, { label: `Subsection ${s}.x`, children: makeLeaves(s * 100, 5) });
+                    }
+
+                    treeData.push({ label: `Section ${s}`, children });
+                }
+
+                const tree = new Tree();
+                tree.setNodes(treeData);
+                tree.expandAll();
+
+                return tree;
+            });
+
+            win.show();
+        });
+        leftColumn.addComponent(buttonBigTree);
+
         // Drawer demo — opens an edge-anchored sliding panel. Each drawer is a
         // bare content host, so we stack a heading and a Close button into it
         // via a VBox. The four modal buttons exercise all four geometries; the
