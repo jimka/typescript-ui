@@ -18,6 +18,11 @@
 // exercisable offline; both fixes were additionally verified live in-browser
 // against the Keyboard Shortcuts dialog.
 //
+// Every panel here is pinned to `scrollbarStyle: 'native'`: these tests
+// document native-scroll semantics (wheel-chaining + shadow-edge lighting)
+// specifically, so they keep exercising the exact native environment they
+// were written for rather than picking up the overlay default.
+//
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { _Panel } from '~/core/Panel';
 import { DOM } from '~/core/DOM';
@@ -83,7 +88,7 @@ describe('wheel claiming requires scrollable extent', () => {
         // fits, so this panel must not consume the event.
         stubMetrics({ scrollHeight: 300, clientHeight: 300 });
 
-        const panel = new _Panel({ autoScroll: 'y' });
+        const panel = new _Panel({ autoScroll: 'y', scrollbarStyle: 'native' });
         const e     = wheelEvent(120);
 
         panel.getElement(true);
@@ -96,7 +101,7 @@ describe('wheel claiming requires scrollable extent', () => {
     it('claims the wheel when the axis has extent to move through', () => {
         stubMetrics({ scrollHeight: 900, clientHeight: 300 });
 
-        const panel = new _Panel({ autoScroll: 'y' });
+        const panel = new _Panel({ autoScroll: 'y', scrollbarStyle: 'native' });
         const e     = wheelEvent(120);
 
         panel.getElement(true);
@@ -110,8 +115,8 @@ describe('wheel claiming requires scrollable extent', () => {
         // The Dialog shape: an inner content panel laid out at its full height
         // (nothing to scroll) inside an outer panel holding the whole extent.
         // Both are dispatched, innermost first; only the outer may claim.
-        const inner = new _Panel({ autoScroll: 'y' });
-        const outer = new _Panel({ autoScroll: 'y' });
+        const inner = new _Panel({ autoScroll: 'y', scrollbarStyle: 'native' });
+        const outer = new _Panel({ autoScroll: 'y', scrollbarStyle: 'native' });
         const e     = wheelEvent(120);
 
         inner.getElement(true);
@@ -137,7 +142,7 @@ describe('scroll shadows light only on a scrollable axis', () => {
         // through scrollWidth, but overflow-x is `hidden` — nothing can reveal it.
         stubMetrics({ scrollWidth: 420, clientWidth: 405, scrollHeight: 300, clientHeight: 300 });
 
-        const panel = new _Panel({ autoScroll: 'y' });
+        const panel = new _Panel({ autoScroll: 'y', scrollbarStyle: 'native' });
 
         panel.getElement(true);
         updateShadows(panel);
@@ -149,7 +154,7 @@ describe('scroll shadows light only on a scrollable axis', () => {
     it('still paints the bottom fade for the scrollable y axis', () => {
         stubMetrics({ scrollHeight: 900, clientHeight: 300 });
 
-        const panel = new _Panel({ autoScroll: 'y' });
+        const panel = new _Panel({ autoScroll: 'y', scrollbarStyle: 'native' });
 
         panel.getElement(true);
         updateShadows(panel);
@@ -160,7 +165,7 @@ describe('scroll shadows light only on a scrollable axis', () => {
     it('paints the right fade once the x axis is scrollable too', () => {
         stubMetrics({ scrollWidth: 420, clientWidth: 405, scrollHeight: 300, clientHeight: 300 });
 
-        const panel = new _Panel({ autoScroll: 'auto' });
+        const panel = new _Panel({ autoScroll: 'auto', scrollbarStyle: 'native' });
 
         panel.getElement(true);
         updateShadows(panel);

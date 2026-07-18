@@ -1697,6 +1697,41 @@ class MiscPanel extends Panel {
         });
         autoScrollRow.addComponent(noShadowButton);
 
+        // The autoScroll windows above default to `scrollbarStyle: "overlay"`
+        // (synced Scrollbar widgets over native scroll, native bar hidden);
+        // this button opens the same overflowing panel with the explicit
+        // `"native"` opt-out so the OS scrollbar can be compared side by side.
+        const nativeScrollbarButton = new Button("scrollbarStyle: native (compare)");
+        nativeScrollbarButton.on("action", () => {
+            const win = new Window("scrollbarStyle: \"native\"");
+            win.setX(320);
+            win.setY(280);
+            win.setWidth(360);
+            win.setHeight(240);
+
+            win.setContentFactory(() => {
+                const oversized = new Component({
+                    preferredSize  : { width: 800, height: 600 },
+                    minSize        : { width: 800, height: 600 },
+                    maxSize        : { width: 800, height: 600 },
+                    backgroundColor: "lightsteelblue",
+                });
+
+                const scrollPanel: Panel = new Panel({
+                    layoutManager: new Absolute(),
+                    autoScroll:    "both",
+                    scrollbarStyle: "native",
+                });
+
+                scrollPanel.addComponent(oversized);
+
+                return scrollPanel;
+            });
+
+            win.show();
+        });
+        autoScrollRow.addComponent(nativeScrollbarButton);
+
         leftColumn.addComponent(autoScrollRow);
 
         // ── Anchor layout demo ──
