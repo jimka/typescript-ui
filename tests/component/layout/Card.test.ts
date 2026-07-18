@@ -127,3 +127,34 @@ describe('Card visibility switching', () => {
         expect(scheduled).toHaveBeenCalled();
     });
 });
+
+describe('Card switch pauses/resumes subtree animations (case 11)', () => {
+    afterEach(() => DOM.reset());
+
+    it('pauses the outgoing child and resumes the incoming one on switch', () => {
+        installTestDOM(CONFIG);
+
+        const card = new Card();
+        const host = hostCard(200, 150, card);
+        const a = new Component({ preferredSize: { width: 10, height: 10 } });
+        const b = new Component({ preferredSize: { width: 10, height: 10 } });
+
+        a.setAnimation('spin 1s linear infinite');
+        b.setAnimation('spin 1s linear infinite');
+
+        host.addComponent(a);
+        host.addComponent(b);
+
+        card.setVisibleComponentId(a.getId());
+        Component.flushEffectiveVisibility();
+
+        expect(a.getAnimationPlayState()).toBeNull();
+        expect(b.getAnimationPlayState()).toBe('paused');
+
+        card.setVisibleComponentId(b.getId());
+        Component.flushEffectiveVisibility();
+
+        expect(a.getAnimationPlayState()).toBe('paused');
+        expect(b.getAnimationPlayState()).toBeNull();
+    });
+});

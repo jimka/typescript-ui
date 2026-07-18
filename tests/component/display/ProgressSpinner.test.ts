@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ProgressSpinner } from '~/component/display/ProgressSpinner';
+import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -49,5 +50,27 @@ describe('ProgressSpinner construction', () => {
         const spinner = new ProgressSpinner(20, { spinnerSize: 40 });
 
         expect(spinner.getSpinnerSize()).toBe(40);
+    });
+});
+
+describe('ProgressSpinner effective-visibility pause (case 2)', () => {
+    it('pauses the rotating arc animation when hidden, resumes it when shown', () => {
+        const spinner = new ProgressSpinner(20);
+        spinner.getElement(true);
+
+        // The arc carries the keyframe animation (see ProgressSpinner's
+        // constructor); the effective-visibility walk reaches it as a
+        // descendant of the spinner, not the spinner's own root element.
+        const arc = (spinner as unknown as { _arc: Component })._arc;
+
+        spinner.setVisible(false);
+        Component.flushEffectiveVisibility();
+
+        expect(arc.getAnimationPlayState()).toBe('paused');
+
+        spinner.setVisible(true);
+        Component.flushEffectiveVisibility();
+
+        expect(arc.getAnimationPlayState()).toBeNull();
     });
 });

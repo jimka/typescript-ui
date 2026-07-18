@@ -110,3 +110,46 @@ describe('Tab "activate" event', () => {
         expect(spy).not.toHaveBeenCalled();
     });
 });
+
+describe('Tab switch pauses/resumes panel animations (case 12)', () => {
+    afterEach(() => DOM.reset());
+
+    it('pauses the outgoing panel and resumes the incoming one on switch, and pauses an initially-inactive eager panel after the first layout', () => {
+        installTestDOM(CONFIG);
+
+        const tab = new Tab();
+        const host = new Container({ layoutManager: tab });
+
+        host.getElement(true);
+        host.setWidth(200);
+        host.setHeight(150);
+        host.clearInsets();
+
+        const a = new Component({});
+        const b = new Component({});
+
+        a.setAnimation('spin 1s linear infinite');
+        b.setAnimation('spin 1s linear infinite');
+
+        host.addComponent(a);
+        host.addComponent(b);
+
+        tab.createTab(a);
+        tab.createTab(b);
+
+        host.doLayout();
+        Component.flushEffectiveVisibility();
+
+        // b is an eager panel that was never the active tab; the first layout
+        // hides it via setVisible(false), which the walk must catch.
+        expect(a.getAnimationPlayState()).toBeNull();
+        expect(b.getAnimationPlayState()).toBe('paused');
+
+        tab.setActiveTabIndex(1);
+        host.doLayout();
+        Component.flushEffectiveVisibility();
+
+        expect(a.getAnimationPlayState()).toBe('paused');
+        expect(b.getAnimationPlayState()).toBeNull();
+    });
+});

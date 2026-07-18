@@ -198,6 +198,35 @@ function flushPendingLayouts() {
     }
 }
 
+// Module-level state for the rAF-coalesced effective-visibility reconcile.
+// `setVisible` / `setDisplayed` add their component to this queue instead of
+// walking the subtree synchronously; the queue flushes once per animation
+// frame, recomputing each queued root's *net* effective visibility once —
+// mirroring `pendingLayouts` above. `flushEffectiveVisibility()` provides a
+// synchronous escape hatch (the offline `RecordingDOMSink.requestAnimationFrame`
+// drops its callback, so tests must call it to observe a coalesced flush).
+let pendingVisibility: Set<Component> = new Set();
+let visibilityRafHandle: number | null = null;
+
+/** Schedules an effective-visibility flush frame if one is not already pending. */
+function ensureVisibilityFlushScheduled(): void {
+    if (visibilityRafHandle === null) {
+        visibilityRafHandle = DOM.sink.requestAnimationFrame(flushPendingVisibility);
+    }
+}
+
+function flushPendingVisibility(): void {
+    visibilityRafHandle = null;
+
+    const dirty = Array.from(pendingVisibility);
+    pendingVisibility.clear();
+
+    for (const c of dirty) {
+        if (!c.getElement()) continue;                 // skip disposed / never-rendered
+        c.propagateEffectiveVisibility(c.isEffectivelyVisible());
+    }
+}
+
 /**
  * Serialises one size term for a debug `data-*` size attribute: `"inf"` when the
  * extent is unbounded, else its rounded pixel string.
@@ -334,6 +363,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _wheelScroller        : SmoothScroller | null     = null;
     private _contain              : string | null           = null;
     private _animation            : string | null           = null;
+    // Edge-trigger cache for the effective-visibility walk; null = not yet
+    // evaluated. Plain initializer: only propagateEffectiveVisibility
+    // (post-render) writes it, never a cascade setter.
+    private _lastEffectiveVisible : boolean | null           = null;
+    // Cache for setAnimationPlayState. Plain initializer for the same reason.
+    private _animationPlayState   : string | null            = null;
     private _outline              : string | null           = null;
     private _appearance           : string | null           = null;
     private _borderImage          : string | null           = null;
@@ -1528,13 +1563,27 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `Type.isBoolean` runtime-checks arbitrary input (untyped callers can
         // still pass a non-boolean); the cast bridges its `object` parameter to
         // the narrowed `boolean | null` static type without altering behaviour.
+        // Normalize to the tri-state target first (same branch logic as
+        // before) so the idempotency guard below can compare against it.
+        let normalized: boolean | undefined;
         if (Type.isBoolean(value as unknown as object)) {
-            this._options.visible = value as boolean;
+            normalized = value as boolean;
         } else if (!value) {
-            this._options.visible = undefined;
+            normalized = undefined;
         } else {
             throw new Error("Argument is not a boolean.");
         }
+
+        // Idempotent short-circuit, mirroring setDisplayed: skip the redundant
+        // CSS write + reconcile enqueue when the normalized value is unchanged
+        // and the element exists. A detached component (no element) falls
+        // through to record the value at the `if (!element) return this;`
+        // guard below, so the intended state is never lost.
+        if (this._options.visible === normalized && this.getElement()) {
+            return this;
+        }
+
+        this._options.visible = normalized;
 
         let element = this.getElement();
         if (!element) {
@@ -1550,6 +1599,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this.setElementCSSRule("visibility", ruleValue);
+        this.scheduleEffectiveVisibilityReconcile();
 
         return this;
     }
@@ -1614,6 +1664,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this.setElementStyle("display", v ? "block" : "none");
+        this.scheduleEffectiveVisibilityReconcile();
 
         return this;
     }
@@ -1644,7 +1695,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *   (`isVisible() === false`) or undisplayed (`!isDisplayed()`); `true`
      *   otherwise.
      */
-    protected isEffectivelyVisible(): boolean {
+    isEffectivelyVisible(): boolean {
         let node: Component | null = this;
         while (node) {
             if (node.isVisible() === false || !node.isDisplayed()) {
@@ -1653,6 +1704,60 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             node = node.getParentComponent();
         }
         return true;
+    }
+
+    /**
+     * Override hook fired once per node whose effective visibility changed,
+     * edge-triggered by {@link propagateEffectiveVisibility}. The base
+     * implementation pauses this node's own CSS animation (via the
+     * `animation-play-state` longhand on its `#uuid` rule) when it has one, and
+     * resumes it when shown again — subclasses that need to react to the same
+     * signal (e.g. a canvas render loop) override this and call `super`.
+     *
+     * @param effective - The component's new effective-visibility state.
+     */
+    protected onEffectiveVisibilityChange(effective: boolean): void {
+        if (this.getAnimation() !== null) {
+            this.setAnimationPlayState(effective ? null : "paused");
+        }
+    }
+
+    /**
+     * Recursively fans an effective-visibility change down the subtree,
+     * short-circuiting at any node whose effective value is unchanged (an
+     * independent descendant change is separately queued through its own
+     * `setVisible`/`setDisplayed`, so an unchanged node never needs to recurse).
+     * Called by the module-level coalesced flush on each queued root; public and
+     * `@internal` because the flush needs to invoke it on arbitrary instances —
+     * consumers react to {@link onEffectiveVisibilityChange} instead of calling
+     * this directly.
+     *
+     * @param effective - This node's newly computed effective-visibility state.
+     *
+     * @internal
+     */
+    public propagateEffectiveVisibility(effective: boolean): void {
+        if (effective === this._lastEffectiveVisible) {
+            return;
+        }
+        this._lastEffectiveVisible = effective;
+        this.onEffectiveVisibilityChange(effective);
+
+        for (const child of this.getComponents()) {
+            const childEffective =
+                effective && child.isVisible() !== false && child.isDisplayed();
+            child.propagateEffectiveVisibility(childEffective);
+        }
+    }
+
+    /**
+     * Queues this component for the next coalesced effective-visibility flush,
+     * mirroring `scheduleLayout`. Called by `setVisible` / `setDisplayed` after
+     * a real state change.
+     */
+    private scheduleEffectiveVisibilityReconcile(): void {
+        pendingVisibility.add(this);
+        ensureVisibilityFlushScheduled();
     }
 
     /**
@@ -3721,6 +3826,32 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Writes the CSS `animation-play-state` longhand on the component's own
+     * `#uuid` rule — framework-managed (not on the options bag), set by
+     * {@link onEffectiveVisibilityChange} to pause/resume this node's own CSS
+     * animation without touching layout, `display`, or CSS transitions.
+     *
+     * @param value - `"paused"` to freeze the animation, `null` to resume it.
+     * @returns This component, for method chaining.
+     */
+    protected setAnimationPlayState(value: string | null): this {
+        this._animationPlayState = value;
+        this.setElementCSSRule("animationPlayState", value);
+
+        return this;
+    }
+
+    /**
+     * Returns the current `animation-play-state` written when this
+     * component's effective visibility changes, or `null` when not paused.
+     *
+     * @returns The cached play-state value, or null.
+     */
+    getAnimationPlayState(): string | null {
+        return this._animationPlayState;
+    }
+
+    /**
      * Returns the current CSS `transition` shorthand, or `null` if none has
      * been set.
      *
@@ -4980,6 +5111,21 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this.doLayout();
 
         return this;
+    }
+
+    /**
+     * Synchronously drains the coalesced effective-visibility queue, cancelling
+     * any pending animation frame first. Mirrors `flushLayout()`'s escape hatch:
+     * the offline `RecordingDOMSink.requestAnimationFrame` drops its callback,
+     * so tests (and any caller needing an immediate reconcile) call this instead
+     * of waiting on a real frame.
+     */
+    static flushEffectiveVisibility(): void {
+        if (visibilityRafHandle !== null) {
+            DOM.sink.cancelAnimationFrame(visibilityRafHandle);
+            visibilityRafHandle = null;
+        }
+        flushPendingVisibility();
     }
 
     /**

@@ -307,7 +307,6 @@ class Canvas extends Component<CanvasOptions> {
     doLayout(): this {
         super.doLayout();
         this.syncBackingStore();
-        this.reconcileAnimation();
 
         return this;
     }
@@ -366,13 +365,14 @@ class Canvas extends Component<CanvasOptions> {
     }
 
     /**
-     * One animation-frame step: self-pauses when it should no longer animate
-     * — the ONLY signal a hidden-tab surface receives, because `Tab` does not
-     * lay out an inactive panel — otherwise redraws and reschedules. Arrow
-     * field so the rAF callback keeps a stable bound ref.
+     * One animation-frame step: self-pauses when animation is no longer
+     * requested, otherwise redraws and reschedules. Effective-visibility
+     * pausing is handled by {@link onEffectiveVisibilityChange} reconciling the
+     * loop on the change event, not by this step re-checking visibility every
+     * frame. Arrow field so the rAF callback keeps a stable bound ref.
      */
     private readonly animationStep = (): void => {
-        if (!this.shouldAnimate()) {
+        if (!this._animationRequested) {
             this._rafId = null;
             return;
         }
@@ -380,6 +380,18 @@ class Canvas extends Component<CanvasOptions> {
         this.redraw();
         this._rafId = DOM.sink.requestAnimationFrame(this.animationStep);
     };
+
+    /**
+     * Reacts to an effective-visibility change by reconciling the animation
+     * loop — the replacement for the old per-frame `isEffectivelyVisible()`
+     * poll inside `doLayout`.
+     *
+     * @param effective - The component's new effective-visibility state.
+     */
+    protected onEffectiveVisibilityChange(effective: boolean): void {
+        super.onEffectiveVisibilityChange(effective);
+        this.reconcileAnimation();
+    }
 
     /**
      * Arms a one-shot `matchMedia` watch for the current device-pixel ratio. A
