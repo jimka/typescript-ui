@@ -679,3 +679,68 @@ describe('Tree virtual-scroll — characterization', () => {
         expect(p._scroller.getScrollY()).toBe(0);
     });
 });
+
+// ---------------------------------------------------------------------------
+// Horizontal content width must be stable while scrolling. The width is derived
+// from only the *visible* rows, so without a monotonic max it grew and shrank as
+// different-width rows scrolled through the window — jittering the horizontal
+// scrollbar and snapping scrollX back. The widest row is discovered once and
+// then held; a reflatten (setNodes / expand / collapse) re-derives it.
+// ---------------------------------------------------------------------------
+describe('Tree — horizontal content width is scroll-stable', () => {
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => DOM.reset());
+
+    // Rows are 'x' (narrow) except one wide row deep in the list, built from the
+    // baked font's char set so its measured advance is genuinely wider.
+    const WIDE_ROW  = 42;
+    const WIDE_LABEL = 'WoWoWoWoWoWoWoWoWoWo';
+
+    function mixedTree(): TreeNode[] {
+        return Array.from({ length: 60 }, (_, i) => ({ label: i === WIDE_ROW ? WIDE_LABEL : 'x' }));
+    }
+
+    function mount(): _Tree {
+        const tree = new _Tree();
+        tree.getElement(true);
+        tree.setWidth(200);
+        tree.setHeight(120); // 5 rows visible at ROW_HEIGHT 24
+        tree.setNodes(mixedTree());
+        (tree as any).renderWindow();
+        return tree;
+    }
+
+    it('holds the widest discovered row width after that row scrolls out of view', () => {
+        const tree = mount();
+        const p = tree as any;
+
+        // At the top only narrow 'x' rows are visible: content width is the
+        // effective viewport (no horizontal overflow).
+        const narrowWidth = p._lastRowWidth;
+
+        // Scroll the wide row into the window; it is measured and widens content.
+        p.setScrollY(WIDE_ROW * ROW_HEIGHT);
+        const wideWidth = p._lastRowWidth;
+        expect(wideWidth).toBeGreaterThan(narrowWidth);
+
+        // Scroll back to the top. The wide row is gone from the window, but the
+        // content width must not shrink back — otherwise the H scrollbar jitters.
+        p.setScrollY(0);
+        expect(p._lastRowWidth).toBe(wideWidth);
+    });
+
+    it('re-derives the width when the flattened row set is rebuilt', () => {
+        const tree = mount();
+        const p = tree as any;
+
+        p.setScrollY(WIDE_ROW * ROW_HEIGHT);
+        const wideWidth = p._lastRowWidth;
+
+        // Replace the data with only narrow rows: the reflatten resets the
+        // monotonic max, so the stale wide width is dropped.
+        tree.setNodes(Array.from({ length: 60 }, () => ({ label: 'x' })));
+        (tree as any).renderWindow();
+
+        expect(p._lastRowWidth).toBeLessThan(wideWidth);
+    });
+});

@@ -92,6 +92,13 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     private _expandedNodes      : Set<TreeNode>                                           = new Set();
     private _flatRows           : FlatRow[]                                               = [];
     private _lastRowWidth       : number                                                  = 0;
+    // Widest row content measured so far across the current flattened set. Only
+    // the *visible* window is measured each frame, so tracking a running maximum
+    // keeps the horizontal content width — and thus the H scrollbar — stable as
+    // different-width rows scroll through the window, instead of jittering with
+    // whatever happens to be on screen. Reset in `_flatten` when the row set is
+    // rebuilt, so a narrower dataset (or a collapsed wide branch) re-derives it.
+    private _maxContentWidth    : number                                                  = 0;
     private _selectedNodes      : Set<TreeNode>                                           = new Set();
     private _loadingNodes       : Set<TreeNode>                                           = new Set();
     private _loadedNodes        : Set<TreeNode>                                           = new Set();
@@ -506,6 +513,12 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      */
     private _flatten(): void {
         this._flatRows = [];
+
+        // The visible set is changing, so the widest-row running maximum no
+        // longer describes it — reset it and let the next render pass re-derive
+        // the content width from the new rows (a collapsed wide branch or a
+        // narrower dataset must be able to shrink the horizontal extent).
+        this._maxContentWidth = 0;
 
         const recurse = (nodes: TreeNode[], depth: number): void => {
             const siblingCount = nodes.length;
@@ -1010,6 +1023,15 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         const { reboundFlags, maxContentWidth } =
             this._bindAndMeasure(win.firstRow, win.windowSize);
 
+        // Only the visible window was measured, so fold the widest row seen this
+        // frame into the running maximum for the current flattened set (reset in
+        // `_flatten`). The content width then only grows as wider rows are
+        // discovered and never shrinks when they scroll away, so the horizontal
+        // scrollbar stays stable instead of jittering with the visible rows.
+        if (maxContentWidth > this._maxContentWidth) {
+            this._maxContentWidth = maxContentWidth;
+        }
+
         // Fill to the effective viewport width (owner width minus the vertical
         // scrollbar's reservation when that bar is visible), not the raw owner
         // width. Sizing rows to the full width would push their trailing edge
@@ -1017,7 +1039,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         // `layoutScrollbars` as the content width forces a spurious horizontal
         // bar for the reserved band. `clampToContent` above has already refreshed
         // the scroller's content metrics this pass.
-        const rowWidth = Math.max(scroller.getViewportWidth(), maxContentWidth);
+        const rowWidth = Math.max(scroller.getViewportWidth(), this._maxContentWidth);
         if (rowWidth !== this._lastRowWidth) {
             this._lastRowWidth = rowWidth;
             this.invalidateGeom();
