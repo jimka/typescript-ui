@@ -58,10 +58,18 @@ describe('Dialog re-fits to a viewport resized while open', () => {
     afterEach(() => { flushFrame(); vi.restoreAllMocks(); DOM.reset(); });
 
     function flushFrame(): void {
-        const pending = frames;
-        frames = [];
-        for (const cb of pending) {
-            cb(0);
+        // Drain to a fixpoint: a flushed layout pass can schedule a follow-up
+        // frame (reserving a scrollbar gutter reschedules so children re-flow),
+        // and running only the first batch would leave the module-level rAF
+        // handle set — leaking into the next test, which then can't schedule its
+        // own flush. Mirrors the real rAF loop, which runs every pending frame.
+        let guard = 0;
+        while (frames.length > 0 && guard++ < 50) {
+            const pending = frames;
+            frames = [];
+            for (const cb of pending) {
+                cb(0);
+            }
         }
     }
 
