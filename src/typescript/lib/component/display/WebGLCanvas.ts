@@ -84,8 +84,10 @@ const NOT_YET_SYNCED = -1;
  * attributes are kept at CSS × device-pixel-ratio for a crisp HiDPI result, and
  * every resize re-emits `gl.viewport(0, 0, backingW, backingH)` in device pixels
  * (reassigning the attributes resizes the drawing buffer but leaves GL resources
- * intact). The render loop starts automatically on the first connected layout and
- * stops on teardown; call {@link WebGLCanvas.startAnimation | startAnimation} /
+ * intact). The render loop starts automatically on the first connected layout,
+ * pauses automatically while the surface is not effectively on-screen (e.g. on
+ * an inactive `Tab` panel) — resuming once it's shown again — and stops on
+ * teardown; call {@link WebGLCanvas.startAnimation | startAnimation} /
  * {@link WebGLCanvas.stopAnimation | stopAnimation} to drive a static or on-demand
  * surface explicitly.
  *
