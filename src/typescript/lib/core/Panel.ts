@@ -1225,21 +1225,33 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
         const trackW = this._scrollbarV.getTrackWidth();
 
-        // Available viewport: the panel element's client box (it never scrolls
-        // in overlay mode, so this is the full viewport the inner element and
-        // the bar band share).
+        // Available viewport: the panel element's client box. The parent layout
+        // sizes the panel element before this runs, so `avail` is always current
+        // — it never lags a resize.
         const avail  = DOM.source.getScrollMetrics(panelEl);
         const availW = avail.clientWidth;
         const availH = avail.clientHeight;
 
-        // Content extent, offsets, and the inner element's CURRENT client box
-        // (last pass's inset size) from the inner scroller.
+        // Content extent + offsets from the inner scroller. NB: only the content
+        // extent and scroll offsets are consumed — never the inner element's own
+        // `clientWidth`/`clientHeight`, which lag one frame behind a resize
+        // because this method sizes the inner element BELOW. Reading the inner
+        // client box for the visibility test flickered a transient bar during a
+        // resize (and could stick when no trailing settle pass ran); deciding
+        // against the always-current `avail` instead is what fixes that.
         const m    = DOM.source.getScrollMetrics(innerEl);
         const axes = this.scrollableAxes();
 
-        // A bar shows when content exceeds the inner scroller's own viewport.
-        const vVisible = axes.y && m.scrollHeight > m.clientHeight;
-        const hVisible = axes.x && m.scrollWidth  > m.clientWidth;
+        // A bar shows when content exceeds the available viewport reduced by the
+        // cross-axis bar. The V<->H dependency is mutual (reserving one bar
+        // shrinks the other's viewport), so resolve it to a fixpoint — two
+        // rounds always converge (each bar can only flip on once).
+        let vVisible = false;
+        let hVisible = false;
+        for (let i = 0; i < 2; i++) {
+            vVisible = axes.y && m.scrollHeight > availH - (hVisible ? trackW : 0);
+            hVisible = axes.x && m.scrollWidth  > availW - (vVisible ? trackW : 0);
+        }
 
         const innerW = availW - (vVisible ? trackW : 0);
         const innerH = availH - (hVisible ? trackW : 0);
@@ -1250,18 +1262,18 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
         // Bars occupy the reserved band at the trailing edges, sized to the
         // inner extent so each stops short of the shared corner. setMetrics
-        // takes the inner element's OWN client box as the viewport (the same
-        // criterion as vVisible/hVisible), so a bar's visibility and the
-        // reserved gutter never disagree.
+        // takes the same reduced viewport (`innerH`/`innerW`) the visibility
+        // test used, so a bar's shown/hidden state and the reserved gutter
+        // never disagree.
         this._scrollbarV.setX(innerW);
         this._scrollbarV.setY(0);
         this._scrollbarV.setHeight(innerH);
-        this._scrollbarV.setMetrics(m.clientHeight, m.scrollHeight, m.scrollTop);
+        this._scrollbarV.setMetrics(innerH, m.scrollHeight, m.scrollTop);
 
         this._scrollbarH.setX(0);
         this._scrollbarH.setY(innerH);
         this._scrollbarH.setWidth(innerW);
-        this._scrollbarH.setMetrics(m.clientWidth, m.scrollWidth, m.scrollLeft);
+        this._scrollbarH.setMetrics(innerW, m.scrollWidth, m.scrollLeft);
 
         const newRight  = vVisible ? trackW : 0;
         const newBottom = hVisible ? trackW : 0;
