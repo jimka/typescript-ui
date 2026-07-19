@@ -13,7 +13,7 @@ Full documentation lives at **<https://jimka.github.io/typescript-ui/>** *(deplo
 For local development of the docs site:
 
 ```bash
-npm run docs:dev
+npm -w packages/lib run docs:dev
 ```
 
 Highlights:
@@ -87,15 +87,20 @@ Library components that internally use glyphs (Tree row chevrons, Notification b
 
 ## Repository scripts
 
+Run from the repo root. This is an npm-workspaces monorepo — `packages/lib` holds
+the library, its demo harness, and the docs pipeline; `packages/docs` is the built
+docs app. The root delegates the common scripts below; commands scoped with
+`-w packages/lib` run inside the library workspace.
+
 | Command | Description |
 | --- | --- |
 | `npm run dev` | Vite dev server on port 8015 (demo app) |
-| `npm run build` | Production bundle of the demo app to `dist/` |
-| `npm run build:lib` | Library bundle (ESM + `.d.ts`) to `dist/lib/` |
+| `npm -w packages/lib run build` | Production bundle of the demo app to `packages/lib/dist/` |
+| `npm run build:lib` | Library bundle (ESM + `.d.ts`) to `packages/lib/dist/lib/` |
 | `npm run typecheck` | Strict TypeScript type check (no emit) |
-| `npm run docs:dev` | Serve the documentation site locally |
-| `npm run docs:build` | Build the documentation site |
-| `npm run clean` | Delete `dist/` contents |
+| `npm -w packages/lib run docs:dev` | Serve the VitePress documentation site locally |
+| `npm run docs:build` | Build the VitePress documentation site |
+| `npm -w packages/lib run clean` | Delete `packages/lib/dist/` contents |
 
 ## License
 
