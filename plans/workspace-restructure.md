@@ -1,3 +1,7 @@
+---
+touches-shared: [package.json, packages/lib/package.json]
+---
+
 # Workspace Restructure — Implementation Plan
 
 ## Overview
@@ -293,7 +297,7 @@ From a clean checkout of the branch:
 
 ## Potential Challenges
 
-- **sqladmin (external consumer) symlink must be repointed — MANUAL, in a different repo.** sqladmin consumes `@jimka/typescript-ui` today via a symlink / `file:` dependency to *this repo's root* (reading the built `dist/lib`). After the package root moves to `packages/lib/`, that link must be repointed **once** from the repo root to `packages/lib/`. This plan's implementation does **not** touch sqladmin; the owner must, after merging, update sqladmin's dependency to point at `<typescript-ui>/packages/lib` and rebuild. Until then sqladmin's `@jimka/typescript-ui` resolves to a now-non-package directory. (External step — do not attempt it from this repo.)
+- **sqladmin (external consumer) migrates to the *published* npm package — not an in-repo symlink repoint.** sqladmin today consumes `@jimka/typescript-ui` via a `file:../../typescript-ui` dependency that npm resolves as a symlink to this repo's built `dist/lib`. Rather than repoint that symlink at `packages/lib/`, sqladmin switches to the **published** `@jimka/typescript-ui@^0.1.0` from npm — owned by the follow-up plan `publish-0-1-0.md`, which covers both the publish and the sqladmin dependency swap. **Consequence:** this restructure introduces **no** cross-repo coupling to fix; the sqladmin migration is sequenced *after the publish*, not after this plan, and the previously-feared "sqladmin resolves to a non-package directory" window never occurs. (Do not touch sqladmin from this repo.)
 - **Workspace symlink could shadow lib self-imports to stale `dist`.** Mitigated by the explicit `@jimka/*` → source aliases added to `vite.lib.config.ts` (Architecture Decision); verify with the clean-`dist` build check (Step 8).
 - **TypeDoc model is ~105 MB.** The docs-app plugin reads it in Node at build time (fine) but must never inline it into the client bundle — the plugin returns only counts. TypeDoc generation itself remains memory-heavy, so the `NODE_OPTIONS=--max-old-space-size=12288` pin stays on the `docs:api` CI step.
 - **`npm install` vs `npm ci` at conversion time.** The existing `package-lock.json` predates the workspace graph, so the first conversion needs `npm install` to regenerate the lock; CI keeps using `npm ci` afterward against the regenerated lock. Commit the regenerated `package-lock.json`.
@@ -320,4 +324,5 @@ From a clean checkout of the branch:
 - **The full documentation information architecture** — category tree, per-component pages (showcase + API + recommended usage), per-symbol slicing of the TypeDoc JSON, resizable layout-manager demos with child components, automated coverage tracking from the JSON registry — is **out of scope**. It is the separate follow-up plan **`docs-app-component-pages.md`**. This plan delivers only a minimal building shell that proves the seam (import + render one component; read the model at build time).
 - **Migrating the 28 `*Panel.ts` demo files into the docs app as showcases** — deferred to the follow-up; their interim home is `packages/lib` where `npm run dev` keeps them runnable.
 - **Deleting VitePress** (`packages/lib/docs/**`, its config, the `docs:build` script, the `NODE_OPTIONS` heap pin) — retained as follow-up reference material; removal is a later step once the docs app reaches content parity.
-- **Editing sqladmin** — its symlink repoint is an external, manual follow-up (see Potential Challenges), not part of this implementation.
+- **Editing sqladmin** — sqladmin's move onto the published `@jimka/typescript-ui@^0.1.0` is owned by `publish-0-1-0.md`, not this plan.
+- **The CLI scaffolder package** (`packages/create-app`, `@jimka/create-tsui-app`) — a third workspace sibling added by the follow-up plan `create-tsui-app.md`. This plan scaffolds only `packages/lib` + `packages/docs`; the root `workspaces` array (Step 6) is the extension point where the third package is later appended. Do **not** pre-add its entry here — an entry for a nonexistent `packages/create-app` dir would break `npm install`.
