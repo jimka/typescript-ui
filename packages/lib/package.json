@@ -1,0 +1,196 @@
+{
+  "name": "@jimka/typescript-ui",
+  "version": "0.1.0",
+  "description": "A web-based layout manager and UI component framework written in TypeScript.",
+  "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
+  "type": "module",
+  "exports": {
+    "./core": {
+      "import": "./dist/lib/core.es.js",
+      "types": "./dist/lib/types/core/index.d.ts"
+    },
+    "./overlay": {
+      "import": "./dist/lib/overlay.es.js",
+      "types": "./dist/lib/types/overlay/index.d.ts"
+    },
+    "./primitive": {
+      "import": "./dist/lib/primitive.es.js",
+      "types": "./dist/lib/types/primitive/index.d.ts"
+    },
+    "./layout": {
+      "import": "./dist/lib/layout.es.js",
+      "types": "./dist/lib/types/layout/index.d.ts"
+    },
+    "./data": {
+      "import": "./dist/lib/data.es.js",
+      "types": "./dist/lib/types/data/index.d.ts"
+    },
+    "./validation": {
+      "import": "./dist/lib/validation.es.js",
+      "types": "./dist/lib/types/validation/index.d.ts"
+    },
+    "./component/input": {
+      "import": "./dist/lib/component/input.es.js",
+      "types": "./dist/lib/types/component/input/index.d.ts"
+    },
+    "./component/button": {
+      "import": "./dist/lib/component/button.es.js",
+      "types": "./dist/lib/types/component/button/index.d.ts"
+    },
+    "./component/display": {
+      "import": "./dist/lib/component/display.es.js",
+      "types": "./dist/lib/types/component/display/index.d.ts"
+    },
+    "./component/editor": {
+      "import": "./dist/lib/component/editor.es.js",
+      "types": "./dist/lib/types/component/editor/index.d.ts"
+    },
+    "./component/chart": {
+      "import": "./dist/lib/component/chart.es.js",
+      "types": "./dist/lib/types/component/chart/index.d.ts"
+    },
+    "./glyphs": {
+      "import": "./dist/lib/glyphs/index.es.js",
+      "types": "./dist/lib/types/glyphs/index.d.ts"
+    },
+    "./glyphs/solid": {
+      "import": "./dist/lib/glyphs/solid/index.es.js",
+      "types": "./dist/lib/types/glyphs/solid/index.d.ts"
+    },
+    "./glyphs/solid/*": {
+      "import": "./dist/lib/glyphs/solid/*.es.js",
+      "types": "./dist/lib/types/glyphs/solid/*.d.ts"
+    },
+    "./glyphs/regular": {
+      "import": "./dist/lib/glyphs/regular/index.es.js",
+      "types": "./dist/lib/types/glyphs/regular/index.d.ts"
+    },
+    "./glyphs/brands": {
+      "import": "./dist/lib/glyphs/brands/index.es.js",
+      "types": "./dist/lib/types/glyphs/brands/index.d.ts"
+    },
+    "./glyphs/*": {
+      "import": "./dist/lib/glyphs/*.es.js",
+      "types": "./dist/lib/types/glyphs/*.d.ts"
+    },
+    "./component/list": {
+      "import": "./dist/lib/component/list.es.js",
+      "types": "./dist/lib/types/component/list/index.d.ts"
+    },
+    "./component/container": {
+      "import": "./dist/lib/component/container.es.js",
+      "types": "./dist/lib/types/component/container/index.d.ts"
+    },
+    "./component/menubar": {
+      "import": "./dist/lib/component/menubar.es.js",
+      "types": "./dist/lib/types/component/menubar/index.d.ts"
+    },
+    "./component/table": {
+      "import": "./dist/lib/component/table.es.js",
+      "types": "./dist/lib/types/component/table/index.d.ts"
+    },
+    "./component/tree": {
+      "import": "./dist/lib/component/tree.es.js",
+      "types": "./dist/lib/types/component/tree/index.d.ts"
+    },
+    "./component/diagram": {
+      "import": "./dist/lib/component/diagram.es.js",
+      "types": "./dist/lib/types/component/diagram/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/lib",
+    "llms.txt",
+    "LICENSE-FONTAWESOME.md"
+  ],
+  "sideEffects": [
+    "**/core.es.js",
+    "**/component/editor/languages.ts"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build",
+    "build:lib": "tsc -p tsconfig.lib.json && tsc-alias -p tsconfig.lib.json && vite build --config vite.lib.config.ts",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.lib.json --noEmit",
+    "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
+    "doc": "typedoc --out dist/docs src/typescript",
+    "docs:api": "typedoc",
+    "docs:llms": "node scripts/llms/generate.mjs",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "npm run docs:api && npm run docs:llms && NODE_OPTIONS=--max-old-space-size=12288 vitepress build docs",
+    "docs:preview": "vitepress preview docs",
+    "clean": "rimraf dist/*",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "lint:baseline": "node scripts/eslint/update-baseline.mjs",
+    "lint:dom-audit": "node scripts/eslint/dom-audit.mjs",
+    "test:lint": "node scripts/eslint/forward-super-options.test.mjs && node scripts/eslint/no-element-style.test.mjs && node scripts/eslint/no-raw-dom.test.mjs",
+    "test": "npm run typecheck:test && vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "cloc": "cloc src/typescript/lib --include-lang=TypeScript"
+  },
+  "devDependencies": {
+    "@types/d3-array": "^3.2.2",
+    "@types/d3-scale": "^4.0.9",
+    "@types/d3-shape": "^3.1.8",
+    "@types/prismjs": "^1.26.6",
+    "@vitest/coverage-v8": "^4.1.9",
+    "cloc": "^2.6.0-cloc",
+    "concurrently": "^6.3.0",
+    "elkjs": "^0.10.0",
+    "eslint": "^9.0.0",
+    "google-closure-compiler": "^20200406.0.0",
+    "jsdom": "^29.1.1",
+    "rimraf": "^3.0.2",
+    "ts-morph": "^28.0.0",
+    "tsc-alias": "^1.9.0",
+    "tsx": "^4.22.1",
+    "typedoc": "0.28.19",
+    "typedoc-plugin-markdown": "~4.11.0",
+    "typedoc-vitepress-theme": "^1.1.2",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.0.0",
+    "vite": "^8.0.16",
+    "vitepress": "^1.5.0",
+    "vitest": "^4.1.9"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/lang-html": "^6.4.11",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.6",
+    "@fontsource-variable/manrope": "^5.2.8",
+    "@lexical/code": "^0.46.0",
+    "@lexical/history": "^0.46.0",
+    "@lexical/link": "^0.46.0",
+    "@lexical/list": "^0.46.0",
+    "@lexical/markdown": "^0.46.0",
+    "@lexical/rich-text": "^0.46.0",
+    "@lexical/selection": "^0.46.0",
+    "@lexical/utils": "^0.46.0",
+    "@lezer/highlight": "^1.2.3",
+    "codemirror": "^6.0.2",
+    "d3-array": "^3.2.4",
+    "d3-scale": "^4.0.2",
+    "d3-shape": "^3.2.0",
+    "lexical": "^0.46.0",
+    "marked": "^18.0.5",
+    "prettier": "^3.9.4",
+    "sql-formatter": "^15.8.2"
+  },
+  "peerDependencies": {
+    "elkjs": "^0.10.0"
+  },
+  "peerDependenciesMeta": {
+    "elkjs": {
+      "optional": true
+    }
+  }
+}

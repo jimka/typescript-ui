@@ -9,8 +9,8 @@ vendor
 coverage
 
 # Generated docs output
-docs/api
-docs/.vitepress/dist
-docs/.vitepress/cache
-# Generated hosted copy of the capability manifest (root llms.txt is committed)
-docs/public/llms.txt
+packages/lib/docs/api
+packages/lib/docs/.vitepress/dist
+packages/lib/docs/.vitepress/cache
+# Generated hosted copy of the capability manifest (committed manifest is packages/lib/llms.txt)
+packages/lib/docs/public/llms.txt

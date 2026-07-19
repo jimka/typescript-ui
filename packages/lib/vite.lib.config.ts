@@ -15,9 +15,35 @@ const glyphEntries: Record<string, string> = Object.fromEntries(
 
 export default defineConfig({
   resolve: {
-    alias: {
-      '~': libRoot,
-    },
+    // Mirror vite.config.ts's `@jimka/typescript-ui/*` -> source aliases. The lib
+    // source imports its own sibling subpaths (e.g. `@jimka/typescript-ui/core`);
+    // once npm workspaces adds a `node_modules/@jimka/typescript-ui` -> packages/lib
+    // self-symlink, bare-specifier resolution could otherwise prefer that symlink's
+    // exports map (-> the build's own stale dist/lib) over source. An explicit alias
+    // wins over node resolution, so the lib build provably bundles source.
+    alias: [
+      { find: '@jimka/typescript-ui/component/input',     replacement: r('component/input/index.ts') },
+      { find: '@jimka/typescript-ui/component/button',    replacement: r('component/button/index.ts') },
+      { find: '@jimka/typescript-ui/component/display',   replacement: r('component/display/index.ts') },
+      { find: '@jimka/typescript-ui/component/editor',    replacement: r('component/editor/index.ts') },
+      { find: '@jimka/typescript-ui/component/chart',     replacement: r('component/chart/index.ts') },
+      { find: '@jimka/typescript-ui/component/list',      replacement: r('component/list/index.ts') },
+      { find: '@jimka/typescript-ui/component/container', replacement: r('component/container/index.ts') },
+      { find: '@jimka/typescript-ui/component/menubar',   replacement: r('component/menubar/index.ts') },
+      { find: '@jimka/typescript-ui/component/table',     replacement: r('component/table/index.ts') },
+      { find: '@jimka/typescript-ui/component/tree',      replacement: r('component/tree/index.ts') },
+      { find: '@jimka/typescript-ui/component/diagram',   replacement: r('component/diagram/index.ts') },
+      { find: '@jimka/typescript-ui/core',                replacement: r('core/index.ts') },
+      { find: '@jimka/typescript-ui/overlay',             replacement: r('overlay/index.ts') },
+      { find: '@jimka/typescript-ui/primitive',           replacement: r('primitive/index.ts') },
+      { find: '@jimka/typescript-ui/layout',              replacement: r('layout/index.ts') },
+      { find: '@jimka/typescript-ui/data',                replacement: r('data/index.ts') },
+      { find: '@jimka/typescript-ui/validation',          replacement: r('validation/index.ts') },
+      { find: /^@jimka\/typescript-ui\/glyphs\/(solid|regular|brands)$/, replacement: r('glyphs/$1/index.ts') },
+      { find: /^@jimka\/typescript-ui\/glyphs\/(.+)$/,    replacement: r('glyphs/$1.ts') },
+      { find: '@jimka/typescript-ui/glyphs',              replacement: r('glyphs/index.ts') },
+      { find: '~',                                        replacement: libRoot },
+    ],
   },
   build: {
     lib: {
