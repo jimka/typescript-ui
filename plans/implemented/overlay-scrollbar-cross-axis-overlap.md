@@ -269,6 +269,7 @@ this.setScrollbarGutter(0, 0)   // unconditional (cascade-safe, as today)
 | Modify | `src/typescript/lib/core/Component.ts` (add `getScrollElement` seam + `getContentFrame`; route scroll sites, `getChildHost`, `setContentFrame`/`clearContentFrame`) |
 | Modify | `src/typescript/lib/core/Panel.ts` (inner-scroller restructure) |
 | Modify | `tests/core/PanelOverlayScrollbar.test.ts` (new internal shape + both-axis cases) |
+| Modify | `tests/overlay/DialogViewportResize.test.ts` (added during the resize-transient follow-up — see Implementation Notes) |
 
 ---
 
@@ -399,3 +400,11 @@ is re-sized to viewport − gutter on every layout, tracking grow and shrink), a
 both directions were verified live — after an expand OR a shrink the gutter is
 correct on the first pass, and a continuous resize in either direction never
 shows a spurious bar.
+
+Test-harness side effect (out of the original Files table): the corrected code
+reschedules a layout on the gutter-change pass, so a single-batch rAF flush in a
+test teardown left Component's module-level `rafHandle` set, leaking a pending
+frame into the next test (which could then not schedule its own flush). Fixed by
+draining the mocked rAF queue to a fixpoint (`while (frames.length) …`, capped at
+50 iterations) in `tests/overlay/DialogViewportResize.test.ts`'s `flushFrame` —
+harness-only, no product-code change.
