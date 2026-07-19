@@ -104,7 +104,8 @@
   "files": [
     "dist/lib",
     "llms.txt",
-    "LICENSE-FONTAWESOME.md"
+    "LICENSE-FONTAWESOME.md",
+    "THIRD-PARTY-NOTICES.md"
   ],
   "sideEffects": [
     "**/core.es.js",
