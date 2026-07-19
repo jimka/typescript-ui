@@ -13,7 +13,7 @@ This is a **split** of the original combined plan (its Phases 1–2 become this 
 
 The package is `@jimka/typescript-ui` — **scoped**, so npm publishes it **private by default**; `version` is already `0.1.0`; `files` is `["dist/lib", "llms.txt", "LICENSE-FONTAWESOME.md"]` ([package.json:101-105](package.json#L101)); `exports` has 23 subpaths ([package.json:7-100](package.json#L7)); the build script is `build:lib` ([package.json:113](package.json#L113)). There is **no** `publishConfig` and **no** `prepublishOnly` today (verified — grep returns nothing).
 
-Why the split, and why the consumer verification is a first-class phase: sqladmin has always consumed this package through a **live symlink** ([`frontend/package.json:14`](/home/jika/typescript/sqladmin/frontend/package.json#L14): `"file:../../typescript-ui"`), so the real *packaged* surface (the `files` array + the 23-subpath `exports` map resolved against the packed layout) and the consumer's build against a *copied* (non-symlink) package have **never** been exercised. `npm pack` output is byte-identical to what `npm publish` uploads, so verifying sqladmin against the kept `.tgz` gives full pre-publish confidence with the registry untouched — and, if a problem surfaces, the author can edit the lib, rebuild, re-pack, reinstall, and re-verify without ever burning the immutable `0.1.0`.
+Why the split, and why the consumer verification is a first-class phase: sqladmin has always consumed this package through a **live symlink** ([`frontend/package.json:14`](/home/jika/typescript/sqladmin/frontend/package.json#L14): `"file:../../typescript-ui/packages/lib"`), so the real *packaged* surface (the `files` array + the 23-subpath `exports` map resolved against the packed layout) and the consumer's build against a *copied* (non-symlink) package have **never** been exercised. `npm pack` output is byte-identical to what `npm publish` uploads, so verifying sqladmin against the kept `.tgz` gives full pre-publish confidence with the registry untouched — and, if a problem surfaces, the author can edit the lib, rebuild, re-pack, reinstall, and re-verify without ever burning the immutable `0.1.0`.
 
 ---
 
@@ -122,13 +122,13 @@ All steps run with cwd `packages/lib` unless noted. Prerequisite: `workspace-res
 Preconditions: Phase 2 passed and `packages/lib/jimka-typescript-ui-0.1.0.tgz` still exists.
 
 7. **Point sqladmin's frontend at the tarball.** In `/home/jika/typescript/sqladmin/frontend`, edit [`package.json`](/home/jika/typescript/sqladmin/frontend/package.json) line 14, changing
-   `"@jimka/typescript-ui": "file:../../typescript-ui"`
+   `"@jimka/typescript-ui": "file:../../typescript-ui/packages/lib"`
    →
    `"@jimka/typescript-ui": "file:../../typescript-ui/packages/lib/jimka-typescript-ui-0.1.0.tgz"`.
    A `file:` spec pointing at a `.tgz` makes npm **extract** it into `node_modules` as a real copied directory (not a symlink) — reproducing exactly how the published package would appear. Leave `elkjs: "^0.9.3"` (line 15) unchanged.
 
 8. **Remove the stale symlink and install.** From `/home/jika/typescript/sqladmin/frontend`:
-   - `rm -rf node_modules/@jimka/typescript-ui` — deletes the current symlink (`node_modules/@jimka/typescript-ui -> ../../../../typescript-ui`, verified) so npm re-resolves from the tarball rather than keeping the old `file:` link.
+   - `rm -rf node_modules/@jimka/typescript-ui` — deletes the current symlink (`node_modules/@jimka/typescript-ui -> ../../../../typescript-ui/packages/lib`, verified) so npm re-resolves from the tarball rather than keeping the old `file:` link.
    - `npm install` — extracts the tgz and updates `package-lock.json`.
    - Confirm it's now a real directory, not a symlink: `test -L node_modules/@jimka/typescript-ui && echo SYMLINK || echo REAL-DIR` → expect `REAL-DIR`; and `node_modules/@jimka/typescript-ui/dist/lib/core.es.js` exists.
 
@@ -141,7 +141,7 @@ Preconditions: Phase 2 passed and `packages/lib/jimka-typescript-ui-0.1.0.tgz` s
 11. **Iterate if a problem surfaces (registry stays untouched).** If Step 9 or 10 reveals a library packaging/consumer defect, fix it in typescript-ui, then re-run from `packages/lib`: `npm run build:lib` → `npm pack` (overwrites the same `jimka-typescript-ui-0.1.0.tgz`), then back in sqladmin `frontend` re-run `rm -rf node_modules/@jimka/typescript-ui && npm install`, and re-verify Steps 9–10. Repeat until green. **`0.1.0` is never published during iteration** — only the local tgz changes.
 
 12. **Revert sqladmin to exactly as found.** Once verified, undo every temporary sqladmin change so the repo is left pristine (uncommitted, since nothing here is committed):
-    - `git -C /home/jika/typescript/sqladmin checkout -- frontend/package.json frontend/package-lock.json` — restores the `file:../../typescript-ui` dependency and lockfile.
+    - `git -C /home/jika/typescript/sqladmin checkout -- frontend/package.json frontend/package-lock.json` — restores the `file:../../typescript-ui/packages/lib` dependency and lockfile.
     - `cd /home/jika/typescript/sqladmin/frontend && npm install` — re-establishes the original **symlink** to the sibling checkout.
     - Confirm restored: `test -L node_modules/@jimka/typescript-ui && echo SYMLINK-RESTORED` → expect `SYMLINK-RESTORED`; and `git -C /home/jika/typescript/sqladmin status --short frontend/` shows no changes.
 
@@ -173,7 +173,7 @@ Concrete, checkable outcomes (all CLI/manual — this plan adds no unit-testable
 - **Packed subpaths resolve.** In a scratch install of the tgz, `import.meta.resolve` of `@jimka/typescript-ui/core` and `@jimka/typescript-ui/component/button` each returns a URL to an existing file under `node_modules/@jimka/typescript-ui/dist/lib/` — without executing the module.
 - **Tarball kept.** `packages/lib/jimka-typescript-ui-0.1.0.tgz` still exists after Phase 2.
 - **Consumer verified against exact bytes.** With sqladmin's frontend pointed at the tarball, `node_modules/@jimka/typescript-ui` is a **real directory** (not a symlink) at `0.1.0`; `npm run build` and `npm run typecheck` pass; the app launches and renders without console errors (manual, via the `verify` skill, Host `sqladmin-db`).
-- **sqladmin left pristine.** After Phase 3, `frontend/package.json` reads `"@jimka/typescript-ui": "file:../../typescript-ui"` again, `node_modules/@jimka/typescript-ui` is a symlink again, and `git status` in sqladmin shows no changes.
+- **sqladmin left pristine.** After Phase 3, `frontend/package.json` reads `"@jimka/typescript-ui": "file:../../typescript-ui/packages/lib"` again, `node_modules/@jimka/typescript-ui` is a symlink again, and `git status` in sqladmin shows no changes.
 - **Registry untouched.** No `npm publish` ran; `@jimka/typescript-ui@0.1.0` is not on the registry as a result of this plan.
 
 ---
@@ -207,7 +207,7 @@ Run in order; this plan never publishes.
 - [`README.md`](README.md) — the npm landing page and install/usage guidance; copied to `packages/lib/README.md`.
 - [`plans/workspace-restructure.md`](plans/workspace-restructure.md) — the dependency; establishes that the library package moves to `packages/lib/` with `name`/`version`/`exports`/`files` byte-identical and builds via `npm run build:lib` to `packages/lib/dist/lib`.
 - [`plans/publish-0-1-0.md`](plans/publish-0-1-0.md) — the follow-up that consumes this plan's kept tarball and guarded manifest to perform the immutable half: `npm publish`, the `v0.1.0` tag, and sqladmin's permanent `^0.1.0` migration.
-- [`/home/jika/typescript/sqladmin/frontend/package.json`](/home/jika/typescript/sqladmin/frontend/package.json) — the external consumer; line 14 `"@jimka/typescript-ui": "file:../../typescript-ui"` (a symlink) is what Phase 3 temporarily repoints at the tarball and then restores. Scripts: `build` = `tsc --noEmit && vite build`, `typecheck` = `tsc --noEmit`.
+- [`/home/jika/typescript/sqladmin/frontend/package.json`](/home/jika/typescript/sqladmin/frontend/package.json) — the external consumer; line 14 `"@jimka/typescript-ui": "file:../../typescript-ui/packages/lib"` (a symlink) is what Phase 3 temporarily repoints at the tarball and then restores. Scripts: `build` = `tsc --noEmit && vite build`, `typecheck` = `tsc --noEmit`.
 - [`/home/jika/typescript/sqladmin/.claude/skills/verify/SKILL.md`](/home/jika/typescript/sqladmin/.claude/skills/verify/SKILL.md) — the `verify` skill driving the sqladmin app end-to-end; documents the `sqladmin-db` login host used in Step 10.
 
 ---
