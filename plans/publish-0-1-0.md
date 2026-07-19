@@ -8,7 +8,7 @@ depends-on: [workspace-restructure, prepare-0-1-0-release]
 
 The **irreversible half** of the first public release: run the actual `npm publish` of `@jimka/typescript-ui@0.1.0` to the public npm registry, mark it with the `v0.1.0` git tag, then **permanently** migrate the sqladmin consumer off its `file:` symlink onto the published `^0.1.0`. This plan is the direct continuation of [`plans/prepare-0-1-0-release.md`](plans/prepare-0-1-0-release.md) and does **not** repeat any of its work.
 
-**All preparation and verification are already done in `prepare-0-1-0-release` — do not redo them here.** That sibling plan has already: added `"publishConfig": { "access": "public" }` and `"prepublishOnly": "npm run build:lib"` to `packages/lib/package.json`; copied `LICENSE` and `README.md` into `packages/lib`; built and packed the library and asserted the packed surface end-to-end (tarball file-list ⊆ `files` + npm's always-included set, and two `exports` subpaths resolving under the packed `dist/lib`); **kept** the artifact `packages/lib/jimka-typescript-ui-0.1.0.tgz`; and verified sqladmin's frontend building, typechecking, and rendering against that exact tarball, then **reverted sqladmin to its original `file:../../typescript-ui` symlink state**. This plan starts from that guarded, proven manifest and consumes none of that effort again — its whole job is the two irreversible actions the prepare plan deliberately stopped short of.
+**All preparation and verification are already done in `prepare-0-1-0-release` — do not redo them here.** That sibling plan has already: added `"publishConfig": { "access": "public" }` and `"prepublishOnly": "npm run build:lib"` to `packages/lib/package.json`; copied `LICENSE` and `README.md` into `packages/lib`; built and packed the library and asserted the packed surface end-to-end (tarball file-list ⊆ `files` + npm's always-included set, and two `exports` subpaths resolving under the packed `dist/lib`); **kept** the artifact `packages/lib/jimka-typescript-ui-0.1.0.tgz`; and verified sqladmin's frontend building, typechecking, and rendering against that exact tarball, then **reverted sqladmin to its original `file:../../typescript-ui/packages/lib` symlink state**. This plan starts from that guarded, proven manifest and consumes none of that effort again — its whole job is the two irreversible actions the prepare plan deliberately stopped short of.
 
 `0.1.0` is **immutable**. Once `npm publish` succeeds, that version can never be re-uploaded or changed — a mistake (empty/stale `dist/lib`, wrong access, missing README) can only be corrected by burning a `0.1.1` bump. Because the packed surface and the real consumer were both already proven in `prepare-0-1-0-release`, the remaining risk is confined to the publish transaction itself, which is what this plan focuses on.
 
@@ -75,14 +75,14 @@ This section is executed in the **sqladmin** repository, **after** `@jimka/types
 sqladmin's [`frontend/package.json`](/home/jika/typescript/sqladmin/frontend/package.json) currently declares (verified, line 14):
 
 ```json
-"@jimka/typescript-ui": "file:../../typescript-ui",
+"@jimka/typescript-ui": "file:../../typescript-ui/packages/lib",
 ```
 
-npm resolves that `file:` spec as a **symlink**: `frontend/node_modules/@jimka/typescript-ui -> ../../../../typescript-ui` (verified via `readlink`). Prepare's temporary tarball verification has already been reverted, so sqladmin is back in exactly this symlink state at the start of this phase. The migration swaps the live symlink for the published package pulled from the registry — a real installed directory, whose bundled `dist/lib` is what sqladmin already consumes today (sqladmin imports the built `dist/lib`, not source).
+npm resolves that `file:` spec as a **symlink**: `frontend/node_modules/@jimka/typescript-ui -> ../../../../typescript-ui/packages/lib` (verified via `readlink`). Prepare's temporary tarball verification has already been reverted, so sqladmin is back in exactly this symlink state at the start of this phase. The migration swaps the live symlink for the published package pulled from the registry — a real installed directory, whose bundled `dist/lib` is what sqladmin already consumes today (sqladmin imports the built `dist/lib`, not source).
 
 **Steps (in `/home/jika/typescript/sqladmin/frontend`):**
 
-1. **Edit `frontend/package.json`:** change the dependency to `"@jimka/typescript-ui": "^0.1.0"` (see 0.x caret semantics above — accepts `0.1.x`, holds at the 0.1 line). Leave `elkjs: "^0.9.3"` (line 15) unchanged.
+1. **Edit `frontend/package.json`:** change the dependency to `"@jimka/typescript-ui": "^0.1.0"` (see 0.x caret semantics above — accepts `0.1.x`, holds at the 0.1 line), **and bump `elkjs` (line 15) from `"^0.9.3"` to `"^0.10.0"`**. The elkjs bump is required, not optional: installing the published package as a real copy (unlike the reverted `file:` symlink) makes npm **enforce** the library's `peerOptional elkjs@^0.10.0`, and sqladmin's `^0.9.3` conflicts — a bare `npm install` hard-errors with `ERESOLVE` (see the note below). Bumping sqladmin to `^0.10.0` aligns it with the peer and lets the install resolve cleanly.
 
 2. **Remove the stale symlink** so npm re-resolves from the registry rather than keeping the old `file:` link: `rm -rf node_modules/@jimka/typescript-ui` (the parent `@jimka` dir may remain; npm recreates the child).
 
@@ -94,7 +94,7 @@ npm resolves that `file:` spec as a **symlink**: `frontend/node_modules/@jimka/t
 
 6. **Commit** the `frontend/package.json` + `frontend/package-lock.json` change in the sqladmin repo — this is the **permanent** migration (unlike prepare's reverted tarball install). Commit only these two files.
 
-**Note — `elkjs` peer drift.** The library declares `elkjs` as an **optional** peer at `^0.10.0` (`packages/lib/package.json`); sqladmin's `frontend/package.json` pins `elkjs: "^0.9.3"` (line 15). Because the peer is optional, npm will not hard-error, but the versions diverge. If the schema-diagram (`component/diagram`) features are used, bump sqladmin's `elkjs` to `^0.10.0` to match; otherwise leave it and revisit. Flag, don't silently change beyond the dependency swap.
+**Note — `elkjs` peer must be bumped (this is why Step 1 changes it).** The library declares `elkjs` as an **optional** peer at `^0.10.0` (`packages/lib/package.json`); sqladmin pins `elkjs: "^0.9.3"` (line 15). "Optional" means the peer may be **absent** — but when it *is* present at a conflicting version, npm **enforces** the range. The `prepare-0-1-0-release` verification proved this empirically: installing the packed tarball (a real copy, as the registry delivers it) into sqladmin on `elkjs@^0.9.3` **hard-errors with `ERESOLVE`**. The `file:` **symlink** never surfaced this — npm skips peer enforcement for a linked directory dep — which is why it only appears now, on the real registry install. So the bump to `^0.10.0` in Step 1 is **mandatory** for the install to succeed, not an optional diagram-only nicety. (sqladmin's app was verified to build, typecheck, and render on `elkjs@0.10.2` during the prepare phase, so the bump is safe.)
 
 ---
 
@@ -103,7 +103,7 @@ npm resolves that `file:` spec as a **symlink**: `frontend/node_modules/@jimka/t
 | Action | File |
 |---|---|
 | Delete | `packages/lib/jimka-typescript-ui-0.1.0.tgz` (leftover verification artifact from `prepare-0-1-0-release`; untracked) |
-| — (external) | `/home/jika/typescript/sqladmin/frontend/package.json` (`file:../../typescript-ui` → `^0.1.0`) |
+| — (external) | `/home/jika/typescript/sqladmin/frontend/package.json` (`@jimka/typescript-ui`: `file:../../typescript-ui/packages/lib` → `^0.1.0`; `elkjs`: `^0.9.3` → `^0.10.0`) |
 | — (external) | `/home/jika/typescript/sqladmin/frontend/package-lock.json` (regenerated by `npm install`) |
 
 No library source, manifest (`package.json`), `exports`, `files`, `name`, or `version` changes in this repo — those (including the `publishConfig`/`prepublishOnly` guards) belong to `prepare-0-1-0-release`. The only new git object in this repo is the `v0.1.0` tag.
@@ -117,7 +117,7 @@ Concrete, checkable outcomes (all CLI/manual — this plan adds no unit-testable
 - **Published.** After `npm publish` from `packages/lib`, `npm view @jimka/typescript-ui version` is `0.1.0`, access is **public**, and the npm page shows the README. The tarball was rebuilt fresh by `prepublishOnly`, not taken from the kept `.tgz`.
 - **Tagged.** `git tag` lists `v0.1.0`; `git ls-remote --tags origin` shows `v0.1.0` pushed.
 - **Leftover artifact removed.** `packages/lib/jimka-typescript-ui-0.1.0.tgz` no longer exists after Phase 1.
-- **sqladmin permanently migrated.** sqladmin `frontend/package.json` reads `"@jimka/typescript-ui": "^0.1.0"`; `node_modules/@jimka/typescript-ui` is a **real directory** at `0.1.0` (not a symlink); `npm run build` and `npm run typecheck` pass; the app renders (manual, via `verify`, Host `sqladmin-db`); and the `package.json` + `package-lock.json` change is committed in the sqladmin repo.
+- **sqladmin permanently migrated.** sqladmin `frontend/package.json` reads `"@jimka/typescript-ui": "^0.1.0"` and `"elkjs": "^0.10.0"`; a bare `npm install` (no `--legacy-peer-deps`) resolves cleanly; `node_modules/@jimka/typescript-ui` is a **real directory** at `0.1.0` (not a symlink); `npm run build` and `npm run typecheck` pass; the app renders (manual, via `verify`, Host `sqladmin-db`); and the `package.json` + `package-lock.json` change is committed in the sqladmin repo.
 
 ---
 
@@ -140,7 +140,7 @@ Run in order; the publish (Step 2) is irreversible.
 - **Stale `dist/lib` at publish time.** `prepublishOnly` rebuilds `dist/lib` from source as part of `npm publish`, so the uploaded tarball is fresh regardless of disk state and independent of the kept `.tgz`. Do not publish by a path that skips the script (e.g. do not hand-upload the kept tarball).
 - **Ordering.** The sqladmin migration cannot run before the publish — `^0.1.0` is uninstallable until `0.1.0` is live. Sequenced as Phase 2 / external, after Phase 1 Step 3.
 - **sqladmin stale symlink.** If `frontend/node_modules/@jimka/typescript-ui` isn't removed before `npm install`, npm may keep the old `file:` link. Remove it explicitly (external Step 2), then confirm it is a real directory.
-- **`elkjs` peer drift** (lib `^0.10.0` optional vs sqladmin `^0.9.3`). Optional peer → no hard error; bump sqladmin only if diagram features are used (flagged, not auto-changed).
+- **`elkjs` peer conflict on the registry install.** The lib's `peerOptional elkjs@^0.10.0` **is** enforced against sqladmin's installed `^0.9.3` once the package is a real copy (not the peer-skipping `file:` symlink), so a bare `npm install` hard-errors with `ERESOLVE`. Step 1 bumps sqladmin's `elkjs` to `^0.10.0` to resolve it — mandatory, not optional. Do not paper over it with `--legacy-peer-deps`.
 
 ---
 
@@ -149,7 +149,7 @@ Run in order; the publish (Step 2) is irreversible.
 - [`plans/prepare-0-1-0-release.md`](plans/prepare-0-1-0-release.md) — the completed prerequisite; it added the `publishConfig`/`prepublishOnly` guards and LICENSE/README to `packages/lib`, proved the packed surface, and verified sqladmin against the kept `.tgz` then reverted it. This plan starts from that state and re-does none of it.
 - [`plans/workspace-restructure.md`](plans/workspace-restructure.md) — the base dependency; establishes that the library package lives at `packages/lib/` with `name`/`version 0.1.0`/`exports`/`files` byte-identical and builds via `npm run build:lib` to `packages/lib/dist/lib`.
 - `packages/lib/package.json` — the surface being published (`@jimka/typescript-ui`, `version 0.1.0`, `files`, 23-subpath `exports`, `build:lib`); already carries `publishConfig.access` + `prepublishOnly` from `prepare-0-1-0-release`. Not edited by this plan.
-- [`/home/jika/typescript/sqladmin/frontend/package.json`](/home/jika/typescript/sqladmin/frontend/package.json) — the external consumer; line 14 `"@jimka/typescript-ui": "file:../../typescript-ui"` (a symlink) is what the migration permanently replaces with `"^0.1.0"`. Scripts: `build` = `tsc --noEmit && vite build`, `typecheck` = `tsc --noEmit`.
+- [`/home/jika/typescript/sqladmin/frontend/package.json`](/home/jika/typescript/sqladmin/frontend/package.json) — the external consumer; line 14 `"@jimka/typescript-ui": "file:../../typescript-ui/packages/lib"` (a symlink) is what the migration permanently replaces with `"^0.1.0"`, and line 15 `elkjs: "^0.9.3"` is bumped to `"^0.10.0"`. Scripts: `build` = `tsc --noEmit && vite build`, `typecheck` = `tsc --noEmit`.
 - [`/home/jika/typescript/sqladmin/.claude/skills/verify/SKILL.md`](/home/jika/typescript/sqladmin/.claude/skills/verify/SKILL.md) — the `verify` skill driving the sqladmin app end-to-end; documents the `sqladmin-db` login host used in the migration's render check.
 
 ---
@@ -161,5 +161,4 @@ Run in order; the publish (Step 2) is irreversible.
 - **A CHANGELOG or versioning convention** — none exists in the repo; not introduced here.
 - **Any library API, manifest, `exports`, `files`, `name`, or `version` change** — the published surface is exactly the restructure-preserved, prepare-guarded one; this plan performs the publish, the tag, and the consumer migration only.
 - **Bumping past `0.1.0` or publishing `0.1.1+`** — out of scope; the `0.x` caret note is guidance for the consumer range only.
-- **Bumping `elkjs` in sqladmin** — the optional peer drift is flagged, not changed, during migration.
 - **Editing the `workspace-restructure` or `prepare-0-1-0-release` outputs** — this plan consumes them and does not re-open their decisions.
