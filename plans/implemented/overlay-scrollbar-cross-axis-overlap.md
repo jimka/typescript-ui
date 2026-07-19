@@ -355,7 +355,47 @@ Deviations made while implementing, and why:
 
 - **`getContentFrame()` accessor (plan step 16) replaced by a `reparentContent(from, to)` helper on `Component`.** The plan had `Panel` inline the re-parent dance using a `getContentFrame()` read plus per-child `getAttachNode()` calls. But `getAttachNode()` is `protected` on `Component`, and TypeScript forbids calling a base class's protected member through a base-typed reference (`this._components: Component[]`) from a *subclass* (`Panel`). Encapsulating the whole move — content-frame-as-a-unit vs per-child-by-attach-node, with scroll-offset capture/restore — in one `protected reparentContent(from, to)` on `Component` keeps that access where it is legal and gives install/teardown a single call each. No `getContentFrame()` was added.
 - **Bars carry `setZIndex(2)` themselves.** The removed sticky host previously provided `z-index: 2` (above the shadow overlay's `z-index: 1`) to the bars nested inside it. With the bars now direct children of the panel element, each `Scrollbar` sets its own `z-index: 2` on install to preserve that stacking guarantee.
-- **`layoutOverlayScrollbars` feeds `setMetrics` the inner element's own client box (`m.clientHeight`/`m.clientWidth`), not the computed `innerH`/`innerW`.** This keeps each bar's visibility criterion identical to the `vVisible`/`hVisible` test that drives the gutter (and identical to `syncOverlayScrollbars`), so a bar's shown/hidden state and the reserved gutter never disagree — the consistency the old code achieved by passing the full client box. The two are equal in steady state; the client-box form is the robust choice.
+- **`layoutOverlayScrollbars` feeds `setMetrics` the inner element's own client box (`m.clientHeight`/`m.clientWidth`), not the computed `innerH`/`innerW`.** *(Superseded by the resize-transient follow-up below: `layoutOverlayScrollbars` now passes the computed `innerH`/`innerW` — decided against the live panel viewport — while `syncOverlayScrollbars` still reads the inner client box; the two are equal at scroll time. This original bullet describes the intermediate state.)* The intent was unchanged: keep each bar's visibility criterion consistent with the `vVisible`/`hVisible` test that drives the gutter, so a bar's shown/hidden state and the reserved gutter never disagree.
 - **Inner scroll element is sized `width/height: 100%` on install.** So the very first overflow read (before the first layout writes explicit px) sees the full panel viewport rather than an unsized (shrink-to-fit) box; the per-pass layout then overrides with the post-gutter px size.
 - **Tests keep a single `getScrollMetrics` mock** (the plan suggested per-handle). A single stub suffices because the panel-element read (available viewport) and the inner-element read (content extent + client box) consume compatible fields for every asserted case; per-handle keying would add harness complexity with no assertion it enables.
 - **Verification:** the both-axis fix was confirmed live against a dev server serving this worktree (the exact source SQLAdmin consumes once `build:lib` runs) — a `List` with `horizontalScrolling` in a 220x180 rail clips content to the inset inner scroller (206x166) with both bars in the reserved gutter and zero overlap at scroll origin/mid/max, full range reachable. SQLAdmin's own dev server picks this up only after `build:lib` in the main tree (the documented cross-repo build step), so it was not re-run here. The full test suite's "DOM handle not registered" async errors are a pre-existing flaky Animation-timer teardown race (present on master at a comparable, run-to-run-variable count), not caused by this change.
+
+### Follow-up: resize-transient fix (post-merge-testing)
+
+Live SQLAdmin testing surfaced a bug not covered by the offline suite: expanding
+the viewport containing an overlay panel flickered a transient horizontal bar
+that sometimes stuck. Root cause (reproduced live): `layoutOverlayScrollbars`
+decided bar visibility from the **inner element's own `clientWidth`/`clientHeight`**,
+which lag one frame behind a resize because the method sizes the inner element
+*after* reading it — so on the first pass after an expand, content that now fits
+the widened viewport was still judged against the old (smaller) inner width and
+kept its bar; during a continuous resize every frame is that stale first pass, so
+the bar persisted and stuck if no trailing settle pass ran.
+
+The first attempt judged visibility against the panel element's current client
+box (`avail`) reduced by the cross-axis track, reading only content extent from
+the inner element. That fixed *expand* but a later round of live testing found it
+still broke on *shrink*: `scrollWidth`/`scrollHeight` are floored by the browser
+at the inner element's own client box, so while the inner element still carried
+its stale-**large** pre-shrink size, `scrollWidth` read large and content that now
+fit still registered as overflowing — a symmetric spurious bar.
+
+Final unified fix (handles both directions): **size the inner scroll element to
+the current viewport minus the currently-reserved gutter BEFORE reading its
+metrics**, so its `clientWidth`/`clientHeight` — and therefore the floored
+`scrollWidth`/`scrollHeight` — reflect this frame's viewport, then use the direct
+`scrollWidth > clientWidth` / `scrollHeight > clientHeight` overflow test on those
+now-current values. `avail` (the panel element's client box, flushed each frame by
+`doLayout`'s `commitElementStyle`) drives the pre-read sizing; the V<->H mutual
+dependency settles across passes via the existing gutter-change reschedule (one
+extra pass), no fixpoint needed. `setMetrics` takes the final `innerH`/`innerW`.
+Two tests that asserted the *old* overlay semantics — content filling the *full*
+client box shows no cross bar — were updated: under real space reservation such
+content overflows the reduced viewport and correctly shows a 12px bar, while real
+stretched content (laid out to `getInnerSize` = viewport − gutter) fits and shows
+none. The resize transient is a write-then-read the offline stub can't model
+(escape hatch): the offline test pins the observable mechanism (the inner element
+is re-sized to viewport − gutter on every layout, tracking grow and shrink), and
+both directions were verified live — after an expand OR a shrink the gutter is
+correct on the first pass, and a continuous resize in either direction never
+shows a spurious bar.

@@ -237,6 +237,12 @@ describe('Panel — overlay scrollbar default', () => {
     });
 
     it('reserves no gutter when nothing overflows', () => {
+        // Content exactly fills the viewport on both axes (scroll == client), so
+        // neither axis overflows. Stub explicitly: visibility now reads the
+        // panel element for the viewport and the inner element for content, so
+        // an un-stubbed harness no longer self-cancels those two reads.
+        stubMetrics({ scrollWidth: 400, clientWidth: 400, scrollHeight: 300, clientHeight: 300 });
+
         const panel = new _Panel({ autoScroll: 'auto' });
         panel.getElement(true);
 
@@ -293,6 +299,45 @@ describe('Panel — overlay scrollbar default', () => {
         const inner = internals(panel)._overlayScrollElement;
         expect(lastStyle(sink, inner!, 'width')).toBe('388px');    // right gutter reserved
         expect(lastStyle(sink, inner!, 'height')).toBe('300px');   // no bottom bar → full height
+    });
+
+    it('re-sizes the inner scroller to the CURRENT panel viewport on every layout (never lags a resize)', () => {
+        // The inner element's own client box is what the overflow test reads, so
+        // it must track the current viewport rather than the previous pass's
+        // size — otherwise a resize flickers a transient bar (expand: a stale-
+        // small box keeps a bar the widened viewport dropped; shrink: a stale-
+        // large box floors scrollWidth so content that now fits reads as
+        // overflowing). This pins the mechanism that keeps it fresh: the inner
+        // element is written to (viewport − gutter) on each layout. A vertical-
+        // only overflow (content fits horizontally) reserves a 12px right gutter,
+        // so the inner width tracks viewportW − 12 as the viewport grows/shrinks.
+        // (The transient itself is a write-then-read the offline stub can't model
+        // — it is verified live; this guards the sizing that prevents it.)
+        const sink = installTestDOM(CONFIG);
+        // Content fits horizontally (scrollWidth 100) but overflows vertically
+        // (scrollHeight 900 > clientHeight 300) → a right gutter, never a bottom.
+        const metrics = (viewportW: number) => ({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 100, scrollHeight: 900,
+            clientWidth: viewportW, clientHeight: 300,
+        });
+        const spy = vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue(metrics(400));
+
+        const panel = new _Panel({ autoScroll: 'auto' });
+        panel.getElement(true);
+        const inner = internals(panel)._overlayScrollElement!;
+        panel.doLayout();
+        expect(lastStyle(sink, inner, 'width')).toBe('388px');   // 400 − 12
+
+        spy.mockReturnValue(metrics(600));
+        panel.doLayout();
+        expect(lastStyle(sink, inner, 'width')).toBe('588px');   // grow → tracks 600 − 12
+
+        spy.mockReturnValue(metrics(200));
+        panel.doLayout();
+        expect(lastStyle(sink, inner, 'width')).toBe('188px');   // shrink → tracks 200 − 12, not stuck large
+
+        expect(internals(panel)._scrollbarGutter.bottom).toBe(0); // no spurious H bar at any size
     });
 
     it('auto-hides the bar for an axis whose content fits', () => {
@@ -415,17 +460,17 @@ describe('Panel — scroll-shadow overlay is inset by the overlay-scrollbar gutt
         expect(lastStyle(sink, overlay!, 'height')).toBe('300px');  // no bottom bar → no inset
     });
 
-    it('hides the horizontal bar when content fills the client box but a vertical bar is present (no spurious cross-bar)', () => {
-        // Vertical-only overflow: content is exactly as wide as the client box
-        // (scrollWidth === clientWidth), so there is NO horizontal overflow. The
-        // vertical bar reserves a 12px gutter, shrinking the horizontal track to
-        // 388, but that must NOT make the horizontal bar consider itself
-        // overflowing — its visibility is judged against the full client
-        // viewport (400), not the cross-axis-reduced track (388). Otherwise a
-        // stray 12px horizontal bar paints over the bottom scroll shadow on every
-        // vertically-scrolling panel.
+    it('shows no horizontal bar when content fits the vertical bar\'s reduced viewport (no spurious cross-bar)', () => {
+        // Vertical-only overflow. Because the overlay bar now reserves REAL space
+        // (the inner scroller is inset by the 12px track), "does content overflow
+        // horizontally?" is judged against the reduced viewport (388), not the
+        // full client box. Real stretched content is laid out to that reduced
+        // width (getInnerSize already subtracts the gutter), so `scrollWidth`
+        // 388 fits exactly and no stray horizontal bar paints over the bottom
+        // shadow. (Content that instead filled the *full* 400 client box would
+        // genuinely overflow the 388 viewport and correctly show a 12px bar.)
         installTestDOM(CONFIG);
-        stubMetrics({ scrollHeight: 900, clientHeight: 300, scrollWidth: 400, clientWidth: 400 });
+        stubMetrics({ scrollHeight: 900, clientHeight: 300, scrollWidth: 388, clientWidth: 400 });
 
         const panel = new _Panel({ autoScroll: 'auto' });   // overlay by default
         panel.getElement(true);
@@ -433,7 +478,7 @@ describe('Panel — scroll-shadow overlay is inset by the overlay-scrollbar gutt
 
         const i = internals(panel);
         expect(i._scrollbarV!.isDisplayed()).toBe(true);    // real vertical overflow
-        expect(i._scrollbarH!.isDisplayed()).toBe(false);   // content fits the client box → hidden
+        expect(i._scrollbarH!.isDisplayed()).toBe(false);   // content fits the reduced viewport → hidden
         expect(i._scrollbarGutter.bottom).toBe(0);          // and no bottom gutter reserved
     });
 

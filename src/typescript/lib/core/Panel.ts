@@ -1225,48 +1225,72 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
         const trackW = this._scrollbarV.getTrackWidth();
 
-        // Available viewport: the panel element's client box (it never scrolls
-        // in overlay mode, so this is the full viewport the inner element and
-        // the bar band share).
+        // Available viewport: the panel element's client box. The parent layout
+        // sizes the panel element (and `doLayout` flushes it via
+        // `commitElementStyle`) before this runs, so `avail` is always current —
+        // it never lags a resize.
         const avail  = DOM.source.getScrollMetrics(panelEl);
         const availW = avail.clientWidth;
         const availH = avail.clientHeight;
 
-        // Content extent, offsets, and the inner element's CURRENT client box
-        // (last pass's inset size) from the inner scroller.
+        const curRight  = this._scrollbarGutter.right;
+        const curBottom = this._scrollbarGutter.bottom;
+
+        // Size the inner scroller to the CURRENT viewport (minus the currently
+        // reserved gutter) BEFORE reading its metrics, so its `clientWidth`/
+        // `clientHeight` — and thus `scrollWidth`/`scrollHeight`, which the
+        // browser floors at the client box — reflect THIS frame's viewport. The
+        // inner element otherwise carries the previous pass's size, which lags a
+        // resize in BOTH directions: on expand the stale-small client box kept a
+        // bar the widened viewport no longer needs; on shrink the stale-large
+        // client box floored `scrollWidth` so content that now fits still read as
+        // overflowing — each flickered a transient bar that could stick. A gutter
+        // change below re-sizes and reschedules, converging in one extra pass.
+        this._overlayScrollStyle.setMany({
+            width:  (availW - curRight)  + "px",
+            height: (availH - curBottom) + "px",
+        });
+
+        // Content extent, offsets, and the now-current inner client box.
         const m    = DOM.source.getScrollMetrics(innerEl);
         const axes = this.scrollableAxes();
 
-        // A bar shows when content exceeds the inner scroller's own viewport.
+        // A bar shows when content exceeds the inner scroller's (now current)
+        // viewport. The V<->H dependency — reserving one bar shrinks the other's
+        // viewport — settles across passes via the gutter-change reschedule
+        // below, the same one-extra-pass convergence the gutter always used.
         const vVisible = axes.y && m.scrollHeight > m.clientHeight;
         const hVisible = axes.x && m.scrollWidth  > m.clientWidth;
 
         const innerW = availW - (vVisible ? trackW : 0);
         const innerH = availH - (hVisible ? trackW : 0);
 
-        // Physically inset the inner scroller so overflowing content clips at
-        // the inner viewport edge and can never scroll under a bar.
-        this._overlayScrollStyle.setMany({ width: innerW + "px", height: innerH + "px" });
+        // Re-inset the inner scroller when this pass's gutter differs from the
+        // one the pre-read sizing used, so overflowing content clips at the inner
+        // viewport edge and can never scroll under a bar.
+        if (innerW !== availW - curRight || innerH !== availH - curBottom) {
+            this._overlayScrollStyle.setMany({ width: innerW + "px", height: innerH + "px" });
+        }
 
         // Bars occupy the reserved band at the trailing edges, sized to the
         // inner extent so each stops short of the shared corner. setMetrics
-        // takes the inner element's OWN client box as the viewport (the same
-        // criterion as vVisible/hVisible), so a bar's visibility and the
-        // reserved gutter never disagree.
+        // takes the same reduced viewport (`innerH`/`innerW`) the visibility
+        // test used, so a bar's shown/hidden state and the reserved gutter
+        // never disagree.
         this._scrollbarV.setX(innerW);
         this._scrollbarV.setY(0);
         this._scrollbarV.setHeight(innerH);
-        this._scrollbarV.setMetrics(m.clientHeight, m.scrollHeight, m.scrollTop);
+        this._scrollbarV.setMetrics(innerH, m.scrollHeight, m.scrollTop);
 
         this._scrollbarH.setX(0);
         this._scrollbarH.setY(innerH);
         this._scrollbarH.setWidth(innerW);
-        this._scrollbarH.setMetrics(m.clientWidth, m.scrollWidth, m.scrollLeft);
+        this._scrollbarH.setMetrics(innerW, m.scrollWidth, m.scrollLeft);
 
         const newRight  = vVisible ? trackW : 0;
         const newBottom = hVisible ? trackW : 0;
 
-        if (newRight !== this._scrollbarGutter.right || newBottom !== this._scrollbarGutter.bottom) {
+        if (newRight !== curRight || newBottom !== curBottom) {
             this.setScrollbarGutter(newRight, newBottom);
             this.scheduleLayout();
         }
