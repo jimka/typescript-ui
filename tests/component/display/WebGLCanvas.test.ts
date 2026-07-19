@@ -216,10 +216,16 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P8)', () => {
 
         canvas.getElement(true);
         canvas.setVisible(false);
+
+        // Baseline after setVisible, whose own effective-visibility reconcile
+        // enqueue also schedules a (framework-internal) requestAnimationFrame —
+        // isolate the assertion to whether startAnimation adds its own.
+        const rafBefore = rafCount(recorder);
+
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(false);
-        expect(rafCount(recorder)).toBe(0);
+        expect(rafCount(recorder)).toBe(rafBefore);
     });
 
     it('does not start when a hidden ancestor makes it effectively hidden (P4)', () => {
@@ -235,9 +241,8 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P8)', () => {
         expect(canvas.isAnimating()).toBe(false);
     });
 
-    it('resumes once shown again via doLayout (P5)', () => {
+    it('doLayout alone no longer resumes the loop — only the flush does (P5, case 8)', () => {
         const canvas = new WebGLCanvas();
-        const recorder = DOM.sink as unknown as Recorder;
 
         canvas.getElement(true);
         canvas.setVisible(false);
@@ -248,8 +253,68 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P8)', () => {
         canvas.setVisible(true);
         canvas.doLayout();
 
+        expect(canvas.isAnimating()).toBe(false);
+
+        Component.flushEffectiveVisibility();
+
         expect(canvas.isAnimating()).toBe(true);
-        expect(rafCount(recorder)).toBe(1);
+    });
+
+    it('reacts to the effective-visibility event: pauses on hide, resumes on show (case 6)', () => {
+        const canvas = new WebGLCanvas();
+        const recorder = DOM.sink as unknown as Recorder;
+
+        canvas.getElement(true);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(true);
+
+        const cancelBefore = cancelCount(recorder);
+
+        canvas.setVisible(false);
+        Component.flushEffectiveVisibility();
+
+        expect(canvas.isAnimating()).toBe(false);
+        expect(cancelCount(recorder)).toBeGreaterThan(cancelBefore);
+
+        const rafBefore = rafCount(recorder);
+
+        canvas.setVisible(true);
+        Component.flushEffectiveVisibility();
+
+        expect(canvas.isAnimating()).toBe(true);
+        expect(rafCount(recorder)).toBeGreaterThan(rafBefore);
+    });
+
+    it('an ancestor hide pauses a started descendant Canvas (case 7)', () => {
+        const container = new Component({});
+        const canvas = new WebGLCanvas();
+
+        container.addComponent(canvas);
+        container.getElement(true);
+        canvas.getElement(true);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(true);
+
+        container.setVisible(false);
+        Component.flushEffectiveVisibility();
+
+        expect(canvas.isAnimating()).toBe(false);
+    });
+
+    it('setDisplayed(false) also pauses a started Canvas (case 10)', () => {
+        const canvas = new WebGLCanvas();
+
+        canvas.getElement(true);
+        canvas.startAnimation();
+
+        expect(canvas.isAnimating()).toBe(true);
+
+        canvas.setDisplayed(false);
+        Component.flushEffectiveVisibility();
+
+        expect(canvas.isAnimating()).toBe(false);
     });
 
     it('keeps animating while hidden when animateWhenHidden is set (P6)', () => {

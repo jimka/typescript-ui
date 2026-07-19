@@ -47,19 +47,37 @@ function stubMetrics(metrics: Partial<{
 /** Narrow shape reaching the overlay-scrollbar private state without `any`. */
 type OverlayInternals = {
     _scrollbarGutter:       { right: number; bottom: number };
-    _overlayHost:           Handle | null;
+    _overlayScrollElement:  Handle | null;
     _scrollbarV:            { getX(): number; getY(): number; getWidth(): number; getHeight(): number; isDisplayed(): boolean } | null;
     _scrollbarH:            { getX(): number; getY(): number; getWidth(): number; getHeight(): number; isDisplayed(): boolean } | null;
     _overlayScrollHandler:  (() => void) | null;
     _shadowOverlay:         Handle | null;
     _onOverlayScrollV(position: number): void;
     _onOverlayScrollH(position: number): void;
+    getScrollElement(): Handle | undefined;
     layoutOverlayScrollbars(element?: Handle): void;
     syncOverlayScrollbars(): void;
 };
 
 function internals(panel: _Panel): OverlayInternals {
     return panel as unknown as OverlayInternals;
+}
+
+/** Last committed value of a camelCase style key applied to a raw handle. */
+function lastStyle(sink: RecordingDOMSink, handle: Handle, key: string): string | undefined {
+    let value: string | undefined;
+
+    for (const w of sink.writes) {
+        if (w.op === 'apply' && w.args[0] === handle) {
+            const patch = w.args[1] as { style?: Record<string, string | null> };
+
+            if (patch.style && key in patch.style) {
+                value = patch.style[key] ?? undefined;
+            }
+        }
+    }
+
+    return value;
 }
 
 describe('Panel — overlay scrollbar default', () => {
@@ -75,7 +93,7 @@ describe('Panel — overlay scrollbar default', () => {
         panel.getElement(true);
 
         const i = internals(panel);
-        expect(i._overlayHost).toBeNull();
+        expect(i._overlayScrollElement).toBeNull();
         expect(i._scrollbarV).toBeNull();
         expect(i._scrollbarH).toBeNull();
 
@@ -88,15 +106,56 @@ describe('Panel — overlay scrollbar default', () => {
         expect(hidesScrollbarWidth).toBe(false);
     });
 
-    it('installs both bars + host + handler once autoScroll and overlay style are both active', () => {
+    it('installs both bars + inner scroller + handler once autoScroll and overlay style are both active', () => {
         const panel = new _Panel({ autoScroll: 'y' });
         panel.getElement(true);
 
         const i = internals(panel);
-        expect(i._overlayHost).not.toBeNull();
+        expect(i._overlayScrollElement).not.toBeNull();
         expect(i._scrollbarV).not.toBeNull();
         expect(i._scrollbarH).not.toBeNull();
         expect(i._overlayScrollHandler).not.toBeNull();
+    });
+
+    it('updates the inner scroller overflow axes on a runtime mode-to-mode change (no teardown)', () => {
+        // The inner element persists across a scrolling→scrolling mode switch
+        // (refreshOverlayScrollbars only tears down for "none"/native), so its
+        // per-axis overflow must be re-written to the new mode or the newly
+        // scrollable axis stays `hidden` and cannot scroll. Reachable at runtime
+        // via List.setHorizontalScrolling (autoScroll "y"→"auto").
+        const sink = installTestDOM(CONFIG);
+
+        const panel = new _Panel({ autoScroll: 'y' });
+        panel.getElement(true);
+
+        const inner = internals(panel)._overlayScrollElement!;
+        expect(lastStyle(sink, inner, 'overflowX')).toBe('hidden');
+        expect(lastStyle(sink, inner, 'overflowY')).toBe('auto');
+
+        panel.setAutoScroll('both');
+        expect(internals(panel)._overlayScrollElement).toBe(inner);   // same element, not re-created
+        expect(lastStyle(sink, inner, 'overflowX')).toBe('auto');
+        expect(lastStyle(sink, inner, 'overflowY')).toBe('auto');
+
+        panel.setAutoScroll('x');
+        expect(lastStyle(sink, inner, 'overflowX')).toBe('auto');
+        expect(lastStyle(sink, inner, 'overflowY')).toBe('hidden');
+    });
+
+    it('routes getScrollElement() to the inner scroller in overlay mode, and to the panel element otherwise', () => {
+        const overlay = new _Panel({ autoScroll: 'y' });
+        overlay.getElement(true);
+        const oi = internals(overlay);
+        expect(oi.getScrollElement()).toBe(oi._overlayScrollElement);
+        expect(oi.getScrollElement()).not.toBe(overlay.getElement());
+
+        const nativeP = new _Panel({ autoScroll: 'y', scrollbarStyle: 'native' });
+        nativeP.getElement(true);
+        expect(internals(nativeP).getScrollElement()).toBe(nativeP.getElement());
+
+        const nonScroll = new _Panel();
+        nonScroll.getElement(true);
+        expect(internals(nonScroll).getScrollElement()).toBe(nonScroll.getElement());
     });
 
     it('hides the native scrollbar via the deferred CSS seam on install', () => {
@@ -121,12 +180,12 @@ describe('Panel — overlay scrollbar default', () => {
 
         const panel = new _Panel({ autoScroll: 'y' });
         panel.getElement(true);
-        expect(internals(panel)._overlayHost).not.toBeNull();
+        expect(internals(panel)._overlayScrollElement).not.toBeNull();
         expect(internals(panel)._scrollbarGutter.right).toBe(12);
 
         panel.setAutoScroll('none');
         let i = internals(panel);
-        expect(i._overlayHost).toBeNull();
+        expect(i._overlayScrollElement).toBeNull();
         expect(i._scrollbarV).toBeNull();
         expect(i._scrollbarH).toBeNull();
         expect(i._scrollbarGutter.right).toBe(0);
@@ -142,19 +201,19 @@ describe('Panel — overlay scrollbar default', () => {
 
         // Re-enter overlay mode, then tear down via the style switch instead.
         panel.setAutoScroll('y');
-        expect(internals(panel)._overlayHost).not.toBeNull();
+        expect(internals(panel)._overlayScrollElement).not.toBeNull();
         expect(internals(panel)._scrollbarGutter.right).toBe(12);
 
         panel.setScrollbarStyle('native');
         i = internals(panel);
-        expect(i._overlayHost).toBeNull();
+        expect(i._overlayScrollElement).toBeNull();
         expect(i._scrollbarV).toBeNull();
         expect(i._scrollbarH).toBeNull();
         expect(i._scrollbarGutter.right).toBe(0);
 
         // Re-entering overlay while still scrollable re-installs.
         panel.setScrollbarStyle('overlay');
-        expect(internals(panel)._overlayHost).not.toBeNull();
+        expect(internals(panel)._overlayScrollElement).not.toBeNull();
     });
 
     it('reserves a 12px right gutter when the y axis overflows', () => {
@@ -196,6 +255,44 @@ describe('Panel — overlay scrollbar default', () => {
         expect(i._scrollbarV!.getHeight()).toBe(300 - 12);
         expect(i._scrollbarH!.getY()).toBe(300 - 12);
         expect(i._scrollbarH!.getWidth()).toBe(400 - 12);
+    });
+
+    it('insets the inner scroll element by the track on both axes when both overflow — content clips before the bar band', () => {
+        // The core fix: the native scroll viewport (the inner element) is
+        // physically inset by the track on each axis whose perpendicular bar
+        // shows, so overflowing content clips at the inner viewport edge and
+        // can never scroll under a bar. availW/H = panel client box (400x300);
+        // inner element sized to (400-12) x (300-12).
+        const sink = installTestDOM(CONFIG);
+        stubMetrics({ scrollWidth: 900, clientWidth: 400, scrollHeight: 900, clientHeight: 300 });
+
+        const panel = new _Panel({ autoScroll: 'both' });
+        panel.getElement(true);
+        panel.doLayout();
+
+        const inner = internals(panel)._overlayScrollElement;
+        expect(inner).not.toBeNull();
+        expect(lastStyle(sink, inner!, 'width')).toBe('388px');
+        expect(lastStyle(sink, inner!, 'height')).toBe('288px');
+
+        // The inner viewport's trailing edges coincide with the bars' inner
+        // edges — the bar band is reserved space the content cannot occupy.
+        const i = internals(panel);
+        expect(i._scrollbarV!.getX()).toBe(388);   // = inner width
+        expect(i._scrollbarH!.getY()).toBe(288);   // = inner height
+    });
+
+    it('insets only the overflowing axis of the inner scroll element (vertical-only → width inset, full height)', () => {
+        const sink = installTestDOM(CONFIG);
+        stubMetrics({ scrollHeight: 900, clientHeight: 300, scrollWidth: 400, clientWidth: 400 });
+
+        const panel = new _Panel({ autoScroll: 'y' });
+        panel.getElement(true);
+        panel.doLayout();
+
+        const inner = internals(panel)._overlayScrollElement;
+        expect(lastStyle(sink, inner!, 'width')).toBe('388px');    // right gutter reserved
+        expect(lastStyle(sink, inner!, 'height')).toBe('300px');   // no bottom bar → full height
     });
 
     it('auto-hides the bar for an axis whose content fits', () => {
@@ -253,7 +350,7 @@ describe('Panel — overlay scrollbar default', () => {
 
         const i = internals(panel);
         expect(i._scrollbarGutter.right).toBe(15);
-        expect(i._overlayHost).toBeNull();
+        expect(i._overlayScrollElement).toBeNull();
         expect(i._scrollbarV).toBeNull();
         expect(i._scrollbarH).toBeNull();
     });
@@ -269,7 +366,7 @@ describe('Panel — overlay scrollbar default', () => {
 
         const i = internals(panel);
         expect(i._scrollbarGutter.right).toBe(12);
-        expect(i._overlayHost).not.toBeNull();
+        expect(i._overlayScrollElement).not.toBeNull();
         expect(i._scrollbarV).not.toBeNull();
     });
 
@@ -288,23 +385,6 @@ describe('Panel — overlay scrollbar default', () => {
 // each edge shadow lands just inside its bar — and only in overlay mode, since
 // native `clientWidth`/`clientHeight` already exclude the OS bar.
 describe('Panel — scroll-shadow overlay is inset by the overlay-scrollbar gutter', () => {
-    /** Last committed value of a camelCase style key applied to a raw handle. */
-    function lastStyle(sink: RecordingDOMSink, handle: Handle, key: string): string | undefined {
-        let value: string | undefined;
-
-        for (const w of sink.writes) {
-            if (w.op === 'apply' && w.args[0] === handle) {
-                const patch = w.args[1] as { style?: Record<string, string | null> };
-
-                if (patch.style && key in patch.style) {
-                    value = patch.style[key] ?? undefined;
-                }
-            }
-        }
-
-        return value;
-    }
-
     it('insets both edges by the 12px track when both axes overflow in overlay mode', () => {
         const sink = installTestDOM(CONFIG);
         stubMetrics({ scrollWidth: 900, clientWidth: 400, scrollHeight: 900, clientHeight: 300 });

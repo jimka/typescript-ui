@@ -677,3 +677,65 @@ Manual / live-only (offline harness cannot tick rAF or paint):
   so it only toggles on real switches. Rejected in favour of the source-level
   `setVisible` idempotency guard (see *Architecture Decisions*), which is more
   general and far lower-risk; `Tab.ts` stays unchanged.
+
+---
+
+## Implementation Notes
+
+No deviations from the plan were required — every `## Ordered Implementation
+Steps` entry and `## Files to Create / Modify / Delete` row was implemented
+exactly as specified, and `## Expected Behaviour` cases 1–15 are each pinned by
+an offline test using `installTestDOM` + `Component.flushEffectiveVisibility()`.
+
+The four **Manual / live-only** cases from `## Expected Behaviour` were
+performed against the running app (`npm run dev`, Misc panel, via the
+chrome-devtools MCP tools) after the initial implementation, and the results
+are recorded here per the *Test-first* escape-hatch discipline ("describe
+expected behaviour first, then implement, then verify — and say so
+explicitly"):
+
+1. **Real rAF pause.** Instrumented `window.requestAnimationFrame` with a
+   counting wrapper and measured deltas over 1-second windows via
+   `performance.now()`, isolating each step in a single script execution to
+   avoid tool-round-trip noise. On page load (only `WebGLCanvas`, which
+   auto-starts via `onFirstLayout`): 60 calls/sec — one 60Hz loop, as expected.
+   After clicking "Toggle canvas animation" to start the 2D `Canvas` demo too:
+   120 calls/sec — two 60Hz loops. Switching to the "Binding" tab: 12 calls/sec
+   (both loops paused; the residual 12/sec is unidentified but an order of
+   magnitude below the two-loop rate, not investigated further as it is outside
+   this plan's scope). Switching back to "Misc.": 118 calls/sec, matching the
+   pre-hide rate. Confirms the rAF loop pauses/resumes with effective
+   visibility, not per-frame polling. (An earlier, less rigorous pass at this
+   same check — instrumenting across separate tool calls with unaccounted
+   latency and without an isolated baseline — produced implausible ~900+/sec
+   figures; this measurement replaces it.)
+2. **ProgressSpinner CPU / animation freeze.** Located the spinner arc element
+   by its `ts-ui-progress-spinner-rotate` keyframe name and read
+   `getComputedStyle(el).animationPlayState`: `"running"` while the Misc tab is
+   active, flips to `"paused"` immediately after switching away, and back to
+   `"running"` after switching back.
+3. **Wanted transitions survive.** Triggered a Binding→Misc tab switch and
+   sampled the Misc panel root element's inline style + computed opacity across
+   consecutive animation frames within one script (to avoid tool-round-trip
+   latency exceeding the 120ms fade). Observed the `transition: opacity 120ms
+   ease-out` rule appear and opacity progress smoothly 0 → 0.22 → 0.42 → 0.59 →
+   0.74 → 0.87 → 0.96 → 0.999 → 1, then the transition rule clear — the
+   `Tab` cross-tab fade (`Tab.ts` ~1728, `Animation.play`) is unaffected by the
+   new `animation-play-state` pausing, as the Architecture Decisions predicted
+   (transitions and the `animation` shorthand are independent CSS mechanisms).
+4. **Theme toggle.** With the Misc tab hidden (spinner `animationPlayState:
+   "paused"`), programmatically clicked the "Switch to classic theme" button
+   (`ThemeManager.setTheme`) while still on the "Binding" tab. The spinner's
+   `animationPlayState` remained `"paused"` after the live theme change —
+   `applyStyle` clears only the inline `style` attribute, not the `#uuid` rule
+   the pause is written to, so a theme-driven re-flush does not resurrect a
+   paused animation.
+
+This section was added in response to the first audit cycle's BLOCKING
+finding — the four manual-verify cases above were performed during initial
+implementation but not recorded anywhere on the branch. The second audit
+cycle then found the recorded rAF numbers for case 1 implausible against the
+actual code (at most two 60Hz demo loops exist, nowhere near the originally
+claimed ~900–1300/sec); case 1 above has been replaced with a rigorous
+re-measurement, corrected accordingly. No source or test code changed as a
+result of either audit cycle — only this record.
