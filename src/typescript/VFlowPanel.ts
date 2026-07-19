@@ -1,32 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { callable } from '@jimka/typescript-ui/core';
-import { AnchorType, VFlow, LayoutConstraints } from '@jimka/typescript-ui/layout';
-import { LayoutTestPanel } from "./LayoutTestPanel.js";
+import { VFlow } from '@jimka/typescript-ui/layout';
+import { FlowDemoPanel } from "./FlowDemoPanel.js";
 
-class VFlowPanel extends LayoutTestPanel {
+class VFlowPanel extends FlowDemoPanel {
 
     constructor() {
-        super();
-
-        // `uniform: "none"` keeps each child at its own (mixed) size so the new
+        // `uniform: "none"` keeps each child at its own (mixed) size so the
         // cross-axis and distribution options are visible: `itemAlign: "center"`
         // horizontally centres a narrow item within a wide column, and
         // `justify: "around"` spaces each column's items with equal gaps (and
-        // half-gaps at the ends) across the inner height.
-        this.setLayoutManager(new VFlow({ uniform: "none", itemAlign: "center", justify: "around" }));
-
-        const enums = Object.keys(AnchorType).length;
-        let n = 0;
-
-        for (const component of this.getComponents()) {
-            const constraints = this.getLayoutConstraints(component) ?? new LayoutConstraints();
-
-            constraints.anchor = n % enums;
-            n += 1;
-
-            this.setLayoutConstraints(component, constraints);
-        }
+        // half-gaps at the ends) across the inner height. Every setting is then
+        // live-editable through the panel's toolbar.
+        super(new VFlow({ uniform: "none", itemAlign: "center", justify: "around" }));
     }
 }
 

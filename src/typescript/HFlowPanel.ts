@@ -1,32 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { callable } from '@jimka/typescript-ui/core';
-import { AnchorType, HFlow, LayoutConstraints } from '@jimka/typescript-ui/layout';
-import { LayoutTestPanel } from "./LayoutTestPanel.js";
+import { HFlow } from '@jimka/typescript-ui/layout';
+import { FlowDemoPanel } from "./FlowDemoPanel.js";
 
-class HFlowPanel extends LayoutTestPanel {
+class HFlowPanel extends FlowDemoPanel {
 
     constructor() {
-        super();
-
-        // `uniform: "none"` keeps each child at its own (mixed) size so the new
-        // cross-axis and distribution options are visible: `itemAlign: "center"`
-        // vertically centres a short item within a tall row, and
-        // `justify: "between"` spreads each row's items edge-to-edge across the
-        // inner width.
-        this.setLayoutManager(new HFlow({ uniform: "both", itemAlign: "center", justify: "between" }));
-
-        const enums = Object.keys(AnchorType).length;
-        let n = 0;
-
-        for (const component of this.getComponents()) {
-            const constraints = this.getLayoutConstraints(component) ?? new LayoutConstraints();
-
-            constraints.anchor = n % enums;
-            n += 1;
-
-            this.setLayoutConstraints(component, constraints);
-        }
+        // `uniform: "both"` grows every cell to the widest × tallest item so the
+        // wrapped items line up into a grid; `itemAlign: "center"` vertically
+        // centres a short item within a tall row, and `justify: "between"`
+        // spreads each row's items edge-to-edge across the inner width. Every
+        // setting is then live-editable through the panel's toolbar.
+        super(new HFlow({ uniform: "both", itemAlign: "center", justify: "between" }));
     }
 }
 
