@@ -6,4 +6,4 @@ import { moduleCount, symbolCount } from 'virtual:typedoc-summary'
 // through the package `exports` map exactly as a downstream consumer would — and
 // surface the TypeDoc model counts read at build time by the vite plugin.
 const body = Body.getInstance()
-body.addComponent(new Header({ text: `typescript-ui docs — ${moduleCount} modules, ${symbolCount} documented symbols` }))
+body.addComponent(new Header(`typescript-ui docs — ${moduleCount} modules, ${symbolCount} documented symbols`))

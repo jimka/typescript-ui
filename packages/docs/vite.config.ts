@@ -31,5 +31,21 @@ function typedocSummary(): Plugin {
 export default defineConfig({
   base: '/typescript-ui/',
   plugins: [typedocSummary()],
-  build: { outDir: 'dist', emptyOutDir: true },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    // The framework derives every component's CSS class (and option routing) from
+    // `this.constructor.name`, so the minifier must not mangle class identifiers —
+    // otherwise `constructor.name` yields a mangled string, option handling breaks,
+    // and the page renders "[object Object]" with unclassed elements. Mirror the
+    // keepNames guard in vite.config.ts and vite.lib.config.ts.
+    rollupOptions: {
+      output: {
+        minify: {
+          compress: { keepNames: { function: true, class: true } },
+          mangle:   { keepNames: { function: true, class: true } },
+        },
+      },
+    },
+  },
 })
