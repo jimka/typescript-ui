@@ -83,4 +83,4 @@ Library components that internally use glyphs (Tree row chevrons, Notification b
 
 Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Free for personal and educational use; commercial use is not permitted.
 
-Third-party material redistributed with this project (Font Awesome Free icons) is covered by its own license — see [LICENSE-FONTAWESOME.md](LICENSE-FONTAWESOME.md) for attribution and license details.
+Third-party material redistributed with this project (Font Awesome Free icons, the Manrope font, and d3 charting math) is covered by its own license — see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for the full attributions and license texts, and [LICENSE-FONTAWESOME.md](LICENSE-FONTAWESOME.md) for the Font Awesome specifics.
