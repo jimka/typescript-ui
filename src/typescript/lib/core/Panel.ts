@@ -122,8 +122,10 @@ const _defaultPanelOptions: Partial<PanelOptions> = {
  */
 const OVERLAY_SCROLLER_CLASS = "PanelOverlayScroller";
 
-/** True once the shared inner-scroller class rules have been registered. */
-let overlayScrollerClassRuleReady = false;
+// The shared inner-scroller class rules, retained once registered (mirrors the
+// CollapseButton / header-glyph module-singleton pattern). The array doubles as
+// the idempotency guard.
+let _scrollerClassRules: StyleRule[] | null = null;
 
 /**
  * Registers, once, the shared class rules that hide the native scrollbar on an
@@ -134,23 +136,22 @@ let overlayScrollerClassRuleReady = false;
  * per-`#id` rule.
  */
 function ensureOverlayScrollerClassRule(): void {
-    if (overlayScrollerClassRuleReady) {
+    if (_scrollerClassRules) {
         return;
     }
 
-    new StyleRule({
-        scope:  "class",
-        name:   OVERLAY_SCROLLER_CLASS,
-        styles: { scrollbarWidth: "none" },
-    });
-
-    new StyleRule({
-        scope:  "selector",
-        name:   `.${OVERLAY_SCROLLER_CLASS}::-webkit-scrollbar`,
-        styles: { display: "none" },
-    });
-
-    overlayScrollerClassRuleReady = true;
+    _scrollerClassRules = [
+        new StyleRule({
+            scope:  "class",
+            name:   OVERLAY_SCROLLER_CLASS,
+            styles: { scrollbarWidth: "none" },
+        }),
+        new StyleRule({
+            scope:  "selector",
+            name:   `.${OVERLAY_SCROLLER_CLASS}::-webkit-scrollbar`,
+            styles: { display: "none" },
+        }),
+    ];
 }
 
 /**
