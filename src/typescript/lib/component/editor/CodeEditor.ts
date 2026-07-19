@@ -294,6 +294,52 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
+     * Moves keyboard focus into the editor.
+     *
+     * @remarks Overrides {@link Component.focus} because a `CodeEditor`'s own
+     * element is a plain, non-focusable host `<div>` — CodeMirror owns the real
+     * focusable target (its `contentDOM`), so the base `element.focus()` would be
+     * a no-op. When mounted this hands focus to the live view; offline / before
+     * mount it falls back to the base behaviour (also a no-op, matching every
+     * other editor operation's null-view guard). The current selection / caret is
+     * left untouched — pair with {@link CodeEditor.moveCursorToEnd} to also move it.
+     *
+     * @param preventScroll - Forwarded to the base fallback; CodeMirror's own
+     *   `focus()` takes no scroll option, so it is honoured only offline.
+     * @returns This component, for method chaining.
+     */
+    focus(preventScroll: boolean = false): this {
+        if (this._view) {
+            this._view.focus();
+
+            return this;
+        }
+
+        return super.focus(preventScroll);
+    }
+
+    /**
+     * Places the caret at the end of the document (after the last character),
+     * collapsing any selection, and scrolls it into view.
+     *
+     * @remarks A selection-only transaction — it changes no text, so it emits no
+     * `"change"`. No-op before the view is mounted (offline / pre-mount), like
+     * every other view operation. Pair with {@link CodeEditor.focus} to land the
+     * caret ready for typing (e.g. on a freshly opened, pre-seeded editor).
+     *
+     * @returns This component, for method chaining.
+     */
+    moveCursorToEnd(): this {
+        if (this._view) {
+            const end = this._view.state.doc.length;
+
+            this._view.dispatch({ selection: { anchor: end }, scrollIntoView: true });
+        }
+
+        return this;
+    }
+
+    /**
      * Formats the document via the active language's formatter, or re-indents
      * it (CodeMirror's own indentation service) when the language has none.
      *
