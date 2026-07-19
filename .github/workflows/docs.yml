@@ -24,13 +24,23 @@ jobs:
                   node-version: 22
                   cache:        npm
             - run: npm ci
-            - run: npm run docs:build
+            # Build order: the docs app consumes the built library through the
+            # workspace symlink, and its vite plugin reads the TypeDoc JSON model,
+            # so build:lib and docs:api must precede build:docs. The NODE_OPTIONS
+            # heap pin stays while TypeDoc emits the ~105 MB model; it and the
+            # retained VitePress `docs:build` script become removable once
+            # VitePress source is deleted in the docs-app follow-up.
+            - run: npm run build:lib
+            - run: npm run docs:api
+              env:
+                  NODE_OPTIONS: --max-old-space-size=12288
+            - run: npm run build:docs
               env:
                   NODE_OPTIONS: --max-old-space-size=12288
             - uses: actions/configure-pages@v5
             - uses: actions/upload-pages-artifact@v3
               with:
-                  path: docs/.vitepress/dist
+                  path: packages/docs/dist
 
     deploy:
         needs:    build
