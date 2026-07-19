@@ -372,6 +372,12 @@ class Scrollbar extends Component<ScrollbarOptions> {
         this.setBackgroundColor("var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))");
         this.setUserSelect("none");
 
+        // Purely decorative: the real scroll semantics live on the native scroll
+        // region this widget mirrors (overlay Panel, VirtualScroller), so hide the
+        // track / thumb / arrow subtree from assistive tech rather than have it
+        // announce a stack of non-interactive divs. Matches Spacer / Glyph.
+        this.getAria().setHidden(true);
+
         if (this.isVertical()) {
             this.setWidth(TRACK_WIDTH);
         } else {

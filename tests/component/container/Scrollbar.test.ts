@@ -51,6 +51,14 @@ describe('Scrollbar construction defaults', () => {
         expect(new Scrollbar('vertical').isArrowsEnabled()).toBe(true);
     });
 
+    // The widget only mirrors a native scroll region, so it is decorative: it
+    // carries aria-hidden so assistive tech ignores the track/thumb/arrow subtree.
+    it('marks the widget aria-hidden', () => {
+        installTestDOM(CONFIG);
+
+        expect(new Scrollbar('vertical').getAria().getHidden()).toBe(true);
+    });
+
     it('round-trips an explicit arrowsEnabled option', () => {
         installTestDOM(CONFIG);
 
