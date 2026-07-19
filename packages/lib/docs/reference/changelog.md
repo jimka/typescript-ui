@@ -1,318 +1,207 @@
 # Changelog
 
-Release history. For breaking-change details by version, see [Migration](/reference/migration).
+Release history for `@jimka/typescript-ui`.
+
+## 0.1.0
+
+First public release — the initial published surface of `@jimka/typescript-ui`, a
+layout-driven, retained-mode web UI framework written in TypeScript (closer to Java
+Swing than to React: every component is a rectangle absolutely positioned and sized in
+JavaScript by a layout manager in a single `doLayout()` pass; no flexbox, CSS grid, or
+document flow). The public API is **subpath-only** — there is no bare
+`@jimka/typescript-ui` import; consumers import from `@jimka/typescript-ui/<group>`.
+Each subpath ships as its own ESM bundle plus a `.d.ts` declaration barrel under
+`dist/lib/`. Licensed under PolyForm Noncommercial 1.0.0.
+
+The capabilities below cover the primary components of each entry point.
+
+### `@jimka/typescript-ui/core`
+
+Framework runtime shared by every component.
+
+- **Component / Container / Panel / Form** — the component base classes; `Panel` adds
+  native auto-scroll (`autoScroll`) and a synced overlay-scrollbar style, `Form` bakes a
+  semantic `<form>` with submit handling.
+- **Binding** (+ `Bindable`, `BindingAccessors`) — two-way synchronisation between a
+  `ModelRecord` and a set of UI components, with a `beforerecord` veto.
+- **ThemeManager, BaseTheme, ClassicTheme, DarkTheme, ModernTheme** —
+  token-based theming; `ModernTheme` is the default, `ClassicTheme` the gradient light
+  look, `DarkTheme` the dark variant.
+- **Event** — the DOM-event seam (route DOM events through `Event`, never
+  `addEventListener`); semantic events flow through `on` / `off` / `emit`.
+- **Util** — exact text metrics, self-determined baselines, optical centring.
+- **DOM, ProductionDOMSink, ProductionDOMSource** — the testable DOM
+  read/write seam (sink/source), with production implementations.
+- **StyleTarget, StyleRule, InlineStyle** — styling primitives behind the typed setters.
+
+### `@jimka/typescript-ui/overlay`
+
+Floating UI, docking, and drag-and-drop.
+
+- **Window, TabWindow** — floating, draggable, resizable windows
+  with maximize/minimize/snap; `TabWindow`'s interior is itself a tab strip.
+- **Dialog** (+ `DialogTitleBar`, `DialogButtons`) — modal dialogs with title bar,
+  scrollable content, and preset confirm/ok/cancel/close button rows.
+- **Menu** — context / dropdown menu (right-click-rebuild and persistent modes).
+- **Popover, Tooltip** — anchored click popover with arrow tail; hover tooltip singleton.
+- **Notification, NotificationHistoryButton** — auto-dismissing toasts with a browsable
+  history.
+- **Drawer** — edge-anchored sliding panel.
+- **Rail** — an activity rail that hosts collapsible drawers.
+- **Dock** — a dockable multi-panel workspace (tear-out, redock, edge-drop-to-split).
+
+### `@jimka/typescript-ui/layout`
+
+Layout managers — the framework's answer to CSS layout.
+
+- **HBox / VBox** (`BoxLayout`) — single-axis rows/columns with `preferred` and `equal`
+  modes, weights, and justification.
+- **HFlow / VFlow** (`FlowLayout`) — wrapping flows.
+- **Border** — five named regions (north/south/east/west/center).
+- **Grid** (`GridConstraints`, `GridTrack`) — a tracked rows-and-columns grid with
+  spanning.
+- **Split** — resizable panes with draggable gutters, collapsible, size-persisting.
+- **Tab** — tabbed panels sharing one region.
+- **Card** — one-child-at-a-time card stack.
+- **Fit** — stretch a single child to fill.
+- **Accordion** (`AccordionConstraints`) — collapsible animated sections, resizable and
+  weighted-fill.
+- **Absolute / Anchor** (`AnchorConstraints`, `AnchorType`, `FillType`) — absolute and
+  anchored positioning.
+
+### `@jimka/typescript-ui/data`
+
+Model / store / proxy data layer.
+
+- **Model** (+ `AbstractModel`), **Field** — typed record schemas (field types,
+  defaults, raw-data mapping).
+- **ModelRecord** — a single editable record.
+- **Store, MemoryStore, AjaxStore** (+ `AbstractStore`) — in-memory and REST-backed
+  record collections with sort/filter/pagination and change events.
+- **TreeStore** — hierarchical (parent/child) store.
+- **Proxy, MemoryProxy, AjaxProxy, WebStorageProxy** (+ `AjaxError`) — the read/write
+  backends behind stores.
+- **JsonReader, JsonWriter** — JSON payload decode/encode for proxies.
+
+### `@jimka/typescript-ui/validation`
+
+- **FieldDecorator, ValidationRule, FieldValidationResult** — field-level validation
+  rules and results.
+
+### `@jimka/typescript-ui/component/input`
+
+Form controls and text.
+
+- **Text, Label, Link** — static text, form label, in-app text link.
+- **TextField, TextArea, PasswordField, UsernameField** — text inputs (the latter two
+  preset browser-credential autocomplete).
+- **Checkbox, RadioButton, Toggle, Slider** — custom-drawn boolean/range controls.
+- **ComboBox, AutoCompleteField** — store-bound dropdown select and type-ahead field.
+- **NumberSpinner** — numeric input with spin buttons.
+- **DateField, TimeField, DateTimeField** — date/time picker fields with their picker
+  dropdowns (`DatePickerDropdown`, `TimePickerDropdown`, `DateTimePickerDropdown`,
+  `PickerColumn`).
+- **FileField** — file chooser and drag-to-drop file zone.
+- Abstract bases (`AbstractInput`, `AbstractBooleanInput`, `AbstractPickerField`,
+  `TextInput`) for building custom controls.
 
-## Unreleased (pre-1.0)
+### `@jimka/typescript-ui/component/button`
 
-The package is at version `0.0.0` — pre-release, not yet published. Until a `0.x` or `1.0.0` is tagged, anything here may change without a migration note. Highlights below describe work-in-progress capabilities of the development snapshot, not stable contracts.
+- **Button, ToggleButton, SplitButton, MenuButton** — push,
+  two-state, split-with-dropdown, menu-opening.
 
-**Scrolling `Panel`s default to an overlay scrollbar synced to native scroll** (default/behaviour change — new `scrollbarStyle` option):
+### `@jimka/typescript-ui/component/display`
 
-- **New [`Panel.setScrollbarStyle(style)`](/api/core/classes/Panel#setscrollbarstyle) plus `getScrollbarStyle()` and a `scrollbarStyle?` field on [`PanelOptions`](/api/core/interfaces/PanelOptions), defaulting to `"overlay"`.** In overlay mode a scrolling panel keeps native scrolling (`overflow: auto`, so the element stays a real scroll container) but hides the native scrollbar visually and paints two synced [`Scrollbar`](/api/component/container/classes/Scrollbar) widgets at the trailing edges instead, driven from the element's native `scrollTop` / `scrollLeft`. Because scrolling itself is unchanged, every native behaviour is preserved for free — keyboard scroll, Ctrl+F match reveal, focus-scroll-into-view, text-selection autoscroll, assistive-tech scrolling, and caret scroll in a nested input/contenteditable. Pass `"native"` to opt out and keep the OS scrollbar; the union is re-exported as `ScrollbarStyle` from `@jimka/typescript-ui/core`. **This is a default/behaviour change: every scrolling `Panel` — and every subclass, including [`Dialog`](/api/overlay/classes/Dialog)'s content region, the `List`/`ComboBox` drop list, and `PickerColumn`'s cell list — now paints an overlay bar instead of the OS scrollbar** unless it opts out; [`ScrollStrip`](/api/component/container/classes/ScrollStrip) forces `"native"` since it already owns its own paging-arrow scroll affordance.
+Read-only display components.
 
-**`Panel` gains a `flush` option for rail-style zero-inset containers** (additive — new `PanelOptions` field, no behaviour change for existing panels):
+- **Image, Glyph, IconText, IconLabel** — image, Font Awesome icon, and
+  icon+text/label composites.
+- **Markdown** — renders a Markdown string as a live DOM subtree (uses `marked`).
+- **ProgressBar, ProgressSpinner** — determinate/indeterminate progress and a
+  busy spinner.
+- **Canvas, WebGLCanvas** — 2D and WebGL drawing surfaces.
+- **Video, VideoPlayer** — media element and a player with chrome.
 
-- **New `flush?: boolean` construction option on [`Panel`](/api/core/classes/Panel)** seeds the panel's default content insets to zero instead of the usual `(4, 4, 4, 4)`, giving a fixed-width strip (an activity rail, a narrow `Border`/`VBox` region) a declarative way to sit flush against its host without the `setInsets(new Insets(0, 0, 0, 0))` workaround. Construction-time only, defaults to `false`; a caller-supplied `insets` still wins over `flush`.
+### `@jimka/typescript-ui/component/editor`
 
-**Accordion resizable sections and weighted fill** (additive feature + `setFillHeight` behaviour change):
+- **CodeEditor** — syntax-highlighting, one-command-formatting editor wrapping
+  CodeMirror 6, with five built-in languages (HTML, JavaScript, JSON, Markdown, SQL) and
+  a `registerLanguage` registry.
+- **MarkdownEditor** — WYSIWYG rich-text editor (Lexical) whose value is a Markdown
+  string, with an optional raw-source mode.
 
-- **New [`Accordion.setResizable`](/api/layout/classes/Accordion#setresizable).** With resizable on, a draggable [`SplitGutter`](/api/component/container/classes/SplitGutter) appears between every adjacent pair of open sections, letting the user trade height between them. A drag chains nearest-first across the open set — when the closest section reaches its min/max the next one takes over — and reversing the drag moves the closest section first, with overshoot past a fully maxed/minned chain retained as a dead zone so the cursor stays glued to the handle (matching [`Split`](/api/layout/classes/Split)). The drag-backed split survives a section closing and reopening and rescales when the container resizes. See [Resizable sections](/layouts/Accordion#resizable-sections).
-- **[`setFillHeight`](/api/layout/classes/Accordion#setfillheight) now spreads leftover height across all open sections by weight (behaviour change).** Previously only the bottommost open section grew to absorb the container's slack; it now splits the slack across every open section in proportion to each section's [`fillWeight`](/api/layout/classes/AccordionConstraints#fillweight) constraint — unweighted sections count equally, so equal weights get equal slices — with each section capped at its own max and a capped section's surplus re-shared among the rest. Consumers relying on the old IDE/dock bottommost-only fill should set an explicit `fillWeight` on the section that should absorb the space. `fillWeight` without `fillHeight` still fills from only the weighted sections.
-- **Open sections respect their merged min/max.** An open section's content height is clamped to the merged [`getMinSize`](/api/core/classes/Component#getminsize) / [`getMaxSize`](/api/core/classes/Component#getmaxsize) — which fold in child-derived limits — so a section whose preferred height sits outside its real bounds no longer renders its wrapper past that bound, and toggling `resizable` on or off no longer resizes a section.
-- **A resizable `Accordion` now honours `weight` on container resize (behaviour fix).** Previously every open section rescaled proportionally when the container resized, so a section left at its preferred height drifted with the viewport and `weight` was honoured only on the first layout. An open section with an effective weight of `0` — `weight` unset or `0`, with [`setFillHeight`](/api/layout/classes/Accordion#setfillheight) off — now holds its px and the weighted sections absorb the whole change, matching how [`Split`](/api/layout/classes/Split) has always read `weight: 0`. An accordion with no weighted open section, and one whose pinned sections alone overrun the container, rescale proportionally exactly as before; `setFillHeight(true)` opts every section back into rescaling. A gutter drag is unchanged and stays authoritative.
-- **Layout state can now be persisted across sessions.** [`Split`](/api/layout/classes/Split) emits `paneresize` / `panecollapse` and [`Accordion`](/api/layout/classes/Accordion) emits `sectionresize`, each once per completed gesture; `Split.getPaneSizes` / `applyPaneSizes`, `Accordion.getSectionSizes` / `applySectionSizes`, and the matching `paneSizes` / `sectionSizes` options round-trip the result. Each entry carries its own unit: a resize-pinned (`weight: 0`) pane or section persists as **px**, everything else as a **ratio** of the space the pinned entries leave — so a pinned pane restores at the size it was left at regardless of the window size on reload. Saved state whose length or units no longer match the live layout is discarded whole. See [Saving and restoring layout](/layouts/Split#saving-and-restoring-layout) / [Saving and restoring section sizes](/layouts/Accordion#saving-and-restoring-section-sizes).
+### `@jimka/typescript-ui/component/chart`
 
-**API naming harmonization** (breaking — renamed methods, events, and classes; no behaviour change):
+- **LineChart, BarChart** — store-bindable SVG charts.
+  d3 (`d3-array`, `d3-scale`, `d3-shape`) is bundled into this subpath.
 
-- **`Component.getPerimiterSize` is renamed to [`Component.getPerimeterSize`](/api/core/classes/Component#getperimetersize)** (and its `FieldSet` override), fixing the long-standing misspelling; the `PerimeterSize` return type was already spelled correctly.
-- **Event names are migrated to the framework's present-tense/noun convention.** `Tab`'s `activated` / `detached` / `docked` become `activate` / `detach` / `dock`; `TabBar`'s `reordered` / `detached` become `reorder` / `detach`; `Dock`'s `moved` becomes `move`; `Table` and `Body`'s `selectionchange` becomes `selection`; and the store's `datachanged` / `sortchanged` / `pagechanged` / `loadingchanged` become `datachange` / `sortchange` / `pagechange` / `loadingchange`. Same emit sites, payloads, and order — only the event strings change.
-- **The table column-header class is renamed `Header` → [`TableHeader`](/api/component/table/classes/TableHeader)** (event union `HeaderEvent` → `TableHeaderEvent`), disambiguating it from the generic `component/display` `Header` so both can be imported without aliasing.
-- **The list bases are renamed for clarity:** `AbstractListComponent` → `AbstractMarkerList` (public; its `AbstractListOptions` → `AbstractMarkerListOptions`), and the internal `AbstractCustomList` → `AbstractSelectableList` with its companions (`CustomListRow` → `SelectableListRow`, `CustomListItem` → `SelectableListItem`, `CustomListItemSpec` → `SelectableListItemSpec`).
-- **`AccordionConstraints.fillWeight` is renamed to the inherited [`LayoutConstraints.weight`](/api/layout/classes/LayoutConstraints#weight)** (and `AccordionSectionConfig.fillWeight` → `weight`, plus `AccordionPanel.addSection`'s 6th parameter). `AccordionConstraints` already inherited `weight` from its base, so the field is removed rather than renamed in place — `Accordion` now reads the same constraint `HBox`/`VBox`/`Split` do. Same semantics for fill; see the behaviour entry below for the resize half.
-- **Consumers of the built `dist/lib` (e.g. the `sqladmin` app) import these public names and events and will need the same rename pass** after this release rebuilds.
+### `@jimka/typescript-ui/component/list`
 
-**Exact text metrics and a self-determined baseline** (behaviour fix — `Util` surface and `Theme.font.lineHeight` type change):
+- **List, MultiSelectList** — custom-rendered single- and multi-selection list boxes
+  with keyboard navigation and store binding.
+- **BulletedList, NumberedList** — static ordered/unordered lists.
 
-- **Line height is now additive leading (`font-size + --ts-ui-line-padding`), replacing the old unitless `1.2` multiplier.** Every text-bearing control — `Text`, `Label`, `ComboBox`, and the native `<input>`/`<textarea>` controls — renders (via `calc(1em + var(--ts-ui-line-padding))`) **and** measures against the same line box, so an input's text sits on the same baseline as a sibling `Text`/`Label` in the same row, and the leading scales per font size (12px and 14px text get proportionate line boxes from one token). The theme token is renamed `font.lineHeight` → `font.linePadding` (`--ts-ui-line-height` → `--ts-ui-line-padding`), a CSS length string (e.g. `"2px"`). A control can still pin an explicit fixed line-height with `Text.setLineHeight(px)`.
-- **`Util` text-measurement surface unified.** [`Util.lineHeightPx({ fontSizePx?, linePadding? })`](/api/core/namespaces/Util/functions/lineHeightPx) returns a control's font size plus, by default, the theme leading (the full line box); pass `linePadding: false` for the bare font size or a number for a fixed leading, and omit `fontSizePx` to use the root font size. [`Util.measureTextBaseline`](/api/core/namespaces/Util/functions/measureTextBaseline) (deterministic canvas-font-metric baseline, single final round), [`Util.opticalCenterOffset`](/api/core/namespaces/Util/functions/opticalCenterOffset) (single-line optical-centring nudge), and [`Util.invalidateTextMetricsCache`](/api/core/namespaces/Util/functions/invalidateTextMetricsCache) (one cache reset on theme change). The DOM-probe `measureInputHeight`, `measureInputBaseline`, `measureLabelBaseline`, and their two invalidate helpers are removed; input box height is computed from the font size plus the control's own insets/padding/border instead of probing a UA `<input>`.
-- **Single-line `Button` labels are optically centred.** A single line of button text is nudged down by `Util.opticalCenterOffset()` so its cap-height band — not its line box — sits on the button's centre. Two-line (title + description) and glyph-only buttons are unaffected. Visible on the Baseline demo panel.
-- **Graphical controls participate in baseline alignment.** `Glyph`, `Slider`, and `ProgressSpinner` now report a bottom-edge baseline (joining `ProgressBar`), and `TextArea` reports its first-line baseline, so in a baseline-aligned `HBox` they sit on the surrounding text baseline instead of being vertically centred in the row. A `null` baseline is what triggers the layout's auto-centring, so giving these controls a real baseline keeps them aligned — and lets a tall `TextArea` align its first line without floating its non-text neighbours to the row's middle.
-- **A [`VBox`](/api/layout/classes/VBox) container reports its first row's baseline.** `VBox` now forwards its first laid-out child's baseline via `getContentBaseline`, so a VBox-managed container placed in a baseline-aware row (a non-stretching [`HBox`](/api/layout/classes/HBox), `HFlow`, or `Grid`) aligns by its first row's text baseline instead of being auto-centred as a null-baseline child. Unlike `HBox` it forwards the first child verbatim (not the maximum across the row), and — because VBox `stretching` is the cross (width) axis and leaves child baselines intact — it is not disabled while stretching.
+### `@jimka/typescript-ui/component/container`
 
-**Accordion shrinks open sections to fit; min size counts open content** (behaviour fix — no API change):
+Composite containers and chrome.
 
-- **An [`Accordion`](/api/layout/classes/Accordion) whose open sections overflow its container now shrinks them to fit instead of clipping mid-section.** Each open section's content shrinks proportionally from its preferred height toward its minimum (mirroring `"preferred"`-mode [`VBox`](/api/layout/classes/VBox)); headers never shrink. If even the open sections' combined minimum exceeds the container, the sections fall back to preferred and let the host clip or scroll. When everything fits at preferred, nothing shrinks. Visible on the Accordion demo panel.
-- **[`Accordion.getMinSize`](/api/layout/classes/Accordion#getminsize) now counts open sections' content minimums.** It previously reported only `sectionCount × headerHeight`, claiming the open content could collapse to nothing; it now adds each open section's [`getMinSize`](/api/core/classes/Component#getminsize) (mirroring [`getPreferredSize`](/api/layout/classes/Accordion#getpreferredsize)), so a host can tell how far the accordion may actually shrink.
+- **FieldSet, LabeledFieldSet, LabeledGrid** — bordered/legended and chrome-less
+  baseline-aligned labelled-field forms.
+- **TabPanel, AccordionPanel** — self-managing tab and accordion containers.
+- **StatusBar** — bottom status strip with message and indicator zones.
+- **Spacer** — layout filler.
 
-**Scroll content frame is persistent** (behaviour fix — no API change):
+### `@jimka/typescript-ui/component/menubar`
 
-- **A scroll-enabled host ([`Panel.setAutoScroll`](/api/core/classes/Panel#setautoscroll)) now keeps its content frame installed at all times** — created once and only resized, never torn down as the overflow state toggles. Installing or removing the frame re-parents the child subtree, and moving DOM nodes cancels any in-flight CSS transition on a descendant; an [`Accordion`](/api/layout/classes/Accordion) animating open/closed inside a scrolling panel snapped the instant a scrollbar appeared or disappeared. The frame is still sized to the children's extent, so it adds no scrollbar when they fit. Non-scroll hosts clear any frame as before. Supersedes the earlier "when the content fits, no frame is created" note below.
+- **MenuBar, MenuBarButton** — application menu bar.
+- **ToolBar, ToolBarSeparator** — a horizontal/vertical toolbar with roving focus.
 
-**Equal-mode box cells regain preferred size when an overflowing host scrolls** (behaviour fix — additive `overflowSizing` option):
+### `@jimka/typescript-ui/component/table`
 
-- **An overflowing `"equal"`-mode [`HBox`](/api/layout/classes/HBox) / [`VBox`](/api/layout/classes/VBox) inside a scrolling host now sizes cells to the widest/tallest child's preferred extent instead of sticking at the min floor.** Previously, once the equal share dropped below the largest child's min size, every cell clamped to that min and the host scrolled at the minimum cell size — even though the children had larger preferred sizes. The fit case is unchanged: while the equal share clears the min floor the row/column still divides equally without scrolling. Visible on the Row / Column demo panels.
-- **New `overflowSizing: "preferred" | "min"` option on [`HBox`](/api/layout/classes/HBox) and [`VBox`](/api/layout/classes/VBox)** with matching [`HBox.setOverflowSizing`](/api/layout/classes/HBox#setoverflowsizing) / [`VBox.setOverflowSizing`](/api/layout/classes/VBox#setoverflowsizing) setters and `getOverflowSizing` getters. `"preferred"` (the default) is the behaviour above; `"min"` keeps the legacy min-floor scrolling. Only applies to `"equal"` mode and only when the host scrolls. The shared [`BoxOverflowSizing`](/api/layout/type-aliases/BoxOverflowSizing) type alias is re-exported from `@jimka/typescript-ui/layout`.
+Data-bound tables.
 
-**Box layouts reserve the trailing inset under overflow** (behaviour fix — additive new [`Component`](/api/core/classes/Component) content-frame methods):
+- **Table, TablePanel** — an editable data grid (per-column or per-cell editor/renderer
+  types) and a store-bound panel with an add/remove/sync toolbar.
+- **TreeTable, TreeTablePanel** — tables whose rows form an expandable hierarchy.
+- **TableExporter** — export table data.
+- Typed **cells** (`BooleanCell`, `NumberCell`, `StringCell`, `DateCell`, `TimeCell`,
+  `DateTimeCell`, `GlyphCell`, `ComboCell`, `DynamicCell`, …), **editors**
+  (`CellEditor` + Boolean/Number/String/Date/Time/DateTime/Combo, `CellEditorPool`), and
+  **renderers** (`CellRenderer` + Number/String/Date/Time/DateTime/Glyph/Combo/Link/Tree)
+  for building custom columns.
 
-- **An overflowing [`HBox`](/api/layout/classes/HBox) / [`VBox`](/api/layout/classes/VBox) now keeps its trailing inset.** Children are placed from the leading inset, but the trailing inset (right for `HBox`, bottom for `VBox`) was only the empty space [`getInnerSize`](/api/core/classes/Component#getinnersize) leaves — which vanishes once children overflow and the host's native scroll, driven by the children's boxes, ends flush at the last child, leaving the last component pressed against the scroll edge with no inset. The box layouts now wrap their children in a content frame sized to the children's extent plus the trailing inset, so the host scrolls the frame and both insets are reserved symmetrically. The frame is sized to the children's extent, so it adds no scrollbar when they fit (and, per *Scroll content frame is persistent* above, stays installed across overflow toggles). Visible on the Row / Column / HBox / VBox demo panels.
-- **New [`Component.setContentFrame`](/api/core/classes/Component#setcontentframe) / [`Component.clearContentFrame`](/api/core/classes/Component#clearcontentframe).** Wrap a container's children in a presentational, content-sized frame (and tear it back down) so a layout manager can reserve scrollable space the children's own boxes do not. The container-scoped mirror of the per-child [`Component.setClipFrame`](/api/core/classes/Component#setclipframe); both now share internal frame-creation helpers. Idless and listener-free, so event delegation routes through it unaffected.
+### `@jimka/typescript-ui/component/tree`
 
-**Table header and footer paint under flat-colour themes** (behaviour fix):
+- **Tree** — a virtual-scrolling collapsible node view.
+- **TreeNodeRenderer** (`LabelTreeNodeRenderer`, `IconLabelTreeNodeRenderer`) — pluggable
+  per-row renderers.
 
-- **The table header surface, its scrollbar-cover band, and the footer are no longer transparent under `ModernTheme`.** They applied their surface token (`--ts-ui-table-header-bg` / `--ts-ui-button-bg`) only as a `background-image`; those tokens are flat colours in `ModernTheme` (the default), which are invalid as a `background-image` and resolved to `none`, leaving the surfaces transparent. It was most visible as a see-through header cover band where horizontally-scrolled header cells showed through to the table border instead of clipping at the vertical-scrollbar reservation. Each value is now applied as both a `background-color` and a `background-image`, so flat-colour themes paint via the colour and gradient themes (e.g. `ClassicTheme`) via the image.
+### `@jimka/typescript-ui/component/diagram`
 
-**Grid track-sizing and clip fixes** (additive — new [`Component`](/api/core/classes/Component) clip-frame methods):
+Node-and-edge diagram rendering. **Requires the optional `elkjs` peer dependency** —
+`ElkLayoutEngine` lazily `import()`s `elkjs` and it is left external in the library
+build, so a consumer using this subpath must install `elkjs` themselves; every other
+subpath works without it.
 
-- **A clipped Grid child no longer inflates the whole grid.** [`Grid`](/api/layout/classes/Grid)'s internal min-size calculation summed the largest child minimum across every column, so an oversized child meant to clip in a `"fixed"` column inflated the grid past its host — producing a spurious horizontal scrollbar and pushing the rightmost column past the container's right inset. It now sums per-track minima when tracks are declared (`"fixed"` tracks contribute their value, `"content"` tracks their measured content, `"weight"` tracks nothing), falling back to the uniform estimate only for track-less grids.
-- **The clip now actually clips.** Setting `overflow: hidden` on an oversized child only clipped its descendants, while the child's own `min-width` / `min-height` kept its box at full size, so it spilled into the neighbouring column. The grid now wraps a clipped child in a cell-sized clip frame instead.
-- **New [`Component.setClipFrame`](/api/core/classes/Component#setclipframe) / [`Component.clearClipFrame`](/api/core/classes/Component#clearclipframe).** Wrap a component's element in a presentational, cell-sized `overflow: hidden` frame (and tear it back down), so a layout manager can visually clip an element wider or taller than its allotted cell without overriding the element's own size constraints. Idless and listener-free, so event delegation routes through it unaffected.
-- **`Grid` size hints are track-aware.** [`Grid.getMinSize`](/api/layout/classes/Grid#getminsize) and [`Grid.getPreferredSize`](/api/layout/classes/Grid#getpreferredsize) now sum per-track extents when tracks are declared (instead of the uniform `maxChild × count` estimate), so a host sizing a track-based grid to its content — e.g. a [`FieldSet`](/api/component/container/classes/FieldSet) wrapping a form grid — no longer over-reserves space. Track-less grids keep the uniform estimate.
+- **DiagramView** — the diagram surface with pan/zoom and pluggable node renderers.
 
-**CSS padding counts as consumed layout space** (behaviour fix — affects components that set `padding`):
+### `@jimka/typescript-ui/glyphs`
 
-- **[`Component.getPerimiterSize`](/api/core/classes/Component#getperimitersize) now includes CSS padding** alongside insets and border. It previously omitted padding, so [`getInnerSize`](/api/core/classes/Component#getinnersize) reported more room than the border-box content area actually offers and a layout manager filling that budget pushed content past the far inset (most visibly, a `FieldSet`'s bottom inset collapsed when its grid hugged the content). Components that set `padding` and lay out children — `FieldSet`, dialogs, popovers, notifications, lists — now lay out inside their true content box. `FieldSet`'s default insets are correspondingly symmetric (5px on all sides; the bottom was previously 15px to mask the missing padding).
+The bundled Font Awesome Free icon registry, importable individually or as namespaces:
 
-**Component sizing constraints** (breaking — `TextArea.resize` removed; additive min-size floors):
+- **`@jimka/typescript-ui/glyphs/solid`** (~2000 icons), **`/regular`** (~273), and
+  **`/brands`** (~587) — each importable as a whole namespace (`glyphs/solid`) or as a
+  single glyph (`glyphs/solid/<name>`); **`@jimka/typescript-ui/glyphs`** re-exports all
+  three as `solid` / `regular` / `brands` namespaces. Registered names feed the `Glyph`
+  display component and any glyph slot (buttons, tree toggles, table cells).
 
-- **`Table`, `TextArea`, `FieldSet`, `List`, and `MultiSelectList` now floor at a `100×100` minimum size.** Each declares `setMinSize(100, 100)` in its constructor so the layout manager never crushes it below a usable box. The values are intrinsic usability floors, not theme tokens.
-- **`TextArea` is permanently non-resizable.** The `resize` option on `TextAreaOptions` and the `getResize` / `setResize` / `clearResize` accessors are removed; `resize: none` is now pinned as a persistent CSS rule with no API to change it. Callers that passed `{ resize: ... }` or called the accessors must drop them — the textarea can no longer expose a drag-to-resize corner grip.
-- **`FieldSet` clamps a long legend title.** The legend's `max-width` tracks the fieldset's laid-out inner width, so an over-long title ellipsises inside the border notch instead of spilling out.
+### Packaging notes
 
-**`ModernTheme` is now the default; `DefaultTheme` renamed to `ClassicTheme`** (breaking — exported symbol rename):
-
-- **`ModernTheme` is the preselected theme.** The framework now applies [`ModernTheme`](/api/core/variables/ModernTheme) at startup (and `ThemeManager.getTheme()` defaults to it before any `setTheme` call). The previous gradient light look is still available, now named `ClassicTheme`.
-- **`DefaultTheme` → [`ClassicTheme`](/api/core/variables/ClassicTheme).** The exported constant has been renamed; the theme values are unchanged. External callers importing `DefaultTheme` from `@jimka/typescript-ui/core` must switch to `ClassicTheme` (or `ModernTheme`). There is no aliased re-export — this is pre-1.0 and the rename is mechanical.
-
-**`ModernTheme` and a pressed-button paint fix** (additive theme, one new theme token):
-
-- **New [`ModernTheme`](/api/core/variables/ModernTheme).** An opt-in light theme exported from `@jimka/typescript-ui/core` alongside [`ClassicTheme`](/api/core/variables/ClassicTheme) and [`DarkTheme`](/api/core/variables/DarkTheme). It reuses the existing token surface but ships flat, gradient-free button values (solid fill, hairline border, no drop shadow) and a flatter, distinctly tinted table-header surface — no per-component look-and-feel code, just token values.
-- **New `theme.table.header.background` token** surfaces as `--ts-ui-table-header-bg`. The two `Header.ts` background sites read it through a `var(--ts-ui-table-header-bg, var(--ts-ui-button-bg, …))` fallback chain, so a header tracks the button surface unless a theme gives it a distinct fill. External `Theme` objects must add the new `table.header.background` string field; built-in `ClassicTheme` and `DarkTheme` consumers are unaffected.
-- **Pressed-button gradient bleed fixed.** A pressed (and especially pressed-and-hovered) button used to read as unpressed: the pressed background token was a plain colour, which is invalid as a `background-image`, so the normal/hover gradient bled through on top of it. The `ClassicTheme` and `DarkTheme` pressed backgrounds are now subtle gradients (and the inset shadow is deepened), so the image slot wins and the pressed depth reads in every theme.
-
-**Unified listener surface — `on` / `off` / `emit`** (breaking — every `addXxxListener` / `setOnXxx` removed):
-
-- **One registration verb everywhere.** Every emitting class now exposes its events through a typed `on(event, fn)` / `off(event, fn)` pair (custom events also expose a `protected emit`). The per-class `addXxxListener` / `removeXxxListener` pairs and the single-slot `setOnXxx` setters are gone — including `Button.addActionListener`, `AbstractInput.addChangeListener` / `addBindingListener`, `Binding.add{Change,Commit,Reject,BeforeRecord}Listener`, `Tree` / `ButtonGroup` `addSelectionListener`, `Scrollbar` / `SpinButton` tick & scroll listeners, `WindowBorder` / `SplitGutter` `addDragListener`, and the `Cell` / `HeaderCell` / `Header` / `ResizeHandle` / `Accordion` / `Tab` / `TabPanel` / `BooleanEditor` `setOnXxx` family.
-- **`addActionListener` → `on("action", fn)`.** Every interactive control's primary-gesture listener collapses to a single **semantic** `"action"` event whose underlying DOM type (`click` / `input` / `change`) is kept internal: `button.addActionListener(fn)` → `button.on("action", fn)`, `slider.addActionListener(fn)` → `slider.on("action", fn)`, `combo.addActionListener(fn)` → `combo.on("action", fn)`, `toggleButton`/`radioButton`/`list` likewise. The public event name no longer leaks the DOM type. Value-bearing inputs keep the distinct inherited custom `"change"` / `"binding"` events for committed-value and data-binding paths.
-- **The other families map to their domain event:** `input.addChangeListener(fn)` → `input.on("change", fn)`, `field.addBindingListener(fn)` → `field.on("binding", fn)`, `binding.addCommitListener(fn)` → `binding.on("commit", fn)`, `cell.setOnCommit(fn)` → `cell.on("commit", fn)`, and so on (`"selection"`, `"scroll"`, `"tick"`, `"drag"`, `"editend"`, `"tabclose"`, `"sectiontoggle"`, …).
-- **Construction-time wiring** moves from the legacy single-callback option fields (`ResizeHandleOptions.onDragStart`, `AccordionOptions.onSectionToggle`, `TabOptions.onTabClose`) to a `listeners?: { [event]?: fn }` bag dispatched to `on(...)`. The Panel-level `AccordionPanel` / `TabPanel` `onSectionToggle` / `onTabClose` convenience options are unchanged.
-- **The `Bindable` interface** now requires `on("binding", fn)` instead of `addBindingListener(fn)`.
-
-**HBox / VBox sizing mode** (replaces `Column` / `Row`; additive `mode` option, two class deletions):
-
-- **New `mode: "preferred" | "equal"` option on [`HBox`](/api/layout/classes/HBox) and [`VBox`](/api/layout/classes/VBox).** `"preferred"` (default) preserves the existing preferred-width / preferred-height sequencing with `weight`-cell support and the overflow shrink-to-min path. `"equal"` divides the container's inner extent equally among children, clamping the per-cell floor to the largest child's min size on the main axis; `weight` constraints are silently ignored in this mode. The `stretching` default depends on `mode`: `false` for `"preferred"`, `true` for `"equal"`. The explicit `stretching` option always wins.
-- **New typed setters / getters.** [`HBox.setMode`](/api/layout/classes/HBox#setmode) / [`HBox.getMode`](/api/layout/classes/HBox#getmode) and the matching [`VBox.setMode`](/api/layout/classes/VBox#setmode) / [`VBox.getMode`](/api/layout/classes/VBox#getmode); the shared [`BoxMode`](/api/layout/type-aliases/BoxMode) type alias is re-exported from `@jimka/typescript-ui/layout`.
-- **`Column` and `Row` layout managers removed.** The two single-axis equal-share managers and their `ColumnOptions` / `RowOptions` interfaces are deleted from the `layout` barrel. `Tab.ts`'s internal toolbar layout and the in-tree demo panels (`ColumnPanel`, `RowPanel`) migrate to `HBox({ mode: "equal" })` / `VBox({ mode: "equal" })`. External callers that still import `Column` / `Row` from `@jimka/typescript-ui/layout` surface as a typecheck failure — the framework is pre-1.0 and the surface area is tiny, so deletion is preferred to a deprecation shim.
-- **`VBox` two-arg positional constructor removed.** [`VBox`](/api/layout/classes/VBox) now takes a single optional [`VBoxOptions`](/api/layout/interfaces/VBoxOptions) bag, matching `HBox`. `new VBox(8)` no longer compiles — switch to `new VBox({ spacing: 8 })`.
-- **Backwards compatibility.** Every existing `HBox` / `VBox` call site is unaffected: `mode` defaults to `"preferred"` and the inner sizing loop is byte-for-byte the pre-change behaviour for that mode.
-
-**Custom-rendered `List` and `MultiSelectList`** (breaking — native `<select>` replaced with a custom `<div role="listbox">` row pool):
-
-- **`List` and `MultiSelectList` no longer wrap a native `<select>`.** A new shared [`AbstractCustomList`](/api/component/list/classes/AbstractCustomList) base owns the row pool, store binding, selection set, keyboard navigation, ARIA wiring, and theme-token surface; [`List`](/api/component/list/classes/List) and [`MultiSelectList`](/api/component/list/classes/MultiSelectList) become thin leaves that pin the value type and the click/keyboard reducer. The browser-owned focus ring, selection highlight, and scrollbar are replaced by themable equivalents that match the rest of the framework's custom UI.
-- **`MultiSelectList` now implements [`Bindable<string[]>`](/api/core/interfaces/Bindable) directly.** The previous version required callers to wire explicit `BindingAccessors` because the single-value `Bindable<string>` contract did not fit a multi-select list; the new class binds straight to `string[]` model fields without any accessor boilerplate.
-- **Keyboard parity with `Table.Body`.** Arrow / Home / End / PageUp / PageDown clamp to records and derive page size from container height; `MultiSelectList` adds Shift-extend, Ctrl/Cmd-toggle, Shift+Arrow range, and `Ctrl+A` select-all; both support a 700 ms type-ahead buffer.
-- **New theme tokens.** Eight `theme.list.*` entries surface as `--ts-ui-list-bg`, `--ts-ui-list-border`, `--ts-ui-list-row-hover-bg`, `--ts-ui-list-row-selected-bg`, `--ts-ui-list-row-selected-color`, `--ts-ui-list-row-focus-ring`, `--ts-ui-list-row-disabled-color`, `--ts-ui-list-row-separator`. External `Theme` objects must add the corresponding `list.*` block; built-in [`DefaultTheme`](/api/core/variables/DefaultTheme) and [`DarkTheme`](/api/core/variables/DarkTheme) consumers are unaffected.
-- **Backwards-incompatible details.** `list.getElement()` now returns an `HTMLDivElement` (the listbox root) instead of an `HTMLSelectElement`; any external `as HTMLSelectElement` cast must be removed. `getItems()` returns `Array<{ key: string, label: string }>` instead of `Array<Option>` — the [`Option`](/api/component/input/classes/Option) class itself is unchanged and still consumed by direct `<select>` usage, just no longer used inside `List` / `MultiSelectList`. Public method shape (`addItem`, `setItems`, `setStore`, `getValue` / `setValue`, `setValues`, `on("change", fn)`, `on("binding", fn)`, `getSelectedRecord`, `getSelectedRecords`) is preserved; the redundant `getValues` reader was removed — call `getValue()` instead (same `string[]` return).
-
-**Modal button presets and auto-tinted dialog headers** (additive `DialogButtons` namespace, new `DialogButtonConfig.tint` field, additive theme tokens, three internal call-site changes):
-
-- **`DialogButtons.{Confirm, Ok, Cancel, Close}` presets.** New [`DialogButtons`](/api/overlay/variables/DialogButtons) namespace exported from `@jimka/typescript-ui/core` holds the canonical `{text, result, glyph, tint}` quad for the four universal dismiss-row affordances. `Confirm` and `Ok` both emit `'confirm'` with the green-tinted `circle-check` (use `Ok` for informational acknowledgement, `Confirm` for affirmative action paired with `Cancel`); `Cancel` and `Close` both carry the red-tinted `xmark` and disambiguate by `result` (`'cancel'` vs `'close'`). Spread into a `DialogConfig.buttons` array and override `primary` per call site (Cancel is primary when paired with Confirm so Enter doesn't fire a destructive action; Confirm / Ok is primary when it stands alone). The `as const satisfies Record<string, DialogButtonConfig>` declaration form gives compile-time immutability while flowing through the existing config type.
-- **`DEFAULT_BUTTONS`, [`Dialog.confirm`](/api/overlay/classes/Dialog#confirm), and [`Notification.openDetail`](/api/overlay/classes/Notification#opendetail) reference the presets** instead of respelling `{text, result, glyph}` literals — the glyph mapping is owned by the button identity and cannot drift across call sites. `DEFAULT_BUTTONS` now spreads `DialogButtons.Ok`; `Dialog.confirm` spreads `Cancel` (primary) + `Confirm`; `Notification.openDetail` spreads `Close` (primary).
-- **New `DialogButtonConfig.tint?: string` field.** Optional CSS-colour string applied as the leading glyph's foreground colour. The presets supply this by default; reach for it directly only when overriding a preset or building a one-off button. `DialogButtonRow` reads the field once per button and applies it via `Glyph.setForegroundColor` — the previous result-driven hardcoded branch (`'confirm'` → green, `'cancel'` → red, `'close'` → currentColor) is gone in favour of the data-driven tint, which is what lets the `Close` preset carry the same red `xmark` semantic as `Cancel`.
-- **Dialog title bar auto-tints by button shape.** The `Dialog` constructor derives a variant from the resolved set of button `result`s: a single `confirm`-result button paints the header with `--ts-ui-dialog-info-bg` / `--ts-ui-dialog-info-fg` and injects a leading `circle-info` glyph (informational dialog); a `confirm` + `cancel` pair paints the header with `--ts-ui-dialog-affirm-bg` / `--ts-ui-dialog-affirm-fg` (affirmative-action dialog); everything else keeps the neutral `--ts-ui-body-bg` header so `Notification.openDetail`'s post-construction severity override still wins for notification detail dialogs.
-- **New `theme.dialog.info` / `theme.dialog.affirm` blocks** surface as `--ts-ui-dialog-info-bg`, `--ts-ui-dialog-info-fg`, `--ts-ui-dialog-affirm-bg`, `--ts-ui-dialog-affirm-fg`. Light- and dark-mode defaults align with the existing notification info / success accents — one palette across notification fills, dialog headers, and dialog glyph tints.
-- **Backwards compatibility.** External `Theme` objects must add the four new `dialog.info.{background,foreground}` / `dialog.affirm.{background,foreground}` string fields. Built-in [`DefaultTheme`](/api/core/variables/DefaultTheme) and [`DarkTheme`](/api/core/variables/DarkTheme) consumers are unaffected. The public `DialogConfig` interface is unchanged; `DialogButtonConfig` gains the new optional `tint?: string` field.
-
-**Scrollbar end-cap arrow buttons** (on by default, configurable via new `ScrollbarOptions`):
-
-- **New [`ScrollbarOptions`](/api/component/container/interfaces/ScrollbarOptions) bag.** Extends [`ComponentOptions`](/api/core/interfaces/ComponentOptions) with `arrowsEnabled` (default `true`) and `arrowStep` (default `40`). With arrows enabled, [`Scrollbar`](/api/component/container/classes/Scrollbar) renders classic OS-style arrow buttons at each end of the track — up/down on a vertical bar, left/right on a horizontal bar — that step the scroll position by `arrowStep` pixels per click and accelerate while held (400 ms initial, ×0.75 per tick, floored at 40 ms — the [`SpinButton`](/api/component/input/classes/SpinButton) cadence). The matching arrow dims to `--ts-ui-scrollbar-arrow-disabled-color` when scroll is already at that edge. Pass `arrowsEnabled: false` to suppress the arrows for a minimalist look.
-- **New typed setters on [`Scrollbar`](/api/component/container/classes/Scrollbar):** `setArrowsEnabled` / `isArrowsEnabled` (runtime-safe — toggles tear down or build the arrow components on the fly and re-run `setMetrics` against the cached metric triple) and `setArrowStep` / `getArrowStep`.
-- **Track-length math updates.** `getTrackLength()` subtracts `2 * TRACK_WIDTH` when arrows are enabled so the thumb travel range stays inside the inner track; the new `getTrackOrigin()` offsets the thumb and the track-click hit test so paging math keeps working in the same coordinate space. Clicks that land inside an arrow region are deferred to the arrow's own mousedown handler.
-- **New CSS variables (inline-fallback theming).** `--ts-ui-scrollbar-arrow-bg`, `--ts-ui-scrollbar-arrow-color`, `--ts-ui-scrollbar-arrow-disabled-color`, `--ts-ui-scrollbar-arrow-hover-bg`. Follow the existing inline-fallback pattern used by the track / thumb tokens, so no [`Theme`](/api/core/interfaces/Theme) change is required.
-- **Eager char-mode arrow glyphs.** `arrow-up`, `arrow-down`, `arrow-left`, `arrow-right` are now seeded into the [`Glyph`](/api/component/display/classes/Glyph) registry at module load (replacing any caller-side `Glyph.register` dance for the four Unicode triangle entries). The eager registration is intentional: char-mode entries are tiny, the in-tree Scrollbar consumes them as built-in chrome, and the names are not auto-overwritten by the opt-in solid-style SVG glyphs unless a consumer explicitly calls `Glyph.register(arrow_up, ...)`.
-- **Arrows on by default.** With `arrowsEnabled` defaulting to `true`, every existing `Scrollbar` — including the [`VirtualScroller`](/components/VirtualScroller) / [`Table`](/components/Table) / [`Tree`](/components/Tree) consumers that own them — renders end-cap arrow buttons unless it passes `arrowsEnabled: false`. The new options argument is optional and tail-positioned, so existing `new Scrollbar("vertical")` / `new Scrollbar("horizontal")` call sites compile unchanged.
-
-**Picker / ComboBox interaction fix** (replaces an earlier carve-out with a layer-stack registry):
-
-- **[`AnimatedDropdown`](/api/core/classes/AnimatedDropdown) now owns a parent/child layer registry.** `showAnimated` pushes the dropdown as a child of the current top layer (LIFO); `hideAnimated`'s `finalize` closure pops it. The registry models nested transient layers explicitly so a click target can be tested against an entire descendant subtree, not just a flat "above me" stack.
-- **New static [`AnimatedDropdown.isTargetInsideLayer`](/api/core/classes/AnimatedDropdown#istargetinsidelayer).** Hosts that wire a viewport `pointerdown` dismiss path (picker fields today; popovers / menus in the future) call it once with their dropdown and the click target. A click inside a descendant layer — e.g. a [`ComboBox`](/api/component/input/classes/ComboBox) dropdown opened from inside a [`DateTimePickerDropdown`](/api/component/input/classes/DateTimePickerDropdown) — counts as inside the picker, so the picker stays open.
-- **New static [`AnimatedDropdown.getTopLayer`](/api/core/classes/AnimatedDropdown#gettoplayer).** Test seam exposing the topmost open layer (or `null`); the fix does not consume it directly.
-- **Replaces master's `isClickOnTopmostOverlay` instance method.** That method and its backing `_openStack` are removed. `AbstractPickerField.onViewportPointerDown` now performs a single `isTargetInsideLayer` check instead of the prior two-step (own-element-contains plus topmost-overlay) sequence — the new helper covers the layer root on its own.
-
-**AutoCompleteField case-sensitive match modes** (additive enum widening, no API surface change):
-
-- **Two new [`AutoCompleteMatchMode`](/api/component/input/type-aliases/AutoCompleteMatchMode) variants.** `'containsCaseSensitive'` and `'startsWithCaseSensitive'` join `'contains'` and `'startsWith'` so a consumer can opt into case-sensitive matching through the existing [`AutoCompleteField.setMatchMode`](/api/component/input/classes/AutoCompleteField#setmatchmode) setter, without a parallel `setCaseSensitive` toggle.
-- **Default behaviour unchanged.** `'contains'` continues to lowercase both sides, so existing call sites keep their case-insensitive matching. Both the static-array and store-backed paths derive case-sensitivity from the mode (the static branch folds only when needed; the store branch forwards `caseSensitive` to the [`FilterDescriptor`](/api/data/type-aliases/FilterDescriptor)).
-- **No new setter, no new descriptor type.** The widened union is the only API change; `AutoCompleteDropdown`, `AutoCompleteItem`, and `FilterDescriptor` are untouched.
-
-**Modal glyph theming** (additive theme tokens, two internal call-site changes):
-
-- **Dialog confirm / cancel buttons tint their glyph by result.** [`Dialog.confirm`](/api/overlay/classes/Dialog#confirm) emits `circle-check` / `xmark` glyphs that previously rendered in the button's `currentColor` — semantically indistinguishable. `DialogButtonRow` now reads the just-constructed button's glyph via `Button.getGlyph()` and applies `setForegroundColor` driven off the button's `result` (`'confirm'` → green, `'cancel'` → red, `'close'` keeps `currentColor`). New `theme.dialog.confirm` / `theme.dialog.cancel` token blocks surface as `--ts-ui-dialog-confirm-color` / `--ts-ui-dialog-cancel-color`, with light- and dark-mode defaults aligned to the existing notification success / error border accents.
-- **Notification detail dialogs tint the title-bar glyph to match.** [`Notification.openDetail`](/api/overlay/classes/Notification#opendetail) already tints the dialog title bar's background and title text with `--ts-ui-notification-${type}-border`; the leading badge glyph now propagates the same accent via `DialogTitleBar.getGlyph().setForegroundColor`, so an `error` detail dialog no longer renders a monochrome icon inside a red header.
-- **Backwards compatibility.** External `Theme` objects must add the two new `dialog.confirm` / `dialog.cancel` string fields. Built-in [`DefaultTheme`](/api/core/variables/DefaultTheme) and [`DarkTheme`](/api/core/variables/DarkTheme) consumers are unaffected.
-
-**UI component bug bash** (bug fixes, two additive Util functions, one additive HeaderCell setter):
-
-- **Accordion single-open enforcement animates instead of snapping.** [`Accordion.setSingleOpen(true)`](/api/layout/classes/Accordion#setsingleopen) now primes each auto-closing wrapper before flipping its open flag so the container `height` transition installs and the sections close over `animationDuration` like every other close path.
-- **ProgressBar indeterminate toggle no longer flickers.** [`ProgressBar.setIndeterminate`](/api/component/display/classes/ProgressBar#setindeterminate) flushes the layout synchronously after the background / animation flip so the fill's geometry and style update in the same task, eliminating the one-frame mismatched intermediate paint that rapid toggling exposed.
-- **ComboBox label sits on the sibling input baseline.** [`ComboBox.getBaseline`](/api/component/input/classes/ComboBox#getbaseline) now measures against a bare-label probe instead of the `<input>` probe that includes UA border-top and padding-top, so a ComboBox in an HBox row aligns with adjacent `DateField` / `TimeField` / `DateTimeField` text. Adds [`Util.measureLabelBaseline`](/api/core/namespaces/Util/functions/measureLabelBaseline) and [`Util.invalidateLabelBaselineCache`](/api/core/namespaces/Util/functions/invalidateLabelBaselineCache), invalidated alongside the existing input-baseline cache on theme change.
-- **Text measurement-affecting setters propagate to the parent layout.** [`Text.setText`](/api/component/input/classes/Text#settext), `setFontFamily`, `setFontSize`, `setFontWeight`, `setLineHeight`, and `setTruncate` now schedule the parent component when one exists, so a content or font change re-runs the parent's `doLayout` and the surrounding row resizes to fit; standalone Text instances still self-schedule via the fallback.
-- **ToggleButton selected chrome survives a hover.** The selected style rule is narrowed to `.selected:not(:hover)` so its specificity exceeds Button's `:hover:not(:active)` rule and the selected background / shadow / image stay applied while the user hovers a pressed toggle.
-- **Table header mirrors the body's focused column.** [`HeaderCell.setColumnFocused`](/api/component/table/classes/HeaderCell#setcolumnfocused) paints a 2 px inset bottom shadow in the existing `--ts-ui-focus-ring` token; [`Body`](/api/component/table/classes/Body) walks the header cells from `_updateFocusStyle` so the indicator follows clicks, arrow navigation, and pool re-binds. `Body.setHeader` is internal plumbing called from `Table`'s constructor.
-
-**Accordion animation polish** (additive, no API change):
-
-- **Symmetric easing for mirror-image open/close.** The [`Accordion`](/api/layout/classes/Accordion) panel-height transition and the [`AccordionHeader`](/api/component/container/classes/AccordionHeader) indicator-rotation transition share `cubic-bezier(0.4, 0, 0.6, 1)`, a symmetric variant of the Material "standard" curve. Symmetric easings satisfy `easing(t) + easing(1 - t) = 1`, which is the exact condition for a close transition to be the frame-perfect time-reverse of an open — the asymmetric Material standard front-loaded ~77% of a close into the first half of the duration, which read as "content vanished, then nothing happened". The indicator's previous hard-coded `200ms ease` magic number is gone — the duration tracks the owning Accordion's `animationDuration` via a new internal wiring setter that `createSection` calls when it builds the header.
-- **Headers and wrappers slide in lock-step with the panel.** Every header and wrapper below a toggling section now transitions its own `top` so the stack moves as one piece with the toggling wrapper's edge. Previously the wrapper's height animated but everything below it snapped to the new layout, which read as broken motion.
-- **Container animates with the contents.** For the duration of each active toggle the accordion's own container element receives the same `height` transition so the parent layout's instant resize (triggered when it re-queries `getPreferredSize` after the open state flips) doesn't clip the still-animating sections via the container's default `overflow: hidden`. The transient transition is cleared on cleanup so unrelated height changes (window resize, etc.) stay instant.
-- **Content keeps its preferred height while closing.** The content inside a closing wrapper stays at its preferred height through the animation so the wrapper's `overflow: hidden` does the clipping — previously the content collapsed to 0 instantly, making the close read as the content vanishing followed by an empty wrapper sliding shut.
-- **Compositor pre-promotion per toggle.** Every wrapper transitioning into or out of an open state is briefly tagged with [`Component.setWillChange("height")`](/api/core/classes/Component#setwillchange) and released on `transitionend` (filtered to `height`) — same set-and-clear shape used by the [`Window`](/api/overlay/classes/Window) drag and the [`Table`](/api/component/data/classes/Table) row pool. Mid-flight tab switches and zero-delta toggles still release the hint via a `setTimeout(_animationDuration + 40)` fallback.
-- **Single-open swap stays in lock-step.** When a single-open Accordion swaps which section is expanded, the closing wrapper(s) and the opening wrapper are primed in the same frame so the parallel transitions launch together.
-- **`prefers-reduced-motion: reduce` honoured.** When set, every header and wrapper's transition is briefly flipped to `"none"` so the layout writes land instantly; the will-change hint and the container transition are skipped; the transition strings are restored on the next animation frame so live changes to the OS setting pick up immediately.
-- **New [`Component.setTransition(value)`](/api/core/classes/Component#settransition)** — cached setter that routes through the existing batched inline-style channel. The cached value is replayed inside `applyStyle` so transitions installed before `init()` (e.g. the header/wrapper transitions during accordion `createSection`) survive the `removeAttribute("style")` wipe that `applyStyle` performs.
-- **New [`Animation.afterTransition`](/api/core/namespaces/Animation/functions/afterTransition)** — encapsulates the `transitionend`-with-`setTimeout`-fallback shape used inside [`Animation.play`](/api/core/namespaces/Animation/functions/play) so call sites that install transitions out-of-band (like the accordion, whose section heights are written by the parent layout's `getPreferredSize` query) finish through the same one-finish-only contract.
-
-**Panel native auto-scroll** (additive):
-
-- **New [`Panel.setAutoScroll(mode)`](/api/core/classes/Panel#setautoscroll)** plus matching `getAutoScroll()` / `clearAutoScroll()` and an `autoScroll?` field on [`PanelOptions`](/api/core/interfaces/PanelOptions). The mode is a `"none" | "auto" | "x" | "y" | "both"` string union (re-exported as `AutoScrollMode` from `@jimka/typescript-ui/core`) that translates to per-axis `overflow` writes — `"auto"` shows scrollbars only when content overflows, `"x"` / `"y"` constrain scrolling to a single axis, `"both"` keeps both bars visible unconditionally.
-- **Native browser scrollbars**, not the framework's custom [`Scrollbar`](/api/component/container/classes/Scrollbar) overlay. Zero extra DOM, kinetic scrolling and keyboard navigation come free; themed bars are out of scope for v1.
-- **Dynamic scrollbar-gutter accounting.** After each `doLayout` pass, `Panel` measures the panel element's `scrollWidth > clientWidth` / `scrollHeight > clientHeight` to learn which native scrollbars the browser actually rendered this frame, caches the reserved gutter, and subtracts it from `getInnerSize` on the affected axis. Layout managers read `getInnerSize`, so children automatically land inside the post-gutter content area instead of spilling behind a freshly-shown V scrollbar and triggering the classic V→H cascade. A scrollbar visibility transition flips the cached gutter and schedules a one-frame follow-up layout that converges the geometry.
-- **Backwards compatible.** The default `"none"` keeps the inherited `Component` `overflow: hidden` clipping, so existing `Panel` instances (including `Window`, `Dialog`, layout helpers) are unchanged unless they opt in.
-
-**Internal: HeaderCell helper decomposition** (refactor, no public-API change):
-
-- The right-edge resize handle and multi-sort priority badge that lived as raw `<div>` / `<span>` overlays inside `HeaderCell.init()` are now dedicated internal `Component` subclasses (`ResizeHandle`, `SortPriorityBadge`) with typed setter surfaces. Adds new `theme.table.resizeHandle` and `theme.table.sortBadge` token blocks so dark-mode flipping carries the overlay colours.
-
-**StatusBar component** (additive):
-
-- [`StatusBar`](/components/StatusBar) component, a thin chrome strip with a transient message and left / right indicator zones; ships through the `component/container` barrel.
-
-**Window maximize / minimize + Ctrl-snap resize** (additive):
-
-- **Three-state lifecycle.** [`Window`](/api/overlay/classes/Window) now carries a [`WindowState`](/api/overlay/type-aliases/WindowState) field — `"normal"`, `"minimized"`, or `"maximized"` — toggled by new header buttons on [`WindowHeader`](/api/component/container/classes/WindowHeader). Double-click on the header bar toggles maximize; on a minimized window it restores to the pre-minimize state (`"normal"` or `"maximized"`). State changes tween `x` / `y` / `width` / `height` over 150 ms (or snap when `prefers-reduced-motion: reduce` is set). Drag and border-resize are gated to `"normal"` so a minimized or maximized window stays put.
-- **Minimized windows dock along the bottom edge.** Each minimized window collapses to a 200 px-wide title-only strip and is positioned in insertion order along the viewport bottom. Restoring or closing a minimized window re-flows the remaining strips. Width is configurable via the new `--ts-ui-window-min-dock-width` CSS variable / `window.minDockWidth` theme token.
-- **Maximize tracks the viewport.** While `"maximized"` the window registers a viewport `resize` listener and re-fills the new viewport on each tick. `setMaximizeBounds("parent")` opts an embedded window into filling its parent rect instead.
-- **Ctrl-snap resize.** Holding Ctrl (configurable via `setSnapModifier(...)`) over a [`Window`](/api/overlay/classes/Window) highlights the nearest border within 12 px (`setSnapThreshold(...)`) and lets `mousedown` anywhere in that zone start a resize drag through the underlying border strip. Glow colour is the new `--ts-ui-window-snap-glow` CSS variable / `window.snapGlow` theme token.
-- **New typed setters on [`Window`](/api/overlay/classes/Window):** `setWindowState`, `getWindowState`, `isMaximized`, `isMinimized`, `setMinimizable`, `isMinimizable`, `setMaximizable`, `isMaximizable`, `setMaximizeBounds`, `getMaximizeBounds`, `setSnapResizeEnabled`, `isSnapResizeEnabled`, `setSnapThreshold`, `getSnapThreshold`, `setSnapModifier`, `getSnapModifier`.
-- **New `WindowOptions` fields:** `minimizable` (default `true`), `maximizable` (default `true`), `maximizeBounds` (`"viewport"` | `"parent"`, default `"viewport"`), `windowState` (default `"normal"`), `snapResizeEnabled` (default `true`), `snapThreshold` (default `12`), `snapModifier` (`"ctrl"` | `"meta"` | `"alt"` | `"shift"`, default `"ctrl"`).
-- **New types exported from `@jimka/typescript-ui/core`:** [`WindowState`](/api/overlay/type-aliases/WindowState), [`WindowMaximizeBounds`](/api/overlay/type-aliases/WindowMaximizeBounds), [`WindowSnapModifier`](/api/overlay/type-aliases/WindowSnapModifier).
-
-**`Animation.tween` numeric tween helper** (additive):
-
-- **New [`Animation.tween`](/api/core/namespaces/Animation/functions/tween)** — drives a JS-side numeric tween via `requestAnimationFrame`, interpolating every key in `from` toward `to` over `durationMs` and calling `onStep(values)` each frame. Returns a [`TweenHandle`](/api/core/namespaces/Animation/interfaces/TweenHandle) whose `cancel()` aborts the loop. Honours `prefers-reduced-motion: reduce` (synchronous step-to-end then `onComplete`). Default easing is cubic ease-out (`1 - (1 - t)^3`); override via `easing`. Generic over any `T` whose values are `number`, so window rects, scroll positions, or arbitrary numeric records all flow through the same plumbing.
-- **Refactor.** [`Window.animateRect`](/api/overlay/classes/Window) was the framework's only numeric tween; its inline rAF loop, cancel bookkeeping, and easing now route through `Animation.tween`. The setter writes, `setAutoCommitStyle` bracketing, and `doLayout` call stay in `Window` — `Animation.tween` keeps no DOM assumptions and is unaware of typed setters.
-- **New types exported from `@jimka/typescript-ui/core`:** [`TweenConfig`](/api/core/namespaces/Animation/interfaces/TweenConfig), [`TweenHandle`](/api/core/namespaces/Animation/interfaces/TweenHandle).
-
-**`ToolBar` + `ToolBarSeparator` components** (additive):
-
-- **New [`ToolBar`](/api/component/menubar/classes/ToolBar)** under `component/menubar/`. Extends [`Panel`](/api/core/classes/Panel); defaults to a horizontal [`HBox`](/api/layout/classes/HBox) and swaps to [`VBox`](/api/layout/classes/VBox) via `setOrientation("vertical")`. Wires a [`RovingTabIndex`](/api/core/classes/RovingTabIndex) on focusable children so Arrow keys cycle focus. Setters: `setOrientation`, `setCompact`, `setOverflow`. `"menu"` overflow is reserved for a follow-up plan and currently behaves as `"clip"`.
-- **New [`ToolBarSeparator`](/api/component/menubar/classes/ToolBarSeparator)** — thin vertical (for horizontal toolbars) or horizontal (for vertical toolbars) divider rule. Theme-driven colour, `role="separator"` with matching `aria-orientation`, stays out of the keyboard tab order.
-- **New `toolBar` theme block** with five tokens: `background`, `border`, `padding`, `gap`, `separatorColor`. Populated in both `DefaultTheme` and `DarkTheme`; emitted as `--ts-ui-toolbar-*` CSS custom properties.
-- **New `Aria.setOrientation(value)` / `getOrientation()`** typed accessor for the `aria-orientation` attribute. Used by `ToolBar` and `ToolBarSeparator`; available to any component that needs the attribute.
-
-**Compositor-layer hints via `will-change`** (additive):
-
-- **New [`Component.setWillChange(value)`](/api/core/classes/Component#setwillchange)** and matching `willChange?` field on `ComponentOptions`. Routes through the existing batched style channel and caches the value so subsequent identical writes short-circuit.
-- **Automatic in the framework.** Window drag sets the hint on `mousedown` and clears on `mouseup`; virtual `Table` and `Tree` row pools set the hint when a row joins the pool and clear it when it leaves; the `Table` header carries the hint for the table's lifetime since it is the permanent scroll-mirror target.
-- **Effect.** The first frame of a drag or scroll no longer pays a layer-creation cost — visible as the disappearance of the brief "settle" tick that used to precede continuous motion.
-- See [Performance » Compositor-layer hints](/concepts/performance#compositor-layer-hints) for the guidance on when to apply the hint to custom components.
-
-**Tree custom row renderers** (additive):
-
-- **`TreeNodeRenderer` plug-in point.** Each [`Tree`](/api/component/tree/classes/Tree) row's content area (everything to the right of the expand/collapse toggle) is now owned by a [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer) instance. The tree holds a zero-argument renderer factory installed via `setRendererFactory(factory)`; one renderer per pool slot is created when the pool grows and rebound via `update(context)` when the slot is remapped. Switching factories on an existing tree replaces each pool row's renderer in place — no DOM teardown.
-- **Two built-in renderers.** [`LabelTreeNodeRenderer`](/api/component/tree/classes/LabelTreeNodeRenderer) (the default, replicates the previous plain-label behaviour) and [`IconLabelTreeNodeRenderer`](/api/component/tree/classes/IconLabelTreeNodeRenderer) (a [`Glyph`](/api/component/display/classes/Glyph) icon + label, with the glyph name resolved per row by an [`IconLabelGlyphResolver`](/api/component/tree/type-aliases/IconLabelGlyphResolver)).
-- **No migration required.** Existing trees that never call `setRendererFactory` keep the previous visual output via the default `LabelTreeNodeRenderer` factory.
-
-**Typed style setters + `clearX` API** (breaking, code-quality consolidation):
-
-- **`setX(null)` style setters tightened to `setX(value)` with new `clearX()` companions.** Every Component-family style setter whose previous signature accepted `T | null` (where `null` meant "clear") now requires a non-null value. Call the matching `clearX()` to remove the property. Affected setters: `setBackgroundColor`, `setBackgroundImage`, `setForegroundColor`, `setBorderRadius`, `setShadow`, `setOutline`, `setAppearance`, `setBorderImage`, `setTransform`, `setOpacity`, `setInsets`, `setPadding` on [`Component`](/api/core/classes/Component); the `Pressed*` counterparts and `setGlyph` on [`Button`](/api/component/button/classes/Button); `setGlyph` on [`WindowHeader`](/api/component/container/classes/WindowHeader), [`Dialog`](/api/overlay/classes/Dialog), and [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton); `setSortState` on the table header cell. The `clearX` family adds: `clearBackgroundColor`, `clearBackgroundImage`, `clearForegroundColor`, `clearBorderRadius`, `clearShadow`, `clearOutline`, `clearAppearance`, `clearBorderImage`, `clearTransform`, `clearOpacity`, `clearInsets`, `clearPadding`, `clearBorder`, `clearAnimation` on Component; `clearPressed*` and `clearGlyph` on the relevant classes; and `clearSortState` on the header cell.
-- **Migration.** In your codebase, run `git grep -nE "set[A-Z][a-zA-Z]*\(null\)" src` and replace each style/CSS-property hit with the corresponding `clearX()`. Data-bearing setters (e.g. `setValue(null)` on `TimeField`, `setRecord(null)` on `Binding`) are unaffected and stay nullable.
-- **New typed setters on `Component`**: `setContain`, `setOverflowX`, `setOverflowY`, `setAnimation` (plus `clearAnimation`), `setDisabledAttribute`. Use these instead of reaching into `setElementCSSRule` / `setElementAttribute` for the same properties.
-- **New typed setters on [`Text`](/api/component/input/classes/Text)**: `setWordBreak`, plus the composite `setLineClamp(lines)` / `clearLineClamp()` which writes the full webkit-line-clamp stack (`-webkit-box`, `-webkit-box-orient`, `-webkit-line-clamp`, `overflow: hidden`, `text-overflow: ellipsis`) in one call.
-- **New typed setters on input subclasses**: `Input#setName`, `Input#setType`; `TextInput#setPlaceholder` / `setReadOnly` / `setMaxLength`; `TextArea#setRows` / `setCols` / `setWrap`; `Option#setSelected`. Construction-time `applyOptions` paths now route through these typed setters.
-- **Visibility narrowed.** `setElementCSSRule`, `setElementCSSRules`, `setElementAttribute`, `removeElementAttribute`, `setElementStyle`, `setElementStyles`, `commitElementStyle`, `commitCSSRule` on [`Component`](/api/core/classes/Component) are now `protected`. Subclasses can still wrap them in typed setters; external consumer code cannot reach them directly. If you were calling these from outside the component class hierarchy, switch to the typed setter — file an issue if your case isn't covered. `Component#applyAriaAttribute(name, value)` is a new helper for the [`Aria`](/api/core/classes/Aria) sibling class (marked `@internal`).
-- **`setBorder()` no-args removed.** [`Component.setBorder`](/api/core/classes/Component#setborder) now requires an `options` argument (`BorderOptions | string`). The previous no-args form wrote `width: 0; style: none; color: black` long-hands as an explicit "no border" override and is replaced by the new [`Component.clearBorder`](/api/core/classes/Component#clearborder), which writes the same long-hands. The four in-tree no-args `setBorder()` call sites (tab toolbar tabs, `WindowHeader` exit button) migrated to `clearBorder()`.
-- **`WindowHeader({ glyph: null })` no longer compiles.** With `glyph` tightened to `string`, opt out of the default title icon by calling `header.clearGlyph()` on the constructed instance instead.
-
-**Public-API surface**
-
-- 12 layout managers — Border, HBox, VBox, Row, Column, Grid, Split, Tab, Card, Fit, Absolute, Accordion.
-- 50+ UI components covering buttons, inputs, lists, menus, dialogs, table, tree.
-- Data layer: `Model`, `Store`, `Proxy` (memory + ajax), `ModelRecord`, `Binding`, `Validator`.
-- Theme system with light + dark built-in themes and custom-token override support.
-- Virtual scrolling in `Table` and `Tree` for large datasets.
-- Web Worker offload for store sort / filter on datasets ≥ 1,000 rows.
-- Full TypeDoc-generated API reference and curated documentation site.
-
-**UX polish pass — code review** (additive + small breaking renames):
-
-- **`Animation` utility** (`@jimka/typescript-ui/core`). `Animation.play(el, config)` drives an entrance or exit transition on a DOM element — applies optional `from` styles, double-RAF-flushes, then transitions to `to` over `durationMs` and fires `onComplete` on `transitionend` (with a fallback timeout). Used by [`Notification`](/api/overlay/classes/Notification) and [`Dialog`](/api/overlay/classes/Dialog) so the two-RAF flush and `transitionend`-with-fallback bookkeeping live in one place. `Animation.isReducedMotion()` is exposed for callers that need to branch UI on the same predicate.
-- **`Button` accepts an options bag as the first argument.** `new Button({ glyph: 'times' })` is now equivalent to `new Button(undefined, { glyph: 'times' })`. The constructor now also rejects a button with neither text nor glyph at runtime, so misconfigured callers fail fast instead of rendering an empty `<button>`.
-- **`DialogTitleBar#getText()` renamed to `getTitleText()`.** Reach via `Dialog#getTitleBar()`. The old name lived briefly during the polish pass; only the notification-detail path inside the library was a consumer.
-- **`MENU_BAR_BUTTON_HEIGHT`** is now a documented constant in `component/menubar/MenuBarButton.ts`, shared by [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton)'s `centerInHeight` / `setPreferredSize` and [`MenuBar`](/api/component/menubar/classes/MenuBar)'s `setMinSize` so the row height is no longer a triple-coded `28`.
-- **Glyph registry alphabetised** in `Glyphs.ts` and `NOTICE`.
-- **SpinButton glyph nudged 1 px up** via `setTranslate` to compensate for subpixel rounding in the half-height button's centring math.
-
-**Floating-component entrance/exit fades** (additive):
-
-- Every floating overlay built on top of [`Animation`](/api/core/classes/Animation) now plays a matching entrance/exit transition: [`Window`](/api/overlay/classes/Window) (150 ms fade + scale, same feel as [`Dialog`](/api/overlay/classes/Dialog)), [`Menu`](/api/overlay/classes/Menu) (120 ms fade, both right-click rebuild mode and `MenuBar` persistent mode), [`Tooltip`](/api/overlay/classes/Tooltip) (100 ms fade), and [`AutoCompleteDropdown`](/api/component/input/classes/AutoCompleteDropdown) (100 ms fade). All four honour `prefers-reduced-motion: reduce` and handle a fresh `show()` mid-fade-out by cancelling the deferred `removeElement`.
-- [`Tab`](/api/layout/classes/Tab) layout fades the newly-selected tab's content in over 120 ms whenever the selection changes (idempotent — pure relayouts like a window resize don't re-trigger it).
-
-**UX polish pass — visual review** (additive):
-
-- **Entrance animations** on [`Notification`](/api/overlay/classes/Notification) (slide-in from right + fade, 200ms) and [`Dialog`](/api/overlay/classes/Dialog) (fade + scale-up from 0.97, 150ms, backdrop fades in lockstep). Both honour `prefers-reduced-motion: reduce`.
-- **2px default glyph-text spacing** on [`Button`](/api/component/button/classes/Button), [`IconText`](/api/component/display/classes/IconText), and [`IconLabel`](/api/component/display/classes/IconLabel). Pass an explicit `gap` to override.
-- **Empty-text Text now reports null baseline**, so HBox no longer baseline-aligns glyph-only buttons against neighbouring text. Fixes [`PaginationBar`](/api/component/display/classes/PaginationBar) where `Page x of y` sat above the nav buttons.
-- **Dialog/Notification close-button glyph** explicitly relayouts the button after position changes so its internal Fit/HBox cascades sizes to the times glyph.
-
-**UX polish pass** (additive):
-
-- **Glyph registry expansion.** Added 18 new entries: `chevron-up`, `chevron-down`, `plus`, `minus`, `sync`, `ban`, `angle-left`, `angle-right`, `angles-left`, `angles-right`, `info-circle`, `check-circle`, `triangle-exclamation`, `circle-exclamation`, `window`, `file`, `pen-to-square`, `eye`. SVG path data sourced from Font Awesome Free (CC BY 4.0) — attribution in `NOTICE`.
-- **Glyph adoption across library buttons.** [`SpinButton`](/api/component/input/classes/SpinButton) now renders `chevron-up` / `chevron-down` SVG glyphs (previously Unicode `▲` / `▼`). [`TablePanel`](/api/component/table/classes/TablePanel)'s toolbar buttons swap to `plus` / `minus` / `sync` / `ban` glyphs with hover tooltips. [`PaginationBar`](/api/component/display/classes/PaginationBar)'s nav buttons swap to `angles-left` / `angle-left` / `angle-right` / `angles-right`. [`Dialog`](/api/overlay/classes/Dialog)'s title-bar close icon is now a `Button({ glyph: "times" })`.
-- **Default `Window` title icon.** `new Window("…")` with no options now defaults to a `window` glyph in the title bar. Pass `{ glyph: null }` to opt out, or `{ glyph: "file" }` (etc.) to override.
-- **`Text#centerInHeight(px)`.** Helper that sets `line-height` equal to the given pixel height so a single-line text sits vertically centred. Pass `null` to revert to the theme multiplier. Used by [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton) and [`DialogTitleBar`](/api/overlay/classes/DialogTitleBar) to fix recurring top-of-box text symptoms.
-- **`MenuBarButton` measured preferred width.** The hard-coded `length * 7 + pad` estimate is replaced by `_text.getPreferredSize().width`, so wider characters (e.g. "View") no longer clip on the right.
-- **`MenuConfig.glyph`.** Optional registry glyph name displayed to the left of each top-level [`MenuBar`](/api/component/menubar/classes/MenuBar) button label.
-- **Notification severity badges.** Every [`Notification`](/api/overlay/classes/Notification) now leads with an SVG glyph tinted by its severity (`info-circle` / `check-circle` / `triangle-exclamation` / `circle-exclamation`).
-- **Notification two-line clamp + double-click detail.** Long messages clamp to two lines with `…`; double-clicking the toast opens a modal [`Dialog`](/api/overlay/classes/Dialog) showing the full content with a colour-tinted, glyph-decorated title bar.
-- **`Notification.pauseAll()` / `Notification.resumeAll()`.** Static helpers that pause/resume every active auto-dismiss timer. Wired in automatically by the detail-dialog flow; exposed publicly so consumer modal flows can wrap their `Dialog.show()` with the same pair. `resumeAll()` clamps remaining duration to a minimum of 8 seconds.
-- **Slide-fade notification dismiss / fade-only dialog dismiss.** 200ms `translateX(100%)` + `opacity 0` for notifications; 150ms `opacity 0` + `scale(0.97)` for dialogs (backdrop fades in lockstep). Both honour `prefers-reduced-motion: reduce` — the transition is skipped and the element removed synchronously.
-- **`Dialog.getTitleBar()` / [`DialogTitleBar`](/api/overlay/classes/DialogTitleBar) public.** New accessor returns the dialog's title-bar component so callers can tint the background, change the title-text colour, or mount a leading glyph. Used internally by the notification detail dialog; available to consumer code for custom theming.
-
-**Component additions** (additive):
-
-- **`Glyph`.** A self-contained icon component rendered from a curated registry (`Glyphs.ts`). SVG entries are mounted once as `<symbol>`s into a hidden sprite on `document.body`; each `Glyph` instance emits `<svg><use href="#ts-glyph-…"/></svg>`, so the path data is never duplicated regardless of how many copies of the same glyph are on screen. Unicode entries render as `<span>`. Both forms use `currentColor`, so a `Glyph` inherits the surrounding text colour without any new theme token. New exports from `@jimka/typescript-ui/component/display`: `Glyph` and `GlyphOptions`.
-- **`Component.insertComponent(component, index, constraints?)`.** Positional companion to `addComponent`. Inserts a child at the given index, splices it into the framework's children array, and DOM-inserts the element at the matching position. Out-of-range indices are clamped. Use this when child order matters — for example, prepending a leading glyph next to an existing label without the `removeComponent(label) → addComponent(glyph) → addComponent(label)` shuffle.
-- **`Glyph` adoption across the library.** [`WindowHeader`](/api/component/container/classes/WindowHeader)'s close button is now an embedded `times` glyph, and `WindowHeader` gains an optional title-icon slot via `setGlyph(name)` / `glyph` option. [`Button`](/api/component/button/classes/Button) (and so [`ToggleButton`](/api/component/button/classes/ToggleButton)) gains an optional leading-glyph slot; [`TabCloseButton`](/api/component/button/classes/TabCloseButton) ships with the `times` glyph pre-seeded. [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton) gains an options bag and an optional leading-glyph slot. [`Tree`](/api/component/tree/classes/Tree) row toggles are now real `Glyph` instances (`arrow-down` / `arrow-right`) rather than raw Unicode characters — the tree row never sees the character, the registry decides the look. A new `glyph` field type plus `GlyphCell` / `GlyphRenderer` make icon columns first-class in [`Table`](/api/component/table/classes/Table).
-- **`IconText` and `IconLabel`.** Small composites pairing a [`Glyph`](/api/component/display/classes/Glyph) with a [`Text`](/api/component/input/classes/Text) or [`Label`](/api/component/input/classes/Label). New exports from `@jimka/typescript-ui/component/display`: `IconText`, `IconTextOptions`, `IconLabel`, `IconLabelOptions`.
-- **`Window` gains an options bag and a header accessor.** The constructor now accepts an optional trailing `WindowOptions` argument — existing single-argument `new Window(headerText)` call sites continue to compile. The bag carries `headerText` (last-write-wins with the positional argument) and `glyph` (a registry name forwarded to the inner [`WindowHeader`](/api/component/container/classes/WindowHeader)'s title-icon slot). A new `getHeader()` method returns the internal `WindowHeader`, exposing the close button, title text, and title-icon slot to callers who want to wire them up directly. New exported type `WindowOptions` from `@jimka/typescript-ui/core`.
-- **`Component.createRootElement()`.** New protected hook called by `render()` to build the root element. Default returns `document.createElement(this.tag)`; subclasses needing a non-HTML namespace (e.g. `Glyph` for SVG) override it.
-
-**Component removals** (breaking — see [Migration](/reference/migration)):
-
-- **`FontAwesomeIcon` removed.** The internal use site ([`WindowHeader`](/api/component/container/classes/WindowHeader)) migrated to [`Glyph`](/api/component/display/classes/Glyph), and the `FontAwesomeIcon` / `FontAwesomeIconOptions` exports, the `@fortawesome/fontawesome-free` peer dependency, the `<script src="…/fontawesome/js/all.js"/>` tags in the bundled HTML, and the asset tree under `src/resources/Base/script/fontawesome/` are all gone. Consumers that were rendering FontAwesome glyphs through `FontAwesomeIcon` should either add the relevant glyph to `Glyphs.ts` and use `Glyph` instead, or render their own `<i class="fa …">` element directly.
-- **`TreeRow.getToggle()` return type changed.** Was `Text`; is now `Glyph | null`. Internal-leaning detail — most callers won't notice — but external code that introspected the returned `Text` needs to handle the new shape.
-
-**Data-binding additions** (additive):
-
-- **`Binding.on("beforerecord", fn)`.** Registers a synchronous veto listener consulted before `setRecord` mutates any state. Listener returns `false` to cancel the change; iteration short-circuits on the first veto. Use it for programmatic guards such as "refuse to switch records while the current one is dirty". Async confirmation flows still belong at the call site — `setRecord` stays synchronous. New exported type `BeforeRecordListener` from `@jimka/typescript-ui/core`.
-
-**Declarative-construction additions** (all additive — every `new X(...)` call site still works):
-
-- **Callable component and layout-manager classes.** Every `Component` subclass, every concrete `LayoutManager`, and `ButtonGroup` can now be invoked without `new` — `Panel({...})` is equivalent to `new Panel({...})`. The classes still satisfy `instanceof` and remain usable as `extends` targets. Backed by a small `callable()` Proxy helper exported from `@jimka/typescript-ui/core`.
-- **`components` option on `ComponentOptions`.** Pass a `components: [...]` array to any component constructor and the children are added during construction, after `applyOptions` settles inherited fields.
-- **`Component.addComponents(...)`.** Variadic plural alongside `addComponent`. Accepts bare `Component` instances, `ConstrainedComponent` pairs (`{ component, constraints }`), or arrays of either — all forms can be freely mixed.
-- **`ConstrainedComponent` interface.** Lifts the `{ component, constraints? }` shape into a reusable type, accepted by both `addComponents` and the `components` constructor option.
-- **`ButtonGroup` options + helpers.** `ButtonGroupOptions.buttons` for initial population at construction time; `addButtons(...)` variadic plural; `getComponents()` returns the group's buttons as a `Component[]` for direct hand-off to `addComponents`.
-
-See [Mental model — JSX-shaped, without JSX](/guide/mental-model#jsx-shaped-without-jsx) for the design rationale and [Component options](/recipes/component-options) for the full set of construction patterns.
-
-**Packaging**
-
-- Subpath-only public API. There is no bare `@jimka/typescript-ui` import; consumers import from `@jimka/typescript-ui/<group>` where `<group>` is one of `core`, `primitive`, `layout`, `data`, `validation`, or `component/<sub>`.
-- Per-subpath ESM bundles + `.d.ts` declarations emitted to `dist/lib/` (13 bundles, 13 declaration barrels).
-
-## See also
-
-- [GitHub releases](https://github.com/jimka/typescript-ui/releases) — release notes per version with date stamps and contributors.
-- [Migration](/reference/migration) — breaking-change details when upgrading between major versions.
+- **Optional peer:** `elkjs` (`^0.10.0`) — required only for
+  `@jimka/typescript-ui/component/diagram`.
+- **Bundled third-party code:** d3 (`d3-array` / `d3-scale` / `d3-shape`) is bundled into
+  the chart subpath; the Manrope variable font ships with the package.
+- **Externalized runtime dependencies** (declared as regular `dependencies`, so a package
+  manager installs them for the consumer): the CodeMirror family (editor), the Lexical
+  family (Markdown editor), `marked` (Markdown display), `prettier` and `sql-formatter`
+  (code-editor formatting).
