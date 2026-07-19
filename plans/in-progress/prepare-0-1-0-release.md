@@ -222,3 +222,25 @@ Run in order; this plan never publishes.
 - **Any library API, `exports`, `files`, `name`, or `version` change** — the prepared surface is exactly the restructure-preserved one; this plan only adds `publishConfig` + `prepublishOnly` and ships LICENSE/README.
 - **Bumping `elkjs` in sqladmin** — the optional peer drift is flagged, not changed, during verification.
 - **Editing the `workspace-restructure` structure** — this plan consumes its output (`packages/lib`) and does not re-open its decisions.
+
+---
+
+## Implementation Notes
+
+Deviations and findings from the actual run (recorded per the `implement` skill; not a redesign).
+
+### Tarball location — worktree, not the main tree
+
+All build/pack work ran inside the `/implement` worktree (`.worktrees/prepare-0-1-0-release`), so the kept artifact is `.worktrees/prepare-0-1-0-release/packages/lib/jimka-typescript-ui-0.1.0.tgz`, and Phase 3 pointed sqladmin at that path rather than the plan's `packages/lib/…tgz`. Equivalent verification — a byte-identical `npm pack` of the same freshly built `dist/lib`. `*.tgz` is **not** gitignored, so the artifact was deliberately **not** copied into the main tree (it would dirty `git status`); it is a build artifact and is not committed. The follow-up `publish-0-1-0` rebuilds/repacks via `prepublishOnly` and does not depend on this specific file.
+
+### elkjs peer ERESOLVE — the plan's "optional peer won't hard-error" premise was wrong
+
+The Potential-Challenges / Non-Goals assumption that the `elkjs` peer drift is benign is **incorrect**. `peerOptional` is optional only in *presence* — when the peer *is* installed at an incompatible version, npm enforces the range. Installing the tarball (an extracted copy, as the registry delivers it) into sqladmin (`elkjs@^0.9.3`) **hard-errors with ERESOLVE** against the lib's `peerOptional elkjs@^0.10.0`. Crucially, the **symlink** install does *not* hit this (npm doesn't enforce `peerOptional` for a linked directory dep) — so it is specifically a **published/registry-consumer** problem, exactly what `publish-0-1-0`'s permanent `^0.1.0` migration will encounter. Verified sqladmin builds/typechecks/renders against the tarball via `npm install --legacy-peer-deps`, and cleanly (no flag) after bumping sqladmin's `elkjs` to `^0.10.0`. **Per user decision, the fix is to bump sqladmin's `elkjs` to `^0.10.0` (keeping the lib's `^0.10.0` peer), done as part of `publish-0-1-0`'s migration — not here** (this plan reverts sqladmin pristine at `elkjs@^0.9.3`). `publish-0-1-0.md` should carry the `elkjs` bump alongside the `file:` → `^0.1.0` swap.
+
+### Diagram-empty detour during Phase 3 — stale vite dev cache, not a packaging/lib defect
+
+While driving sqladmin against the tarball (Phase 3, Step 10), the schema/database diagram rendered edges but no table nodes. Root-caused to a **stale vite dev-server cache** (`node_modules/.vite`), not a packaging or library defect: the lib builds both node components and lays them out correctly (confirmed by instrumentation), and a **production build renders the diagram** (tables `orders`/`customers` with FK cardinality markers). The workspace restructure changed sqladmin's dependency path, but vite's URL-keyed cache was never invalidated. Clearing `.vite` + restarting the dev server resolved it — no code change. Not a release blocker; recorded in project memory.
+
+### Worktree build needs node_modules
+
+`build:lib` in the worktree required deps; `node_modules` was symlinked to the main tree's install per project convention, rather than a fresh `npm install`.

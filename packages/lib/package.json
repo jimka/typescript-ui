@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "A web-based layout manager and UI component framework written in TypeScript.",
   "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "exports": {
     "./core": {
@@ -111,6 +114,7 @@
     "dev": "vite",
     "build": "npm run typecheck && vite build",
     "build:lib": "tsc -p tsconfig.lib.json && tsc-alias -p tsconfig.lib.json && vite build --config vite.lib.config.ts",
+    "prepublishOnly": "npm run build:lib",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.lib.json --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
