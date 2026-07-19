@@ -10,12 +10,6 @@ A web-based layout manager and UI component framework written in TypeScript. Pro
 
 Full documentation lives at **<https://jimka.github.io/typescript-ui/>** *(deployed via GitHub Pages on push to `master`)*.
 
-For local development of the docs site:
-
-```bash
-npm -w packages/lib run docs:dev
-```
-
 Highlights:
 
 - [Installation & TypeScript setup](https://jimka.github.io/typescript-ui/guide/installation) — `npm install @jimka/typescript-ui` plus `moduleResolution: "bundler"` notes.
@@ -84,23 +78,6 @@ If you were using the previous 19-icon curated registry, switch to these latest-
 | `home` | `house` |
 
 Library components that internally use glyphs (Tree row chevrons, Notification badges) register their own dependencies automatically — consumers only need to register the glyphs they reference directly.
-
-## Repository scripts
-
-Run from the repo root. This is an npm-workspaces monorepo — `packages/lib` holds
-the library, its demo harness, and the docs pipeline; `packages/docs` is the built
-docs app. The root delegates the common scripts below; commands scoped with
-`-w packages/lib` run inside the library workspace.
-
-| Command | Description |
-| --- | --- |
-| `npm run dev` | Vite dev server on port 8015 (demo app) |
-| `npm -w packages/lib run build` | Production bundle of the demo app to `packages/lib/dist/` |
-| `npm run build:lib` | Library bundle (ESM + `.d.ts`) to `packages/lib/dist/lib/` |
-| `npm run typecheck` | Strict TypeScript type check (no emit) |
-| `npm -w packages/lib run docs:dev` | Serve the VitePress documentation site locally |
-| `npm run docs:build` | Build the VitePress documentation site |
-| `npm -w packages/lib run clean` | Delete `packages/lib/dist/` contents |
 
 ## License
 
