@@ -28,7 +28,14 @@ const md = new Markdown("# Hello");
 panel.addComponent(md);
 \`\`\`
 
-Unsupported tokens (tables, images) fall back to plain text and never crash.`;
+### GFM table
+
+| Feature | Aligned | Notes |
+|:---|:---:|---:|
+| Tables | yes | 0.05 |
+| Alignment | yes | left/center/right |
+
+Unsupported tokens (images, raw HTML) fall back to plain text and never crash.`;
 
 /**
  * Demo panel showcasing the [`Markdown`](/api/component/display/classes/Markdown)

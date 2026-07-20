@@ -54,6 +54,13 @@ function childTagsOf(parentTag: string): string[] {
         .map(([, child]) => child);
 }
 
+/** Every `{ addClass }` payload written through `apply`, in order. */
+function classWrites(): string[][] {
+    return sink.writes
+        .filter((w) => w.op === 'apply' && (w.args[1] as { addClass?: string[] }).addClass !== undefined)
+        .map((w) => (w.args[1] as { addClass: string[] }).addClass);
+}
+
 describe('Markdown headings', () => {
     it('builds <h1>..<h6> from # .. ###### with the heading text', () => {
         for (let depth = 1; depth <= 6; depth += 1) {
@@ -171,16 +178,99 @@ describe('Markdown nested inline in a heading', () => {
 });
 
 describe('Markdown fallback for unsupported tokens', () => {
-    it('renders a table as text without creating <table>', () => {
-        const table = '| a | b |\n| - | - |\n| 1 | 2 |';
-
-        expect(() => new Markdown(table).getElement(true)).not.toThrow();
-        expect(createdTags()).not.toContain('table');
-        expect(createdTags()).not.toContain('td');
-    });
     it('renders an image as text without creating <img>', () => {
         expect(() => new Markdown('![alt](x.png)').getElement(true)).not.toThrow();
         expect(createdTags()).not.toContain('img');
+    });
+});
+
+describe('Markdown table', () => {
+    const TABLE = '| a | b |\n| --- | --- |\n| 1 | 2 |';
+
+    it('builds a wrapper div, table, thead, tbody, two tr, two th, and two td', () => {
+        new Markdown(TABLE).getElement(true);
+
+        expect(createdTags()).toContain('div');
+        expect(createdTags()).toContain('table');
+        expect(createdTags()).toContain('thead');
+        expect(createdTags()).toContain('tbody');
+        expect(createdTags().filter((t) => t === 'tr')).toHaveLength(2);
+        expect(createdTags().filter((t) => t === 'th')).toHaveLength(2);
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(2);
+    });
+
+    it('nests thead/tbody each with one tr', () => {
+        new Markdown(TABLE).getElement(true);
+
+        expect(childTagsOf('thead')).toEqual(['TR']);
+        expect(childTagsOf('tbody')).toEqual(['TR']);
+    });
+
+    it('the header row holds two th then the body row holds two td, flattened across both rows', () => {
+        new Markdown(TABLE).getElement(true);
+
+        expect(childTagsOf('tr')).toEqual(['TH', 'TH', 'TD', 'TD']);
+    });
+
+    it('writes the cell texts a, b, 1, 2', () => {
+        new Markdown(TABLE).getElement(true);
+
+        const texts = textWrites();
+
+        expect(texts).toContain('a');
+        expect(texts).toContain('b');
+        expect(texts).toContain('1');
+        expect(texts).toContain('2');
+    });
+
+    it('nests <strong> inside a <th> for a bold header cell', () => {
+        new Markdown('| **b** | c |\n| --- | --- |\n| 1 | 2 |').getElement(true);
+
+        expect(childTagsOf('th')).toContain('STRONG');
+    });
+
+    it('applies the alignment classes from the delimiter row to header and body cells alike', () => {
+        new Markdown('| a | b | c |\n| :--- | :---: | ---: |\n| 1 | 2 | 3 |').getElement(true);
+
+        const classes = classWrites();
+
+        expect(classes.filter((c) => c.includes('ts-ui-md-align-left'))).toHaveLength(2);
+        expect(classes.filter((c) => c.includes('ts-ui-md-align-center'))).toHaveLength(2);
+        expect(classes.filter((c) => c.includes('ts-ui-md-align-right'))).toHaveLength(2);
+    });
+
+    it('applies no alignment class for an unaligned delimiter row', () => {
+        new Markdown(TABLE).getElement(true);
+
+        const classes = classWrites();
+
+        expect(classes.some((c) => c.some((name) => name.startsWith('ts-ui-md-align-')))).toBe(false);
+    });
+
+    it('resolves an escaped pipe in a cell to the literal text before rendering', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| `x \\| y` | 2 |').getElement(true);
+
+        expect(textWrites()).toContain('x | y');
+    });
+
+    it('renders the same structure when leading and trailing pipes are omitted', () => {
+        new Markdown('a | b\n--- | ---\n1 | 2').getElement(true);
+
+        expect(createdTags()).toContain('table');
+        expect(createdTags()).toContain('thead');
+        expect(createdTags()).toContain('tbody');
+    });
+
+    it('creates no table element for two pipe rows with no delimiter row', () => {
+        new Markdown('| a | b |\n| 1 | 2 |').getElement(true);
+
+        expect(createdTags()).not.toContain('table');
+    });
+
+    it('creates no table element when the delimiter row is narrower than the header', () => {
+        new Markdown('| a | b |\n| --- |\n| 1 | 2 |').getElement(true);
+
+        expect(createdTags()).not.toContain('table');
     });
 });
 
