@@ -355,8 +355,11 @@ npm -w packages/docs run test         # new — containers / pages / links unit 
 npm run build:docs                    # packages/docs compiles against the built library
 
 # Parity invariant: this plan must not have touched the shared dialect.
-git diff --name-only master -- packages/lib/src/typescript/lib/component/editor/   # expect zero lines
-git diff --name-only master -- packages/lib/docs/components/MarkdownEditor.md      # expect zero lines
+# NOTE (see "Implementation Notes"): diffed against feature/hash-router, the
+# branch's actual start point, not master — this branch's history already
+# contains markdown-tables' legitimate editor changes.
+git diff --name-only feature/hash-router -- packages/lib/src/typescript/lib/component/editor/   # expect zero lines
+git diff --name-only feature/hash-router -- packages/lib/docs/components/MarkdownEditor.md       # expect zero lines
 ```
 
 Then `npm -w packages/docs run dev` and walk the manual list above. Confirm the published-URL guarantee by inspecting the workflow diff: `upload-pages-artifact`'s `path` is unchanged, so the VitePress build still occupies the site root.
@@ -497,3 +500,19 @@ Adding tables to the viewer is contained: a `case "table"` in the token switch a
 [^loop-fix]: The library `Router` does not special-case an unchanged path — it writes the hash unconditionally, and the browser is what breaks the cycle: assigning `location.hash` a value it already holds fires no `hashchange` and adds no history entry. `hash-router`'s worked example relies on the same mechanism for its `Tab` round trip, and its unit list pins it ("`navigate` to the path already in the hash writes the same value, so no `hashchange` fires and no handler re-runs"). A re-entrancy flag in `DocsSidebar` would therefore be dead code.
 
 [^editor-doc-untouched]: Line 5 of `MarkdownEditor.md` enumerates the dialect as "headings, paragraphs, bold, italic, inline code, ordered/unordered lists, blockquotes, fenced code, and links", and line 56 lists what is excluded. Heading `id`s and `linkResolver` add nothing to either list, because neither is a syntax construct.
+
+---
+
+## Implementation Notes
+
+- **Editor-untouched diff checked against `feature/hash-router`, not `master`.** This branch's actual start point is the tip of the already-chained Phase 1 stack (`master → feature/markdown-tables → feature/hash-router → feature/packages-docs`), and `feature/hash-router`'s history already contains `markdown-tables`' legitimate edits to `packages/lib/src/typescript/lib/component/editor/` and `MarkdownEditor.md` line 56 (adding the tables row). Diffing against `master` would therefore show those files as changed for reasons that have nothing to do with this plan. `## Verification` above and the check below are written against `feature/hash-router`; both are empty as required.
+
+- **`MarkdownLinkResolution`/`MarkdownLinkResolver` needed an explicit barrel re-export.** `## Public API` declares both as `export`ed from `Markdown.ts`, but per the project's export-surface convention a new public symbol also needs a matching re-export from the subpath barrel (`component/display/index.ts`) — otherwise TypeDoc resolves the type reference on `MarkdownOptions.linkResolver` but excludes its own page, producing an unresolved-link warning. Added the re-export; `docs:build` now reports 0 warnings for these symbols. Also dropped two `{@link defaultLinkResolver}` JSDoc references (the resolver itself is intentionally unexported) in favour of prose, per the "don't `{@link}` an internal symbol from public JSDoc" rule.
+
+- **`packages/docs` needed `@types/node` to typecheck.** `tsconfig.json` already `include`d `vite.config.ts`, which imports `node:fs`/`node:url`, but `packages/docs` had no `typecheck` script before this plan so the gap was never exercised. Added `@types/node` as a devDependency and `"node"` alongside `"vite/client"` in `types` — not called for in `## Ordered Implementation Steps`, but required for `tsc -p tsconfig.json --noEmit` to pass at all.
+
+- **The worktree's `node_modules` had to be installed from scratch.** Despite the setup note claiming it was already present, none of `node_modules`, `packages/lib/node_modules`, or `packages/docs/node_modules` existed at the start of this run. `npm install` at the repo root (workspaces hoist to a single root `node_modules`) resolved it; no lockfile or dependency version changed beyond the additions this plan's own steps call for.
+
+- **Sidebar selection is not cleared when a route resolves to the not-found view.** `DocsSidebar.select` only acts on a path present in the nav table (`_nodesByPath`); a route with no migrated page (e.g. `/components/Button`) leaves whatever sidebar item was previously selected highlighted while the content pane shows the not-found view. Not a violation of any `## Expected Behaviour` line — the manual-verification list only requires the not-found view to name the path, which it does — but worth flagging as a rough edge for a later phase alongside the other `## Non-Goals`.
+
+- **Manual verification performed live** (dev server + chrome-devtools, per the escape hatch in the `implement` skill's Test-first discipline for behaviour the automated harness can't exercise): initial route render (header, sidebar, Guide index content, status bar counts); sidebar click → hash update, content swap, and selection tracking; browser back button restoring the previous page and sidebar selection; direct reload on `#/concepts/theming` (table-heavy, 0 console errors); an in-page `#custom-themes` anchor scrolling the content pane to that heading with no hash change and no new tab; a route link with a `#fragment` (`/guide/mental-model#jsx-shaped-without-jsx`) resolving to `#/guide/mental-model` with the fragment dropped; an external `https://` link carrying `target="_blank" rel="noopener noreferrer"`; and the not-found view naming `/components/Button`. The only console message observed across the whole session was a harmless `favicon.ico` 404 (no favicon asset exists; outside this plan's scope).
