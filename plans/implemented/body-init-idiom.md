@@ -337,7 +337,7 @@ Both edits shipped in follow-up commits, separate from the original docs commit.
 
 **Verified green:** `typecheck`; vitest (2617 tests); `docs:build` (exit 0); `docs:llms` idempotent on re-run; `build:docs` (docs app, 728ms). The generated `/api/core/classes/Body` page renders the `init`-based example, confirming the JSDoc edit propagated through TypeDoc. Note `ignoreDeadLinks: true` means `docs:build` cannot catch a dead link, so the one link this work adds — `/api/core/interfaces/ComponentOptions` — was confirmed to resolve in both the source tree and the built HTML.
 
-**Still outstanding:** the demo-app render smoke test (`npm run dev` — full tab strip present and switchable). Step 3's ordering was verified statically: `Body.init({ layoutManager })` sits before the `addLazyTab` block with `layoutManager` declared immediately above it.
+**Demo-app render smoke test — done.** Step 3's ordering was first verified statically (`Body.init({ layoutManager })` sits before the `addLazyTab` block, with `layoutManager` declared immediately above it). The render itself was then executed during the audit: `npm run dev` serves the full tab strip with every tab present and switchable, and zero console messages. Expected Behaviour's demo-app item is discharged.
 
 ---
 
