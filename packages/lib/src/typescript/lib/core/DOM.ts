@@ -615,6 +615,21 @@ export interface DOMSink {
     setSelectionRange(handle: Handle, start: number, end: number): void;
 
     /**
+     * Assigns `location.hash`, pushing a history entry.
+     *
+     * @param hash - The new hash, including its leading `"#"`.
+     */
+    setLocationHash(hash: string): void;
+
+    /**
+     * Replaces the current history entry with one carrying `hash`, instead of
+     * pushing a new one.
+     *
+     * @param hash - The new hash, including its leading `"#"`.
+     */
+    replaceLocationHash(hash: string): void;
+
+    /**
      * Registers a native event listener on a target. The framework's
      * {@link Event} class is the component-level routing layer; this seam covers
      * the low-level native hook it (and a few primitives) sits on.
@@ -1044,6 +1059,14 @@ export interface DOMSource {
      * @returns The `window` handle.
      */
     getWindow(): Handle;
+
+    /**
+     * The current `location.hash`, boxed so the raw global never escapes the
+     * seam.
+     *
+     * @returns The hash including its leading `"#"`, or `""` when empty.
+     */
+    getLocationHash(): string;
 
     /**
      * Whether a node is the ancestor of (or equal to) another node.
@@ -1488,6 +1511,20 @@ export class ProductionDOMSink implements DOMSink {
     }
 
     /** @inheritDoc */
+    setLocationHash(hash: string): void {
+        location.hash = hash;
+    }
+
+    /** @inheritDoc */
+    replaceLocationHash(hash: string): void {
+        const href       = location.href;
+        const hashIndex  = href.indexOf('#');
+        const base       = hashIndex === -1 ? href : href.slice(0, hashIndex);
+
+        location.replace(base + hash);
+    }
+
+    /** @inheritDoc */
     addListener<T extends Event = Event>(target: Handle, type: string, handler: (event: T) => void, options?: boolean | AddEventListenerOptions): void {
         _registry.resolve(target).addEventListener(type, handler as EventListener, options);
     }
@@ -1887,6 +1924,11 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getWindow(): Handle {
         return _registry.intern(window as unknown as Node);
+    }
+
+    /** @inheritDoc */
+    getLocationHash(): string {
+        return location.hash;
     }
 
     /** @inheritDoc */

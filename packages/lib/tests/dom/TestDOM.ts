@@ -102,6 +102,8 @@ class TestHandleTable {
     private readonly _connected = new Set<Handle>();
     private _focus: Handle | null = null;
     private _next = 1;
+    /** The modelled `location.hash`, seeded empty. Shared so a sink write is visible to a source read. */
+    private _locationHash = '';
 
     /**
      * Mints a fresh handle for a created element / interned target.
@@ -251,6 +253,24 @@ class TestHandleTable {
      */
     isConnected(handle: Handle): boolean {
         return this._connected.has(handle);
+    }
+
+    /**
+     * Returns the modelled `location.hash`.
+     *
+     * @returns The current hash, including its leading `"#"`, or `""` when empty.
+     */
+    locationHash(): string {
+        return this._locationHash;
+    }
+
+    /**
+     * Writes the modelled `location.hash`.
+     *
+     * @param hash - The new hash, including its leading `"#"`.
+     */
+    setLocationHash(hash: string): void {
+        this._locationHash = hash;
     }
 }
 
@@ -433,6 +453,32 @@ export class RecordingDOMSink implements DOMSink {
 
     setSelectionRange(_handle: Handle, start: number, end: number): void {
         this.record('setSelectionRange', start, end);
+    }
+
+    /**
+     * Writes the modelled hash and, only when it actually changed, dispatches
+     * a modelled `hashchange` at the window handle — mirroring the browser's
+     * own "no `hashchange` on a same-value write" behaviour.
+     */
+    setLocationHash(hash: string): void {
+        this.record('setLocationHash', hash);
+        this.writeLocationHash(hash);
+    }
+
+    /** Same change-detection and dispatch as {@link setLocationHash}; the record differs so tests can tell the two apart. */
+    replaceLocationHash(hash: string): void {
+        this.record('replaceLocationHash', hash);
+        this.writeLocationHash(hash);
+    }
+
+    private writeLocationHash(hash: string): void {
+        const previous = _table.locationHash();
+
+        _table.setLocationHash(hash);
+
+        if (hash !== previous) {
+            this.dispatchEvent(_windowHandle, makeEvent(_windowHandle, 'hashchange'));
+        }
     }
 
     addListener<T extends Event = Event>(target: Handle, type: string, handler: (event: T) => void, _options?: boolean | AddEventListenerOptions): void {
@@ -902,6 +948,11 @@ export class ModelledDOMSource implements DOMSource {
      */
     getWindow(): Handle {
         return _windowHandle;
+    }
+
+    /** Reads the modelled hash written by {@link RecordingDOMSink.setLocationHash} / `replaceLocationHash`. */
+    getLocationHash(): string {
+        return _table.locationHash();
     }
 
     /** Climbs `node`'s recorded parents looking for `ancestor` (inclusive). */
