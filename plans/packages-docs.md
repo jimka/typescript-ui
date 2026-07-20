@@ -1,5 +1,5 @@
 ---
-depends-on: [markdown-tables]
+depends-on: [markdown-tables, hash-router]
 touches-shared:
     - packages/lib/src/typescript/lib/component/display/Markdown.ts
     - packages/lib/tests/component/display/Markdown.test.ts
@@ -15,9 +15,9 @@ touches-shared:
 
 The site it must eventually replace is [`packages/lib/docs/`](packages/lib/docs/), served by VitePress. That replacement is a multi-phase migration, not one plan.[^migration-scale]
 
-This plan is **Phase 1 only**. It adds two viewer-only `Markdown` capabilities, builds the app shell and router, renders the 15 real pages of `guide/` + `concepts/` from the existing Markdown **unmodified**, and deploys the result as a **preview at `/typescript-ui/next/` alongside the live VitePress site**. No cutover. Every URL in the published `packages/lib/README.md` keeps resolving because nothing about the current deployment changes.
+This plan is **Phase 1 only**. It adds two viewer-only `Markdown` capabilities, builds the app shell on top of the library's `Router`, renders the 15 real pages of `guide/` + `concepts/` from the existing Markdown **unmodified**, and deploys the result as a **preview at `/typescript-ui/next/` alongside the live VitePress site**. No cutover. Every URL in the published `packages/lib/README.md` keeps resolving because nothing about the current deployment changes.
 
-**This plan is blocked on a prerequisite plan, `markdown-tables`.** The 15-page content slice cannot render without GFM table support, and table support is not a viewer-only change.[^table-blocking]
+**This plan is blocked on two prerequisite plans, `markdown-tables` and `hash-router`.** The 15-page content slice cannot render without GFM table support, and table support is not a viewer-only change.[^table-blocking] Navigation is the library `Router` shipped by `hash-router`, reached at `@jimka/typescript-ui/router`; the docs app writes no router of its own.[^router-is-library]
 
 The two library gaps this plan closes, verified against the source:
 
@@ -48,7 +48,17 @@ VitePress keeps the site root; the new app is copied into `next/` inside the sam
 
 ### Hash routing in Phase 1 — because the root `404.html` slot is taken
 
-Phase 1 uses hash routing (`/typescript-ui/next/#/guide/installation`): it needs no server rewrite and does not contend for the site-root `404.html`, which VitePress owns while VitePress is the live site.[^pages-404] The URL encoding is isolated in exactly two functions (`readRoute` / `writeRoute` in `Router.ts`) so the Phase 2 swap to History API + root `404.html` is a one-module change.
+Phase 1 uses hash routing (`/typescript-ui/next/#/guide/installation`): it needs no server rewrite and does not contend for the site-root `404.html`, which VitePress owns while VitePress is the live site.[^pages-404] The library `Router` is hash-only, so this is what it already does; the Phase 2 move to the History API is a library change, listed as a non-goal by `hash-router` itself.
+
+### Navigation is the library `Router`, driven by two patterns
+
+The docs app constructs `Router` from `@jimka/typescript-ui/router` and registers exactly two patterns: `/` for the default page and the catch-all `/*` for every real page. Both handlers call one method, `DocsShell.showPath`, because the 15 pages are data in `pages.ts` rather than 15 separate routes.[^two-patterns]
+
+The library normalizes a path before matching, which strips a trailing slash: `#/guide/` becomes `/guide`. Route paths in this app therefore carry **no** trailing slash, and the default path is `/guide`.[^no-trailing-slash]
+
+### The in-app href form is one local function, not a local router
+
+`DocsContent`'s link resolver needs to turn a site path into an in-app href (`/guide/installation` → `#/guide/installation`). That is a one-line `hashHref` in `packages/docs/src/content/links.ts`, next to the resolver that uses it. The app owns no other part of the URL encoding — reading and writing the hash belong to `Router`.[^no-local-router]
 
 ### Markdown content migrates as-is — the app reads `packages/lib/docs/` directly
 
@@ -63,6 +73,8 @@ Per [ARCHITECTURE.md](ARCHITECTURE.md) *All attributes and styles go through typ
 ### The app intercepts link clicks on its own subtree
 
 The content panel owns the `Markdown` child it constructed, so the panel registers `Event.addSubtreeListener(this, "click", …)` **on itself** and inspects the event target's `href`.[^listen-on-self]
+
+Interception is load-bearing, not a convenience. A bare in-page href such as `#custom-themes` changes the hash natively, which would hand `Router` a path with no page behind it. Cancelling that click is the only place the app can stop it.[^interception-load-bearing]
 
 ### VitePress `:::` containers are transformed in the app, not supported in the library
 
@@ -103,24 +115,23 @@ Backing state: `this._options.linkResolver`. Module-level `defaultLinkResolver` 
 
 **No `MarkdownEditor` API changes** — see *Heading `id`s and `linkResolver` are viewer-only*.
 
-### Docs app — `packages/docs/src/router/Router.ts`
+### Docs app — `packages/docs/src/content/links.ts`
 
 ```typescript
-export type RouteListener = (path: string) => void;
+import type { MarkdownLinkResolution } from '@jimka/typescript-ui/component/display';
 
-/** The two functions that know the URL encoding. Phase 2 swaps only these. */
-export function readRoute(defaultPath: string): string;   // "#/guide/x" -> "/guide/x"
-export function writeRoute(path: string): string;         // "/guide/x"  -> "#/guide/x"
+/** Builds the in-app href for a site path: "/guide/x" -> "#/guide/x". */
+export function hashHref(path: string): string;
 
-export class Router {
-    constructor(defaultPath: string);
-    start(): void;                      // reads the current URL, fires the listener, binds hashchange
-    navigate(path: string): void;       // no-ops when path is unchanged; else writes the URL and fires the listener
-    onChange(listener: RouteListener): void;
-}
+/**
+ * Maps an authored doc href to its rendered form, by kind: a route ("/…") is
+ * rewritten through `hashHref` with any fragment stripped, an in-page reference
+ * ("#…") passes through non-external, everything else is external.
+ */
+export function resolveDocLink(href: string): MarkdownLinkResolution;
 ```
 
-`path` is always a leading-slash site path (`/guide/installation`), never the URL encoding. `readRoute` / `writeRoute` are exported because `DocsContent`'s link resolver needs `writeRoute` to build in-app hrefs; nothing else outside `Router.ts` may touch the encoding.
+`path` is always a leading-slash site path (`/guide/installation`), never the URL encoding. `hashHref` is the app's only piece of URL encoding; `Router` owns the rest.
 
 ### Docs app — `packages/docs/src/content/pages.ts`
 
@@ -153,27 +164,69 @@ The dedupe counter is a `Map<string, number>` local to one render pass (reset at
 
 | Glob key | Route path |
 |---|---|
-| `.../guide/index.md` | `/guide/` |
+| `.../guide/index.md` | `/guide` |
 | `.../guide/installation.md` | `/guide/installation` |
 | `.../concepts/theming.md` | `/concepts/theming` |
+
+An `index.md` maps to the directory path with **no** trailing slash, matching what `Router` hands the handler — see *Navigation is the library `Router`, driven by two patterns*.
 
 Titles come from the first `# ` heading in the source; that is authored in every one of the 15 files.
 
 ### Link resolution in the docs app
 
+An authored href falls into one of three kinds, and the kind decides both the rendered href and whether the link opens a tab:
+
+- **Route** — starts with `/`. The form every VitePress doc link uses (2,122 occurrences). Rewritten through `hashHref`.
+- **In-page** — starts with `#`. A reference to a heading on the page being read. Passed through unchanged and **not** marked external.
+- **External** — everything else (`http:`, `mailto:`). Passed through, marked external.
+
+| Authored href | Kind | `resolveDocLink` result |
+|---|---|---|
+| `/concepts/sizing` | route | `{ href: "#/concepts/sizing", external: false }` |
+| `/guide/` | route | `{ href: "#/guide/", external: false }` |
+| `/guide/mental-model#jsx-shaped-without-jsx` | route | `{ href: "#/guide/mental-model", external: false }` |
+| `#custom-themes` | in-page | `{ href: "#custom-themes", external: false }` |
+| `https://example.com` | external | `{ href: "https://example.com", external: true }` |
+| `mailto:x@example.com` | external | `{ href: "mailto:x@example.com", external: true }` |
+
+A route href is `hashHref(href)` with any `#fragment` **stripped first**, because a fragment left on the path makes the whole string one unmatchable route segment.[^strip-fragment] `hashHref` does not strip the trailing slash of `/guide/` — `Router` normalizes it away when the click is navigated.
+
+An in-page href stays as authored and is classified non-external, which is what keeps `target="_blank"` off it. It resolves against the heading `id`s **this plan's step 1 adds** — `#custom-themes` finds the heading `slugify` gave that id and scrolls the content pane to it. The click handler owns that scroll (step 9), because the pane is an `autoScroll` Panel and native fragment scrolling does not drive a Panel's scroll offset.[^in-page-scroll]
+
+A route href with no matching page still renders as a link; the content pane shows the not-found view when clicked.[^unmigrated-links]
+
+### Router wiring (`main.ts`)
+
 ```typescript
-// Internal when the href starts with "/" — the form every VitePress doc link uses
-// (2,122 occurrences). Everything else (http:, mailto:, #) stays external.
-function resolveDocLink(href: string): MarkdownLinkResolution;
+const router = new Router();
+const shell  = new DocsShell(router);
+
+function showDefaultPage(): void {
+    shell.showPath(DEFAULT_PATH);                    // "/guide"
+}
+
+function showRoutedPage(_params: RouteParams, path: string): void {
+    shell.showPath(path);
+}
+
+router.register("/",  showDefaultPage);
+router.register("/*", showRoutedPage);
+
+Body.init({ layoutManager: Fit(), components: [shell] });
+
+router.start();
 ```
 
-Lives in `DocsContent.ts`. Internal → `{ href: writeRoute(href), external: false }`. An internal href with no matching page still renders as a link; the content pane shows the not-found view when clicked.[^unmigrated-links]
+`router` is constructed before `shell` so `DocsShell` can take it, and the patterns are registered afterwards so their handlers can reach `shell`. Everything above runs at module scope in one synchronous pass, so `start()` applies the first route before the first layout frame.[^start-placement]
 
 ---
 
 ## Ordered Implementation Steps
 
-**Precondition:** `plans/markdown-tables.md` is implemented and merged. Confirm before starting — `grep -n 'case "table"' packages/lib/src/typescript/lib/component/display/Markdown.ts` and `grep -rn 'TABLE' packages/lib/src/typescript/lib/component/editor/markdownTransformers.ts` must **both** return a match. One without the other means the dialect is asymmetric and the parity contract is already violated; stop and fix that first.
+**Preconditions:** both prerequisite plans are implemented and merged. Confirm before starting.
+
+- `plans/markdown-tables.md` — `grep -n 'case "table"' packages/lib/src/typescript/lib/component/display/Markdown.ts` and `grep -rn 'TABLE' packages/lib/src/typescript/lib/component/editor/markdownTransformers.ts` must **both** return a match. One without the other means the dialect is asymmetric and the parity contract is already violated; stop and fix that first.
+- `plans/hash-router.md` — `grep -n '"./router"' packages/lib/package.json` must return a match, and `packages/lib/src/typescript/lib/router/Router.ts` must exist.
 
 ### Library: viewer-only `Markdown` additions
 
@@ -185,16 +238,20 @@ Lives in `DocsContent.ts`. Internal → `{ href: writeRoute(href), external: fal
 5. **`packages/lib/docs/components/Markdown.md`** — document heading `id` emission under "Supported syntax", and add `linkResolver` to the construction options table plus `setLinkResolver`/`getLinkResolver` to "Common methods". Do **not** touch the tables row; `markdown-tables` owns it.
    - Do **not** edit `markdownTransformers.ts`, `editorNodes.ts`, `editorTheme.ts`, or `docs/components/MarkdownEditor.md` in this plan.[^no-editor-edits]
 
-### Docs app: shell, router, content
+### Docs app: shell, routing, content
 
 6. **`packages/docs/src/content/containers.ts`** (new) — export `expandContainers(source: string): string`, converting `::: tip Title` … `:::` blocks into `> **Title**` + blockquoted body. Handle a container with no title by using the type word capitalised.
-7. **`packages/docs/src/content/pages.ts`** (new) — `import.meta.glob('../../../lib/docs/{guide,concepts}/*.md', { query: '?raw', import: 'default', eager: true })`, then build the `DocPage` registry per *Route ⇄ file mapping*, running each source through `expandContainers`. Hand-author the `NavGroup[]` for `getNav()` mirroring the `/guide/` and `/concepts/` sidebar sections of [`config.mts:38-60`](packages/lib/docs/.vitepress/config.mts#L38) — same titles, same order.
+7. **`packages/docs/src/content/pages.ts`** (new) — `import.meta.glob('../../../lib/docs/{guide,concepts}/*.md', { query: '?raw', import: 'default', eager: true })`, then build the `DocPage` registry per *Route ⇄ file mapping*, running each source through `expandContainers`. Hand-author the `NavGroup[]` for `getNav()` mirroring the `/guide/` and `/concepts/` sidebar sections of [`config.mts:38-60`](packages/lib/docs/.vitepress/config.mts#L38) — same titles, same order. Each `NavGroup` page carries the route path from *Route ⇄ file mapping*, so the Guide index is `/guide`, not `/guide/`.
    - Verify the relative depth of the glob against the file's own location before moving on; `pages.ts` sits at `packages/docs/src/content/`, so `../../../lib/docs/` resolves to `packages/lib/docs/`.
-8. **`packages/docs/src/router/Router.ts`** (new) — the class in `## Public API`. `readRoute(defaultPath)` returns `location.hash.slice(1) || defaultPath`; `writeRoute(path)` returns `"#" + path`. Bind `hashchange` via `window.addEventListener` with a **named** module function per the ARCHITECTURE listener rule.
-9. **`packages/docs/src/shell/DocsContent.ts`** (new) — a `Panel` with `Fit` and `setAutoScroll("y")` holding one `Markdown` configured with `resolveDocLink`. Takes the `Router` as a constructor argument. Public `showPath(path: string)` calls `getPage`, then `setMarkdown(page.source)` or a short not-found source, and resets the scroll offset to the top. Registers `Event.addSubtreeListener(this, "click", this.handleLinkClick)` — a named method — which reads the target's `href`, and for an in-app hash href calls `router.navigate` and prevents the default.
-10. **`packages/docs/src/shell/DocsSidebar.ts`** (new) — a `Panel` wrapping a `Tree`; takes the `Router` as a constructor argument. `setNodes` built from `getNav()`, `on("selection", …)` routing to `router.navigate(path)`. Public `select(path: string)` so a URL-driven change reflects in the tree. `select` may call `navigate` freely — the feedback loop is broken in `Router.navigate` (step 8), not here.
-11. **`packages/docs/src/shell/DocsShell.ts`** (new) — a `Panel` with `Border`, taking the `Router` and passing it to both children: a `Header` north, `DocsSidebar` west with a fixed preferred width, `DocsContent` centre, and a `StatusBar` south (from `@jimka/typescript-ui/component/container`) whose message is `` `${moduleCount} modules · ${symbolCount} documented symbols` `` read from `virtual:typedoc-summary`.
-12. **`packages/docs/src/main.ts`** — replace the proof-of-seam body with: build the shell, add it to `Body.getInstance()` under a `Fit`, construct the `Router` with default `/guide/`, wire `onChange` to `content.showPath` + `sidebar.select`, then `router.start()`. The `virtual:typedoc-summary` import moves out of `main.ts` into `DocsShell.ts` (step 11); it must keep exactly one consumer.[^typedoc-consumer]
+8. **`packages/docs/src/content/links.ts`** (new) — the two functions in `## Public API`. `hashHref(path)` returns `"#" + path`; `resolveDocLink` classifies into the three kinds and produces every row of the table in *Link resolution in the docs app*. A route href has any `#fragment` cut before `hashHref` is applied — `href.split("#")[0]`. Pure — no imports from the shell. Verify: `grep -c 'external: true' src/content/links.ts` — the external branch is the only one that sets it.
+9. **`packages/docs/src/shell/DocsContent.ts`** (new) — a `Panel` with `Fit` and `setAutoScroll("y")` holding one `Markdown` configured with `resolveDocLink` from `links.ts`. Takes the `Router` as a constructor argument. Public `showPath(path: string)` calls `getPage`, then `setMarkdown(page.source)` or a short not-found source, and resets the scroll offset to the top. Registers `Event.addSubtreeListener(this, "click", this.handleLinkClick)` — a named method — which reads the target's `href` and branches on its first two characters:
+   - starts with `#/` — a route. Call `router.navigate` with the leading `#` stripped, and prevent the default.
+   - starts with `#` but not `#/` — an in-page reference. Prevent the default, then scroll to the heading: `DOM.source.querySelector(this.getElement(), '#' + id)`, and on a hit set the pane's scroll offset so the heading sits at its top — the heading's `getRect().top` minus the pane's own `getRect().top`, added to the current `getScrollTop()`, passed to `setScrollTop`. A miss scrolls nowhere. Without this branch the browser writes the hash itself and the router is handed an unmatchable path.[^interception-load-bearing]
+   - anything else — leave it to the browser.
+10. **`packages/docs/src/shell/DocsSidebar.ts`** (new) — a `Panel` wrapping a `Tree`; takes the `Router` as a constructor argument. `setNodes` built from `getNav()`, `on("selection", …)` routing to `router.navigate(path)`. Public `select(path: string)` so a URL-driven change reflects in the tree. `select` may call `navigate` freely — the feedback loop stops in the browser, not here.[^loop-fix]
+11. **`packages/docs/src/shell/DocsShell.ts`** (new) — a `Panel` with `Border`, taking the `Router` and passing it to both children: a `Header` north, `DocsSidebar` west with a fixed preferred width, `DocsContent` centre, and a `StatusBar` south (from `@jimka/typescript-ui/component/container`) whose message is `` `${moduleCount} modules · ${symbolCount} documented symbols` `` read from `virtual:typedoc-summary`. Public `showPath(path: string)` forwards to `DocsContent.showPath` and `DocsSidebar.select`, so the route handlers have one method to call.
+12. **`packages/docs/src/main.ts`** — replace the proof-of-seam body with the block in *Router wiring (`main.ts`)*: construct the `Router`, build the shell, register the `/` and `/*` patterns, mount with `Body.init({ layoutManager: Fit(), components: [shell] })`, then `router.start()`. Keep that order — `start()` must run after the tree is built and before the first layout frame.[^start-placement] Declare `DEFAULT_PATH` as `"/guide"`. The `virtual:typedoc-summary` import moves out of `main.ts` into `DocsShell.ts` (step 11); it must keep exactly one consumer.[^typedoc-consumer]
+    - Check: `grep -n 'getInstance' packages/docs/src/main.ts` — expect zero matches.
 13. **`packages/docs/index.html`** — set `<title>` to `@jimka/typescript-ui`. The `#app` div is unused (the framework mounts on `Body`); remove it.
 14. **`packages/docs/vite.config.ts`** — change `base` to `'/typescript-ui/next/'`, and add `server: { fs: { allow: ['../..'] } }` so the dev server may read `packages/lib/docs/`. Leave the `keepNames` minify guard and the `typedocSummary` plugin exactly as they are.
     - Check: `npm run build:docs` succeeds and `packages/docs/dist/index.html` references `/typescript-ui/next/assets/…`.
@@ -203,7 +260,7 @@ Lives in `DocsContent.ts`. Internal → `{ href: writeRoute(href), external: fal
 
 15. **`packages/docs/src/env.d.ts`** — add `/// <reference types="vite/client" />` above the existing `virtual:typedoc-summary` declaration so `import.meta.glob` is typed. Keep the virtual-module declaration.
 16. **`packages/docs/package.json`** — add `"typecheck": "tsc -p tsconfig.json --noEmit"` and `"test": "vitest run"`, and add `"typescript": "^6.0.3"` plus `"vitest": "^4.1.9"` to `devDependencies`, matching the library's pins. `packages/docs` has neither a typecheck nor a test harness today.[^docs-harness]
-17. **`packages/docs/tests/`** (new) — `containers.test.ts`, `pages.test.ts`, `router.test.ts` covering the *Docs app — unit-testable* list. These modules run under vitest's default node environment with no DOM harness.[^node-testable] Do **not** unit-test the shell modules — they construct components and belong to the manual-verification list.
+17. **`packages/docs/tests/`** (new) — `containers.test.ts`, `pages.test.ts`, `links.test.ts` covering the *Docs app — unit-testable* list. These modules run under vitest's default node environment with no DOM harness.[^node-testable] Do **not** unit-test the shell modules — they construct components and belong to the manual-verification list.
     - Check: `npm -w packages/docs run test` — green.
 18. **`packages/docs/tsconfig.json`** — add `"tests"` to `include` so the new tests typecheck, and add `"types": ["vite/client"]` in place of the current empty `types` array.
 19. **`.github/workflows/docs.yml`** — add `npm -w packages/docs run typecheck` and `npm -w packages/docs run test` before the existing `npm run build:docs` step (line 50). After it, add a step copying `packages/docs/dist` to `packages/lib/docs/.vitepress/dist/next`. Update the comment block above `build:docs`: it is no longer "built but deliberately not deployed" — it now deploys to `/next/` as a preview while VitePress keeps the site root. Do **not** change the `upload-pages-artifact` path at line 56.
@@ -220,13 +277,13 @@ Lives in `DocsContent.ts`. Internal → `{ href: writeRoute(href), external: fal
 | Modify | `packages/lib/docs/components/Markdown.md` |
 | Create | `packages/docs/src/content/containers.ts` |
 | Create | `packages/docs/src/content/pages.ts` |
-| Create | `packages/docs/src/router/Router.ts` |
+| Create | `packages/docs/src/content/links.ts` |
 | Create | `packages/docs/src/shell/DocsShell.ts` |
 | Create | `packages/docs/src/shell/DocsSidebar.ts` |
 | Create | `packages/docs/src/shell/DocsContent.ts` |
 | Create | `packages/docs/tests/containers.test.ts` |
 | Create | `packages/docs/tests/pages.test.ts` |
-| Create | `packages/docs/tests/router.test.ts` |
+| Create | `packages/docs/tests/links.test.ts` |
 | Modify | `packages/docs/src/main.ts` |
 | Modify | `packages/docs/src/env.d.ts` |
 | Modify | `packages/docs/index.html` |
@@ -262,21 +319,26 @@ No editor **source** file appears in this table — only `markdown-editor.test.t
 - `expandContainers` on a titleless `::: warning` uses `**Warning**`.
 - `expandContainers` leaves source containing no `:::` byte-identical.
 - `getPage('/guide/installation')` returns a page whose `source` is non-empty and whose `title` is the file's first `# ` heading.
-- `getPage('/guide/')` resolves to `guide/index.md`.
+- `getPage('/guide')` resolves to `guide/index.md`.
 - `getPage('/nope')` returns `null`.
 - `getNav()` returns two groups, `Guide` and `Concepts`, whose page paths all resolve through `getPage`.
-- `readRoute(default)` with an empty hash returns the default path; `writeRoute('/x')` returns `'#/x'`.
-- `Router.navigate` called twice with the same path fires the change listener once.
+- No path returned by `getNav()` ends in `/` — the trailing slash would never match a router-normalized path.
+- `hashHref('/guide/installation')` returns `'#/guide/installation'`.
+- `resolveDocLink` produces each row of the table in *Link resolution in the docs app*.
+- `resolveDocLink` marks **only** an `http:`/`mailto:` href external. A `#anchor` href is not external, so it renders without `target="_blank"`.
+- `resolveDocLink('/guide/mental-model#jsx-shaped-without-jsx')` returns `'#/guide/mental-model'` — the fragment is dropped, and the result is a path `getPage` resolves. Guard against the regression where the fragment rides along and the whole string becomes one unmatchable segment.
+- `resolveDocLink('#custom-themes')` returns `'#custom-themes'` unchanged — `hashHref` is not applied, so no `#/` prefix appears.
 
 ### Manual verification (browser required)
 
-- `npm -w packages/docs run dev` renders the shell: header, sidebar tree with Guide and Concepts groups, content pane showing `/guide/`.
-- Clicking a sidebar node navigates, updates the URL hash, and scrolls the content pane to the top.
+- `npm -w packages/docs run dev` renders the shell: header, sidebar tree with Guide and Concepts groups, content pane showing the Guide index. An empty hash lands there, which is the `/` route.
+- Clicking a sidebar node navigates, updates the URL hash, and scrolls the content pane to the top. Clicking the **same** node again changes nothing and adds no history entry.
 - The browser back button returns to the previous page and the sidebar selection follows.
 - Reloading on `#/concepts/theming` lands on that page directly, and its 97 table rows render as real tables — behaviour inherited from `markdown-tables`, verified here because this is the heaviest page in the slice.
 - The five `:::`-using concepts pages show titled blockquotes, with no literal `:::` text anywhere.
-- An in-page link like `/concepts/sizing` navigates in-place; an external `https://` link opens in a new tab.
+- A route link like `/concepts/sizing` navigates in-place; an external `https://` link opens in a new tab.
 - A link into a not-yet-migrated section (e.g. `/components/Button`, common across these pages) shows the not-found view naming the path, not a blank pane or a new tab.
+- `concepts/theming.md` carries 13 bare `#anchor` links — the densest in the slice. Clicking *Custom themes* scrolls the content pane to that heading, opens no tab, changes no URL hash, and does not show the not-found view. `concepts/construction.md` and `guide/index.md` link to `/guide/mental-model#jsx-shaped-without-jsx`; clicking one lands at the **top** of the Mental model page — the right page, fragment ignored.[^anchor-counts]
 - The content pane scrolls vertically for pages taller than the viewport.
 
 ---
@@ -287,9 +349,9 @@ No editor **source** file appears in this table — only `markdown-editor.test.t
 npm -w packages/lib run typecheck
 npm -w packages/lib run lint
 npm -w packages/lib run test          # Markdown heading-id / linkResolver + the dialect round-trip guard
-npm run build:lib
+npm run build:lib                     # must emit dist/lib/router.es.js — the docs app imports it
 npm -w packages/docs run typecheck    # new — vite build alone does not typecheck
-npm -w packages/docs run test         # new — containers / pages / router unit tests
+npm -w packages/docs run test         # new — containers / pages / links unit tests
 npm run build:docs                    # packages/docs compiles against the built library
 
 # Parity invariant: this plan must not have touched the shared dialect.
@@ -317,7 +379,8 @@ Then `npm -w packages/docs run dev` and walk the manual list above. Confirm the 
 - **Drifting into the editor "while you're there".** An opportunistic transformer edit would put a dialect change in a plan that has no coverage for one. The two `git diff --name-only` checks in `## Verification` catch it.
 - **Vite dev server refuses to read outside the package root.** `packages/lib/docs/` is outside `packages/docs/`; without `server.fs.allow` the raw glob 404s in dev while building fine. Step 14 sets it.
 - **The heading-slug dedupe counter leaking across renders.** If the counter is a field rather than a per-render local, a `setMarkdown` re-render produces `-1`, `-2` suffixes on ids that were unique the first time. Keep it local to the render pass; the fourth `## Expected Behaviour` case pins it.
-- **Sidebar ↔ router feedback loop.** `Tree.on("selection")` fires on programmatic selection too, so a URL-driven `select()` that re-enters `router.navigate()` can loop. `Router.navigate` no-ops on an unchanged path.[^loop-fix]
+- **Sidebar ↔ router feedback loop.** `Tree.on("selection")` fires on programmatic selection too, so a URL-driven `select()` re-enters `router.navigate()`. That second `navigate` writes the hash value already there, which fires no `hashchange`, so the cycle stops after one bounce.[^loop-fix]
+- **The `@jimka/typescript-ui/router` subpath must be built before the docs app compiles.** `packages/docs` resolves the library through its `exports` map, so a stale `dist/lib` with no `router.es.js` fails at import. `npm run build:lib` sits before `npm run build:docs` in `## Verification` for that reason.
 - **Most in-page links land on the not-found view in Phase 1.** Only 15 of 154 pages exist, so a link to `/components/Button` cannot resolve. The not-found view must name the path and say the page is not yet migrated, rather than looking like a bug.
 
 ---
@@ -330,7 +393,10 @@ Then `npm -w packages/docs run dev` and walk the manual list above. Confirm the 
 - [`packages/lib/docs/components/MarkdownEditor.md`](packages/lib/docs/components/MarkdownEditor.md) — lines 5 and 56, the consumer-facing statement of the dialect; same instruction.
 - [`packages/lib/tests/component/display/Markdown.test.ts`](packages/lib/tests/component/display/Markdown.test.ts) — the `RecordingDOMSink` helpers (`createdTags`, `textWrites`, `attrWrites`) every new assertion should reuse; the link test at 119 to leave untouched.
 - [`packages/lib/tests/component/markdown-editor.test.ts`](packages/lib/tests/component/markdown-editor.test.ts) — the headless `setValue`/`getValue` harness and its `normalize` helper, reused by the parity guard.
-- [`packages/lib/src/typescript/main.ts`](packages/lib/src/typescript/main.ts) — the precedent for an app built on the library through the package `exports` map.
+- [`packages/lib/src/typescript/lib/router/Router.ts`](packages/lib/src/typescript/lib/router/Router.ts) — `register`, `start`, `navigate`, `getPath`, and the path normalization that strips the trailing slash. Created by `hash-router`; read it, do not edit it.
+- [`packages/lib/docs/concepts/routing.md`](packages/lib/docs/concepts/routing.md) — the router's consumer-facing contract, including the specificity rule that makes `/` beat `/*` for the empty hash.
+- [`packages/lib/src/typescript/main.ts`](packages/lib/src/typescript/main.ts) — the precedent for an app built on the library through the package `exports` map, and (after `hash-router`) the worked example of `Router` construction, registration, and `start()` placement.
+- [`packages/lib/src/typescript/lib/core/Body.ts`](packages/lib/src/typescript/lib/core/Body.ts) — `init` (49) is the mount idiom step 12 uses; `getInstance` is only for reaching an already-mounted body.
 - [`packages/lib/src/typescript/MarkdownPanel.ts`](packages/lib/src/typescript/MarkdownPanel.ts) — the precedent for a scrolling `Fit` panel hosting a `Markdown`.
 - [`packages/lib/docs/.vitepress/config.mts`](packages/lib/docs/.vitepress/config.mts) — lines 38-60 are the exact sidebar shape `getNav()` must mirror.
 - [`packages/docs/vite.config.ts`](packages/docs/vite.config.ts) — the `keepNames` minify guard; breaking it makes every component render as `[object Object]`.
@@ -343,7 +409,7 @@ Then `npm -w packages/docs run dev` and walk the manual list above. Confirm the 
 Each is a later phase, not a stretch goal for this one.
 
 - **GFM tables in the viewer and editor** — the `markdown-tables` prerequisite plan this one depends on. Covers the viewer's `case "table"` + `appendTable`, the `@lexical/table` runtime dependency, a hand-written table transformer, node/theme/class-rule registration, the insert-table command surface, an explicit decision on column-alignment round-trip fidelity, and the corrections to `markdownTransformers.ts`'s docblock and `MarkdownEditor.md` lines 5/56.
-- **Cutover to `/typescript-ui/` root.** Phase 1 deploys to `/next/` only; VitePress keeps every published README URL. The cutover phase moves the app to the root, switches `Router` to the History API, and installs the SPA `404.html` fallback in the slot VitePress vacates.
+- **Cutover to `/typescript-ui/` root.** Phase 1 deploys to `/next/` only; VitePress keeps every published README URL. The cutover phase moves the app to the root and installs the SPA `404.html` fallback in the slot VitePress vacates. Whether it also adds a History mode to the library `Router` is that phase's decision; `hash-router` lists History mode as a non-goal.
 - **Migrating `components/`, `layouts/`, `data/`, `recipes/`, `reference/`** — 139 further pages; a content-volume phase once the 15-page slice proves the rendering.
 - **The TypeDoc API reference surface.** 234 exported symbols across 17 entry points, currently generated as Markdown by `typedoc-plugin-markdown` + `typedoc-vitepress-theme`. Rendering it from `typedoc-model.json` through the `virtual:typedoc-summary` seam is its own phase, and by far the largest.
 - **Search.** VitePress ships a ~39 MB local full-text index; the library has no search facility, so this needs both an index build step and a UI.
@@ -376,6 +442,8 @@ Adding tables to the viewer is contained: a `case "table"` in the token switch a
 
 [^table-blocking]: 99 of the 154 doc pages contain tables (1,433 rows; `concepts/theming.md` alone has 97), including `guide/installation.md`, which is inside the Phase-1 slice. Table support is not viewer-only under the parity contract, so it cannot be folded into this plan — see *Tables are a separate plan, sequenced first*.
 
+[^router-is-library]: The point of `packages/docs` is that it is built with `@jimka/typescript-ui` and dogfoods it, so a hand-rolled router inside the app would be the app demonstrating the opposite of its purpose — and a second routing implementation to keep in step with the library's. `hash-router` ships everything this app needs: pattern registration with `:param` and `*`, specificity ranking, `start()` / `stop()`, `navigate(path, { replace })`, `getPath()`, and `on("navigate" | "nomatch")`, with all hash access going through the DOM seam.
+
 [^parity-sources]: The rule is already codified in three places, which are the dialect's source of truth. [`markdownTransformers.ts:17`](packages/lib/src/typescript/lib/component/editor/markdownTransformers.ts#L17) defines the curated transformer array as "the exact subset of Markdown the read-only `Markdown` viewer renders", deliberately narrower than Lexical's full preset, and its docblock carries the transformer→viewer-token mapping symbol by symbol. [`docs/components/MarkdownEditor.md:5`](packages/lib/docs/components/MarkdownEditor.md#L5) states the same contract for consumers, and line 56 names tables among the constructs excluded "so the editor's output always round-trips cleanly through the viewer".
 
 [^viewer-only-check]: Heading `id`s add a rendered DOM attribute derived from heading text. The source `## Foo` is byte-identical before and after; there is nothing new to author and nothing to round-trip, and `HEADING` in the transformer array already covers `#`…`######`. `linkResolver` rewrites an `href` at render time; the source `[t](url)` is unchanged and the existing `LINK` transformer already round-trips it. The parity contract governs the syntax subset, so a change confined to how an already-supported token is rendered leaves the editor untouched.
@@ -385,6 +453,12 @@ Adding tables to the viewer is contained: a `case "table"` in the token switch a
 [^published-urls]: The published `packages/lib/README.md` is frozen in npm `0.1.0` and links to eight URLs under `https://jimka.github.io/typescript-ui/`. All eight were verified live (HTTP 200) at write time. They cannot be changed retroactively, so the cheapest guarantee that they keep resolving is to not touch the thing serving them. Deploying to `next/` instead makes Phase 1 shippable and reviewable in a browser with zero risk to the published surface.
 
 [^pages-404]: GitHub Pages behaviour was checked, not assumed. `curl` against `https://jimka.github.io/typescript-ui/definitely-not-a-real-page` returns HTTP 404 with a VitePress-generated 404 page body (`<meta name="generator" content="VitePress v1.6.4">`). That shows unknown paths really do 404, and that Pages serves *the site's own* `404.html` rather than GitHub's default — so the standard SPA fallback (ship a copy of `index.html` as `404.html`) works on this host, with the browser booting the app and the router reading the path while the HTTP status stays 404. That fallback needs the site-root `404.html`, which VitePress owns; overwriting it would break VitePress's own 404 page while VitePress is still the live site.
+
+[^two-patterns]: One registration per page would mean 15 hand-written routes duplicating the registry `pages.ts` already builds from `import.meta.glob`, and a sixteenth every time a page is migrated in a later phase. Two patterns keep the page list in one place. The catch-all also makes the router's `"nomatch"` event unreachable in this app — `/*` matches every path — so the not-found view is driven by `getPage` returning `null` inside `showPath`, not by a `nomatch` listener. Registering `/` separately rather than folding it into `/*` is what gives the empty hash its own handler: `hash-router` normalizes an empty hash to `/`, and its specificity rule ranks a pattern that has ended above a catch-all, so `/` wins over `/*` for that path.
+
+[^no-trailing-slash]: `hash-router`'s normalization table pins `"#/settings/"` → `/settings`, and the handler only ever sees the normalized form. Keying `pages.ts` on `/guide/` would therefore mean `getPage` never matched the Guide index. Authored Markdown still contains `/guide/` links — VitePress's directory-index form — but those reach `getPage` only after a `navigate` has normalized them, so `hashHref` can pass them through untouched.
+
+[^no-local-router]: A local `Router.ts` wrapping or duplicating the library one was rejected: it would give the app two objects that both claim to own the hash, and the reason a wrapper looked attractive — isolating the URL encoding for a later History-mode swap — is served better by the library owning the encoding outright. What is genuinely app-specific is the *href string* a rendered `<a>` carries, and that is one line.
 
 [^direct-read]: Reading the files in place means there is no second source of truth. VitePress keeps serving the same files unchanged, so both sites stay in sync for free through the whole multi-phase migration, and there is no reconciliation step at cutover.
 
@@ -396,7 +470,17 @@ Adding tables to the viewer is contained: a `case "table"` in the token switch a
 
 [^shell-precedent]: Per ARCHITECTURE *Compose before specializing*, the shell is composition of existing components: no new `LayoutManager` and no new library component.
 
-[^unmigrated-links]: Landing on the not-found view is the common case in Phase 1, since the 15 migrated pages link freely into the 139 not-yet-migrated ones.
+[^unmigrated-links]: Landing on the not-found view is the common case in Phase 1, since the 15 migrated pages link freely into the 139 not-yet-migrated ones. That is the intended outcome for a link whose *target* is missing — `/components/Button` routes correctly and finds no page. It is not the intended outcome for a link the app failed to route at all, which is what the fragment-stripping and in-page rules exist to prevent. A link to `/guide/mental-model#jsx-shaped-without-jsx` must reach the Mental model page; that page is one of the 15.
+
+[^strip-fragment]: `hash-router`'s `normalizePath` splits on `/` and knows nothing about `#`. Left in place, `/guide/mental-model#jsx-shaped-without-jsx` becomes the single segment `mental-model#jsx-shaped-without-jsx`, which matches no page and falls to the catch-all — so a link pointing at a migrated page would show the not-found view. Four such links exist in the Phase 1 slice, three of them aimed at `guide/mental-model`. The fragment is dropped rather than honoured: the reader lands at the top of the right page instead of at the right heading. Carrying it through would mean threading it past `navigate` into `showPath` and scrolling after the new source has laid out — real machinery for four links, and a scope increase this phase does not need. Same-page anchors scroll because the target is already rendered when the click arrives; cross-page ones do not, and that asymmetry is deliberate.
+
+[^in-page-scroll]: This works in Phase 1 only because step 1 is already adding heading `id`s for other reasons — the ids an in-page link needs are a by-product of work the plan does anyway, so the remaining cost is the scroll arithmetic in one click branch. Nothing new is needed from the library: `querySelector`, `getRect`, `getScrollTop`, and `setScrollTop` all exist on the DOM seam and on `Component` ([DOM.ts:1064](packages/lib/src/typescript/lib/core/DOM.ts#L1064), [Component.ts:3283](packages/lib/src/typescript/lib/core/Component.ts#L3283), [:3320](packages/lib/src/typescript/lib/core/Component.ts#L3320)). Scrolling is computed rather than delegated to the browser because the content pane is an `autoScroll` Panel whose offset the framework owns; a native fragment jump would move the document, not the Panel.
+
+[^interception-load-bearing]: Worth stating because the interception otherwise looks redundant: a real `<a href="#/guide/x">` changes the hash natively and `Router`'s `hashchange` listener would pick it up with no JavaScript at all. That reasoning holds only for route hrefs. For `#custom-themes` the native behaviour is the bug — the browser writes `#custom-themes`, `Router` normalizes it to `/custom-themes`, the catch-all matches, `getPage` returns null, and the reader is thrown off the page they were reading onto the not-found view. Only a cancelled click stops it.
+
+[^anchor-counts]: Counted in the Phase 1 slice: 13 bare `#anchor` links across `guide/` and `concepts/`, all but one in `concepts/theming.md`, plus 4 of the `/path#fragment` form. Both shapes are checked here because both are silent failures — the link renders normally and misbehaves only on click.
+
+[^start-placement]: Layout in this framework is coalesced onto one animation frame, so synchronous module-scope code runs entirely before the first layout pass. Calling `start()` at the end of that pass means the routed page is already showing when the frame runs — no flash of the default page. `hash-router` documents the same constraint for the demo app and warns that a top-level `await` placed above `start()` reintroduces the flash; `packages/docs/src/main.ts` has no `await`, and must not grow one above `router.start()`.
 
 [^parity-guard-purpose]: The guard exists so that a future viewer change which *does* alter the dialect fails in this test rather than silently shipping an asymmetry.
 
@@ -406,10 +490,10 @@ Adding tables to the viewer is contained: a `case "table"` in the token switch a
 
 [^docs-harness]: `vite build` does not typecheck, so without the `typecheck` script the new modules ship untypechecked. `packages/docs` has no test harness at all today, so without the `test` script the *Docs app* behaviours cannot be red-greened.
 
-[^node-testable]: `containers.ts`, `pages.ts`, and `Router.ts` are pure — no `document` access at import scope. `pages.ts`'s `import.meta.glob` is resolved by vitest's Vite pipeline.
+[^node-testable]: `containers.ts`, `pages.ts`, and `links.ts` are pure — no `document` access at import scope. `pages.ts`'s `import.meta.glob` is resolved by vitest's Vite pipeline. `links.ts` imports only a type from the library, which erases at compile time, so it pulls no component module in.
 
 [^no-source-omission]: The absence of editor source files is the intended outcome of the parity check in `## Architecture Decisions`, not an omission.
 
-[^loop-fix]: A no-op on an unchanged path in `Router.navigate` is a smaller surface than a re-entrancy flag in the sidebar.
+[^loop-fix]: The library `Router` does not special-case an unchanged path — it writes the hash unconditionally, and the browser is what breaks the cycle: assigning `location.hash` a value it already holds fires no `hashchange` and adds no history entry. `hash-router`'s worked example relies on the same mechanism for its `Tab` round trip, and its unit list pins it ("`navigate` to the path already in the hash writes the same value, so no `hashchange` fires and no handler re-runs"). A re-entrancy flag in `DocsSidebar` would therefore be dead code.
 
 [^editor-doc-untouched]: Line 5 of `MarkdownEditor.md` enumerates the dialect as "headings, paragraphs, bold, italic, inline code, ordered/unordered lists, blockquotes, fenced code, and links", and line 56 lists what is excluded. Heading `id`s and `linkResolver` add nothing to either list, because neither is a syntax construct.
