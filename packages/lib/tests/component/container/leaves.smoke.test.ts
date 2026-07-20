@@ -124,8 +124,8 @@ describe('MenuItem glyph colour', () => {
         installTestDOM(CONFIG);
         Glyph.register(circle_check);
 
-        const tinted = new MenuItem({ text: 'A', glyph: 'circle-check', glyphColor: 'rgb(1, 2, 3)' }, () => {}) as any;
-        const plain  = new MenuItem({ text: 'B', glyph: 'circle-check' }, () => {}) as any;
+        const tinted = new MenuItem({ text: 'A', glyph: 'circle-check', glyphColor: 'rgb(1, 2, 3)' }, () => {}, () => {}) as any;
+        const plain  = new MenuItem({ text: 'B', glyph: 'circle-check' }, () => {}, () => {}) as any;
 
         expect(tinted._iconGlyph.getForegroundColor()).toBe('rgb(1, 2, 3)');
         expect(plain._iconGlyph.getForegroundColor()).toBeNull();
