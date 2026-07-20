@@ -76,6 +76,46 @@ describe('Markdown headings', () => {
     });
 });
 
+describe('Markdown heading ids', () => {
+    it('emits a slugified id on the heading element', () => {
+        new Markdown('## Some Heading').getElement(true);
+
+        const headingAttr = attrWrites().find((a) => a.id !== undefined);
+
+        expect(headingAttr).toBeDefined();
+        expect(headingAttr!.id).toBe('some-heading');
+    });
+
+    it('dedupes identical heading text within one render with a "-N" suffix', () => {
+        new Markdown('## Dup\n\n## Dup').getElement(true);
+
+        const ids = attrWrites().map((a) => a.id).filter((id) => id !== undefined);
+
+        expect(ids).toEqual(['dup', 'dup-1']);
+    });
+
+    it('collapses punctuation-heavy heading text with no leading, trailing, or doubled hyphens', () => {
+        new Markdown('### setX() / getX()').getElement(true);
+
+        const headingAttr = attrWrites().find((a) => a.id !== undefined);
+
+        expect(headingAttr!.id).toBe('setx-getx');
+    });
+
+    it('re-renders the same id on a second setMarkdown call with the same single-heading source', () => {
+        const md = new Markdown('## Repeat');
+
+        md.getElement(true);
+        const firstId = attrWrites().find((a) => a.id !== undefined)!.id;
+
+        md.setMarkdown('## Repeat');
+        const secondId = attrWrites().filter((a) => a.id !== undefined).pop()!.id;
+
+        expect(secondId).toBe(firstId);
+        expect(secondId).toBe('repeat');
+    });
+});
+
 describe('Markdown paragraph', () => {
     it('builds a <p> whose text is the paragraph content', () => {
         new Markdown('hello world').getElement(true);
@@ -135,6 +175,33 @@ describe('Markdown links', () => {
         expect(linkAttr).toBeDefined();
         expect(linkAttr!.target).toBe('_blank');
         expect(linkAttr!.rel).toBe('noopener noreferrer');
+    });
+
+    it('renders no target/rel and the resolved href when a linkResolver marks the link non-external', () => {
+        new Markdown('[t](/guide/)', {
+            linkResolver: () => ({ href: '#/guide/', external: false }),
+        }).getElement(true);
+
+        const linkAttr = attrWrites().find((a) => a.href === '#/guide/');
+
+        expect(linkAttr).toBeDefined();
+        expect(linkAttr!.target).toBeUndefined();
+        expect(linkAttr!.rel).toBeUndefined();
+    });
+});
+
+describe('Markdown linkResolver accessors', () => {
+    it('getLinkResolver returns the default resolver (not null) on a freshly constructed Markdown', () => {
+        expect(new Markdown().getLinkResolver()).not.toBeNull();
+    });
+
+    it('setLinkResolver/getLinkResolver round-trip a custom resolver', () => {
+        const md = new Markdown();
+        const resolver = (href: string) => ({ href, external: false });
+
+        md.setLinkResolver(resolver);
+
+        expect(md.getLinkResolver()).toBe(resolver);
     });
 });
 
