@@ -254,11 +254,12 @@ export interface MarkdownOptions extends ComponentOptions {
     markdown?: string;
 
     /**
-     * Maps an authored link href to its rendered form. Defaults to
-     * {@link defaultLinkResolver}, which preserves today's behaviour (every
-     * link opens in a new tab). A consumer embedding `Markdown` in an app with
-     * its own routing (e.g. a docs site) can rewrite in-site hrefs and suppress
-     * the new tab for them, while leaving external links external.
+     * Maps an authored link href to its rendered form. Defaults to a resolver
+     * that renders every href unchanged and marks it external, preserving
+     * today's behaviour (every link opens in a new tab). A consumer embedding
+     * `Markdown` in an app with its own routing (e.g. a docs site) can rewrite
+     * in-site hrefs and suppress the new tab for them, while leaving external
+     * links external.
      */
     linkResolver?: MarkdownLinkResolver;
 }
@@ -405,8 +406,8 @@ class Markdown extends Component<MarkdownOptions> {
     }
 
     /**
-     * Returns the current link resolver, or the module-level
-     * {@link defaultLinkResolver} when none was set — never `null`.
+     * Returns the current link resolver, or the default resolver (every href
+     * unchanged, marked external) when none was set — never `null`.
      *
      * @returns The active link resolver.
      */
