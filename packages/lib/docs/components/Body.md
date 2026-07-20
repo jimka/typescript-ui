@@ -23,8 +23,13 @@ win.show();
 `Body.init(options)` is the canonical way to mount a top-level layout — one call that applies a [`ComponentOptions`](/api/core/interfaces/ComponentOptions) bag to the singleton and returns it:
 
 ```typescript
+import { Body } from '@jimka/typescript-ui/core';
+import { Fit } from '@jimka/typescript-ui/layout';
+
 Body.init({ layoutManager: Fit(), components: [appShell] });
 ```
+
+Here `appShell` is your own top-level component — the single child [`Fit`](/layouts/Fit) stretches to fill the viewport.
 
 Only the fields you supply are dispatched, so the body's viewport-size tracking and default theme survive. `components` **appends** — calling `init` twice adds both sets of children rather than replacing the first.
 
