@@ -60,23 +60,6 @@ new Glyph("plus");            // renders the plus icon
 
 The string passed to `new Glyph(name)` is the upstream Font Awesome name (with hyphens). The JS identifier is sanitized: `-` becomes `_` and identifiers starting with a digit get a leading `_` (so `arrow-right` exports as `arrow_right`, `500px` as `_500px`, `try` as `_try`).
 
-### Migration from the previous curated registry
-
-If you were using the previous 19-icon curated registry, switch to these latest-FA names:
-
-| Old | New |
-|-----|-----|
-| `times`, `close` | `xmark` |
-| `edit` | `pen-to-square` |
-| `info-circle` | `circle-info` |
-| `check-circle` | `circle-check` |
-| `exclamation-triangle`, `warning` | `triangle-exclamation` |
-| `exclamation-circle`, `error` | `circle-exclamation` |
-| `question-circle` | `circle-question` |
-| `search` | `magnifying-glass` |
-| `cog` | `gear` |
-| `home` | `house` |
-
 Library components that internally use glyphs (Tree row chevrons, Notification badges) register their own dependencies automatically — consumers only need to register the glyphs they reference directly.
 
 ## License
