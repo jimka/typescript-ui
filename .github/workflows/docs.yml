@@ -24,23 +24,36 @@ jobs:
                   node-version: 22
                   cache:        npm
             - run: npm ci
-            # Build order: the docs app consumes the built library through the
-            # workspace symlink, and its vite plugin reads the TypeDoc JSON model,
-            # so build:lib and docs:api must precede build:docs. The NODE_OPTIONS
-            # heap pin stays while TypeDoc emits the ~105 MB model; it and the
-            # retained VitePress `docs:build` script become removable once
-            # VitePress source is deleted in the docs-app follow-up.
+            # Deploys the VitePress site from packages/lib — the docs that
+            # actually have content. packages/docs is its eventual replacement
+            # (a docs app built with the library itself), but is still a
+            # proof-of-seam scaffold: pointing Pages at it published an empty
+            # shell whose every sub-route 404s, so the deployment stays here
+            # until that app reaches parity.
+            #
+            # docs:build runs docs:api (TypeDoc) and docs:llms itself, so they
+            # need no separate steps; build:lib precedes it because the docs
+            # import the built library. The NODE_OPTIONS heap pin is set at the
+            # step level so TypeDoc inherits it too while it emits the ~105 MB
+            # model. That requirement grows with the library, and the build now
+            # OOMs on smaller developer machines while still completing on CI
+            # runners — a local OOM here is expected, not a broken build.
             - run: npm run build:lib
-            - run: npm run docs:api
+            - run: npm run docs:build
               env:
                   NODE_OPTIONS: --max-old-space-size=12288
+            # Built but deliberately not deployed. packages/docs is the
+            # in-progress replacement docs app; compiling it here keeps it
+            # honest — it resolves the library through the package exports map
+            # and its vite plugin reads the TypeDoc model docs:build just
+            # emitted — so a break surfaces in CI rather than months later.
             - run: npm run build:docs
               env:
                   NODE_OPTIONS: --max-old-space-size=12288
             - uses: actions/configure-pages@v5
             - uses: actions/upload-pages-artifact@v3
               with:
-                  path: packages/docs/dist
+                  path: packages/lib/docs/.vitepress/dist
 
     deploy:
         needs:    build
