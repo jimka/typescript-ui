@@ -32,7 +32,7 @@ Only the fields you supply are dispatched, so the body's viewport-size tracking 
 
 ## Notes
 
-- **Singleton** — created automatically on first access (`Body.init()` or `Body.getInstance()`). Do not `Body()` yourself.
+- **Singleton** — constructed when the `Body` module is first imported, not on first call. `Body.init()` and `Body.getInstance()` both hand back that same existing instance. Do not `Body()` yourself.
 - **Resize listener** — `Body` listens for `window.resize` and re-runs layout from itself. Adding a top-level component to `Body` is what wires it into the responsive layout pass.
 - **Theme bootstrap** — call `ThemeManager.setTheme(ClassicTheme)` (or any theme) before adding components, so style rules pick up the right CSS variables.
 
