@@ -1,6 +1,6 @@
 # Body
 
-[`Body`](/api/core/classes/Body) is a singleton [`Component`](/api/core/classes/Component) that wraps the page's `<body>` element. It bootstraps the framework on first access and listens for viewport resize events to re-run layout from the root.
+[`Body`](/api/core/classes/Body) is a singleton [`Component`](/api/core/classes/Component) that wraps the page's `<body>` element. It bootstraps the framework when the module is first imported and listens for viewport resize events to re-run layout from the root.
 
 You don't usually instantiate components directly into `Body`; instead you attach top-level layout containers to it.
 
