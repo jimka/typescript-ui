@@ -1,8 +1,28 @@
 import { Body } from '@jimka/typescript-ui/core'
-import { Header } from '@jimka/typescript-ui/component/display'
-import { moduleCount, symbolCount } from 'virtual:typedoc-summary'
+import { Fit } from '@jimka/typescript-ui/layout'
+import { Router, type RouteParams } from '@jimka/typescript-ui/router'
+import { DocsShell } from './shell/DocsShell.js'
 
-// Minimal proof-of-seam: render one real @jimka/typescript-ui component — resolved
-// through the package `exports` map exactly as a downstream consumer would — and
-// surface the TypeDoc model counts read at build time by the vite plugin.
-Body.init({ components: [new Header(`typescript-ui docs — ${moduleCount} modules, ${symbolCount} documented symbols`)] })
+const DEFAULT_PATH = '/guide'
+
+const router = new Router()
+const shell  = new DocsShell(router)
+
+function showDefaultPage(): void {
+    shell.showPath(DEFAULT_PATH)
+}
+
+function showRoutedPage(_params: RouteParams, path: string): void {
+    shell.showPath(path)
+}
+
+router.register('/',  showDefaultPage)
+router.register('/*', showRoutedPage)
+
+Body.init({ layoutManager: Fit(), components: [shell] })
+
+// start() applies the current route synchronously — call after the tree is
+// built and before the first layout frame, so the routed page is already
+// showing when that frame runs (no flash of the default page). See "Router
+// wiring (main.ts)" in plans/implemented/packages-docs.md.
+router.start()
