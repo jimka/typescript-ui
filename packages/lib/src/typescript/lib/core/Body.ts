@@ -24,9 +24,9 @@ export class Body extends Component {
 
     /**
      * Returns the singleton Body instance — the accessor for reaching the body
-     * *after* it exists: adding a further child, reading its layout manager, or
-     * attaching a listener. To mount a top-level layout in one call, use
-     * `Body.init` instead.
+     * *after* it is mounted: adding a further child, reading its layout
+     * manager, or attaching a listener. To mount a top-level layout in one
+     * call, use `Body.init` instead.
      *
      * @returns The single shared Body component for this page.
      */
