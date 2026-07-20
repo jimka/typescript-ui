@@ -20,6 +20,8 @@ import { Button } from '@jimka/typescript-ui/component/button';
 ThemeManager.setTheme(ClassicTheme);
 
 const win = Window('Hello');
+
+Body.init({ components: [win] });
 win.show();
 ```
 

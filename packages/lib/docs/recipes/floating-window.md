@@ -54,7 +54,7 @@ settingsWin.addComponents(
 ## Show / hide instead of destroy
 
 ```typescript
-Body.getInstance().addComponent(settingsWin);
+Body.init({ components: [settingsWin] });
 settingsWin.setVisible(false);  // hidden until requested
 
 const openBtn = Button('Settings…');

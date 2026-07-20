@@ -32,7 +32,7 @@ const bar = MenuBar([
     ]},
 ]);
 
-Body.getInstance().addComponent(bar);
+Body.init({ components: [bar] });
 ```
 
 ## Wire the keyboard handler

@@ -20,7 +20,7 @@ const bar = MenuBar([
     ]},
 ]);
 
-Body.getInstance().addComponent(bar);
+Body.init({ components: [bar] });
 ```
 
 ## Config shape
