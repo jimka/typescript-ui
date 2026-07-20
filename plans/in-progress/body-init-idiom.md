@@ -308,6 +308,31 @@ Site 11 (`docs/recipes/floating-window.md:57`) was the ambiguous case on the mig
 
 ---
 
+## Implementation Notes
+
+Four things the plan did not anticipate. None changed the design; all change how the work is *checked*.
+
+**1. Verification step 4's count is wrong — step 5 is the real check.** The plan expects `grep -rn 'Body\.getInstance'` to return "exactly two" matches afterwards. It returns **five**, correctly: Steps 1, 6, and 7 each *write a new* `Body.getInstance()` reference — the class docstring's "reach the singleton again" line, the `## Mounting` section's accessor paragraph, and the reworded Notes bullet. Footnote `[^why-not-count-init]` anticipates this hazard for counting `Body.init` but never applies the same reasoning to counting `Body.getInstance`. Verification step 5 (`getInstance()\.(addComponent|setLayoutManager)` → zero) is what actually proves the migration, and it passes.
+
+**2. The verification greps need generated directories excluded.** `packages/lib/docs/api/` (TypeDoc output) and `packages/lib/docs/.vitepress/dist/` are gitignored build artefacts, but they exist on any machine where `docs:build` has run and they contain `Body.getInstance` matches. Without `--exclude-dir=api --exclude-dir=dist --exclude-dir=.vitepress` the checks report false positives.
+
+**3. Step 14 needs `npm run docs:api` first.** `docs:llms` reads `docs/api/typedoc-model.json`, which does not exist in a fresh worktree; it fails with "TypeDoc model not found".
+
+**4. Verification steps 2 and 3 fail on `master` already — not caused by this plan.**
+
+| Check | State on `master` |
+|---|---|
+| `npm run test` | **red** — `typecheck:test` fails: `tests/component/container/leaves.smoke.test.ts:127,128`, TS2554 "Expected 3-5 arguments, but got 2" |
+| `npm run lint` | **red** — 5 errors: `component/editor/CodeEditor.ts:492-493` (4× `local/no-raw-dom`), `component/table/cell/renderer/Link.ts:57` (`local/forward-super-options`) |
+
+Both were confirmed identical in the untouched main tree, are in files this plan does not touch, and were left alone per the surgical-changes rule. Because `typecheck:test` gates vitest, the suite was run directly to confirm it is healthy: **211 files, 2617 tests, all passing**, `Body.test.ts` included.
+
+**Verified green:** `typecheck`; vitest (2617 tests); `docs:build` (exit 0); `docs:llms` idempotent on re-run; `build:docs` (docs app, 728ms). The generated `/api/core/classes/Body` page renders the `init`-based example, confirming the JSDoc edit propagated through TypeDoc. Note `ignoreDeadLinks: true` means `docs:build` cannot catch a dead link, so the one link this work adds — `/api/core/interfaces/ComponentOptions` — was confirmed to resolve in both the source tree and the built HTML.
+
+**Still outstanding:** the demo-app render smoke test (`npm run dev` — full tab strip present and switchable). Step 3's ordering was verified statically: `Body.init({ layoutManager })` sits before the `addLazyTab` block with `layoutManager` declared immediately above it.
+
+---
+
 ## Notes
 
 [^blanket-replace]: A find-and-replace of `Body.getInstance` → `Body.init` across the repo would rewrite `tests/core/Body.test.ts:30`, whose `expect(body).toBe(Body.getInstance())` exists to assert that `init` and `getInstance` return the same singleton, and would also corrupt prose that talks about reaching an already-mounted body. See `## Addendum: Classifying mount sites versus accessor sites` for the per-site reasoning.
