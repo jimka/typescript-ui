@@ -23,6 +23,7 @@ panel.addComponent(Markdown('# Title\n\nSome **bold** text with a [link](https:/
 | Option | Type | Default | Purpose |
 | --- | --- | --- | --- |
 | `markdown` | `string` | `""` | The Markdown source string to render. |
+| `linkResolver` | `(href: string) => { href: string; external: boolean }` | resolves every href as external, unchanged | Maps an authored link href to its rendered form — see [Link resolution](#link-resolution). |
 
 Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields (preferred size, background, foreground, etc.).
 
@@ -42,6 +43,22 @@ Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) 
 
 A delimiter row's alignment markers (`:---`, `:---:`, `---:`) apply as a CSS class to every cell in that column, header and body alike.
 
+Every rendered heading carries a slugified `id` (lowercase, non-alphanumerics collapsed to single hyphens, ends trimmed), so a `#fragment` link can target it — `## Some Heading` renders `<h2 id="some-heading">`. Two headings with identical text get `-N` suffixes (`id="dup"`, `id="dup-1"`, …) so ids stay unique within one render; the counter resets on every `setMarkdown` re-render.
+
+### Link resolution
+
+Every link's href passes through the `linkResolver` option before rendering, and the resolution decides both the rendered `href` and whether the anchor carries `target="_blank" rel="noopener noreferrer"`. The default resolver returns `{ href, external: true }` for every href — today's behaviour, unchanged for anyone not passing the option. A consumer embedding `Markdown` in an app with its own routing (e.g. a docs site) can rewrite in-site hrefs and mark them non-external so they navigate in place instead of opening a new tab, while external links stay external:
+
+```typescript
+import { Markdown } from '@jimka/typescript-ui/component/display';
+
+Markdown(source, {
+    linkResolver: (href) => href.startsWith('/')
+        ? { href: '#' + href, external: false }
+        : { href, external: true },
+});
+```
+
 ### Fallback for unsupported tokens
 
 Any token type not in the v1 set — images, raw HTML, and the remaining GFM extensions (task lists, strikethrough) — falls through to a **defined fallback** that renders the token's plain text. It never crashes and never emits the corresponding element (no `<img>`). Support for a new token type is added by extending the internal token switch, with no structural rewrite.
@@ -58,6 +75,8 @@ Because prose reflows, `Markdown` measures its rendered content **height** at th
 | --- | --- |
 | `getMarkdown()` | Return the current Markdown source (`""` when unset). |
 | `setMarkdown(markdown)` | Replace the source, re-lexing and rebuilding the rendered subtree. |
+| `getLinkResolver()` | Return the current link resolver — the default resolver when unset, never `null`. |
+| `setLinkResolver(resolver)` | Replace the link resolver used to render links. Does not re-render already-built content. |
 | `dispose()` | Detach the theme-change listener — call this before removing a dynamically-built `Markdown` from the page so the listener doesn't leak. |
 
 ## See also
