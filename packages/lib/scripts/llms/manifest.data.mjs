@@ -120,6 +120,10 @@ export const groups = [
         { task: "Node in a tree store", symbol: "TreeNode", subpath: "data", doc: "docs/data/store.md" },
         { task: "Relate models (has-many / belongs-to)", symbol: "Association", doc: "docs/data/associations.md" },
     ] },
+
+    { name: "App shell", entries: [
+        { task: "Map the URL hash to a top-level app section", symbol: "Router", doc: "docs/concepts/routing.md" },
+    ] },
 ];
 
 export const conventions = [

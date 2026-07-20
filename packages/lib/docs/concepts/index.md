@@ -14,6 +14,7 @@ If you are new here, start with the [mental model](/guide/mental-model) in the G
 - [Layering](/concepts/layering) — the runtime layer tree, z-index bands, and dismiss modes behind overlays.
 - [Theming](/concepts/theming) — design tokens, custom themes, theme-change listeners.
 - [Data binding](/concepts/data-binding) — Model / Store / Proxy / `Binding` overview.
+- [Routing](/concepts/routing) — mapping the URL hash to a top-level app section with `Router`.
 - [Accessibility](/concepts/accessibility) — ARIA, keyboard navigation, `RovingTabIndex`.
 - [Performance](/concepts/performance) — `pauseLayout`, virtual scrolling, dispose patterns.
 - [DOM seams](/concepts/dom-seams) — the swappable `DOMSink` / `DOMSource` write and read boundary behind offline geometry tests.

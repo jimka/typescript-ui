@@ -99,6 +99,9 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Node in a tree store → **TreeNode** · `@jimka/typescript-ui/data` · A node in a TreeStore's hierarchy: a thin structural wrapper around a ModelRecord, carrying parent/child links, depth, and leaf state. The… · docs/data/store.md
 - Relate models (has-many / belongs-to) → **Association** · `@jimka/typescript-ui/data` · Declarative association descriptor; behaviour lives in AbstractModel / ModelRecord / AbstractStore. · docs/data/associations.md
 
+### App shell
+- Map the URL hash to a top-level app section → **Router** · `@jimka/typescript-ui/router` · Maps the URL hash to a single top-level app section. Patterns are registered with register (e.g. `"/data/rows/:sel"`); on a navigation, the… · docs/concepts/routing.md
+
 ## Conventions (hard rules)
 1. Never use CSS flex/grid or `position: relative` — arrange children with a LayoutManager (HBox/VBox/Border/Grid/Split/…). → docs/concepts/layout-system.md
 2. Size with setMinSize/setPreferredSize/setMaxSize honouring min ≤ preferred ≤ max; to scroll, wrap content in a Panel with autoScroll — never `overflow` CSS. → docs/concepts/sizing.md

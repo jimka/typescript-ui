@@ -53,6 +53,7 @@ export default defineConfig({
                     { text: 'Layering',            link: '/concepts/layering' },
                     { text: 'Theming',             link: '/concepts/theming' },
                     { text: 'Data binding',        link: '/concepts/data-binding' },
+                    { text: 'Routing',             link: '/concepts/routing' },
                     { text: 'Accessibility',       link: '/concepts/accessibility' },
                     { text: 'Performance',         link: '/concepts/performance' },
                     { text: 'DOM seams',           link: '/concepts/dom-seams' },

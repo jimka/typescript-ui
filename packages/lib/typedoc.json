@@ -7,6 +7,7 @@
         "src/typescript/lib/layout/index.ts",
         "src/typescript/lib/data/index.ts",
         "src/typescript/lib/validation/index.ts",
+        "src/typescript/lib/router/index.ts",
         "src/typescript/lib/component/input/index.ts",
         "src/typescript/lib/component/button/index.ts",
         "src/typescript/lib/component/display/index.ts",
