@@ -485,7 +485,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * and mounting the editor if needed), or the source `CodeEditor` in
      * `"source"` mode.
      *
-     * Overrides {@link Component.focus}, whose default focuses this component's
+     * Overrides {@link core!Component.focus}, whose default focuses this component's
      * own host element — the `Card` wrapper — which would leave the caret out of
      * the nested contenteditable the typing must land in. In WYSIWYG mode it
      * defers to Lexical's own `focus`, which both focuses the root element and

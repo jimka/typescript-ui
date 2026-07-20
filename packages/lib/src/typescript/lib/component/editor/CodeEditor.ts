@@ -296,7 +296,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
     /**
      * Moves keyboard focus into the editor.
      *
-     * @remarks Overrides {@link Component.focus} because a `CodeEditor`'s own
+     * @remarks Overrides {@link core!Component.focus} because a `CodeEditor`'s own
      * element is a plain, non-focusable host `<div>` — CodeMirror owns the real
      * focusable target (its `contentDOM`), so the base `element.focus()` would be
      * a no-op. When mounted this hands focus to the live view; offline / before

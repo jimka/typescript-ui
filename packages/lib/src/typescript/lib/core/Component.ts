@@ -5055,7 +5055,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Signals that this component's own preferred and minimum sizes changed for
      * a reason the framework cannot observe through {@link setPreferredSize} /
      * {@link setMinSize} — typically a layout manager whose intrinsic sizing
-     * depends on internal state (e.g. an {@link Accordion} opening or closing a
+     * depends on internal state (e.g. an {@link layout!Accordion} opening or closing a
      * section changes the height it wants). Fires the same upward relay a
      * {@link setPreferredSize} call would (installed by the parent in
      * `wireChild`), so every ancestor — and in particular a scrolling host —
