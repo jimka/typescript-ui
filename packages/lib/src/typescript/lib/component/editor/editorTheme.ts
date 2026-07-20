@@ -16,10 +16,11 @@ const LIST_CLASS        = "ts-ui-mde-list";
 const LINK_CLASS        = "ts-ui-mde-link";
 const BOLD_CLASS        = "ts-ui-mde-bold";
 const ITALIC_CLASS      = "ts-ui-mde-italic";
-const TABLE_CLASS             = "ts-ui-mde-table";
-const TABLE_ROW_CLASS         = "ts-ui-mde-table-row";
-const TABLE_CELL_CLASS        = "ts-ui-mde-table-cell";
-const TABLE_CELL_HEADER_CLASS = "ts-ui-mde-table-cell-header";
+const TABLE_CLASS               = "ts-ui-mde-table";
+const TABLE_ROW_CLASS           = "ts-ui-mde-table-row";
+const TABLE_CELL_CLASS          = "ts-ui-mde-table-cell";
+const TABLE_CELL_HEADER_CLASS   = "ts-ui-mde-table-cell-header";
+const TABLE_CELL_SELECTED_CLASS = "ts-ui-mde-table-cell-selected";
 
 /** Guards the module-singleton class-rule registration in {@link ensureMarkdownEditorClassRules}. */
 let _classRulesEnsured = false;
@@ -142,6 +143,15 @@ export function ensureMarkdownEditorClassRules(): void {
             fontWeight: "600",
         },
     });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TABLE_CELL_SELECTED_CLASS,
+        // @lexical/table stamps this class onto cells caught in a drag-selected
+        // range; reuses the data-grid Table component's own row-selected token
+        // so a selected cell reads the same way here as it does there.
+        styles: { backgroundColor: "var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))" },
+    });
 }
 
 /**
@@ -173,9 +183,10 @@ export const EDITOR_THEME: EditorThemeClasses = {
         italic: ITALIC_CLASS,
         code:   INLINE_CODE_CLASS,
     },
-    link:            LINK_CLASS,
-    table:           TABLE_CLASS,
-    tableRow:        TABLE_ROW_CLASS,
-    tableCell:       TABLE_CELL_CLASS,
-    tableCellHeader: TABLE_CELL_HEADER_CLASS,
+    link:              LINK_CLASS,
+    table:             TABLE_CLASS,
+    tableRow:          TABLE_ROW_CLASS,
+    tableCell:         TABLE_CELL_CLASS,
+    tableCellHeader:   TABLE_CELL_HEADER_CLASS,
+    tableCellSelected: TABLE_CELL_SELECTED_CLASS,
 };
