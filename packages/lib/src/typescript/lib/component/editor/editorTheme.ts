@@ -16,6 +16,10 @@ const LIST_CLASS        = "ts-ui-mde-list";
 const LINK_CLASS        = "ts-ui-mde-link";
 const BOLD_CLASS        = "ts-ui-mde-bold";
 const ITALIC_CLASS      = "ts-ui-mde-italic";
+const TABLE_CLASS             = "ts-ui-mde-table";
+const TABLE_ROW_CLASS         = "ts-ui-mde-table-row";
+const TABLE_CELL_CLASS        = "ts-ui-mde-table-cell";
+const TABLE_CELL_HEADER_CLASS = "ts-ui-mde-table-cell-header";
 
 /** Guards the module-singleton class-rule registration in {@link ensureMarkdownEditorClassRules}. */
 let _classRulesEnsured = false;
@@ -112,6 +116,32 @@ export function ensureMarkdownEditorClassRules(): void {
         name:   ITALIC_CLASS,
         styles: { fontStyle: "italic" },
     });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TABLE_CLASS,
+        styles: { borderCollapse: "collapse" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TABLE_CELL_CLASS,
+        styles: {
+            border:  "1px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
+            // Structural cell padding, matching the read-only viewer's cells.
+            padding: "0.3em 0.6em",
+        },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TABLE_CELL_HEADER_CLASS,
+        styles: {
+            border:     "1px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
+            padding:    "0.3em 0.6em",
+            fontWeight: "600",
+        },
+    });
 }
 
 /**
@@ -143,5 +173,9 @@ export const EDITOR_THEME: EditorThemeClasses = {
         italic: ITALIC_CLASS,
         code:   INLINE_CODE_CLASS,
     },
-    link: LINK_CLASS,
+    link:            LINK_CLASS,
+    table:           TABLE_CLASS,
+    tableRow:        TABLE_ROW_CLASS,
+    tableCell:       TABLE_CELL_CLASS,
+    tableCellHeader: TABLE_CELL_HEADER_CLASS,
 };

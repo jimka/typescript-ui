@@ -3,7 +3,7 @@
 import { callable, Panel } from '@jimka/typescript-ui/core';
 import { Border, Fit, Split } from '@jimka/typescript-ui/layout';
 import { Placement } from '@jimka/typescript-ui/primitive';
-import { ToggleButton } from '@jimka/typescript-ui/component/button';
+import { Button, ToggleButton } from '@jimka/typescript-ui/component/button';
 import { ToolBar } from '@jimka/typescript-ui/component/menubar';
 import { Markdown } from '@jimka/typescript-ui/component/display';
 import { MarkdownEditor } from '@jimka/typescript-ui/component/editor';
@@ -22,6 +22,10 @@ A **WYSIWYG** editor whose value is a *Markdown* string, built on Lexical.
 2. The panel on the right renders \`getValue()\` live
 
 > Edit on the left; the read-only Markdown viewer on the right stays in sync.
+
+| Column | Aligned |
+|:---|:---:|
+| Tables | yes |
 
 \`\`\`
 const editor = new MarkdownEditor("# Hello");
@@ -57,8 +61,14 @@ class MarkdownEditorPanel extends Panel {
         const sourceToggle = new ToggleButton('Edit Markdown source');
         sourceToggle.on('action', () => this._editor.setMode(sourceToggle.isSelected() ? 'source' : 'wysiwyg'));
 
+        // The table command API is consumer-wired, like the mode toggle above;
+        // a named method (not an inline arrow) is the listener-wiring convention.
+        const insertTableButton = new Button('Insert table');
+        insertTableButton.on('action', this.handleInsertTable);
+
         const toolbar = new ToolBar();
         toolbar.addComponent(sourceToggle);
+        toolbar.addComponent(insertTableButton);
 
         const editorFit = new Panel({ layoutManager: new Fit() });
         editorFit.addComponent(this._editor);
@@ -79,6 +89,14 @@ class MarkdownEditorPanel extends Panel {
     private syncViewer(): void {
         this._viewer.setMarkdown(this._editor.getValue());
     }
+
+    // An arrow-function field, not a method: passed as a bare `this.handler`
+    // reference to `on("action", ...)`, which calls it unbound — a prototype
+    // method would lose its `this`. Matches the VideoPlayer._onPlayButton /
+    // ScrollStrip.leadClicked precedent.
+    private readonly handleInsertTable = (): void => {
+        this._editor.insertTable(2, 3);
+    };
 }
 
 const MarkdownEditorPanelCallable = callable(MarkdownEditorPanel);
