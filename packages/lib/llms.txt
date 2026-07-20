@@ -103,10 +103,11 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 1. Never use CSS flex/grid or `position: relative` — arrange children with a LayoutManager (HBox/VBox/Border/Grid/Split/…). → docs/concepts/layout-system.md
 2. Size with setMinSize/setPreferredSize/setMaxSize honouring min ≤ preferred ≤ max; to scroll, wrap content in a Panel with autoScroll — never `overflow` CSS. → docs/concepts/sizing.md
 3. Construct with the callable + options-bag idiom (`Button({ text })`), not post-construction setters; reserve `setX` for runtime changes. → docs/recipes/component-options.md
-4. Route DOM events through the `Event` class (`Event.addListener`); emit and observe semantic events with `on`/`off`/`emit`. Never call `addEventListener`. → docs/concepts/events.md
-5. Theme through design tokens, never hardcoded colours. → docs/concepts/theming.md
-6. Move data through Model/Store/Binding, not manual DOM writes — bind components to records instead of pushing values by hand. → docs/concepts/data-binding.md
-7. One DOM element per component class; touch the element only at render time, not from a setter dispatched during construction. → docs/concepts/component-lifecycle.md
+4. Mount the top-level layout with `Body.init({ layoutManager, components })` — one call; use `Body.getInstance()` only to reach the body afterwards. → docs/components/Body.md
+5. Route DOM events through the `Event` class (`Event.addListener`); emit and observe semantic events with `on`/`off`/`emit`. Never call `addEventListener`. → docs/concepts/events.md
+6. Theme through design tokens, never hardcoded colours. → docs/concepts/theming.md
+7. Move data through Model/Store/Binding, not manual DOM writes — bind components to records instead of pushing values by hand. → docs/concepts/data-binding.md
+8. One DOM element per component class; touch the element only at render time, not from a setter dispatched during construction. → docs/concepts/component-lifecycle.md
 
 ## Drill down
 - Component & layout detail (options, examples) → docs/components/, docs/layouts/

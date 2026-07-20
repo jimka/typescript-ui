@@ -126,6 +126,7 @@ export const conventions = [
     { rule: "Never use CSS flex/grid or `position: relative` — arrange children with a LayoutManager (HBox/VBox/Border/Grid/Split/…).", doc: "docs/concepts/layout-system.md" },
     { rule: "Size with setMinSize/setPreferredSize/setMaxSize honouring min ≤ preferred ≤ max; to scroll, wrap content in a Panel with autoScroll — never `overflow` CSS.", doc: "docs/concepts/sizing.md" },
     { rule: "Construct with the callable + options-bag idiom (`Button({ text })`), not post-construction setters; reserve `setX` for runtime changes.", doc: "docs/recipes/component-options.md" },
+    { rule: "Mount the top-level layout with `Body.init({ layoutManager, components })` — one call; use `Body.getInstance()` only to reach the body afterwards.", doc: "docs/components/Body.md" },
     { rule: "Route DOM events through the `Event` class (`Event.addListener`); emit and observe semantic events with `on`/`off`/`emit`. Never call `addEventListener`.", doc: "docs/concepts/events.md" },
     { rule: "Theme through design tokens, never hardcoded colours.", doc: "docs/concepts/theming.md" },
     { rule: "Move data through Model/Store/Binding, not manual DOM writes — bind components to records instead of pushing values by hand.", doc: "docs/concepts/data-binding.md" },
