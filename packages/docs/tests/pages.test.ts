@@ -44,4 +44,17 @@ describe('getNav', () => {
             }
         }
     });
+
+    it('labels the sidebar with the config.mts titles, not the page h1 headings', () => {
+        const labels = nav.flatMap((group) => group.pages.map((page) => page.label));
+
+        // These three diverge from the page's own first `# ` heading
+        // ("Getting Started", "Concepts", "DOM seams (`DOMSink` / `DOMSource`)"),
+        // so they prove the sidebar uses the hand-authored config.mts title.
+        expect(labels).toContain('Introduction');
+        expect(labels).toContain('Overview');
+        expect(labels).toContain('DOM seams');
+        // No sidebar label may leak raw Markdown from a heading.
+        expect(labels.some((label) => label.includes('`'))).toBe(false);
+    });
 });

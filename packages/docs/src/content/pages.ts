@@ -10,10 +10,22 @@ export interface DocPage {
     source: string;
 }
 
-/** A sidebar section: a titled group of {@link DocPage} entries. */
+/**
+ * A sidebar entry: a page's route path plus the label shown for it in the
+ * tree. The label is hand-authored from the VitePress sidebar (config.mts)
+ * rather than taken from the page's `# ` heading, because the two differ for
+ * three pages and a heading may carry inline Markdown (e.g. backticks) that
+ * must not leak into a plain tree label.
+ */
+export interface NavEntry {
+    path:  string;
+    label: string;
+}
+
+/** A sidebar section: a titled group of {@link NavEntry} entries. */
 export interface NavGroup {
     title: string;
-    pages: DocPage[];
+    pages: NavEntry[];
 }
 
 // `import.meta.glob` keys arrive as `../../../lib/docs/guide/installation.md`
@@ -98,22 +110,40 @@ function requirePage(path: string): DocPage {
 /**
  * The sidebar's Guide and Concepts sections, mirroring the VitePress sidebar
  * shape in packages/lib/docs/.vitepress/config.mts (same titles, same order)
- * — see "Route ⇄ file mapping" in plans/implemented/packages-docs.md.
+ * — see "Route ⇄ file mapping" in plans/implemented/packages-docs.md. Each
+ * label is copied from that config's `text`, not derived from the page's `# `
+ * heading, so the tree reads exactly as VitePress renders it.
  *
  * @returns The two nav groups for the Phase-1 content slice.
  */
 export function getNav(): NavGroup[] {
-    const guidePaths = ['/guide', '/guide/installation', '/guide/mental-model'];
-    const conceptPaths = [
-        '/concepts', '/concepts/component-lifecycle', '/concepts/construction',
-        '/concepts/layout-system', '/concepts/sizing', '/concepts/events',
-        '/concepts/layering', '/concepts/theming', '/concepts/data-binding',
-        '/concepts/routing', '/concepts/accessibility', '/concepts/performance',
-        '/concepts/dom-seams',
+    const guide: NavEntry[] = [
+        { path: '/guide',              label: 'Introduction' },
+        { path: '/guide/installation', label: 'Installation' },
+        { path: '/guide/mental-model', label: 'Mental model' },
+    ];
+    const concepts: NavEntry[] = [
+        { path: '/concepts',                     label: 'Overview' },
+        { path: '/concepts/component-lifecycle', label: 'Component lifecycle' },
+        { path: '/concepts/construction',        label: 'Constructing components' },
+        { path: '/concepts/layout-system',       label: 'Layout system' },
+        { path: '/concepts/sizing',              label: 'Sizing' },
+        { path: '/concepts/events',              label: 'Events' },
+        { path: '/concepts/layering',            label: 'Layering' },
+        { path: '/concepts/theming',             label: 'Theming' },
+        { path: '/concepts/data-binding',        label: 'Data binding' },
+        { path: '/concepts/routing',             label: 'Routing' },
+        { path: '/concepts/accessibility',       label: 'Accessibility' },
+        { path: '/concepts/performance',         label: 'Performance' },
+        { path: '/concepts/dom-seams',           label: 'DOM seams' },
     ];
 
+    // Fail loudly on a hand-authored path that doesn't resolve to a migrated
+    // page — an authoring typo, not a runtime condition to handle gracefully.
+    [...guide, ...concepts].forEach((entry) => requirePage(entry.path));
+
     return [
-        { title: 'Guide',    pages: guidePaths.map(requirePage) },
-        { title: 'Concepts', pages: conceptPaths.map(requirePage) },
+        { title: 'Guide',    pages: guide },
+        { title: 'Concepts', pages: concepts },
     ];
 }

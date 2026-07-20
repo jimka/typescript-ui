@@ -65,7 +65,7 @@ class DocsSidebar extends Panel {
         return getNav().map((group) => ({
             label:    group.title,
             children: group.pages.map((page) => {
-                const node: TreeNode = { label: page.title, data: page.path };
+                const node: TreeNode = { label: page.label, data: page.path };
 
                 this._nodesByPath.set(page.path, node);
 
