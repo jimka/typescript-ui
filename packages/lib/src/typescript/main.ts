@@ -37,12 +37,10 @@ import { MarkdownEditorPanel } from "./MarkdownEditorPanel.js";
 DOM.source.getScrollBarWidth();
 (window as any).bench = Benchmark;
 
-let body = Body.getInstance();
-
 FocusHistory.enable();
 
 let layoutManager = new Tab();
-body.setLayoutManager(layoutManager);
+Body.init({ layoutManager });
 
 layoutManager.addLazyTab(() => new MiscPanel(),            "Misc."      );
 layoutManager.addLazyTab(() => new BindingPanel(),         "Binding"    );

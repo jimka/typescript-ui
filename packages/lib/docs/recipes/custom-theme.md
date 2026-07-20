@@ -44,7 +44,7 @@ import { ThemeManager, ClassicTheme, Body } from '@jimka/typescript-ui/core';
 ThemeManager.setTheme(BrandTheme);
 
 const root = buildAppLayout();
-Body.getInstance().addComponent(root);
+Body.init({ components: [root] });
 ```
 
 ## Switching themes at runtime

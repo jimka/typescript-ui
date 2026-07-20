@@ -8,11 +8,13 @@ import { ThemeManager, ModernTheme } from "~/core/Theme.js";
 /**
  * A {@link Component} that wraps the page's `<body>` element.
  *
- * Use the singleton accessor to add top-level components to the page:
+ * Mount a top-level layout in one call:
  * ```
- * let body = Body.getInstance();
- * body.addComponent(....);
+ * Body.init({ layoutManager: Fit(), components: [shell] });
  * ```
+ *
+ * Once mounted, reach the singleton again with `Body.getInstance()` — to add a
+ * further child, read the layout manager, or attach a listener.
  *
  * @category Core
  */
@@ -21,7 +23,10 @@ export class Body extends Component {
     private static readonly INSTANCE: Body = new Body();
 
     /**
-     * Returns the singleton Body instance.
+     * Returns the singleton Body instance — the accessor for reaching the body
+     * *after* it is mounted: adding a further child, reading its layout
+     * manager, or attaching a listener. To mount a top-level layout in one
+     * call, use `Body.init` instead.
      *
      * @returns The single shared Body component for this page.
      */

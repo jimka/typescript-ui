@@ -25,7 +25,7 @@ const store = new MemoryStore(ItemModel, data);
 await store.load();
 
 const table = Table(store);
-Body.getInstance().addComponent(table);
+Body.init({ components: [table] });
 ```
 
 The body keeps roughly 50 rows in the DOM at any time (viewport + buffer) regardless of dataset size. Memory usage is constant.

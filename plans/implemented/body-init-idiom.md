@@ -308,6 +308,39 @@ Site 11 (`docs/recipes/floating-window.md:57`) was the ambiguous case on the mig
 
 ---
 
+## Implementation Notes
+
+Five things the plan did not anticipate. Four change only how the work is *checked*; the fifth changed shipped documentation text away from what the plan dictated, and is recorded as a deviation rather than folded in silently.
+
+**1. Verification step 4's count is wrong — step 5 is the real check.** The plan expects `grep -rn 'Body\.getInstance'` to return "exactly two" matches afterwards. It returns **five**, correctly: Steps 1, 6, and 7 each *write a new* `Body.getInstance()` reference — the class docstring's "reach the singleton again" line, the `## Mounting` section's accessor paragraph, and the reworded Notes bullet. Footnote `[^why-not-count-init]` anticipates this hazard for counting `Body.init` but never applies the same reasoning to counting `Body.getInstance`. Verification step 5 (`getInstance()\.(addComponent|setLayoutManager)` → zero) is what actually proves the migration, and it passes.
+
+**2. The verification greps need generated directories excluded.** `packages/lib/docs/api/` (TypeDoc output), `packages/lib/docs/.vitepress/dist/`, and `packages/lib/docs/public/llms.txt` are gitignored build artefacts, but they exist on any machine where `docs:build` or `docs:llms` has run and they contain `Body.getInstance` matches. Without `--exclude-dir=api --exclude-dir=dist --exclude-dir=.vitepress --exclude-dir=public` the checks report false positives.
+
+**3. Step 14 needs `npm run docs:api` first.** `docs:llms` reads `docs/api/typedoc-model.json`, which does not exist in a fresh worktree; it fails with "TypeDoc model not found".
+
+**4. Verification steps 2 and 3 fail on `master` already — not caused by this plan.**
+
+| Check | State on `master` |
+|---|---|
+| `npm run test` | **red** — `typecheck:test` fails: `tests/component/container/leaves.smoke.test.ts:127,128`, TS2554 "Expected 3-5 arguments, but got 2" |
+| `npm run lint` | **red** — 5 errors: `component/editor/CodeEditor.ts:492-493` (4× `local/no-raw-dom`), `component/table/cell/renderer/Link.ts:57` (`local/forward-super-options`) |
+
+Both were confirmed identical in the untouched main tree, are in files this plan does not touch, and were left alone per the surgical-changes rule. Because `typecheck:test` gates vitest, the suite was run directly to confirm it is healthy: **211 files, 2617 tests, all passing**, `Body.test.ts` included.
+
+**5. Step 7's replacement wording was itself inaccurate — the shipped bullet differs from the plan (DEVIATION).** Step 7 dictated that `docs/components/Body.md`'s Notes bullet read ``created automatically on first access (`Body.init()` or `Body.getInstance()`)``. That is false: [`Body.ts:23`](packages/lib/src/typescript/lib/core/Body.ts#L23) is `private static readonly INSTANCE: Body = new Body();`, a static field initializer, so the singleton is constructed when the module is first **imported** — before any call. Neither `init` nor `getInstance` triggers construction; both return an instance that already exists. The distinction is load-bearing because the constructor applies `ModernTheme` ([Body.ts:62](packages/lib/src/typescript/lib/core/Body.ts#L62)), which is what the "Theme bootstrap" bullet two lines below rests on.
+
+The plan inherited the lazy-creation premise from the pre-existing wording and corrected only *which* accessor it named, so following Step 7 literally would have published a false claim on a live page. The bullet now reads "constructed when the `Body` module is first imported, not on first call. `Body.init()` and `Body.getInstance()` both hand back that same existing instance."
+
+The same false premise appears a second time in the page's opening paragraph ([Body.md:3](packages/lib/docs/components/Body.md#L3)), which said the framework is bootstrapped "on first access". The plan named only the Notes bullet, so correcting one and leaving the other would have left the page contradicting itself — line 3 asserting first-access creation, line 35 denying it. Both are now corrected to "when the module is first imported". A sweep of the rest of the docs found no other Body-creation claim: `concepts/theming.md:23` already says `Body` "calls `setTheme` on construction", and `concepts/component-lifecycle.md:124`'s "on first access" is about `render()`, not `Body`.
+
+Both edits shipped in follow-up commits, separate from the original docs commit.
+
+**Verified green:** `typecheck`; vitest (2617 tests); `docs:build` (exit 0); `docs:llms` idempotent on re-run; `build:docs` (docs app, 728ms). The generated `/api/core/classes/Body` page renders the `init`-based example, confirming the JSDoc edit propagated through TypeDoc. Note `ignoreDeadLinks: true` means `docs:build` cannot catch a dead link, so the one link this work adds — `/api/core/interfaces/ComponentOptions` — was confirmed to resolve in both the source tree and the built HTML.
+
+**Demo-app render smoke test — done.** Step 3's ordering was first verified statically (`Body.init({ layoutManager })` sits before the `addLazyTab` block, with `layoutManager` declared immediately above it). The render itself was then executed during the audit: `npm run dev` serves the full tab strip with every tab present and switchable, and zero console messages. Expected Behaviour's demo-app item is discharged.
+
+---
+
 ## Notes
 
 [^blanket-replace]: A find-and-replace of `Body.getInstance` → `Body.init` across the repo would rewrite `tests/core/Body.test.ts:30`, whose `expect(body).toBe(Body.getInstance())` exists to assert that `init` and `getInstance` return the same singleton, and would also corrupt prose that talks about reaching an already-mounted body. See `## Addendum: Classifying mount sites versus accessor sites` for the per-site reasoning.

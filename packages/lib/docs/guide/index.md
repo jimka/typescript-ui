@@ -16,10 +16,11 @@ npm install @jimka/typescript-ui
 import { Body, ThemeManager, ClassicTheme } from '@jimka/typescript-ui/core';
 import { Window } from '@jimka/typescript-ui/overlay';
 
-import { Button } from '@jimka/typescript-ui/component/button';
 ThemeManager.setTheme(ClassicTheme);
 
 const win = Window('Hello');
+
+Body.init({ components: [win] });
 win.show();
 ```
 

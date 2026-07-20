@@ -16,7 +16,7 @@ import { Panel } from '@jimka/typescript-ui/core';
 
 const win = TabWindow({ x: 240, y: 120, width: 360, height: 240 });
 win.createTab(Panel({ name: 'Console' }));   // tab label + window title
-Body.getInstance().addComponent(win);
+Body.init({ components: [win] });
 win.show();
 ```
 

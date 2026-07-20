@@ -22,7 +22,7 @@ const win = Window('Settings', {
     onReady:        () => void store.load()
 });
 
-Body.getInstance().addComponent(win);
+Body.init({ components: [win] });
 win.show();
 ```
 
