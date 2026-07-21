@@ -1773,10 +1773,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     /**
      * Detaches the document-level drag listeners when the mouse button is released.
      *
-     * @param e - The mouseup event ending the drag session.
+     * @param e - The mouseup event ending the drag session, when invoked as a
+     *   viewport listener. Optional because this method is public on an
+     *   exported class: requiring the parameter would break any consumer that
+     *   overrides or calls it, which is why the sibling drag-end handlers
+     *   `SplitGutter.onDragStop` and `WindowBorder.onDragStop` take it
+     *   optionally too.
      */
-    onMouseUp(e: Event): void {
-        e.stopPropagation();
+    onMouseUp(e?: Event): void {
+        e?.stopPropagation();
 
         // Commit the in-progress translate back to left/top so subsequent layout passes
         // operate from the new position. setTranslate(0, 0) frees the compositor layer.

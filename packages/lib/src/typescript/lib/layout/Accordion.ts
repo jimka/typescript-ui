@@ -246,7 +246,9 @@ class Accordion extends LayoutManager {
     // callback; Accordion is a LayoutManager, not a Component, so it cannot
     // key the registration on `this` the way every Component call site does —
     // see the Potential Challenges drift note in the resizable-sections plan.
-    private _boundOnGutterDragEnd: () => void = () => this.onGutterDragEnd();
+    // Takes the event and forwards it: onGutterDragEnd consumes the drag-end
+    // event, and it can only do that if the wrapper hands it over.
+    private _boundOnGutterDragEnd: (e: Event) => void = (e: Event) => this.onGutterDragEnd(e);
 
     constructor(options?: AccordionOptions) {
         // LayoutManager's constructor takes no options; applied via applyOptions below.
