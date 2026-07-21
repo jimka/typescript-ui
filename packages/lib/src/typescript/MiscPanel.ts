@@ -518,7 +518,7 @@ class MiscPanel extends Panel {
                 // outline layered on the green new-row background instead
                 // of blue.
                 const addRowBtn = new Button("Add row (demos new-row + required outline)");
-                addRowBtn.on("action", () => specTable.addRow({ Active: true }));
+                addRowBtn.on("action", () => { specTable.addRow({ Active: true }); });
 
                 // Demo the store's aggregation + grouping API: average/max over
                 // the numeric Score column, plus per-group counts bucketed by the
@@ -861,7 +861,7 @@ class MiscPanel extends Panel {
 
             const closeButton = new Button("Close");
             closeButton.setPreferredSize({ width: 0, height: 32 });
-            closeButton.on("action", () => drawer.close());
+            closeButton.on("action", () => { drawer.close(); });
 
             drawer.addComponent(heading);
             drawer.addComponent(closeButton);
@@ -908,7 +908,7 @@ class MiscPanel extends Panel {
 
             const closeButton = new Button("Close");
             closeButton.setPreferredSize({ width: 0, height: 32 });
-            closeButton.on("action", () => drawer.close());
+            closeButton.on("action", () => { drawer.close(); });
 
             drawer.addComponent(heading);
             drawer.addComponent(closeButton);
@@ -1192,27 +1192,27 @@ class MiscPanel extends Panel {
         rightColumn.addComponent(selectedText);
 
         const buttonDialogConfirm = new Button("Dialog — confirm/cancel");
-        buttonDialogConfirm.on("action", async () => {
+        buttonDialogConfirm.on("action", () => void (async () => {
             const confirmed = await Dialog.confirm(
                 'Confirm action',
                 'Are you sure you want to proceed with this action?'
             );
 
             Notification.show(`Dialog closed with: ${confirmed ? 'confirm' : 'cancel'}`, confirmed ? 'success' : 'info');
-        });
+        })());
         leftColumn.addComponent(buttonDialogConfirm);
 
         const buttonDialogOk = new Button("Dialog — OK only");
-        buttonDialogOk.on("action", async () => {
+        buttonDialogOk.on("action", () => void (async () => {
             await Dialog.show({
                 title  : 'Information',
                 message: 'This is a simple informational dialog with a single OK button.',
             });
-        });
+        })());
         leftColumn.addComponent(buttonDialogOk);
 
         const buttonDialogBackdrop = new Button("Dialog — close on backdrop click");
-        buttonDialogBackdrop.on("action", async () => {
+        buttonDialogBackdrop.on("action", () => void (async () => {
             const result = await Dialog.show({
                 title          : 'Click outside to close',
                 message        : 'You can dismiss this dialog by clicking the backdrop or pressing Escape.',
@@ -1220,11 +1220,11 @@ class MiscPanel extends Panel {
             });
 
             Notification.show(`Dialog closed with: ${result}`, 'info');
-        });
+        })());
         leftColumn.addComponent(buttonDialogBackdrop);
 
         const buttonDialogNonDismissable = new Button("Dialog — non-dismissable (mandatory)");
-        buttonDialogNonDismissable.on("action", async () => {
+        buttonDialogNonDismissable.on("action", () => void (async () => {
             const result = await Dialog.show({
                 title      : 'Mandatory action required',
                 message    : 'This dialog has no close button, and Escape and the backdrop are both inert — only the footer button below can dismiss it.',
@@ -1233,7 +1233,7 @@ class MiscPanel extends Panel {
             });
 
             Notification.show(`Dialog closed with: ${result}`, 'info');
-        });
+        })());
         leftColumn.addComponent(buttonDialogNonDismissable);
 
         // The severity-toned OK dialogs — one per Dialog.info/success/warning/error

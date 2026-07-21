@@ -136,8 +136,8 @@ class MultiSelectListPanel extends Panel {
         const commitBtn = new Button("Commit");
         const rejectBtn = new Button("Reject");
 
-        commitBtn.on("action", () => binding.commit());
-        rejectBtn.on("action", () => binding.reject());
+        commitBtn.on("action", () => { binding.commit(); });
+        rejectBtn.on("action", () => { binding.reject(); });
 
         const bindingBtnRow = new Component();
         bindingBtnRow.setLayoutManager(new HBox());

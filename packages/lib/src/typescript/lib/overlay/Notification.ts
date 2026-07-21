@@ -132,10 +132,11 @@ export class Notification extends Component {
 
     // Named listener refs (removable, grep-able, named in stack traces) for the
     // close button's action, the body double-click, and the hover hold pair.
-    private readonly _boundOnCloseAction: (e: MouseEvent) => void = (e) => {
-        // Prevent the click from contributing to a double-click on the body.
-        e.stopPropagation();
+    private readonly _boundOnCloseAction: () => Event.ListenerResult = () => {
         this.dismiss();
+
+        // Prevent the click from contributing to a double-click on the body.
+        return true;
     };
     private readonly _boundOnDblClick:  () => void              = () => this.openDetail();
     private readonly _boundOnMouseOver: (e: MouseEvent) => void = (e) => Notification.acquireHoverHold(e, this.getElement());
@@ -209,8 +210,8 @@ export class Notification extends Component {
 
         // Route through the button's own `"action"` surface rather than reaching
         // into its DOM `click` via the Event API (a component must not listen to
-        // another component's events through Event). The raw MouseEvent is
-        // forwarded, so the dblclick-suppressing stopPropagation is preserved.
+        // another component's events through Event). The handler's returned `true`
+        // stops propagation, so the dblclick-suppressing consume is preserved.
         this._closeButton.on("action", this._boundOnCloseAction);
 
         // addSubtreeListener so double-clicks on the badge / text bubble up.

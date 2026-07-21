@@ -246,9 +246,9 @@ class Accordion extends LayoutManager {
     // callback; Accordion is a LayoutManager, not a Component, so it cannot
     // key the registration on `this` the way every Component call site does —
     // see the Potential Challenges drift note in the resizable-sections plan.
-    // Takes the event and forwards it: onGutterDragEnd consumes the drag-end
-    // event, and it can only do that if the wrapper hands it over.
-    private _boundOnGutterDragEnd: (e: Event) => void = (e: Event) => this.onGutterDragEnd(e);
+    // A concise-arrow body returns onGutterDragEnd's disposition, so the
+    // wrapper forwards the consume without needing to carry the event.
+    private _boundOnGutterDragEnd: () => Event.ListenerResult = () => this.onGutterDragEnd();
 
     constructor(options?: AccordionOptions) {
         // LayoutManager's constructor takes no options; applied via applyOptions below.
@@ -1939,15 +1939,13 @@ class Accordion extends LayoutManager {
      * toggle), so there is nothing to restore. Fires `sectionresize` with the
      * post-drag sizes when a drag was actually live — including on the
      * `detach()` mid-drag path, which calls this before `_resizeSizes` is
-     * cleared, so the emitted sizes still reflect the drag.
+     * cleared, so the emitted sizes still reflect the drag. Also callable
+     * directly (with no argument) so `detach()` and tests can simulate a
+     * drag end.
      *
-     * @param e - The mouseup/touchend/touchcancel event ending the drag, when
-     *   invoked as a viewport listener. Optional so `detach()` and tests can
-     *   call it directly to simulate a drag end.
+     * @returns `true`, consuming the release that ends the gutter drag.
      */
-    private onGutterDragEnd(e?: Event): void {
-        e?.stopPropagation();
-
+    private onGutterDragEnd(): Event.ListenerResult {
         const wasDragging = this._dragUpper !== null;
         const container = this.getContainer();
 
@@ -1963,6 +1961,8 @@ class Accordion extends LayoutManager {
         if (wasDragging) {
             this.emit("sectionresize", this.getSectionSizes());
         }
+
+        return true;
     }
 
     /**

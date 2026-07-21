@@ -648,6 +648,111 @@ Manual only — the harness cannot drive real pointers or focus:
 
 ---
 
+## Implementation Notes
+
+- **The plan's `[^param-any]` measurement was wrong, and seven unplanned files
+  had to change because of it.** That footnote predicted the typed `Listener`
+  would produce "exactly 30 errors, all of them `Function`-typed forwarder
+  declarations … and none of them a return-type mismatch at a call site." The
+  second half is false. Every concise-arrow listener whose expression happens to
+  evaluate to a non-`void` value became a return-type error at the call site,
+  because `ListenerResult` does not admit arbitrary values. The affected
+  expressions were chained builders returning `this` (`goToPage`), methods
+  returning a `Promise`, and `async` handlers. Fixed by wrapping each in a block
+  body or `void`, which is why these files are modified without appearing in the
+  plan's Files table: `src/typescript/MiscPanel.ts`,
+  `src/typescript/MarkdownEditorPanel.ts`,
+  `src/typescript/MultiSelectListPanel.ts`,
+  `src/typescript/lib/component/display/PaginationBar.ts`,
+  `src/typescript/lib/component/table/TablePanel.ts`,
+  `src/typescript/lib/component/table/TreeTablePanel.ts`, and
+  `tests/overlay/Dialog.test.ts`.
+- **`async` listeners are a consumer-visible break the plan did not anticipate.**
+  An `async` function returns `Promise<void>`, which is not a `ListenerResult`,
+  so any consumer with an `async` listener gets a compile error. This is the
+  most likely thing to bite an upgrader, and it is now documented in
+  `docs/reference/migration.md` under "Event listeners consume by return value"
+  with the `void persist()` workaround.
+- **Four tests were left asserting the old mechanism and had to be rewritten.**
+  Plan step 10 asked for a re-read of the whole `polite propagation` block in
+  `tests/dom/events.test.ts`; the comment above it was updated but the handlers
+  below were not. Four of them consumed via a direct `e.stopPropagation()`,
+  which under the new protocol does **not** consume — so they asserted only that
+  the test's own arrow had called the test's own spy, and would have passed with
+  `applyDisposition` deleted. Two of those four were the only coverage for
+  Expected Behaviour case 9. All four now return `true`, and the two that pin a
+  stop were verified non-vacuous by neutering `applyDisposition` and confirming
+  they go red.
+- **The public method-signature breaks needed their own migration entry.** The
+  protocol change also alters five public overridable methods —
+  `AbstractWindow.onMouseUp`, `SplitGutter.onDragStop` and
+  `WindowBorder.onDragStop` drop their event parameter, and those plus
+  `AbstractWindow.onDrag` and `SplitGutter.onDrag` now return a disposition. An
+  override written against the old signature **still compiles and silently
+  stops consuming**: TypeScript accepts an extra optional parameter on a
+  subclass method, and `void` is a member of `ListenerResult`, so the compiler
+  reports nothing and the handler simply never consumes. That is the same
+  failure class this plan exists to remove, so it is documented explicitly in
+  `docs/reference/migration.md` rather than left to the type checker.
+- **Two further consumer-visible break classes needed documenting.** The `async`
+  break and the return-value protocol apply not only to the three `Event.*`
+  registrars but to the semantic `on(...)` shorthands, which forward to
+  `Event.addListener`. And the single largest edit class in this branch is not
+  in the plan at all: a **concise arrow whose expression evaluates to a value no
+  longer compiles**, because `EventDisposition` is a weak type and an unrelated
+  object shares no property with it. That is exactly the shape the library's own
+  docs promote (`btn.on("action", () => store.goToPage(1))`, where `goToPage`
+  returns `this`). Both are now in `docs/reference/migration.md`.
+- **22 of the 24 methods whose return type became `Event.ListenerResult` gained
+  an `@returns`**, as `CODE_CONVENTIONS.md` requires for a non-void return. The
+  return value is now the entire consume contract, so leaving it undocumented
+  while the migration guide warns that a missing return "silently stops
+  consuming" would have been contradictory. Two were skipped:
+  `Header.onResizeDrag` and `Header.onResizeDragStop` carry no doc comment at
+  all, which is pre-existing, and writing one from scratch is out of scope.
+  (`LayerManager.onKeyDown` was skipped by mistake in a first pass — its JSDoc
+  is a single-line `/** … */`, which the insertion missed — and has since been
+  expanded into a full block with `@param` and `@returns`.)
+- **The consumer-visible break set took four review passes to enumerate.** Each
+  pass found a further class the previous had missed, which is worth recording
+  because the list is not obvious from the diff: the protocol itself; `async`
+  listeners; the five overridable drag-handler signatures; the semantic
+  `on(...)` shorthands including `ToggleButton`'s own overloads; concise arrows
+  returning a non-disposition value; concise arrows returning a **boolean**
+  (the only break with no compiler signal, since `true` is a valid disposition);
+  and the six public forwarders that narrowed `Function` to `Event.Listener`.
+  A fifth pass then found two more: the exported `ClickListener` type widened,
+  which reaches `Link` (it extends `Text`, not `Button`) and every
+  construction-time `listeners: { action }` bag; and four shipped examples in
+  `docs/recipes/` that no longer compiled, because `docs:build` does not
+  typecheck fenced code and the plan's documentation sweep only covered pages
+  calling `preventDefault()`. A sixth pass compiled all 93 listener-registering
+  fenced blocks in the docs against this branch and found no further breakage,
+  but did find one wrong claim: the guide said the construction-time `listeners`
+  bag breaks like a direct registration, which holds only for the four families
+  typing it `ClickListener`. `Checkbox`, `Slider`, `RadioButton`, `TextInput`
+  and the selectable lists type theirs `action?: () => void`, which accepts a
+  function returning anything — so the boolean silent-consume hazard reaches
+  them with **no compiler signal**, through the one surface the guide had just
+  described as compiler-protected. All are now in
+  `docs/reference/migration.md`, and the recipes are fixed.
+- **Five `return` statements in `MenuBar._onKeyDown` gained the blank line
+  before them** that `CODE_CONVENTIONS.md` requires and the sibling `ArrowDown`
+  case already had.
+- **`ARCHITECTURE.md` received a prose paragraph rather than the "two sentences
+  plus the four-row table" step 12 specified.** The four return forms are stated
+  inline instead of as a table. The rules document is dense prose throughout and
+  a table would have been the only one in the file; the table itself lives in
+  `docs/concepts/events.md`, which is the consumer-facing surface.
+- **This branch was finished by the orchestrating context, not the implementing
+  agent.** The agent stalled waiting on a backgrounded `docs:build` and had
+  committed only the plan-move bookkeeping commit, leaving all 38 changed files
+  uncommitted. The parent verified them (typecheck, full suite, plan Files-table
+  coverage), committed them in code / documentation / tooling buckets, moved the
+  plan, and ran the docs build in the foreground.
+
+---
+
 ## Notes
 
 [^dropped-event]: `Accordion._boundOnGutterDragEnd` was `() => this.onGutterDragEnd()`.
@@ -745,4 +850,8 @@ Manual only — the harness cannot drive real pointers or focus:
     with `Listener = (event: any) => ListenerResult` applied to all six
     registration functions, the library typechecks with exactly 30 errors, all
     of them `Function`-typed forwarder declarations (step 7), and none of them a
-    return-type mismatch at a call site.
+    return-type mismatch at a call site. **The last clause proved false in
+    implementation** — see `## Implementation Notes`. Concise-arrow listeners
+    whose expression evaluates to a non-`void` value (a builder returning
+    `this`, a `Promise`, an `async` handler) do produce call-site return-type
+    errors.

@@ -484,13 +484,14 @@ function enterNewTarget(session: DragSession, target: DropTargetRecord, detail: 
  * threshold, moves the ghost, hands target changes to the
  * enter / leave helpers, and re-runs `onDragOver` while the cursor stays
  * inside the same target.
+ *
+ * @returns `true` while a drag session is live, consuming the move so nothing else
+ *   tracks the pointer; nothing when there is no session, so the move keeps propagating.
  */
-function onMouseMove(e: MouseEvent): void {
+function onMouseMove(e: MouseEvent): Event.ListenerResult {
     if (activeSession === null) {
         return;
     }
-
-    e.stopPropagation();
 
     const session = activeSession;
 
@@ -499,7 +500,7 @@ function onMouseMove(e: MouseEvent): void {
         const dy = e.clientY - session.startY;
 
         if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) {
-            return;
+            return true;
         }
 
         const startDetail = buildDetail(session, e.clientX, e.clientY);
@@ -507,7 +508,7 @@ function onMouseMove(e: MouseEvent): void {
         if (session.sourceOptions.onDragStart?.(startDetail) === false) {
             endSession(false, e.clientX, e.clientY);
 
-            return;
+            return true;
         }
 
         commitSession(session);
@@ -531,14 +532,14 @@ function onMouseMove(e: MouseEvent): void {
     if (target === null) {
         leaveCurrentTarget(session, detail);
 
-        return;
+        return true;
     }
 
     if (session.currentTarget !== target.component) {
         leaveCurrentTarget(session, detail);
         enterNewTarget(session, target, detail);
 
-        return;
+        return true;
     }
 
     // Same target as last frame — re-check accepts so the feedback
@@ -558,7 +559,7 @@ function onMouseMove(e: MouseEvent): void {
             session.indicator.detach();
         }
 
-        return;
+        return true;
     }
 
     const hint = target.options.onDragOver?.(detail);
@@ -569,17 +570,20 @@ function onMouseMove(e: MouseEvent): void {
     } else if (session.indicator) {
         session.indicator.detach();
     }
+
+    return true;
 }
 
 /**
  * Commits the drop (if any) and tears down the session.
+ *
+ * @returns `true` when a drag session was live, consuming the release that ends it;
+ *   nothing when there is no session, so the release keeps propagating.
  */
-function onMouseUp(e: MouseEvent): void {
+function onMouseUp(e: MouseEvent): Event.ListenerResult {
     if (activeSession === null) {
         return;
     }
-
-    e.stopPropagation();
 
     const session = activeSession;
     const detail  = buildDetail(session, e.clientX, e.clientY);
@@ -608,6 +612,8 @@ function onMouseUp(e: MouseEvent): void {
     }
 
     endSession(dropped, e.clientX, e.clientY);
+
+    return true;
 }
 
 /**

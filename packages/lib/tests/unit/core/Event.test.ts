@@ -77,7 +77,7 @@ describe('Event.addListener / removeListener base-listener accounting', () => {
         const comp = new Component({});
 
         expect(() => Event.addListener(null as unknown as Component, type, () => {})).not.toThrow();
-        expect(() => Event.addListener(comp, type, null as unknown as Function)).not.toThrow();
+        expect(() => Event.addListener(comp, type, null as unknown as Event.Listener)).not.toThrow();
 
         expect(countWrites(sink, 'addListener', type)).toBe(0);
     });

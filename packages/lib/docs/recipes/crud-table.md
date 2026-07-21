@@ -70,11 +70,13 @@ const addBtn    = Button('Add');
 const exportBtn = Button('Export CSV');
 const syncBtn   = Button('Sync');
 
-Event.addListener(addBtn,    'click', () => store.add({}));
+Event.addListener(addBtn,    'click', () => { store.add({}); });
 Event.addListener(exportBtn, 'click', () => exportCSV(store));
-Event.addListener(syncBtn,   'click', async () => {
-    await store.sync();
-    Notification.show('Saved.', 'success');
+Event.addListener(syncBtn,   'click', () => {
+    void (async () => {
+        await store.sync();
+        Notification.show('Saved.', 'success');
+    })();
 });
 
 const root = Component({

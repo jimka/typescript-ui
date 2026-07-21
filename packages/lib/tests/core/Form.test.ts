@@ -35,7 +35,7 @@ function countWrites(sink: ReturnType<typeof installTestDOM>, op: string, arg0: 
  * so every test starts fresh regardless of order.
  */
 function disposeForm(form: Form): void {
-    Event.removeListener(form, 'submit', (form as unknown as { handleSubmit: Function }).handleSubmit);
+    Event.removeListener(form, 'submit', (form as unknown as { handleSubmit: Event.Listener }).handleSubmit);
 }
 
 describe('Form', () => {

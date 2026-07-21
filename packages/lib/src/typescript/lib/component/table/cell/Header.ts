@@ -456,14 +456,13 @@ class HeaderCell extends DefaultCell {
         beginPointerDrag(RESIZE_HANDLE_CURSOR);
     }
 
-    private onResizeDrag(e: MouseEvent): void {
-        e.stopPropagation();
+    private onResizeDrag(e: MouseEvent): Event.ListenerResult {
         this._resizeHandle.dragMove(e.clientX);
+
+        return true;
     }
 
-    private onResizeDragStop(e: Event): void {
-        e.stopPropagation();
-
+    private onResizeDragStop(): Event.ListenerResult {
         Event.removeViewportListener(this, 'mousemove', this.onResizeDrag);
         Event.removeViewportListener(this, 'mouseup', this.onResizeDragStop);
 
@@ -473,6 +472,8 @@ class HeaderCell extends DefaultCell {
 
         // clear flag after synthesized click fires
         setTimeout(() => { this._isDragging = false; }, 0);
+
+        return true;
     }
 
     /**

@@ -417,12 +417,12 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
      *
      * @returns This component, for method chaining.
      */
-    on(event: "action",  listener: Function): this;
+    on(event: "action",  listener: Event.Listener): this;
     on(event: "change",  listener: (value: number) => void): this;
     on(event: "binding", listener: () => void): this;
     on(event: "action" | "change" | "binding", listener: Function): this {
         if (event === "action") {
-            Event.addListener(this, "input", listener);
+            Event.addListener(this, "input", listener as Event.Listener);
 
             return this;
         }
@@ -441,7 +441,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
      */
     off(event: "action" | "change" | "binding", listener: Function): this {
         if (event === "action") {
-            Event.removeListener(this, "input", listener);
+            Event.removeListener(this, "input", listener as Event.Listener);
 
             return this;
         }

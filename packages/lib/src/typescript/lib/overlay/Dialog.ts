@@ -534,7 +534,7 @@ class Dialog extends Component implements DismissableLayer {
 
     private _resolvePromise  : ((result: DialogResult) => void) | null = null;
     private _previousFocus   : Handle | null = null;
-    private _boundKeyHandler : (e: KeyboardEvent) => void;
+    private _boundKeyHandler : (e: KeyboardEvent) => Event.ListenerResult;
     private _boundResizeHandler: () => void;
 
     /**
@@ -779,7 +779,7 @@ class Dialog extends Component implements DismissableLayer {
         this._previousFocus = DOM.source.getActiveElement();
 
         if (this._config.closeOnBackdrop && this._config.dismissable !== false) {
-            this._backdrop.addClickListener(() => this.hide('close'));
+            this._backdrop.addClickListener(() => { this.hide('close'); });
         }
 
         // Join the central layer tree and stamp the panel from the Dialog
@@ -977,25 +977,22 @@ class Dialog extends Component implements DismissableLayer {
      * Handles document-level keydown events for Escape and Tab focus trapping.
      *
      * @param e - The keyboard event.
+     * @returns A stop-and-prevent disposition when the dialog handles the key (the Tab trap, or Enter); nothing otherwise, so unhandled keys keep propagating.
      */
-    private onKeyDown(e: KeyboardEvent): void {
+    private onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         // Escape is owned by LayerManager's keydown handler, which closes the
         // topmost non-manual layer (this dialog when it is on top). The dialog
         // keeps only the Tab focus-trap and the Enter-confirms-the-primary
         // shortcut here.
         if (e.key === 'Enter') {
-            this.onEnter(e);
-
-            return;
+            return this.onEnter(e);
         }
 
         if (e.key === 'Tab') {
             const focusable = this.getFocusable();
 
             if (focusable.length === 0) {
-                e.preventDefault();
-                e.stopPropagation();
-                return;
+                return { stop: true, prevent: true };
             }
 
             const first = focusable[0];
@@ -1003,18 +1000,20 @@ class Dialog extends Component implements DismissableLayer {
 
             if (e.shiftKey) {
                 if (DOM.source.getActiveElement() === first) {
-                    e.preventDefault();
-                    e.stopPropagation();
                     DOM.sink.focus(last);
+
+                    return { stop: true, prevent: true };
                 }
             } else {
                 if (DOM.source.getActiveElement() === last) {
-                    e.preventDefault();
-                    e.stopPropagation();
                     DOM.sink.focus(first);
+
+                    return { stop: true, prevent: true };
                 }
             }
         }
+
+        return;
     }
 
     /**
@@ -1026,9 +1025,10 @@ class Dialog extends Component implements DismissableLayer {
      * hijacking it would fire the wrong action). No-op when no button is marked
      * `primary`, so a dialog with no clear default action does not submit blind.
      *
-     * @param e - The keydown event for the Enter press.
+     * @param _e - The keydown event for the Enter press.
+     * @returns `{ stop: true, prevent: true }` when Enter confirms the dialog; nothing when there is nothing to confirm.
      */
-    private onEnter(e: KeyboardEvent): void {
+    private onEnter(_e: KeyboardEvent): Event.ListenerResult {
         const active = DOM.source.getActiveElement();
         const tag    = active ? DOM.source.getTagName(active).toLowerCase() : null;
 
@@ -1042,9 +1042,9 @@ class Dialog extends Component implements DismissableLayer {
             return;
         }
 
-        e.preventDefault();
-        e.stopPropagation();
         this.hide(result);
+
+        return { stop: true, prevent: true };
     }
 
     /**

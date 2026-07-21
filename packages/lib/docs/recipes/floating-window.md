@@ -71,7 +71,7 @@ Event.addListener(saveBtn,   'click', () => {
     saveSettings(urlField.getValue(), keyField.getValue());
     settingsWin.setVisible(false);
 });
-Event.addListener(cancelBtn, 'click', () => settingsWin.setVisible(false));
+Event.addListener(cancelBtn, 'click', () => { settingsWin.setVisible(false); });
 ```
 
 The `show()` call activates the window (raises its z-index, marks it active). `setVisible(false)` only hides; reopening preserves state.

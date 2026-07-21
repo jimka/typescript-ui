@@ -8,6 +8,28 @@ import { _DialogBackdrop as DialogBackdrop } from '~/component/container/DialogB
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
+// Mirrors core/Event.ts's applyDisposition: onEnter/onKeyDown no longer call
+// preventDefault()/stopPropagation() themselves, they return a disposition the
+// real dispatcher applies. These white-box wrappers call the handlers directly
+// (bypassing the dispatcher), so they must apply the returned disposition the
+// same way the dispatcher would for the prevented()/stopped() spies below to
+// observe anything.
+function applyDisposition(e: KeyboardEvent, result: unknown): void {
+    if (result === true) {
+        e.stopPropagation();
+    } else if (result && typeof result === 'object') {
+        const disposition = result as { stop?: boolean; prevent?: boolean };
+
+        if (disposition.prevent) {
+            e.preventDefault();
+        }
+
+        if (disposition.stop) {
+            e.stopPropagation();
+        }
+    }
+}
+
 // White-box seam: widen the private Enter-confirm helpers so the primary-result
 // decision and the focus-guard can be exercised without a rendered DOM (the
 // end-to-end focus / keydown path needs querySelectorAll, which the offline DOM
@@ -18,11 +40,11 @@ class TestDialog extends Dialog {
     }
 
     public enter(e: KeyboardEvent): void {
-        (this as any).onEnter(e);
+        applyDisposition(e, (this as any).onEnter(e));
     }
 
     public keyDown(e: KeyboardEvent): void {
-        (this as any).onKeyDown(e);
+        applyDisposition(e, (this as any).onKeyDown(e));
     }
 
     public requestFocusEl(): Handle | null {

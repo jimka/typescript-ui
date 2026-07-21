@@ -59,7 +59,7 @@ class MarkdownEditorPanel extends Panel {
         // A toolbar toggle drives the editor's WYSIWYG / raw-Markdown source mode;
         // the mode API is consumer-wired (the editor ships no built-in chrome).
         const sourceToggle = new ToggleButton('Edit Markdown source');
-        sourceToggle.on('action', () => this._editor.setMode(sourceToggle.isSelected() ? 'source' : 'wysiwyg'));
+        sourceToggle.on('action', () => { this._editor.setMode(sourceToggle.isSelected() ? 'source' : 'wysiwyg'); });
 
         // The table command API is consumer-wired, like the mode toggle above;
         // a named method (not an inline arrow) is the listener-wiring convention.
