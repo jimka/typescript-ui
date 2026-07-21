@@ -328,3 +328,19 @@ describe('Button showText', () => {
         expect(hidden.getPreferredSize()!.height).toBe(shown.getPreferredSize()!.height);
     });
 });
+
+describe('Button preferred-size pin (size-setter-interface plan, case 9)', () => {
+    it('keeps a consumer-set preferred size when a later internal recompute runs', () => {
+        // setPreferredSize flips _consumerSetPreferredSize, which makes
+        // recomputePreferredSize early-return so the button's own content-derived
+        // sizing never overwrites what the consumer asked for. setText is the
+        // public trigger for that recompute.
+        const button = new Button({ text: 'Save' });
+        button.getElement(true);
+
+        button.setPreferredSize({ width: 100, height: 40 });
+        button.setText('A considerably longer label than before');
+
+        expect(button.getPreferredSize()).toEqual({ width: 100, height: 40 });
+    });
+});

@@ -323,6 +323,43 @@ The three setters are public members of `Component`, exported from `@jimka/types
 
 ---
 
+## Implementation Notes
+
+- **Two of the plan's ten test cases were missed on the first pass and added
+  during the audit fix cycle.** Cases 9 (Button pins a consumer-set preferred
+  size against a later `recomputePreferredSize`) and 10 (an explicit
+  `Text.setPreferredSize` suppresses auto-measure) were specified for
+  `Button.test.ts` and `TextIntrinsicHeight.test.ts`, and both files were
+  initially left untouched — so the two rewritten override bodies shipped with
+  no coverage. Both tests now exist and were verified non-vacuous by disabling
+  each guard in turn and confirming they go red.
+- **The base version was `0.1.1`, not the `0.1.0` the plan assumed.** `0.1.1`
+  shipped after the plan was written. `packages/lib/package.json` was correctly
+  bumped `0.1.1` → `0.2.0`, but the plan's prose carried the stale predecessor
+  into the migration page, which claimed to document a `0.1.0 → 0.2.0` upgrade
+  and so was wrong for anyone on the published `0.1.1`. The heading is now
+  **"Upgrading from 0.1.x to 0.2.0"**, which covers both shipped releases.
+- **That heading change also fixed a silently broken anchor.** The original
+  heading `## 0.1.0 → 0.2.0` slugifies to `_0-1-0-→-0-2-0` under VitePress's
+  rules — digit-initial headings get an `_` prefix, and `→` is not in the
+  special-character class, so it survives verbatim. The changelog's link to
+  `#0-1-0-0-2-0` therefore matched nothing and landed readers at the top of the
+  page. `ignoreDeadLinks: true` in `.vitepress/config.mts` is why `docs:build`
+  stayed green. The replacement slug, `upgrading-from-0-1-x-to-0-2-0`, was
+  verified against VitePress's own `slugify` implementation rather than assumed.
+- **`setMinSize` had 52 call sites, not the 51 the plan predicted.** The other
+  two counts matched (`setPreferredSize` 102, `setMaxSize` 62). No behavioural
+  significance; recorded because the plan states a specific number.
+- **Three prose comments were re-flowed in an unplanned commit.** They quoted
+  the two-number form (`setPreferredSize(0, 30)` and similar) and so described a
+  signature that no longer compiles. No plan step called for this; it is cleanup
+  of staleness that this change itself introduced.
+- **One unplanned documentation fix:** the stale `setSize(w, h)` row in
+  `packages/lib/docs/concepts/sizing.md` was corrected alongside the planned
+  edits.
+
+---
+
 ## Notes
 
 [^precedent]: The precedent search covered every size-related setter on `Component`. `setSize(size: Size)` at `Component.ts:3026` is the only sibling that takes a size at all, and it already takes the interface. `setX` / `setY` / `setWidth` / `setHeight` are single-scalar setters, so they establish nothing either way. The options bag has taken `Size` objects for `preferredSize` / `minSize` / `maxSize` since it existed. So the two-number form is the outlier, not the norm — this change removes an inconsistency rather than introducing a new pattern.
