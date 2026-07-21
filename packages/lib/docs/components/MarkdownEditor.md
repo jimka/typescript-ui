@@ -61,7 +61,7 @@ Images, strikethrough, task lists, thematic breaks (`hr`), and raw HTML are **no
 There is no built-in toolbar in v1. Formatting is invoked three ways, all provided by Lexical:
 
 - **Markdown-shortcut typing** — `# ` → heading, `**b**` → bold, `- ` → bullet, `1. ` → numbered, `> ` → quote, ` ``` ` → code block, auto-applied as you type.
-- **Keyboard shortcuts** — <kbd>Ctrl/Cmd+B</kbd> (bold), <kbd>Ctrl/Cmd+I</kbd> (italic), <kbd>Ctrl/Cmd+Z</kbd> / <kbd>+Y</kbd> (undo/redo).
+- **Keyboard shortcuts** — `Ctrl/Cmd+B` (bold), `Ctrl/Cmd+I` (italic), `Ctrl/Cmd+Z` / `+Y` (undo/redo).
 - **Command API** — thin imperative methods you can wire to your own [`Button`](/components/Button)s to build a toolbar.
 
 ### Command API
