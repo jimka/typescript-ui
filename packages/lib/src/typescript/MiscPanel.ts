@@ -338,6 +338,67 @@ class MiscPanel extends Panel {
         });
         leftColumn.addComponent(buttonWindowTable);
 
+        // A wide result set of the shape a database browser produces: far more
+        // columns than fit the window, mixed types, and field names long enough
+        // that a column narrower than its header clips the name. Columns size to
+        // their measured content and the table scrolls horizontally rather than
+        // squeezing every column down to nothing.
+        let buttonWideTable = new Button("Show window with wide table (45 columns)!");
+        buttonWideTable.on("action", function () {
+            let win = new Window("Wide result set");
+
+            win.setX(80);
+            win.setY(120);
+            win.setWidth(900);
+            win.setHeight(600);
+
+            win.setContentFactory(() => {
+                const TYPES = ["string", "number", "date", "boolean"] as const;
+                const NAMES = [
+                    "customer_reference", "invoice_number", "posted_at", "is_settled",
+                    "counterparty_name", "gross_amount", "value_date", "is_reconciled",
+                    "ledger_account", "sequence_no", "created_at", "is_void",
+                ];
+
+                const fields = Array.from({ length: 45 }, (_, i) => ({
+                    name:  `${NAMES[i % NAMES.length]}_${Math.floor(i / NAMES.length) + 1}`,
+                    type:  TYPES[i % TYPES.length],
+                    order: i,
+                }));
+
+                const wideModel = new Model(fields);
+                const wideStore = new MemoryStore(wideModel);
+                const widePanel = new TablePanel(wideStore);
+
+                widePanel.setExportMenuEnabled(true);
+
+                // Values are deliberately uneven in length so the measured widths
+                // differ per column instead of every column landing on the same size.
+                const rows = Array.from({ length: 400 }, (_, r) => {
+                    const row: Record<string, unknown> = {};
+
+                    fields.forEach((f, i) => {
+                        switch (f.type) {
+                            case "number":  row[f.name] = (r + 1) * (i + 1);                         break;
+                            case "boolean": row[f.name] = (r + i) % 3 === 0;                         break;
+                            case "date":    row[f.name] = new Date(2024, i % 12, (r % 27) + 1);      break;
+                            default:        row[f.name] = `${NAMES[i % NAMES.length]} value ${r + 1}`;
+                        }
+                    });
+
+                    return row;
+                });
+
+                wideStore.add(rows);
+                wideStore.sync();
+
+                return widePanel;
+            });
+
+            win.show();
+        });
+        leftColumn.addComponent(buttonWideTable);
+
         // Demonstrates the store's sync-error surface: with syncErrorPolicy
         // 'continue', a failing create emits 'exception' and the run proceeds, so
         // the sibling record still commits. The terminal 'sync' event reports the
