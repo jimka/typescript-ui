@@ -726,8 +726,16 @@ Manual only — the harness cannot drive real pointers or focus:
   construction-time `listeners: { action }` bag; and four shipped examples in
   `docs/recipes/` that no longer compiled, because `docs:build` does not
   typecheck fenced code and the plan's documentation sweep only covered pages
-  calling `preventDefault()`. All are now in `docs/reference/migration.md`, and
-  the recipes are fixed.
+  calling `preventDefault()`. A sixth pass compiled all 93 listener-registering
+  fenced blocks in the docs against this branch and found no further breakage,
+  but did find one wrong claim: the guide said the construction-time `listeners`
+  bag breaks like a direct registration, which holds only for the four families
+  typing it `ClickListener`. `Checkbox`, `Slider`, `RadioButton`, `TextInput`
+  and the selectable lists type theirs `action?: () => void`, which accepts a
+  function returning anything — so the boolean silent-consume hazard reaches
+  them with **no compiler signal**, through the one surface the guide had just
+  described as compiler-protected. All are now in
+  `docs/reference/migration.md`, and the recipes are fixed.
 - **Five `return` statements in `MenuBar._onKeyDown` gained the blank line
   before them** that `CODE_CONVENTIONS.md` requires and the sibling `ArrowDown`
   case already had.

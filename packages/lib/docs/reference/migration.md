@@ -88,9 +88,10 @@ extends `Text`, not `Button`, but types its `"action"` listener with the same
 exported `ClickListener`. Any class typing a listener as `ClickListener` is in
 the same position.
 
-The **construction-time `listeners` bag** takes the same types, so it breaks the
-same way — and its error (`No overload matches this call`) is less obvious than
-the direct-call one:
+The **construction-time `listeners` bag** breaks the same way where it is typed
+`ClickListener` — `Button`, `ToggleButton`, `Link`, and `SpinButton` — and its
+error (`No overload matches this call`) is less obvious than the direct-call
+one:
 
 ```typescript
 // Before
@@ -99,6 +100,26 @@ new Button({ text: 'Save', listeners: { action: async () => { await save(); } } 
 // After
 new Button({ text: 'Save', listeners: { action: () => { void save(); } } });
 ```
+
+**`Checkbox`, `Slider`, `RadioButton`, `TextInput`, `List`, and `MultiSelectList`
+type their bag `action?: () => void`, and get no compiler check at all.** A
+`() => void` parameter accepts a function returning *any* value, so neither an
+`async` listener nor a value-returning one is rejected there:
+
+```typescript
+// Compiles clean — and now stops propagation on every click, because
+// Set.delete() returns a boolean and `true` means consume.
+new Checkbox({ listeners: { action: () => selected.delete(id) } });
+
+// What you want instead.
+new Checkbox({ listeners: { action: () => { selected.delete(id); } } });
+```
+
+These bags dispatch to `on("action", …)`, which forwards to
+`Event.addListener`, so the disposition is read exactly as it would be from a
+directly registered listener — an ancestor subtree listener (row selection, for
+instance) simply stops firing. Check these bags by hand; the type checker will
+not flag them.
 
 ### A concise arrow returning a value no longer compiles
 
