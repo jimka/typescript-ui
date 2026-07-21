@@ -1,5 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import { getPage, getNav } from '../src/content/pages.js';
+import type { NavEntry, NavGroup } from '../src/content/pages.js';
+
+// Independent of pages.ts's own glob, so the bijection test below is a real
+// cross-check rather than comparing the implementation against itself.
+const ALL_DOC_KEYS = Object.keys(
+    import.meta.glob('../../lib/docs/{guide,concepts,components,layouts,data,recipes,reference}/*.md'),
+);
+
+function routePathForTest(globKey: string): string {
+    const withoutPrefix = globKey.replace(/^\.\.\/\.\.\/lib\/docs/, '');
+    const withoutExt    = withoutPrefix.replace(/\.md$/, '');
+
+    return withoutExt.replace(/\/index$/, '');
+}
+
+const ALL_PAGE_PATHS = new Set(ALL_DOC_KEYS.map(routePathForTest));
+
+/** Recursively collects every {@link NavEntry} under `groups`, `pages` first, then nested `groups`. */
+function flattenEntries(groups: NavGroup[]): NavEntry[] {
+    return groups.flatMap((group) => [...group.pages, ...flattenEntries(group.groups ?? [])]);
+}
 
 describe('getPage', () => {
     it('returns a page with non-empty source and the title from the first # heading', () => {
@@ -20,41 +41,117 @@ describe('getPage', () => {
     it('returns null for a path with no matching file', () => {
         expect(getPage('/nope')).toBeNull();
     });
+
+    it.each([
+        '/components/Table',
+        '/layouts/HBox',
+        '/data/store',
+        '/recipes/crud-table',
+        '/reference/faq',
+    ])('returns a page with non-empty source for %s', (path) => {
+        const page = getPage(path);
+
+        expect(page).not.toBeNull();
+        expect(page!.source.length).toBeGreaterThan(0);
+    });
+
+    it('resolves the components section path to its index.md, with no trailing slash', () => {
+        const page = getPage('/components');
+
+        expect(page).not.toBeNull();
+        expect(page!.path).toBe('/components');
+    });
+
+    it('returns null for an /api/ path — api/ is not globbed', () => {
+        expect(getPage('/api/core/classes/Component')).toBeNull();
+    });
 });
 
 describe('getNav', () => {
     const nav = getNav();
 
-    it('returns exactly the Guide and Concepts groups', () => {
-        expect(nav.map((group) => group.title)).toEqual(['Guide', 'Concepts']);
+    it('returns exactly the seven sections, in order', () => {
+        expect(nav.map((group) => group.title)).toEqual([
+            'Guide', 'Concepts', 'Components', 'Layouts', 'Data', 'Recipes', 'Reference',
+        ]);
     });
 
     it('every page path resolves through getPage', () => {
-        for (const group of nav) {
-            for (const page of group.pages) {
-                expect(getPage(page.path)).not.toBeNull();
-            }
+        for (const entry of flattenEntries(nav)) {
+            expect(getPage(entry.path)).not.toBeNull();
         }
     });
 
     it('no page path ends in a trailing slash', () => {
-        for (const group of nav) {
-            for (const page of group.pages) {
-                expect(page.path.endsWith('/')).toBe(false);
-            }
+        for (const entry of flattenEntries(nav)) {
+            expect(entry.path.endsWith('/')).toBe(false);
         }
     });
 
-    it('labels the sidebar with the config.mts titles, not the page h1 headings', () => {
-        const labels = nav.flatMap((group) => group.pages.map((page) => page.label));
+    it('no nav label leaks raw Markdown from a heading', () => {
+        const labels = flattenEntries(nav).map((entry) => entry.label);
 
-        // These three diverge from the page's own first `# ` heading
-        // ("Getting Started", "Concepts", "DOM seams (`DOMSink` / `DOMSource`)"),
-        // so they prove the sidebar uses the hand-authored config.mts title.
+        expect(labels.some((label) => label.includes('`'))).toBe(false);
+    });
+
+    it('labels the sidebar with the config.mts titles, not the page h1 headings', () => {
+        const labels = flattenEntries(nav).map((entry) => entry.label);
+
+        // These diverge from the page's own first `# ` heading, so they prove
+        // the sidebar uses the hand-authored config.mts title.
         expect(labels).toContain('Introduction');
         expect(labels).toContain('Overview');
         expect(labels).toContain('DOM seams');
-        // No sidebar label may leak raw Markdown from a heading.
-        expect(labels.some((label) => label.includes('`'))).toBe(false);
+    });
+
+    it('flattens to exactly 154 distinct entries', () => {
+        const paths = flattenEntries(nav).map((entry) => entry.path);
+
+        expect(paths.length).toBe(154);
+        expect(new Set(paths).size).toBe(154);
+    });
+
+    it('has the expected per-section entry counts', () => {
+        const counts = Object.fromEntries(
+            nav.map((group) => [group.title, flattenEntries([group]).length]),
+        );
+
+        expect(counts).toEqual({
+            Guide:      3,
+            Concepts:   13,
+            Components: 92,
+            Layouts:    17,
+            Data:       7,
+            Recipes:    15,
+            Reference:  7,
+        });
+    });
+
+    it('nests subgroups only under Components (13), Layouts (3), and Recipes (5)', () => {
+        const groupCounts = Object.fromEntries(
+            nav.map((group) => [group.title, group.groups?.length ?? 0]),
+        );
+
+        expect(groupCounts).toEqual({
+            Guide:      0,
+            Concepts:   0,
+            Components: 13,
+            Layouts:    3,
+            Data:       0,
+            Recipes:    5,
+            Reference:  0,
+        });
+    });
+
+    it('the set of flattened nav paths equals the set of getPage-resolvable paths', () => {
+        const navPaths = new Set(flattenEntries(nav).map((entry) => entry.path));
+
+        for (const path of navPaths) {
+            expect(ALL_PAGE_PATHS.has(path), `nav path ${path} has no corresponding file`).toBe(true);
+        }
+
+        for (const path of ALL_PAGE_PATHS) {
+            expect(navPaths.has(path), `file for ${path} is missing from the nav table`).toBe(true);
+        }
     });
 });
