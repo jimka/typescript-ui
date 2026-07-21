@@ -12,7 +12,7 @@ import { callable } from "~/core/Callable.js";
 import { EditorView, keymap, drawSelection, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view";
 import { EditorState, Compartment } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
-import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { indentOnInput, bracketMatching, indentRange } from "@codemirror/language";
 import { getLanguage } from "~/component/editor/LanguageRegistry.js";
 import { codeEditorTheme } from "~/component/editor/theme.js";
@@ -523,7 +523,14 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         const extensions: Extension[] = [
             history(),
-            keymap.of([...defaultKeymap, ...historyKeymap]),
+            // `indentWithTab` is deliberately absent from `defaultKeymap`,
+            // because binding Tab traps it inside the editor and a keyboard
+            // user can no longer Tab out. A code editor that does not indent
+            // on Tab is the worse trade, and `defaultKeymap` already carries
+            // the escape hatch: Ctrl-m (Alt-Shift-m on macOS) toggles
+            // CodeMirror's tab-focus mode, after which Tab moves focus again.
+            // Listed last so its Tab / Shift-Tab bindings take precedence.
+            keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
             drawSelection(),
             lineNumbers(),
             highlightActiveLine(),
