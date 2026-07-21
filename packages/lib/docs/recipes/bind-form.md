@@ -74,8 +74,8 @@ binding.on("change", () => {
     cancelBtn.setEnabled(dirty);
 });
 
-Event.addListener(saveBtn,   'click', () => binding.commit());
-Event.addListener(cancelBtn, 'click', () => binding.reject());
+Event.addListener(saveBtn,   'click', () => { binding.commit(); });
+Event.addListener(cancelBtn, 'click', () => { binding.reject(); });
 
 form.addComponent(Component({
     layoutManager: HBox(),

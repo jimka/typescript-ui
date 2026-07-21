@@ -83,8 +83,22 @@ Event.addListener(save, 'click', () => { void persist(); });
 The same applies to the semantic `on(...)` shorthands — `Button`, `ToggleButton`,
 `Checkbox`, `RadioButton`, `Slider`, `TextInput`, and the selectable lists all
 forward `on("action", …)` to `Event.addListener`, so their listeners follow the
-same protocol and an `async` one breaks the same way. Any `Button` subclass that
-declares its own `"action"` overload is in the same position.
+same protocol and an `async` one breaks the same way. `Link` is affected too — it
+extends `Text`, not `Button`, but types its `"action"` listener with the same
+exported `ClickListener`. Any class typing a listener as `ClickListener` is in
+the same position.
+
+The **construction-time `listeners` bag** takes the same types, so it breaks the
+same way — and its error (`No overload matches this call`) is less obvious than
+the direct-call one:
+
+```typescript
+// Before
+new Button({ text: 'Save', listeners: { action: async () => { await save(); } } });
+
+// After
+new Button({ text: 'Save', listeners: { action: () => { void save(); } } });
+```
 
 ### A concise arrow returning a value no longer compiles
 

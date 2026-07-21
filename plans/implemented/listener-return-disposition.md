@@ -721,7 +721,13 @@ Manual only — the harness cannot drive real pointers or focus:
   returning a non-disposition value; concise arrows returning a **boolean**
   (the only break with no compiler signal, since `true` is a valid disposition);
   and the six public forwarders that narrowed `Function` to `Event.Listener`.
-  All are now in `docs/reference/migration.md`.
+  A fifth pass then found two more: the exported `ClickListener` type widened,
+  which reaches `Link` (it extends `Text`, not `Button`) and every
+  construction-time `listeners: { action }` bag; and four shipped examples in
+  `docs/recipes/` that no longer compiled, because `docs:build` does not
+  typecheck fenced code and the plan's documentation sweep only covered pages
+  calling `preventDefault()`. All are now in `docs/reference/migration.md`, and
+  the recipes are fixed.
 - **Five `return` statements in `MenuBar._onKeyDown` gained the blank line
   before them** that `CODE_CONVENTIONS.md` requires and the sibling `ArrowDown`
   case already had.
