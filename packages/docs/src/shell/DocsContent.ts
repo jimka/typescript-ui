@@ -1,5 +1,5 @@
 import { callable, DOM, Event, Panel } from '@jimka/typescript-ui/core';
-import type { Handle } from '@jimka/typescript-ui/core';
+import type { Handle, PanelOptions } from '@jimka/typescript-ui/core';
 import { Fit } from '@jimka/typescript-ui/layout';
 import { Markdown } from '@jimka/typescript-ui/component/display';
 import { Router } from '@jimka/typescript-ui/router';
@@ -32,12 +32,17 @@ class DocsContent extends Panel {
     // function identity; delegates to the named handler below.
     private readonly handleLinkClick: (e: MouseEvent) => void = (e) => this.onLinkClick(e);
 
-    constructor(router: Router) {
-        super();
+    constructor(router: Router, options?: PanelOptions) {
+        super(options, { layoutManager: Fit() });
 
         this._router = router;
 
-        this.setLayoutManager(new Fit());
+        // autoScroll cannot ride the subclass-defaults bag the way
+        // layoutManager does: Panel.applyOptions always dispatches
+        // setAutoScroll(options.autoScroll ?? "none"), which never consults
+        // _defaultOptions, so a default here would be overwritten with "none"
+        // and the pane would silently stop scrolling. Set it at runtime until
+        // that is fixed — see plans/panel-scroll-option-defaults.md.
         this.setAutoScroll('y');
 
         this._markdown = new Markdown(undefined, { linkResolver: resolveDocLink });
