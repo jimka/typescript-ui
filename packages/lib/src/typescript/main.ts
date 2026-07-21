@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Body, DOM, FocusHistory } from '@jimka/typescript-ui/core';
+import { Body, Component, DOM, FocusHistory } from '@jimka/typescript-ui/core';
 import { Tab } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
+import { Router, type RouteParams } from '@jimka/typescript-ui/router';
 import { VBoxPanel } from "./VBoxPanel.js";
 import { HBoxPanel } from "./HBoxPanel.js";
 import { BoxJustifyPanel } from "./BoxJustifyPanel.js";
@@ -42,34 +43,75 @@ FocusHistory.enable();
 let layoutManager = new Tab();
 Body.init({ layoutManager });
 
-layoutManager.addLazyTab(() => new MiscPanel(),            "Misc."      );
-layoutManager.addLazyTab(() => new BindingPanel(),         "Binding"    );
-layoutManager.addLazyTab(() => new RowPanel(),             "Row"        );
-layoutManager.addLazyTab(() => new ColumnPanel(),          "Column"     );
-layoutManager.addLazyTab(() => new FitPanel(),             "Fit"        );
-layoutManager.addLazyTab(() => new SplitPanel(),           "Split"      );
-layoutManager.addLazyTab(() => new BorderPanel(),          "Border"     );
-layoutManager.addLazyTab(() => new HBoxPanel(),            "HBox"       );
-layoutManager.addLazyTab(() => new VBoxPanel(),            "VBox"       );
-layoutManager.addLazyTab(() => new BoxJustifyPanel(),      "Justify"    );
-layoutManager.addLazyTab(() => new AlignSelfPanel(),       "AlignSelf"  );
-layoutManager.addLazyTab(() => new HFlowPanel(),           "HFlow"      );
-layoutManager.addLazyTab(() => new VFlowPanel(),           "VFlow"      );
-layoutManager.addLazyTab(() => new GridPanel(),            "Grid"       );
-layoutManager.addLazyTab(() => new ComplexUIPanel(),       "Complex"    );
-layoutManager.addLazyTab(() => new PropertyGridPanel(),    "Property Grid");
-layoutManager.addLazyTab(() => new AccordionDemoPanel(),   "Accordion"  );
-layoutManager.addLazyTab(() => new TabDemoPanel(),         "Tab"        );
-layoutManager.addLazyTab(() => new MenuBarPanel(),         "MenuBar"    );
-layoutManager.addLazyTab(() => new ToolBarPanel(),         "ToolBar"    );
-layoutManager.addLazyTab(() => new MultiSelectListPanel(), "MultiSelect");
-layoutManager.addLazyTab(() => new BaselinePanel(),        "Baseline"   );
-layoutManager.addLazyTab(() => new LayoutSerializationPanel(), "Layout I/O" );
-layoutManager.addLazyTab(() => new MarkdownPanel(),        "Markdown"   );
-layoutManager.addLazyTab(() => new CodeEditorPanel(),      "CodeEditor" );
-layoutManager.addLazyTab(() => new ChartDemoPanel(),       "Charts"     );
-layoutManager.addLazyTab(() => new DiagramPanel(),         "Diagram"    );
-layoutManager.addLazyTab(() => new MarkdownEditorPanel(),  "MD Editor"  );
+// Tab labels carry punctuation and spaces ("Misc.", "Layout I/O"); slugify
+// them into stable URL segments and index them so a route can select by
+// name. Routing through this helper (rather than a separately written slug
+// list) is what keeps the two lists from drifting.
+function slugify(label: string): string {
+    return label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+const slugs: string[] = [];
+
+function addSection(factory: () => Component, label: string): void {
+    slugs.push(slugify(label));
+    layoutManager.addLazyTab(factory, label);
+}
+
+addSection(() => new MiscPanel(),            "Misc."      );
+addSection(() => new BindingPanel(),         "Binding"    );
+addSection(() => new RowPanel(),             "Row"        );
+addSection(() => new ColumnPanel(),          "Column"     );
+addSection(() => new FitPanel(),             "Fit"        );
+addSection(() => new SplitPanel(),           "Split"      );
+addSection(() => new BorderPanel(),          "Border"     );
+addSection(() => new HBoxPanel(),            "HBox"       );
+addSection(() => new VBoxPanel(),            "VBox"       );
+addSection(() => new BoxJustifyPanel(),      "Justify"    );
+addSection(() => new AlignSelfPanel(),       "AlignSelf"  );
+addSection(() => new HFlowPanel(),           "HFlow"      );
+addSection(() => new VFlowPanel(),           "VFlow"      );
+addSection(() => new GridPanel(),            "Grid"       );
+addSection(() => new ComplexUIPanel(),       "Complex"    );
+addSection(() => new PropertyGridPanel(),    "Property Grid");
+addSection(() => new AccordionDemoPanel(),   "Accordion"  );
+addSection(() => new TabDemoPanel(),         "Tab"        );
+addSection(() => new MenuBarPanel(),         "MenuBar"    );
+addSection(() => new ToolBarPanel(),         "ToolBar"    );
+addSection(() => new MultiSelectListPanel(), "MultiSelect");
+addSection(() => new BaselinePanel(),        "Baseline"   );
+addSection(() => new LayoutSerializationPanel(), "Layout I/O" );
+addSection(() => new MarkdownPanel(),        "Markdown"   );
+addSection(() => new CodeEditorPanel(),      "CodeEditor" );
+addSection(() => new ChartDemoPanel(),       "Charts"     );
+addSection(() => new DiagramPanel(),         "Diagram"    );
+addSection(() => new MarkdownEditorPanel(),  "MD Editor"  );
+
+function showSection(params: RouteParams): void {
+    const index = slugs.indexOf(params.section);
+
+    if (index >= 0) {
+        layoutManager.setActiveTabIndex(index);
+    }
+}
+
+function showDefaultSection(): void {
+    layoutManager.setActiveTabIndex(0);
+}
+
+function syncHashToTab(_content: Component, index: number): void {
+    router.navigate("/" + slugs[index]);
+}
+
+const router = new Router({
+    routes: {
+        "/":         showDefaultSection,
+        "/:section": showSection,
+    },
+});
+
+layoutManager.on("activate", syncHashToTab);
+router.start();
 
 const PersonModel = new Model([
     { name: 'id',   type: 'number'                  },

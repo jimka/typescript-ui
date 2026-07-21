@@ -496,3 +496,14 @@ Run from `packages/lib`:
 [^ambiguity-key]: Keying the table by normalized pattern makes ambiguity a *registration-time* property rather than a per-navigation one. Two patterns are genuinely ambiguous precisely when they differ only in parameter names, and that is exactly when their keys collide — so detection is exact, not a heuristic, and the warning fires once at registration rather than on every navigation. It also gives `selectPattern` a useful guarantee: no two entries in the table can ever rank equally, so the comparator never needs a tie-break. Warning at match time was rejected — it would fire repeatedly for one authoring mistake and cost work on every navigation.
 
 [^demo-tab]: A `Card` demo was considered and rejected. `main.ts` already has a 28-section `Tab` on `Body` that is exactly the "top-level section switcher" the router targets, so routing it costs one mechanical rename across the registration block plus about twenty new lines, and exercises a real app shell. Building a parallel `Card`-based switcher would add a demo panel, its children, and its own button strip purely to host the example — more code, less realism. (`Card` selects its visible child by id, so nothing about it is unsuited to routing; it is simply not what the demo already has.) `Tab` also gives the round trip for free: it already emits `"activate"`, so hash-to-tab and tab-to-hash both have a seam without touching library code.
+
+---
+
+## Implementation Notes
+
+`npm run lint` and `npm run test` (via its `typecheck:test` prerequisite) do **not** pass clean on this branch — but the failures are pre-existing on local `master` and untouched by this plan, confirmed by stashing every change this branch makes and re-running each command against the resulting tree:
+
+- `npm run lint` fails with 5 errors, all in files this plan never touches: `src/typescript/lib/component/editor/CodeEditor.ts:492-493` (raw-DOM violations) and `src/typescript/lib/component/table/cell/renderer/Link.ts:57` (a `super()` argument-forwarding violation).
+- `npm run typecheck:test` (and therefore `npm run test`) fails with 2 errors in `tests/component/container/leaves.smoke.test.ts:127-128` (a stale `MenuItem` call-site signature), also untouched by this plan.
+
+Every check this plan's own code is responsible for passes clean: `npm run typecheck`, `npx vitest run` (2665/2665, including the new `tests/unit/router/` suites), `grep -c "router" package.json tsconfig.json vite.config.ts vite.lib.config.ts` (all non-zero), `grep -rn '\blocation\b' src/typescript/lib/router/` (zero matches), `npm run build:lib` (emits `dist/lib/router.es.js` and `dist/lib/types/router/index.d.ts`), and `npm run docs:build` (zero TypeDoc warnings, `Router` row present in the regenerated `llms.txt`).
