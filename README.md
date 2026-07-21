@@ -113,6 +113,10 @@ inside the library workspace.
 
 ## License
 
-Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Free for personal and educational use; commercial use is not permitted.
+Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE) — source-available, not OSI-approved. Free for personal, educational, and other noncommercial use.
 
-Third-party material redistributed with this project (Font Awesome Free icons) is covered by its own license — see [LICENSE-FONTAWESOME.md](LICENSE-FONTAWESOME.md) for attribution and license details.
+**Commercial use is not permitted by default, and "commercial" is read broadly.** The license covers any purpose related to running a business — including internal tools, and use at a company whose product has nothing to do with this library — not just redistributing or reselling it.
+
+**Commercial licenses are available on request.** If you want to use this commercially, or you are not sure whether your use qualifies, open an issue at [github.com/jimka/typescript-ui/issues](https://github.com/jimka/typescript-ui/issues) — I would rather answer the question than have you guess.
+
+Third-party material redistributed with this project (Font Awesome Free icons) is covered by its own license — see [packages/lib/LICENSE-FONTAWESOME.md](packages/lib/LICENSE-FONTAWESOME.md) for attribution and license details.
