@@ -46,17 +46,9 @@ class DocsContent extends Panel {
         (this._linkBaseDir === null ? resolveDocLink(href) : resolveApiLink(href, this._linkBaseDir));
 
     constructor(router: Router, options?: PanelOptions) {
-        super(options, { layoutManager: Fit() });
+        super(options, { layoutManager: Fit(), autoScroll: 'y' });
 
         this._router = router;
-
-        // autoScroll cannot ride the subclass-defaults bag the way
-        // layoutManager does: Panel.applyOptions always dispatches
-        // setAutoScroll(options.autoScroll ?? "none"), which never consults
-        // _defaultOptions, so a default here would be overwritten with "none"
-        // and the pane would silently stop scrolling. Set it at runtime until
-        // that is fixed — see plans/panel-scroll-option-defaults.md.
-        this.setAutoScroll('y');
 
         this._markdown = new Markdown(undefined, { linkResolver: this.resolveLink });
         this.addComponent(this._markdown);
