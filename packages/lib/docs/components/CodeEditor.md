@@ -78,6 +78,16 @@ registerLanguage({
 - If the formatter **throws** (invalid syntax), the promise **rejects** and the document is left **completely untouched** — formatting never loses content.
 - If the active language has no formatter (or none is set), `format()` re-indents the whole document using CodeMirror's own indentation service instead.
 
+## Keyboard
+
+The editor uses CodeMirror's default keymap plus its history bindings, with one
+addition: **Tab indents** and **Shift-Tab dedents**.
+
+That binding traps Tab inside the editor, so Tab no longer moves focus to the
+next control while the caret is in the document. To move focus out, press
+**Ctrl-m** (**Alt-Shift-m** on macOS) to toggle CodeMirror's tab-focus mode;
+Tab then moves focus again, and the same shortcut switches back to indenting.
+
 ## Common methods
 
 | Method | Purpose |
