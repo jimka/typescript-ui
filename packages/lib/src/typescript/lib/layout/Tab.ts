@@ -1489,19 +1489,6 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Mounts a spinner into the container, yields two animation frames so it
-     * reaches the screen, then runs the entry's factory and fades the built
-     * component in over the spinner. Re-entry while a build is in flight is
-     * suppressed via the entry's `state` field.
-     *
-     * @param idx - Zero-based index into `this._contents`.
-     *
-     * @remarks Replaces the previous synchronous `materialize` path. Layout-
-     * sizing queries (`getPreferredSize` / `getMinSize` / `getMaxSize`) no
-     * longer trigger factory invocations — they observe the spinner placeholder
-     * until the build completes.
-     */
-    /**
      * Catches the tab strip up to any container child that no content entry owns
      * yet — the bare-`Panel` eager path, where a consumer called `addComponent`
      * directly and expects a tab to appear.
@@ -1539,6 +1526,25 @@ class Tab extends LayoutManager {
         }
     }
 
+    /**
+     * Mounts a spinner into the container, yields two animation frames so it
+     * reaches the screen, then runs the entry's factory and fades the built
+     * component in over the spinner. Re-entry while a build is in flight is
+     * suppressed via the entry's `state` field.
+     *
+     * An asynchronous factory keeps the entry in `"building"` until its promise
+     * settles, so the spinner covers the whole wait rather than construction
+     * alone. A rejection closes the tab through the shared teardown and emits
+     * `"exception"`; a promise that settles after the entry is already gone
+     * reports nothing and tears nothing down.
+     *
+     * @param idx - Zero-based index into `this._contents`.
+     *
+     * @remarks Replaces the previous synchronous `materialize` path. Layout-
+     * sizing queries (`getPreferredSize` / `getMinSize` / `getMaxSize`) no
+     * longer trigger factory invocations — they observe the spinner placeholder
+     * until the build completes.
+     */
     private materializeAsync(idx: number): void {
         const entry = this._contents[idx];
         if (!entry || entry.state !== "lazy") {

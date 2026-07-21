@@ -72,7 +72,8 @@ import { Component } from '@jimka/typescript-ui/core';
 import { Tab, LayoutConstraints } from '@jimka/typescript-ui/layout';
 
 const container = Component();
-container.setLayoutManager(Tab());
+const layout = Tab();
+container.setLayoutManager(layout);
 
 container.addComponent(() => new GeneralPanel(),  Object.assign(new LayoutConstraints(), { name: 'General'  }));
 container.addComponent(() => new NetworkPanel(),  Object.assign(new LayoutConstraints(), { name: 'Network'  }));
@@ -111,7 +112,7 @@ container.addComponent(
 The tab appears immediately and the spinner stays up for the whole wait, not just for construction. If the promise rejects, the tab closes itself and the layout emits `"exception"` — no error UI is shown, because presenting the failure is the consumer's job:
 
 ```typescript
-container.getLayoutManager().on('exception', (error, label) => {
+layout.on('exception', (error, label) => {
     console.warn(`${label} failed to load`, error);
 });
 ```

@@ -122,6 +122,12 @@ export interface DockOptions extends ContainerOptions {
  * event: it fires once each time the dock transitions between holding no live
  * panel anywhere and holding at least one, carrying a {@link DockEmptyEvent}.
  *
+ * `"exception"` reports that a lazy panel's content factory rejected, carrying a
+ * {@link DockExceptionEvent} rather than a {@link DockPanelEvent} — a panel that
+ * never built has no content to name. It follows that panel's own `"close"`,
+ * because the failure tears the whole docked panel down; the panel stays
+ * registered, so re-adding the same id rebuilds it and retries.
+ *
  * @category Core
  */
 export type DockEvent = "attach" | "detach" | "move" | "focus" | "close" | "emptychange" | "exception";
