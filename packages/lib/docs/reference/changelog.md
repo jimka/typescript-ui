@@ -17,6 +17,14 @@ sidebar.setPreferredSize(240, 0);
 sidebar.setPreferredSize({ width: 240, height: 0 });
 ```
 
+**Breaking:** event listeners registered through `Event.addListener`,
+`Event.addSubtreeListener`, and `Event.addViewportListener` now consume an
+event by **returning** a disposition (`true`, or `{ stop, prevent }`) rather
+than calling `stopPropagation()` themselves. A direct `stopPropagation()` call
+still halts native propagation but no longer influences the dispatcher's
+subtree walk. `async` listeners no longer typecheck, since `Promise<void>` is
+not a disposition.
+
 See [Migration](/reference/migration#upgrading-from-0-1-x-to-0-2-0) for the full upgrade note.
 
 ## 0.1.0

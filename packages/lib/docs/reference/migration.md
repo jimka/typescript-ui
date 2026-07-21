@@ -6,6 +6,8 @@ policy](#versioning-policy) for what counts as a breaking change.
 
 ## Upgrading from 0.1.x to 0.2.0
 
+### Size setters take a `Size` object
+
 `Component.setPreferredSize`, `setMinSize`, and `setMaxSize` now take a
 single `Size` object instead of two loose numbers:
 
@@ -26,6 +28,57 @@ import is needed — an object literal with those two fields satisfies it.
 There is no `(width, height)` overload and no deprecation window. Run `npm
 run typecheck` after upgrading; every affected call site becomes a compile
 error, so the type checker finds them all for you.
+
+### Event listeners consume by return value
+
+A listener registered through `Event.addListener`, `Event.addSubtreeListener`,
+or `Event.addViewportListener` now tells the dispatcher what to do with the
+event by **returning** a disposition, instead of calling `stopPropagation()`
+itself:
+
+```typescript
+// Before
+Event.addListener(button, 'keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        activate();
+    }
+});
+
+// After
+Event.addListener(button, 'keydown', (e: KeyboardEvent) => {
+    if (e.key !== 'Enter') {
+        return;
+    }
+
+    activate();
+
+    return { stop: true, prevent: true };
+});
+```
+
+Return nothing (or `false`) to leave the event alone, `true` to stop
+propagation, `{ prevent: true }` to call `preventDefault()`, and
+`{ stop: true, prevent: true }` for both.
+
+Calling `e.stopPropagation()` directly still halts native DOM propagation — it
+is the event's own method — but it no longer tells the dispatcher anything, so
+it will not stop a subtree listener's walk up the ancestors. Only a returned
+disposition does that. `e.preventDefault()` is unaffected and can still be
+called directly.
+
+**An `async` listener no longer typechecks.** An `async` function returns
+`Promise<void>`, which is not a valid disposition. Wrap the async work instead
+of making the listener itself async:
+
+```typescript
+// Before
+Event.addListener(save, 'click', async () => { await persist(); });
+
+// After
+Event.addListener(save, 'click', () => { void persist(); });
+```
 
 ## Versioning policy
 
