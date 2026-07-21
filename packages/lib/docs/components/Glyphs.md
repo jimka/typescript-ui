@@ -46,4 +46,4 @@ Components that accept a glyph name as a parameter (Button, MenuItem, Window hea
 
 ## Licensing
 
-Font Awesome Free icons are CC BY 4.0 (© Fonticons, Inc.). The full attribution is in `LICENSE-FONTAWESOME.md` at the repo root and propagates through the npm tarball. See [NOTICE](../../../NOTICE) for the full attribution text.
+Font Awesome Free icons are CC BY 4.0 (© Fonticons, Inc.). The full attribution is in `LICENSE-FONTAWESOME.md` at the package root and propagates through the npm tarball. See [LICENSE-FONTAWESOME.md](https://github.com/jimka/typescript-ui/blob/master/packages/lib/LICENSE-FONTAWESOME.md) and [THIRD-PARTY-NOTICES.md](https://github.com/jimka/typescript-ui/blob/master/packages/lib/THIRD-PARTY-NOTICES.md) for the full attribution text.

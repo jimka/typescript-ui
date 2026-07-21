@@ -46,4 +46,4 @@ Each generated icon file carries:
 // © Fonticons, Inc.
 ```
 
-See [`LICENSE-FONTAWESOME.md`](../../../../LICENSE-FONTAWESOME.md) and [`NOTICE`](../../../../NOTICE) at the repo root for full attribution.
+See [`LICENSE-FONTAWESOME.md`](../../../../LICENSE-FONTAWESOME.md) and [`THIRD-PARTY-NOTICES.md`](../../../../THIRD-PARTY-NOTICES.md) at the package root for full attribution.
