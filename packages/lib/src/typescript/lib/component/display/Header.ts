@@ -171,7 +171,7 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Container<T
                                     + insets.getTop()
                                     + insets.getBottom();
 
-        this.setPreferredSize(100, preferredHeight);
+        this.setPreferredSize({ width: 100, height: preferredHeight });
     }
 
     /**

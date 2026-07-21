@@ -13,7 +13,7 @@ class BorderPanel extends Panel {
         this.setLayoutManager(new BorderLayout());
 
         let headerText = new Text("Header!");
-        headerText.setPreferredSize(20, 100);
+        headerText.setPreferredSize({ width: 20, height: 100 });
         this.addComponent(headerText, { placement: Placement.NORTH, collapsible: true });
 
         let list = new List();
@@ -37,7 +37,7 @@ class BorderPanel extends Panel {
         this.addComponent(centerTextArea, { placement: Placement.CENTER });
 
         let footerText = new Text("Footer!1!!!");
-        footerText.setPreferredSize(20, 50);
+        footerText.setPreferredSize({ width: 20, height: 50 });
         this.addComponent(footerText, { placement: Placement.SOUTH, collapsible: true });
 
         let eastComponent = new Component();

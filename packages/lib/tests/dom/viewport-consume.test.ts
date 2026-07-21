@@ -39,7 +39,7 @@ const HEADER = 30;
 /** A content component materialised for createSection's element reparent. */
 function content(): Component {
     const c = new Component({ preferredSize: { width: 100, height: 60 } });
-    c.setMinSize(40, 20);
+    c.setMinSize({ width: 40, height: 20 });
     c.getElement(true);
     return c;
 }

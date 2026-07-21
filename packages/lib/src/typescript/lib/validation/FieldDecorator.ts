@@ -49,9 +49,9 @@ class FieldDecorator extends Component {
         const ps = field.getPreferredSize();
 
         if (ps) {
-            this.setPreferredSize(ps.width, ps.height);
+            this.setPreferredSize({ width: ps.width, height: ps.height });
         } else {
-            this.setPreferredSize(field.getWidth(), field.getHeight());
+            this.setPreferredSize({ width: field.getWidth(), height: field.getHeight() });
         }
 
         parent.removeComponent(field);

@@ -45,7 +45,7 @@ chart.stopAnimation();
 | `getContext()` | The `CanvasRenderingContext2D` for one-off imperative drawing, or `null` offline / before first render. |
 | `startAnimation()` / `stopAnimation()` / `isAnimating()` | Drive (or halt) a per-frame redraw loop. |
 | `setAnimateWhenHidden(bool)` / `getAnimateWhenHidden()` | Keep the loop running while the canvas is not effectively on-screen (default `false`). |
-| `setPreferredSize(w, h)` | Give the surface a size (inherited from `Component`). |
+| `setPreferredSize(size)` | Give the surface a size (inherited from `Component`). |
 
 ## Notes
 

@@ -24,7 +24,7 @@ canvas.setLayoutManager(Absolute());
 
 const button = Button('Drag me');
 button.setPosition(50, 30);
-button.setPreferredSize(120, 32);
+button.setPreferredSize({ width: 120, height: 32 });
 canvas.addComponent(button);
 ```
 

@@ -478,7 +478,7 @@ describe('Markdown content-height measurement', () => {
         stubScrollHeight(500);
         const md = new Markdown('# A');
         md.getElement(true);
-        md.setMinSize(0, 900);
+        md.setMinSize({ width: 0, height: 900 });
 
         md.setWidth(300);
 

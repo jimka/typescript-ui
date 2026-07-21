@@ -11,7 +11,7 @@ const fruits = List();
 fruits.addItem('Apple');
 fruits.addItem('Banana');
 fruits.addItem('Cherry');
-fruits.setPreferredSize(180, 120);
+fruits.setPreferredSize({ width: 180, height: 120 });
 
 Event.addListener(fruits, 'change', () => {
     console.log('selected:', fruits.getValue());

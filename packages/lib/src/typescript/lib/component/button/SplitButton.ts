@@ -131,7 +131,7 @@ class SplitButton extends Button<SplitButtonOptions> {
         // exact-target listener on the glyph would never match it — while that
         // same retargeting keeps the click off the button face's `"action"`.
         this._chevron = new Glyph(CHEVRON_GLYPH);
-        this._chevron.setPreferredSize(CHEVRON_SIZE, CHEVRON_SIZE);
+        this._chevron.setPreferredSize({ width: CHEVRON_SIZE, height: CHEVRON_SIZE });
         this._chevron.setCursor("pointer");
         // Button sets its whole `_content` row to `pointer-events: none` so face
         // clicks fall through to the `<button>`; the chevron inherits that and

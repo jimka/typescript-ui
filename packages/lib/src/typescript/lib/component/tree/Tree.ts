@@ -112,8 +112,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
         this.setOverflow("hidden");
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
-        this.setPreferredSize(200, 300);
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
+        this.setPreferredSize({ width: 200, height: 300 });
+        this.setMaxSize({ width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER });
 
         this.getAria().setRole("tree");
         this.getAria().setTabIndex(0);

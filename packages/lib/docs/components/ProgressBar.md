@@ -11,7 +11,7 @@
 ```typescript
 import { ProgressBar } from '@jimka/typescript-ui/component/display';
 const progress = ProgressBar(0);
-progress.setPreferredSize(300, 12);
+progress.setPreferredSize({ width: 300, height: 12 });
 panel.addComponent(progress);
 
 let v = 0;

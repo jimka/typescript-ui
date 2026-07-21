@@ -177,7 +177,7 @@ class WindowHeader extends Header {
         const textSize = this.getText().getPreferredSize();
         const textHeight = textSize ? textSize.height : 20;
 
-        this.setPreferredSize(100, textHeight + 2 * CHROME_MARGIN);
+        this.setPreferredSize({ width: 100, height: textHeight + 2 * CHROME_MARGIN });
 
         // Re-pin the title glyph's ink whenever the header re-measures — the
         // inherited Header theme listener drives this method on construction and
@@ -186,7 +186,7 @@ class WindowHeader extends Header {
         // during the super() cascade that first runs this method.
         if (this._titleGlyph) {
             const ink = this.resolveTitleGlyphInk();
-            this._titleGlyph.setPreferredSize(ink, ink);
+            this._titleGlyph.setPreferredSize({ width: ink, height: ink });
         }
     }
 
@@ -258,7 +258,7 @@ class WindowHeader extends Header {
         // corner offset that mirrors the TabWindow's.
         const glyph = new Glyph(name);
         const ink = this.resolveTitleGlyphInk();
-        glyph.setPreferredSize(ink, ink);
+        glyph.setPreferredSize({ width: ink, height: ink });
         glyph.setPointerEvents("none");
         this._titleGlyph = glyph;
 

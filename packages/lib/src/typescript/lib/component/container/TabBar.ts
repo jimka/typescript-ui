@@ -42,7 +42,7 @@ const TAB_FADE_DURATION_MS = 120;
  * falls back to before any tab has reported a preferred size (an empty or
  * pre-first-layout strip). Once buttons measure, the strip grows past this to fit
  * the font (see {@link TabBar.stripThickness}); this is no longer the value, only
- * the pre-measurement floor. Kept at the legacy `setPreferredSize(0, 30)` seed
+ * the pre-measurement floor. Kept at the legacy `setPreferredSize({ width: 0, height: 30 })` seed
  * the top-only strip was tuned against so an unmeasured strip looks unchanged.
  * Reduced to `STRIP_THICKNESS_COMPACT` when the strip is `compact`.
  */
@@ -589,7 +589,7 @@ class TabBar extends Container<TabBarOptions> {
         // sizes the strip from `stripThickness()` directly (never from this
         // self-report), so this is only the bar's pre-layout self-size, kept at
         // the floor so it matches the unmeasured strip.
-        this.setPreferredSize(0, STRIP_THICKNESS);
+        this.setPreferredSize({ width: 0, height: STRIP_THICKNESS });
         this.getAria().setRole("tablist");
 
         // The tab wrappers live in the clip frame (its box lays them out), not on
@@ -1875,11 +1875,11 @@ class TabBar extends Container<TabBarOptions> {
      */
     private clampWrapperMain(wrapper: Component, min: number, max: number): void {
         if (this.isVertical()) {
-            wrapper.setMinSize(0, min);
-            wrapper.setMaxSize(Number.MAX_VALUE, max);
+            wrapper.setMinSize({ width: 0, height: min });
+            wrapper.setMaxSize({ width: Number.MAX_VALUE, height: max });
         } else {
-            wrapper.setMinSize(min, 0);
-            wrapper.setMaxSize(max, Number.MAX_VALUE);
+            wrapper.setMinSize({ width: min, height: 0 });
+            wrapper.setMaxSize({ width: max, height: Number.MAX_VALUE });
         }
     }
 

@@ -30,7 +30,7 @@ class DateEditor extends TextInputCellEditor<Date | null> {
     constructor() {
         super();
 
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
+        this.setMaxSize({ width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER });
         this.setBorderRadius('0');
         this.setBorder({ border: "0px solid transparent" });
         this.setShadow('inset 0 0 0 1px var(--ts-ui-table-cell-editor-border, rgba(30, 100, 200, 0.6))');

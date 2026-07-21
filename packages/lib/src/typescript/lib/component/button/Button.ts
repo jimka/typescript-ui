@@ -1306,7 +1306,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             return;
         }
 
-        glyph.setPreferredSize(px, px);
+        glyph.setPreferredSize({ width: px, height: px });
         this._glyphSyncedSize = px;
     }
 
@@ -1428,7 +1428,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     pinGlyphSize(px: number): this {
         this._glyphSizePinned = true;
 
-        this._glyph?.setPreferredSize(px, px);
+        this._glyph?.setPreferredSize({ width: px, height: px });
 
         return this;
     }
@@ -1858,13 +1858,12 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * `recomputePreferredSize` no-op — the consumer's explicit intent
      * wins permanently for the lifetime of this instance.
      *
-     * @param width - The preferred width in pixels.
-     * @param height - The preferred height in pixels.
+     * @param size - The preferred size in pixels.
      * @returns This component, for method chaining.
      */
-    setPreferredSize(width: number, height: number): this {
+    setPreferredSize(size: Size): this {
         this._consumerSetPreferredSize = true;
-        super.setPreferredSize(width, height);
+        super.setPreferredSize(size);
 
         return this;
     }
@@ -1931,7 +1930,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // doesn't flip on an auto-fire. `super` is `Component`. The written
         // value isn't read back for sizing (getPreferredSize derives live);
         // the call stands in for the parent-relayout notification + dedupe.
-        super.setPreferredSize(size.width, size.height);
+        super.setPreferredSize({ width: size.width, height: size.height });
     }
 
     /**

@@ -108,7 +108,7 @@ See [Layouts](/layouts/) for the full list (Border, Card, Column, Fit, Grid, HBo
 
 ## What runs when you call `setSize`
 
-1. You call `myComponent.setPreferredSize(200, 100)`.
+1. You call `myComponent.setPreferredSize({ width: 200, height: 100 })`.
 2. The component's preferred size is updated in memory.
 3. On the next `doLayout()` pass (triggered by viewport resize, an explicit call, or a parent's layout), the parent's layout manager reads `getPreferredSize()` and decides where to place the child.
 4. The layout manager calls `placeComponent(child, x, y, w, h)`, which writes pixel values to the child's inline styles.

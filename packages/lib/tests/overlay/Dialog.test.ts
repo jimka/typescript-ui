@@ -124,11 +124,11 @@ describe('Dialog — resizeToContent', () => {
         installTestDOM(CONFIG);
 
         const content = new Component();
-        content.setPreferredSize(400, 200);
+        content.setPreferredSize({ width: 400, height: 200 });
         const dialog = new Dialog({ title: 'T', contentComponent: content });
         const before = dialog.getHeight();
 
-        content.setPreferredSize(400, 600);
+        content.setPreferredSize({ width: 400, height: 600 });
         dialog.resizeToContent();
 
         expect(dialog.getHeight()).toBe(before);
@@ -138,10 +138,10 @@ describe('Dialog — resizeToContent', () => {
         installTestDOM(CONFIG);
 
         const content = new Component();
-        content.setPreferredSize(400, 200);
+        content.setPreferredSize({ width: 400, height: 200 });
         const dialog = renderedDialog(content);
 
-        content.setPreferredSize(400, 500);
+        content.setPreferredSize({ width: 400, height: 500 });
         dialog.resizeToContent();
 
         expect(dialog.getHeight()).toBe(TITLE_HEIGHT + 500 + BUTTON_HEIGHT);
@@ -151,10 +151,10 @@ describe('Dialog — resizeToContent', () => {
         installTestDOM(CONFIG);
 
         const content = new Component();
-        content.setPreferredSize(400, 500);
+        content.setPreferredSize({ width: 400, height: 500 });
         const dialog = renderedDialog(content);
 
-        content.setPreferredSize(400, 120);
+        content.setPreferredSize({ width: 400, height: 120 });
         dialog.resizeToContent();
 
         expect(dialog.getHeight()).toBe(TITLE_HEIGHT + 120 + BUTTON_HEIGHT);
@@ -164,10 +164,10 @@ describe('Dialog — resizeToContent', () => {
         installTestDOM(CONFIG);
 
         const content = new Component();
-        content.setPreferredSize(400, 200);
+        content.setPreferredSize({ width: 400, height: 200 });
         const dialog = renderedDialog(content);
 
-        content.setPreferredSize(400, 5000);
+        content.setPreferredSize({ width: 400, height: 5000 });
         dialog.resizeToContent();
 
         // Viewport 800 tall, minus a margin top and bottom.

@@ -215,7 +215,7 @@ class DialogTitleBar extends Component {
             border:       "none",
             borderBottom: "1px solid var(--ts-ui-dialog-border)",
         });
-        this.setPreferredSize(0, TITLE_HEIGHT);
+        this.setPreferredSize({ width: 0, height: TITLE_HEIGHT });
 
         this._titleText = new Text(title);
         this._titleText.setFontWeight("bold");
@@ -245,7 +245,7 @@ class DialogTitleBar extends Component {
             this._closeButton.setPressedBackgroundColor("var(--ts-ui-titlebar-btn-active-bg, rgba(0, 0, 0, 0.16))");
             this._closeButton.clearHoverBackgroundImage();
             this._closeButton.clearPressedBackgroundImage();
-            this._closeButton.setPreferredSize(CLOSE_SIZE, CLOSE_SIZE);
+            this._closeButton.setPreferredSize({ width: CLOSE_SIZE, height: CLOSE_SIZE });
             this.addComponent(this._closeButton);
 
             this._closeButton.on("action", onClose);
@@ -292,7 +292,7 @@ class DialogTitleBar extends Component {
 
         const glyph = new Glyph(name);
         glyph.setPointerEvents("none");
-        glyph.setPreferredSize(16, 16);
+        glyph.setPreferredSize({ width: 16, height: 16 });
         this._titleGlyph = glyph;
         this.addComponent(glyph);
 
@@ -403,7 +403,7 @@ class DialogButtonRow extends Component {
             borderTop: "1px solid var(--ts-ui-dialog-border)",
         });
         this.setBackgroundColor("var(--ts-ui-body-bg)");
-        this.setPreferredSize(0, BUTTON_HEIGHT);
+        this.setPreferredSize({ width: 0, height: BUTTON_HEIGHT });
 
         for (const cfg of configs) {
             const btn    = new Button(cfg.text, cfg.glyph !== undefined ? { glyph: cfg.glyph } : undefined);

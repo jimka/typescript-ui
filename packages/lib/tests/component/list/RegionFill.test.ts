@@ -98,8 +98,8 @@ describe('List fills a stretching layout region (region-fill-max-size)', () => {
         h.addComponent(list, placement(Placement.CENTER));
         h.doLayout();
 
-        // The list carries setMinSize(100, 100); it must not collapse to the
-        // 50px region or to its single-item content height.
+        // The list carries setMinSize({ width: 100, height: 100 }); it must not
+        // collapse to the 50px region or to its single-item content height.
         expect(list.getHeight()).toBeGreaterThanOrEqual(50);
         expect(list.getHeight()).toBeGreaterThanOrEqual(100);
     });

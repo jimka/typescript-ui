@@ -48,12 +48,12 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
         this._track = new Component();
         this._track.setBackgroundColor("var(--ts-ui-toggle-track-bg-off, rgb(200, 200, 200))");
         this._track.setBorderRadius("999px");
-        this._track.setPreferredSize(36, 20);
+        this._track.setPreferredSize({ width: 36, height: 20 });
         // Min = preferred = max so the outer HBox shrink-on-overallocation
         // can't collapse the pill when the Toggle is packed alongside
         // flexible siblings.
-        this._track.setMinSize(36, 20);
-        this._track.setMaxSize(36, 20);
+        this._track.setMinSize({ width: 36, height: 20 });
+        this._track.setMaxSize({ width: 36, height: 20 });
         // The track owns the click + cursor surface so the pointer/click area
         // matches the visible pill exactly. The root stays inert (default
         // cursor, no click listener), so clicks on the label or in any
@@ -63,8 +63,8 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
         this._thumb = new Component();
         this._thumb.setBackgroundColor("var(--ts-ui-toggle-thumb-bg, rgb(255, 255, 255))");
         this._thumb.setBorderRadius("999px");
-        this._thumb.setPreferredSize(16, 16);
-        this._thumb.setMaxSize(16, 16);
+        this._thumb.setPreferredSize({ width: 16, height: 16 });
+        this._thumb.setMaxSize({ width: 16, height: 16 });
         // The track's default Absolute layout never sizes its children, so the
         // thumb collapses to 0 × 0 unless we set the rendered size explicitly.
         this._thumb.setSize({ width: 16, height: 16 });

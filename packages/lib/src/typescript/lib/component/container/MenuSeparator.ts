@@ -41,7 +41,7 @@ class MenuSeparator extends Component<MenuSeparatorOptions> {
         super(options, _defaultMenuSeparatorOptions);
 
         this.setHeight(MenuSeparator.HEIGHT);
-        this.setPreferredSize(0, MenuSeparator.HEIGHT);
+        this.setPreferredSize({ width: 0, height: MenuSeparator.HEIGHT });
         this.setBackgroundColor("transparent");
         this.setElementCSSRule(
             "borderTop",

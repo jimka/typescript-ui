@@ -212,8 +212,8 @@ describe('VBox first-child baseline forwarding', () => {
         // construction and caps a constructor preferredSize to its content
         // height, whereas setPreferredSize + setMaxSize hold the tall box.
         const tall = new Text('Tall');
-        tall.setPreferredSize(40, 200);
-        tall.setMaxSize(200, 200);
+        tall.setPreferredSize({ width: 40, height: 200 });
+        tall.setMaxSize({ width: 200, height: 200 });
 
         host.addComponent(column);
         host.addComponent(tall);

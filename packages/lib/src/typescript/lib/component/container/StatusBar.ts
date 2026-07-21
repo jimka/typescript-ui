@@ -120,8 +120,8 @@ class StatusBar extends Container<StatusBarOptions> {
         this.setBackgroundColor("var(--ts-ui-statusbar-bg, rgb(245, 245, 245))");
         this.setForegroundColor("var(--ts-ui-statusbar-color, rgb(60, 60, 60))");
         this.setBorder({ borderTop: `${STATUS_BAR_BORDER_TOP_WIDTH}px solid var(--ts-ui-statusbar-border, rgb(220, 220, 220))` });
-        this.setMinSize(0,                       STATUS_BAR_HEIGHT);
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, STATUS_BAR_HEIGHT);
+        this.setMinSize({ width: 0, height: STATUS_BAR_HEIGHT });
+        this.setMaxSize({ width: Number.MAX_SAFE_INTEGER, height: STATUS_BAR_HEIGHT });
 
         this._messageText = new Text("");
         // The bar's row anchor, not cosmetic padding: a 21px line box (the strip

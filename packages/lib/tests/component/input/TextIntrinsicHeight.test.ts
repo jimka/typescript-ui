@@ -133,3 +133,18 @@ describe('Text.setLineHeight — idempotent re-apply (relayout-loop guard)', () 
         expect(spy).toHaveBeenCalled();
     });
 });
+
+describe('Text explicit preferred size (size-setter-interface plan, case 10)', () => {
+    it('suppresses auto-measure so a later measurement does not overwrite the explicit size', () => {
+        // setPreferredSize flips _hasExplicitPreferredSize, which makes
+        // setCalculatedSize no-op. measure() forces a re-measure, so it is the
+        // public trigger that would clobber the explicit value if the guard broke.
+        const t = new Text(LONG);
+        t.getElement(true);
+
+        t.setPreferredSize({ width: 80, height: 20 });
+        t.measure();
+
+        expect(t.getPreferredSize()).toEqual({ width: 80, height: 20 });
+    });
+});

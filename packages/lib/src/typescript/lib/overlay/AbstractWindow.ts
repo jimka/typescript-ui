@@ -348,7 +348,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // controls plus a 200 px body floor. Skipped when the caller supplied an
         // explicit `minSize` in the options bag.
         if (options?.minSize === undefined) {
-            this.setMinSize(this.minContentWidthSeed(), 200);
+            this.setMinSize({ width: this.minContentWidthSeed(), height: 200 });
         }
     }
 

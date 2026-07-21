@@ -57,8 +57,8 @@ describe('Single-line input min-height pin', () => {
         });
 
         // NumberSpinner is excluded here: its inner SpinButton column is
-        // itself fixed-size (`SpinButton.setMinSize(18, halfHeight)`), so the
-        // manager already reports a non-zero content-derived min-width
+        // itself fixed-size (`SpinButton.setMinSize({ width: 18, height: halfHeight })`),
+        // so the manager already reports a non-zero content-derived min-width
         // unrelated to this fix. The height-only pin merges via `Math.max`
         // and never lowers that pre-existing floor — covered separately below.
         if (name === 'NumberSpinner') {

@@ -47,7 +47,7 @@ class GridPanel extends Panel {
         // Oversized-min child pinned to the narrow fixed column (column 0); its
         // min width exceeds the 120px cell, so it clips instead of spilling.
         const wide = new Button("I am too wide for the fixed column and must clip");
-        wide.setMinSize(400, 30);
+        wide.setMinSize({ width: 400, height: 30 });
         const wideCons = new GridConstraints();
         wideCons.col = 0;
         wideCons.row = 2;

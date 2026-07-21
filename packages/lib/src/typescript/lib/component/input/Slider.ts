@@ -90,16 +90,16 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         this._thumb.setBorderRadius("50%");
         this._thumb.setBorder("1px solid var(--ts-ui-form-border, rgb(160, 160, 160))");
         this._thumb.setShadow("0 1px 2px rgba(0, 0, 0, 0.25)");
-        this._thumb.setPreferredSize(THUMB_SIZE, THUMB_SIZE);
-        this._thumb.setMaxSize(THUMB_SIZE, THUMB_SIZE);
+        this._thumb.setPreferredSize({ width: THUMB_SIZE, height: THUMB_SIZE });
+        this._thumb.setMaxSize({ width: THUMB_SIZE, height: THUMB_SIZE });
         this._thumb.setPointerEvents("none");
 
         this._track.addComponent(this._activeTrack);
         super.addComponent(this._track);
         super.addComponent(this._thumb);
 
-        this.setPreferredSize(200, THUMB_SIZE);
-        this.setMaxSize(UNBOUNDED, THUMB_SIZE);
+        this.setPreferredSize({ width: 200, height: THUMB_SIZE });
+        this.setMaxSize({ width: UNBOUNDED, height: THUMB_SIZE });
         this.setOutline("none");
         this.setCursor("pointer");
 
@@ -696,11 +696,11 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         this.getAria().setOrientation(orientation);
 
         if (orientation === "horizontal") {
-            this.setPreferredSize(200, THUMB_SIZE);
-            this.setMaxSize(UNBOUNDED, THUMB_SIZE);
+            this.setPreferredSize({ width: 200, height: THUMB_SIZE });
+            this.setMaxSize({ width: UNBOUNDED, height: THUMB_SIZE });
         } else {
-            this.setPreferredSize(THUMB_SIZE, 200);
-            this.setMaxSize(THUMB_SIZE, UNBOUNDED);
+            this.setPreferredSize({ width: THUMB_SIZE, height: 200 });
+            this.setMaxSize({ width: THUMB_SIZE, height: UNBOUNDED });
         }
 
         this.scheduleLayout();

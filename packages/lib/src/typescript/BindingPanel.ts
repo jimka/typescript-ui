@@ -162,7 +162,7 @@ class BindingPanel extends Panel {
                 { component: buttonRow,  fullWidth: true },
             ],
         });
-        fieldSet.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
+        fieldSet.setMaxSize({ width: FIELDSET_MAX_WIDTH, height: Number.MAX_VALUE });
 
         this.addComponent(fieldSet);
 
@@ -182,7 +182,7 @@ class BindingPanel extends Panel {
                 { component: new Text("Rows line up across both columns; the short row leaves a gap."), fullWidth: true },
             ],
         });
-        addressForm.setMaxSize(WIDE_FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
+        addressForm.setMaxSize({ width: WIDE_FIELDSET_MAX_WIDTH, height: Number.MAX_VALUE });
 
         this.addComponent(addressForm);
 
@@ -209,7 +209,7 @@ class BindingPanel extends Panel {
                 { component: dropZone, fullWidth: true },
             ],
         });
-        fileForm.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
+        fileForm.setMaxSize({ width: FIELDSET_MAX_WIDTH, height: Number.MAX_VALUE });
 
         this.addComponent(fileForm);
 
@@ -224,7 +224,7 @@ class BindingPanel extends Panel {
                 [{ title: 'Unit',     component: new TextField() }],
             ],
         });
-        bareGrid.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
+        bareGrid.setMaxSize({ width: FIELDSET_MAX_WIDTH, height: Number.MAX_VALUE });
 
         this.addComponent(bareGrid);
 
@@ -238,7 +238,7 @@ class BindingPanel extends Panel {
         const untitledForm = new LabeledFieldSet('', {
             rows: [[{ title: 'Note', component: new TextField() }]],
         });
-        untitledForm.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
+        untitledForm.setMaxSize({ width: FIELDSET_MAX_WIDTH, height: Number.MAX_VALUE });
 
         this.addComponent(untitledForm);
 

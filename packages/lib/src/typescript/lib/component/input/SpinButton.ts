@@ -142,12 +142,12 @@ class SpinButton extends Button<SpinButtonOptions> {
         // the inner height `h - 2` and clips the bottom button.
         const halfHeight = Math.floor((fullHeight - SPINNER_VERTICAL_BORDER) / 2);
 
-        this.setPreferredSize(18, halfHeight);
+        this.setPreferredSize({ width: 18, height: halfHeight });
         // Min = preferred = max so the parent's shrink-on-overallocation
         // doesn't collapse the chevron away when the spinner cell is
         // narrow.
-        this.setMinSize(18, halfHeight);
-        this.setMaxSize(18, halfHeight);
+        this.setMinSize({ width: 18, height: halfHeight });
+        this.setMaxSize({ width: 18, height: halfHeight });
     }
 
     /**

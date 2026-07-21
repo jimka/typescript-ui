@@ -121,7 +121,7 @@ describe('ProgressBar baseline', () => {
     it('returns preferredHeight - 2 once a preferred size is set', () => {
         const bar = new ProgressBar(50);
 
-        bar.setPreferredSize(120, 18);
+        bar.setPreferredSize({ width: 120, height: 18 });
 
         expect(bar.getBaseline()).toBe(16);
     });

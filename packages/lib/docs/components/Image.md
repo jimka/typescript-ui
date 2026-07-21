@@ -7,7 +7,7 @@
 ```typescript
 import { Image } from '@jimka/typescript-ui/component/display';
 const logo = Image('/assets/logo.png');
-logo.setPreferredSize(120, 40);
+logo.setPreferredSize({ width: 120, height: 40 });
 
 panel.addComponent(logo);
 ```
@@ -16,7 +16,7 @@ panel.addComponent(logo);
 
 | Method | Purpose |
 | --- | --- |
-| `setPreferredSize(w, h)` | Pin a display size (inherited from `Component`). |
+| `setPreferredSize(size)` | Pin a display size (inherited from `Component`). |
 | `getPreferredSize()` | Reports the pinned size, or the image's natural dimensions once loaded. |
 
 ## Notes

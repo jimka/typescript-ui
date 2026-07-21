@@ -177,7 +177,7 @@ class MenuItem extends Component {
 
         if (config.separator) {
             this.setHeight(MenuItem.SEPARATOR_HEIGHT);
-            this.setPreferredSize(0, MenuItem.SEPARATOR_HEIGHT);
+            this.setPreferredSize({ width: 0, height: MenuItem.SEPARATOR_HEIGHT });
             this.setBackgroundColor("transparent");
             this.setElementCSSRule(
                 "borderTop",
@@ -200,7 +200,7 @@ class MenuItem extends Component {
         const enabled = config.enabled !== false;
 
         this.setHeight(MenuItem.HEIGHT);
-        this.setPreferredSize(0, MenuItem.HEIGHT);
+        this.setPreferredSize({ width: 0, height: MenuItem.HEIGHT });
         this.setBackgroundColor("transparent");
         this.setElementCSSRule("fontSize", "var(--ts-ui-button-font-size, var(--ts-ui-font-size))");
         this.setCursor(enabled ? "pointer" : "default");
@@ -216,7 +216,7 @@ class MenuItem extends Component {
         if (config.glyph) {
             this._iconGlyph = new Glyph(config.glyph);
             this._iconGlyph.setPointerEvents("none");
-            this._iconGlyph.setPreferredSize(16, 16);
+            this._iconGlyph.setPreferredSize({ width: 16, height: 16 });
 
             if (config.glyphColor) {
                 this._iconGlyph.setForegroundColor(config.glyphColor);

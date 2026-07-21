@@ -602,8 +602,8 @@ class VideoPlayer extends Component<VideoPlayerOptions> {
 
         this._volume = new Slider({ min: 0, max: 1, step: VOLUME_STEP, value: 1 });
         this._volume.getAria().setLabel("Volume");
-        this._volume.setPreferredSize(VOLUME_SLIDER_WIDTH, this._volume.getPreferredSize()!.height);
-        this._volume.setMaxSize(VOLUME_SLIDER_WIDTH, this._volume.getPreferredSize()!.height);
+        this._volume.setPreferredSize({ width: VOLUME_SLIDER_WIDTH, height: this._volume.getPreferredSize()!.height });
+        this._volume.setMaxSize({ width: VOLUME_SLIDER_WIDTH, height: this._volume.getPreferredSize()!.height });
 
         this._timeText = new Text("0:00 / 0:00");
         this._timeText.centerInHeight(CONTROL_ROW_HEIGHT);
@@ -638,7 +638,7 @@ class VideoPlayer extends Component<VideoPlayerOptions> {
     private makeControlButton(glyph: string, label: string): Button {
         const button = new Button({ glyph, text: label, showText: false });
 
-        button.setPreferredSize(CONTROL_BUTTON_SIZE, CONTROL_BUTTON_SIZE);
+        button.setPreferredSize({ width: CONTROL_BUTTON_SIZE, height: CONTROL_BUTTON_SIZE });
 
         return button;
     }

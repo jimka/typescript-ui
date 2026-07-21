@@ -39,7 +39,7 @@ describe('Image min-size fallback (pre-load)', () => {
         const img = new Image('/x.png');
 
         img.getElement(true);
-        img.setMinSize(40, 50);
+        img.setMinSize({ width: 40, height: 50 });
 
         const min = img.getMinSize()!;
 

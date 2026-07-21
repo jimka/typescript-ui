@@ -323,6 +323,73 @@ The three setters are public members of `Component`, exported from `@jimka/types
 
 ---
 
+## Implementation Notes
+
+- **Two of the plan's ten test cases were missed on the first pass and added
+  during the audit fix cycle.** Cases 9 (Button pins a consumer-set preferred
+  size against a later `recomputePreferredSize`) and 10 (an explicit
+  `Text.setPreferredSize` suppresses auto-measure) were specified for
+  `Button.test.ts` and `TextIntrinsicHeight.test.ts`, and both files were
+  initially left untouched — so the two rewritten override bodies shipped with
+  no coverage. Both tests now exist and were verified non-vacuous by disabling
+  each guard in turn and confirming they go red.
+- **The base version was `0.1.1`, not the `0.1.0` the plan assumed.** `0.1.1`
+  shipped after the plan was written. `packages/lib/package.json` was correctly
+  bumped `0.1.1` → `0.2.0`, but the plan's prose carried the stale predecessor
+  into the migration page, which claimed to document a `0.1.0 → 0.2.0` upgrade
+  and so was wrong for anyone on the published `0.1.1`. The heading is now
+  **"Upgrading from 0.1.x to 0.2.0"**, which covers both shipped releases.
+- **That heading change also fixed a silently broken anchor.** The original
+  heading `## 0.1.0 → 0.2.0` slugifies to `_0-1-0-→-0-2-0` under VitePress's
+  rules — digit-initial headings get an `_` prefix, and `→` is not in the
+  special-character class, so it survives verbatim. The changelog's link to
+  `#0-1-0-0-2-0` therefore matched nothing and landed readers at the top of the
+  page. `ignoreDeadLinks: true` in `.vitepress/config.mts` is why `docs:build`
+  stayed green. The replacement slug, `upgrading-from-0-1-x-to-0-2-0`, was
+  verified against VitePress's own `slugify` implementation rather than assumed.
+- **`setMinSize` had 52 call sites, not the 51 the plan predicted.** The other
+  two counts matched (`setPreferredSize` 102, `setMaxSize` 62). No behavioural
+  significance; recorded because the plan states a specific number.
+- **Three prose comments were re-flowed in an unplanned commit.** They quoted
+  the two-number form (`setPreferredSize(0, 30)` and similar) and so described a
+  signature that no longer compiles. No plan step called for this; it is cleanup
+  of staleness that this change itself introduced.
+- **One unplanned documentation fix:** the stale `setSize(w, h)` row in
+  `packages/lib/docs/concepts/sizing.md` was corrected alongside the planned
+  edits.
+
+- **The `ast-grep` pattern missed one call site, fixed by hand.**
+  `this._glyph?.setPreferredSize(px, px)` in `Button.pinGlyphSize`
+  (`Button.ts:1431`) uses optional chaining, which the plan's rewrite pattern
+  did not match. It was migrated by hand in the same commit.
+- **The migration page's own boilerplate contradicted the entry added to it.**
+  "Pre-1.0 compatibility" stated that `0.x.y` changes ship *without* a
+  migration note, and "Upgrade procedure" was written for major-version
+  upgrades only — both false on a page that now carries a `0.1.x` to `0.2.0`
+  note. Both sections were rewritten, and the intro's restatement of the
+  versioning policy was folded into a link to that section rather than
+  duplicating it.
+- **Manual verification (plan `## Verification` item 7 / behaviour case 11) was
+  NOT performed.** That step asks for a click-through of the demo panels to
+  catch a wrong-argument regression visually. It was not run. The risk is
+  covered another way: the audit reproduced the plan's three `ast-grep`
+  rewrites against a pristine `master` and diffed the result against this
+  branch, proving every one of the 216 call sites is byte-identical to the
+  mechanical wrap, so a transposed `width`/`height` is not possible. The
+  click-through remains available if extra assurance is wanted.
+- **`npm run lint` (plan `## Verification` item 4) is red, with 5 pre-existing
+  errors in files this branch never touches:**
+  `component/editor/CodeEditor.ts:492-493` (`local/no-raw-dom`) and
+  `component/table/cell/renderer/Link.ts:57`
+  (`local/forward-super-options`). Not caused by this change; recorded because
+  the verification list does not otherwise note an exception.
+- **Known gap, not addressed here:** `docs/reference/changelog.md` has no
+  `0.1.1` entry, so it jumps from `0.2.0` to `0.1.0` while this change's
+  migration heading and the version bump both reference `0.1.1`. Pre-existing;
+  surfaced by this work rather than caused by it.
+
+---
+
 ## Notes
 
 [^precedent]: The precedent search covered every size-related setter on `Component`. `setSize(size: Size)` at `Component.ts:3026` is the only sibling that takes a size at all, and it already takes the interface. `setX` / `setY` / `setWidth` / `setHeight` are single-scalar setters, so they establish nothing either way. The options bag has taken `Size` objects for `preferredSize` / `minSize` / `maxSize` since it existed. So the two-number form is the outlier, not the norm — this change removes an inconsistency rather than introducing a new pattern.

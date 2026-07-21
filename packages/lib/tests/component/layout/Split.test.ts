@@ -299,8 +299,8 @@ describe('Split resize weights', () => {
         const { host, split } = emptyHost(400, 300);
         const sidebar = new Component({ preferredSize: { width: 100, height: 50 } });
         const centre = new Component({ preferredSize: { width: 280, height: 50 } });
-        sidebar.setMinSize(40, 0);
-        centre.setMinSize(200, 0);
+        sidebar.setMinSize({ width: 40, height: 0 });
+        centre.setMinSize({ width: 200, height: 0 });
         host.addComponent(sidebar, { weight: 0 });
         host.addComponent(centre, { weight: 1 });
         host.doLayout();
@@ -322,8 +322,8 @@ describe('Split resize weights', () => {
         const { host, split } = emptyHost(1000, 300);
         const side = new Component({ preferredSize: { width: 240, height: 50 } });
         const body = new Component({ preferredSize: { width: 756, height: 50 } });
-        side.setMinSize(48, 0);
-        body.setMinSize(400, 0);
+        side.setMinSize({ width: 48, height: 0 });
+        body.setMinSize({ width: 400, height: 0 });
         host.addComponent(side, { weight: 0, collapsible: false });
         host.addComponent(body, { weight: 1 });
         host.doLayout();
@@ -529,7 +529,7 @@ describe('Split preferred seeding + live min/max', () => {
         host.doLayout();
         const a0 = split.getPaneSize(p0)!;
 
-        p0.setPreferredSize(400, 50);
+        p0.setPreferredSize({ width: 400, height: 50 });
         host.doLayout();
 
         expect(split.getPaneSize(p0)!).toBeCloseTo(a0, 4);   // unchanged — seed does not re-fire
@@ -662,11 +662,11 @@ describe('Split preferred seeding + live min/max', () => {
         void split;
 
         const spy = vi.spyOn(host, 'scheduleLayout');
-        p0.setMaxSize(60, BIG);
+        p0.setMaxSize({ width: 60, height: BIG });
         expect(spy).toHaveBeenCalled();
 
         spy.mockClear();
-        p0.setMinSize(40, 0);
+        p0.setMinSize({ width: 40, height: 0 });
         expect(spy).toHaveBeenCalled();
     });
 
@@ -681,8 +681,8 @@ describe('Split preferred seeding + live min/max', () => {
         host.doLayout();
         const sumBefore = split.getPaneSize(p0)! + split.getPaneSize(p1)!;
 
-        p0.setMinSize(40, 0);
-        p0.setMaxSize(40, BIG);
+        p0.setMinSize({ width: 40, height: 0 });
+        p0.setMaxSize({ width: 40, height: BIG });
         host.doLayout();
 
         expect(split.getPaneSize(p0)!).toBeCloseTo(40, 4);                       // pin held in _sizes

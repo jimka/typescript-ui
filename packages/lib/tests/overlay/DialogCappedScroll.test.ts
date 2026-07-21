@@ -67,8 +67,8 @@ describe('Dialog scrolls content capped by a short viewport', () => {
     /** Content taller than the capped dialog can show, so the dialog must scroll it. */
     function tallDialog(): Dialog {
         const content = new Component();
-        content.setPreferredSize(200, CONTENT_HEIGHT);
-        content.setMinSize(200, CONTENT_HEIGHT);
+        content.setPreferredSize({ width: 200, height: CONTENT_HEIGHT });
+        content.setMinSize({ width: 200, height: CONTENT_HEIGHT });
 
         return new Dialog({ title: 'T', contentComponent: content, width: 360 });
     }
