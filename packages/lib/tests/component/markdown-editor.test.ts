@@ -2,11 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import type { MarkdownEditorChange } from '~/component/editor/MarkdownEditor';
 import { TRANSFORMERS } from '~/component/editor/markdownTransformers';
+import { EDITOR_NODES } from '~/component/editor/editorNodes';
 import {
     HEADING, QUOTE, CODE, UNORDERED_LIST, ORDERED_LIST,
     BOLD_STAR, ITALIC_STAR, INLINE_CODE, LINK,
     STRIKETHROUGH, HIGHLIGHT, CHECK_LIST,
 } from '@lexical/markdown';
+import { TableNode, TableRowNode, TableCellNode } from '@lexical/table';
 import { $getRoot } from 'lexical';
 import type { LexicalEditor } from 'lexical';
 import { lexer } from 'marked';
@@ -45,11 +47,14 @@ const CORPUS: Record<string, string> = {
     'fenced code':      '```\nplain code\n```',
     'fenced code lang': '```js\nconst x = 1;\n```',
     'link':             'A [link](https://example.com) in prose.',
+    'table':            '| a | b |\n| --- | --- |\n| 1 | 2 |',
+    'table aligned':    '| a | b | c |\n| :--- | :---: | ---: |\n| 1 | 2 | 3 |',
+    'table escaped pipe': '| a | b |\n| --- | --- |\n| x | `p \\| q` |',
 };
 
 // The exact token types the read-only `Markdown` viewer renders; anything else
 // falls to its plain-text fallback.
-const VIEWER_TOKENS = new Set(['heading', 'paragraph', 'list', 'blockquote', 'code', 'space']);
+const VIEWER_TOKENS = new Set(['heading', 'paragraph', 'list', 'blockquote', 'code', 'space', 'table']);
 
 /** Normalises Lexical's markdown export for comparison: strip trailing spaces, collapse blank-line runs, trim. */
 function normalize(md: string): string {
@@ -72,8 +77,8 @@ function selectStart(editor: MarkdownEditor): void {
 }
 
 describe('markdownTransformers curation', () => {
-    it('contains exactly the nine dialect transformers', () => {
-        expect(TRANSFORMERS).toHaveLength(9);
+    it('contains exactly the ten dialect transformers', () => {
+        expect(TRANSFORMERS).toHaveLength(10);
         expect(TRANSFORMERS).toEqual(expect.arrayContaining([
             HEADING, QUOTE, CODE, UNORDERED_LIST, ORDERED_LIST,
             BOLD_STAR, ITALIC_STAR, INLINE_CODE, LINK,
@@ -84,6 +89,14 @@ describe('markdownTransformers curation', () => {
         expect(TRANSFORMERS).not.toContain(STRIKETHROUGH);
         expect(TRANSFORMERS).not.toContain(HIGHLIGHT);
         expect(TRANSFORMERS).not.toContain(CHECK_LIST);
+    });
+});
+
+describe('editorNodes table registration', () => {
+    it('EDITOR_NODES contains TableNode, TableRowNode, and TableCellNode', () => {
+        expect(EDITOR_NODES).toContain(TableNode);
+        expect(EDITOR_NODES).toContain(TableRowNode);
+        expect(EDITOR_NODES).toContain(TableCellNode);
     });
 });
 
@@ -347,4 +360,117 @@ describe('MarkdownEditor dialect fidelity (viewer token set)', () => {
             }
         });
     }
+});
+
+describe('MarkdownEditor table import/export edge cases', () => {
+    it('round-trips per-column alignment from the delimiter row', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| :---: | --- |\n| 1 | 2 |');
+
+        expect(normalize(editor.getValue())).toBe('| a | b |\n| :---: | --- |\n| 1 | 2 |');
+    });
+
+    it('two pipe lines with no delimiter row do not become a table', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| 1 | 2 |');
+
+        const tokens = lexer(editor.getValue());
+
+        expect(tokens.some((token) => token.type === 'table')).toBe(false);
+        expect(editor.getValue()).not.toContain('---');
+    });
+
+    it('a delimiter row narrower than the header does not become a table, matching the viewer', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- |\n| 1 | 2 |');
+
+        const tokens = lexer(editor.getValue());
+
+        expect(tokens.some((token) => token.type === 'table')).toBe(false);
+    });
+
+    it('normalises a table authored without leading/trailing pipes to the canonical piped form', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('a | b\n--- | ---\n1 | 2');
+
+        expect(normalize(editor.getValue())).toBe('| a | b |\n| --- | --- |\n| 1 | 2 |');
+    });
+
+    it('absorbs a following non-blank prose line as an extra row, matching marked', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('| a | b |\n| --- | --- |\n| 1 | 2 |\ntrailing prose');
+
+        const lines = normalize(editor.getValue()).split('\n');
+
+        expect(lines).toHaveLength(4);   // header, delimiter, and two body rows
+        expect(lines[3]).toBe('| trailing prose |  |');
+    });
+});
+
+describe('MarkdownEditor table commands', () => {
+    /** The number of `|` characters in a line — one more than its column count. */
+    function pipeCount(line: string): number {
+        return (line.match(/\|/g) ?? []).length;
+    }
+
+    it('insertTable(2, 3) on an empty editor creates a header row, delimiter row, and one 3-column body row', () => {
+        const editor = new MarkdownEditor();
+
+        editor.insertTable(2, 3);
+
+        const lines = normalize(editor.getValue()).split('\n');
+
+        expect(lines).toHaveLength(3);
+        expect(pipeCount(lines[0])).toBe(4);
+        expect(pipeCount(lines[1])).toBe(4);
+        expect(pipeCount(lines[2])).toBe(4);
+        expect(lines[1]).toContain('---');
+    });
+
+    it('insertTableRow adds a body row and insertTableColumn adds a column to every row', () => {
+        const editor = new MarkdownEditor();
+        editor.insertTable(2, 3);
+
+        editor.insertTableRow();
+        expect(normalize(editor.getValue()).split('\n')).toHaveLength(4);   // header, delimiter, 2 body rows
+
+        editor.insertTableColumn();
+        const lines = normalize(editor.getValue()).split('\n');
+
+        for (const line of lines) {
+            expect(pipeCount(line)).toBe(5);   // 4 columns now
+        }
+    });
+
+    it('deleteTableRow removes the header row (the caret sits there right after insertTable) and deleteTableColumn removes a column', () => {
+        const editor = new MarkdownEditor();
+        editor.insertTable(3, 3);   // header + 2 body rows
+
+        editor.deleteTableRow();
+
+        let lines = normalize(editor.getValue()).split('\n');
+
+        expect(lines).toHaveLength(3);   // one fewer row: header + 1 body row
+        expect(lines[1]).toContain('---');   // the promoted row still exports a delimiter
+
+        editor.deleteTableColumn();
+        lines = normalize(editor.getValue()).split('\n');
+
+        for (const line of lines) {
+            expect(pipeCount(line)).toBe(3);   // 2 columns now
+        }
+    });
+
+    it('all five commands chain on a fresh editor with no prior selection and no table, without throwing', () => {
+        const editor = new MarkdownEditor();
+
+        expect(() =>
+            editor
+                .insertTable(2, 2)
+                .insertTableRow()
+                .deleteTableRow()
+                .insertTableColumn()
+                .deleteTableColumn()
+        ).not.toThrow();
+    });
 });

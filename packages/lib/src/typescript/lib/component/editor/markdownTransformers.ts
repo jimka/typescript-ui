@@ -12,6 +12,12 @@ import {
     LINK,
 } from "@lexical/markdown";
 import type { Transformer } from "@lexical/markdown";
+import { createTableTransformer } from "~/component/editor/markdownTableTransformer.js";
+
+// Lazy: called at import/export time rather than passed by value, so this
+// module can build TABLE from the very array it is about to join, with no
+// import cycle back into this file.
+const TABLE = createTableTransformer(() => TRANSFORMERS);
 
 /**
  * The curated Markdown transformer array that defines `MarkdownEditor`'s
@@ -20,9 +26,9 @@ import type { Transformer } from "@lexical/markdown";
  *
  * @remarks
  * This is deliberately **not** Lexical's full `TRANSFORMERS` preset. The preset
- * also carries `STRIKETHROUGH`, `HIGHLIGHT`, `CHECK_LIST`, and table/image
- * transformers — constructs the viewer drops to a plain-text fallback. Curating
- * the list down to these nine is the single source of truth that guarantees the
+ * also carries `STRIKETHROUGH`, `HIGHLIGHT`, `CHECK_LIST`, and an image
+ * transformer — constructs the viewer drops to a plain-text fallback. Curating
+ * the list down to these ten is the single source of truth that guarantees the
  * editor can never emit Markdown the viewer would fail to render: the same array
  * is passed to the import converter, the export converter, and the
  * markdown-shortcut typing registration, so what the user types, what the editor
@@ -39,11 +45,13 @@ import type { Transformer } from "@lexical/markdown";
  * - `ITALIC_STAR` → `*i*` (em)
  * - `INLINE_CODE` → `` `c` `` (codespan)
  * - `LINK` → `[t](url)` (link)
+ * - `TABLE` → `| a | b |` (table)
  *
  * Star (not underscore) emphasis variants are chosen so bold/italic export is
  * deterministic and matches the viewer's demo output.
  */
 export const TRANSFORMERS: Transformer[] = [
+    TABLE,
     HEADING,
     QUOTE,
     CODE,

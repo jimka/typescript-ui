@@ -9,7 +9,7 @@ import { callable } from "~/core/Callable.js";
 import { Card } from "~/layout/Card.js";
 import { CodeEditor } from "~/component/editor/CodeEditor.js";
 import type { CodeEditorChange } from "~/component/editor/CodeEditor.js";
-import { createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $createParagraphNode } from "lexical";
+import { createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $getRoot, $createParagraphNode } from "lexical";
 import type { LexicalEditor, ElementNode } from "lexical";
 import { $convertFromMarkdownString, $convertToMarkdownString, registerMarkdownShortcuts } from "@lexical/markdown";
 import { registerRichText, $createHeadingNode, $createQuoteNode } from "@lexical/rich-text";
@@ -18,6 +18,13 @@ import { registerList, INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAN
 import { $toggleLink } from "@lexical/link";
 import { $createCodeNode } from "@lexical/code";
 import { registerHistory, createEmptyHistoryState } from "@lexical/history";
+import {
+    registerTablePlugin, registerTableCellUnmergeTransform, registerTableSelectionObserver,
+    $getTableCellNodeFromLexicalNode,
+    $insertTableRowAtSelection, $deleteTableRowAtSelection,
+    $insertTableColumnAtSelection, $deleteTableColumnAtSelection,
+    INSERT_TABLE_COMMAND,
+} from "@lexical/table";
 import { mergeRegister } from "@lexical/utils";
 import { $setBlocksType } from "@lexical/selection";
 import { TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
@@ -99,6 +106,23 @@ function createBlockNode(type: MarkdownBlockType): ElementNode {
         case "paragraph": return $createParagraphNode();
         default:      return $createHeadingNode(type satisfies HeadingTagType);
     }
+}
+
+/**
+ * Whether the caret currently sits inside a table cell — the precondition for
+ * the row/column helpers, which throw rather than no-op when it does not.
+ *
+ * @returns Whether the current selection is a range selection anchored inside
+ *   a table cell.
+ */
+function $selectionIsInTableCell(): boolean {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return false;
+    }
+
+    return $getTableCellNodeFromLexicalNode(selection.anchor.getNode()) !== null;
 }
 
 /**
@@ -247,16 +271,18 @@ class WysiwygSurface extends Component {
  * [`Markdown`](/api/component/display/classes/Markdown) viewer. Its dialect is
  * deliberately the **exact subset** the viewer renders (headings, paragraphs,
  * bold, italic, inline code, ordered/unordered lists, blockquotes, fenced code,
- * links); a curated transformer list — not Lexical's full preset — guarantees
- * the editor can never emit Markdown the viewer would drop to plain text, so an
- * edited document renders identically in the viewer.
+ * links, and GFM pipe tables with per-column alignment); a curated transformer
+ * list — not Lexical's full preset — guarantees the editor can never emit
+ * Markdown the viewer would drop to plain text, so an edited document renders
+ * identically in the viewer.
  *
  * Formatting is driven three ways, all without a built-in toolbar: Markdown
  * shortcut typing (`# ` → heading, `**b**` → bold, `- ` → list, `> ` → quote,
  * ` ``` ` → code), the default keyboard shortcuts (Ctrl/Cmd+B / +I, undo/redo),
  * and a thin imperative command API (`toggleBold`, `setBlockType`,
- * `toggleUnorderedList`, `toggleLink`, …) a consumer can wire to their own
- * `Button`s.
+ * `toggleUnorderedList`, `toggleLink`, `insertTable`,
+ * `insertTableRow`/`deleteTableRow`, `insertTableColumn`/`deleteTableColumn`,
+ * …) a consumer can wire to their own `Button`s.
  *
  * A {@link MarkdownEditor.setMode | mode} (`"wysiwyg"` | `"source"`) swaps the
  * editing surface between that rich-text view and a raw-Markdown
@@ -300,6 +326,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /** The `mergeRegister` teardown for the rich-text / list / history / shortcut / update registrations. */
     private _unregister: (() => void) | null = null;
+
+    /**
+     * The teardown for {@link registerTableSelectionObserver}, registered only
+     * once the WYSIWYG view actually mounts (its mutation listener needs a real
+     * table element in the document) and cleared on {@link dispose}.
+     */
+    private _unregisterTableView: (() => void) | null = null;
 
     /** Custom-event fan-out for `"change"`. */
     private readonly _listeners: ListenerBag<MarkdownEditorEvent> = new ListenerBag<MarkdownEditorEvent>();
@@ -606,6 +639,111 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Inserts a table of `rows` rows by `columns` columns at the caret. The
+     * first row is the header row, so `insertTable(2, 3)` gives a header row
+     * plus one body row. The caret lands in the first header cell.
+     *
+     * @param rows - The number of rows, including the header row.
+     * @param columns - The number of columns.
+     * @returns This component, for method chaining.
+     */
+    insertTable(rows: number, columns: number): this {
+        const editor = this.ensureEditor();
+
+        // INSERT_TABLE_COMMAND inserts at the selection; a freshly built editor
+        // may have none, so seed one first.
+        editor.update(() => {
+            if (!$isRangeSelection($getSelection())) {
+                $getRoot().selectEnd();
+            }
+        }, { discrete: true });
+
+        editor.dispatchCommand(INSERT_TABLE_COMMAND, {
+            columns:        String(columns),
+            rows:           String(rows),
+            includeHeaders: { rows: true, columns: false },
+        });
+
+        return this;
+    }
+
+    /**
+     * Inserts a row after (default) or before the row holding the caret.
+     * No-op without throwing when the caret is not inside a table cell.
+     *
+     * @param after - Whether to insert after (`true`, default) or before
+     *   (`false`) the current row.
+     * @returns This component, for method chaining.
+     */
+    insertTableRow(after: boolean = true): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            if ($selectionIsInTableCell()) {
+                $insertTableRowAtSelection(after);
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Deletes the row holding the caret. No-op without throwing when the
+     * caret is not inside a table cell.
+     *
+     * @returns This component, for method chaining.
+     */
+    deleteTableRow(): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            if ($selectionIsInTableCell()) {
+                $deleteTableRowAtSelection();
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Inserts a column after (default) or before the column holding the
+     * caret. No-op without throwing when the caret is not inside a table cell.
+     *
+     * @param after - Whether to insert after (`true`, default) or before
+     *   (`false`) the current column.
+     * @returns This component, for method chaining.
+     */
+    insertTableColumn(after: boolean = true): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            if ($selectionIsInTableCell()) {
+                $insertTableColumnAtSelection(after);
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
+     * Deletes the column holding the caret. No-op without throwing when the
+     * caret is not inside a table cell.
+     *
+     * @returns This component, for method chaining.
+     */
+    deleteTableColumn(): this {
+        const editor = this.ensureEditor();
+
+        editor.update(() => {
+            if ($selectionIsInTableCell()) {
+                $deleteTableColumnAtSelection();
+            }
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
      * Registers a listener for the `"change"` event, fired whenever the document
      * content changes (typing, a command, or {@link MarkdownEditor.setValue}) in
      * whichever surface is active.
@@ -671,6 +809,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * `CodeEditor.dispose`.
      */
     dispose(): void {
+        this._unregisterTableView?.();
         this._unregister?.();
         this._editor?.setRootElement(null);
         this._codeEditor.dispose();
@@ -695,6 +834,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             this._unregister = mergeRegister(
                 registerRichText(editor),
                 registerList(editor),
+                registerTablePlugin(editor),
+                registerTableCellUnmergeTransform(editor),
                 registerHistory(editor, createEmptyHistoryState(), HISTORY_DELAY_MS),
                 registerMarkdownShortcuts(editor, TRANSFORMERS),
                 editor.registerUpdateListener(() => this.handleChange()),
@@ -712,7 +853,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * first time it is the visible `Card` child and gets sized.
      */
     private mountWysiwyg(): void {
-        this._wysiwyg.mount(this.ensureEditor());
+        const editor = this.ensureEditor();
+
+        this._wysiwyg.mount(editor);
+
+        // Offline the seam's mountView returns null and the root stays unset;
+        // the observer's mutation listener needs a real table element in the
+        // document and throws without one, so it is view-time only.
+        if (editor.getRootElement() && !this._unregisterTableView) {
+            this._unregisterTableView = registerTableSelectionObserver(editor, true);
+        }
     }
 
     /**

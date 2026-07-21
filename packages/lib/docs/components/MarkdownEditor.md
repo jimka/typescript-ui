@@ -2,7 +2,7 @@
 
 [`MarkdownEditor`](/api/component/editor/classes/MarkdownEditor) is a **WYSIWYG rich-text editor whose public value is a Markdown string**, built on [Lexical](https://lexical.dev/). You edit a document as rendered rich text — no visible markup — and read or write it as Markdown through `getValue()` / `setValue()`. It is the editing counterpart to the read-only [`Markdown`](/components/Markdown) viewer.
 
-Its dialect is deliberately the **exact subset the viewer renders** — headings, paragraphs, bold, italic, inline code, ordered/unordered lists, blockquotes, fenced code, and links. A curated transformer list (not Lexical's full preset) guarantees the editor can never emit Markdown the viewer would drop to plain text, so **a document produced by the editor renders identically in the viewer**.
+Its dialect is deliberately the **exact subset the viewer renders** — headings, paragraphs, bold, italic, inline code, ordered/unordered lists, blockquotes, fenced code, links, and GFM pipe tables (with per-column alignment). A curated transformer list (not Lexical's full preset) guarantees the editor can never emit Markdown the viewer would drop to plain text, so **a document produced by the editor renders identically in the viewer**.
 
 Lexical's editing view is a `contenteditable` element it owns and mutates directly — a *foreign live widget*, like the CodeMirror view behind [`CodeEditor`](/components/CodeEditor) — so the view mounts through the framework's DOM seam once the component is connected and sized. Unlike a code editor, Lexical keeps its editor **state** (a pure, DOM-free tree) separate from that view, so the Markdown value get/set/round-trip runs headless: offline the view never attaches, yet `getValue` / `setValue` and the command API still operate on the state.
 
@@ -52,8 +52,9 @@ The editor edits, and emits, only the constructs the [`Markdown`](/components/Ma
 | Blockquote | `> ` |
 | Fenced code | ` ``` ` fence |
 | Link | `[text](url)` |
+| Table | pipe rows plus a `\| --- \|` delimiter row |
 
-Tables, images, strikethrough, task lists, thematic breaks (`hr`), and raw HTML are **not** part of the dialect — they are excluded so the editor's output always round-trips cleanly through the viewer.
+Images, strikethrough, task lists, thematic breaks (`hr`), and raw HTML are **not** part of the dialect — they are excluded so the editor's output always round-trips cleanly through the viewer. A column's alignment (from the delimiter row's `:---` / `:---:` / `---:` markers) is **preserved** across a load/edit/save round-trip but is **not authorable** in the WYSIWYG surface — there is no command to change it; switch to source mode and edit the delimiter row directly.
 
 ## Formatting
 
@@ -71,8 +72,11 @@ There is no built-in toolbar in v1. Formatting is invoked three ways, all provid
 | `toggleUnorderedList()` / `toggleOrderedList()` | Convert the selected blocks into (or out of) a list. |
 | `toggleLink(url)` | Wrap the selection in a link, or unwrap it when `url` is `null`. |
 | `setBlockType(type)` | Convert the selected blocks to `"paragraph"`, `"h1"`–`"h6"`, `"quote"`, or `"code"`. |
+| `insertTable(rows, columns)` | Insert a table at the caret; the first row is the header row. |
+| `insertTableRow(after?)` / `deleteTableRow()` | Insert a row after (default) or before the current row, or delete it. |
+| `insertTableColumn(after?)` / `deleteTableColumn()` | Insert a column after (default) or before the current column, or delete it. |
 
-Each command operates on the current selection and no-ops (without throwing) when there is no selection.
+Each command operates on the current selection and no-ops (without throwing) when there is no selection. The four row/column commands additionally no-op when the caret is not inside a table cell.
 
 ## Common methods
 

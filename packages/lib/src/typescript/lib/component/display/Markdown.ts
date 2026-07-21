@@ -21,6 +21,13 @@ const QUOTE_CLASS = "ts-ui-md-quote";
 const LIST_CLASS  = "ts-ui-md-list";
 const LINK_CLASS  = "ts-ui-md-link";
 const HEADING_CLASS = "ts-ui-md-heading";
+const TABLE_WRAP_CLASS   = "ts-ui-md-table-wrap";
+const TABLE_CLASS        = "ts-ui-md-table";
+const TH_CLASS            = "ts-ui-md-th";
+const TD_CLASS            = "ts-ui-md-td";
+const ALIGN_LEFT_CLASS   = "ts-ui-md-align-left";
+const ALIGN_CENTER_CLASS = "ts-ui-md-align-center";
+const ALIGN_RIGHT_CLASS  = "ts-ui-md-align-right";
 
 // Markdown heading levels span h1..h6; a deeper `#######` run is not a heading
 // in CommonMark, but clamp anyway so a stray `depth` never mints an invalid tag.
@@ -115,6 +122,80 @@ function ensureMarkdownClassRules(): void {
         // reset the host page may apply.
         styles: { fontWeight: "600" },
     });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TABLE_WRAP_CLASS,
+        // A table's columns cannot reflow below their content width, so the
+        // wrapper scrolls horizontally instead of letting the table spill
+        // past the component's assigned width — the same story fenced code
+        // already tells with its own frame.
+        styles: { maxWidth: "100%", overflowX: "auto" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TABLE_CLASS,
+        styles: { borderCollapse: "collapse" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TH_CLASS,
+        styles: {
+            border:     "1px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
+            // Structural cell padding, em-relative so it tracks the font size.
+            padding:    "0.3em 0.6em",
+            fontWeight: "600",
+            // Overrides the browser's centred <th> default so an unaligned
+            // header cell reads left, matching its unaligned body cells.
+            textAlign:  "left",
+        },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TD_CLASS,
+        styles: {
+            border:  "1px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
+            padding: "0.3em 0.6em",
+        },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   ALIGN_LEFT_CLASS,
+        styles: { textAlign: "left" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   ALIGN_CENTER_CLASS,
+        styles: { textAlign: "center" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   ALIGN_RIGHT_CLASS,
+        styles: { textAlign: "right" },
+    });
+}
+
+/**
+ * Maps marked's per-column alignment to the class that applies it.
+ *
+ * @param align - The column's alignment, as reported per-cell by marked's
+ *   table token.
+ * @returns The alignment class, or `null` when the column carries no
+ *   alignment marker.
+ */
+function alignmentClass(align: "center" | "left" | "right" | null): string | null {
+    switch (align) {
+        case "left":   return ALIGN_LEFT_CLASS;
+        case "center": return ALIGN_CENTER_CLASS;
+        case "right":  return ALIGN_RIGHT_CLASS;
+        default:       return null;
+    }
 }
 
 /**
@@ -135,14 +216,15 @@ export interface MarkdownOptions extends ComponentOptions {
  * Parsing uses the `marked` library's lexer only (`marked.lexer(src)`): the
  * component walks the returned token AST and builds every prose element
  * (`<h1>`–`<h6>`, `<p>`, `<ul>`/`<ol>`/`<li>`, `<blockquote>`, `<pre>`/`<code>`,
- * `<strong>`, `<em>`, `<a>`) through the DOM sink. There is no HTML-string
- * assignment path, so untrusted Markdown can never inject markup, and the
- * render runs against the modelled DOM source in tests.
+ * `<strong>`, `<em>`, `<a>`, `<table>`) through the DOM sink. There is no
+ * HTML-string assignment path, so untrusted Markdown can never inject markup,
+ * and the render runs against the modelled DOM source in tests.
  *
  * The v1 token set covers headings, paragraphs, ordered/unordered lists,
- * blockquotes, fenced/inline code, bold, italic, and links. Any other token
- * type (tables, images, raw HTML, GFM extensions) falls through to a defined
- * fallback that renders the token's plain text — never a crash, never markup.
+ * blockquotes, fenced/inline code, bold, italic, links, and GFM pipe tables
+ * (including per-column alignment). Any other token type (images, raw HTML,
+ * the remaining GFM extensions) falls through to a defined fallback that
+ * renders the token's plain text — never a crash, never markup.
  *
  * Links render as plain `<a href target="_blank" rel="noopener noreferrer">`
  * with native navigation; the component exposes no event surface in v1.
@@ -470,6 +552,7 @@ class Markdown extends Component<MarkdownOptions> {
             case "list":       this.appendList(parent, token as Tokens.List);             break;
             case "blockquote": this.appendBlockquote(parent, token as Tokens.Blockquote); break;
             case "code":       this.appendCode(parent, token as Tokens.Code);             break;
+            case "table":      this.appendTable(parent, token as Tokens.Table);           break;
 
             // Blank line between blocks — nothing to render.
             case "space": break;
@@ -552,6 +635,69 @@ class Markdown extends Component<MarkdownOptions> {
         }
 
         DOM.sink.appendChild(list, listItem);
+    }
+
+    /**
+     * Builds a wrapper `<div>` › `<table>` with a `<thead>` holding the header
+     * row and a `<tbody>` holding one row per body entry. The wrapper scrolls
+     * horizontally so an overlong table cannot spill sideways.
+     *
+     * @param parent - The element handle to append into.
+     * @param token - The table token.
+     */
+    private appendTable(parent: Handle, token: Tokens.Table): void {
+        const wrapper = this.create("div");
+
+        DOM.sink.apply(wrapper, { addClass: [TABLE_WRAP_CLASS] });
+
+        const table = this.create("table");
+
+        DOM.sink.apply(table, { addClass: [TABLE_CLASS] });
+
+        const thead = this.create("thead");
+
+        this.appendTableRow(thead, token.header, true);
+        DOM.sink.appendChild(table, thead);
+
+        const tbody = this.create("tbody");
+
+        for (const row of token.rows) {
+            this.appendTableRow(tbody, row, false);
+        }
+
+        DOM.sink.appendChild(table, tbody);
+        DOM.sink.appendChild(wrapper, table);
+        DOM.sink.appendChild(parent, wrapper);
+    }
+
+    /**
+     * Builds a `<tr>` with one `<th>` (header) or `<td>` (body) per cell,
+     * carrying the cell's alignment class (when the column is aligned) and
+     * inline content.
+     *
+     * @param section - The `<thead>`/`<tbody>` element handle to append into.
+     * @param cells - The row's cells.
+     * @param header - Whether this is the header row (`<th>` cells) or a body
+     *   row (`<td>` cells).
+     */
+    private appendTableRow(section: Handle, cells: Tokens.TableCell[], header: boolean): void {
+        const row = this.create("tr");
+
+        for (const cell of cells) {
+            const cellElement = this.create(header ? "th" : "td");
+            const classes = [header ? TH_CLASS : TD_CLASS];
+            const align = alignmentClass(cell.align);
+
+            if (align) {
+                classes.push(align);
+            }
+
+            DOM.sink.apply(cellElement, { addClass: classes });
+            this.appendInlineTokens(cellElement, cell.tokens);
+            DOM.sink.appendChild(row, cellElement);
+        }
+
+        DOM.sink.appendChild(section, row);
     }
 
     /**

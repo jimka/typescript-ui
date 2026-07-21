@@ -16,6 +16,11 @@ const LIST_CLASS        = "ts-ui-mde-list";
 const LINK_CLASS        = "ts-ui-mde-link";
 const BOLD_CLASS        = "ts-ui-mde-bold";
 const ITALIC_CLASS      = "ts-ui-mde-italic";
+const TABLE_CLASS               = "ts-ui-mde-table";
+const TABLE_ROW_CLASS           = "ts-ui-mde-table-row";
+const TABLE_CELL_CLASS          = "ts-ui-mde-table-cell";
+const TABLE_CELL_HEADER_CLASS   = "ts-ui-mde-table-cell-header";
+const TABLE_CELL_SELECTED_CLASS = "ts-ui-mde-table-cell-selected";
 
 /** Guards the module-singleton class-rule registration in {@link ensureMarkdownEditorClassRules}. */
 let _classRulesEnsured = false;
@@ -72,6 +77,13 @@ export function ensureMarkdownEditorClassRules(): void {
             // Structural inset giving the fenced code frame room.
             padding:      "0.6em 0.8em",
             whiteSpace:   "pre-wrap",
+            // Lexical renders a fenced block as <code>, which is inline by
+            // default and so sits on a text baseline — it rides up into a
+            // preceding block instead of stacking below it. The viewer's
+            // fenced code is a <pre>, a block with the browser's 1em block
+            // margin; both are restated here so the two surfaces stack alike.
+            display:      "block",
+            margin:       "1em 0",
         },
     });
 
@@ -112,6 +124,53 @@ export function ensureMarkdownEditorClassRules(): void {
         name:   ITALIC_CLASS,
         styles: { fontStyle: "italic" },
     });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TABLE_CLASS,
+        styles: { borderCollapse: "collapse" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TABLE_CELL_CLASS,
+        styles: {
+            border:  "1px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
+            // Structural cell padding, matching the read-only viewer's cells.
+            padding: "0.3em 0.6em",
+        },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TABLE_CELL_HEADER_CLASS,
+        styles: {
+            border:     "1px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
+            padding:    "0.3em 0.6em",
+            fontWeight: "600",
+        },
+    });
+
+    new StyleRule({
+        scope: "selector",
+        name:  `.${TABLE_CELL_CLASS} > p`,
+        // Lexical wraps each cell's content in a paragraph, which would carry
+        // the browser's default 1em block margin and make every editor cell
+        // two line-heights taller than the same cell in the read-only viewer,
+        // whose cells hold inline content directly. Only cell paragraphs are
+        // reset: prose paragraphs keep their margin, which is what matches the
+        // viewer outside a table.
+        styles: { margin: "0" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TABLE_CELL_SELECTED_CLASS,
+        // @lexical/table stamps this class onto cells caught in a drag-selected
+        // range; reuses the data-grid Table component's own row-selected token
+        // so a selected cell reads the same way here as it does there.
+        styles: { backgroundColor: "var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))" },
+    });
 }
 
 /**
@@ -143,5 +202,10 @@ export const EDITOR_THEME: EditorThemeClasses = {
         italic: ITALIC_CLASS,
         code:   INLINE_CODE_CLASS,
     },
-    link: LINK_CLASS,
+    link:              LINK_CLASS,
+    table:             TABLE_CLASS,
+    tableRow:          TABLE_ROW_CLASS,
+    tableCell:         TABLE_CELL_CLASS,
+    tableCellHeader:   TABLE_CELL_HEADER_CLASS,
+    tableCellSelected: TABLE_CELL_SELECTED_CLASS,
 };
