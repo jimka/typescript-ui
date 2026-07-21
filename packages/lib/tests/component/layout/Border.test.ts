@@ -148,9 +148,9 @@ describe('Border overflow inflation', () => {
         const border = new Border();
         const host = hostBorder(100, 300, border); // narrow host
         const north = new Component({ preferredSize: { width: 50, height: 30 } });
-        north.setMinSize(300, 30); // drives totalMin width
+        north.setMinSize({ width: 300, height: 30 }); // drives totalMin width
         const center = new Component({ preferredSize: { width: 50, height: 50 } });
-        center.setMinSize(50, 10);
+        center.setMinSize({ width: 50, height: 10 });
         host.addComponent(north, placement(Placement.NORTH));
         host.addComponent(center, placement(Placement.CENTER));
         return { border, center };

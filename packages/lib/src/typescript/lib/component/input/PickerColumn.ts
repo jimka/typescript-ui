@@ -293,7 +293,7 @@ class PickerColumn extends Component {
 
         if (headerText !== null) {
             const header = new PickerColumnHeader(headerText);
-            header.setPreferredSize(0, HEADER_HEIGHT);
+            header.setPreferredSize({ width: 0, height: HEADER_HEIGHT });
             this.addComponent(header);
         }
 

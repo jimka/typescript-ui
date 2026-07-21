@@ -857,10 +857,10 @@ class MiscPanel extends Panel {
 
             const heading = new Text((modal ? "Modal" : "Non-modal") + " drawer — " + label);
             heading.setFontWeight("bold");
-            heading.setPreferredSize(0, 28);
+            heading.setPreferredSize({ width: 0, height: 28 });
 
             const closeButton = new Button("Close");
-            closeButton.setPreferredSize(0, 32);
+            closeButton.setPreferredSize({ width: 0, height: 32 });
             closeButton.on("action", () => drawer.close());
 
             drawer.addComponent(heading);
@@ -904,10 +904,10 @@ class MiscPanel extends Panel {
 
             const heading = new Text(label + " drawer — opened from its rail handle");
             heading.setFontWeight("bold");
-            heading.setPreferredSize(0, 28);
+            heading.setPreferredSize({ width: 0, height: 28 });
 
             const closeButton = new Button("Close");
-            closeButton.setPreferredSize(0, 32);
+            closeButton.setPreferredSize({ width: 0, height: 32 });
             closeButton.on("action", () => drawer.close());
 
             drawer.addComponent(heading);
@@ -1262,7 +1262,7 @@ class MiscPanel extends Panel {
             components   : [formNameField, formEmailField],
             onSubmit     : () => Notification.show('Form submitted', 'success'),
         });
-        miscForm.setPreferredSize(240, 90);
+        miscForm.setPreferredSize({ width: 240, height: 90 });
 
         const buttonFormSubmit = new Button("Submit");
         buttonFormSubmit.on("action", () => miscForm.requestSubmit());

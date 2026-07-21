@@ -179,7 +179,7 @@ export class Notification extends Component {
 
         this._badge = new Glyph(BADGE_GLYPH[type]);
         this._badge.setForegroundColor(borderVar);
-        this._badge.setPreferredSize(Notification.BADGE_SIZE, Notification.BADGE_SIZE);
+        this._badge.setPreferredSize({ width: Notification.BADGE_SIZE, height: Notification.BADGE_SIZE });
         this._badge.setPointerEvents("none");
         // Decorative severity icon — its meaning is already carried by the
         // message text, so keep it out of the announced live-region content.
@@ -203,7 +203,7 @@ export class Notification extends Component {
         this._closeButton.clearShadow();
         this._closeButton.clearPressedShadow();
         this._closeButton.setForegroundColor("var(--ts-ui-text-color, rgb(0, 0, 0))");
-        this._closeButton.setPreferredSize(Notification.CLOSE_SIZE, Notification.CLOSE_SIZE);
+        this._closeButton.setPreferredSize({ width: Notification.CLOSE_SIZE, height: Notification.CLOSE_SIZE });
         this._closeButton.getAria().setLabel("Dismiss notification");
         this.addComponent(this._closeButton);
 

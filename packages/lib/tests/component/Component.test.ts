@@ -97,32 +97,32 @@ describe('Component', () => {
 describe('Component data-* size serialisation', () => {
     it('reflects the height term from h, not w (setMinSize)', () => {
         const c = new Component({});
-        c.setMinSize(10, 20);
+        c.setMinSize({ width: 10, height: 20 });
         expect(c.getDataAttribute('minSize')).toBe('10px 20px');
     });
     it('reflects both terms for setMaxSize', () => {
         const c = new Component({});
-        c.setMaxSize(10, 20);
+        c.setMaxSize({ width: 10, height: 20 });
         expect(c.getDataAttribute('maxSize')).toBe('10px 20px');
     });
     it('reflects both terms for setPreferredSize', () => {
         const c = new Component({});
-        c.setPreferredSize(10, 20);
+        c.setPreferredSize({ width: 10, height: 20 });
         expect(c.getDataAttribute('preferredSize')).toBe('10px 20px');
     });
     it('serialises an unbounded width term independently of the height', () => {
         const c = new Component({});
-        c.setMaxSize(UNBOUNDED, 20);
+        c.setMaxSize({ width: UNBOUNDED, height: 20 });
         expect(c.getDataAttribute('maxSize')).toBe('inf 20px');
     });
     it('serialises an unbounded height term independently of the width', () => {
         const c = new Component({});
-        c.setMaxSize(20, UNBOUNDED);
+        c.setMaxSize({ width: 20, height: UNBOUNDED });
         expect(c.getDataAttribute('maxSize')).toBe('20px inf');
     });
     it('rounds fractional terms per axis', () => {
         const c = new Component({});
-        c.setMinSize(10.4, 20.6);
+        c.setMinSize({ width: 10.4, height: 20.6 });
         expect(c.getDataAttribute('minSize')).toBe('10px 21px');
     });
 });
@@ -138,16 +138,90 @@ describe('Component applyStyle data-maxSize serialisation', () => {
     });
 });
 
+describe('Component size setters take a Size (size-setter-interface plan)', () => {
+    beforeEach(() => installTestDOM(DOM_CONFIG));
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    it('case 1: setPreferredSize(size) is reflected by getPreferredSize', () => {
+        const c = new Component({});
+        c.setPreferredSize({ width: 120, height: 32 });
+        expect(c.getPreferredSize()).toEqual({ width: 120, height: 32 });
+    });
+
+    it('case 2: setMinSize(size) writes minWidth/minHeight and the data-minSize attribute', () => {
+        const c = new Component({});
+        c.getElement(true);
+        c.setMinSize({ width: 180, height: 0 });
+
+        const recorder = DOM.sink as unknown as { writes: { op: string; args: unknown[] }[] };
+        expect(recorder.writes.some((w) => w.op === 'setRuleStyle' && w.args[0] === 'minWidth' && w.args[1] === '180px')).toBe(true);
+        expect(recorder.writes.some((w) => w.op === 'setRuleStyle' && w.args[0] === 'minHeight' && w.args[1] === '0px')).toBe(true);
+        expect(c.getDataAttribute('minSize')).toBe('180px 0px');
+    });
+
+    it('case 3: setMaxSize(size) writes maxWidth "none" for UNBOUNDED and a px maxHeight', () => {
+        const c = new Component({});
+        c.getElement(true);
+        c.setMaxSize({ width: UNBOUNDED, height: 24 });
+
+        const recorder = DOM.sink as unknown as { writes: { op: string; args: unknown[] }[] };
+        expect(recorder.writes.some((w) => w.op === 'setRuleStyle' && w.args[0] === 'maxWidth' && w.args[1] === 'none')).toBe(true);
+        expect(recorder.writes.some((w) => w.op === 'setRuleStyle' && w.args[0] === 'maxHeight' && w.args[1] === '24px')).toBe(true);
+    });
+
+    it('case 4: two value-equal but distinct Size objects fire onPreferredSizeChange once, not twice', () => {
+        const c = new Component({});
+        const onChange = vi.fn();
+        sizeHooks(c)._onPreferredSizeChange = onChange;
+
+        c.setPreferredSize({ width: 10, height: 10 });
+        c.setPreferredSize({ width: 10, height: 10 });
+
+        expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('case 5: the stored preferred size is a copy, not an alias of the caller\'s object', () => {
+        const c = new Component({});
+        const s = { width: 10, height: 10 };
+        c.setPreferredSize(s);
+        s.width = 999;
+
+        expect(c.getPreferredSize()!.width).toBe(10);
+    });
+
+    it('case 6: the options bag and the setter agree for preferredSize/minSize/maxSize', () => {
+        const viaBag = new Component({
+            preferredSize: { width: 200, height: 100 },
+            minSize:       { width: 50,  height: 20 },
+            maxSize:       { width: 300, height: 150 },
+        });
+        const viaSetter = new Component({})
+            .setPreferredSize({ width: 200, height: 100 })
+            .setMinSize({ width: 50, height: 20 })
+            .setMaxSize({ width: 300, height: 150 });
+
+        expect(viaBag.getPreferredSize()).toEqual(viaSetter.getPreferredSize());
+        expect(viaBag.getMinSizeConstraint()).toEqual(viaSetter.getMinSizeConstraint());
+        expect(viaBag.getMaxSizeConstraint()).toEqual(viaSetter.getMaxSizeConstraint());
+    });
+
+    it('case 7: all three setters return this, so calls chain', () => {
+        const c = new Component({});
+        const result = c.setMinSize({ width: 10, height: 10 }).setMaxSize({ width: 20, height: 20 });
+        expect(result).toBe(c);
+    });
+});
+
 describe('Component getMinSize / getMaxSize unification', () => {
     it('takes the tighter (larger) minimum per axis', () => {
         const c = new Component({});
-        c.setMinSize(40, 40);
+        c.setMinSize({ width: 40, height: 40 });
         vi.spyOn(c.getLayoutManager(), 'getMinSize').mockReturnValue({ width: 30, height: 50 });
         expect(c.getMinSize()).toEqual({ width: 40, height: 50 });
     });
     it('takes the tighter (smaller) maximum per axis', () => {
         const c = new Component({});
-        c.setMaxSize(100, 100);
+        c.setMaxSize({ width: 100, height: 100 });
         vi.spyOn(c.getLayoutManager(), 'getMaxSize').mockReturnValue({ width: 120, height: 80 });
         expect(c.getMaxSize()).toEqual({ width: 100, height: 80 });
     });
@@ -165,7 +239,7 @@ describe('Component getMinSize / getMaxSize unification', () => {
     });
     it('returns a fresh object that does not alias the stored constraint', () => {
         const c = new Component({});
-        c.setMinSize(40, 40);
+        c.setMinSize({ width: 40, height: 40 });
         vi.spyOn(c.getLayoutManager(), 'getMinSize').mockReturnValue(null);
 
         const min = c.getMinSize()!;
@@ -242,8 +316,8 @@ describe('Component child lifecycle — wiring & teardown', () => {
         parent.removeComponent(child);
 
         const schedule = vi.spyOn(parent, 'scheduleLayout');
-        child.setMinSize(5, 5);
-        child.setMaxSize(5, 5);
+        child.setMinSize({ width: 5, height: 5 });
+        child.setMaxSize({ width: 5, height: 5 });
 
         expect(schedule).not.toHaveBeenCalled();
     });
@@ -280,7 +354,7 @@ describe('Component child lifecycle — wiring & teardown', () => {
         parent.removeAllComponents();
 
         const schedule = vi.spyOn(parent, 'scheduleLayout');
-        child.setMinSize(7, 7);
+        child.setMinSize({ width: 7, height: 7 });
 
         expect(schedule).not.toHaveBeenCalled();
     });

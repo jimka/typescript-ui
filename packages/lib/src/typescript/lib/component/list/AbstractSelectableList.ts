@@ -300,7 +300,7 @@ class SelectableListRow extends Component {
         this._renderer.setPointerEvents("none");
 
         this.getAria().setRole("option");
-        this.setPreferredSize(0, ROW_HEIGHT_PX);
+        this.setPreferredSize({ width: 0, height: ROW_HEIGHT_PX });
         // Do NOT cap the row's max height. A finite per-row height max makes the
         // list's VBox sum to a finite content max (VBox.aggregateMaxSize), which
         // shrink-wraps the whole list to its content and breaks stretch/scroll
@@ -811,7 +811,7 @@ abstract class AbstractSelectableList<
         // so its presence means "caller set it". maxSize stays unbounded.
         if (this._options.minSize === undefined) {
             // 100×100 keeps a short empty/placeholder list a usable size.
-            this.setMinSize(100, 100);
+            this.setMinSize({ width: 100, height: 100 });
         }
 
         Event.addListener(this, "keydown", this.handleKeyDown);

@@ -217,7 +217,7 @@ class Spacer extends Component<SpacerOptions> {
         if (options.width !== undefined || options.height !== undefined) {
             const w = options.width  ?? 0;
             const h = options.height ?? w;
-            this.setPreferredSize(w, h);
+            this.setPreferredSize({ width: w, height: h });
         }
 
         if (options.flexWeight !== undefined) {

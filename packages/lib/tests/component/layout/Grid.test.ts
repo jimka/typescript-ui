@@ -193,9 +193,9 @@ describe('Grid overflow inflation', () => {
         const grid = new Grid({ rows: 2, columns: 1 });
         const host = hostGrid(100, 300, grid); // narrow host
         const observed = new Component({ preferredSize: { width: 50, height: 50 } });
-        observed.setMinSize(50, 10);
+        observed.setMinSize({ width: 50, height: 10 });
         const wide = new Component({ preferredSize: { width: 50, height: 50 } });
-        wide.setMinSize(300, 10); // drives totalMin width
+        wide.setMinSize({ width: 300, height: 10 }); // drives totalMin width
         host.addComponent(observed);
         host.addComponent(wide);
         return { grid, observed };

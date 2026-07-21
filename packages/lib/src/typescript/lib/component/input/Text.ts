@@ -329,11 +329,13 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     /**
      * Sets the preferred size from an explicit caller, locking it against automatic recalculation.
      *
+     * @param size - The preferred size in pixels.
+     *
      * @returns This component, for method chaining.
      */
-    setPreferredSize(width: number, height: number): this {
+    setPreferredSize(size: Size): this {
         this._hasExplicitPreferredSize = true;
-        super.setPreferredSize(width, height);
+        super.setPreferredSize(size);
 
         return this;
     }
@@ -343,7 +345,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      */
     private setCalculatedSize(width: number, height: number): void {
         if (!this._hasExplicitPreferredSize) {
-            super.setPreferredSize(width, height);
+            super.setPreferredSize({ width: width, height: height });
         }
     }
 

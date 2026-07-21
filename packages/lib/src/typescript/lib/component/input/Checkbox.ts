@@ -62,12 +62,12 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         this.setLayoutManager(new HBox());
 
         this._box = new Component();
-        this._box.setPreferredSize(16, 16);
+        this._box.setPreferredSize({ width: 16, height: 16 });
         // Min = preferred = max so the outer HBox shrink-on-overallocation
         // can't collapse the box graphic when the checkbox sits next to
         // flexible siblings.
-        this._box.setMinSize(16, 16);
-        this._box.setMaxSize(16, 16);
+        this._box.setMinSize({ width: 16, height: 16 });
+        this._box.setMaxSize({ width: 16, height: 16 });
         this._box.setSize({ width: 16, height: 16 });
         this._box.setBackgroundColor("var(--ts-ui-checkbox-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))");
         this._box.setBorder("1px solid var(--ts-ui-form-border, rgb(160, 160, 160))");
@@ -80,8 +80,8 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
 
         this._check = new Glyph("check");
         this._check.setForegroundColor("var(--ts-ui-checkbox-check-color, rgb(255, 255, 255))");
-        this._check.setPreferredSize(12, 12);
-        this._check.setMaxSize(12, 12);
+        this._check.setPreferredSize({ width: 12, height: 12 });
+        this._check.setMaxSize({ width: 12, height: 12 });
         // With box-sizing: border-box and the 1px box border, absolute children
         // are positioned relative to the 14×14 padding edge — so centering a
         // 12×12 glyph inside the 16×16 visible box means (14−12)/2 = 1, not 2.
@@ -93,8 +93,8 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
 
         this._dash = new Component();
         this._dash.setBackgroundColor("var(--ts-ui-checkbox-check-color, rgb(255, 255, 255))");
-        this._dash.setPreferredSize(8, 2);
-        this._dash.setMaxSize(8, 2);
+        this._dash.setPreferredSize({ width: 8, height: 2 });
+        this._dash.setMaxSize({ width: 8, height: 2 });
         this._dash.setSize({ width: 8, height: 2 });
         this._dash.setX(3);
         this._dash.setY(6);

@@ -558,9 +558,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this.applyChromeOptions(options);
         if (options.outline         !== undefined) this.setOutline(options.outline);
         if (options.cursor          !== undefined) this.setCursor(options.cursor);
-        if (options.preferredSize   !== undefined) this.setPreferredSize(options.preferredSize.width, options.preferredSize.height);
-        if (options.minSize         !== undefined) this.setMinSize(options.minSize.width, options.minSize.height);
-        if (options.maxSize         !== undefined) this.setMaxSize(options.maxSize.width, options.maxSize.height);
+        if (options.preferredSize   !== undefined) this.setPreferredSize(options.preferredSize);
+        if (options.minSize         !== undefined) this.setMinSize(options.minSize);
+        if (options.maxSize         !== undefined) this.setMaxSize(options.maxSize);
         if (options.transform       !== undefined) this.setTransform(options.transform);
         if (options.transformOrigin !== undefined) this.setTransformOrigin(options.transformOrigin);
         if (options.transition      !== undefined) this.setTransition(options.transition);
@@ -2591,18 +2591,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Sets an explicit preferred size; triggers the onPreferredSizeChange callback if changed.
      *
-     * @param width - The preferred width in pixels.
-     * @param height - The preferred height in pixels.
+     * @param size - The preferred size in pixels.
      *
      * @returns This component, for method chaining.
      */
-    setPreferredSize(width: number, height: number): this {
+    setPreferredSize(size: Size): this {
         const prev = this._options.preferredSize;
-        if (prev && prev.width === width && prev.height === height) {
+        if (prev && prev.width === size.width && prev.height === size.height) {
             return this;
         }
 
-        const next: Size = { width, height };
+        const next: Size = { width: size.width, height: size.height };
         this._options.preferredSize = next;
         this.setDataAttribute("preferredSize", formatSizeAttr(next.width, next.height));
         this._onPreferredSizeChange?.();
@@ -2684,18 +2683,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Sets the minimum size and applies it to the CSS rule.
      *
-     * @param width - The minimum width in pixels.
-     * @param height - The minimum height in pixels.
+     * @param size - The minimum size in pixels.
      *
      * @returns This component, for method chaining.
      */
-    setMinSize(width: number, height: number): this {
+    setMinSize(size: Size): this {
         const current = this._options.minSize;
-        if (current && current.width === width && current.height === height) {
+        if (current && current.width === size.width && current.height === size.height) {
             return this;
         }
 
-        const next: Size = { width, height };
+        const next: Size = { width: size.width, height: size.height };
         this._options.minSize = next;
 
         this.setElementCSSRules({
@@ -2726,18 +2724,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Sets the maximum size and applies it to the CSS rule.
      *
-     * @param width - The maximum width in pixels. Pass UNBOUNDED to remove the constraint.
-     * @param height - The maximum height in pixels. Pass UNBOUNDED to remove the constraint.
+     * @param size - The maximum size in pixels. Pass UNBOUNDED on either axis to remove that constraint.
      *
      * @returns This component, for method chaining.
      */
-    setMaxSize(width: number, height: number): this {
+    setMaxSize(size: Size): this {
         const current = this._options.maxSize;
-        if (current && current.width === width && current.height === height) {
+        if (current && current.width === size.width && current.height === size.height) {
             return this;
         }
 
-        const next: Size = { width, height };
+        const next: Size = { width: size.width, height: size.height };
         this._options.maxSize = next;
 
         this.setElementCSSRules({

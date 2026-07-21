@@ -193,12 +193,12 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
         // zero) so the spinner matches a standalone TextField's height.
         const h = Util.singleLineBoxHeight(this.getInsets(), this._input.getPadding(), this.getBorderSize());
 
-        this.setPreferredSize(120, h);
-        this.setMaxSize(UNBOUNDED, h);
+        this.setPreferredSize({ width: 120, height: h });
+        this.setMaxSize({ width: UNBOUNDED, height: h });
         // Min-height pinned to the single-line box so the field can't be
         // vertically compressed below one line; min-width 0 keeps it
         // horizontally flexible.
-        this.setMinSize(0, h);
+        this.setMinSize({ width: 0, height: h });
     }
 
     /**

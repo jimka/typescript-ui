@@ -164,8 +164,8 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
 
         // A sensible default envelope: a fixed preferred size, plus a small min
         // so the Panel can shrink (it clamps only to its explicit min/max).
-        this.setPreferredSize(400, 300);
-        this.setMinSize(80, 60);
+        this.setPreferredSize({ width: 400, height: 300 });
+        this.setMinSize({ width: 80, height: 60 });
 
         this.addComponent(this._legend);
         this._legend.on("toggle", this.handleLegendToggle);

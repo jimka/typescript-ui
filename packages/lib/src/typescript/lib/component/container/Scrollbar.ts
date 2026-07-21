@@ -156,7 +156,7 @@ class ScrollArrowButton extends Component {
         // the bottom by `overflow: hidden` — mirrors the same fix
         // AccordionIndicator applies to its `▶` chevron.
         this._glyph = new Glyph("unicode-arrow-" + direction);
-        this._glyph.setPreferredSize(TRACK_WIDTH, TRACK_WIDTH);
+        this._glyph.setPreferredSize({ width: TRACK_WIDTH, height: TRACK_WIDTH });
         this._glyph.setFontSize(ARROW_GLYPH_FONT_SIZE);
         // The glyph fills the whole button, so without this a click's target is
         // the glyph element. The Event system routes `addListener` callbacks only

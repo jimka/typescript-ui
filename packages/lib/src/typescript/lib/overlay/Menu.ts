@@ -299,7 +299,7 @@ class Menu extends Component implements DismissableLayer {
         // place would cap the new content at the old height, so a menu that
         // grew past its previous size would neither expand nor reserve a
         // scrollbar gutter on reopen. Clear it before measuring.
-        this.setMaxSize(Number.MAX_VALUE, Number.MAX_VALUE);
+        this.setMaxSize({ width: Number.MAX_VALUE, height: Number.MAX_VALUE });
 
         const totalHeight = this.getPreferredSize()?.height ?? 0;
 
@@ -514,7 +514,7 @@ class Menu extends Component implements DismissableLayer {
         // Clear the previous open's max-height (set by `applyViewportHeightClamp`)
         // before measuring, so a provider-sourced dropdown that grew reflects its
         // new content height rather than being capped at the old available room.
-        this.setMaxSize(Number.MAX_VALUE, Number.MAX_VALUE);
+        this.setMaxSize({ width: Number.MAX_VALUE, height: Number.MAX_VALUE });
 
         const totalHeight = this.getPreferredSize()?.height ?? (this._menuItems.length * MenuItem.HEIGHT + 8);
         const width       = this.getWidth();
@@ -836,7 +836,7 @@ class Menu extends Component implements DismissableLayer {
      * @param contentHeight - The unclamped preferred height (px) of the menu's items.
      */
     private applyViewportHeightClamp(availableHeight: number, contentHeight: number): void {
-        this.setMaxSize(Number.MAX_VALUE, Math.max(0, availableHeight));
+        this.setMaxSize({ width: Number.MAX_VALUE, height: Math.max(0, availableHeight) });
         this.setHeight(contentHeight);
     }
 

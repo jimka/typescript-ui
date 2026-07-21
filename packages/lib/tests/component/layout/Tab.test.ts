@@ -151,7 +151,7 @@ describe('Tab content-area overflow inflation', () => {
         // the contrast with the null-min case above isolates the no-inflation
         // branch.
         const wide = new Component({ preferredSize: { width: 50, height: 50 } });
-        wide.setMinSize(500, 10);
+        wide.setMinSize({ width: 500, height: 10 });
         const { tab, host, child } = hostSizedTab(wide);
         tab.setOverflowing(true, true);
         host.doLayout();

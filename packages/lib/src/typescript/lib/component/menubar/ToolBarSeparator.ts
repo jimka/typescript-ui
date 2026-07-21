@@ -67,11 +67,11 @@ class ToolBarSeparator extends Component<ToolBarSeparatorOptions> {
             // the parent's stretching=true branch, clamped to maxSize.height
             // (MAX_VALUE → containerSize.height). preferredSize.width = THICKNESS
             // makes the toolbar's own preferred width count the separator.
-            this.setPreferredSize(ToolBarSeparator.THICKNESS, 0);
-            this.setMaxSize(ToolBarSeparator.THICKNESS, Number.MAX_VALUE);
+            this.setPreferredSize({ width: ToolBarSeparator.THICKNESS, height: 0 });
+            this.setMaxSize({ width: ToolBarSeparator.THICKNESS, height: Number.MAX_VALUE });
         } else {
-            this.setPreferredSize(0, ToolBarSeparator.THICKNESS);
-            this.setMaxSize(Number.MAX_VALUE, ToolBarSeparator.THICKNESS);
+            this.setPreferredSize({ width: 0, height: ToolBarSeparator.THICKNESS });
+            this.setMaxSize({ width: Number.MAX_VALUE, height: ToolBarSeparator.THICKNESS });
         }
 
         // The element IS the rule — a 1 px line filled with the theme colour.

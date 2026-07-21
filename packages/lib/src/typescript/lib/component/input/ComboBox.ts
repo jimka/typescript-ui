@@ -528,11 +528,11 @@ class ComboBoxCaret extends Component {
         // regardless of content (the glyph child contributes no intrinsic
         // height); the glyph fills the box so it centres trivially.
         this._size = Util.lineHeightPx({ linePadding: false });
-        this.setMinSize(this._size, this._size);
-        this.setMaxSize(this._size, this._size);
+        this.setMinSize({ width: this._size, height: this._size });
+        this.setMaxSize({ width: this._size, height: this._size });
         this.setPointerEvents("none");
 
-        this._glyph.setPreferredSize(this._size, this._size);
+        this._glyph.setPreferredSize({ width: this._size, height: this._size });
         this._glyph.setPointerEvents("none");
         this.addComponent(this._glyph);
     }
@@ -732,12 +732,12 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     protected updateHeight(): void {
         const h = Util.singleLineBoxHeight(this.getInsets(), this.getPadding(), this.getBorderSize());
 
-        this.setPreferredSize(200, h);
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
+        this.setPreferredSize({ width: 200, height: h });
+        this.setMaxSize({ width: Number.MAX_SAFE_INTEGER, height: h });
         // Min-height pinned to the single-line box so the field can't be
         // vertically compressed below one line; min-width 0 keeps it
         // horizontally flexible.
-        this.setMinSize(0, h);
+        this.setMinSize({ width: 0, height: h });
     }
 
     /**

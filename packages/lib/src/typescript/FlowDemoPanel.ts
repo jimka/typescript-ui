@@ -154,8 +154,8 @@ class FlowDemoPanel extends Panel {
         // A ComboBox reports a fixed 200px preferred width; pin it narrow so the
         // bar fits without overflow-shrinking (which would clip the captions).
         // Keep its own height so it still shares the labels' text baseline.
-        combo.setPreferredSize(ENUM_CONTROL_WIDTH_PX, combo.getPreferredSize()?.height ?? 0);
-        combo.setMaxSize(ENUM_CONTROL_WIDTH_PX, combo.getMaxSize()?.height ?? 0);
+        combo.setPreferredSize({ width: ENUM_CONTROL_WIDTH_PX, height: combo.getPreferredSize()?.height ?? 0 });
+        combo.setMaxSize({ width: ENUM_CONTROL_WIDTH_PX, height: combo.getMaxSize()?.height ?? 0 });
         combo.on("change", () => {
             apply(combo.getValue());
             this.relayout();
@@ -182,8 +182,8 @@ class FlowDemoPanel extends Panel {
             value: current,
         });
 
-        spinner.setPreferredSize(NUMBER_CONTROL_WIDTH_PX, spinner.getPreferredSize()?.height ?? 0);
-        spinner.setMaxSize(NUMBER_CONTROL_WIDTH_PX, spinner.getMaxSize()?.height ?? 0);
+        spinner.setPreferredSize({ width: NUMBER_CONTROL_WIDTH_PX, height: spinner.getPreferredSize()?.height ?? 0 });
+        spinner.setMaxSize({ width: NUMBER_CONTROL_WIDTH_PX, height: spinner.getMaxSize()?.height ?? 0 });
         spinner.on("change", () => {
             apply(spinner.getValue());
             this.relayout();

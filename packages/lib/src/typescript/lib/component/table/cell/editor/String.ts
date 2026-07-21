@@ -37,7 +37,7 @@ class StringEditor extends CellEditor<String | null> {
         });
         Event.addListener(this._textField, "input", () => this.onInput());
 
-        this._textField.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
+        this._textField.setMaxSize({ width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER });
         this._textField.clearPadding();
         this._textField.setBorderRadius('0');
         this._textField.setBorder({ border: "0px solid transparent" });

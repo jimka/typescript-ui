@@ -572,14 +572,14 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
         for (const button of [lead, trail]) {
             if (vertical) {
                 // Pin the main-axis (height) to the gutter; fill the thickness.
-                button.setMinSize(0, reserve);
-                button.setMaxSize(Number.MAX_VALUE, reserve);
+                button.setMinSize({ width: 0, height: reserve });
+                button.setMaxSize({ width: Number.MAX_VALUE, height: reserve });
                 button.setX(0);
                 button.setWidth(thickness);
                 button.setHeight(reserve);
             } else {
-                button.setMinSize(reserve, 0);
-                button.setMaxSize(reserve, Number.MAX_VALUE);
+                button.setMinSize({ width: reserve, height: 0 });
+                button.setMaxSize({ width: reserve, height: Number.MAX_VALUE });
                 button.setY(0);
                 button.setHeight(thickness);
                 button.setWidth(reserve);

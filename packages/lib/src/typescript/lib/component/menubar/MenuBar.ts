@@ -77,7 +77,7 @@ class MenuBar extends Component {
             "borderBottom",
             "1px solid var(--ts-ui-menu-bar-border, rgb(220, 220, 220))"
         );
-        this.setMinSize(0, MENU_BAR_BUTTON_HEIGHT);
+        this.setMinSize({ width: 0, height: MENU_BAR_BUTTON_HEIGHT });
 
         this.getAria().setRole("menubar");
         this.getAria().setLabel("Main menu");

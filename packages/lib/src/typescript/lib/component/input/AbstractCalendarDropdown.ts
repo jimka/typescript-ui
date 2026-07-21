@@ -179,7 +179,7 @@ class PickerNavButton extends Component {
         glyph.setPointerEvents("none");
         // Constrain the glyph so the chevron stays a visual icon — the
         // surrounding 24-px button cell holds the click target.
-        glyph.setPreferredSize(GLYPH_PX, GLYPH_PX);
+        glyph.setPreferredSize({ width: GLYPH_PX, height: GLYPH_PX });
         this.addComponent(glyph);
 
         Event.addListener(this, "pointerdown", (e: PointerEvent) => e.preventDefault());
@@ -920,7 +920,7 @@ abstract class AbstractCalendarDropdown<
         if (!this._yearColumn) {
             this._yearColumn = new PickerColumn(null);
             // Match the day-grid's height slot so the panel doesn't resize on swap.
-            this._yearColumn.setPreferredSize(0, DAY_GRID_HEIGHT);
+            this._yearColumn.setPreferredSize({ width: 0, height: DAY_GRID_HEIGHT });
             this._yearColumn.getAria().setRole("listbox");
         }
 

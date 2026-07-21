@@ -110,8 +110,8 @@ describe('PickerCellList getMinSize (scroll surface)', () => {
         // measurement, so no TestDOM is needed.
         const a = new Component();
         const b = new Component();
-        a.setMinSize(40, 22);
-        b.setMinSize(40, 22);
+        a.setMinSize({ width: 40, height: 22 });
+        b.setMinSize({ width: 40, height: 22 });
         list.addComponent(a);
         list.addComponent(b);
 

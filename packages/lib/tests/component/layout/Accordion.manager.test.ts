@@ -34,7 +34,7 @@ function hostAccordion(width: number, height: number, acc: Accordion): Container
 /** A content component materialised for createSection's element reparent. */
 function content(pref: { width: number; height: number }, min?: { width: number; height: number }): Component {
     const c = new Component({ preferredSize: pref });
-    if (min) c.setMinSize(min.width, min.height); // setter takes (width, height), not a Size
+    if (min) c.setMinSize({ width: min.width, height: min.height }); // setter takes (width, height), not a Size
     c.getElement(true);
     return c;
 }

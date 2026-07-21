@@ -112,7 +112,7 @@ describe('Glyph size lock', () => {
     it('pins min == pref == max via setPreferredSize', () => {
         const glyph = new Glyph('unicode-arrow-up');
 
-        glyph.setPreferredSize(24, 24);
+        glyph.setPreferredSize({ width: 24, height: 24 });
 
         const pref = glyph.getPreferredSize()!;
         const min  = glyph.getMinSize()!;
@@ -130,6 +130,15 @@ describe('Glyph size lock', () => {
         expect(pref.width).toBe(16);
         expect(pref.height).toBe(16);
     });
+    it('case 8: setPreferredSize(size) locks min == pref == max to the given Size', () => {
+        const glyph = new Glyph('unicode-arrow-up');
+
+        glyph.setPreferredSize({ width: 16, height: 16 });
+
+        expect(glyph.getPreferredSize()).toEqual({ width: 16, height: 16 });
+        expect(glyph.getMinSize()).toEqual({ width: 16, height: 16 });
+        expect(glyph.getMaxSize()).toEqual({ width: 16, height: 16 });
+    });
 });
 
 describe('Glyph baseline', () => {
@@ -140,7 +149,7 @@ describe('Glyph baseline', () => {
     it('tracks an explicit preferred height', () => {
         const glyph = new Glyph('unicode-arrow-up');
 
-        glyph.setPreferredSize(30, 30);
+        glyph.setPreferredSize({ width: 30, height: 30 });
 
         expect(glyph.getBaseline()).toBe(27);
     });

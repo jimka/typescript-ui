@@ -87,7 +87,7 @@ class ProgressSpinner extends Component {
 
         super.addComponent(this._arc);
 
-        this.setPreferredSize(this._size, this._size);
+        this.setPreferredSize({ width: this._size, height: this._size });
 
         if (this._trackThemeFontSize) {
             this.subscribeTheme(() => {
@@ -101,7 +101,7 @@ class ProgressSpinner extends Component {
                 }
 
                 this._size = next;
-                this.setPreferredSize(next, next);
+                this.setPreferredSize({ width: next, height: next });
                 this.scheduleLayout();
             });
         }
@@ -175,7 +175,7 @@ class ProgressSpinner extends Component {
         }
 
         this._size = size;
-        this.setPreferredSize(size, size);
+        this.setPreferredSize({ width: size, height: size });
         this.scheduleLayout();
 
         return this;
@@ -251,7 +251,7 @@ class ProgressSpinner extends Component {
             const next = readThemeFontSizePx();
             if (next !== this._size) {
                 this._size = next;
-                this.setPreferredSize(next, next);
+                this.setPreferredSize({ width: next, height: next });
             }
         }
 

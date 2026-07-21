@@ -87,10 +87,10 @@ class PaginationBar extends Component<PaginationBarOptions> {
         this._nextBtn  = new Button({ glyph: "angle-right"  });
         this._lastBtn  = new Button({ glyph: "angles-right" });
 
-        this._firstBtn.setPreferredSize(28, 28);
-        this._prevBtn.setPreferredSize(28, 28);
-        this._nextBtn.setPreferredSize(28, 28);
-        this._lastBtn.setPreferredSize(28, 28);
+        this._firstBtn.setPreferredSize({ width: 28, height: 28 });
+        this._prevBtn.setPreferredSize({ width: 28, height: 28 });
+        this._nextBtn.setPreferredSize({ width: 28, height: 28 });
+        this._lastBtn.setPreferredSize({ width: 28, height: 28 });
 
         // Match the buttons' 28px row height so the page label baseline lines up.
         this._pageText.centerInHeight(28);

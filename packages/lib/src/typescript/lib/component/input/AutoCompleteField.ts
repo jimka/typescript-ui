@@ -196,17 +196,17 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
         const min  = this._textField.getMinSize();
 
         if (pref) {
-            this.setPreferredSize(pref.width, pref.height);
+            this.setPreferredSize({ width: pref.width, height: pref.height });
         }
 
         if (max) {
-            this.setMaxSize(max.width, max.height);
+            this.setMaxSize({ width: max.width, height: max.height });
         }
 
         // Mirrors the inner field's min so the composite is non-squishable
         // like a bare TextField, not just visually preferred at one line.
         if (min) {
-            this.setMinSize(min.width, min.height);
+            this.setMinSize({ width: min.width, height: min.height });
         }
     }
 

@@ -40,7 +40,7 @@ function hostAccordion(width: number, height: number, acc: Accordion): Container
 /** A content component materialised for createSection's element reparent. */
 function content(pref: { width: number; height: number }, min?: { width: number; height: number }): Component {
     const c = new Component({ preferredSize: pref });
-    if (min) c.setMinSize(min.width, min.height); // setter takes (width, height), not a Size
+    if (min) c.setMinSize({ width: min.width, height: min.height }); // setter takes (width, height), not a Size
     c.getElement(true);
     return c;
 }
@@ -232,7 +232,7 @@ describe('Accordion resizable — weight-0 sections hold their px on container r
     it('a pin is clamped to its own min/max', () => {
         const { tree, insp, host } = treeInspFixture(900);
 
-        insp.setMaxSize(10000, 150);
+        insp.setMaxSize({ width: 10000, height: 150 });
         host.doLayout();
 
         // The pin holds at insp's max (150), not its 220 stored size; tree absorbs the rest.
@@ -507,7 +507,7 @@ describe('Accordion fill — respects maxSize (non-resizable)', () => {
         acc.setHeaderHeight(HEADER); // NOT resizable
         const host = hostAccordion(400, 400, acc); // budget = 400 - 2*30 = 340
         const a = content({ width: 100, height: 50 }, { width: 40, height: 10 });
-        a.setMaxSize(10000, 100); // cap A's height at 100
+        a.setMaxSize({ width: 10000, height: 100 }); // cap A's height at 100
         const b = content({ width: 100, height: 50 }, { width: 40, height: 10 });
         host.addComponent(a, constraints('A', true, 1)); // weight 1
         host.addComponent(b, constraints('B', true, 1)); // weight 1
@@ -554,7 +554,7 @@ describe('Accordion fill — respects maxSize (non-resizable)', () => {
         const host = hostAccordion(400, 400, acc); // budget = 400 - 2*30 = 340
         const a = content({ width: 100, height: 50 }, { width: 40, height: 10 });
         const b = content({ width: 100, height: 50 }, { width: 40, height: 10 });
-        b.setMaxSize(10000, 90); // one section capped at 90
+        b.setMaxSize({ width: 10000, height: 90 }); // one section capped at 90
         host.addComponent(a, constraints('A', true));
         host.addComponent(b, constraints('B', true));
         host.doLayout();
@@ -578,7 +578,7 @@ describe('Accordion — resizable/non-resizable size parity', () => {
     function childBoundedSection(pref: number, childMin: number, childMax: number): Container {
         const section = new Container({ preferredSize: { width: 100, height: pref }, layoutManager: new Fit() });
         const child = content({ width: 100, height: pref }, { width: 40, height: childMin });
-        child.setMaxSize(10000, childMax);
+        child.setMaxSize({ width: 10000, height: childMax });
         section.addComponent(child);
         section.getElement(true);
         return section;
@@ -650,7 +650,7 @@ describe('Accordion resizable — [min,max] constraints in the distribution', ()
         acc.setResizable(true);
         const host = hostAccordion(400, 600, acc); // budget = 600 - 2*30 = 540
         const a = content({ width: 100, height: 80 }, { width: 40, height: 10 });
-        a.setMaxSize(10000, 100); // cap A's height at 100 (width left unbounded)
+        a.setMaxSize({ width: 10000, height: 100 }); // cap A's height at 100 (width left unbounded)
         const b = content({ width: 100, height: 80 }, { width: 40, height: 10 });
         host.addComponent(a, constraints('A', true));
         host.addComponent(b, constraints('B', true));
@@ -705,7 +705,7 @@ describe('Accordion resizable — drag growth chains past maxed sections', () =>
         const host = hostAccordion(400, 390, acc); // budget = 390 - 3*30 = 300
         const a = content({ width: 100, height: 100 }, { width: 40, height: 10 });
         const b = content({ width: 100, height: 100 }, { width: 40, height: 10 });
-        b.setMaxSize(10000, 100); // B cannot grow past 100 (its current height)
+        b.setMaxSize({ width: 10000, height: 100 }); // B cannot grow past 100 (its current height)
         const c = content({ width: 100, height: 100 }, { width: 40, height: 10 });
         host.addComponent(a, constraints('A', true));
         host.addComponent(b, constraints('B', true));

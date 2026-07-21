@@ -75,8 +75,8 @@ describe('Dialog re-fits to a viewport resized while open', () => {
 
     function tallContentDialog(): Dialog {
         const content = new Component();
-        content.setPreferredSize(200, CONTENT_HEIGHT);
-        content.setMinSize(200, CONTENT_HEIGHT);
+        content.setPreferredSize({ width: 200, height: CONTENT_HEIGHT });
+        content.setMinSize({ width: 200, height: CONTENT_HEIGHT });
 
         return new Dialog({ title: 'T', contentComponent: content, width: 360 });
     }

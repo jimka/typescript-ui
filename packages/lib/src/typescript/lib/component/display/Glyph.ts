@@ -6,6 +6,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
+import { Size } from "~/primitive/Size.js";
 import {
     ensureGlyphSprite,
     ensureGlyphSymbolMounted,
@@ -276,15 +277,14 @@ class Glyph extends Component<GlyphOptions> {
      * its configured size. Callers can still override the lock by calling
      * `setMinSize` / `setMaxSize` explicitly after this method.
      *
-     * @param width - The preferred width in pixels.
-     * @param height - The preferred height in pixels.
+     * @param size - The preferred size in pixels.
      *
      * @returns This component, for method chaining.
      */
-    setPreferredSize(width: number, height: number): this {
-        super.setPreferredSize(width, height);
-        super.setMinSize(width, height);
-        super.setMaxSize(width, height);
+    setPreferredSize(size: Size): this {
+        super.setPreferredSize(size);
+        super.setMinSize(size);
+        super.setMaxSize(size);
 
         return this;
     }
@@ -609,11 +609,11 @@ class Glyph extends Component<GlyphOptions> {
         const pref = this.getPreferredSizeConstraint();
         if (pref) {
             if (options.minSize === undefined) {
-                this.setMinSize(pref.width, pref.height);
+                this.setMinSize({ width: pref.width, height: pref.height });
             }
 
             if (options.maxSize === undefined) {
-                this.setMaxSize(pref.width, pref.height);
+                this.setMaxSize({ width: pref.width, height: pref.height });
             }
         }
 

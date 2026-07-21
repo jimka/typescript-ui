@@ -56,12 +56,12 @@ class TextField extends TextInput<TextFieldOptions> {
     private updateHeight(): void {
         const h = Util.singleLineBoxHeight(this.getInsets(), this.getPadding(), this.getBorderSize());
 
-        this.setPreferredSize(200, h);
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
+        this.setPreferredSize({ width: 200, height: h });
+        this.setMaxSize({ width: Number.MAX_SAFE_INTEGER, height: h });
         // Min-height pinned to the single-line box so the field can't be
         // vertically compressed below one line; min-width 0 keeps it
         // horizontally flexible.
-        this.setMinSize(0, h);
+        this.setMinSize({ width: 0, height: h });
     }
 
 }

@@ -125,7 +125,7 @@ class FieldSet extends Component {
         const chromeW = perim.left + perim.right;
         const innerW  = Math.max(0, width - chromeW);
 
-        this._legend.setMaxSize(innerW, Number.MAX_VALUE);
+        this._legend.setMaxSize({ width: innerW, height: Number.MAX_VALUE });
 
         return this;
     }

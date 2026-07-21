@@ -356,7 +356,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
             const component = this._nodeComponents.get(node.id);
 
             if (component) {
-                component.setPreferredSize(node.width, node.height);
+                component.setPreferredSize({ width: node.width, height: node.height });
                 component.setX(node.x);
                 component.setY(node.y);
             }
@@ -367,7 +367,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
 
         this._edgeLayer.setX(0);
         this._edgeLayer.setY(0);
-        this._edgeLayer.setPreferredSize(result.width, result.height);
+        this._edgeLayer.setPreferredSize({ width: result.width, height: result.height });
         this._edgeLayer.setEdges(this.joinEdgeStyles(result.edges));
 
         this.applyContainerZIndex();
@@ -455,7 +455,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
         // itself since the transform's shrink is ignored. Either way the host's
         // effective extent matches the nodes' own scaled extent (bounds × zoom).
         const boxScale = Math.min(zoom, 1);
-        this._contentHost.setPreferredSize(this._graphWidth * boxScale, this._graphHeight * boxScale);
+        this._contentHost.setPreferredSize({ width: this._graphWidth * boxScale, height: this._graphHeight * boxScale });
     }
 
     /**

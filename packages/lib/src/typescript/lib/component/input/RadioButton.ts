@@ -64,12 +64,12 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
         this.setLayoutManager(new HBox());
 
         this._ring = new Component();
-        this._ring.setPreferredSize(16, 16);
+        this._ring.setPreferredSize({ width: 16, height: 16 });
         // Min = preferred = max so the outer HBox shrink-on-overallocation
         // can't collapse the ring graphic when the radio is packed into a
         // tight container with siblings that have flexible widths.
-        this._ring.setMinSize(16, 16);
-        this._ring.setMaxSize(16, 16);
+        this._ring.setMinSize({ width: 16, height: 16 });
+        this._ring.setMaxSize({ width: 16, height: 16 });
         this._ring.setSize({ width: 16, height: 16 });
         this._ring.setBackgroundColor("var(--ts-ui-radio-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))");
         this._ring.setBorder("1px solid var(--ts-ui-form-border, rgb(160, 160, 160))");
@@ -82,8 +82,8 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
 
         this._dot = new Glyph("circle");
         this._dot.setForegroundColor("var(--ts-ui-radio-dot-color, rgb(255, 255, 255))");
-        this._dot.setPreferredSize(8, 8);
-        this._dot.setMaxSize(8, 8);
+        this._dot.setPreferredSize({ width: 8, height: 8 });
+        this._dot.setMaxSize({ width: 8, height: 8 });
         this._dot.setX(3);
         this._dot.setY(3);
         this._dot.setOpacity(0);
