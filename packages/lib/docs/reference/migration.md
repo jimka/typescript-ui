@@ -4,7 +4,7 @@ Version-to-version breaking-change notes. The framework follows [Semantic
 Versioning](https://semver.org) with the pre-1.0 caveat below: anything may
 change in any `0.x.y` release, including the public API.
 
-## 0.1.0 → 0.2.0
+## Upgrading from 0.1.x to 0.2.0
 
 `Component.setPreferredSize`, `setMinSize`, and `setMaxSize` now take a
 single `Size` object instead of two loose numbers:

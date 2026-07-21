@@ -17,7 +17,7 @@ sidebar.setPreferredSize(240, 0);
 sidebar.setPreferredSize({ width: 240, height: 0 });
 ```
 
-See [Migration](/reference/migration#0-1-0-0-2-0) for the full upgrade note.
+See [Migration](/reference/migration#upgrading-from-0-1-x-to-0-2-0) for the full upgrade note.
 
 ## 0.1.0
 
