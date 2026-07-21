@@ -199,6 +199,52 @@ function alignmentClass(align: "center" | "left" | "right" | null): string | nul
 }
 
 /**
+ * GitHub/VitePress-compatible slug: lowercase, non-alphanumerics collapsed to
+ * single hyphens, ends trimmed. Does not dedupe — the caller folds in a `-N`
+ * suffix via a per-render counter so every id on the page is unique.
+ *
+ * @param text - The heading's plain text.
+ * @returns The slug, with no leading, trailing, or doubled hyphens.
+ */
+function slugify(text: string): string {
+    return text
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * How a link href should be rendered: the final href, and whether it leaves
+ * the site the {@link Markdown} instance is embedded in.
+ *
+ * @category Components
+ */
+export interface MarkdownLinkResolution {
+    href:     string;
+    external: boolean;
+}
+
+/**
+ * Maps an authored Markdown href to its rendered form. See
+ * {@link MarkdownOptions.linkResolver}.
+ *
+ * @category Components
+ */
+export type MarkdownLinkResolver = (href: string) => MarkdownLinkResolution;
+
+/**
+ * The default {@link MarkdownLinkResolver}: every href is rendered exactly as
+ * authored and marked external, reproducing the component's pre-`linkResolver`
+ * behaviour (`target="_blank" rel="noopener noreferrer"` on every link).
+ *
+ * @param href - The authored link href.
+ * @returns The href unchanged, marked external.
+ */
+function defaultLinkResolver(href: string): MarkdownLinkResolution {
+    return { href, external: true };
+}
+
+/**
  * Construction-time options for {@link Markdown}.
  *
  * @category Components
@@ -206,6 +252,16 @@ function alignmentClass(align: "center" | "left" | "right" | null): string | nul
 export interface MarkdownOptions extends ComponentOptions {
     /** The Markdown source string to render. */
     markdown?: string;
+
+    /**
+     * Maps an authored link href to its rendered form. Defaults to a resolver
+     * that renders every href unchanged and marks it external, preserving
+     * today's behaviour (every link opens in a new tab). A consumer embedding
+     * `Markdown` in an app with its own routing (e.g. a docs site) can rewrite
+     * in-site hrefs and suppress the new tab for them, while leaving external
+     * links external.
+     */
+    linkResolver?: MarkdownLinkResolver;
 }
 
 /**
@@ -319,6 +375,10 @@ class Markdown extends Component<MarkdownOptions> {
             this._options.markdown = options.markdown;
         }
 
+        if (options.linkResolver !== undefined) {
+            this._options.linkResolver = options.linkResolver;
+        }
+
         return this;
     }
 
@@ -329,6 +389,30 @@ class Markdown extends Component<MarkdownOptions> {
      */
     getMarkdown(): string {
         return this._options.markdown ?? "";
+    }
+
+    /**
+     * Sets the resolver used to render every link's href. Does not re-render
+     * already-built content; call {@link setMarkdown} (with the same source, if
+     * needed) to re-render links with the new resolver.
+     *
+     * @param resolver - The new link resolver.
+     * @returns This component, for method chaining.
+     */
+    setLinkResolver(resolver: MarkdownLinkResolver): this {
+        this._options.linkResolver = resolver;
+
+        return this;
+    }
+
+    /**
+     * Returns the current link resolver, or the default resolver (every href
+     * unchanged, marked external) when none was set — never `null`.
+     *
+     * @returns The active link resolver.
+     */
+    getLinkResolver(): MarkdownLinkResolver {
+        return this._options.linkResolver ?? defaultLinkResolver;
     }
 
     /**
@@ -350,7 +434,7 @@ class Markdown extends Component<MarkdownOptions> {
 
         this.clearContent();
         ensureMarkdownClassRules();
-        this.appendBlockTokens(element, lexer(markdown));
+        this.appendBlockTokens(element, lexer(markdown), new Map<string, number>());
 
         // Content changed — the flowed height did too; re-measure and let a host grow.
         this.measureContentHeight();
@@ -489,7 +573,7 @@ class Markdown extends Component<MarkdownOptions> {
         const element = super.render();
 
         ensureMarkdownClassRules();
-        this.appendBlockTokens(element, lexer(this.getMarkdown()));
+        this.appendBlockTokens(element, lexer(this.getMarkdown()), new Map<string, number>());
 
         return element;
     }
@@ -531,10 +615,13 @@ class Markdown extends Component<MarkdownOptions> {
      *
      * @param parent - The element handle to append the built blocks into.
      * @param tokens - The block-level tokens to render.
+     * @param headingIds - The current render pass's heading-id dedupe counter,
+     *   keyed by slug — see {@link appendHeading}. Threaded as a parameter
+     *   (never a field) so it cannot survive past the render pass that created it.
      */
-    private appendBlockTokens(parent: Handle, tokens: Token[]): void {
+    private appendBlockTokens(parent: Handle, tokens: Token[], headingIds: Map<string, number>): void {
         for (const token of tokens) {
-            this.appendBlockToken(parent, token);
+            this.appendBlockToken(parent, token, headingIds);
         }
     }
 
@@ -544,15 +631,16 @@ class Markdown extends Component<MarkdownOptions> {
      *
      * @param parent - The element handle to append into.
      * @param token - The block-level token.
+     * @param headingIds - The current render pass's heading-id dedupe counter.
      */
-    private appendBlockToken(parent: Handle, token: Token): void {
+    private appendBlockToken(parent: Handle, token: Token, headingIds: Map<string, number>): void {
         switch (token.type) {
-            case "heading":    this.appendHeading(parent, token as Tokens.Heading);       break;
-            case "paragraph":  this.appendParagraph(parent, token as Tokens.Paragraph);   break;
-            case "list":       this.appendList(parent, token as Tokens.List);             break;
-            case "blockquote": this.appendBlockquote(parent, token as Tokens.Blockquote); break;
-            case "code":       this.appendCode(parent, token as Tokens.Code);             break;
-            case "table":      this.appendTable(parent, token as Tokens.Table);           break;
+            case "heading":    this.appendHeading(parent, token as Tokens.Heading, headingIds);       break;
+            case "paragraph":  this.appendParagraph(parent, token as Tokens.Paragraph);               break;
+            case "list":       this.appendList(parent, token as Tokens.List, headingIds);             break;
+            case "blockquote": this.appendBlockquote(parent, token as Tokens.Blockquote, headingIds); break;
+            case "code":       this.appendCode(parent, token as Tokens.Code);                         break;
+            case "table":      this.appendTable(parent, token as Tokens.Table);                       break;
 
             // Blank line between blocks — nothing to render.
             case "space": break;
@@ -563,16 +651,27 @@ class Markdown extends Component<MarkdownOptions> {
 
     /**
      * Builds an `<h1>`..`<h6>` element (tag from the token depth) carrying the
-     * heading's inline content.
+     * heading's inline content and a slugified `id`, so an in-page `#fragment`
+     * link can target it.
      *
      * @param parent - The element handle to append into.
      * @param token - The heading token.
+     * @param headingIds - The current render pass's dedupe counter: a slug seen
+     *   before gets a `-N` suffix so every id on the page is unique. Local to
+     *   one render pass — {@link render} and {@link setMarkdown} each start a
+     *   fresh `Map`, so a re-render does not accumulate suffixes.
      */
-    private appendHeading(parent: Handle, token: Tokens.Heading): void {
+    private appendHeading(parent: Handle, token: Tokens.Heading, headingIds: Map<string, number>): void {
         const depth = Math.min(Math.max(token.depth, HEADING_MIN_DEPTH), HEADING_MAX_DEPTH);
         const heading = this.create("h" + depth);
+        const slug = slugify(token.text);
+        const seen = headingIds.get(slug) ?? 0;
 
-        DOM.sink.apply(heading, { addClass: [HEADING_CLASS] });
+        headingIds.set(slug, seen + 1);
+
+        const id = seen === 0 ? slug : `${slug}-${seen}`;
+
+        DOM.sink.apply(heading, { addClass: [HEADING_CLASS], setAttr: { id } });
         this.appendInlineTokens(heading, token.tokens);
         DOM.sink.appendChild(parent, heading);
     }
@@ -596,14 +695,15 @@ class Markdown extends Component<MarkdownOptions> {
      *
      * @param parent - The element handle to append into.
      * @param token - The list token.
+     * @param headingIds - The current render pass's heading-id dedupe counter.
      */
-    private appendList(parent: Handle, token: Tokens.List): void {
+    private appendList(parent: Handle, token: Tokens.List, headingIds: Map<string, number>): void {
         const list = this.create(token.ordered ? "ol" : "ul");
 
         DOM.sink.apply(list, { addClass: [LIST_CLASS] });
 
         for (const item of token.items) {
-            this.appendListItem(list, item);
+            this.appendListItem(list, item, headingIds);
         }
 
         DOM.sink.appendChild(parent, list);
@@ -616,8 +716,9 @@ class Markdown extends Component<MarkdownOptions> {
      *
      * @param list - The `<ul>`/`<ol>` element handle to append into.
      * @param item - The list-item token.
+     * @param headingIds - The current render pass's heading-id dedupe counter.
      */
-    private appendListItem(list: Handle, item: Tokens.ListItem): void {
+    private appendListItem(list: Handle, item: Tokens.ListItem, headingIds: Map<string, number>): void {
         const listItem = this.create("li");
 
         for (const token of item.tokens) {
@@ -630,7 +731,7 @@ class Markdown extends Component<MarkdownOptions> {
                     this.appendInlineToken(listItem, text, item.tokens.length === 1);
                 }
             } else {
-                this.appendBlockToken(listItem, token);
+                this.appendBlockToken(listItem, token, headingIds);
             }
         }
 
@@ -705,12 +806,13 @@ class Markdown extends Component<MarkdownOptions> {
      *
      * @param parent - The element handle to append into.
      * @param token - The blockquote token.
+     * @param headingIds - The current render pass's heading-id dedupe counter.
      */
-    private appendBlockquote(parent: Handle, token: Tokens.Blockquote): void {
+    private appendBlockquote(parent: Handle, token: Tokens.Blockquote, headingIds: Map<string, number>): void {
         const quote = this.create("blockquote");
 
         DOM.sink.apply(quote, { addClass: [QUOTE_CLASS] });
-        this.appendBlockTokens(quote, token.tokens);
+        this.appendBlockTokens(quote, token.tokens, headingIds);
         DOM.sink.appendChild(parent, quote);
     }
 
@@ -808,18 +910,25 @@ class Markdown extends Component<MarkdownOptions> {
     }
 
     /**
-     * Builds an `<a>` with a safe `target`/`rel` and the link's inline text.
+     * Builds an `<a>` from the link token's href, passed through
+     * {@link getLinkResolver}, and the link's inline text. `target`/`rel` are
+     * set only when the resolution is external — the default resolver marks
+     * everything external, reproducing the pre-`linkResolver` behaviour.
      *
      * @param parent - The element handle to append into.
      * @param token - The link token.
      */
     private appendLink(parent: Handle, token: Tokens.Link): void {
         const anchor = this.create("a");
+        const resolution = this.getLinkResolver()(token.href);
+        const setAttr: Record<string, string> = { href: resolution.href };
 
-        DOM.sink.apply(anchor, {
-            addClass: [LINK_CLASS],
-            setAttr:  { href: token.href, target: "_blank", rel: "noopener noreferrer" },
-        });
+        if (resolution.external) {
+            setAttr.target = "_blank";
+            setAttr.rel = "noopener noreferrer";
+        }
+
+        DOM.sink.apply(anchor, { addClass: [LINK_CLASS], setAttr });
         this.appendInlineTokens(anchor, token.tokens);
         DOM.sink.appendChild(parent, anchor);
     }

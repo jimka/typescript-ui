@@ -25,11 +25,11 @@ jobs:
                   cache:        npm
             - run: npm ci
             # Deploys the VitePress site from packages/lib — the docs that
-            # actually have content. packages/docs is its eventual replacement
-            # (a docs app built with the library itself), but is still a
-            # proof-of-seam scaffold: pointing Pages at it published an empty
-            # shell whose every sub-route 404s, so the deployment stays here
-            # until that app reaches parity.
+            # actually have content — as the site root, plus packages/docs
+            # (a docs app built with the library itself) as a preview at
+            # /next/ inside the same Pages artifact. VitePress keeps the site
+            # root, so every URL in the published packages/lib/README.md
+            # keeps resolving unchanged.
             #
             # docs:build runs docs:api (TypeDoc) and docs:llms itself, so they
             # need no separate steps; build:lib precedes it because the docs
@@ -42,14 +42,17 @@ jobs:
             - run: npm run docs:build
               env:
                   NODE_OPTIONS: --max-old-space-size=12288
-            # Built but deliberately not deployed. packages/docs is the
-            # in-progress replacement docs app; compiling it here keeps it
-            # honest — it resolves the library through the package exports map
-            # and its vite plugin reads the TypeDoc model docs:build just
-            # emitted — so a break surfaces in CI rather than months later.
+            - run: npm -w packages/docs run typecheck
+            - run: npm -w packages/docs run test
+            # packages/docs deploys to /next/ as a preview alongside the live
+            # VitePress site — vite.config.ts's `base` is
+            # /typescript-ui/next/, so its assets resolve correctly once
+            # copied under the VitePress output that upload-pages-artifact
+            # ships below.
             - run: npm run build:docs
               env:
                   NODE_OPTIONS: --max-old-space-size=12288
+            - run: cp -r packages/docs/dist packages/lib/docs/.vitepress/dist/next
             - uses: actions/configure-pages@v5
             - uses: actions/upload-pages-artifact@v3
               with:

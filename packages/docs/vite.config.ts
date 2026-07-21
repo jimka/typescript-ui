@@ -29,8 +29,14 @@ function typedocSummary(): Plugin {
 }
 
 export default defineConfig({
-  base: '/typescript-ui/',
+  base: '/typescript-ui/next/',
   plugins: [typedocSummary()],
+  // packages/lib/docs/ sits outside this package root; without this the dev
+  // server 404s the raw `?raw` glob reads in pages.ts even though the
+  // production build (which bundles them at build time) is unaffected.
+  server: {
+    fs: { allow: ['../..'] },
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

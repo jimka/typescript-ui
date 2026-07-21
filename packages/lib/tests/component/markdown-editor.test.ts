@@ -232,6 +232,31 @@ describe('MarkdownEditor command API', () => {
     });
 });
 
+describe('MarkdownEditor dialect parity guard (packages-docs viewer-only additions)', () => {
+    const FULL_DIALECT_DOC =
+        '# Heading\n\n' +
+        'A paragraph with **bold**, *italic*, and `inline code`.\n\n' +
+        '- one\n- two\n\n' +
+        '1. first\n2. second\n\n' +
+        '> a quote\n\n' +
+        '```\ncode\n```\n\n' +
+        'A [link](https://example.com) in prose.';
+
+    it('round-trips the full dialect unchanged, modulo normalize', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue(FULL_DIALECT_DOC);
+
+        expect(normalize(editor.getValue())).toBe(normalize(FULL_DIALECT_DOC));
+    });
+
+    it('round-trips a link byte-identical', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('A [link text](https://example.com/path) here.');
+
+        expect(editor.getValue()).toContain('[link text](https://example.com/path)');
+    });
+});
+
 describe('MarkdownEditor value round-trip (idempotence)', () => {
     for (const [name, doc] of Object.entries(CORPUS)) {
         it(`round-trips ${name} to a fixpoint`, () => {
