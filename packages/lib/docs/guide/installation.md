@@ -4,7 +4,21 @@
 
 The public API is exposed only through **subpath exports** — there is no bare `@jimka/typescript-ui` entry. Import each symbol from its group: `core`, `primitive`, `layout`, `data`, `validation`, or `component/<group>` (where `<group>` is `input`, `button`, `display`, `list`, `container`, `menubar`, `table`, or `tree`).
 
+## Starting a new project
+
+The fastest way to a running app is the scaffolder — it writes a minimal Vite +
+TypeScript starter with `@jimka/typescript-ui` already installed:
+
+```bash
+npm create @jimka/tsui-app my-app
+cd my-app
+npm install
+npm run dev
+```
+
 ## Install
+
+To add the library to an existing project instead:
 
 ```bash
 npm install @jimka/typescript-ui

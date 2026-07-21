@@ -574,3 +574,47 @@ The published `packages/lib/README.md` is **not** updated by this plan.[^lib-rea
 [^no-root-scripts]: A consequence of leaving root `scripts` alone: the scaffolder's tests run only via `npm -w packages/create-app run test`, never from a root aggregate command, and CI runs no tests at all today. Accepted, not overlooked.
 
 [^prompt-tty]: Piping stdin cannot detect a missing `rl.close()`. With piped input the stream reaches EOF, readline emits `close` on its own, and the process exits 0 whether or not the code closed the interface — so `printf 'x\n' | node bin/…` under a timeout passes unconditionally and verifies nothing. The hang requires a stdin that stays open, which is why this check needs a real terminal and cannot be scripted in CI.
+
+---
+
+## Implementation Notes
+
+- **Phase 6 (actual `npm publish` of `@jimka/create-tsui-app`) and Phase 5 step 17
+  / Verification step 10 (the published-command end-to-end check that depends on
+  it) were not performed in this implementation run.** Publishing requires an npm
+  granular access token with "bypass 2FA" enabled (`[^publish-token]`), which this
+  agent does not hold, and — like `publish-0-1-0` — is a manual, credentialed step
+  the plan itself does not automate. Phases 1–5 (skeleton, template, workspace
+  wiring, unit tests, pack-surface + local-scaffold + registry-install +
+  typecheck checks) and Phase 7 (documentation) were completed and verified;
+  everything up to and including publishing `0.0.1` remains for the user to run
+  by hand, followed by the Phase 5 step 17 / Verification step 10 and step 6
+  (interactive-TTY) checks.
+- **Phase 7's documentation edits were made without Phase 6 having run**, i.e.
+  ahead of the plan's own `phase7-after-publish` sequencing note. The note's
+  concern is that `npm create @jimka/tsui-app` 404s until the package is
+  published — true of the *command*, not of documenting it; the added prose in
+  `README.md` and `packages/lib/docs/guide/installation.md` is inert until the
+  publish happens and needs no further edit once it does. `npm run docs:build`
+  passed with 0 errors and 0 link warnings.
+- **The template's `index.html` drops the `<div id="app"></div>` the plan's Step 5
+  mandated, and adds `lang="en"` plus the viewport meta.** The div was dead
+  markup: `src/main.ts` mounts through `Body.init(...)`, which attaches to
+  `<body>`, so nothing in the generated app ever refers to `#app`. Shipping it
+  told a new user — in the very first file they open — that the library mounts
+  into a container element, which is not how it works. The plan named
+  `packages/docs/index.html` as the file this template mirrors, and that file
+  deliberately carries no such div while it *does* carry `lang` and the viewport
+  meta; Step 5's literal markup contradicted its own cited precedent. Following
+  the precedent over the literal step, per the implement skill's rule that the
+  codebase's existing solution wins wherever a plan leaves or creates a
+  conflict. The scaffold tests assert `index.html` exists, not its contents, so
+  they are unaffected.
+- **`toValidPackageName`** was implemented as: lowercase + trim, replace any
+  character outside `[a-z0-9._-]` (i.e. whitespace and other invalid characters)
+  with `-`, strip a leading run of `.`/`_`, then strip leading/trailing `-`. This
+  preserves interior `.`/`_` (only stripping them when leading), matching the
+  step-2 spec's literal wording more closely than a first draft that mapped
+  every `.`/`_` to `-` unconditionally; both drafts pass all seven `##
+  Expected Behaviour` table rows, since none of them exercises an interior
+  `.`/`_`.
