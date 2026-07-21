@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/lib", "packages/docs"],
+  "workspaces": ["packages/lib", "packages/docs", "packages/create-app"],
   "scripts": {
     "dev": "npm -w packages/lib run dev",
     "build:lib": "npm -w packages/lib run build:lib",
