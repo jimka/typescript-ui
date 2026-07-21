@@ -201,7 +201,9 @@ function onFocusIn(e: FocusEvent): void {
  * combos, suppressed while a modal layer is on top so the accelerator does
  * not fight the modal's own focus trap.
  *
- * @returns `{ stop: true, prevent: true }` when the key matches a navigation combo; nothing otherwise, so every other key keeps propagating.
+ * @returns `{ stop: true, prevent: true }` when the key matches a navigation combo
+ *   and no modal layer is suppressing it; nothing otherwise, so every other key
+ *   keeps propagating.
  */
 function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
     if (!_enabled) {

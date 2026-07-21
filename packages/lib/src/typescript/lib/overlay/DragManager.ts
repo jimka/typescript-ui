@@ -485,7 +485,8 @@ function enterNewTarget(session: DragSession, target: DropTargetRecord, detail: 
  * enter / leave helpers, and re-runs `onDragOver` while the cursor stays
  * inside the same target.
  *
- * @returns `true` while a drag session is live, consuming the move so nothing else tracks the pointer.
+ * @returns `true` while a drag session is live, consuming the move so nothing else
+ *   tracks the pointer; nothing when there is no session, so the move keeps propagating.
  */
 function onMouseMove(e: MouseEvent): Event.ListenerResult {
     if (activeSession === null) {
