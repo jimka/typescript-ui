@@ -703,14 +703,25 @@ Manual only — the harness cannot drive real pointers or focus:
   object shares no property with it. That is exactly the shape the library's own
   docs promote (`btn.on("action", () => store.goToPage(1))`, where `goToPage`
   returns `this`). Both are now in `docs/reference/migration.md`.
-- **21 of the 24 methods whose return type became `Event.ListenerResult` gained
+- **22 of the 24 methods whose return type became `Event.ListenerResult` gained
   an `@returns`**, as `CODE_CONVENTIONS.md` requires for a non-void return. The
   return value is now the entire consume contract, so leaving it undocumented
   while the migration guide warns that a missing return "silently stops
-  consuming" would have been contradictory. Three were skipped —
-  `Header.onResizeDrag`, `Header.onResizeDragStop`, and `LayerManager.onKeyDown`
-  carry no JSDoc block at all, which is pre-existing; adding one is out of scope
-  here.
+  consuming" would have been contradictory. Two were skipped:
+  `Header.onResizeDrag` and `Header.onResizeDragStop` carry no doc comment at
+  all, which is pre-existing, and writing one from scratch is out of scope.
+  (`LayerManager.onKeyDown` was skipped by mistake in a first pass — its JSDoc
+  is a single-line `/** … */`, which the insertion missed — and has since been
+  expanded into a full block with `@param` and `@returns`.)
+- **The consumer-visible break set took four review passes to enumerate.** Each
+  pass found a further class the previous had missed, which is worth recording
+  because the list is not obvious from the diff: the protocol itself; `async`
+  listeners; the five overridable drag-handler signatures; the semantic
+  `on(...)` shorthands including `ToggleButton`'s own overloads; concise arrows
+  returning a non-disposition value; concise arrows returning a **boolean**
+  (the only break with no compiler signal, since `true` is a valid disposition);
+  and the six public forwarders that narrowed `Function` to `Event.Listener`.
+  All are now in `docs/reference/migration.md`.
 - **Five `return` statements in `MenuBar._onKeyDown` gained the blank line
   before them** that `CODE_CONVENTIONS.md` requires and the sibling `ArrowDown`
   case already had.

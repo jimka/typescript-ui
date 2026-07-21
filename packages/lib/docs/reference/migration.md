@@ -80,10 +80,11 @@ Event.addListener(save, 'click', async () => { await persist(); });
 Event.addListener(save, 'click', () => { void persist(); });
 ```
 
-The same applies to the semantic `on(...)` shorthands — `Button.on("action", …)`,
+The same applies to the semantic `on(...)` shorthands — `Button`, `ToggleButton`,
 `Checkbox`, `RadioButton`, `Slider`, `TextInput`, and the selectable lists all
-forward to `Event.addListener`, so their listeners follow the same protocol and
-an `async` one breaks the same way.
+forward `on("action", …)` to `Event.addListener`, so their listeners follow the
+same protocol and an `async` one breaks the same way. Any `Button` subclass that
+declares its own `"action"` overload is in the same position.
 
 ### A concise arrow returning a value no longer compiles
 
@@ -104,6 +105,28 @@ pager.on('action', () => { store.goToPage(1); });
 `EventDisposition` is a weak type (every field optional), so an unrelated object
 has no overlapping property and is rejected. The fix is always the same: give
 the arrow a block body, or prefix the expression with `void`.
+
+### A concise arrow returning a boolean now consumes silently
+
+This is the one break the compiler cannot tell you about, so it is worth
+checking for by hand. An arrow whose expression happens to evaluate to a
+`boolean` is a *valid* disposition, so it still typechecks — and `true` now
+means "stop propagation":
+
+```typescript
+// Before — the return value was ignored; Set.delete() returning true was
+// incidental.
+Event.addListener(row, 'click', () => selected.delete(id));
+
+// After — that same listener now consumes every click, and as a subtree
+// listener it also stops the event reaching any ancestor.
+Event.addListener(row, 'click', () => { selected.delete(id); });
+```
+
+Watch for one-line listeners wrapping anything that returns a `boolean`:
+`Set`/`Map` `delete` and `has`, `Array.prototype.includes`, and predicate
+getters like `isOpen()`. Give any such listener a block body unless you
+genuinely want it to consume.
 
 ### Overridable drag handlers changed signature
 
@@ -143,6 +166,20 @@ onMouseUp(): Event.ListenerResult {
     return true;
 }
 ```
+
+### Listener-forwarding methods narrowed their parameter type
+
+Six public methods took `listener: Function` and now take
+`listener: Event.Listener`:
+
+- `Component.addMouseDownListener` / `removeMouseDownListener`
+- `Component.addMouseDownSubtreeListener` / `removeMouseDownSubtreeListener`
+- `Button.addPointerDownListener`
+- `WindowHeader.addHeaderDoubleClickListener`
+
+Anything you could previously pass as an untyped `Function` is now checked
+against the listener contract, so an `async` handler or a value-returning
+concise arrow fails here for the same reasons described above.
 
 ## Versioning policy
 

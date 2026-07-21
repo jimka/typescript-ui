@@ -26,7 +26,8 @@ subtree walk. `async` listeners no longer typecheck, since `Promise<void>` is
 not a disposition, and a concise arrow whose expression evaluates to a value —
 `on('action', () => store.goToPage(1))`, where `goToPage` returns `this` — no
 longer compiles either. Both apply to the semantic `on(...)` shorthands as well
-as the `Event.*` registrars. Five public overridable drag handlers changed signature with
+as the `Event.*` registrars. An arrow returning a **boolean** still compiles and
+now silently consumes — the one break with no compiler signal. Five public overridable drag handlers changed signature with
 it — `AbstractWindow.onMouseUp`, `SplitGutter.onDragStop`, and
 `WindowBorder.onDragStop` dropped their event parameter, and those plus
 `AbstractWindow.onDrag` and `SplitGutter.onDrag` now return a disposition. An
