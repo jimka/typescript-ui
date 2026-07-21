@@ -382,6 +382,16 @@ No public API changes, so no doc page needs an update on that account. The two a
 
 ---
 
+## Implementation Notes
+
+Two regexes specified in `## Internal Structure` had to be corrected during implementation. Both changes keep the plan's intent; they fix snippets that would have failed against the real corpus.
+
+**1. `stripCode`'s inline-code regex.** The plan specified ``/`[^`\n]*`/g``, which only matches single-backtick spans. `packages/lib/docs/components/Markdown.md:37-38` uses a double-backtick span (`` `inline code` ``) and a four-backtick span (```` ``` ````) to quote literal backticks, and the same table cells quote raw HTML tags (`<strong>`, `<code>`, `<pre>`). Against that page the plan's regex desynchronises and leaves `<pre>` and `<code>` in the stripped output, so the *no raw HTML tag* guard fails on a page that is entirely correct — a false positive on the very construct the plan's `[^no-raw-html]` footnote says is safe to quote. The implemented form is ``/(`+)[\s\S]*?\1/g``: it captures the opening backtick run and requires the same run to close, so spans of any backtick width are removed. Verified both ways — the plan's regex leaves `["<pre>","<code>"]`, the implemented one leaves none.
+
+**2. The `:::` container check is line-based, not a multiline regex.** Matching `/^:::\s*(\w+)/gm` over the whole source lets `\s*` run past a bare closing `:::` line's newline and capture the next paragraph's first word as a container type. The check therefore splits on newlines and tests each line independently. The reasoning is repeated as a comment at the call site so the next person does not "simplify" it back.
+
+Everything else follows the plan as written. No library source was touched, and the file list matches `## Files to Create / Modify / Delete` exactly.
+
 ## Notes
 
 [^survey-method]: The counts come from scanning the 138 files after removing fenced code blocks (including list-indented ones) and inline code spans. Stripping matters: a naive grep reports 122 HTML tags across 62 files, 26 `==` hits, and 6 emoji-shortcode hits, and every one of those is a false positive — `` `<div>` `` quoted in prose, `===` inside a TypeScript sample, and `:hover:not(:active)` in a CSS selector. After stripping, the real totals are 8 tag occurrences (four `<kbd>` pairs) in one file, and zero of everything else. The same strip is what `content-constructs.test.ts` codifies, so the plan's numbers and the test's rule are the same rule.
