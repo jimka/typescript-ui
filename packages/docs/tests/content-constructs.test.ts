@@ -29,9 +29,28 @@ const PAGES = Object.entries(RAW_SOURCES);
  * @returns `source` with all code content removed.
  */
 function stripCode(source: string): string {
-    return source
-        .replace(/^([ \t]*)```[\s\S]*?^\1```[ \t]*$/gm, '')   // fenced blocks, incl. indented
+    return stripFences(source)
         .replace(/(`+)[\s\S]*?\1/g, '');                       // inline code spans, any backtick run
+}
+
+/**
+ * `source` with fenced blocks removed but inline code spans left intact.
+ *
+ * Heading ids must be derived from this rather than from {@link stripCode}:
+ * the viewer slugifies `token.text`, which still contains the backticked
+ * text (`appendHeading` at
+ * `packages/lib/src/typescript/lib/component/display/Markdown.ts:667`), so
+ * `## Drag-and-drop with \`DragManager\`` yields
+ * `drag-and-drop-with-dragmanager` in the app. Deleting the inline span
+ * first would yield `drag-and-drop-with` and make this guard disagree with
+ * the viewer on 23 of the 154 pages — false-failing a correctly authored
+ * anchor and passing a dead one.
+ *
+ * @param source - A page's raw Markdown source.
+ * @returns `source` with fenced code blocks removed.
+ */
+function stripFences(source: string): string {
+    return source.replace(/^([ \t]*)```[\s\S]*?^\1```[ \t]*$/gm, '');   // fenced blocks, incl. indented
 }
 
 /**
@@ -57,7 +76,8 @@ function slugify(text: string): string {
  * Every heading's id on the page, in document order, with the same `-N`
  * dedupe suffix the viewer applies on the Nth repeat of a slug.
  *
- * @param strippedSource - A page's source with {@link stripCode} applied.
+ * @param strippedSource - A page's source with {@link stripFences} applied.
+ * Inline code must still be present — see that function's note.
  * @returns The set of heading ids present on the page.
  */
 function headingIds(strippedSource: string): Set<string> {
@@ -130,10 +150,39 @@ describe('content-constructs guard', () => {
     });
 
     it.each(PAGES)('%s resolves every bare #anchor link to a heading on the page', (path, raw) => {
-        const stripped = stripCode(raw);
-        const ids       = headingIds(stripped);
-        const dangling  = bareAnchorLinks(stripped).filter((anchor) => !ids.has(anchor));
+        // Two different strips on purpose: ids come from fence-stripped source
+        // so a backticked heading slugifies exactly as the viewer does, while
+        // links come from fully-stripped source so a `](#example)` quoted in
+        // prose is not mistaken for a real link.
+        const ids      = headingIds(stripFences(raw));
+        const dangling = bareAnchorLinks(stripCode(raw)).filter((anchor) => !ids.has(anchor));
 
         expect(dangling, `${path} links #anchor(s) with no matching heading: ${dangling.join(', ')}`).toHaveLength(0);
+    });
+});
+
+describe('the guard derives heading ids the way the viewer does', () => {
+    // Regression cases for the slug rule itself. Without them the guard can
+    // drift back to slugifying inline-code-stripped text, which disagrees with
+    // Markdown.appendHeading on any heading containing a backticked span and
+    // silently accepts dead anchors.
+    it('keeps backticked heading text in the slug', () => {
+        const ids = headingIds(stripFences('## Drag-and-drop with `DragManager`'));
+
+        expect(ids.has('drag-and-drop-with-dragmanager')).toBe(true);
+        expect(ids.has('drag-and-drop-with')).toBe(false);
+    });
+
+    it('suffixes a repeated slug the way the viewer does', () => {
+        const ids = headingIds(stripFences('## Overview\n\n## Overview\n\n## Overview'));
+
+        expect([...ids].sort()).toEqual(['overview', 'overview-1', 'overview-2']);
+    });
+
+    it('ignores headings inside a fenced block', () => {
+        const ids = headingIds(stripFences('# Real\n\n```md\n# Fenced\n```'));
+
+        expect(ids.has('real')).toBe(true);
+        expect(ids.has('fenced')).toBe(false);
     });
 });
