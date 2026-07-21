@@ -42,7 +42,7 @@ const TAB_FADE_DURATION_MS = 120;
  * falls back to before any tab has reported a preferred size (an empty or
  * pre-first-layout strip). Once buttons measure, the strip grows past this to fit
  * the font (see {@link TabBar.stripThickness}); this is no longer the value, only
- * the pre-measurement floor. Kept at the legacy `setPreferredSize(0, 30)` seed
+ * the pre-measurement floor. Kept at the legacy `setPreferredSize({ width: 0, height: 30 })` seed
  * the top-only strip was tuned against so an unmeasured strip looks unchanged.
  * Reduced to `STRIP_THICKNESS_COMPACT` when the strip is `compact`.
  */
