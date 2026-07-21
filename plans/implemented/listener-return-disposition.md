@@ -694,6 +694,26 @@ Manual only — the harness cannot drive real pointers or focus:
   reports nothing and the handler simply never consumes. That is the same
   failure class this plan exists to remove, so it is documented explicitly in
   `docs/reference/migration.md` rather than left to the type checker.
+- **Two further consumer-visible break classes needed documenting.** The `async`
+  break and the return-value protocol apply not only to the three `Event.*`
+  registrars but to the semantic `on(...)` shorthands, which forward to
+  `Event.addListener`. And the single largest edit class in this branch is not
+  in the plan at all: a **concise arrow whose expression evaluates to a value no
+  longer compiles**, because `EventDisposition` is a weak type and an unrelated
+  object shares no property with it. That is exactly the shape the library's own
+  docs promote (`btn.on("action", () => store.goToPage(1))`, where `goToPage`
+  returns `this`). Both are now in `docs/reference/migration.md`.
+- **21 of the 24 methods whose return type became `Event.ListenerResult` gained
+  an `@returns`**, as `CODE_CONVENTIONS.md` requires for a non-void return. The
+  return value is now the entire consume contract, so leaving it undocumented
+  while the migration guide warns that a missing return "silently stops
+  consuming" would have been contradictory. Three were skipped —
+  `Header.onResizeDrag`, `Header.onResizeDragStop`, and `LayerManager.onKeyDown`
+  carry no JSDoc block at all, which is pre-existing; adding one is out of scope
+  here.
+- **Five `return` statements in `MenuBar._onKeyDown` gained the blank line
+  before them** that `CODE_CONVENTIONS.md` requires and the sibling `ArrowDown`
+  case already had.
 - **`ARCHITECTURE.md` received a prose paragraph rather than the "two sentences
   plus the four-row table" step 12 specified.** The four return forms are stated
   inline instead of as a table. The rules document is dense prose throughout and

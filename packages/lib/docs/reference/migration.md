@@ -80,6 +80,31 @@ Event.addListener(save, 'click', async () => { await persist(); });
 Event.addListener(save, 'click', () => { void persist(); });
 ```
 
+The same applies to the semantic `on(...)` shorthands — `Button.on("action", …)`,
+`Checkbox`, `RadioButton`, `Slider`, `TextInput`, and the selectable lists all
+forward to `Event.addListener`, so their listeners follow the same protocol and
+an `async` one breaks the same way.
+
+### A concise arrow returning a value no longer compiles
+
+This is the most common break in practice, and the compiler message is not
+obvious. A one-line arrow returns whatever its expression evaluates to. If that
+value is not a valid disposition — a builder returning `this`, a `Promise`, an
+element — the listener no longer typechecks:
+
+```typescript
+// Before — goToPage() returns `this` for chaining; the arrow returned it too,
+// and nothing looked at the value.
+pager.on('action', () => store.goToPage(1));
+
+// After — wrap the call so the arrow returns nothing.
+pager.on('action', () => { store.goToPage(1); });
+```
+
+`EventDisposition` is a weak type (every field optional), so an unrelated object
+has no overlapping property and is rejected. The fix is always the same: give
+the arrow a block body, or prefix the expression with `void`.
+
 ### Overridable drag handlers changed signature
 
 Five public methods on exported classes are part of the same protocol change.
