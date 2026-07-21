@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getPage, getNav } from '../src/content/pages.js';
+import { notFoundSource } from '../src/content/notFound.js';
 import type { NavEntry, NavGroup } from '../src/content/pages.js';
 
 // Independent of pages.ts's own glob, so the bijection test below is a real
@@ -153,5 +154,30 @@ describe('getNav', () => {
         for (const path of ALL_PAGE_PATHS) {
             expect(navPaths.has(path), `file for ${path} is missing from the nav table`).toBe(true);
         }
+    });
+});
+
+describe('notFoundSource', () => {
+    // The corpus links the API reference as `/api/`, which the router's
+    // normalizePath collapses to `/api` before the handler sees it — so a
+    // startsWith('/api/') test alone misses the two most prominent API links
+    // in the corpus (the Guide landing page and the Components catalog).
+    it('names the API reference for the bare /api root', () => {
+        expect(notFoundSource('/api')).toContain('API reference');
+    });
+
+    it('names the API reference for a nested API path', () => {
+        expect(notFoundSource('/api/core/classes/Component')).toContain('API reference');
+    });
+
+    it('uses the generic message for a non-API path', () => {
+        const source = notFoundSource('/nope');
+
+        expect(source).toContain('Not found');
+        expect(source).not.toContain('API reference');
+    });
+
+    it('does not treat a path merely prefixed with "api" as the API reference', () => {
+        expect(notFoundSource('/apiary')).not.toContain('API reference');
     });
 });
