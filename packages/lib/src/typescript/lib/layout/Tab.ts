@@ -1466,8 +1466,10 @@ class Tab extends LayoutManager {
      */
     addLazyTab(factory: ComponentFactory, name: string, constraints?: LayoutConstraints): void {
         // Copy onto a fresh instance so writing `name` never mutates a
-        // caller-owned constraints object.
-        this.addDeferredComponent(factory, Object.assign(new LayoutConstraints(), constraints, { name }));
+        // caller-owned constraints object. `lazy` is forced on: this method's
+        // whole contract is to defer, so a stray `lazy: false` riding in on a
+        // shared constraints object must not silently register nothing.
+        this.addDeferredComponent(factory, Object.assign(new LayoutConstraints(), constraints, { name, lazy: true }));
     }
 
     /**

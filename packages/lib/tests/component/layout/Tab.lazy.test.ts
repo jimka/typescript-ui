@@ -149,6 +149,19 @@ describe('Tab deferred registration', () => {
         expect(tab.getActiveTabLabel()).toBe('Legacy');
     });
 
+    it('defers even when the caller-supplied constraints decline lazy', () => {
+        const { tab } = hostTab();
+        let ran = false;
+
+        // addLazyTab's whole contract is to defer, so a stray lazy:false on a
+        // shared constraints object must not turn it into a silent no-op.
+        tab.addLazyTab(() => { ran = true; return new Component(); }, 'Legacy', constraints({ lazy: false }));
+
+        expect(ran).toBe(false);
+        expect(tabCount(tab)).toBe(1);
+        expect(tab.getActiveTabLabel()).toBe('Legacy');
+    });
+
     it('leaves a caller-owned constraints object unmutated', () => {
         const { tab }       = hostTab();
         const shared        = constraints({ closeable: true });

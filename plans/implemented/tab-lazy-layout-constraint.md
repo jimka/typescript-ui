@@ -974,8 +974,41 @@ No page is added or removed, so the VitePress sidebar and the layouts/components
 
 ## Implementation Notes
 
-Everything in `## Ordered Implementation Steps` landed as written. Two notes on
-verification.
+Every step in `## Ordered Implementation Steps` landed, and every row of the
+files table is present — but three things depart from the step text, and review
+covered more ground than the plan expected. They are recorded here rather than
+left for a reader to discover by diffing.
+
+**`failPanel` gained a staleness guard the plan does not describe, because the
+plan's version had a hole.** `failPanel` now returns early when the panel is no
+longer in `_frames`. The plan defined staleness only inside the frame's own
+`Tab` (`!this._contents.includes(entry)`), which cannot see a panel closed from
+the *outer* region — closing a docked panel closes the outer tab and never
+touches the frame's entry. Without the guard, a panel closed while its content
+was still loading went on to emit `"exception"` for something the user had
+already dismissed, contradicting this plan's own decision table, the `Dock`
+JSDoc, `docs/components/Dock.md`, and manual case 28. The dock's registry is
+what knows a panel has gone, so the failure handler consults it.
+
+**The reject and close-during-flight paths are covered offline, contrary to
+`[^raf-testing]`.** That footnote ruled them manual-verify-only on the grounds
+that a test would have to drive `Animation.play`'s fallback timer. The failure
+path never calls `play` — it goes straight to dropping the spinner and reporting
+— and the `Dock` harness already stubs `setTimeout` and drains animation frames.
+Both paths now have tests, and the close-during-flight one is what caught the
+`failPanel` hole above.
+
+**The identity-frame guard covers the recursion only, as step 21 specified —
+and that is a known, deliberate limit.** `adoptFloat` returns a torn-off lazy
+panel's identity frame unchanged (its manager is a `Tab`, so it classifies as a
+region), and `runSweep` then wires it. Moving the guard to the top of
+`wireRegion` would close that path, but it would also strip a floated lazy panel
+of its drop target and lifecycle subscriptions — a behaviour change on a path
+the plan never analysed. The guard therefore stays where the plan put it, and
+the `adoptFloat` path is left as a follow-up: the real fix is for `adoptFloat`
+to wrap a lazy frame in its own region rather than return it unchanged.
+
+Two notes on verification.
 
 **The `Tab` manual cases (20–25) were verified live** in a browser against the
 demo added in step 27: the strip mints exactly one tab per deferred

@@ -599,8 +599,15 @@ class Dock extends Container<DockOptions> {
 
                 // The frame's Tab is a local and unreachable from outside, so
                 // this subscription is the only thing that can turn a failed
-                // content build into a Dock-level event.
-                tab.on("exception", (error: unknown) => this.failPanel(spec.id, error));
+                // content build into a Dock-level event. Named reference, not an
+                // inline arrow, per the listener rule in ARCHITECTURE.md — the
+                // same shape `wireRegion`'s `onEmpty` uses for a per-frame
+                // handler.
+                const onFailed: (error: unknown) => void = (error: unknown): void => {
+                    this.failPanel(spec.id, error);
+                };
+
+                tab.on("exception", onFailed);
                 tab.addLazyTab(factory, spec.title ?? spec.id);
             } else {
                 // A normal panel builds its content now; the frame exists at once so
@@ -1245,17 +1252,6 @@ class Dock extends Container<DockOptions> {
      * @param region - The region to wire.
      */
     private wireRegion(region: Component): void {
-        // A lazy panel's identity frame carries a Tab manager, so it looks like
-        // a region to every classifier — but wiring it as one would make the
-        // panel itself drop-taking and prunable, and its inner strip draining
-        // would prune the frame out of its parent and leave a phantom tab. This
-        // guard sits at the top rather than at the call sites because a frame
-        // reaches here two ways: the recursion below, and a torn-off frame that
-        // `adoptFloat` returns as its float's region.
-        if (this._frames.get(region.getId()) === region) {
-            return;
-        }
-
         let wiring = this._wiring.get(region);
 
         if (!wiring) {
@@ -1288,7 +1284,11 @@ class Dock extends Container<DockOptions> {
         }
 
         for (const child of region.getComponents()) {
-            if (this.isRegionContainer(child)) {
+            // A lazy panel's identity frame carries a Tab manager, which would
+            // otherwise make this sweep wire the panel itself as a drop-taking,
+            // prunable region — so its inner strip draining would prune the
+            // frame out of its parent and leave a phantom tab behind.
+            if (this.isRegionContainer(child) && this._frames.get(child.getId()) !== child) {
                 this.wireRegion(child);
             }
         }
