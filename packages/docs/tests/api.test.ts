@@ -104,3 +104,51 @@ describe('getApiNav', () => {
         walk(getApiNav());
     });
 });
+
+describe('getApiNav ordering', () => {
+    // TypeDoc emits its own kind-based order (namespaces, then classes, then
+    // interfaces, …), which is arbitrary to a reader scanning for a symbol.
+    // Only this machine-generated tree is sorted: the authored sections keep
+    // the hand-curated config.mts order, where "Overview" leading Concepts is
+    // deliberate and alphabetising would bury it.
+    const byLabel = (a: string, b: string): number =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
+    it('orders every level branches-first, then leaves, each alphanumerically', () => {
+        function check(nodes: ApiNavNode[], where: string): void {
+            const labels   = nodes.map((node) => node.label);
+            const branches = nodes.filter((node) => node.children.length > 0).map((node) => node.label);
+            const leaves   = nodes.filter((node) => node.children.length === 0).map((node) => node.label);
+
+            expect(labels, `${where}: branches must precede leaves`)
+                .toEqual([...branches, ...leaves]);
+            expect(branches, `${where}: branches out of order`)
+                .toEqual([...branches].sort(byLabel));
+            expect(leaves, `${where}: leaves out of order`)
+                .toEqual([...leaves].sort(byLabel));
+
+            for (const node of nodes) {
+                check(node.children, `${where} > ${node.label}`);
+            }
+        }
+
+        check(getApiNav(), 'root');
+    });
+
+    it('sorts without dropping or duplicating a node', () => {
+        const paths: string[] = [];
+
+        (function collect(nodes: ApiNavNode[]): void {
+            for (const node of nodes) {
+                if (node.path !== null) {
+                    paths.push(node.path);
+                }
+
+                collect(node.children);
+            }
+        })(getApiNav());
+
+        expect(paths.length).toBeGreaterThan(600);
+        expect(new Set(paths).size).toBe(paths.length);
+    });
+});

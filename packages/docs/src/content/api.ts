@@ -83,10 +83,41 @@ export async function fetchApiPage(file: string): Promise<string> {
 }
 
 /**
+ * Orders one level of the API tree: grouping nodes first, then pages, each
+ * run sorted alphanumerically by label.
+ *
+ * Only the generated tree is sorted. TypeDoc emits its symbols grouped by kind
+ * — namespaces, then classes, then interfaces, then type aliases — which is an
+ * ordering a reader scanning for a name cannot predict. The authored sections
+ * keep their hand-curated `config.mts` order instead, because there the
+ * sequence carries meaning: `Overview` opens Concepts, and `Introduction`
+ * precedes `Installation`.
+ *
+ * `numeric` so `Foo2` sorts before `Foo10`; `sensitivity: 'base'` so a lower-
+ * case function name interleaves with the class names rather than being
+ * pushed into a separate block by code-point order.
+ *
+ * @param nodes - One level's nodes, in TypeDoc's order.
+ * @returns A new, ordered array; `nodes` is not mutated.
+ */
+function sortApiNodes(nodes: ApiNavNode[]): ApiNavNode[] {
+    const branches = nodes.filter((node) => node.children.length > 0);
+    const leaves   = nodes.filter((node) => node.children.length === 0);
+    const byLabel  = (a: ApiNavNode, b: ApiNavNode): number =>
+        a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' });
+
+    return [
+        ...branches.sort(byLabel).map((node) => ({ ...node, children: sortApiNodes(node.children) })),
+        ...leaves.sort(byLabel),
+    ];
+}
+
+/**
  * The API Reference sidebar root, ready for `Tree.setNodes`.
  *
- * @returns TypeDoc's own navigation tree, normalized to app routes.
+ * @returns TypeDoc's navigation tree, normalized to app routes and ordered by
+ * {@link sortApiNodes}.
  */
 export function getApiNav(): ApiNavNode[] {
-    return apiNav;
+    return sortApiNodes(apiNav);
 }
