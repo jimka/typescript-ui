@@ -9,7 +9,7 @@ import { Event } from '@jimka/typescript-ui/core';
 import { TextField } from '@jimka/typescript-ui/component/input';
 const nameField = TextField();
 nameField.setValue('');
-nameField.setPreferredSize(240, 28);
+nameField.setPreferredSize({ width: 240, height: 28 });
 
 Event.addListener(nameField, 'input', () => {
     console.log('value:', nameField.getValue());

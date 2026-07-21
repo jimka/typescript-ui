@@ -2,6 +2,23 @@
 
 Release history for `@jimka/typescript-ui`.
 
+## 0.2.0
+
+**Breaking:** `Component.setPreferredSize`, `setMinSize`, and `setMaxSize` now
+take a single `Size` object instead of two loose numbers, matching the
+`Size`-typed `preferredSize` / `minSize` / `maxSize` options-bag fields and
+the existing `setSize(size: Size)`. There is no `(width, height)` overload.
+
+```typescript
+// Before
+sidebar.setPreferredSize(240, 0);
+
+// After
+sidebar.setPreferredSize({ width: 240, height: 0 });
+```
+
+See [Migration](/reference/migration#0-1-0-0-2-0) for the full upgrade note.
+
 ## 0.1.0
 
 First public release — the initial published surface of `@jimka/typescript-ui`, a

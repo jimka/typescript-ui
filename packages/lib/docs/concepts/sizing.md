@@ -6,10 +6,10 @@ Every [`Component`](/api/core/classes/Component) carries up to four pieces of si
 
 | Hint | Set via | Meaning |
 | --- | --- | --- |
-| **Preferred** | `setPreferredSize(w, h)` | The component's wish: "given the chance, make me this size." |
-| **Minimum** | `setMinSize(w, h)` | Lower bound. The layout manager won't shrink the component below this. |
-| **Maximum** | `setMaxSize(w, h)` | Upper bound. The layout manager won't grow the component above this. |
-| **Actual** | `setSize(w, h)` (set by layout) | The size the layout manager actually assigned. Read with `getSize()`. |
+| **Preferred** | `setPreferredSize(size)` | The component's wish: "given the chance, make me this size." |
+| **Minimum** | `setMinSize(size)` | Lower bound. The layout manager won't shrink the component below this. |
+| **Maximum** | `setMaxSize(size)` | Upper bound. The layout manager won't grow the component above this. |
+| **Actual** | `setSize(size)` (set by layout) | The size the layout manager actually assigned. Read with `getSize()`. |
 
 The first three are *hints* you set. The fourth is the *outcome* the layout pass produces.
 
@@ -38,19 +38,19 @@ Single-line inputs — [`TextField`](/components/TextField), [`PasswordField`](/
 
 ## Min / max as floors and ceilings
 
-Min and max are particularly important inside flexible layouts. In a [`Border`](/layouts/Border)'s east region, the layout assigns the column's preferred width by default, but `setMinSize(200, 0)` keeps the column at least 200 pixels wide even if there's room to shrink. `setMaxSize(0, 0)` (the default for a freshly-constructed `Component`) means "no upper bound".
+Min and max are particularly important inside flexible layouts. In a [`Border`](/layouts/Border)'s east region, the layout assigns the column's preferred width by default, but `setMinSize({ width: 200, height: 0 })` keeps the column at least 200 pixels wide even if there's room to shrink. `setMaxSize({ width: 0, height: 0 })` (the default for a freshly-constructed `Component`) means "no upper bound".
 
 ```typescript
-sidebar.setPreferredSize(240, 0);  // 240 wide, height filled by layout
-sidebar.setMinSize(180, 0);
-sidebar.setMaxSize(360, 0);
+sidebar.setPreferredSize({ width: 240, height: 0 });  // 240 wide, height filled by layout
+sidebar.setMinSize({ width: 180, height: 0 });
+sidebar.setMaxSize({ width: 360, height: 0 });
 ```
 
 A `0` value for either width or height is conventionally a "don't care" — the layout manager treats it as unbounded.
 
 ## The size invariant
 
-The three hints satisfy `min ≤ preferred ≤ max` on each axis. When you set them in conflict, the framework resolves on read with **min winning**: a preferred below the minimum is lifted to the minimum, and a minimum above the maximum still wins (the maximum is treated as at least the minimum). So `setMinSize(120, 0)` followed by `setPreferredSize(0, 0)` reports a preferred width of 120, not 0. How that range binds the *committed* size — and whether the binding minimum is your explicit one or one derived from the component's children — depends on the component; see [Content size vs. allocated size](#content-size-vs-allocated-size) below.
+The three hints satisfy `min ≤ preferred ≤ max` on each axis. When you set them in conflict, the framework resolves on read with **min winning**: a preferred below the minimum is lifted to the minimum, and a minimum above the maximum still wins (the maximum is treated as at least the minimum). So `setMinSize({ width: 120, height: 0 })` followed by `setPreferredSize({ width: 0, height: 0 })` reports a preferred width of 120, not 0. How that range binds the *committed* size — and whether the binding minimum is your explicit one or one derived from the component's children — depends on the component; see [Content size vs. allocated size](#content-size-vs-allocated-size) below.
 
 ## Content size vs. allocated size
 

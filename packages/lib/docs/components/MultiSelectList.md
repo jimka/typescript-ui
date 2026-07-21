@@ -9,7 +9,7 @@ import { Event } from '@jimka/typescript-ui/core';
 import { MultiSelectList } from '@jimka/typescript-ui/component/list';
 const tags = MultiSelectList();
 tags.setItems(['Urgent', 'Blocked', 'Reviewed', 'In progress']);
-tags.setPreferredSize(180, 120);
+tags.setPreferredSize({ width: 180, height: 120 });
 
 Event.addListener(tags, 'change', () => {
     console.log('selected:', tags.getValue());

@@ -7,7 +7,7 @@
 ```typescript
 import { Slider } from '@jimka/typescript-ui/component/input';
 const volume = Slider({ min: 0, max: 100, step: 1, value: 50 });
-volume.setPreferredSize(200, 24);
+volume.setPreferredSize({ width: 200, height: 24 });
 
 volume.on("change", v => {
     console.log('volume:', v);

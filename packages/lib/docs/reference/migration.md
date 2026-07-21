@@ -1,8 +1,31 @@
 # Migration
 
-Version-to-version breaking-change notes. The framework is currently at **v0.0.0** — pre-release, not yet published. A `0.0.x` version signals that the API is not stabilized and the package is not yet recommended for use.
+Version-to-version breaking-change notes. The framework follows [Semantic
+Versioning](https://semver.org) with the pre-1.0 caveat below: anything may
+change in any `0.x.y` release, including the public API.
 
-This page will accumulate entries once the framework starts publishing tagged releases.
+## 0.1.0 → 0.2.0
+
+`Component.setPreferredSize`, `setMinSize`, and `setMaxSize` now take a
+single `Size` object instead of two loose numbers:
+
+```typescript
+// Before
+sidebar.setPreferredSize(240, 0);
+sidebar.setMinSize(180, 0);
+sidebar.setMaxSize(360, 0);
+
+// After
+sidebar.setPreferredSize({ width: 240, height: 0 });
+sidebar.setMinSize({ width: 180, height: 0 });
+sidebar.setMaxSize({ width: 360, height: 0 });
+```
+
+`Size` is a structural interface (`{ width: number; height: number }`), so no
+import is needed — an object literal with those two fields satisfies it.
+There is no `(width, height)` overload and no deprecation window. Run `npm
+run typecheck` after upgrading; every affected call site becomes a compile
+error, so the type checker finds them all for you.
 
 ## Versioning policy
 

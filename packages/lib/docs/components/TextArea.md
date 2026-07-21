@@ -8,7 +8,7 @@
 import { Event } from '@jimka/typescript-ui/core';
 import { TextArea } from '@jimka/typescript-ui/component/input';
 const notes = TextArea('Initial text');
-notes.setPreferredSize(360, 120);
+notes.setPreferredSize({ width: 360, height: 120 });
 
 Event.addListener(notes, 'input', () => {
     console.log('text:', notes.getText());

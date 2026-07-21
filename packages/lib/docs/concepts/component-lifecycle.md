@@ -77,7 +77,7 @@ Layout is what positions absolutely-positioned children and writes pixel values 
 3. **Explicitly** — when you call `parent.doLayout()` after changing a child's preferred size.
 
 ```typescript
-button.setPreferredSize(120, 32);
+button.setPreferredSize({ width: 120, height: 32 });
 button.getParentComponent()?.doLayout(); // child's parent re-runs layout
 ```
 

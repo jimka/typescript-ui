@@ -7,7 +7,7 @@
 ```typescript
 import { PasswordField } from '@jimka/typescript-ui/component/input';
 const password = PasswordField();
-password.setPreferredSize(240, 28);
+password.setPreferredSize({ width: 240, height: 28 });
 
 panel.addComponent(password);
 // later:

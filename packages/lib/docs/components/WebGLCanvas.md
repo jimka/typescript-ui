@@ -40,7 +40,7 @@ surface.startAnimation();  // resume it
 | `getContext()` | The `WebGL2RenderingContext` for direct access, or `null` offline / before first render. |
 | `startAnimation()` / `stopAnimation()` / `isAnimating()` | Drive (or halt) the per-frame render loop. |
 | `setAnimateWhenHidden(bool)` / `getAnimateWhenHidden()` | Keep the loop running while the surface is not effectively on-screen (default `false`). |
-| `setPreferredSize(w, h)` | Give the surface a size (inherited from `Component`). |
+| `setPreferredSize(size)` | Give the surface a size (inherited from `Component`). |
 
 ## Notes
 
