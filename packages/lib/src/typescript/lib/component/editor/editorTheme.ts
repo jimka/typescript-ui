@@ -77,6 +77,13 @@ export function ensureMarkdownEditorClassRules(): void {
             // Structural inset giving the fenced code frame room.
             padding:      "0.6em 0.8em",
             whiteSpace:   "pre-wrap",
+            // Lexical renders a fenced block as <code>, which is inline by
+            // default and so sits on a text baseline — it rides up into a
+            // preceding block instead of stacking below it. The viewer's
+            // fenced code is a <pre>, a block with the browser's 1em block
+            // margin; both are restated here so the two surfaces stack alike.
+            display:      "block",
+            margin:       "1em 0",
         },
     });
 
