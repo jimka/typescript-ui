@@ -2,6 +2,7 @@
 
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Component } from "~/core/Component.js";
+import type { ComponentFactory } from "~/core/Component.js";
 import { AbstractWindow } from "~/overlay/AbstractWindow.js";
 import { TabWindow } from "~/overlay/TabWindow.js";
 import { Fit } from "~/layout/Fit.js";
@@ -41,8 +42,13 @@ export interface DockPanelSpec {
     tooltip?: string;
     /** Whether the tab shows a close button. Defaults to `true`. */
     closeable?: boolean;
-    /** The content: a live component, or a lazy factory built on first resolve. It is placed inside the identity frame, never mutated. */
-    content:  Component | (() => Component);
+    /**
+     * The content: a live component, or a factory built on first resolve. It is
+     * placed inside the identity frame, never mutated. A factory returning a
+     * promise is accepted only by {@link Dock.addLazyPanel}, which shows a
+     * spinner for the whole wait; {@link Dock.addPanel} throws on one.
+     */
+    content:  Component | ComponentFactory;
 }
 
 /**
@@ -86,6 +92,7 @@ export interface DockOptions extends ContainerOptions {
         focus?:       (event: DockPanelEvent | null) => void;
         close?:       (event: DockPanelEvent) => void;
         emptychange?: (event: DockEmptyEvent) => void;
+        exception?:   (event: DockExceptionEvent) => void;
     };
 }
 
@@ -117,7 +124,7 @@ export interface DockOptions extends ContainerOptions {
  *
  * @category Core
  */
-export type DockEvent = "attach" | "detach" | "move" | "focus" | "close" | "emptychange";
+export type DockEvent = "attach" | "detach" | "move" | "focus" | "close" | "emptychange" | "exception";
 
 /**
  * Payload for a {@link Dock} lifecycle event, identifying the panel by its
@@ -150,6 +157,20 @@ export interface DockPanelEvent {
 export interface DockEmptyEvent {
     /** `true` when the dock just became empty (no live panels anywhere), `false` when it became populated. */
     empty: boolean;
+}
+
+/**
+ * Payload for a {@link Dock} `"exception"` event: a lazy panel's content
+ * factory rejected. The panel has already been closed and its `"close"` event
+ * already emitted by the time this fires.
+ *
+ * @category Core
+ */
+export interface DockExceptionEvent {
+    /** The stable id of the panel that failed (its {@link DockPanelSpec.id}). */
+    id:    string;
+    /** The value the content factory's promise rejected with. */
+    error: unknown;
 }
 
 /**
@@ -192,7 +213,7 @@ class Dock extends Container<DockOptions> {
     // panelId -> deferred content factory for a lazy panel (see addLazyPanel).
     // resolvePanel reads it to give the frame a lazy Tab layout (Tab.addLazyTab),
     // which owns the once-only materialization; the frame caches in _frames after.
-    private _lazyFactories:  Map<string, () => Component> = new Map<string, () => Component>();
+    private _lazyFactories:  Map<string, ComponentFactory> = new Map<string, ComponentFactory>();
     // region container -> its DnD wiring; the sweep's idempotence + teardown ledger.
     private _wiring:         Map<Component, RegionWiring> = new Map<Component, RegionWiring>();
     // rAF coalescing latch so a burst of moves in one gesture yields one sweep.
@@ -569,15 +590,26 @@ class Dock extends Container<DockOptions> {
 
                 tab.setBarVisible(false);
                 frame = new Container({ id: spec.id, name: spec.title, layoutManager: tab });
+
+                // Named reference, not an inline arrow: the frame's Tab is a
+                // local, so the panel id has to be captured per frame. The Tab
+                // is unreachable from outside, so this subscription is what
+                // turns a failed content build into a Dock-level event.
+                const onFailed: (error: unknown) => void = (error: unknown): void => {
+                    this.failPanel(spec.id, error);
+                };
+
+                tab.on("exception", onFailed);
                 tab.addLazyTab(factory, spec.title ?? spec.id);
             } else {
                 // A normal panel builds its content now; the frame exists at once so
                 // the tab shows and the id dedups / serializes like any other.
                 frame = new Container({ id: spec.id, name: spec.title, layoutManager: new Fit() });
 
-                const content = typeof spec.content === "function" ? spec.content() : spec.content;
-
-                frame.addComponent(content);
+                // A live component or a synchronous factory. A promise-returning
+                // factory raises Component.addComponent's Error here: a Fit frame
+                // has no spinner and nothing to own the wait.
+                frame.addComponent(spec.content);
             }
 
             this._frames.set(id, frame);
@@ -1244,7 +1276,11 @@ class Dock extends Container<DockOptions> {
         }
 
         for (const child of region.getComponents()) {
-            if (this.isRegionContainer(child)) {
+            // An identity frame carries a Tab manager when its panel is lazy,
+            // which would otherwise make this sweep wire the panel itself as a
+            // drop-taking, prunable region — so its inner strip draining would
+            // prune the frame out of its parent and leave a phantom tab behind.
+            if (this.isRegionContainer(child) && this._frames.get(child.getId()) !== child) {
                 this.wireRegion(child);
             }
         }
@@ -1460,6 +1496,27 @@ class Dock extends Container<DockOptions> {
             this.scheduleFocusRecompute(region);
         }
     };
+
+    /**
+     * Closes a lazy panel whose content factory rejected, then reports the
+     * failure as this dock's `"exception"`. The panel's own `"close"` event
+     * fires first, from the shared close path.
+     *
+     * The panel stays registered, so re-adding the same id rebuilds its frame
+     * and runs the factory again — that is the retry path.
+     *
+     * @param id - The id of the panel whose factory rejected.
+     * @param error - The value the factory's promise rejected with.
+     */
+    private failPanel(id: string, error: unknown): void {
+        // A frame that is registered but sits in no Tab region cannot be closed
+        // through the shared path; evict it directly so a re-add rebuilds it.
+        if (!this.removePanel(id)) {
+            this._frames.delete(id);
+        }
+
+        this.emit("exception", { id, error });
+    }
 
     /**
      * `"activate"` handler for every wired `Tab`: the active tab changed via a
@@ -1855,6 +1912,19 @@ class Dock extends Container<DockOptions> {
      * @returns This dock, for method chaining.
      */
     on(event: "emptychange", listener: (event: DockEmptyEvent) => void): this;
+    /**
+     * Registers a listener for the `"exception"` event, which fires when a lazy
+     * panel's content factory rejected. The panel has already been closed and
+     * its `"close"` event already emitted, so a listener must not call
+     * {@link Dock.removePanel} for that id. The panel stays registered, so
+     * re-adding the same id rebuilds its frame and retries the factory.
+     *
+     * @param event - The `"exception"` event.
+     * @param listener - Invoked with the failed panel's id and the rejection value.
+     *
+     * @returns This dock, for method chaining.
+     */
+    on(event: "exception", listener: (event: DockExceptionEvent) => void): this;
     on(event: DockEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -1889,6 +1959,7 @@ class Dock extends Container<DockOptions> {
      * @returns This dock, for method chaining.
      */
     off(event: "emptychange", listener: (event: DockEmptyEvent) => void): this;
+    off(event: "exception", listener: (event: DockExceptionEvent) => void): this;
     off(event: DockEvent, listener: Function): this {
         this._listeners.remove(event, listener);
 
@@ -1905,7 +1976,8 @@ class Dock extends Container<DockOptions> {
     protected emit(event: "attach" | "detach" | "move" | "close", payload: DockPanelEvent): void;
     protected emit(event: "focus", payload: DockPanelEvent | null): void;
     protected emit(event: "emptychange", payload: DockEmptyEvent): void;
-    protected emit(event: DockEvent, payload: DockPanelEvent | DockEmptyEvent | null): void {
+    protected emit(event: "exception", payload: DockExceptionEvent): void;
+    protected emit(event: DockEvent, payload: DockPanelEvent | DockEmptyEvent | DockExceptionEvent | null): void {
         this._listeners.fire(event, payload);
     }
 }

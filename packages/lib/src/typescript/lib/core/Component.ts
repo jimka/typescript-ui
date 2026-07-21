@@ -56,13 +56,22 @@ export interface PerimeterSize {
 }
 
 /**
+ * A zero-argument function producing a child component on demand, either
+ * immediately or once its promise resolves. An async factory is only accepted
+ * by a layout manager that defers it (today: [`Tab`](/api/layout/classes/Tab)).
+ *
+ * @category Core
+ */
+export type ComponentFactory = () => Component | Promise<Component>;
+
+/**
  * A child component paired with optional layout constraints, as accepted by
  * [`Component.addComponents`](/api/core/classes/Component#addcomponents).
  *
  * @category Core
  */
 export interface ConstrainedComponent {
-    component:    Component;
+    component:    Component | ComponentFactory;
     constraints?: LayoutConstraints;
 }
 
@@ -140,7 +149,7 @@ export interface ComponentOptions {
     /** Human-readable title for the component; read by the [`Tab`](/api/layout/classes/Tab) layout for the tab/window label. */
     name?:            string | null;
     attributes?:      Record<string, string>;
-    components?:      Array<Component | ConstrainedComponent>;
+    components?:      Array<Component | ComponentFactory | ConstrainedComponent>;
     styleRules?:      ComponentStyleRuleSpec[];
 }
 
@@ -4528,21 +4537,26 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Adds multiple child components in a single call, with optional per-component layout constraints.
      *
      * Each argument is either a {@link Component} (added with no constraints), a
+     * {@link ComponentFactory} (added with no constraints), a
      * {@link ConstrainedComponent} pair (added with the supplied constraints), or an array of
-     * either form (each entry is processed in order). All three forms can be freely mixed in
+     * any of those forms (each entry is processed in order). All forms can be freely mixed in
      * the same call.
      *
      * @param specs - The components to add. Each entry is a bare {@link Component}, a
-     *   {@link ConstrainedComponent} pair, or an array of either.
+     *   {@link ComponentFactory}, a {@link ConstrainedComponent} pair, or an array of those.
      *
      * @returns This component, for method chaining.
      */
-    addComponents(...specs: Array<Component | ConstrainedComponent | Array<Component | ConstrainedComponent>>): this {
+    addComponents(...specs: Array<Component | ComponentFactory | ConstrainedComponent
+                                 | Array<Component | ComponentFactory | ConstrainedComponent>>): this {
         for (const spec of specs) {
             const items = Array.isArray(spec) ? spec : [spec];
 
             for (const item of items) {
-                if (item instanceof Component) {
+                // A factory is a function, so it is neither a Component nor a
+                // ConstrainedComponent pair — without the typeof arm it would
+                // fall through and have `.component` read off a function.
+                if (item instanceof Component || typeof item === "function") {
                     this.addComponent(item);
                 } else {
                     this.addComponent(item.component, item.constraints);
@@ -4599,10 +4613,40 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Adds a child component, appends its element, wires preferred-size change propagation, and triggers layout.
      *
-     * @param component - The child component to add.
+     * The child may be a live {@link Component} or a {@link ComponentFactory} that has not been
+     * built yet. A factory is offered to this container's layout manager first: a manager that
+     * defers it owns when — and whether — it runs, which is how a
+     * [`Tab`](/api/layout/classes/Tab) registers a tab whose content is built on first
+     * activation. Every other manager declines, and the factory runs immediately.
+     *
+     * A factory returning a promise is only meaningful to a manager that defers it, because
+     * that manager is the one showing a spinner for the wait. On the immediate path there is
+     * nothing to host the wait, so a promise throws.
+     *
+     * @param component - The child component to add, or a factory producing it.
      * @param constraints - Optional. Layout constraints to pass to the layout manager.
+     *
+     * @throws Error if a factory returns a promise and no layout manager deferred it.
      */
-    addComponent(component: Component, constraints?: LayoutConstraints): this {
+    addComponent(component: Component | ComponentFactory, constraints?: LayoutConstraints): this {
+        if (typeof component === "function") {
+            const manager = this.getLayoutManager();
+
+            // A manager that claims the factory owns when (and whether) it runs.
+            if (manager && manager.addDeferredComponent(component, constraints)) {
+                return this;
+            }
+
+            const built = component();
+
+            if (built instanceof Promise) {
+                throw new Error("Component.addComponent: an async factory needs a layout manager that defers it — "
+                              + "add it to a Tab-managed container and leave `lazy` at its default.");
+            }
+
+            component = built;
+        }
+
         return this.insertComponent(component, this._components.length, constraints);
     }
 

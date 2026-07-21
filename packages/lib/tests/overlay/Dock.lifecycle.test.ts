@@ -1413,3 +1413,45 @@ describe('Dock listeners option', () => {
         expect(events).toEqual([{ empty: false }]);
     });
 });
+
+describe('Dock async panel content', () => {
+    it('addPanel throws on an async factory, docking nothing', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock   = mountDock();
+        const events: string[] = [];
+
+        dock.on('attach', (e: DockPanelEvent) => events.push(e.id));
+
+        // An eager panel's frame is a Fit with no spinner, so there is nothing
+        // to own the wait — the core add path rejects the promise outright.
+        expect(() => dock.addPanel({ id: 'p', title: 'P', content: async () => new Component({}) }))
+            .toThrow(/addComponent/);
+
+        flush();
+
+        expect(events).not.toContain('p');
+    });
+
+    it('addLazyPanel docks the tab without running an async factory', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+        let ran    = false;
+
+        dock.addLazyPanel({
+            id:      'p',
+            title:   'P',
+            content: async () => { ran = true; return new Component({}); },
+        });
+
+        dock.doLayout();
+
+        // Asserted before any flush: the factory call lives inside the deferred
+        // tab's two-frame yield, which the recording sink never drives.
+        expect(dock.focusPanel('p')).toBe(true);
+        expect(ran).toBe(false);
+    });
+});

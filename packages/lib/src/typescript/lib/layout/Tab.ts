@@ -5,6 +5,7 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Size } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Component } from "~/core/Component.js";
+import type { ComponentFactory } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { Window } from "~/overlay/Window.js";
 import { TabWindow } from "~/overlay/TabWindow.js";
@@ -35,11 +36,14 @@ import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
  * content), the structural counterpart of `"detach"` — a tab arrived by drop;
  * `"activate"` fires when the active tab changes via a click or
  * {@link Tab.setActiveTabIndex} (carrying the now-active content and its index),
- * but *not* on the silent post-close re-selection of a surviving sibling.
+ * but *not* on the silent post-close re-selection of a surviving sibling;
+ * `"exception"` fires when a deferred tab's asynchronous factory rejected
+ * (carrying the rejection value and the tab's label), after that tab has already
+ * been closed.
  *
  * @category Layouts
  */
-export type TabEvent = "tabclose" | "empty" | "detach" | "activate" | "dock";
+export type TabEvent = "tabclose" | "empty" | "detach" | "activate" | "dock" | "exception";
 
 /**
  * How a torn-off tab's floating window hosts its content.
@@ -126,6 +130,8 @@ export interface TabOptions extends LayoutManagerOptions {
         tabclose?: (component: Component) => void;
         /** Fires after the last tab leaves the strip by any path (close, tear-off, re-dock). */
         empty?: () => void;
+        /** Fires after a deferred tab's async factory rejected and its tab was closed. */
+        exception?: (error: unknown, label: string) => void;
     };
 
     /** Tab-button width strategy; defaults to `"equal"`. */
@@ -228,7 +234,7 @@ type TabEntryState = "lazy" | "building" | "ready";
 interface ContentEntry {
     id: string;
     component: Component | null;
-    factory: (() => Component) | null;
+    factory: ComponentFactory | null;
     spinner: Component | null;
     state: TabEntryState;
 }
@@ -1050,12 +1056,20 @@ class Tab extends LayoutManager {
         // forces a selection move; closing a background tab keeps it.
         const wasSelected = this._selectedTabIndex === idx;
         const content = this._contents[idx].component;
+        const spinner = this._contents[idx].spinner;
 
         this._bar.removeBarEntry(id);
         this._contents.splice(idx, 1);
 
         if (content) {
             container.removeComponent(content);
+        }
+
+        // An entry closed mid-build still owns a mounted spinner; leaving it in
+        // the container makes it an entry-unowned child, and the next layout
+        // pass mints a phantom tab for it.
+        if (spinner) {
+            container.removeComponent(spinner);
         }
 
         if (content) {
@@ -1369,10 +1383,64 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Registers a tab whose content component is built on first activation rather
-     * than at registration time. The tab button is created immediately so the tab
+     * Claims an unbuilt child offered by
+     * [`Component.addComponent`](/api/core/classes/Component#addcomponent),
+     * registering it as a tab whose content is built on first activation rather
+     * than at registration time. The tab button is created immediately so the
      * strip renders fully on first paint; the factory runs only when the tab is
      * first selected (or laid out as the initial tab).
+     *
+     * Deferral is the default: only `constraints.lazy === false` declines it,
+     * which hands the factory back to the container to build immediately.
+     *
+     * The tab's label comes from `constraints.name`, falling back to the minted
+     * tab id when no name was given — a deferred entry has no component to ask.
+     *
+     * @param factory - Produces the content component on first activation. May
+     *   be asynchronous: the spinner stays up for the whole wait, and a
+     *   rejection closes the tab and emits `"exception"`.
+     * @param constraints - Optional layout constraints; also the source of the
+     *   tab's label, glyph and tooltip.
+     *
+     * @returns `true` when the factory was registered as a deferred tab,
+     *   `false` when `lazy: false` declined the deferral.
+     *
+     * @remarks No container child exists until the content materializes, which
+     * is what keeps the layout pass from minting a second, id-labelled tab
+     * alongside this one.
+     */
+    override addDeferredComponent(factory: ComponentFactory, constraints?: LayoutConstraints): boolean {
+        // `lazy` defaults to true: only an explicit false declines the deferral.
+        if (constraints?.lazy === false) {
+            return false;
+        }
+
+        // Give any container child added before this call its tab first, so tab
+        // order tracks call order across interleaved eager and lazy adds.
+        this.syncUntabbedChildren();
+
+        const id = this.mintId();
+
+        this._bar.createBarEntry(id, constraints?.name ?? id, constraints);
+        this._contents.push({
+            id,
+            component: null,
+            factory,
+            spinner: null,
+            state: "lazy",
+        });
+
+        this.getContainer()?.scheduleLayout();
+
+        return true;
+    }
+
+    /**
+     * Registers a tab whose content component is built on first activation.
+     *
+     * An alias over the primary path, `container.addComponent(factory, { name })`
+     * — prefer that form; this one remains for callers that hold the layout
+     * manager rather than its container.
      *
      * @param factory - A zero-argument function that produces the content component on first activation.
      * @param name - The visible label for the tab button.
@@ -1389,13 +1457,6 @@ class Tab extends LayoutManager {
      * do not trigger factory invocations — they observe the spinner placeholder
      * until the build completes.
      *
-     * Mixing direct `container.addComponent(c, {...})` calls with lazy entries
-     * is supported: `doLayout` creates a tab for every container child that no
-     * existing entry already owns (through its `component`/`spinner`), so an
-     * eager directly-added child still gets its own tab no matter how many lazy
-     * panels have materialized. Materialize-injected children are entry-owned,
-     * so they are never re-tabbed.
-     *
      * @example
      * ```typescript
      * const layout = new Tab();
@@ -1403,17 +1464,10 @@ class Tab extends LayoutManager {
      * layout.addLazyTab(() => new HeavyPanel(), "Heavy");
      * ```
      */
-    addLazyTab(factory: () => Component, name: string, constraints?: LayoutConstraints): void {
-        const id = this.mintId();
-
-        this._bar.createBarEntry(id, name, constraints);
-        this._contents.push({
-            id,
-            component: null,
-            factory,
-            spinner: null,
-            state: "lazy",
-        });
+    addLazyTab(factory: ComponentFactory, name: string, constraints?: LayoutConstraints): void {
+        // Copy onto a fresh instance so writing `name` never mutates a
+        // caller-owned constraints object.
+        this.addDeferredComponent(factory, Object.assign(new LayoutConstraints(), constraints, { name }));
     }
 
     /**
@@ -1447,6 +1501,44 @@ class Tab extends LayoutManager {
      * longer trigger factory invocations — they observe the spinner placeholder
      * until the build completes.
      */
+    /**
+     * Catches the tab strip up to any container child that no content entry owns
+     * yet — the bare-`Panel` eager path, where a consumer called `addComponent`
+     * directly and expects a tab to appear.
+     *
+     * `Animation.materialize` also injects children (the built lazy panels and
+     * the transient spinner), but each of those is referenced by an existing
+     * entry's `component`/`spinner`, so the ownership test skips them and they
+     * never become phantom UUID-labelled tabs.
+     *
+     * Called from `doLayout` and again when a deferred child is registered, so
+     * tab order tracks call order across interleaved eager and lazy adds.
+     */
+    private syncUntabbedChildren(): void {
+        const container = this.getContainer();
+        if (!container) {
+            return;
+        }
+
+        const owned = new Set<Component>();
+
+        for (const entry of this._contents) {
+            if (entry.component) {
+                owned.add(entry.component);
+            }
+
+            if (entry.spinner) {
+                owned.add(entry.spinner);
+            }
+        }
+
+        for (const component of container.getComponents()) {
+            if (!owned.has(component)) {
+                this.createTab(component);
+            }
+        }
+    }
+
     private materializeAsync(idx: number): void {
         const entry = this._contents[idx];
         if (!entry || entry.state !== "lazy") {
@@ -1470,18 +1562,30 @@ class Tab extends LayoutManager {
         Animation.materialize({
             host:             container,
             factory:          () => {
-                const component = factory();
+                const result = factory();
 
                 // Capture the built component on the entry the instant it
                 // exists — before `Animation.materialize` attaches it to the
                 // container and schedules the layout that would otherwise see
                 // an entry-unowned child and mint a phantom UUID tab for it.
                 // `onReady` re-asserts this once the fade completes.
-                entry.component = component;
+                if (result instanceof Promise) {
+                    return result.then((component) => {
+                        entry.component = component;
 
-                return component;
+                        return component;
+                    });
+                }
+
+                entry.component = result;
+
+                return result;
             },
             spinnerComponent: spinner,
+            // The entry leaves `_contents` when its tab is closed, so a factory
+            // that settles after that has nobody left to report to.
+            isStale:          () => !this._contents.includes(entry),
+            onError:          (error) => this.failEntry(entry, error),
             onReady:          (component) => {
                 entry.component = component;
                 entry.factory   = null;
@@ -1492,6 +1596,25 @@ class Tab extends LayoutManager {
                 container.scheduleLayout();
             }
         });
+    }
+
+    /**
+     * Tears down a deferred tab whose factory rejected, then reports the failure.
+     * The spinner has already been removed by the materialize helper, so the
+     * entry's reference is cleared first to keep the shared close path from
+     * removing it a second time.
+     *
+     * @param entry - The failed content entry.
+     * @param error - The value the factory's promise rejected with.
+     */
+    private failEntry(entry: ContentEntry, error: unknown): void {
+        const label = this._bar.getEntryName(entry.id);
+
+        entry.spinner = null;
+        entry.factory = null;
+
+        this.closeEntry(entry.id);
+        this.emit("exception", error, label);
     }
 
     /**
@@ -1534,29 +1657,7 @@ class Tab extends LayoutManager {
         let containerSize = container.getInnerSize();
         let containerInsets = container.getContentInsets();
 
-        // Catch the tab strip up to any container child that no content entry owns
-        // yet — the bare-`Panel` eager path, where a consumer called
-        // `addComponent` directly and expects a tab to appear.
-        // `Animation.materialize` also injects children (the built lazy panels
-        // and the transient spinner), but each of those is referenced by an
-        // existing entry's `component`/`spinner`, so the ownership test skips
-        // them and they never become phantom UUID-labelled tabs.
-        let owned = new Set<Component>();
-        for (let entry of this._contents) {
-            if (entry.component) {
-                owned.add(entry.component);
-            }
-
-            if (entry.spinner) {
-                owned.add(entry.spinner);
-            }
-        }
-
-        for (let component of components) {
-            if (!owned.has(component)) {
-                this.createTab(component);
-            }
-        }
+        this.syncUntabbedChildren();
 
         // Apply a deferred setActiveContent now that this pass has created the
         // freshly-added child's tab cell, so a programmatic add can focus it.
@@ -2147,6 +2248,21 @@ class Tab extends LayoutManager {
      * @returns This tab layout, for method chaining.
      */
     on(event: "dock", listener: (content: Component) => void): this;
+    /**
+     * Registers a listener for the `"exception"` event, which fires when a
+     * deferred tab's asynchronous factory rejected. The tab has already been
+     * closed and has left the strip by the time the listener runs, so a listener
+     * inspecting the strip sees the final state.
+     *
+     * No error UI is shown — presenting the failure is the consumer's job.
+     *
+     * @param event - The `"exception"` event.
+     * @param listener - Invoked with the value the factory's promise rejected
+     *   with, and the label the failed tab carried.
+     *
+     * @returns This tab layout, for method chaining.
+     */
+    on(event: "exception", listener: (error: unknown, label: string) => void): this;
     on(event: TabEvent,   listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -2180,6 +2296,7 @@ class Tab extends LayoutManager {
     protected emit(event: "detach", window: AbstractWindow): void;
     protected emit(event: "activate", content: Component, index: number): void;
     protected emit(event: "dock",   content: Component): void;
+    protected emit(event: "exception", error: unknown, label: string): void;
     protected emit(event: TabEvent,   ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }

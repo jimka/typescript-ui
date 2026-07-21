@@ -967,6 +967,18 @@ class MiscPanel extends Panel {
                 return host;
             };
 
+            // Content that is not available until a simulated fetch resolves.
+            // The dock shows its tab at once and holds a spinner for the wait.
+            const dockAsyncPanel = (text: string): Promise<Component> => new Promise<Component>(resolve => {
+                setTimeout(() => resolve(dockPanel(text)()), 1200);
+            });
+
+            // Content whose simulated fetch fails: the whole docked panel closes
+            // itself and the dock emits "exception" after its own "close".
+            const dockFailingPanel = (title: string): Promise<Component> => new Promise<Component>((_resolve, reject) => {
+                setTimeout(() => reject(new Error(`${title}: content fetch failed`)), 800);
+            });
+
             // A start-page placeholder shown only while the dock holds no panel:
             // close every tab to see it, open one to hide it again. It is chrome —
             // shown as a single non-closeable tab (labelled by its name), never
@@ -1003,6 +1015,7 @@ class MiscPanel extends Panel {
             dock.on("focus",  e => console.log(`[Dock] focus: ${e ? `${e.id} -> ${host(e)}` : "(none)"}`));
             dock.on("close",  e => console.log(`[Dock] close: ${e.id}`));
             dock.on("emptychange", e => console.log(`[Dock] emptychange: empty=${e.empty}`));
+            dock.on("exception", e => console.log(`[Dock] exception: ${e.id} — ${String(e.error)}`));
 
             let savedLayout: LayoutState | null = null;
             const toolbar = new ToolBar();
@@ -1019,8 +1032,37 @@ class MiscPanel extends Panel {
                 }
             });
 
+            // addLazyPanel, not the `layout` spec — that compiles through the
+            // eager addPanel, which rejects an async factory by design.
+            let asyncPanelCounter = 0;
+            const addAsyncButton = new Button("Add async panel");
+            addAsyncButton.on("action", () => {
+                asyncPanelCounter += 1;
+                dock.addLazyPanel({
+                    id:      `async-${asyncPanelCounter}`,
+                    title:   "Async",
+                    glyph:   "hourglass",
+                    tooltip: "Resolves after a wait",
+                    content: () => dockAsyncPanel("Async — resolved after a wait."),
+                });
+            });
+
+            // A fixed id, so pressing it again after a failure re-adds the same
+            // panel and starts a fresh load — a failed panel stays registered.
+            const addFailingButton = new Button("Add failing panel");
+            addFailingButton.on("action", () => {
+                dock.addLazyPanel({
+                    id:      "failing",
+                    title:   "Failing",
+                    glyph:   "exclamation-triangle",
+                    content: () => dockFailingPanel("Failing"),
+                });
+            });
+
             toolbar.addComponent(saveButton);
             toolbar.addComponent(restoreButton);
+            toolbar.addComponent(addAsyncButton);
+            toolbar.addComponent(addFailingButton);
 
             const body = new Container({ layoutManager: new Border() });
             body.addComponent(toolbar, { placement: Placement.NORTH });

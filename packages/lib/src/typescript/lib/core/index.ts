@@ -15,7 +15,7 @@ export type { DOMSink, DOMSource, DOMSeams, Rect, ScrollMetrics, OffsetSize, Med
 export { callable } from '~/core/Callable.js';
 export type { Callable } from '~/core/Callable.js';
 export { Component } from '~/core/Component.js';
-export type { Comparator, Style, ComponentOptions, ComponentStyleRuleSpec, ConstrainedComponent, PerimeterSize } from '~/core/Component.js';
+export type { Comparator, Style, ComponentOptions, ComponentStyleRuleSpec, ComponentFactory, ConstrainedComponent, PerimeterSize } from '~/core/Component.js';
 export { Container } from '~/core/Container.js';
 export type { ContainerOptions } from '~/core/Container.js';
 export { Panel } from '~/core/Panel.js';

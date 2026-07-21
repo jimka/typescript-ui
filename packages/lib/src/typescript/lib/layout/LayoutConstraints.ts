@@ -54,6 +54,15 @@ export class LayoutConstraints {
     data?: any;
     closeable?: boolean;
     /**
+     * Whether a factory passed to
+     * [`Component.addComponent`](/api/core/classes/Component#addcomponent) is
+     * registered without being run. Read by the
+     * [`Tab`](/api/layout/classes/Tab) manager only, where it defaults to
+     * `true`; pass `false` to build the child immediately instead. Ignored when
+     * the child is an already-constructed component, and by every other manager.
+     */
+    lazy?: boolean;
+    /**
      * Marks a child as chrome that participates in layout but is excluded from
      * layout serialization. A `transient` child is laid out normally (it can be a
      * real tab or pane), but [`serializeLayout`](/api/layout/functions/serializeLayout)

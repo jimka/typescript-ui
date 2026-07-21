@@ -24,7 +24,7 @@ export type { RailOptions, RailEdge, RailOrientation, RailEvent, RailDrawerRegis
 export { RailHandle } from '~/overlay/RailHandle.js';
 export type { RailHandleOptions } from '~/overlay/RailHandle.js';
 export { Dock } from '~/overlay/Dock.js';
-export type { DockOptions, DockPanelSpec, DockLayoutSpec, DockEvent, DockPanelEvent, DockEmptyEvent } from '~/overlay/Dock.js';
+export type { DockOptions, DockPanelSpec, DockLayoutSpec, DockEvent, DockPanelEvent, DockEmptyEvent, DockExceptionEvent } from '~/overlay/Dock.js';
 
 export { DragManager } from '~/overlay/DragManager.js';
 export type { DragData, DragEventDetail, DragSourceOptions, DropTargetOptions, TabDragData } from '~/overlay/DragManager.js';
