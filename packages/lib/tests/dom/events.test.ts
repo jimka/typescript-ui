@@ -366,6 +366,10 @@ describe('Modelled event delivery — polite propagation', () => {
 
         let firstRuns  = 0;
         let secondRuns = 0;
+        let nativeStops = 0;
+
+        const evt = makeEvent(first.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { nativeStops += 1; };
 
         Event.addViewportListener(first, type, () => {
             firstRuns += 1;
@@ -374,10 +378,11 @@ describe('Modelled event delivery — polite propagation', () => {
         });
         Event.addViewportListener(second, type, () => { secondRuns += 1; });
 
-        DOM.sink.dispatchEvent(first.getElement()!, makeEvent(first.getElement()!, type));
+        DOM.sink.dispatchEvent(first.getElement()!, evt);
 
         expect(firstRuns).toBe(1);
         expect(secondRuns).toBe(1);
+        expect(nativeStops).toBe(1);
     });
 
     it('runs every registered viewport component even when one of them consumes, reversed order', () => {
@@ -392,6 +397,10 @@ describe('Modelled event delivery — polite propagation', () => {
 
         let firstRuns  = 0;
         let secondRuns = 0;
+        let nativeStops = 0;
+
+        const evt = makeEvent(first.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { nativeStops += 1; };
 
         Event.addViewportListener(second, type, () => { secondRuns += 1; });
         Event.addViewportListener(first, type, () => {
@@ -400,10 +409,11 @@ describe('Modelled event delivery — polite propagation', () => {
             return true;
         });
 
-        DOM.sink.dispatchEvent(first.getElement()!, makeEvent(first.getElement()!, type));
+        DOM.sink.dispatchEvent(first.getElement()!, evt);
 
         expect(firstRuns).toBe(1);
         expect(secondRuns).toBe(1);
+        expect(nativeStops).toBe(1);
     });
 
     // Case 4: dispatching a type with no viewport registrations runs no
