@@ -150,8 +150,6 @@ export namespace Event {
             return;
         }
 
-        evnt.stopPropagation();
-
         for (let listeners of typeListeners) {
             let compFunc = listeners[1];
             if (!compFunc) {

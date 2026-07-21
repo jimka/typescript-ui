@@ -319,6 +319,62 @@ No exported signature changes. Two documentation edits:
 
 ---
 
+## Implementation Notes
+
+- **Signature changes to receive the event.** Several of the "Consume" table's
+  handlers discarded the event entirely (`AbstractWindow.onMouseUp` /
+  `onResizeEnd`, `SplitGutter.onDragStop`, `WindowBorder.onDragStop`,
+  `Header.onResizeDragStop`, `Accordion.onGutterDragEnd`) because they only
+  ever ran teardown work. Calling `stopPropagation()` from inside them needed
+  an event parameter that did not exist. Added one everywhere: required where
+  no other call site invoked the method with zero arguments
+  (`AbstractWindow.onMouseUp`/`onResizeEnd`, `Header.onResizeDragStop`, all
+  three previously had exactly one caller — their own bound viewport-listener
+  field); optional (`e?: Event`) where existing internal calls or tests invoke
+  the method directly with no event (`SplitGutter.onDragStop` —
+  `tests/component/layout/Split.test.ts`; `WindowBorder.onDragStop`; and
+  `Accordion.onGutterDragEnd`, which `detach()` also calls mid-drag at
+  `Accordion.ts:1130`). Not called out explicitly in the plan's audit table,
+  which only named *where* to add the call, not that the surrounding
+  signature needed to widen to reach it.
+- **`Dialog`'s Tab branch has three `e.preventDefault()` calls, not two.**
+  Beyond the two wrap-focus branches (shift-Tab from first, Tab from last),
+  `onKeyDown` also traps Tab entirely when the dialog has zero focusable
+  elements (`focusable.length === 0`). Read "beside each `e.preventDefault()`
+  in the Tab branch" as covering all three, and added `stopPropagation()`
+  there too — trapping Tab in an empty dialog is as much a genuine consume as
+  the wrap case.
+- **Corrected a stale offline-harness comment in `LayerManager.test.ts`.** Its
+  "Documented offline gap" block asserted that `LayerManager`'s private
+  `onKeyDown` was unreachable because "the recording sink records
+  `dispatchEvent` without invoking listeners." That is no longer true —
+  `TestDOM.ts`'s `dispatchEvent` invokes window-registered viewport listeners
+  (the same mechanism `FocusHistory.test.ts` already relies on for its own
+  keydown-combo tests), which is exactly how the new Escape regression tests
+  (case 6) reach it. Narrowed the comment to the part that is still an
+  offline gap — the outside-click/pointerdown/blur dispatch, which stays
+  unreachable for the reasons `containsAcrossLayers`' tests already document
+  — rather than leave a claim beside new passing tests that falsify it.
+- **`Dialog` case 7 exercises the empty-focusable trap branch, not the
+  wrap-focus branch.** `getFocusable()` reads via `DOM.source.querySelectorAll`,
+  which the offline DOM harness stubs to `[]` (already noted by
+  `TestDialog`'s own comment for the Enter tests), so offline a shown Dialog
+  always finds zero focusable elements and takes the "trap the whole dialog"
+  branch on Tab. Both branches now call `stopPropagation()` per the plan, but
+  only the empty-list branch is reachable from the offline harness; the
+  wrap-focus branch's consume is implemented but not independently
+  unit-tested — consistent with the plan's own manual-verification carve-out
+  for the caret/focus-dependent behaviour in `## Expected Behaviour` cases
+  9-12.
+- **Event.ts's two edits landed in separate commits despite sharing a file.**
+  The commit skill's bucket rule puts the `baseViewportListener` logic delete
+  in the code commit and the `addViewportListener` JSDoc `@remarks` update in
+  the documentation commit; the two hunks were applied, staged, and committed
+  in two passes to keep them apart even though the file itself is touched
+  twice.
+
+---
+
 ## Notes
 
 [^precedent]: The precedent is `baseListener` at

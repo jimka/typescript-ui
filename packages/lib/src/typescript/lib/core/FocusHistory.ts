@@ -219,6 +219,7 @@ function onKeyDown(e: KeyboardEvent): void {
     }
 
     e.preventDefault();
+    e.stopPropagation();
     navigate(direction);
 }
 

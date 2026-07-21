@@ -552,6 +552,7 @@ export namespace LayerManager {
             }
 
             _stack[i].layer.requestClose();
+            e.stopPropagation();
 
             return;
         }

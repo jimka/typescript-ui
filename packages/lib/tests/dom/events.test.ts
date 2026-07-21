@@ -302,6 +302,124 @@ describe('Modelled event delivery — polite propagation', () => {
 
         expect(nativeStops).toBe(1);
     });
+
+    // The viewport dispatcher (baseViewportListener) must follow the same
+    // policy as baseListener: it never stops native propagation on a
+    // component's behalf. Before the fix it called stopPropagation()
+    // unconditionally, so registering a single viewport listener for a type
+    // (e.g. "keydown") silenced that type app-wide.
+
+    // Case 1: an unconsumed viewport event keeps propagating.
+    it('does not stop native propagation when an unconsumed viewport handler runs', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let nativeStops = 0;
+        let handlerRuns = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { nativeStops += 1; };
+
+        Event.addViewportListener(comp, type, () => { handlerRuns += 1; });
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(handlerRuns).toBe(1);
+        expect(nativeStops).toBe(0);
+    });
+
+    // Case 2: a consumed viewport event is halted.
+    it('stops native propagation when a viewport handler explicitly consumes the event', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let nativeStops = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { nativeStops += 1; };
+
+        Event.addViewportListener(comp, type, (e: globalThis.Event) => e.stopPropagation());
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(nativeStops).toBe(1);
+    });
+
+    // Case 3: a consume from one registered component does not silence the
+    // others — the viewport dispatcher is a flat broadcast, not a chain that
+    // a stop can cut short. Verified with both registration orders.
+    it('runs every registered viewport component even when one of them consumes', () => {
+        installTestDOM(CONFIG);
+
+        const first  = new Component({});
+        const second = new Component({});
+        const type   = uniqueType();
+
+        first.getElement(true);
+        second.getElement(true);
+
+        let firstRuns  = 0;
+        let secondRuns = 0;
+
+        Event.addViewportListener(first, type, (e: globalThis.Event) => {
+            firstRuns += 1;
+            e.stopPropagation();
+        });
+        Event.addViewportListener(second, type, () => { secondRuns += 1; });
+
+        DOM.sink.dispatchEvent(first.getElement()!, makeEvent(first.getElement()!, type));
+
+        expect(firstRuns).toBe(1);
+        expect(secondRuns).toBe(1);
+    });
+
+    it('runs every registered viewport component even when one of them consumes, reversed order', () => {
+        installTestDOM(CONFIG);
+
+        const first  = new Component({});
+        const second = new Component({});
+        const type   = uniqueType();
+
+        first.getElement(true);
+        second.getElement(true);
+
+        let firstRuns  = 0;
+        let secondRuns = 0;
+
+        Event.addViewportListener(second, type, () => { secondRuns += 1; });
+        Event.addViewportListener(first, type, (e: globalThis.Event) => {
+            firstRuns += 1;
+            e.stopPropagation();
+        });
+
+        DOM.sink.dispatchEvent(first.getElement()!, makeEvent(first.getElement()!, type));
+
+        expect(firstRuns).toBe(1);
+        expect(secondRuns).toBe(1);
+    });
+
+    // Case 4: dispatching a type with no viewport registrations runs no
+    // handler and calls native stopPropagation 0 times.
+    it('does not stop native propagation when there are no viewport registrations for the type', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let nativeStops = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { nativeStops += 1; };
+
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(nativeStops).toBe(0);
+    });
 });
 
 describe('Modelled event delivery — setId reindex', () => {

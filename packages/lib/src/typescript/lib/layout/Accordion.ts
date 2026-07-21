@@ -1938,8 +1938,14 @@ class Accordion extends LayoutManager {
      * post-drag sizes when a drag was actually live — including on the
      * `detach()` mid-drag path, which calls this before `_resizeSizes` is
      * cleared, so the emitted sizes still reflect the drag.
+     *
+     * @param e - The mouseup/touchend/touchcancel event ending the drag, when
+     *   invoked as a viewport listener. Optional so `detach()` and tests can
+     *   call it directly to simulate a drag end.
      */
-    private onGutterDragEnd(): void {
+    private onGutterDragEnd(e?: Event): void {
+        e?.stopPropagation();
+
         const wasDragging = this._dragUpper !== null;
         const container = this.getContainer();
 

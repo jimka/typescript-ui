@@ -38,11 +38,12 @@ function focusIn(handle: Handle): void {
     DOM.sink.dispatchEvent(DOM.source.getWindow(), makeEvent(handle, 'focusin'));
 }
 
-/** Dispatches a `keydown` combo through the window-registered viewport listeners; returns the event so preventDefault can be asserted. */
-function keyDown(init: { code: string; altKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean; metaKey?: boolean }): { preventDefault: () => void } {
-    const event = makeEvent(0 as Handle, 'keydown', init) as unknown as { preventDefault: () => void };
+/** Dispatches a `keydown` combo through the window-registered viewport listeners; returns the event so preventDefault/stopPropagation can be asserted. */
+function keyDown(init: { code: string; altKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean; metaKey?: boolean }): { preventDefault: () => void; stopPropagation: () => void } {
+    const event = makeEvent(0 as Handle, 'keydown', init) as unknown as { preventDefault: () => void; stopPropagation: () => void };
 
     vi.spyOn(event, 'preventDefault');
+    vi.spyOn(event, 'stopPropagation');
     DOM.sink.dispatchEvent(DOM.source.getWindow(), event as unknown as Event);
 
     return event;
@@ -290,6 +291,25 @@ describe('FocusHistory', () => {
 
         expect(event.preventDefault).not.toHaveBeenCalled();
         expect(DOM.source.getActiveElement()).toBe(b);
+    });
+
+    // Registrar regression (viewport-event-propagation): FocusHistory must
+    // consume only the combos it actually navigates on, not every keydown —
+    // otherwise it would silence keydown app-wide as soon as it is enabled.
+    it('consumes only its matching combo, not an unrelated keydown', () => {
+        installTestDOM(CONFIG);
+        FocusHistory.enable();
+
+        const a = liveHandle();
+        focusIn(a);
+        const b = liveHandle();
+        focusIn(b);
+
+        const matched = keyDown({ code: 'BracketLeft', altKey: true });
+        expect(matched.stopPropagation).toHaveBeenCalledTimes(1);
+
+        const unmatched = keyDown({ code: 'KeyB', altKey: true });
+        expect(unmatched.stopPropagation).not.toHaveBeenCalled();
     });
 
     it('suppresses back/forward while the top layer is modal', () => {

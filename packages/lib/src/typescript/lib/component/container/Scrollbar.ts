@@ -815,6 +815,8 @@ class Scrollbar extends Component<ScrollbarOptions> {
      * @param e - The viewport mousemove or touchmove event during a drag.
      */
     private _onDragMove = (e: MouseEvent | TouchEvent): void => {
+        e.stopPropagation();
+
         const trackLength = this.getTrackLength();
         const maxScroll   = Math.max(0, this._contentSize - this._viewportSize);
         const maxThumb    = Math.max(0, trackLength - this._thumbSize);
@@ -832,8 +834,12 @@ class Scrollbar extends Component<ScrollbarOptions> {
 
     /**
      * Removes viewport listeners and restores body pointer events.
+     *
+     * @param e - The mouseup/touchend/touchcancel event ending the drag.
      */
-    private _onDragEnd = (): void => {
+    private _onDragEnd = (e: Event): void => {
+        e.stopPropagation();
+
         Event.removeViewportListener(this, "mousemove",   this._onDragMove);
         Event.removeViewportListener(this, "mouseup",     this._onDragEnd);
         Event.removeViewportListener(this, "touchmove",   this._onDragMove);

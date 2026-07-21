@@ -490,6 +490,8 @@ function onMouseMove(e: MouseEvent): void {
         return;
     }
 
+    e.stopPropagation();
+
     const session = activeSession;
 
     if (!session.committed) {
@@ -576,6 +578,8 @@ function onMouseUp(e: MouseEvent): void {
     if (activeSession === null) {
         return;
     }
+
+    e.stopPropagation();
 
     const session = activeSession;
     const detail  = buildDetail(session, e.clientX, e.clientY);

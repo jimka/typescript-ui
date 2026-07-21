@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi, type Mock } from 'vitest';
 import { LayerManager, DismissableLayer, LayerDismissMode } from '~/core/LayerManager';
 import { DOM, type Handle } from '~/core/DOM';
-import { installTestDOM } from '../dom/TestDOM';
+import { installTestDOM, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -275,16 +275,63 @@ describe('LayerManager', () => {
         });
     });
 
+    describe('Escape (viewport keydown)', () => {
+        // LayerManager's private onKeyDown IS reachable offline, driven the same
+        // way FocusHistory.test.ts drives its own combo: dispatching a keydown
+        // through the window-registered viewport listener
+        // (DOM.sink.dispatchEvent invokes it — see TestDOM.ts's dispatchEvent).
+
+        // Registrar regression (viewport-event-propagation): Escape must consume
+        // only when it actually closes a layer, not on every keydown — otherwise
+        // LayerManager would silence keydown app-wide as soon as any dismissable
+        // layer registers.
+        it('consumes Escape only when it closes a dismissable layer', () => {
+            installTestDOM(CONFIG);
+
+            register(fakeLayer({ dismissMode: 'click-outside' }));
+
+            const escape = makeEvent(0 as Handle, 'keydown', { key: 'Escape' }) as unknown as { stopPropagation: () => void };
+            vi.spyOn(escape, 'stopPropagation');
+
+            DOM.sink.dispatchEvent(DOM.source.getWindow(), escape as unknown as Event);
+
+            expect(escape.stopPropagation).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not consume Escape with an empty stack', () => {
+            installTestDOM(CONFIG);
+
+            const escape = makeEvent(0 as Handle, 'keydown', { key: 'Escape' }) as unknown as { stopPropagation: () => void };
+            vi.spyOn(escape, 'stopPropagation');
+
+            DOM.sink.dispatchEvent(DOM.source.getWindow(), escape as unknown as Event);
+
+            expect(escape.stopPropagation).not.toHaveBeenCalled();
+        });
+
+        it('does not consume Escape when only "manual" layers are registered', () => {
+            installTestDOM(CONFIG);
+
+            register(fakeLayer({ dismissMode: 'manual' }));
+
+            const escape = makeEvent(0 as Handle, 'keydown', { key: 'Escape' }) as unknown as { stopPropagation: () => void };
+            vi.spyOn(escape, 'stopPropagation');
+
+            DOM.sink.dispatchEvent(DOM.source.getWindow(), escape as unknown as Event);
+
+            expect(escape.stopPropagation).not.toHaveBeenCalled();
+        });
+    });
+
     // ----- Documented offline gap (Tier-3 dismiss dispatch) -----
     //
-    // The dismiss-mode dispatch the plan names (`handleOutside`, `onPointerDown`,
-    // `onKeyDown`, `onWindowBlur`) lives in PRIVATE namespace functions that are
-    // NOT exported from `LayerManager`, so they are unreachable even via
+    // The rest of the dismiss-mode dispatch the plan names (`handleOutside`,
+    // `onPointerDown`, `onWindowBlur`) lives in PRIVATE namespace functions that
+    // are not exported from `LayerManager`, so they are unreachable even via
     // bracket-access — a TS namespace only exposes its `export`ed members on the
-    // namespace object. The only seam that could drive them is the real
-    // document-level `pointerdown` / `keydown` listeners, and the recording sink
-    // records `dispatchEvent` without invoking listeners (TestDOM.ts:217). So the
-    // requestClose-on-outside / Escape-skips-manual / modal-shields-lower
+    // namespace object. `containsAcrossLayers` above pins the other half of the
+    // gap: the modelled source has no DOM tree, so outside-click geometry is
+    // always false offline. So the requestClose-on-outside / modal-shields-lower
     // behaviour is not assertable on the offline harness; it needs a real
     // jsdom-event or browser harness. See ## Non-Goals in the plan. No test is
     // authored for it rather than faking a green/red assertion against a seam
