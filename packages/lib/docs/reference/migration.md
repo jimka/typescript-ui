@@ -80,6 +80,45 @@ Event.addListener(save, 'click', async () => { await persist(); });
 Event.addListener(save, 'click', () => { void persist(); });
 ```
 
+### Overridable drag handlers changed signature
+
+Five public methods on exported classes are part of the same protocol change.
+Three dropped the event parameter they only carried in order to reach
+`stopPropagation()`, and all five now return a disposition:
+
+| Method | Before | After |
+| --- | --- | --- |
+| `AbstractWindow.onMouseUp` | `(e?: Event): void` | `(): Event.ListenerResult` |
+| `SplitGutter.onDragStop` | `(e?: Event): void` | `(): Event.ListenerResult` |
+| `WindowBorder.onDragStop` | `(e?: Event): void` | `(): Event.ListenerResult` |
+| `AbstractWindow.onDrag` | `(e: MouseEvent): void` | `(e: MouseEvent): Event.ListenerResult` |
+| `SplitGutter.onDrag` | `(evnt: MouseEvent): void` | `(evnt: MouseEvent): Event.ListenerResult` |
+
+**An override written against the old signature still compiles, and silently
+stops consuming.** TypeScript accepts a subclass method that declares an extra
+optional parameter, and `void` is a member of `ListenerResult`, so
+`onMouseUp(e?: Event): void { … }` produces no error — it simply returns
+nothing, which the dispatcher reads as "do not consume". The drag then leaks
+its `mouseup` to the rest of the page.
+
+The compiler cannot find this one for you. If you override any of the five,
+return a disposition explicitly:
+
+```typescript
+// Before
+onMouseUp(e?: Event): void {
+    e?.stopPropagation();
+    super.onMouseUp();
+}
+
+// After
+onMouseUp(): Event.ListenerResult {
+    super.onMouseUp();
+
+    return true;
+}
+```
+
 ## Versioning policy
 
 The package follows [Semantic Versioning](https://semver.org), with the standard pre-1.0 caveat:

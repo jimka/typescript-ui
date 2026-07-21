@@ -683,6 +683,17 @@ Manual only — the harness cannot drive real pointers or focus:
   Expected Behaviour case 9. All four now return `true`, and the two that pin a
   stop were verified non-vacuous by neutering `applyDisposition` and confirming
   they go red.
+- **The public method-signature breaks needed their own migration entry.** The
+  protocol change also alters five public overridable methods —
+  `AbstractWindow.onMouseUp`, `SplitGutter.onDragStop` and
+  `WindowBorder.onDragStop` drop their event parameter, and those plus
+  `AbstractWindow.onDrag` and `SplitGutter.onDrag` now return a disposition. An
+  override written against the old signature **still compiles and silently
+  stops consuming**: TypeScript accepts an extra optional parameter on a
+  subclass method, and `void` is a member of `ListenerResult`, so the compiler
+  reports nothing and the handler simply never consumes. That is the same
+  failure class this plan exists to remove, so it is documented explicitly in
+  `docs/reference/migration.md` rather than left to the type checker.
 - **`ARCHITECTURE.md` received a prose paragraph rather than the "two sentences
   plus the four-row table" step 12 specified.** The four return forms are stated
   inline instead of as a table. The rules document is dense prose throughout and

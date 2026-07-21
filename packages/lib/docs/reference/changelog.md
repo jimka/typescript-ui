@@ -23,7 +23,12 @@ event by **returning** a disposition (`true`, or `{ stop, prevent }`) rather
 than calling `stopPropagation()` themselves. A direct `stopPropagation()` call
 still halts native propagation but no longer influences the dispatcher's
 subtree walk. `async` listeners no longer typecheck, since `Promise<void>` is
-not a disposition.
+not a disposition. Five public overridable drag handlers changed signature with
+it — `AbstractWindow.onMouseUp`, `SplitGutter.onDragStop`, and
+`WindowBorder.onDragStop` dropped their event parameter, and those plus
+`AbstractWindow.onDrag` and `SplitGutter.onDrag` now return a disposition. An
+override written against the old signature still compiles and silently stops
+consuming; see the migration note.
 
 See [Migration](/reference/migration#upgrading-from-0-1-x-to-0-2-0) for the full upgrade note.
 
