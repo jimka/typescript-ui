@@ -994,6 +994,7 @@ class Dialog extends Component implements DismissableLayer {
 
             if (focusable.length === 0) {
                 e.preventDefault();
+                e.stopPropagation();
                 return;
             }
 
@@ -1003,11 +1004,13 @@ class Dialog extends Component implements DismissableLayer {
             if (e.shiftKey) {
                 if (DOM.source.getActiveElement() === first) {
                     e.preventDefault();
+                    e.stopPropagation();
                     DOM.sink.focus(last);
                 }
             } else {
                 if (DOM.source.getActiveElement() === last) {
                     e.preventDefault();
+                    e.stopPropagation();
                     DOM.sink.focus(first);
                 }
             }
@@ -1040,6 +1043,7 @@ class Dialog extends Component implements DismissableLayer {
         }
 
         e.preventDefault();
+        e.stopPropagation();
         this.hide(result);
     }
 

@@ -185,6 +185,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
      * @param e - The MouseEvent observed by the viewport-mousemove listener.
      */
     private _dispatchDrag(e: MouseEvent): void {
+        e.stopPropagation();
         this.emit("drag", this, e);
     }
 
@@ -238,8 +239,12 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
     /**
      * Removes viewport listeners and restores body pointer events when drag ends.
+     *
+     * @param e - The mouseup/touchend/touchcancel event ending the drag.
      */
-    onDragStop() {
+    onDragStop(e?: Event) {
+        e?.stopPropagation();
+
         Event.removeViewportListener(this, 'mouseup', this._dragStopListener);
         Event.removeViewportListener(this, 'touchend', this._dragStopListener);
         Event.removeViewportListener(this, 'touchcancel', this._dragStopListener);

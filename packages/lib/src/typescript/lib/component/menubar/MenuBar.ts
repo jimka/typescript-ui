@@ -93,21 +93,25 @@ class MenuBar extends Component {
             switch (e.key) {
                 case "Escape":
                     e.preventDefault();
+                    e.stopPropagation();
                     this.closeMenu();
                     break;
 
                 case "ArrowLeft":
                     e.preventDefault();
+                    e.stopPropagation();
                     this.openMenu((this._openIndex - 1 + this._panels.length) % this._panels.length);
                     break;
 
                 case "ArrowRight":
                     e.preventDefault();
+                    e.stopPropagation();
                     this.openMenu((this._openIndex + 1) % this._panels.length);
                     break;
 
                 case "ArrowDown":
                     e.preventDefault();
+                    e.stopPropagation();
 
                     if (panel.getFocusedIndex() < 0) {
                         panel.focusItem(0);
@@ -119,11 +123,13 @@ class MenuBar extends Component {
 
                 case "ArrowUp":
                     e.preventDefault();
+                    e.stopPropagation();
                     panel.focusPrev();
                     break;
 
                 case "Enter":
                     e.preventDefault();
+                    e.stopPropagation();
                     panel.activateFocused();
                     break;
             }

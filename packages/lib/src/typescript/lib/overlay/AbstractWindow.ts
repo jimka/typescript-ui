@@ -247,8 +247,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private _snapTargetBorder:  WindowBorder | null = null;
 
     private readonly _boundOnDrag: (e: MouseEvent) => void = (e: MouseEvent) => this.onDrag(e);
-    private readonly _boundOnMouseUp: () => void = () => this.onMouseUp();
-    private readonly _boundOnResizeEnd: () => void = () => this.onResizeEnd();
+    private readonly _boundOnMouseUp: (e: Event) => void = (e: Event) => this.onMouseUp(e);
+    private readonly _boundOnResizeEnd: (e: Event) => void = (e: Event) => this.onResizeEnd(e);
     private readonly _boundOnSnapKeyDown:   (e: KeyboardEvent) => void = (e) => this.onSnapKeyDown(e);
     private readonly _boundOnSnapKeyUp:     (e: KeyboardEvent) => void = (e) => this.onSnapKeyUp(e);
     private readonly _boundOnSnapMouseMove: (e: MouseEvent)    => void = (e) => this.onSnapMouseMove(e);
@@ -1527,8 +1527,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * Clears the resize-session origin capture when a border drag ends, so the
      * next drag re-captures a fresh origin. Detaches the viewport listeners it
      * was registered with.
+     *
+     * @param e - The mouseup/touchend/touchcancel event ending the drag session.
      */
-    private onResizeEnd(): void {
+    private onResizeEnd(e: Event): void {
+        e.stopPropagation();
+
         this._resizeSessionActive = false;
 
         Event.removeViewportListener(this, 'mouseup',     this._boundOnResizeEnd);
@@ -1751,6 +1755,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     onDrag(e: MouseEvent): void {
         e.preventDefault();
+        e.stopPropagation();
 
         // Derive the delta from the absolute pointer offset (not accumulated movementX)
         // so clampDragDelta's writeback can't drift: when the window is pinned at an edge
@@ -1767,8 +1772,17 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Detaches the document-level drag listeners when the mouse button is released.
+     *
+     * @param e - The mouseup event ending the drag session, when invoked as a
+     *   viewport listener. Optional because this method is public on an
+     *   exported class: requiring the parameter would break any consumer that
+     *   overrides or calls it, which is why the sibling drag-end handlers
+     *   `SplitGutter.onDragStop` and `WindowBorder.onDragStop` take it
+     *   optionally too.
      */
-    onMouseUp(): void {
+    onMouseUp(e?: Event): void {
+        e?.stopPropagation();
+
         // Commit the in-progress translate back to left/top so subsequent layout passes
         // operate from the new position. setTranslate(0, 0) frees the compositor layer.
         this.setX(this._dragStartLeft + this._dragDX);
@@ -2445,6 +2459,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         // Forward into the border's own drag flow. The snap-target highlight
         // is cleared in the matching onDragStop hook the border owns.
+        e.stopPropagation();
         target.onDragStart();
         this._snapTargetBorder = null;
     }

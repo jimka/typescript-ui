@@ -21,16 +21,37 @@ class TestDialog extends Dialog {
         (this as any).onEnter(e);
     }
 
+    public keyDown(e: KeyboardEvent): void {
+        (this as any).onKeyDown(e);
+    }
+
     public requestFocusEl(): Handle | null {
         return (this as any).requestedFocusElement();
     }
 }
 
-function enterEvent(): { event: KeyboardEvent; prevented: () => boolean } {
+function enterEvent(): { event: KeyboardEvent; prevented: () => boolean; stopped: () => boolean } {
     let defaultPrevented = false;
-    const event = { key: 'Enter', preventDefault: () => { defaultPrevented = true; } } as unknown as KeyboardEvent;
+    let propagationStopped = false;
+    const event = {
+        key: 'Enter',
+        preventDefault: () => { defaultPrevented = true; },
+        stopPropagation: () => { propagationStopped = true; },
+    } as unknown as KeyboardEvent;
 
-    return { event, prevented: () => defaultPrevented };
+    return { event, prevented: () => defaultPrevented, stopped: () => propagationStopped };
+}
+
+function keyDownEvent(key: string, shiftKey = false): { event: KeyboardEvent; stopped: () => boolean } {
+    let propagationStopped = false;
+    const event = {
+        key,
+        shiftKey,
+        preventDefault: () => {},
+        stopPropagation: () => { propagationStopped = true; },
+    } as unknown as KeyboardEvent;
+
+    return { event, stopped: () => propagationStopped };
 }
 
 // Mirrored from Dialog's private layout constants — the fixed title/button rows
@@ -194,11 +215,12 @@ describe('Dialog — Enter confirms the primary button', () => {
 
         const dialog = new TestDialog({ title: 'T', message: 'M' });
         const hide = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
-        const { event, prevented } = enterEvent();
+        const { event, prevented, stopped } = enterEvent();
 
         dialog.enter(event);
 
         expect(prevented()).toBe(true);
+        expect(stopped()).toBe(true);
         expect(hide).toHaveBeenCalledWith('confirm');
     });
 
@@ -211,11 +233,12 @@ describe('Dialog — Enter confirms the primary button', () => {
             buttons: [DialogButtons.Cancel, DialogButtons.Confirm],
         });
         const hide = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
-        const { event, prevented } = enterEvent();
+        const { event, prevented, stopped } = enterEvent();
 
         dialog.enter(event);
 
         expect(prevented()).toBe(false);
+        expect(stopped()).toBe(false);
         expect(hide).not.toHaveBeenCalled();
     });
 
@@ -228,11 +251,46 @@ describe('Dialog — Enter confirms the primary button', () => {
         const button = DOM.sink.createElement('button');
         DOM.sink.focus(button);
 
-        const { event, prevented } = enterEvent();
+        const { event, prevented, stopped } = enterEvent();
         dialog.enter(event);
 
         expect(prevented()).toBe(false);
+        expect(stopped()).toBe(false);
         expect(hide).not.toHaveBeenCalled();
+    });
+});
+
+describe('Dialog — Tab focus trap', () => {
+    afterEach(() => DOM.reset());
+
+    // Registrar regression (viewport-event-propagation): Dialog must consume
+    // only the Tab it actually traps, not every keydown — otherwise a shown
+    // Dialog would silence keydown app-wide. getFocusable() reads via
+    // querySelectorAll, which the offline DOM stubs to [] (see the TestDialog
+    // comment above), so offline the dialog always finds zero focusable
+    // elements and takes the "trap the whole dialog" branch of onKeyDown's Tab
+    // case — still a genuine consume (Tab must not leave an empty dialog),
+    // exercised here the same way onEnter's regression cases are.
+    it('consumes a trapped Tab', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        const { event, stopped } = keyDownEvent('Tab');
+
+        dialog.keyDown(event);
+
+        expect(stopped()).toBe(true);
+    });
+
+    it('does not consume an unrelated key', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        const { event, stopped } = keyDownEvent('a');
+
+        dialog.keyDown(event);
+
+        expect(stopped()).toBe(false);
     });
 });
 

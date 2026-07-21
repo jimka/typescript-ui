@@ -150,8 +150,6 @@ export namespace Event {
             return;
         }
 
-        evnt.stopPropagation();
-
         for (let listeners of typeListeners) {
             let compFunc = listeners[1];
             if (!compFunc) {
@@ -418,8 +416,12 @@ export namespace Event {
      * @param listener - The callback function to invoke on every matching event.
      *
      * @remarks Unlike `addListener`, viewport listeners are not filtered by element id — every
-     * registered component receives the event. Logs a console trace and returns early if
-     * either argument is falsy.
+     * registered component receives the event, regardless of dispatch order, and a component
+     * that calls `stopPropagation()` does not prevent the others from running. The dispatcher
+     * does not stop propagation on a component's behalf: an unconsumed event keeps propagating
+     * to the page (e.g. a consumer's `document`-level accelerator) unless a handler explicitly
+     * calls `stopPropagation()`. Logs a console trace and returns early if either argument is
+     * falsy.
      */
     export function addViewportListener(component: Component, type: string, listener: Function) {
         if (!listener || !component) {

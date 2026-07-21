@@ -319,6 +319,110 @@ No exported signature changes. Two documentation edits:
 
 ---
 
+## Implementation Notes
+
+- **Signature changes to receive the event.** Several of the "Consume" table's
+  handlers discarded the event entirely (`AbstractWindow.onMouseUp` /
+  `onResizeEnd`, `SplitGutter.onDragStop`, `WindowBorder.onDragStop`,
+  `Header.onResizeDragStop`, `Accordion.onGutterDragEnd`) because they only
+  ever ran teardown work. Calling `stopPropagation()` from inside them needed
+  an event parameter that did not exist. Added one everywhere. The parameter is
+  **optional (`e?: Event`) on every method that is public on an exported
+  class** — `AbstractWindow.onMouseUp`, `SplitGutter.onDragStop`,
+  `WindowBorder.onDragStop` — because a required parameter there is a breaking
+  API change for any consumer that overrides or calls the method, and the
+  plan's `## Documentation Impact` promises no exported signature changes.
+  Internal call-site counting cannot see external consumers, so it is not a
+  sufficient criterion for these three. The parameter is required only on
+  methods that are `private` and therefore unreachable from outside
+  (`AbstractWindow.onResizeEnd`, `Header.onResizeDragStop`).
+  `Accordion.onGutterDragEnd` is also optional, because `detach()` calls it
+  mid-drag with no event at `Accordion.ts:1130`. Not called out explicitly in
+  the plan's audit table, which only named *where* to add the call, not that
+  the surrounding signature needed to widen to reach it.
+- **A bound wrapper that drops the event silently defeats the consume.**
+  `Accordion._boundOnGutterDragEnd` was `() => this.onGutterDragEnd()`, which
+  discarded the event, so the `stopPropagation()` inside the handler could
+  never run on the viewport path — and because the parameter is optional, the
+  typechecker saw nothing wrong. Widened the wrapper to
+  `(e: Event) => this.onGutterDragEnd(e)`. The equivalent wrappers on
+  `AbstractWindow` (`_boundOnMouseUp`, `_boundOnDrag`, `_boundOnResizeEnd`),
+  `WindowBorder` (`.bind(this)`) and `SplitGutter` (method reference) were all
+  checked and already forward the event.
+- **Manual verification (plan `## Verification` items 1-4), performed live in
+  a browser against a dev server serving this branch:**
+  - *Item 1 — `MarkdownEditor` Tab in a WYSIWYG table cell: **passes**.* The
+    caret moves cell 0→1 on Tab and back on Shift+Tab, and focus stays on the
+    editing surface. A `document`-capture probe records `["Tab"]` on this
+    branch where it recorded `[]` before the fix. This is the defect that
+    motivated the plan and it is fixed.
+  - *Item 2 — `CodeEditor` Tab-indent: **still fails, and is out of scope**.*
+    Tab does not insert an indent; focus leaves the editor exactly as it did
+    before the fix. The cause is unrelated to this dispatcher:
+    `CodeEditor.ts:526` registers `keymap.of([...defaultKeymap,
+    ...historyKeymap])` and never CodeMirror 6's `indentWithTab`, which is
+    required for Tab→indent; `indentWithTab` appears nowhere in the repo.
+    **The plan's `[^evidence]` footnote misattributed this symptom to the
+    dispatcher bug**, and the claim "breaking Tab in both bundled editors"
+    is therefore wrong for `CodeEditor`. Fixing it is a one-line keymap change
+    belonging to its own plan, not this one.
+  - *Items 3-4 — gesture regressions: **pass**.* Split-gutter drag still works
+    and its `mouseup` does not reach a document-capture probe, and post-mouseup
+    mousemoves no longer move the gutter, so the consume and the teardown are
+    both intact.
+  - *Not verified live:* touch-gesture paths (`touchend`/`touchcancel`) and
+    window title-bar drag / border resize, which are covered by code review and
+    unit tests only.
+- **`Dialog`'s Tab branch has three `e.preventDefault()` calls, not two.**
+  Beyond the two wrap-focus branches (shift-Tab from first, Tab from last),
+  `onKeyDown` also traps Tab entirely when the dialog has zero focusable
+  elements (`focusable.length === 0`). Read "beside each `e.preventDefault()`
+  in the Tab branch" as covering all three, and added `stopPropagation()`
+  there too — trapping Tab in an empty dialog is as much a genuine consume as
+  the wrap case.
+- **Corrected a stale offline-harness comment in `LayerManager.test.ts`.** Its
+  "Documented offline gap" block asserted that `LayerManager`'s private
+  `onKeyDown` was unreachable because "the recording sink records
+  `dispatchEvent` without invoking listeners." That is no longer true —
+  `TestDOM.ts`'s `dispatchEvent` invokes window-registered viewport listeners
+  (the same mechanism `FocusHistory.test.ts` already relies on for its own
+  keydown-combo tests), which is exactly how the new Escape regression tests
+  (case 6) reach it. Narrowed the comment to the part that is still an
+  offline gap — the outside-click/pointerdown/blur dispatch, which stays
+  unreachable for the reasons `containsAcrossLayers`' tests already document
+  — rather than leave a claim beside new passing tests that falsify it.
+- **`Dialog` case 7 exercises the empty-focusable trap branch, not the
+  wrap-focus branch.** `getFocusable()` reads via `DOM.source.querySelectorAll`,
+  which the offline DOM harness stubs to `[]` (already noted by
+  `TestDialog`'s own comment for the Enter tests), so offline a shown Dialog
+  always finds zero focusable elements and takes the "trap the whole dialog"
+  branch on Tab. Both branches now call `stopPropagation()` per the plan, but
+  only the empty-list branch is reachable from the offline harness; the
+  wrap-focus branch's consume is implemented but not independently
+  unit-tested — consistent with the plan's own manual-verification carve-out
+  for the caret/focus-dependent behaviour in `## Expected Behaviour` cases
+  9-12.
+- **The gesture registrars' consume is regression-tested in its own file.**
+  `tests/dom/viewport-consume.test.ts` drives a real `mouseup` through
+  `DOM.sink` to assert the Accordion gutter drag-end consumes it — the test
+  that catches the dropped-event wrapper above, which handler-level tests
+  cannot. It needs its own file because `Event`'s `viewportListenerMap` is
+  module-level state and the window listener is attached only when a type is
+  *first* registered, while `DOM.reset()` replaces the sink without clearing
+  that map. Once any earlier test in the same file registers `"mouseup"`, a
+  later registration of the same type never re-attaches and no dispatch reaches
+  it. That is a pre-existing harness limitation, not something this change
+  introduced, and it is why `tests/dom/events.test.ts` gives every dispatcher
+  test a `uniqueType()`.
+- **Event.ts's two edits landed in separate commits despite sharing a file.**
+  The commit skill's bucket rule puts the `baseViewportListener` logic delete
+  in the code commit and the `addViewportListener` JSDoc `@remarks` update in
+  the documentation commit; the two hunks were applied, staged, and committed
+  in two passes to keep them apart even though the file itself is touched
+  twice.
+
+---
+
 ## Notes
 
 [^precedent]: The precedent is `baseListener` at

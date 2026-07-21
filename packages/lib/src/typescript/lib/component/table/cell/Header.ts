@@ -457,10 +457,13 @@ class HeaderCell extends DefaultCell {
     }
 
     private onResizeDrag(e: MouseEvent): void {
+        e.stopPropagation();
         this._resizeHandle.dragMove(e.clientX);
     }
 
-    private onResizeDragStop(): void {
+    private onResizeDragStop(e: Event): void {
+        e.stopPropagation();
+
         Event.removeViewportListener(this, 'mousemove', this.onResizeDrag);
         Event.removeViewportListener(this, 'mouseup', this.onResizeDragStop);
 
