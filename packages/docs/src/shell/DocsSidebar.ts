@@ -1,9 +1,16 @@
 import { callable, Panel } from '@jimka/typescript-ui/core';
+import type { PanelOptions } from '@jimka/typescript-ui/core';
 import { Fit } from '@jimka/typescript-ui/layout';
 import { Tree } from '@jimka/typescript-ui/component/tree';
 import type { TreeNode } from '@jimka/typescript-ui/component/tree';
 import { Router } from '@jimka/typescript-ui/router';
 import { getNav } from '../content/pages.js';
+
+// Wide enough for the longest nav label in the Phase-1 slice ("Component
+// lifecycle") without wrapping, matching the ~260px a VitePress sidebar
+// column occupies. Height is 0 because the sidebar sits in a Border WEST
+// region, which reads only the width.
+const SIDEBAR_WIDTH = 260;
 
 /**
  * The west sidebar: a `Tree` built from {@link getNav}'s Guide/Concepts
@@ -23,12 +30,16 @@ class DocsSidebar extends Panel {
     // the named handler below.
     private readonly handleSelection: (nodes: TreeNode[]) => void = (nodes) => this.onSelection(nodes);
 
-    constructor(router: Router) {
-        super();
+    constructor(router: Router, options?: PanelOptions) {
+        // Hand the layout manager and width to Component as subclass defaults
+        // so a caller-supplied option still wins — Component merges
+        // `{...defaults, ...options}` at dispatch time.
+        super(options, {
+            layoutManager: Fit(),
+            preferredSize: { width: SIDEBAR_WIDTH, height: 0 },
+        });
 
         this._router = router;
-
-        this.setLayoutManager(new Fit());
 
         this._tree = new Tree();
         this._tree.setNodes(this.buildNodes());

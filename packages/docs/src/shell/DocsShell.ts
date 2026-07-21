@@ -8,11 +8,6 @@ import { moduleCount, symbolCount } from 'virtual:typedoc-summary';
 import { DocsSidebar } from './DocsSidebar.js';
 import { DocsContent } from './DocsContent.js';
 
-// Wide enough for the longest nav label in the Phase-1 slice ("Component
-// lifecycle") without wrapping, matching the ~260px a VitePress sidebar
-// column occupies.
-const SIDEBAR_WIDTH = 260;
-
 /**
  * The app shell: `Header` north, `DocsSidebar` west, `DocsContent` centre, and
  * a `StatusBar` south carrying the TypeDoc model counts — mirrors
@@ -26,15 +21,11 @@ class DocsShell extends Panel {
     private readonly _content: DocsContent;
 
     constructor(router: Router) {
-        super();
-
-        this.setLayoutManager(new Border());
+        super({ layoutManager: Border() });
 
         const header = new Header('@jimka/typescript-ui');
 
         this._sidebar = new DocsSidebar(router);
-        this._sidebar.setPreferredSize(SIDEBAR_WIDTH, 0);
-
         this._content = new DocsContent(router);
 
         const statusBar = new StatusBar({
