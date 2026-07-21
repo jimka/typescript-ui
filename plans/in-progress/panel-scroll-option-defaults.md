@@ -193,6 +193,12 @@ The only doc edits are the JSDoc `@returns` lines on the three getters (step 5).
 
 ---
 
+## Implementation Notes
+
+Steps 1-6 landed in commit `69c69084` — the failing-then-passing test, the defaults-bag seed, the folded getters, and the repointed dispatches. All green: the target test file, the full `packages/lib` suite (214 files / 2742 tests — higher than the plan's recorded 212/2618 baseline because master has advanced since this plan was written), and `tsc --noEmit` (same pre-existing errors as unmodified master, none new).
+
+Step 7 (the `DocsContent.ts` follow-up) is deliberately **not** done yet and this plan file stays in `plans/in-progress/` rather than moving to `plans/implemented/`. This is an orchestrator-level scheduling choice, not a plan defect: `DocsContent.ts` is being rewritten in this same batch by `docs-content-migration` and `docs-typedoc-reference`, and landing step 7 now would just be rebase churn against a moving target. Step 7 will land as a small follow-up commit once those two plans settle `DocsContent.ts`'s shape, at which point this plan completes and moves to `plans/implemented/`.
+
 ## Notes
 
 [^shape]: ARCHITECTURE.md's *Class-level defaults must survive the getter* offers two remedies — "fold it in the getter" and "always-dispatch" — and `Panel` needs both at once: the fold makes the value resolvable while the backing field is still `undefined`, and the always-dispatch makes the setter's construction-time side effects (the `overflow` writes, the layout-manager overflow flags, the overlay/shadow refresh) fire for a defaulted panel too. `ToolBar.applyOptions` is that exact combination, and its comment claims to mirror `Panel.setAutoScroll` — `ToolBar` implemented the idiom correctly and `Panel`, the class it cites, did not.
