@@ -21,6 +21,7 @@ Plus optional metadata:
 | --- | --- |
 | `name` | Label / identifier; consumed by [`Tab`](/layouts/Tab) for tab button text. |
 | `description` | Free-form descriptive string for accessibility / debugging. |
+| `lazy` | Defers a factory passed to `addComponent` until first activation; consumed by [`Tab`](/layouts/Tab), where it defaults to `true`. Ignored for an already-constructed component. |
 
 Each manager subclasses this to add its own fields:
 

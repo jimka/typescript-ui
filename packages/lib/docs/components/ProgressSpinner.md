@@ -60,6 +60,44 @@ store.load(); // spinner appears, hides automatically when load resolves
 `AbstractStore.isLoading()` returns the current loading flag if you need
 to inspect it from elsewhere.
 
+## Which loading affordance
+
+The library has two, and one question decides between them: **does the
+component already exist?**
+
+| The component… | Use | Who drives it |
+| --- | --- | --- |
+| exists; its data is pending | `showOverlay(target)` / `hideOverlay()` | automatic for store-backed panels — [`TablePanel`](/components/TablePanel) and [`TreeTablePanel`](/components/TreeTablePanel) wire it off the store's `loadingchange` event |
+| does not exist yet | the deferred placeholder, via `addComponent(factory, { lazy })` | [`Tab`](/layouts/Tab) mounts the spinner and swaps it for the built child |
+
+Worked examples, one per case:
+
+```typescript
+// Case 1 — the panel exists, its rows are loading. Nothing to write:
+// TablePanel overlays its own Table whenever the store reports loading.
+const panel = TablePanel(store);
+store.load();
+
+// Case 2 — the panel does not exist yet, and building it is expensive but sync.
+container.addComponent(() => new AdvancedPanel(), Object.assign(new LayoutConstraints(), { name: 'Advanced' }));
+
+// Case 3 — the panel cannot be built until a fetch completes. Same path as
+// case 2; the factory is async, and the spinner covers the whole wait.
+container.addComponent(
+    async () => {
+        const columns = await fetchColumns(table);
+
+        return TablePanel(buildStore(table, columns));
+    },
+    Object.assign(new LayoutConstraints(), { name: table.name }),
+);
+```
+
+Case 3 is the one with no overlay answer: the content depends on fetched
+metadata, so there is no component to overlay at tab-creation time. Reach it
+through [`Tab`](/layouts/Tab), or through
+[`Dock.addLazyPanel`](/components/Dock) for a docked panel.
+
 ## Theming
 
 | Token | Default | Dark |

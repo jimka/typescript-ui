@@ -8,7 +8,7 @@
 
 ## Declaring the initial layout
 
-`DockOptions.layout` is a small declarative spec — a leaf panel, a `split` of regions, or a `tabs` group. Each leaf carries a stable `id`, a `title`, optional `glyph`, and its `content` (a live component or a lazy factory):
+`DockOptions.layout` is a small declarative spec — a leaf panel, a `split` of regions, or a `tabs` group. Each leaf carries a stable `id`, a `title`, optional `glyph`, and its `content` — a live component or a factory, which `addLazyPanel` may return a promise from:
 
 ```typescript
 import { Dock } from '@jimka/typescript-ui/overlay';
@@ -128,6 +128,18 @@ Alongside the per-panel events, one **dock-wide aggregate** event fires as the d
 dock.on('emptychange', ({ empty }) => startPage.setVisible(empty));
 ```
 
+### `exception`
+
+`exception` fires when a lazy panel's content factory rejected. It carries a [`DockExceptionEvent`](/api/overlay/interfaces/DockExceptionEvent) (`{ id, error }`) rather than a `DockPanelEvent`, because a panel that never built has no content to report.
+
+By the time it fires the panel has already been closed, and its own `close` has already been emitted — so a listener must not call `removePanel` for that id. The panel stays *registered*, which is what makes re-adding the same id a retry: its frame is rebuilt and the factory runs again.
+
+```typescript
+dock.on('exception', ({ id, error }) => notifyUser(`${id} failed to load`, error));
+```
+
+No error UI is shown — presenting the failure is the consumer's job.
+
 ## Programmatic control
 
 Two methods drive the lifecycle from code, each returning whether it found the panel:
@@ -142,6 +154,22 @@ dock.removePanel('editor'); // closes through the user-close path -> fires `clos
 
 - **`focusPanel(id)`** activates the host tab and raises the host float when the panel is floated, so a buried panel surfaces. A successful activation naturally produces a `focus`. Returns `false` for an unknown id or one registered but never docked.
 - **`removePanel(id)`** closes the panel through the same path a tab ✕ takes, firing exactly one `close`. Returns `false` for an unknown id or one in no region. The cached frame is evicted (a later `addPanel` rebuilds it from the registered factory) while the registration is kept.
+
+### Async panel content
+
+`addLazyPanel` accepts a factory that returns a promise, for a panel that cannot be built until a fetch completes:
+
+```typescript
+dock.addLazyPanel({
+    id:      'orders',
+    title:   'Orders',
+    content: async () => buildPanel(await fetchMeta('orders')),
+});
+```
+
+The tab appears at once — with its title, glyph and tooltip already correct — and a spinner holds the panel body for the whole wait. When the promise resolves the content fades in, in the same tab.
+
+`addPanel` does **not** accept an async factory: an eagerly-built panel has no spinner and nothing to own the wait, so passing one throws. If the promise rejects, the whole docked panel closes and the dock emits [`exception`](#exception) after that panel's own `close`. A panel closed while its factory is still in flight is forgotten: when the promise later settles, nothing is added and nothing is reported.
 
 ## Saving and restoring
 

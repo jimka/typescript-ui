@@ -129,6 +129,7 @@ A custom `doLayout` iterates [`getLaidOutComponents()`](/api/core/classes/Compon
 - Storing per-child constraints in a `Map<string, LayoutConstraints>` (one entry per child id).
 - Resolving the active `fill` and `anchor` against `getInnerSize()`.
 - Notifying the framework when the layout's preferred size changes.
+- Offering an unbuilt child to the manager: a factory passed to `addComponent` is presented to the layout manager first, which may claim it and decide when it runs. The base implementation declines, so the container builds the child immediately.
 
 You typically only need to override `doLayout`; helper methods like `placeComponent(child, x, y, w, h)` apply fill / anchor consistently if you delegate to them.
 
