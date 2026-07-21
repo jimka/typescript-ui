@@ -29,8 +29,15 @@ const PAGES = Object.entries(RAW_SOURCES);
  * @returns `source` with all code content removed.
  */
 function stripCode(source: string): string {
+    // The lookarounds are load-bearing: without them a run of N backticks can
+    // close against the first N backticks of a *longer* run, and the scan then
+    // swallows everything up to the next accidental match. On
+    // `components/MarkdownEditor.md:53` — `| Fenced code | ` ``` ` fence |` —
+    // the 1-backtick opener closed against the first backtick of the ``` run
+    // and ate 12 lines, hiding them from every assertion below. Requiring the
+    // closing run to be a whole run (CommonMark's own rule) fixes it.
     return stripFences(source)
-        .replace(/(`+)[\s\S]*?\1/g, '');                       // inline code spans, any backtick run
+        .replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, '');   // inline code spans, any backtick run
 }
 
 /**
@@ -158,6 +165,29 @@ describe('content-constructs guard', () => {
         const dangling = bareAnchorLinks(stripCode(raw)).filter((anchor) => !ids.has(anchor));
 
         expect(dangling, `${path} links #anchor(s) with no matching heading: ${dangling.join(', ')}`).toHaveLength(0);
+    });
+});
+
+describe('stripCode removes only the code it should', () => {
+    // Without backtick-boundary assertions a short run closes against the head
+    // of a longer one and the scan swallows the prose in between, silently
+    // blinding every assertion above it.
+    it('does not let a short run close against a longer one', () => {
+        const source = '| Fenced code | ` ``` ` fence |\n\nkeep me\n\n## Formatting';
+        const out    = stripCode(source);
+
+        expect(out).toContain('keep me');
+        expect(out).toContain('## Formatting');
+    });
+
+    it('removes spans of any backtick width', () => {
+        expect(stripCode('a `one` b ``two`` c ```three``` d')).toBe('a  b  c  d');
+    });
+
+    it('removes fenced blocks but keeps surrounding prose', () => {
+        expect(stripCode('before\n\n```ts\nconst x = 1;\n```\n\nafter')).toContain('before');
+        expect(stripCode('before\n\n```ts\nconst x = 1;\n```\n\nafter')).toContain('after');
+        expect(stripCode('before\n\n```ts\nconst x = 1;\n```\n\nafter')).not.toContain('const x');
     });
 });
 
