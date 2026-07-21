@@ -969,3 +969,34 @@ No page is added or removed, so the VitePress sidebar and the layouts/components
 [^raf-testing]: The offline harness can drive materialization up to, but not through, the two-frame yield — and the async widening does not move that line. `installTestDOM`'s recording sink implements `requestAnimationFrame` by recording the call and dropping the callback (`tests/dom/TestDOM.ts:539`), and `Animation.materialize` puts the factory call inside two nested frames. The promise microtasks an async factory introduces all sit *after* that gate: the factory is never invoked offline, so no promise is ever created, and awaiting or flushing microtasks in a test gains nothing. Resolve, reject, and close-during-flight are therefore all manual-verify, for a bare `Tab` (cases 21–23) and for a docked panel alike (cases 26–28). `tests/overlay/Dock.lifecycle.test.ts` queues rAF callbacks and flushes them explicitly rather than dropping them, so it *could* push past the gate — but only by also driving `Animation.play`'s fallback timer, which is the coupling this footnote declines below. The two `Dock` cases it gains assert before any flush, on the synchronous side of the gate.
 
     What *is* synchronous, and therefore assertable, is everything before the yield: `materializeAsync` flips the entry to `"building"` and `Animation.materialize` calls `host.addComponent(spinner)` before returning — so after `tab.setActiveTabIndex(i)` a test can assert the container gained exactly one child and the factory has not run, identically for a sync and an async factory (case 15). Registration is likewise fully synchronous and fully testable (cases 2–5, 11–14), and so is the eager-path promise guard, which runs with no yield at all (cases 9–10, and case 18 through `Dock.addPanel`). Pushing past the gate would mean stubbing the sink's `requestAnimationFrame` to invoke its callback inline and driving `Animation.play`'s fallback timer with fake timers, which couples the test to two animation internals and to the modelled `matchMedia` never reporting reduced motion — not worth it for assertions the demo panel now exercises directly.
+
+---
+
+## Implementation Notes
+
+Everything in `## Ordered Implementation Steps` landed as written. Two notes on
+verification.
+
+**The `Tab` manual cases (20–25) were verified live** in a browser against the
+demo added in step 27: the strip mints exactly one tab per deferred
+registration, an async factory holds the spinner for its whole wait and then
+fades its panel in, a rejecting factory closes its own tab and reports through
+`"exception"` with no unhandled promise rejection, and — the case the consuming
+`lazy-tab-loading-sequence` plan depends on — a tab closed while its factory is
+still in flight reports **nothing** when the promise later settles, and leaves
+no phantom tab behind after a forced relayout.
+
+**The `Dock` manual cases (26–28) could not be verified in the automated
+browser.** A panel added to the dock at runtime is registered and tabbed, but
+its identity frame is never laid out — it measures 0×0 — so its content never
+materializes. This is **not** caused by this change, which two controls
+establish: an eager `addPanel` carrying a plain synchronous factory produces the
+same 0×0 frame (its content builds, but the frame is unsized), and temporarily
+reverting the `wireRegion` identity-frame guard changes nothing. It is also not
+the split running out of room — closing every tab until the dock reported
+`empty=true` and then adding the panel reproduces it. The remaining candidates
+are a pre-existing gap in how `Dock` lays out a runtime-added panel, or the
+automated browser starving the animation frame the dock's sweep is scheduled on;
+they cannot be separated from inside that browser. The `Dock` behaviour
+therefore rests on its offline tests (cases 18–19), and the live check was
+handed to the user's own browser.
