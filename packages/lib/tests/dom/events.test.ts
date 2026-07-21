@@ -299,7 +299,7 @@ describe('Modelled event delivery — polite propagation', () => {
         const evt = makeEvent(comp.getElement()!, type);
         (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { nativeStops += 1; };
 
-        Event.addListener(comp, type, (e: globalThis.Event) => e.stopPropagation());
+        Event.addListener(comp, type, () => true);
         DOM.sink.dispatchEvent(comp.getElement()!, evt);
 
         expect(nativeStops).toBe(1);
@@ -345,7 +345,7 @@ describe('Modelled event delivery — polite propagation', () => {
         const evt = makeEvent(comp.getElement()!, type);
         (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { nativeStops += 1; };
 
-        Event.addViewportListener(comp, type, (e: globalThis.Event) => e.stopPropagation());
+        Event.addViewportListener(comp, type, () => true);
         DOM.sink.dispatchEvent(comp.getElement()!, evt);
 
         expect(nativeStops).toBe(1);
@@ -367,9 +367,10 @@ describe('Modelled event delivery — polite propagation', () => {
         let firstRuns  = 0;
         let secondRuns = 0;
 
-        Event.addViewportListener(first, type, (e: globalThis.Event) => {
+        Event.addViewportListener(first, type, () => {
             firstRuns += 1;
-            e.stopPropagation();
+
+            return true;
         });
         Event.addViewportListener(second, type, () => { secondRuns += 1; });
 
@@ -393,9 +394,10 @@ describe('Modelled event delivery — polite propagation', () => {
         let secondRuns = 0;
 
         Event.addViewportListener(second, type, () => { secondRuns += 1; });
-        Event.addViewportListener(first, type, (e: globalThis.Event) => {
+        Event.addViewportListener(first, type, () => {
             firstRuns += 1;
-            e.stopPropagation();
+
+            return true;
         });
 
         DOM.sink.dispatchEvent(first.getElement()!, makeEvent(first.getElement()!, type));
