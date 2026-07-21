@@ -5,6 +5,8 @@ import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdi
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 
+import { fileURLToPath } from 'node:url';
+
 import {
     toValidPackageName,
     renameTemplateFile,
@@ -13,6 +15,26 @@ import {
     scaffold,
     main,
 } from '../index.js';
+
+const TEMPLATE_DIR = fileURLToPath(new URL('../template', import.meta.url));
+
+/**
+ * Every file under the template directory, as destination-relative paths with
+ * the template rename applied.
+ * @param {string} dir - Directory to walk.
+ * @param {string} prefix - Destination-relative prefix accumulated so far.
+ * @returns {string[]} Relative paths a scaffolded project must contain.
+ */
+function listTemplateRelPaths(dir, prefix = '') {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const destName = renameTemplateFile(entry.name);
+        const destPath = prefix ? join(prefix, destName) : destName;
+
+        return entry.isDirectory()
+            ? listTemplateRelPaths(join(dir, entry.name), destPath)
+            : [destPath];
+    });
+}
 
 describe('toValidPackageName', () => {
     it.each([
@@ -23,6 +45,13 @@ describe('toValidPackageName', () => {
         ['-my-app-', 'my-app'],
         ['My App!', 'my-app'],
         ['my-app', 'my-app'],
+        // A name made entirely of characters that get stripped leaves nothing
+        // behind. npm rejects an empty name, so the fallback has to stand in.
+        ['...', 'typescript-ui-app'],
+        ['--', 'typescript-ui-app'],
+        ['___', 'typescript-ui-app'],
+        ['ÅÄÖ', 'typescript-ui-app'],
+        ['   ', 'typescript-ui-app'],
     ])('converts %j to %j', (input, expected) => {
         expect(toValidPackageName(input)).toBe(expected);
     });
@@ -118,11 +147,16 @@ describe('scaffold', () => {
 
         await scaffold(target);
 
-        expect(existsSync(join(target, 'src', 'main.ts'))).toBe(true);
-        expect(existsSync(join(target, 'index.html'))).toBe(true);
-        expect(existsSync(join(target, 'vite.config.ts'))).toBe(true);
-        expect(existsSync(join(target, 'tsconfig.json'))).toBe(true);
-        expect(existsSync(join(target, 'README.md'))).toBe(true);
+        // Enumerated from the template rather than hardcoded, so a file added
+        // to template/ that scaffold() fails to copy is caught here instead of
+        // shipping silently. Names are mapped through renameTemplateFile so the
+        // check follows the _gitignore -> .gitignore rename.
+        const expected = listTemplateRelPaths(TEMPLATE_DIR);
+        expect(expected.length).toBeGreaterThan(0);
+
+        for (const relPath of expected) {
+            expect(existsSync(join(target, relPath)), `missing ${relPath}`).toBe(true);
+        }
     });
 });
 

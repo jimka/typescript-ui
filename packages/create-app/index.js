@@ -18,18 +18,27 @@ const RENAME_MAP = { _gitignore: '.gitignore' };
 /** Absolute path to the template directory this package ships. */
 const TEMPLATE_DIR = fileURLToPath(new URL('./template', import.meta.url));
 
+/** Package name used when a directory name sanitises away to nothing. */
+const FALLBACK_PACKAGE_NAME = 'typescript-ui-app';
+
 /**
  * Convert an arbitrary target-dir name into a valid npm package name.
+ *
+ * A name built only from characters this strips — `...`, `--`, or a
+ * non-Latin name like `ÅÄÖ` — sanitises down to the empty string, which npm
+ * rejects as a package name, so the fallback stands in for it.
  * @param {string} input - The raw directory name.
  * @returns {string} A name satisfying npm's package-name rules.
  */
 export function toValidPackageName(input) {
-    return input
+    const sanitised = input
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9._-]+/g, '-')
         .replace(/^[._]+/, '')
         .replace(/^-+|-+$/g, '');
+
+    return sanitised || FALLBACK_PACKAGE_NAME;
 }
 
 /**
