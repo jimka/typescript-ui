@@ -390,7 +390,14 @@ Two regexes specified in `## Internal Structure` had to be corrected during impl
 
 **2. The `:::` container check is line-based, not a multiline regex.** Matching `/^:::\s*(\w+)/gm` over the whole source lets `\s*` run past a bare closing `:::` line's newline and capture the next paragraph's first word as a container type. The check therefore splits on newlines and tests each line independently. The reasoning is repeated as a comment at the call site so the next person does not "simplify" it back.
 
-Everything else follows the plan as written. No library source was touched, and the file list matches `## Files to Create / Modify / Delete` exactly.
+**3. `notFoundSource` moved from `shell/DocsContent.ts` to a new `content/notFound.ts`.** Step 10 placed it in `DocsContent.ts`, and it was implemented there. An audit then found a correctness bug in it — the `/api/` predicate missed the bare `/api` route (see below) — and pinning the fix with a test proved impossible from `shell/`: importing `DocsContent.ts` constructs components at import time and throws `ReferenceError: document is not defined` under the docs package's node test environment. That is precisely why every other pure source transform in this app already lives in `src/content/` (`containers.ts`, `links.ts`, `pages.ts`) and why nothing in `shell/` has unit tests. Moving the function follows that existing split rather than inventing anything; the alternative was to leave a known-wrong branch covered only by a manual step. The file list in `## Files to Create / Modify / Delete` therefore gains one row, `Create packages/docs/src/content/notFound.ts`.
+
+Everything else follows the plan as written. No library source was touched.
+
+### Audit findings fixed after implementation
+
+- **The corpus guard's heading-id rule did not match the viewer's.** `headingIds` was fed `stripCode`'d source, so inline code was deleted from heading text before slugifying, while `Markdown.appendHeading` slugifies `token.text` with the backticked text intact. The rules disagreed on 23 of the 154 pages, so the guard would have false-failed a correctly authored anchor and passed a dead one. Heading ids now come from a fence-only strip. The corpus still passes under the corrected rule, which confirms the authored anchors were right all along.
+- **The API-reference not-found message never fired for `/api`.** `normalizePath` collapses the trailing slash on the corpus's `/api/` links, so the predicate `startsWith('/api/')` was false for exactly the links the special case existed to serve. The plan's own wording ("a path starting with `/api/`") is the proximate cause.
 
 ## Notes
 
