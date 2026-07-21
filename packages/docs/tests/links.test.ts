@@ -80,4 +80,14 @@ describe('resolveApiLink', () => {
         expect(resolveApiLink('Component.md', ''))
             .toEqual({ href: '#/api/Component', external: false });
     });
+
+    it('strips a #fragment from a relative generated link before resolving, matching resolveDocLink', () => {
+        expect(resolveApiLink('BaseObject.md#constructor', 'core/classes'))
+            .toEqual({ href: '#/api/core/classes/BaseObject', external: false });
+    });
+
+    it('strips a #fragment from a dotted relative link, joining .. segments first', () => {
+        expect(resolveApiLink('../../../core/classes/Component.md#setscrollleft', 'component/button/classes'))
+            .toEqual({ href: '#/api/core/classes/Component', external: false });
+    });
 });

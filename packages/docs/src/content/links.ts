@@ -61,7 +61,10 @@ function joinApiPath(baseDir: string, href: string): string {
  * directory of the page being rendered, e.g. `component/button/classes`. The
  * first matching branch wins: an in-page `#fragment` passes through
  * unchanged; an absolute site path (`/…`) delegates to {@link resolveDocLink};
- * a relative `.md` link is joined onto `baseDir` and mapped to its route
+ * a relative `.md` link — with any `#fragment` stripped first, the same rule
+ * {@link resolveDocLink} applies to a route href, since a member cross-link
+ * like `BaseObject.md#constructor` is a link to another *page*, not an
+ * in-page reference — is joined onto `baseDir` and mapped to its route
  * through {@link apiRouteFor}. Anything else is external, unchanged — see
  * "Links inside API pages resolve against the current page's directory" in
  * plans/implemented/docs-typedoc-reference.md.
@@ -79,8 +82,10 @@ export function resolveApiLink(href: string, baseDir: string): MarkdownLinkResol
         return resolveDocLink(href);
     }
 
-    if (href.endsWith('.md')) {
-        return { href: hashHref(apiRouteFor(joinApiPath(baseDir, href))), external: false };
+    const withoutFragment = href.split('#')[0];
+
+    if (withoutFragment.endsWith('.md')) {
+        return { href: hashHref(apiRouteFor(joinApiPath(baseDir, withoutFragment))), external: false };
     }
 
     return { href, external: true };
