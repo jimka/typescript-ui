@@ -72,6 +72,8 @@ Fires for events anywhere in the document, regardless of their target. Used inte
 
 Use this only when you genuinely need global event capture — for everything else, `addListener` or `addSubtreeListener` is more focused and easier to reason about.
 
+A viewport listener does not swallow the event: every registered component receives it, and it keeps propagating to the page — through to any `document`-level listener, such as your own global keyboard accelerator — unless a handler explicitly calls `stopPropagation()`. Call `stopPropagation()` from your handler only when the component genuinely consumes the event (it acted on it and owns the interaction), not merely because it observed it.
+
 ## on / off / emit — framework custom events
 
 For events the framework defines (not the DOM), use the emitter's `on`
