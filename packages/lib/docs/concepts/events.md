@@ -60,6 +60,8 @@ Fires for events that originate **anywhere in the subtree** rooted at this compo
 - Catching events from children that don't have their own handlers.
 - Keyboard shortcut scopes.
 
+A subtree listener that consumes the event (see [Consuming an event](#consuming-an-event) below) stops it from reaching any ancestor's subtree listeners — every listener registered on the same component still runs first, but the walk climbs no further.
+
 ## addViewportListener
 
 ```typescript
@@ -72,7 +74,32 @@ Fires for events anywhere in the document, regardless of their target. Used inte
 
 Use this only when you genuinely need global event capture — for everything else, `addListener` or `addSubtreeListener` is more focused and easier to reason about.
 
-A viewport listener does not swallow the event: every registered component receives it, and it keeps propagating to the page — through to any `document`-level listener, such as your own global keyboard accelerator — unless a handler explicitly calls `stopPropagation()`. Call `stopPropagation()` from your handler only when the component genuinely consumes the event (it acted on it and owns the interaction), not merely because it observed it.
+A viewport listener does not swallow the event: every registered component receives it, and it keeps propagating to the page — through to any `document`-level listener, such as your own global keyboard accelerator — unless a handler's returned disposition asks for a stop (see [Consuming an event](#consuming-an-event) below). Consume from your handler only when the component genuinely consumes the event (it acted on it and owns the interaction), not merely because it observed it.
+
+## Consuming an event
+
+`addListener`, `addSubtreeListener`, and `addViewportListener` listeners tell the dispatcher what to do with the event by **return value**, instead of calling `stopPropagation()` themselves:
+
+| Return                          | Effect                            |
+| -------------------------------- | ---------------------------------- |
+| nothing / `false`                | event untouched                    |
+| `true`                            | `stopPropagation()`                |
+| `{ prevent: true }`               | `preventDefault()`                 |
+| `{ stop: true, prevent: true }`   | both                                |
+
+```typescript
+Event.addListener(button, 'keydown', (e: KeyboardEvent) => {
+    if (e.key !== 'Enter') {
+        return;
+    }
+
+    confirm();
+
+    return { stop: true, prevent: true };
+});
+```
+
+`preventDefault()` is unaffected in every respect — call it directly, exactly as before; it never needed dispatcher help. A direct `stopPropagation()` call still halts native DOM propagation (it is the event's own method), but it no longer influences the dispatcher's ancestor walk — only a returned disposition does. Return a disposition instead of calling `stopPropagation()` whenever you want the walk itself to stop.
 
 ## on / off / emit — framework custom events
 
