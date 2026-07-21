@@ -576,7 +576,8 @@ function onMouseMove(e: MouseEvent): Event.ListenerResult {
 /**
  * Commits the drop (if any) and tears down the session.
  *
- * @returns `true`, consuming the release that ends the drag session.
+ * @returns `true` when a drag session was live, consuming the release that ends it;
+ *   nothing when there is no session, so the release keeps propagating.
  */
 function onMouseUp(e: MouseEvent): Event.ListenerResult {
     if (activeSession === null) {

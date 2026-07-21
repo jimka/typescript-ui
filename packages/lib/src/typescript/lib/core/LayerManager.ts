@@ -538,7 +538,13 @@ export namespace LayerManager {
         handleOutside(e.target === null ? null : DOM.source.intern(e.target), true);
     }
 
-    /** Document `keydown` handler — Escape asks the topmost non-manual layer to close. */
+    /**
+     * Document `keydown` handler — Escape asks the topmost non-manual layer to close.
+     *
+     * @param e - The keydown event.
+     * @returns `true` when Escape actually closed a layer; nothing otherwise, so an
+     *   Escape with no dismissible layer open keeps propagating.
+     */
     function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (e.key !== "Escape") {
             return;
