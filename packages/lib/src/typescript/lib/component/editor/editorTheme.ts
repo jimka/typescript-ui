@@ -145,6 +145,18 @@ export function ensureMarkdownEditorClassRules(): void {
     });
 
     new StyleRule({
+        scope: "selector",
+        name:  `.${TABLE_CELL_CLASS} > p`,
+        // Lexical wraps each cell's content in a paragraph, which would carry
+        // the browser's default 1em block margin and make every editor cell
+        // two line-heights taller than the same cell in the read-only viewer,
+        // whose cells hold inline content directly. Only cell paragraphs are
+        // reset: prose paragraphs keep their margin, which is what matches the
+        // viewer outside a table.
+        styles: { margin: "0" },
+    });
+
+    new StyleRule({
         scope:  "class",
         name:   TABLE_CELL_SELECTED_CLASS,
         // @lexical/table stamps this class onto cells caught in a drag-selected
