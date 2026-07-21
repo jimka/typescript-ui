@@ -6,6 +6,8 @@ import type { TreeNode } from '@jimka/typescript-ui/component/tree';
 import { Router } from '@jimka/typescript-ui/router';
 import { getNav } from '../content/pages.js';
 import type { NavGroup, NavEntry } from '../content/pages.js';
+import { API_PREFIX, getApiNav } from '../content/api.js';
+import type { ApiNavNode } from 'virtual:typedoc-api';
 
 // Wide enough for the longest nav label ("Linking a local library checkout"),
 // which sits one indent level deeper than any Phase-1 label, without
@@ -69,13 +71,19 @@ class DocsSidebar extends Panel {
     }
 
     /**
-     * Builds the `Tree`'s root nodes from {@link getNav}'s top-level sections,
-     * recording every leaf page node's path in {@link _nodesByPath} as it goes.
+     * Builds the `Tree`'s root nodes: {@link getNav}'s seven authored-page
+     * sections, followed by an eighth "API Reference" root driven by
+     * {@link getApiNav} — see "Navigation is a third sidebar root, driven by
+     * typedoc-sidebar.json" in plans/implemented/docs-typedoc-reference.md.
+     * Every leaf page node's path is recorded in {@link _nodesByPath} as it goes.
      *
      * @returns The root {@link TreeNode} array for `Tree.setNodes`.
      */
     private buildNodes(): TreeNode[] {
-        return getNav().map((group) => this.buildGroupNode(group));
+        return [
+            ...getNav().map((group) => this.buildGroupNode(group)),
+            this.buildApiNode({ label: 'API Reference', path: API_PREFIX, children: getApiNav() }),
+        ];
     }
 
     /**
@@ -109,6 +117,29 @@ class DocsSidebar extends Panel {
         this._nodesByPath.set(page.path, node);
 
         return node;
+    }
+
+    /**
+     * Recursively builds an {@link ApiNavNode}'s `TreeNode`, recording its
+     * path in {@link _nodesByPath} when it has one — a grouping-only node
+     * (e.g. the `component` category, which has no page of its own) is built
+     * the same way but simply never gets an entry.
+     *
+     * @param node - The API nav node to build a `TreeNode` for.
+     * @returns The node's {@link TreeNode}.
+     */
+    private buildApiNode(node: ApiNavNode): TreeNode {
+        const treeNode: TreeNode = {
+            label:    node.label,
+            data:     node.path ?? undefined,
+            children: node.children.map((child) => this.buildApiNode(child)),
+        };
+
+        if (node.path !== null) {
+            this._nodesByPath.set(node.path, treeNode);
+        }
+
+        return treeNode;
     }
 
     private onSelection(nodes: TreeNode[]): void {
