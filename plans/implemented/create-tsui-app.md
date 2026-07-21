@@ -597,6 +597,19 @@ The published `packages/lib/README.md` is **not** updated by this plan.[^lib-rea
   `README.md` and `packages/lib/docs/guide/installation.md` is inert until the
   publish happens and needs no further edit once it does. `npm run docs:build`
   passed with 0 errors and 0 link warnings.
+- **The template's `index.html` drops the `<div id="app"></div>` the plan's Step 5
+  mandated, and adds `lang="en"` plus the viewport meta.** The div was dead
+  markup: `src/main.ts` mounts through `Body.init(...)`, which attaches to
+  `<body>`, so nothing in the generated app ever refers to `#app`. Shipping it
+  told a new user — in the very first file they open — that the library mounts
+  into a container element, which is not how it works. The plan named
+  `packages/docs/index.html` as the file this template mirrors, and that file
+  deliberately carries no such div while it *does* carry `lang` and the viewport
+  meta; Step 5's literal markup contradicted its own cited precedent. Following
+  the precedent over the literal step, per the implement skill's rule that the
+  codebase's existing solution wins wherever a plan leaves or creates a
+  conflict. The scaffold tests assert `index.html` exists, not its contents, so
+  they are unaffected.
 - **`toValidPackageName`** was implemented as: lowercase + trim, replace any
   character outside `[a-z0-9._-]` (i.e. whitespace and other invalid characters)
   with `-`, strip a leading run of `.`/`_`, then strip leading/trailing `-`. This
