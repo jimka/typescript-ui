@@ -183,6 +183,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
      * and the originating mouse event.
      *
      * @param e - The MouseEvent observed by the viewport-mousemove listener.
+     * @returns `true`, consuming the move so nothing else tracks the pointer mid-resize.
      */
     private _dispatchDrag(e: MouseEvent): Event.ListenerResult {
         this.emit("drag", this, e);
@@ -240,6 +241,8 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
     /**
      * Removes viewport listeners and restores body pointer events when drag ends.
+     *
+     * @returns `true`, consuming the release that ends the border resize.
      */
     onDragStop(): Event.ListenerResult {
         Event.removeViewportListener(this, 'mouseup', this._dragStopListener);

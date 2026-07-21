@@ -214,6 +214,8 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
      * also preserves the walk-skip that `Header.onResizeDragStart` (reached
      * through the `"dragstart"` event) relied on the removed
      * `stopPropagation` monkey-patch to produce.
+     *
+     * @returns `true`, consuming the press so it does not also reach the header's own sort handler.
      */
     private _onMouseDown = (e: MouseEvent): Event.ListenerResult => {
         this.emit("dragstart", e);
@@ -224,6 +226,8 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
     /**
      * Bound click handler — swallows the click so the host header cell does
      * not interpret it as a sort.
+     *
+     * @returns `true`, consuming the click so a resize gesture never registers as a sort.
      */
     private _onClick = (): Event.ListenerResult => {
         return true;

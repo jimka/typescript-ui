@@ -484,6 +484,8 @@ function enterNewTarget(session: DragSession, target: DropTargetRecord, detail: 
  * threshold, moves the ghost, hands target changes to the
  * enter / leave helpers, and re-runs `onDragOver` while the cursor stays
  * inside the same target.
+ *
+ * @returns `true` while a drag session is live, consuming the move so nothing else tracks the pointer.
  */
 function onMouseMove(e: MouseEvent): Event.ListenerResult {
     if (activeSession === null) {
@@ -573,6 +575,8 @@ function onMouseMove(e: MouseEvent): Event.ListenerResult {
 
 /**
  * Commits the drop (if any) and tears down the session.
+ *
+ * @returns `true`, consuming the release that ends the drag session.
  */
 function onMouseUp(e: MouseEvent): Event.ListenerResult {
     if (activeSession === null) {

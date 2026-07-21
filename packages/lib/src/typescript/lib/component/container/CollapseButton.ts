@@ -285,6 +285,7 @@ class CollapseButton extends Component<CollapseButtonOptions> {
      *
      * @param _evnt - The dblclick event; propagation is stopped so the host
      *   never also reacts.
+     * @returns `true`, consuming the double-click so it does not also reach the header behind the button.
      */
     private onDoubleClick(_evnt: MouseEvent): Event.ListenerResult {
         this.emit("collapse");
@@ -297,6 +298,7 @@ class CollapseButton extends Component<CollapseButtonOptions> {
      * grabbing the chevron never begins a resize drag.
      *
      * @param _evnt - The mousedown event to suppress.
+     * @returns `true`, consuming the press so it does not start a drag on the header behind the button.
      */
     private onMouseDown(_evnt: MouseEvent): Event.ListenerResult {
         return true;

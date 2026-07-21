@@ -1942,6 +1942,8 @@ class Accordion extends LayoutManager {
      * cleared, so the emitted sizes still reflect the drag. Also callable
      * directly (with no argument) so `detach()` and tests can simulate a
      * drag end.
+     *
+     * @returns `true`, consuming the release that ends the gutter drag.
      */
     private onGutterDragEnd(): Event.ListenerResult {
         const wasDragging = this._dragUpper !== null;

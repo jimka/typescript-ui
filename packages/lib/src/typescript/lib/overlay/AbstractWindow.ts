@@ -1527,6 +1527,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * Clears the resize-session origin capture when a border drag ends, so the
      * next drag re-captures a fresh origin. Detaches the viewport listeners it
      * was registered with.
+     *
+     * @returns `true`, consuming the release that ends the border resize.
      */
     private onResizeEnd(): Event.ListenerResult {
         this._resizeSessionActive = false;
@@ -1750,6 +1752,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * Moves the window to follow the pointer while dragging.
      *
      * @param e - The mouse event carrying the absolute pointer coordinate.
+     * @returns `{ stop: true, prevent: true }`, consuming the move and suppressing the browser's default text selection while dragging.
      */
     onDrag(e: MouseEvent): Event.ListenerResult {
         // Derive the delta from the absolute pointer offset (not accumulated movementX)
@@ -1769,6 +1772,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Detaches the document-level drag listeners when the mouse button is released.
+     *
+     * @returns `true`, consuming the release that ends the window drag.
      */
     onMouseUp(): Event.ListenerResult {
         // Commit the in-progress translate back to left/top so subsequent layout passes
@@ -2429,6 +2434,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * into that border's own drag flow.
      *
      * @param e - The mousedown event.
+     * @returns `true` when the press starts a snap drag; nothing when it does not, so the event keeps propagating.
      */
     private onSnapMouseDown(e: MouseEvent): Event.ListenerResult {
         const target = this._snapTargetBorder;

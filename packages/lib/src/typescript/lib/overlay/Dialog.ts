@@ -977,6 +977,7 @@ class Dialog extends Component implements DismissableLayer {
      * Handles document-level keydown events for Escape and Tab focus trapping.
      *
      * @param e - The keyboard event.
+     * @returns A stop-and-prevent disposition when the dialog handles the key (the Tab trap, or Enter); nothing otherwise, so unhandled keys keep propagating.
      */
     private onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         // Escape is owned by LayerManager's keydown handler, which closes the
@@ -1025,6 +1026,7 @@ class Dialog extends Component implements DismissableLayer {
      * `primary`, so a dialog with no clear default action does not submit blind.
      *
      * @param _e - The keydown event for the Enter press.
+     * @returns `{ stop: true, prevent: true }` when Enter confirms the dialog; nothing when there is nothing to confirm.
      */
     private onEnter(_e: KeyboardEvent): Event.ListenerResult {
         const active = DOM.source.getActiveElement();

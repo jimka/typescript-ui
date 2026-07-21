@@ -259,6 +259,7 @@ class ScrollArrowButton extends Component {
      * disabled) fires the first tick and schedules accelerating repeats.
      *
      * @param _e - The mousedown event.
+     * @returns `{ stop: true, prevent: true }`, consuming the press and suppressing the browser's default text selection.
      */
     private _onMouseDown = (_e: MouseEvent): Event.ListenerResult => {
         if (!this._disabled) {
@@ -810,6 +811,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
      * to the content/track ratio, clamps it, and fires scroll listeners.
      *
      * @param e - The viewport mousemove or touchmove event during a drag.
+     * @returns `true` while a thumb drag is in progress, consuming the move so nothing else tracks the pointer.
      */
     private _onDragMove = (e: MouseEvent | TouchEvent): Event.ListenerResult => {
         const trackLength = this.getTrackLength();
@@ -833,6 +835,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
      * Removes viewport listeners and restores body pointer events.
      *
      * @param _e - The mouseup/touchend/touchcancel event ending the drag.
+     * @returns `true`, consuming the release that ends the thumb drag.
      */
     private _onDragEnd = (_e: Event): Event.ListenerResult => {
         Event.removeViewportListener(this, "mousemove",   this._onDragMove);

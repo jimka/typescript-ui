@@ -93,14 +93,17 @@ class MenuBar extends Component {
             switch (e.key) {
                 case "Escape":
                     this.closeMenu();
+
                     return { stop: true, prevent: true };
 
                 case "ArrowLeft":
                     this.openMenu((this._openIndex - 1 + this._panels.length) % this._panels.length);
+
                     return { stop: true, prevent: true };
 
                 case "ArrowRight":
                     this.openMenu((this._openIndex + 1) % this._panels.length);
+
                     return { stop: true, prevent: true };
 
                 case "ArrowDown":
@@ -114,10 +117,12 @@ class MenuBar extends Component {
 
                 case "ArrowUp":
                     panel.focusPrev();
+
                     return { stop: true, prevent: true };
 
                 case "Enter":
                     panel.activateFocused();
+
                     return { stop: true, prevent: true };
             }
 
