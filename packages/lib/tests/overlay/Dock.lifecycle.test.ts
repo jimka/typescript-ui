@@ -1455,3 +1455,66 @@ describe('Dock async panel content', () => {
         expect(ran).toBe(false);
     });
 });
+
+describe('Dock lazy panel failure', () => {
+    it('closes the panel and emits exception after close when the factory rejects', async () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+        const log: string[] = [];
+        let reject: (e: unknown) => void = () => {};
+
+        dock.on('close',     (e: DockPanelEvent) => log.push(`close:${e.id}`));
+        dock.on('exception', e => log.push(`exception:${e.id}:${String(e.error)}`));
+
+        dock.addLazyPanel({
+            id:      'p',
+            title:   'P',
+            content: () => new Promise<Component>((_res, rej) => { reject = rej; }),
+        });
+
+        dock.doLayout();
+        flush();
+
+        reject(new Error('boom'));
+        await Promise.resolve();
+        await Promise.resolve();
+        flush();
+
+        // The panel's own close precedes the failure report, so a listener
+        // inspecting the dock sees the final state.
+        expect(log).toEqual(['close:p', 'exception:p:Error: boom']);
+    });
+
+    it('reports nothing when the panel was closed before its factory rejected', async () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+        const log: string[] = [];
+        let reject: (e: unknown) => void = () => {};
+
+        dock.on('exception', e => log.push(`exception:${e.id}`));
+
+        dock.addLazyPanel({
+            id:      'p',
+            title:   'P',
+            content: () => new Promise<Component>((_res, rej) => { reject = rej; }),
+        });
+
+        dock.doLayout();
+        flush();
+
+        // Close the panel while its factory is still pending. Nobody is waiting
+        // for the result any more, so the later rejection must be dropped.
+        expect(dock.removePanel('p')).toBe(true);
+
+        reject(new Error('boom'));
+        await Promise.resolve();
+        await Promise.resolve();
+        flush();
+
+        expect(log).toEqual([]);
+    });
+});

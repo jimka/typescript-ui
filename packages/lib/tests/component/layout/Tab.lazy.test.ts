@@ -10,7 +10,7 @@
 // registration and active-index state resolve without a layout pass. Anything
 // past the two-frame yield is not assertable here: the recording sink records
 // requestAnimationFrame callbacks and drops them, so the factory never runs.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
 import { Tab } from '~/layout/Tab';
@@ -27,8 +27,20 @@ const CONFIG = {
     themeVars:       {},
 };
 
-beforeEach(() => installTestDOM(CONFIG));
-afterEach(() => DOM.reset());
+// The recording sink records rAF callbacks and drops them, so the failure tests
+// capture and drive them explicitly to reach past materialize's two-frame yield.
+let rafQueue: FrameRequestCallback[] = [];
+
+beforeEach(() => {
+    installTestDOM(CONFIG);
+    rafQueue = [];
+    vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation(cb => rafQueue.push(cb));
+});
+
+afterEach(() => {
+    vi.restoreAllMocks();
+    DOM.reset();
+});
 
 /**
  * Builds a Tab-managed container.
@@ -61,9 +73,13 @@ function constraints(fields: Partial<LayoutConstraints>): LayoutConstraints {
 function tabCount(tab: Tab): number {
     tab.setActiveTabIndex(99);
 
-    const last = tab.getActiveTabIndex();
+    // An empty strip still reports index 0, so the index alone cannot tell one
+    // tab from none — the absent label is what distinguishes them.
+    if (tab.getActiveTabLabel() === null) {
+        return 0;
+    }
 
-    return last < 0 ? 0 : last + 1;
+    return tab.getActiveTabIndex() + 1;
 }
 
 describe('Tab deferred registration', () => {
@@ -123,10 +139,9 @@ describe('Tab deferred registration', () => {
     });
 
     it('still registers through the addLazyTab alias', () => {
-        const { host, tab } = hostTab();
+        const { tab } = hostTab();
         let ran = false;
 
-        tab.attach(host);
         tab.addLazyTab(() => { ran = true; return new Component(); }, 'Legacy');
 
         expect(ran).toBe(false);
@@ -135,10 +150,9 @@ describe('Tab deferred registration', () => {
     });
 
     it('leaves a caller-owned constraints object unmutated', () => {
-        const { host, tab } = hostTab();
+        const { tab }       = hostTab();
         const shared        = constraints({ closeable: true });
 
-        tab.attach(host);
         tab.addLazyTab(() => new Component(), 'Legacy', shared);
 
         expect(shared.name).toBeNull();
@@ -196,6 +210,67 @@ describe('Tab order across interleaved eager and lazy adds', () => {
         host.doLayout();
 
         expect(labels(tab)).toEqual(['A', 'B', 'C']);
+    });
+});
+
+describe('Tab deferred failure', () => {
+
+    it('closes the tab and emits exception when the factory rejects', async () => {
+        const { host, tab } = hostTab();
+        const seen: Array<{ error: string; label: string }> = [];
+        let reject: (e: unknown) => void = () => {};
+
+        host.getElement(true);
+        tab.on('exception', (error, label) => seen.push({ error: String(error), label }));
+
+        host.addComponent(
+            () => new Promise<Component>((_res, rej) => { reject = rej; }),
+            constraints({ name: 'Heavy' }),
+        );
+
+        tab.setActiveTabIndex(0);
+        rafQueue.splice(0).forEach(cb => cb(0));
+        rafQueue.splice(0).forEach(cb => cb(0));
+
+        reject(new Error('boom'));
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // The tab is gone from the strip before the event fires, and the
+        // spinner it was holding goes with it.
+        expect(seen).toEqual([{ error: 'Error: boom', label: 'Heavy' }]);
+        expect(tabCount(tab)).toBe(0);
+        expect(host.getComponents()).toEqual([]);
+    });
+
+    it('reports nothing when the tab was closed before the factory rejected', async () => {
+        const { host, tab } = hostTab();
+        const seen: unknown[] = [];
+        let reject: (e: unknown) => void = () => {};
+
+        host.getElement(true);
+        tab.on('exception', error => seen.push(error));
+
+        host.addComponent(
+            () => new Promise<Component>((_res, rej) => { reject = rej; }),
+            constraints({ name: 'Heavy' }),
+        );
+
+        tab.setActiveTabIndex(0);
+        rafQueue.splice(0).forEach(cb => cb(0));
+        rafQueue.splice(0).forEach(cb => cb(0));
+
+        // Drop the entry the way a close does, while the factory is pending.
+        (tab as unknown as { closeEntry(id: string): void }).closeEntry('tab-0');
+
+        reject(new Error('boom'));
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(seen).toEqual([]);
+        // The spinner the closed entry was holding must not survive as an
+        // entry-unowned child, which the next layout pass would tab.
+        expect(host.getComponents()).toEqual([]);
     });
 });
 

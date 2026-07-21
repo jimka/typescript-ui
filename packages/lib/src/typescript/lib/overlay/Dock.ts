@@ -597,15 +597,10 @@ class Dock extends Container<DockOptions> {
                 tab.setBarVisible(false);
                 frame = new Container({ id: spec.id, name: spec.title, layoutManager: tab });
 
-                // Named reference, not an inline arrow: the frame's Tab is a
-                // local, so the panel id has to be captured per frame. The Tab
-                // is unreachable from outside, so this subscription is what
-                // turns a failed content build into a Dock-level event.
-                const onFailed: (error: unknown) => void = (error: unknown): void => {
-                    this.failPanel(spec.id, error);
-                };
-
-                tab.on("exception", onFailed);
+                // The frame's Tab is a local and unreachable from outside, so
+                // this subscription is the only thing that can turn a failed
+                // content build into a Dock-level event.
+                tab.on("exception", (error: unknown) => this.failPanel(spec.id, error));
                 tab.addLazyTab(factory, spec.title ?? spec.id);
             } else {
                 // A normal panel builds its content now; the frame exists at once so
@@ -1250,6 +1245,17 @@ class Dock extends Container<DockOptions> {
      * @param region - The region to wire.
      */
     private wireRegion(region: Component): void {
+        // A lazy panel's identity frame carries a Tab manager, so it looks like
+        // a region to every classifier — but wiring it as one would make the
+        // panel itself drop-taking and prunable, and its inner strip draining
+        // would prune the frame out of its parent and leave a phantom tab. This
+        // guard sits at the top rather than at the call sites because a frame
+        // reaches here two ways: the recursion below, and a torn-off frame that
+        // `adoptFloat` returns as its float's region.
+        if (this._frames.get(region.getId()) === region) {
+            return;
+        }
+
         let wiring = this._wiring.get(region);
 
         if (!wiring) {
@@ -1282,11 +1288,7 @@ class Dock extends Container<DockOptions> {
         }
 
         for (const child of region.getComponents()) {
-            // An identity frame carries a Tab manager when its panel is lazy,
-            // which would otherwise make this sweep wire the panel itself as a
-            // drop-taking, prunable region — so its inner strip draining would
-            // prune the frame out of its parent and leave a phantom tab behind.
-            if (this.isRegionContainer(child) && this._frames.get(child.getId()) !== child) {
+            if (this.isRegionContainer(child)) {
                 this.wireRegion(child);
             }
         }
@@ -1515,6 +1517,15 @@ class Dock extends Container<DockOptions> {
      * @param error - The value the factory's promise rejected with.
      */
     private failPanel(id: string, error: unknown): void {
+        // The panel was closed while its factory was still in flight: the close
+        // path already evicted its frame, so there is nothing left to tear down
+        // and nobody left to report to. Closing a docked panel closes the tab in
+        // the *outer* region and never touches the frame's own entry, so the
+        // inner staleness check cannot see this — the registry is what knows.
+        if (!this._frames.has(id)) {
+            return;
+        }
+
         // A frame that is registered but sits in no Tab region cannot be closed
         // through the shared path; evict it directly so a re-add rebuilds it.
         if (!this.removePanel(id)) {
@@ -1965,6 +1976,14 @@ class Dock extends Container<DockOptions> {
      * @returns This dock, for method chaining.
      */
     off(event: "emptychange", listener: (event: DockEmptyEvent) => void): this;
+    /**
+     * Removes a previously registered `"exception"` listener.
+     *
+     * @param event - The `"exception"` event.
+     * @param listener - The exact listener reference passed to `on`.
+     *
+     * @returns This dock, for method chaining.
+     */
     off(event: "exception", listener: (event: DockExceptionEvent) => void): this;
     off(event: DockEvent, listener: Function): this {
         this._listeners.remove(event, listener);
