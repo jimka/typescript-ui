@@ -50,7 +50,7 @@ function stripCode(source: string): string {
  * `## Drag-and-drop with \`DragManager\`` yields
  * `drag-and-drop-with-dragmanager` in the app. Deleting the inline span
  * first would yield `drag-and-drop-with` and make this guard disagree with
- * the viewer on 23 of the 154 pages — false-failing a correctly authored
+ * the viewer on 22 of the 154 pages — false-failing a correctly authored
  * anchor and passing a dead one.
  *
  * @param source - A page's raw Markdown source.

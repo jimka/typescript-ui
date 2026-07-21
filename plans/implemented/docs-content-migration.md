@@ -397,7 +397,7 @@ Everything else follows the plan as written. No library source was touched.
 
 ### Audit findings fixed after implementation
 
-- **The corpus guard's heading-id rule did not match the viewer's.** `headingIds` was fed `stripCode`'d source, so inline code was deleted from heading text before slugifying, while `Markdown.appendHeading` slugifies `token.text` with the backticked text intact. The rules disagreed on 23 of the 154 pages, so the guard would have false-failed a correctly authored anchor and passed a dead one. Heading ids now come from a fence-only strip. The corpus still passes under the corrected rule, which confirms the authored anchors were right all along.
+- **The corpus guard's heading-id rule did not match the viewer's.** `headingIds` was fed `stripCode`'d source, so inline code was deleted from heading text before slugifying, while `Markdown.appendHeading` slugifies `token.text` with the backticked text intact. The rules disagreed on 22 of the 154 pages, so the guard would have false-failed a correctly authored anchor and passed a dead one. Heading ids now come from a fence-only strip. The corpus still passes under the corrected rule, which confirms the authored anchors were right all along.
 - **The API-reference not-found message never fired for `/api`.** `normalizePath` collapses the trailing slash on the corpus's `/api/` links, so the predicate `startsWith('/api/')` was false for exactly the links the special case existed to serve. The plan's own wording ("a path starting with `/api/`") is the proximate cause.
 
 ## Notes
