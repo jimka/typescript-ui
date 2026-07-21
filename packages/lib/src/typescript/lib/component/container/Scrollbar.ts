@@ -258,17 +258,14 @@ class ScrollArrowButton extends Component {
      * Scrollbar's track-click handler does not also fire, then (if not
      * disabled) fires the first tick and schedules accelerating repeats.
      *
-     * @param e - The mousedown event.
+     * @param _e - The mousedown event.
      */
-    private _onMouseDown = (e: MouseEvent): void => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (this._disabled) {
-            return;
+    private _onMouseDown = (_e: MouseEvent): Event.ListenerResult => {
+        if (!this._disabled) {
+            this._repeat.start();
         }
 
-        this._repeat.start();
+        return { stop: true, prevent: true };
     };
 
     /**
@@ -814,15 +811,13 @@ class Scrollbar extends Component<ScrollbarOptions> {
      *
      * @param e - The viewport mousemove or touchmove event during a drag.
      */
-    private _onDragMove = (e: MouseEvent | TouchEvent): void => {
-        e.stopPropagation();
-
+    private _onDragMove = (e: MouseEvent | TouchEvent): Event.ListenerResult => {
         const trackLength = this.getTrackLength();
         const maxScroll   = Math.max(0, this._contentSize - this._viewportSize);
         const maxThumb    = Math.max(0, trackLength - this._thumbSize);
 
         if (maxThumb <= 0) {
-            return;
+            return true;
         }
 
         const delta       = this.extractClientPrimary(e) - this._dragStartClient;
@@ -830,16 +825,16 @@ class Scrollbar extends Component<ScrollbarOptions> {
         const newPosition = Math.max(0, Math.min(maxScroll, this._dragStartScroll + scrollDelta));
 
         this.emit("scroll", newPosition);
+
+        return true;
     };
 
     /**
      * Removes viewport listeners and restores body pointer events.
      *
-     * @param e - The mouseup/touchend/touchcancel event ending the drag.
+     * @param _e - The mouseup/touchend/touchcancel event ending the drag.
      */
-    private _onDragEnd = (e: Event): void => {
-        e.stopPropagation();
-
+    private _onDragEnd = (_e: Event): Event.ListenerResult => {
         Event.removeViewportListener(this, "mousemove",   this._onDragMove);
         Event.removeViewportListener(this, "mouseup",     this._onDragEnd);
         Event.removeViewportListener(this, "touchmove",   this._onDragMove);
@@ -848,6 +843,8 @@ class Scrollbar extends Component<ScrollbarOptions> {
 
         // Restores pointer events on document.body (not a Component) once the drag ends.
         DOM.sink.apply(DOM.source.getBody(), { style: { pointerEvents: "" } });
+
+        return true;
     };
 
     /**

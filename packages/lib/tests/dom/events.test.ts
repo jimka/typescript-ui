@@ -59,9 +59,10 @@ describe('Modelled event delivery — exact-target routing', () => {
         expect(runs).toBe(1);
     });
 
-    // Case 2: an exact-target listener stops the subtree walk only when the user
-    // calls stopPropagation; otherwise the ancestor subtree listener still runs.
-    it('runs an ancestor subtree listener after an exact-target match unless stopPropagation is called', () => {
+    // Case 2: an exact-target listener stops the subtree walk only when it
+    // returns a stop disposition; otherwise the ancestor subtree listener
+    // still runs.
+    it('runs an ancestor subtree listener after an exact-target match unless the listener returns a stop disposition', () => {
         installTestDOM(CONFIG);
 
         const root   = new Component({});
@@ -74,17 +75,17 @@ describe('Modelled event delivery — exact-target routing', () => {
         let ancestorRuns = 0;
 
         Event.addSubtreeListener(root, type, () => { ancestorRuns += 1; });
-        Event.addListener(target, type, () => { /* no stopPropagation */ });
+        Event.addListener(target, type, () => { /* returns nothing — does not consume */ });
 
         DOM.sink.dispatchEvent(target.getElement()!, makeEvent(target.getElement()!, type));
 
         expect(ancestorRuns).toBe(1);
 
-        Event.addListener(target, type, (evnt: globalThis.Event) => { evnt.stopPropagation(); });
+        Event.addListener(target, type, () => true);
 
         DOM.sink.dispatchEvent(target.getElement()!, makeEvent(target.getElement()!, type));
 
-        // stopPropagation in the exact-target handler skips the subtree walk.
+        // Returning true stops propagation and skips the subtree walk.
         expect(ancestorRuns).toBe(1);
     });
 
@@ -266,7 +267,8 @@ describe('Modelled event delivery — polite propagation', () => {
     // an event a component handled but did not consume keeps bubbling, so a
     // document-level accelerator still fires while a library component is
     // focused. Counted by swapping the event's native stopPropagation for a spy
-    // before dispatch — baseListener binds that as its `originalStop`.
+    // before dispatch — applyDisposition calls it only when a listener's
+    // returned disposition asks for a stop.
     it('does not stop native propagation when the exact-target handler does not consume', () => {
         installTestDOM(CONFIG);
 
@@ -419,6 +421,240 @@ describe('Modelled event delivery — polite propagation', () => {
         DOM.sink.dispatchEvent(comp.getElement()!, evt);
 
         expect(nativeStops).toBe(0);
+    });
+});
+
+// A listener signals what the dispatcher should do with the event by return
+// value instead of calling stopPropagation()/preventDefault() through a
+// wrapped method. Cases numbered per plans/implemented/listener-return-disposition.md
+// `## Expected Behaviour`.
+describe('Modelled event delivery — listener return disposition', () => {
+    afterEach(() => DOM.reset());
+
+    // Case 1: returning nothing leaves the event alone.
+    it('leaves the event alone when the listener returns nothing', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let stops = 0;
+        let prevents = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { stops += 1; };
+        (evt as unknown as { preventDefault: () => void }).preventDefault = () => { prevents += 1; };
+
+        Event.addListener(comp, type, () => { /* returns nothing */ });
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(stops).toBe(0);
+        expect(prevents).toBe(0);
+    });
+
+    // Case 2: `return false` is the same as returning nothing.
+    it('leaves the event alone when the listener returns false', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let stops = 0;
+        let prevents = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { stops += 1; };
+        (evt as unknown as { preventDefault: () => void }).preventDefault = () => { prevents += 1; };
+
+        Event.addListener(comp, type, () => false);
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(stops).toBe(0);
+        expect(prevents).toBe(0);
+    });
+
+    // Case 3: `return true` stops propagation only.
+    it('stops propagation only when the listener returns true', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let stops = 0;
+        let prevents = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { stops += 1; };
+        (evt as unknown as { preventDefault: () => void }).preventDefault = () => { prevents += 1; };
+
+        Event.addListener(comp, type, () => true);
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(stops).toBe(1);
+        expect(prevents).toBe(0);
+    });
+
+    // Case 4: `return { prevent: true }` prevents the default only, and an
+    // ancestor subtree listener still runs (propagation was not stopped).
+    it('prevents the default only when the listener returns { prevent: true }, leaving the walk to run', () => {
+        installTestDOM(CONFIG);
+
+        const root   = new Component({});
+        const target = new Component({});
+        const type   = uniqueType();
+
+        root.getElement(true);
+        root.addComponent(target);
+
+        let ancestorRuns = 0;
+        let stops = 0;
+        let prevents = 0;
+        const evt = makeEvent(target.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { stops += 1; };
+        (evt as unknown as { preventDefault: () => void }).preventDefault = () => { prevents += 1; };
+
+        Event.addSubtreeListener(root, type, () => { ancestorRuns += 1; });
+        Event.addListener(target, type, () => ({ prevent: true }));
+
+        DOM.sink.dispatchEvent(target.getElement()!, evt);
+
+        expect(prevents).toBe(1);
+        expect(stops).toBe(0);
+        expect(ancestorRuns).toBe(1);
+    });
+
+    // Case 5: `return { stop: true, prevent: true }` does both.
+    it('stops and prevents when the listener returns { stop: true, prevent: true }', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let stops = 0;
+        let prevents = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { stops += 1; };
+        (evt as unknown as { preventDefault: () => void }).preventDefault = () => { prevents += 1; };
+
+        Event.addListener(comp, type, () => ({ stop: true, prevent: true }));
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(stops).toBe(1);
+        expect(prevents).toBe(1);
+    });
+
+    // Case 6: an exact-target consume skips the ancestor walk; a non-consuming
+    // exact-target listener lets it run.
+    it('skips the ancestor walk only when the exact-target listener returns a stop disposition', () => {
+        installTestDOM(CONFIG);
+
+        const root              = new Component({});
+        const consumingTarget   = new Component({});
+        const passthroughTarget = new Component({});
+        const type              = uniqueType();
+
+        root.getElement(true);
+        root.addComponent(consumingTarget);
+        root.addComponent(passthroughTarget);
+
+        let ancestorRuns = 0;
+
+        Event.addSubtreeListener(root, type, () => { ancestorRuns += 1; });
+        Event.addListener(consumingTarget, type, () => true);
+        Event.addListener(passthroughTarget, type, () => { /* returns nothing */ });
+
+        DOM.sink.dispatchEvent(consumingTarget.getElement()!, makeEvent(consumingTarget.getElement()!, type));
+
+        expect(ancestorRuns).toBe(0);
+
+        DOM.sink.dispatchEvent(passthroughTarget.getElement()!, makeEvent(passthroughTarget.getElement()!, type));
+
+        expect(ancestorRuns).toBe(1);
+    });
+
+    // Case 7 (new behaviour — fails before this change): a consuming subtree
+    // listener ends the walk at its own component. Three nested components
+    // each have a subtree listener; the middle one returns true.
+    it('lets a consuming subtree listener end the walk at its own component', () => {
+        installTestDOM(CONFIG);
+
+        const outer  = new Component({});
+        const middle = new Component({});
+        const inner  = new Component({});
+        const type   = uniqueType();
+
+        outer.getElement(true);
+        outer.addComponent(middle);
+        middle.addComponent(inner);
+
+        let outerRuns  = 0;
+        let middleRuns = 0;
+        let innerRuns  = 0;
+
+        Event.addSubtreeListener(outer,  type, () => { outerRuns += 1; });
+        Event.addSubtreeListener(middle, type, () => { middleRuns += 1; return true; });
+        Event.addSubtreeListener(inner,  type, () => { innerRuns += 1; });
+
+        DOM.sink.dispatchEvent(inner.getElement()!, makeEvent(inner.getElement()!, type));
+
+        expect(innerRuns).toBe(1);
+        expect(middleRuns).toBe(1);
+        expect(outerRuns).toBe(0);
+    });
+
+    // Case 8: every listener registered on the consuming component still
+    // runs — only ancestors above it are skipped.
+    it('runs every listener on the consuming component before skipping ancestors', () => {
+        installTestDOM(CONFIG);
+
+        const root   = new Component({});
+        const target = new Component({});
+        const type   = uniqueType();
+
+        root.getElement(true);
+        root.addComponent(target);
+
+        let firstRuns  = 0;
+        let secondRuns = 0;
+        let ancestorRuns = 0;
+
+        Event.addSubtreeListener(root, type, () => { ancestorRuns += 1; });
+        Event.addSubtreeListener(target, type, () => { firstRuns += 1; return true; });
+        Event.addSubtreeListener(target, type, () => { secondRuns += 1; });
+
+        DOM.sink.dispatchEvent(target.getElement()!, makeEvent(target.getElement()!, type));
+
+        expect(firstRuns).toBe(1);
+        expect(secondRuns).toBe(1);
+        expect(ancestorRuns).toBe(0);
+    });
+
+    // Case 10: a direct e.stopPropagation() call no longer reaches the
+    // dispatcher — only a returned disposition does. This is the deliberate
+    // behaviour change; pin it so it cannot regress silently.
+    it('does not skip the ancestor walk when the listener calls e.stopPropagation() directly and returns nothing', () => {
+        installTestDOM(CONFIG);
+
+        const root   = new Component({});
+        const target = new Component({});
+        const type   = uniqueType();
+
+        root.getElement(true);
+        root.addComponent(target);
+
+        let ancestorRuns = 0;
+
+        Event.addSubtreeListener(root, type, () => { ancestorRuns += 1; });
+        Event.addListener(target, type, (e: globalThis.Event) => { e.stopPropagation(); });
+
+        DOM.sink.dispatchEvent(target.getElement()!, makeEvent(target.getElement()!, type));
+
+        expect(ancestorRuns).toBe(1);
     });
 });
 

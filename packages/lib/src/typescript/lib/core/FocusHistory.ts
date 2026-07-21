@@ -201,7 +201,7 @@ function onFocusIn(e: FocusEvent): void {
  * combos, suppressed while a modal layer is on top so the accelerator does
  * not fight the modal's own focus trap.
  */
-function onKeyDown(e: KeyboardEvent): void {
+function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
     if (!_enabled) {
         return;
     }
@@ -218,9 +218,9 @@ function onKeyDown(e: KeyboardEvent): void {
         return;
     }
 
-    e.preventDefault();
-    e.stopPropagation();
     navigate(direction);
+
+    return { stop: true, prevent: true };
 }
 
 /**

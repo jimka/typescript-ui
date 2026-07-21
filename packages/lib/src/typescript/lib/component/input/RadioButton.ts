@@ -291,12 +291,12 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
      *
      * @returns This component, for method chaining.
      */
-    on(event: "action",  listener: Function): this;
+    on(event: "action",  listener: Event.Listener): this;
     on(event: "change",  listener: (value: boolean) => void): this;
     on(event: "binding", listener: () => void): this;
     on(event: "action" | "change" | "binding", listener: Function): this {
         if (event === "action") {
-            Event.addListener(this, "change", listener);
+            Event.addListener(this, "change", listener as Event.Listener);
 
             return this;
         }
@@ -315,7 +315,7 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
      */
     off(event: "action" | "change" | "binding", listener: Function): this {
         if (event === "action") {
-            Event.removeListener(this, "change", listener);
+            Event.removeListener(this, "change", listener as Event.Listener);
 
             return this;
         }

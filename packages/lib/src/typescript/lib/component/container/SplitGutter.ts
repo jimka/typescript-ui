@@ -521,15 +521,10 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
     /**
      * Removes viewport listeners and restores body pointer events and the
-     * document element's cursor when drag ends, then fires `dragend`.
-     *
-     * @param e - The mouseup/touchend/touchcancel event ending the drag, when
-     *   invoked as a viewport listener. Optional so tests can call it directly
-     *   to simulate a drag end.
+     * document element's cursor when drag ends, then fires `dragend`. Also
+     * callable directly (with no argument) so tests can simulate a drag end.
      */
-    onDragStop(e?: Event) {
-        e?.stopPropagation();
-
+    onDragStop(): Event.ListenerResult {
         Event.removeViewportListener(this, 'mouseup', this.onDragStop);
         Event.removeViewportListener(this, 'touchend', this.onDragStop);
         Event.removeViewportListener(this, 'touchcancel', this.onDragStop);
@@ -539,6 +534,8 @@ class SplitGutter extends Component<SplitGutterOptions> {
         endPointerDrag();
 
         this.emit("dragend");
+
+        return true;
     }
 
     /**
@@ -547,9 +544,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
      *
      * @param evnt - The MouseEvent from which clientX or clientY is read.
      */
-    onDrag(evnt: MouseEvent) {
-        evnt.stopPropagation();
-
+    onDrag(evnt: MouseEvent): Event.ListenerResult {
         let position;
         if (this._direction === "horizontal") {
             position = evnt.clientX;
@@ -558,6 +553,8 @@ class SplitGutter extends Component<SplitGutterOptions> {
         }
 
         this._dispatchDrag(position);
+
+        return true;
     }
 
     /**

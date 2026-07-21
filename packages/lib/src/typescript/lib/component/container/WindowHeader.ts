@@ -451,7 +451,7 @@ class WindowHeader extends Header {
      *
      * @param listener - The callback to invoke on `dblclick`.
      */
-    addHeaderDoubleClickListener(listener: Function): this {
+    addHeaderDoubleClickListener(listener: Event.Listener): this {
         // Subtree, not exact-target: the title row sits inside a Border clip-frame
         // wrapper, so a double-click on the title text/glyph targets that wrapper
         // rather than the bare header element. The owning Window's handler already

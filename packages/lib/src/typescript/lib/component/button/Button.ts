@@ -33,7 +33,7 @@ export type ButtonEvent = "action";
  *
  * @category Components
  */
-export type ClickListener = (event: MouseEvent) => void;
+export type ClickListener = (event: MouseEvent) => Event.ListenerResult;
 
 /**
  * Construction-time options for {@link Button}.
@@ -1508,7 +1508,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      *
      * @returns This component, for method chaining.
      */
-    addPointerDownListener(listener: Function): this {
+    addPointerDownListener(listener: Event.Listener): this {
         Event.addListener(this, "pointerdown", listener);
 
         return this;

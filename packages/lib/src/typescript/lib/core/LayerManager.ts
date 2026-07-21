@@ -539,7 +539,7 @@ export namespace LayerManager {
     }
 
     /** Document `keydown` handler — Escape asks the topmost non-manual layer to close. */
-    function onKeyDown(e: KeyboardEvent): void {
+    function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (e.key !== "Escape") {
             return;
         }
@@ -552,10 +552,11 @@ export namespace LayerManager {
             }
 
             _stack[i].layer.requestClose();
-            e.stopPropagation();
 
-            return;
+            return true;
         }
+
+        return;
     }
 
     /** Installs the three document-level listeners against the sentinel owner. */

@@ -5138,7 +5138,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      */
-    addMouseDownListener(listener: Function): this {
+    addMouseDownListener(listener: Event.Listener): this {
         Event.addListener(this, "mousedown", listener);
 
         return this;
@@ -5151,7 +5151,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      */
-    removeMouseDownListener(listener: Function): this {
+    removeMouseDownListener(listener: Event.Listener): this {
         Event.removeListener(this, "mousedown", listener);
 
         return this;
@@ -5169,7 +5169,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      */
-    addMouseDownSubtreeListener(listener: Function): this {
+    addMouseDownSubtreeListener(listener: Event.Listener): this {
         Event.addSubtreeListener(this, "mousedown", listener);
 
         return this;
@@ -5183,7 +5183,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      */
-    removeMouseDownSubtreeListener(listener: Function): this {
+    removeMouseDownSubtreeListener(listener: Event.Listener): this {
         Event.removeSubtreeListener(this, "mousedown", listener);
 
         return this;

@@ -1234,9 +1234,10 @@ export function installTestDOM(config: ModelledDOMConfig): RecordingDOMSink {
  * {@link ModelledDOMSource.intern} straight back to `target`, so the framework's
  * `baseListener` routes it to the right component. A plain sentinel object
  * (not a jsdom `Event`) carries the type, optional coordinate/key/button fields,
- * and an intact `stopPropagation`/`preventDefault` so the wrap-and-detect logic
- * in `Event.ts` works unchanged. The same object is delivered to every listener
- * in a dispatch, so a consume-once marker survives across them.
+ * and an intact `stopPropagation`/`preventDefault` so `applyDisposition` in
+ * `Event.ts` can call them when a listener's returned disposition asks for it.
+ * The same object is delivered to every listener in a dispatch, so a
+ * consume-once marker survives across them.
  *
  * @param target - The element handle the event targets.
  * @param type - The event type (e.g. `"click"`).

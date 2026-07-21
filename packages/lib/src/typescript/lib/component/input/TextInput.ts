@@ -198,19 +198,19 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
      *
      * @returns This component, for method chaining.
      */
-    on(event: "action",  listener: Function): this;
-    on(event: "keydown", listener: (e: KeyboardEvent) => void): this;
+    on(event: "action",  listener: Event.Listener): this;
+    on(event: "keydown", listener: (e: KeyboardEvent) => Event.ListenerResult): this;
     on(event: "change",  listener: (value: string) => void): this;
     on(event: "binding", listener: () => void): this;
     on(event: "action" | "keydown" | "change" | "binding", listener: Function): this {
         if (event === "action") {
-            Event.addListener(this, "input", listener);
+            Event.addListener(this, "input", listener as Event.Listener);
 
             return this;
         }
 
         if (event === "keydown") {
-            Event.addListener(this, "keydown", listener);
+            Event.addListener(this, "keydown", listener as Event.Listener);
 
             return this;
         }
@@ -229,13 +229,13 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
      */
     off(event: "action" | "keydown" | "change" | "binding", listener: Function): this {
         if (event === "action") {
-            Event.removeListener(this, "input", listener);
+            Event.removeListener(this, "input", listener as Event.Listener);
 
             return this;
         }
 
         if (event === "keydown") {
-            Event.removeListener(this, "keydown", listener);
+            Event.removeListener(this, "keydown", listener as Event.Listener);
 
             return this;
         }

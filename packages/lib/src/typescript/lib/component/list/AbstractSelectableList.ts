@@ -1387,14 +1387,14 @@ abstract class AbstractSelectableList<
      *
      * @returns This component, for method chaining.
      */
-    on(event: "action",      listener: Function): this;
+    on(event: "action",      listener: Event.Listener): this;
     on(event: "change",      listener: (value: TValue) => void): this;
     on(event: "binding",     listener: () => void): this;
     on(event: "contextmenu", listener: (index: number, event: MouseEvent) => void): this;
     on(event: "dblclick",    listener: (index: number, event: MouseEvent) => void): this;
     on(event: "action" | "change" | "binding" | "contextmenu" | "dblclick", listener: Function): this {
         if (event === "action") {
-            Event.addListener(this, "change", listener);
+            Event.addListener(this, "change", listener as Event.Listener);
 
             return this;
         }
@@ -1419,7 +1419,7 @@ abstract class AbstractSelectableList<
      */
     off(event: "action" | "change" | "binding" | "contextmenu" | "dblclick", listener: Function): this {
         if (event === "action") {
-            Event.removeListener(this, "change", listener);
+            Event.removeListener(this, "change", listener as Event.Listener);
 
             return this;
         }

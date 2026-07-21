@@ -77,9 +77,9 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
     private _direction: Direction = Direction.NORTH;
     private _listeners: ListenerBag<WindowBorderEvent> = new ListenerBag<WindowBorderEvent>();
-    private _dragStartListener: Function;
-    private _dragStopListener: Function;
-    private _fireDragListener: Function;
+    private _dragStartListener: Event.Listener;
+    private _dragStopListener: Event.Listener;
+    private _fireDragListener: Event.Listener;
     private _snapTarget: boolean = false;
 
     // Lazy `.snap-target` rule. The slot is a fast-path cache for the wrapper
@@ -184,9 +184,10 @@ class WindowBorder extends Component<WindowBorderOptions> {
      *
      * @param e - The MouseEvent observed by the viewport-mousemove listener.
      */
-    private _dispatchDrag(e: MouseEvent): void {
-        e.stopPropagation();
+    private _dispatchDrag(e: MouseEvent): Event.ListenerResult {
         this.emit("drag", this, e);
+
+        return true;
     }
 
     /**
@@ -239,12 +240,8 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
     /**
      * Removes viewport listeners and restores body pointer events when drag ends.
-     *
-     * @param e - The mouseup/touchend/touchcancel event ending the drag.
      */
-    onDragStop(e?: Event) {
-        e?.stopPropagation();
-
+    onDragStop(): Event.ListenerResult {
         Event.removeViewportListener(this, 'mouseup', this._dragStopListener);
         Event.removeViewportListener(this, 'touchend', this._dragStopListener);
         Event.removeViewportListener(this, 'touchcancel', this._dragStopListener);
@@ -256,6 +253,8 @@ class WindowBorder extends Component<WindowBorderOptions> {
         // Drop the snap-target highlight (if any) once the drag commits, so a
         // subsequent Ctrl-release on the same hover doesn't leave the strip glowing.
         this.setSnapTarget(false);
+
+        return true;
     }
 
     /**

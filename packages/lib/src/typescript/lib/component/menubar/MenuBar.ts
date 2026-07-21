@@ -53,7 +53,7 @@ class MenuBar extends Component {
     private _quickSwitchActive: boolean = false;
     private _keydownListening: boolean = false;
 
-    private readonly _onKeyDown: (e: KeyboardEvent) => void;
+    private readonly _onKeyDown: (e: KeyboardEvent) => Event.ListenerResult;
 
     /**
      * Constructs a `MenuBar`, optionally populated from `options.menus` (the
@@ -92,47 +92,36 @@ class MenuBar extends Component {
 
             switch (e.key) {
                 case "Escape":
-                    e.preventDefault();
-                    e.stopPropagation();
                     this.closeMenu();
-                    break;
+                    return { stop: true, prevent: true };
 
                 case "ArrowLeft":
-                    e.preventDefault();
-                    e.stopPropagation();
                     this.openMenu((this._openIndex - 1 + this._panels.length) % this._panels.length);
-                    break;
+                    return { stop: true, prevent: true };
 
                 case "ArrowRight":
-                    e.preventDefault();
-                    e.stopPropagation();
                     this.openMenu((this._openIndex + 1) % this._panels.length);
-                    break;
+                    return { stop: true, prevent: true };
 
                 case "ArrowDown":
-                    e.preventDefault();
-                    e.stopPropagation();
-
                     if (panel.getFocusedIndex() < 0) {
                         panel.focusItem(0);
                     } else {
                         panel.focusNext();
                     }
 
-                    break;
+                    return { stop: true, prevent: true };
 
                 case "ArrowUp":
-                    e.preventDefault();
-                    e.stopPropagation();
                     panel.focusPrev();
-                    break;
+                    return { stop: true, prevent: true };
 
                 case "Enter":
-                    e.preventDefault();
-                    e.stopPropagation();
                     panel.activateFocused();
-                    break;
+                    return { stop: true, prevent: true };
             }
+
+            return;
         };
 
         if (options?.menus) {

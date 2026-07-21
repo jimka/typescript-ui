@@ -3,12 +3,13 @@
 //
 // The viewport dispatcher no longer stops propagation on a handler's behalf
 // (see plans/implemented/viewport-event-propagation.md), so a gesture that owns
-// an interaction has to call stopPropagation() itself. These tests assert the
+// an interaction has to return a stop disposition itself (see
+// plans/implemented/listener-return-disposition.md). These tests assert the
 // consume at the *registration boundary* — dispatching a real event through
 // DOM.sink — rather than by invoking the handler directly. That distinction is
 // the point: the bug this pins was a bound wrapper that dropped its event
-// argument, so the handler's own stopPropagation() could never fire even though
-// the handler read correctly on its own.
+// argument, so the handler's own consume could never reach the dispatcher even
+// though the handler read correctly on its own.
 //
 // These live in their own file deliberately. `Event`'s viewportListenerMap is
 // module-level state and the window listener is attached only when a type is

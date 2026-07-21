@@ -13,7 +13,7 @@ import type { Handle } from "~/core/DOM.js";
 export namespace Event {
     interface CompFunc {
         component: Component,
-        listeners: Function[]
+        listeners: Listener[]
     };
 
     /**
@@ -33,6 +33,22 @@ export namespace Event {
         passive?: boolean;
     }
 
+    /**
+     * What a listener asks the dispatcher to do with the event it handled.
+     */
+    export interface EventDisposition {
+        /** Halt DOM propagation (`stopPropagation`). */
+        stop?:    boolean;
+        /** Suppress the browser's default action (`preventDefault`). */
+        prevent?: boolean;
+    }
+
+    /** `true` is shorthand for `{ stop: true }`. Returning nothing leaves the event alone. */
+    export type ListenerResult = boolean | EventDisposition | void;
+
+    /** A DOM-routed listener registered through the `Event` API. */
+    export type Listener = (event: any) => ListenerResult;
+
     let listenerMap = new Map<String, Map<String, CompFunc>>();
     let viewportListenerMap = new Map<String, Map<String, CompFunc>>();
     let subtreeListenerMap = new Map<String, Map<String, CompFunc>>();
@@ -45,6 +61,35 @@ export namespace Event {
         const passive = override?.passive ?? PASSIVE_TYPES.has(type);
 
         return { capture: true, passive };
+    }
+
+    /**
+     * Applies a listener's returned disposition to the event.
+     *
+     * @returns `true` when propagation was stopped, so a dispatcher can end its walk.
+     */
+    function applyDisposition(evnt: Event, result: ListenerResult): boolean {
+        if (result === undefined || result === false) {
+            return false;
+        }
+
+        if (result === true) {
+            evnt.stopPropagation();
+
+            return true;
+        }
+
+        if (result.prevent) {
+            evnt.preventDefault();
+        }
+
+        if (result.stop) {
+            evnt.stopPropagation();
+
+            return true;
+        }
+
+        return false;
     }
 
     function installBaseListener(type: string, options?: ListenerOptions): void {
@@ -82,24 +127,14 @@ export namespace Event {
     }
 
     let baseListener = function (evnt: Event) {
-        // Wrap stopPropagation so a handler that consumes the event both
-        // suppresses native propagation (via the original method) and signals
-        // the dispatcher to skip the subtree walk below (`propagationStopped`).
-        //
         // The dispatcher does NOT stop propagation on a component's behalf: an
-        // event is halted only when a handler explicitly consumes it. An
-        // unconsumed event therefore keeps propagating — through the bubble
-        // phase and on to any `document`-level listener (e.g. a consumer's
-        // global keyboard accelerator), which a proactive stop here used to
-        // swallow whenever the focused element happened to carry a library
-        // listener.
+        // event is halted only when a handler's returned disposition asks for
+        // it (see `applyDisposition`). An unconsumed event therefore keeps
+        // propagating — through the bubble phase and on to any
+        // `document`-level listener (e.g. a consumer's global keyboard
+        // accelerator), which a proactive stop here used to swallow whenever
+        // the focused element happened to carry a library listener.
         let propagationStopped = false;
-
-        const originalStop = evnt.stopPropagation.bind(evnt);
-        evnt.stopPropagation = function (): void {
-            propagationStopped = true;
-            originalStop();
-        };
 
         // Intern the raw browser target into a handle at the boundary so no
         // downstream code holds the live node; every read below climbs in
@@ -113,7 +148,9 @@ export namespace Event {
 
             if (compFunc) {
                 for (let listener of compFunc.listeners) {
-                    listener.apply(compFunc.component, [evnt]);
+                    if (applyDisposition(evnt, listener.apply(compFunc.component, [evnt]))) {
+                        propagationStopped = true;
+                    }
                 }
             }
         }
@@ -135,9 +172,15 @@ export namespace Event {
                 let compFunc = subtreeListeners.get(id);
                 if (compFunc) {
                     for (let listener of compFunc.listeners) {
-                        listener.apply(compFunc.component, [evnt]);
+                        if (applyDisposition(evnt, listener.apply(compFunc.component, [evnt]))) {
+                            propagationStopped = true;
+                        }
                     }
                 }
+            }
+
+            if (propagationStopped) {
+                return;
             }
 
             handle = DOM.source.getParentElement(handle);
@@ -159,7 +202,7 @@ export namespace Event {
             let component = compFunc.component;
 
             for (let listener of compFunc.listeners) {
-                listener.apply(component, [evnt]);
+                applyDisposition(evnt, listener.apply(component, [evnt]));
             }
         }
     };
@@ -212,7 +255,11 @@ export namespace Event {
      *
      * @param component - The component to associate the listener with.
      * @param type - The DOM event type string to listen for.
-     * @param listener - The callback function to invoke when the event fires on this component.
+     * @param listener - The callback invoked when the event fires on this
+     * component. Its return value tells the dispatcher what to do with the
+     * event: `true` stops propagation, `{ prevent: true }` suppresses the
+     * default action, `{ stop: true, prevent: true }` does both, and nothing
+     * (or `false`) leaves the event untouched.
      * @param options - Optional override for the default registration options
      * (currently only `passive`). Once a type has been registered, subsequent
      * registrations must use the same `passive` setting or this function
@@ -224,7 +271,7 @@ export namespace Event {
     export function addListener(
         component: Component,
         type: string,
-        listener: Function,
+        listener: Listener,
         options?: ListenerOptions
     ) {
         if (!listener || !component) {
@@ -262,7 +309,7 @@ export namespace Event {
      * @remarks If removing the listener leaves a component or event type with no remaining listeners,
      * the corresponding map entries and the window-level handler are cleaned up automatically.
      */
-    export function removeListener(component: Component, type: string, listener: Function) {
+    export function removeListener(component: Component, type: string, listener: Listener) {
         if (!listener || !component) {
             return;
         }
@@ -301,7 +348,13 @@ export namespace Event {
      *
      * @param component - The ancestor component to watch.
      * @param type - The DOM event type string to listen for.
-     * @param listener - The callback invoked when a matching event bubbles through this component's subtree.
+     * @param listener - The callback invoked when a matching event bubbles
+     * through this component's subtree. Its return value tells the
+     * dispatcher what to do with the event: `true` stops propagation (ending
+     * the walk after every listener on this component has run — no further
+     * ancestor is visited), `{ prevent: true }` suppresses the default
+     * action, `{ stop: true, prevent: true }` does both, and nothing (or
+     * `false`) leaves the event untouched.
      * @param options - Optional override for the default registration options
      * (currently only `passive`). Once a type has been registered, subsequent
      * registrations must use the same `passive` setting or this function
@@ -314,7 +367,7 @@ export namespace Event {
     export function addSubtreeListener(
         component: Component,
         type: string,
-        listener: Function,
+        listener: Listener,
         options?: ListenerOptions
     ): void {
         if (!listener || !component) {
@@ -345,7 +398,7 @@ export namespace Event {
      * @param type - The DOM event type string the listener was registered for.
      * @param listener - The exact callback function reference that was passed to `addSubtreeListener`.
      */
-    export function removeSubtreeListener(component: Component, type: string, listener: Function): void {
+    export function removeSubtreeListener(component: Component, type: string, listener: Listener): void {
         if (!listener || !component) {
             return;
         }
@@ -413,17 +466,21 @@ export namespace Event {
      *
      * @param component - The component to associate the listener with.
      * @param type - The DOM event type string to listen for globally.
-     * @param listener - The callback function to invoke on every matching event.
+     * @param listener - The callback invoked on every matching event. Its
+     * return value tells the dispatcher what to do with the event: `true`
+     * stops propagation, `{ prevent: true }` suppresses the default action,
+     * `{ stop: true, prevent: true }` does both, and nothing (or `false`)
+     * leaves the event untouched.
      *
      * @remarks Unlike `addListener`, viewport listeners are not filtered by element id — every
      * registered component receives the event, regardless of dispatch order, and a component
-     * that calls `stopPropagation()` does not prevent the others from running. The dispatcher
-     * does not stop propagation on a component's behalf: an unconsumed event keeps propagating
-     * to the page (e.g. a consumer's `document`-level accelerator) unless a handler explicitly
-     * calls `stopPropagation()`. Logs a console trace and returns early if either argument is
-     * falsy.
+     * whose listener returns a stop disposition does not prevent the others from running. The
+     * dispatcher does not stop propagation on a component's behalf: an unconsumed event keeps
+     * propagating to the page (e.g. a consumer's `document`-level accelerator) unless a handler's
+     * returned disposition asks for a stop. Logs a console trace and returns early if either
+     * argument is falsy.
      */
-    export function addViewportListener(component: Component, type: string, listener: Function) {
+    export function addViewportListener(component: Component, type: string, listener: Listener) {
         if (!listener || !component) {
             console.trace();
             return;
@@ -460,7 +517,7 @@ export namespace Event {
      * @remarks Cleans up empty map entries and the window-level handler when no listeners remain
      * for a given event type, mirroring the behaviour of `removeListener`.
      */
-    export function removeViewportListener(component: Component, type: string, listener: Function) {
+    export function removeViewportListener(component: Component, type: string, listener: Listener) {
         if (!listener || !component) {
             return;
         }

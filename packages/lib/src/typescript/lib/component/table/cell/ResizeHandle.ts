@@ -209,18 +209,24 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
 
     /**
      * Bound mousedown handler — fires the `"dragstart"` event with the
-     * originating MouseEvent.
+     * originating MouseEvent, then consumes the mousedown. A mousedown on
+     * the handle always starts a drag, so this always returns `true`; that
+     * also preserves the walk-skip that `Header.onResizeDragStart` (reached
+     * through the `"dragstart"` event) relied on the removed
+     * `stopPropagation` monkey-patch to produce.
      */
-    private _onMouseDown = (e: MouseEvent): void => {
+    private _onMouseDown = (e: MouseEvent): Event.ListenerResult => {
         this.emit("dragstart", e);
+
+        return true;
     };
 
     /**
      * Bound click handler — swallows the click so the host header cell does
      * not interpret it as a sort.
      */
-    private _onClick = (e: MouseEvent): void => {
-        e.stopPropagation();
+    private _onClick = (): Event.ListenerResult => {
+        return true;
     };
 }
 

@@ -50,7 +50,7 @@ class DialogBackdrop extends Component<DialogBackdropOptions> {
      *
      * @param listener - Called when the user clicks the backdrop area.
      */
-    addClickListener(listener: Function): this {
+    addClickListener(listener: Event.Listener): this {
         Event.addListener(this, "click", listener);
 
         return this;

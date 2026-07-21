@@ -283,23 +283,23 @@ class CollapseButton extends Component<CollapseButtonOptions> {
     /**
      * Emits `collapse` on a double-click.
      *
-     * @param evnt - The dblclick event; its propagation is stopped so the host
+     * @param _evnt - The dblclick event; propagation is stopped so the host
      *   never also reacts.
      */
-    private onDoubleClick(evnt: MouseEvent): void {
-        evnt.stopPropagation();
-
+    private onDoubleClick(_evnt: MouseEvent): Event.ListenerResult {
         this.emit("collapse");
+
+        return true;
     }
 
     /**
      * Stops a `mousedown` on the button from reaching the host gutter, so
      * grabbing the chevron never begins a resize drag.
      *
-     * @param evnt - The mousedown event to suppress.
+     * @param _evnt - The mousedown event to suppress.
      */
-    private onMouseDown(evnt: MouseEvent): void {
-        evnt.stopPropagation();
+    private onMouseDown(_evnt: MouseEvent): Event.ListenerResult {
+        return true;
     }
 
     /**

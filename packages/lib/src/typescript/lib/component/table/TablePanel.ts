@@ -47,19 +47,19 @@ class TablePanel extends Container {
 
         const addBtn = new Button({ glyph: "plus" });
         addBtn.setPreferredSize({ width: 28, height: 28 });
-        addBtn.on("action", () => this._table.addRow());
+        addBtn.on("action", () => { this._table.addRow(); });
         Tooltip.attach(addBtn, "Add row");
         this._toolbar.addComponent(addBtn);
 
         const removeBtn = new Button({ glyph: "minus" });
         removeBtn.setPreferredSize({ width: 28, height: 28 });
-        removeBtn.on("action", () => this._table.removeSelectedRow());
+        removeBtn.on("action", () => { this._table.removeSelectedRow(); });
         Tooltip.attach(removeBtn, "Remove selected row");
         this._toolbar.addComponent(removeBtn);
 
         this._syncBtn = new Button({ glyph: "arrows-rotate" });
         this._syncBtn.setPreferredSize({ width: 28, height: 28 });
-        this._syncBtn.on("action", () => this._table.sync());
+        this._syncBtn.on("action", () => { void this._table.sync(); });
         Tooltip.attach(this._syncBtn, "Sync pending changes");
         this._toolbar.addComponent(this._syncBtn);
 
