@@ -990,6 +990,14 @@ already dismissed, contradicting this plan's own decision table, the `Dock`
 JSDoc, `docs/components/Dock.md`, and manual case 28. The dock's registry is
 what knows a panel has gone, so the failure handler consults it.
 
+**`addLazyTab` forces `lazy: true` rather than forwarding the caller's
+constraints untouched.** The plan's body builds `{ name }` only, so a caller
+passing a shared constraints object carrying `lazy: false` would have had the
+deferral declined and — because `addLazyTab` discards the return value —
+registered nothing at all: no tab, no child, no error. A method whose entire
+contract is to defer must not have a stray flag turn it into a silent no-op, so
+the copy sets `lazy: true` alongside `name`.
+
 **The reject and close-during-flight paths are covered offline, contrary to
 `[^raf-testing]`.** That footnote ruled them manual-verify-only on the grounds
 that a test would have to drive `Animation.play`'s fallback timer. The failure

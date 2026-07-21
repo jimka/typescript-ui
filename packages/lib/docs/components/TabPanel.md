@@ -28,7 +28,7 @@ tabs.addTab(closeableExtra, "Delta", { closeable: true });
 tabs.addTab(staredPanel, "Epsilon", { glyph: "star" });
 ```
 
-Both `addTab` and `addLazyTab` accept `{ closeable?, glyph?, lazy? }`.
+`addTab` accepts `{ closeable?, glyph?, lazy? }`; `addLazyTab` accepts `{ closeable?, glyph? }` — it always defers, so it has no `lazy` to set.
 
 ## Lazy tabs
 
