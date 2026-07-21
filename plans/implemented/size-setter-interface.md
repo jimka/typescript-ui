@@ -358,6 +358,36 @@ The three setters are public members of `Component`, exported from `@jimka/types
   `packages/lib/docs/concepts/sizing.md` was corrected alongside the planned
   edits.
 
+- **The `ast-grep` pattern missed one call site, fixed by hand.**
+  `this._glyph?.setPreferredSize(px, px)` in `Button.pinGlyphSize`
+  (`Button.ts:1431`) uses optional chaining, which the plan's rewrite pattern
+  did not match. It was migrated by hand in the same commit.
+- **The migration page's own boilerplate contradicted the entry added to it.**
+  "Pre-1.0 compatibility" stated that `0.x.y` changes ship *without* a
+  migration note, and "Upgrade procedure" was written for major-version
+  upgrades only — both false on a page that now carries a `0.1.x` to `0.2.0`
+  note. Both sections were rewritten, and the intro's restatement of the
+  versioning policy was folded into a link to that section rather than
+  duplicating it.
+- **Manual verification (plan `## Verification` item 7 / behaviour case 11) was
+  NOT performed.** That step asks for a click-through of the demo panels to
+  catch a wrong-argument regression visually. It was not run. The risk is
+  covered another way: the audit reproduced the plan's three `ast-grep`
+  rewrites against a pristine `master` and diffed the result against this
+  branch, proving every one of the 216 call sites is byte-identical to the
+  mechanical wrap, so a transposed `width`/`height` is not possible. The
+  click-through remains available if extra assurance is wanted.
+- **`npm run lint` (plan `## Verification` item 4) is red, with 5 pre-existing
+  errors in files this branch never touches:**
+  `component/editor/CodeEditor.ts:492-493` (`local/no-raw-dom`) and
+  `component/table/cell/renderer/Link.ts:57`
+  (`local/forward-super-options`). Not caused by this change; recorded because
+  the verification list does not otherwise note an exception.
+- **Known gap, not addressed here:** `docs/reference/changelog.md` has no
+  `0.1.1` entry, so it jumps from `0.2.0` to `0.1.0` while this change's
+  migration heading and the version bump both reference `0.1.1`. Pre-existing;
+  surfaced by this work rather than caused by it.
+
 ---
 
 ## Notes
