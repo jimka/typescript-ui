@@ -20,8 +20,11 @@ const FILES = new Set(apiFiles);
  * Display label for each of TypeDoc's reflection-kind directories — the
  * seven possible last segments of a symbol's own directory. Any other
  * directory name (a module or a namespace instance) is used verbatim.
+ * Exported so the kind-label coverage test can check every directory in
+ * `apiFiles` against this map itself, rather than a copy that could drift
+ * from it.
  */
-const KIND_LABELS: Record<string, string> = {
+export const KIND_LABELS: Record<string, string> = {
     classes:        'Classes',
     enumerations:   'Enumerations',
     functions:      'Functions',

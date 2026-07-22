@@ -10,20 +10,10 @@ import {
     symbolCount,
     fetchApiPage,
     MODULE_INDEX_FILES,
+    KIND_LABELS,
 } from '../src/content/api.js';
 import type { ApiNavNode } from '../src/content/api.js';
 import { apiFiles } from 'virtual:typedoc-api';
-
-/** The seven TypeDoc kind-directory names, each rendering with a display label. */
-const KIND_LABELS: Record<string, string> = {
-    classes:       'Classes',
-    enumerations:  'Enumerations',
-    functions:     'Functions',
-    interfaces:    'Interfaces',
-    namespaces:    'Namespaces',
-    'type-aliases': 'Type Aliases',
-    variables:     'Variables',
-};
 
 /** Finds a node by walking `path` segments of child labels from `nodes`. */
 function findByLabels(nodes: ApiNavNode[], ...labels: string[]): ApiNavNode {
@@ -233,14 +223,21 @@ describe('getApiNav kind grouping', () => {
         })(getApiNav());
     });
 
-    it('every directory that is neither a module directory nor a namespace instance is a known kind', () => {
-        // Mirrors the "module directory" rule in ## Internal Structure: no
-        // `namespaces` segment in its path, and its own last segment isn't a
-        // kind name. A directory immediately under a `namespaces` directory is
-        // a namespace instance (an arbitrary name, e.g. `Animation`) rather
-        // than a kind, so it is exempt too.
-        const isModuleDir = (dirSegments: string[]): boolean =>
-            !dirSegments.includes('namespaces') && !(dirSegments[dirSegments.length - 1] in KIND_LABELS);
+    it('every directory with no index.md of its own that is not first-level is a known kind', () => {
+        // The plan's literal rule: a directory with no real index.md is
+        // either first-level (a module directory, e.g. `component`) or one
+        // of TypeDoc's kind directories — nothing else. A namespace instance
+        // (e.g. `core/namespaces/Animation`) always has its own index.md, so
+        // it is excluded by the "has no index.md" clause alone, with no
+        // separate carve-out needed. Checked directly against `apiFiles`
+        // rather than any derived module-directory predicate, so this can
+        // actually fail when a genuinely new, unmapped kind directory (say
+        // `core/accessors/foo.md`) appears after a TypeDoc upgrade.
+        const dirsWithIndex = new Set(
+            apiFiles
+                .filter((file) => file.endsWith('/index.md'))
+                .map((file) => file.slice(0, -'/index.md'.length)),
+        );
 
         const dirs = new Set<string>();
         for (const file of apiFiles) {
@@ -251,15 +248,13 @@ describe('getApiNav kind grouping', () => {
         }
 
         for (const dir of dirs) {
-            const segments   = dir.split('/');
-            const lastSegment = segments[segments.length - 1];
-            const parentLast  = segments.length > 1 ? segments[segments.length - 2] : null;
+            const isFirstLevel = !dir.includes('/');
+            const hasOwnIndex  = dirsWithIndex.has(dir);
 
-            const isKind             = lastSegment in KIND_LABELS;
-            const isNamespaceInstance = parentLast === 'namespaces';
+            if (!hasOwnIndex && !isFirstLevel) {
+                const lastSegment = dir.slice(dir.lastIndexOf('/') + 1);
 
-            if (!isKind && !isNamespaceInstance) {
-                expect(isModuleDir(segments), `unmapped directory "${dir}"`).toBe(true);
+                expect(KIND_LABELS, `unmapped directory "${dir}"`).toHaveProperty(lastSegment);
             }
         }
     });
