@@ -65,30 +65,61 @@ Tabs are selected by clicking their button. To set programmatically, look up the
 
 ## Lazy panel construction
 
-For tabs whose content is expensive to build (large forms, virtualised tables, charts), register them with `addLazyTab` so the factory only runs when the user first activates that tab:
+For tabs whose content is expensive to build (large forms, virtualised tables, charts), pass a **factory** instead of a component. The factory only runs when the user first activates that tab:
 
 ```typescript
 import { Component } from '@jimka/typescript-ui/core';
-import { Tab } from '@jimka/typescript-ui/layout';
+import { Tab, LayoutConstraints } from '@jimka/typescript-ui/layout';
 
 const container = Component();
 const layout = Tab();
 container.setLayoutManager(layout);
 
-layout.addLazyTab(() => new GeneralPanel(),  'General' );
-layout.addLazyTab(() => new NetworkPanel(),  'Network' );
-layout.addLazyTab(() => new AdvancedPanel(), 'Advanced');
+container.addComponent(() => new GeneralPanel(),  Object.assign(new LayoutConstraints(), { name: 'General'  }));
+container.addComponent(() => new NetworkPanel(),  Object.assign(new LayoutConstraints(), { name: 'Network'  }));
+container.addComponent(() => new AdvancedPanel(), Object.assign(new LayoutConstraints(), { name: 'Advanced' }));
 ```
+
+Deferral is the default. Pass `lazy: false` in the constraints to build a factory immediately instead, and note that `lazy` is ignored when you pass an already-constructed component — construction has already happened, so there is nothing left to defer.
+
+A deferred tab has no component to take a label from, so its label comes from the `name` constraint, falling back to the tab's own generated id when no name is given.
+
+[`Tab.addLazyTab(factory, name, constraints?)`](/api/layout/classes/Tab#addlazytab) remains as an alias of this path, for callers holding the layout manager rather than its container.
 
 The tab buttons render on first paint; the panels are constructed on first activation and cached thereafter. Re-clicking a previously-built tab is instant — scroll position and form state are preserved.
 
 Materialization is asynchronous: clicking a lazy tab selects the button immediately, mounts a centred [`ProgressSpinner`](/components/ProgressSpinner) in the content area, and runs the factory after a two-rAF yield via [`Animation.materialize`](/api/core/namespaces/Animation/functions/materialize). The newly-built panel fades in over the spinner, so the spinner is briefly visible during construction and the UI stays responsive throughout. Layout-sizing queries (`getPreferredSize` / `getMinSize` / `getMaxSize`) observe the spinner placeholder until the build completes — they no longer trigger factory invocations.
 
-`addLazyTab(factory, name, constraints?)` accepts the same per-child constraints as `addComponent` (including `closeable`). The constraints are stored on the lazy entry and applied when the panel materializes.
+A deferred registration accepts the same per-child constraints as any other `addComponent` call (including `closeable` and `glyph`). The constraints are stored on the entry and applied when the panel materializes.
 
-::: warning Don't mix `addLazyTab` and `addComponent` on the same `Tab`
-Once a `Tab` has any lazy entries, subsequent calls to `container.addComponent(c, {...})` may not create a tab button. Pick one registration style per `Tab` instance.
-:::
+Eager and deferred registrations mix freely on the same `Tab`, and tab order always follows call order.
+
+### Async factories
+
+A factory may return a promise, for content that cannot be built until a fetch completes:
+
+```typescript
+container.addComponent(
+    async () => {
+        const columns = await fetchColumns(table);
+
+        return TablePanel(buildStore(table, columns));
+    },
+    Object.assign(new LayoutConstraints(), { name: table.name, closeable: true }),
+);
+```
+
+The tab appears immediately and the spinner stays up for the whole wait, not just for construction. If the promise rejects, the tab closes itself and the layout emits `"exception"` — no error UI is shown, because presenting the failure is the consumer's job:
+
+```typescript
+layout.on('exception', (error, label) => {
+    console.warn(`${label} failed to load`, error);
+});
+```
+
+A tab closed while its factory is still in flight is forgotten: when the promise later settles, nothing is attached and nothing is reported.
+
+An async factory is only meaningful where something can host the wait. Passing one to a container whose manager does not defer it — or declining deferral with `lazy: false` — throws, because there is no spinner and no owner for the pending state. See [which loading affordance applies](/components/ProgressSpinner#which-loading-affordance) for choosing between this and overlaying a component that already exists.
 
 ## Tab-switch animation
 

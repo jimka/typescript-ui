@@ -76,6 +76,39 @@ describe('TabPanel wiring', () => {
         expect(built).toBe(false);
     });
 
+    it('addTab defers a factory without building it', () => {
+        installTestDOM(CONFIG);
+
+        const panel = new TabPanel();
+        let built   = false;
+
+        const result = panel.addTab(() => { built = true; return new Component(); }, 'Lazy');
+
+        expect(result).toBe(panel);
+        expect(built).toBe(false);
+        expect(panel.getComponents()).toEqual([]);
+    });
+
+    it('honours lazy on a tabs-bag entry', () => {
+        installTestDOM(CONFIG);
+
+        let lazyBuilt  = false;
+        const lazy     = new TabPanel({
+            tabs: [{ label: 'L', component: () => { lazyBuilt = true; return new Component(); } }],
+        });
+
+        expect(lazyBuilt).toBe(false);
+        expect(lazy.getComponents()).toEqual([]);
+
+        let eagerBuilt = false;
+        const eager    = new TabPanel({
+            tabs: [{ label: 'E', component: () => { eagerBuilt = true; return new Component(); }, lazy: false }],
+        });
+
+        expect(eagerBuilt).toBe(true);
+        expect(eager.getComponents()).toHaveLength(1);
+    });
+
     it('registers onTabClose on the wrapped manager without throwing', () => {
         installTestDOM(CONFIG);
 

@@ -1413,3 +1413,108 @@ describe('Dock listeners option', () => {
         expect(events).toEqual([{ empty: false }]);
     });
 });
+
+describe('Dock async panel content', () => {
+    it('addPanel throws on an async factory, docking nothing', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock   = mountDock();
+        const events: string[] = [];
+
+        dock.on('attach', (e: DockPanelEvent) => events.push(e.id));
+
+        // An eager panel's frame is a Fit with no spinner, so there is nothing
+        // to own the wait — the core add path rejects the promise outright.
+        expect(() => dock.addPanel({ id: 'p', title: 'P', content: async () => new Component({}) }))
+            .toThrow(/addComponent/);
+
+        flush();
+
+        expect(events).not.toContain('p');
+    });
+
+    it('addLazyPanel docks the tab without running an async factory', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+        let ran    = false;
+
+        dock.addLazyPanel({
+            id:      'p',
+            title:   'P',
+            content: async () => { ran = true; return new Component({}); },
+        });
+
+        dock.doLayout();
+
+        // Asserted before any flush: the factory call lives inside the deferred
+        // tab's two-frame yield, which the recording sink never drives.
+        expect(dock.focusPanel('p')).toBe(true);
+        expect(ran).toBe(false);
+    });
+});
+
+describe('Dock lazy panel failure', () => {
+    it('closes the panel and emits exception after close when the factory rejects', async () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+        const log: string[] = [];
+        let reject: (e: unknown) => void = () => {};
+
+        dock.on('close',     (e: DockPanelEvent) => log.push(`close:${e.id}`));
+        dock.on('exception', e => log.push(`exception:${e.id}:${String(e.error)}`));
+
+        dock.addLazyPanel({
+            id:      'p',
+            title:   'P',
+            content: () => new Promise<Component>((_res, rej) => { reject = rej; }),
+        });
+
+        dock.doLayout();
+        flush();
+
+        reject(new Error('boom'));
+        await Promise.resolve();
+        await Promise.resolve();
+        flush();
+
+        // The panel's own close precedes the failure report, so a listener
+        // inspecting the dock sees the final state.
+        expect(log).toEqual(['close:p', 'exception:p:Error: boom']);
+    });
+
+    it('reports nothing when the panel was closed before its factory rejected', async () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+        const log: string[] = [];
+        let reject: (e: unknown) => void = () => {};
+
+        dock.on('exception', e => log.push(`exception:${e.id}`));
+
+        dock.addLazyPanel({
+            id:      'p',
+            title:   'P',
+            content: () => new Promise<Component>((_res, rej) => { reject = rej; }),
+        });
+
+        dock.doLayout();
+        flush();
+
+        // Close the panel while its factory is still pending. Nobody is waiting
+        // for the result any more, so the later rejection must be dropped.
+        expect(dock.removePanel('p')).toBe(true);
+
+        reject(new Error('boom'));
+        await Promise.resolve();
+        await Promise.resolve();
+        flush();
+
+        expect(log).toEqual([]);
+    });
+});

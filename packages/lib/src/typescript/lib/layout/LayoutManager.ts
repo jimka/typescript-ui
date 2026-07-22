@@ -5,6 +5,7 @@ import { AnchorType } from "~/layout/AnchorType.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints";
 import { Size, UNBOUNDED } from "~/primitive/Size.js";
 import { Component } from "~/core/Component.js";
+import type { ComponentFactory } from "~/core/Component.js";
 import { BaseObject } from "~/core/BaseObject.js";
 
 /**
@@ -54,6 +55,23 @@ export abstract class LayoutManager extends BaseObject {
      * their additional fields (spacing, gap, stretching, etc.).
      */
     protected applyOptions(_options: LayoutManagerOptions): void {
+    }
+
+    /**
+     * Offers an unbuilt child to this manager, before the container builds it.
+     *
+     * Returning `true` claims the factory: the container adds nothing, and this
+     * manager owns when — and whether — the factory runs. The base
+     * implementation declines, so the container builds the child immediately and
+     * adds it like any other.
+     *
+     * @param _factory - The unbuilt child on offer.
+     * @param _constraints - Optional. The layout constraints the caller passed.
+     *
+     * @returns `true` to claim the factory, `false` to let the container build it.
+     */
+    addDeferredComponent(_factory: ComponentFactory, _constraints?: LayoutConstraints): boolean {
+        return false;
     }
 
     /**

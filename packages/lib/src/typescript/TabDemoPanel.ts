@@ -2,7 +2,7 @@
 
 import { callable, Component } from '@jimka/typescript-ui/core';
 import { Insets, AxisEnd, AxisPosition } from '@jimka/typescript-ui/primitive';
-import { Fit, HBox, VBox, DockRegion, TabWidthMode, TabSide, TabOrientation } from '@jimka/typescript-ui/layout';
+import { Fit, HBox, VBox, DockRegion, TabWidthMode, TabSide, TabOrientation, LayoutConstraints } from '@jimka/typescript-ui/layout';
 import { Text, ComboBox, NumberSpinner } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { TabPanel, TabToolDescriptor } from '@jimka/typescript-ui/component/container';
@@ -41,6 +41,12 @@ class TabDemoPanel extends Component {
 
         const addCloseableBtn = new Button("Add Closeable Tab");
         toolbar.addComponent(addCloseableBtn);
+
+        const addLazyBtn = new Button("Add Lazy Tab");
+        toolbar.addComponent(addLazyBtn);
+
+        const addFailingBtn = new Button("Add Failing Tab");
+        toolbar.addComponent(addFailingBtn);
 
         const toggleBorderBtn = new Button("Toggle Under-border");
         toolbar.addComponent(toggleBorderBtn);
@@ -150,6 +156,9 @@ class TabDemoPanel extends Component {
                 { label: "Alpha", component: this.buildContent("Alpha"), glyph: "star" },
                 { label: "Beta",  component: this.buildContent("Beta"),  closeable: true },
                 { label: "Gamma", component: this.buildContent("Gamma"), closeable: true },
+                // Factories through the options bag: deferred until first activation.
+                { label: "Lazy",  component: () => this.buildSlowContent("Lazy") },
+                { label: "Async", component: () => this.buildAsyncContent("Async") },
             ],
             onTabClose: (component: Component) => {
                 this.logText.setText(`Closed: ${component.getId()}`);
@@ -264,7 +273,7 @@ class TabDemoPanel extends Component {
         const logRow = new Component({ preferredSize: { width: 0, height: 28 } });
         logRow.setLayoutManager(new HBox());
 
-        logRow.addComponent(new Text("Last closed:", { preferredSize: { width: 90, height: 28 } }));
+        logRow.addComponent(new Text("Last event:", { preferredSize: { width: 90, height: 28 } }));
 
         this.logText = new Text("—", { preferredSize: { width: 300, height: 28 } });
         logRow.addComponent(this.logText);
@@ -284,8 +293,75 @@ class TabDemoPanel extends Component {
             this.tabPanel.addTab(this.buildContent(label), label, { closeable: true });
         });
 
+        // The raw container path — not the addLazyTab helper — so the demo
+        // exercises what a consumer now writes.
+        addLazyBtn.on("action", () => {
+            this.tabCounter += 1;
+            const label = `Tab ${this.tabCounter}`;
+            this.tabPanel.addComponent(
+                () => this.buildSlowContent(label),
+                Object.assign(new LayoutConstraints(), { name: label, closeable: true }),
+            );
+        });
+
+        addFailingBtn.on("action", () => {
+            this.tabCounter += 1;
+            const label = `Fail ${this.tabCounter}`;
+            this.tabPanel.addComponent(
+                () => this.buildFailingContent(label),
+                Object.assign(new LayoutConstraints(), { name: label, closeable: true }),
+            );
+        });
+
+        this.tabPanel.getTab().on("exception", (error, label) => {
+            this.logText.setText(`Failed: ${label} — ${String(error)}`);
+        });
+
         toggleBorderBtn.on("action", () => {
             this.tabPanel.getTab().setUnderBorderFullWidth(!this.tabPanel.getTab().isUnderBorderFullWidth());
+        });
+    }
+
+    /**
+     * Builds content the slow way, blocking long enough that the spinner is
+     * visible before the panel appears. Stands in for an expensive synchronous
+     * build.
+     *
+     * @param title - The text shown inside the tab content area.
+     * @returns The content component.
+     */
+    private buildSlowContent(title: string): Component {
+        const end = Date.now() + 400;
+        while (Date.now() < end) {
+            // Deliberate busy-wait: a real panel's cost is main-thread work.
+        }
+
+        return this.buildContent(title);
+    }
+
+    /**
+     * Builds content that is not available until a simulated fetch resolves.
+     * The spinner stays up for the whole wait.
+     *
+     * @param title - The text shown inside the tab content area.
+     * @returns A promise resolving to the content component.
+     */
+    private buildAsyncContent(title: string): Promise<Component> {
+        return new Promise<Component>(resolve => {
+            setTimeout(() => resolve(this.buildContent(title)), 1200);
+        });
+    }
+
+    /**
+     * Builds content whose simulated fetch fails, so the tab closes itself and
+     * the layout emits `"exception"`.
+     *
+     * @param title - The label the failed tab carried.
+     * @returns A promise rejecting after a short wait.
+     */
+    private buildFailingContent(title: string): Promise<Component> {
+        return new Promise<Component>((_resolve, reject) => {
+            setTimeout(() => reject(new Error(`${title}: metadata fetch failed`)), 800);
         });
     }
 

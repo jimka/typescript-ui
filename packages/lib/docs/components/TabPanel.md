@@ -28,17 +28,36 @@ tabs.addTab(closeableExtra, "Delta", { closeable: true });
 tabs.addTab(staredPanel, "Epsilon", { glyph: "star" });
 ```
 
-Both `addTab` and `addLazyTab` accept `{ closeable?, glyph? }`.
+`addTab` accepts `{ closeable?, glyph?, lazy? }`; `addLazyTab` accepts `{ closeable?, glyph? }` — it always defers, so it has no `lazy` to set.
 
 ## Lazy tabs
 
-Use [`addLazyTab`](/api/component/container/classes/TabPanel#addlazytab) when the tab content is expensive to construct and should defer until the tab is first shown:
+Pass a **factory** instead of a component when the tab content is expensive to construct and should defer until the tab is first shown:
 
 ```typescript
-tabs.addLazyTab(() => buildHeavyPanel(), "Heavy");
+tabs.addTab(() => buildHeavyPanel(), "Heavy");
 ```
 
-The factory runs once, the first time the user activates the tab.
+The same works through the options bag:
+
+```typescript
+const tabs = TabPanel({
+    tabs: [
+        { label: "Heavy", component: () => buildHeavyPanel() },
+        { label: "Eager", component: () => buildCheapPanel(), lazy: false },
+    ],
+});
+```
+
+The factory runs once, the first time the user activates the tab. Deferral is the default — pass `lazy: false` to build immediately instead. `lazy` is ignored when `component` is an already-constructed component.
+
+A factory may be asynchronous, for content that cannot be built until a fetch completes; the spinner then covers the whole wait. If it rejects, the tab closes itself and the wrapped manager emits `"exception"`, reached through [`getTab()`](/api/component/container/classes/TabPanel#gettab):
+
+```typescript
+tabs.getTab().on("exception", (error, label) => console.warn(`${label} failed`, error));
+```
+
+[`addLazyTab`](/api/component/container/classes/TabPanel#addlazytab) remains as an alias for `addTab` with a factory.
 
 ## Close hooks
 

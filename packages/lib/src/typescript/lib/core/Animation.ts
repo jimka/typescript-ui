@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import type { ComponentFactory } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { InlineStyle } from "~/core/StyleTarget.js";
@@ -365,11 +366,12 @@ export namespace Animation {
         host: Component;
 
         /**
-         * Synchronous component factory. Runs after the two-rAF yield so the
-         * spinner has reached the screen before the main-thread build cost
-         * is incurred.
+         * Component factory. Runs after the two-rAF yield so the spinner has
+         * reached the screen before the main-thread build cost is incurred.
+         * May be asynchronous: a factory returning a promise is awaited after
+         * that yield, and the spinner stays mounted for the whole wait.
          */
-        factory: () => Component;
+        factory: ComponentFactory;
 
         /**
          * Caller-constructed spinner component (typically a `ProgressSpinner`
@@ -393,6 +395,23 @@ export namespace Animation {
          * the factory returned so the caller can wire up post-attach state.
          */
         onReady?: (component: Component) => void;
+
+        /**
+         * Called when an async factory rejects, after the spinner has been
+         * removed. Not called when {@link MaterializeConfig.isStale} reports the
+         * caller has lost interest. The caller owns everything else about the
+         * failure — this helper ships no error UI.
+         */
+        onError?: (error: unknown) => void;
+
+        /**
+         * Polled once per settled factory — just before the built component is
+         * attached, and just before a rejection is reported. Returning `true`
+         * means the caller no longer wants the result: the spinner is removed,
+         * nothing is attached, and neither {@link MaterializeConfig.onReady} nor
+         * {@link MaterializeConfig.onError} fires.
+         */
+        isStale?: () => boolean;
     }
 
     /**
@@ -416,28 +435,64 @@ export namespace Animation {
         const spinner = config.spinnerComponent;
         const fadeMs  = config.fadeMs ?? MATERIALIZE_FADE_DURATION_MS;
 
+        const dropSpinner = (): void => {
+            host.removeComponent(spinner);
+            host.scheduleLayout();
+        };
+
+        const attach = (component: Component): void => {
+            // The caller lost interest during the yield or the await (e.g. its
+            // tab was closed): drop the spinner and discard the built component.
+            if (config.isStale?.()) {
+                dropSpinner();
+
+                return;
+            }
+
+            host.addComponent(component);
+
+            const el = component.getElement(true)!;
+            host.scheduleLayout();
+
+            play(el, {
+                from:       { opacity: "0" },
+                to:         { opacity: "1" },
+                durationMs: fadeMs,
+                properties: ["opacity"],
+                onComplete: () => {
+                    dropSpinner();
+                    config.onReady?.(component);
+                },
+            });
+        };
+
+        const fail = (error: unknown): void => {
+            dropSpinner();
+
+            // The caller lost interest during the await (its tab was closed):
+            // there is nothing left to tear down and nobody left to report to.
+            if (config.isStale?.()) {
+                return;
+            }
+
+            config.onError?.(error);
+        };
+
         host.addComponent(spinner);
         host.scheduleLayout();
 
         DOM.sink.requestAnimationFrame(() => {
             DOM.sink.requestAnimationFrame(() => {
-                const component = factory();
-                host.addComponent(component);
+                const result = factory();
 
-                const el = component.getElement(true)!;
-                host.scheduleLayout();
-
-                play(el, {
-                    from:       { opacity: "0" },
-                    to:         { opacity: "1" },
-                    durationMs: fadeMs,
-                    properties: ["opacity"],
-                    onComplete: () => {
-                        host.removeComponent(spinner);
-                        host.scheduleLayout();
-                        config.onReady?.(component);
-                    },
-                });
+                // Only a thenable takes the async branch, so a synchronous
+                // factory still attaches inside this same frame with no
+                // microtask tick — its timing is unchanged.
+                if (result instanceof Promise) {
+                    result.then(attach, fail);
+                } else {
+                    attach(result);
+                }
             });
         });
     }
