@@ -31,7 +31,7 @@ class BoxJustifyPanel extends Panel {
      * @returns The configured FieldSet.
      */
     private buildJustifyRow(justify: BoxJustify): FieldSet {
-        return FieldSet(`justify: "${justify}"`, {
+        const row = FieldSet(`justify: "${justify}"`, {
             layoutManager: HBox({ justify }),
             components: [
                 Button({ text: "One"   }),
@@ -39,6 +39,14 @@ class BoxJustifyPanel extends Panel {
                 Button({ text: "Three" })
             ]
         });
+
+        // FieldSet defaults to a fixed 200x200 square, which would leave ~170px
+        // of dead space under a single row of buttons. The options bag cannot
+        // express "no preferred size" — an `undefined` entry is skipped and the
+        // class default wins — so this is the one supported way out.
+        row.clearPreferredSize();
+
+        return row;
     }
 }
 
