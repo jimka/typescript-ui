@@ -301,3 +301,41 @@ Examples of the form each such note takes:
   context differs: `PickerColumn`'s write is reactively re-issued by the next
   relevant interaction, `AbstractSelectableList`'s is not. This is a
   deliberate per-site judgement, not an inconsistency to reconcile.
+
+- **Corrections from independent review.** Two independent reviewers audited
+  the inventory after the first pass and found six factual defects, fixed in
+  a follow-up pass without reopening the plan. The two that change what the
+  follow-up feature plan must do: (1) Table B was missing `Component`'s own
+  `_clipFrame`/`_contentFrame`/`_ownedHandles` — a lead the plan's own
+  starting list named ([Component.ts:409](packages/lib/src/typescript/lib/core/Component.ts#L409),
+  [:419](packages/lib/src/typescript/lib/core/Component.ts#L419),
+  [:325](packages/lib/src/typescript/lib/core/Component.ts#L325)) but the
+  audit had silently dropped; both frame guards (`if (!this._clipFrame)` /
+  `if (!this._contentFrame)`) block re-wrapping the fresh element after a
+  rebuild, and `_ownedHandles` accumulates dead handles across release
+  cycles — base-class state affecting every clipping or `autoScroll`
+  component. (5) A third failure shape neither table represents: an `init()`
+  override that calls `Event.addListener`/`addSubtreeListener`
+  unconditionally (confirmed in `Tree`, `HeaderCell`, `DiagramView`)
+  double-registers on every rebuild, because `Event`'s registration path
+  ends in a bare, undeduped `.push()`. This gets its own new section, "A
+  third failure shape," plus a new probe test, rather than being forced into
+  Table A or B. The other four corrections: `overlay/Rail.ts` (and, on
+  inspection, `overlay/Drawer.ts` — the identical bug shape, found while
+  fixing Rail's mischaracterizing group sentence) were wrongly filed as
+  swept-clean and are now Table B rows for their persistent
+  `documentElement` self-append; the `VirtualRowView`/`_rowPool` rows were
+  hedged behind a manual-verify that was actually decidable from the two
+  confirmed call sites (`Tree.ts:1133`, `Body.ts:604`) and are now stated as
+  fact; the "Lazy re-materialization" verified assumption skipped
+  `getElement`'s id-lookup step, which is the actual risk surface for a
+  release that doesn't detach the node; and the `Canvas`
+  `_syncedWidth`/`_syncedHeight`/`_syncedDpr` row carried verdict `replay`
+  when the correct action is invalidation (reset to `NOT_YET_SYNCED`) — the
+  row's own Notes already described why replaying would reproduce the
+  300×150 bug, so only the verdict word was wrong. One reviewer-cited call
+  site (`AbstractSelectableList.ts:508`) did not hold up under inspection —
+  that `init()` override does not call `Event.addListener` (the listeners at
+  `AbstractSelectableList.ts:317-320` are constructor-time, not
+  rebuild-time) — so it was left out of the third-failure-shape section
+  rather than cited incorrectly.
