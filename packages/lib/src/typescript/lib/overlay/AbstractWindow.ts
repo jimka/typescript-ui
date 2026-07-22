@@ -2016,22 +2016,24 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Builds the genie `transform` that collapses the window into its rail's
-     * handle corner: it translates the window's top-left corner onto the rail
-     * edge (top corner for a vertical rail, leading corner for a horizontal one)
-     * and scales it down to roughly the rail thickness, so the window appears to
-     * shrink into the handle stack. Paired with `transform-origin: 0 0` and an
-     * opacity fade by the collapse/expand animations. Assumes a rail is attached.
+     * Builds the genie `transform` that collapses the window into its own rail
+     * handle: it translates the window's top-left corner onto the rail edge
+     * (cross-axis) at the handle's along-rail position (main-axis, from
+     * `Rail.handleMainAxisOffset`) and scales it down to roughly the rail
+     * thickness, so the window appears to shrink into its own spot in the handle
+     * stack. Paired with `transform-origin: 0 0` and an opacity fade by the
+     * collapse/expand animations. Assumes a rail is attached.
      *
      * @returns A `translate(...) scale(...)` CSS transform value.
      */
     private railGenieTransform(): string {
-        const rail      = this._rail as Rail;
-        const thickness = rail.getThickness();
-        const cur       = this.currentRect();
+        const rail       = this._rail as Rail;
+        const thickness  = rail.getThickness();
+        const cur        = this.currentRect();
+        const mainOffset = rail.handleMainAxisOffset(this);
         // Shrink to roughly the rail's thickness — clamped so an already-narrow
         // window still visibly collapses rather than scaling up.
-        const scale     = Math.min(0.5, thickness / Math.max(cur.width, 1));
+        const scale      = Math.min(0.5, thickness / Math.max(cur.width, 1));
 
         let targetX = 0;
         let targetY = 0;
@@ -2039,17 +2041,29 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         switch (rail.getEdge()) {
             case Placement.EAST:
                 targetX = DOM.source.getViewportSize().width - thickness;
+                targetY = mainOffset;
+
+                break;
+
+            case Placement.WEST:
+                targetY = mainOffset;
 
                 break;
 
             case Placement.SOUTH:
+                targetX = mainOffset;
                 targetY = DOM.source.getViewportSize().height - thickness;
 
                 break;
 
             case Placement.NORTH:
-            case Placement.WEST:
+                targetX = mainOffset;
+
+                break;
+
             default:
+                targetY = mainOffset;
+
                 break;
         }
 

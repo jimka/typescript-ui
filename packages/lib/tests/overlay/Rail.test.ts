@@ -3,6 +3,7 @@ import { Rail } from '~/overlay/Rail';
 import { Drawer } from '~/overlay/Drawer';
 import { Window } from '~/overlay/Window';
 import { Placement } from '~/primitive/Placement';
+import { BoxLayout } from '~/layout/BoxLayout';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -10,7 +11,11 @@ import fontMetrics from '../dom/font-metrics.test-font.json';
 // Rail's substance (edge geometry, collapse animation, minimize-genie window
 // geometry) reads true only under a real mount and is deferred to manual-verify
 // (see the plan's Non-Goals). This suite pins only the pre-mount STATE contract,
-// where the collapse animation path is guarded off by `_mounted === false`.
+// where the collapse animation path is guarded off by `_mounted === false` —
+// EXCEPT for the `handleMainAxisOffset` / `railGenieTransform` cases below,
+// which mount the rail and drive it through a real layout pass: the computed
+// transform is pure geometry, and is offline-testable that way (see
+// plans/implemented/rail-genie-handle-target.md).
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
     viewport:        { width: 1280, height: 800 },
@@ -88,5 +93,191 @@ describe('Rail — registration bookkeeping', () => {
         const rail = new Rail();
         const window = new Window('Test');
         expect(rail.registerWindow(window)).toBe(rail);
+    });
+});
+
+// Reads the private `railGenieTransform()` by cast — the transform string is
+// pure geometry (see the plan's Expected Behaviour), so it is offline-testable
+// without ever playing the animation it feeds.
+type WindowWithGenieTransform = { railGenieTransform(): string };
+
+function genieTransform(window: Window): string {
+    return (window as unknown as WindowWithGenieTransform).railGenieTransform();
+}
+
+// Parses the `translate(txpx, typx)` prefix of a genie transform string.
+function parseTranslate(transform: string): { tx: number; ty: number } {
+    const match = transform.match(/^translate\(([-\d.]+)px, ([-\d.]+)px\)/);
+    if (!match) {
+        throw new Error(`transform did not match translate(...): ${transform}`);
+    }
+
+    return { tx: Number(match[1]), ty: Number(match[2]) };
+}
+
+// Seeds a window's rail handle synchronously, with no genie playback: minimize
+// while the window has no rail yet (takes the built-in dock path, whose tween
+// never advances because the test DOM swallows requestAnimationFrame — see
+// TestDOM.requestAnimationFrame), then attach the rail. `registerWindow` sees
+// an already-minimized window and creates its handle immediately (see the
+// plan's `[^sync-handles]`).
+function minimizeIntoRail(window: Window, rail: Rail): void {
+    window.minimize();
+    window.setRail(rail);
+}
+
+describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
+    it('single handle targets the corner (offset 0)', () => {
+        installTestDOM(CONFIG);
+        const rail = new Rail({ edge: Placement.WEST });
+        rail.mount();
+
+        const win = new Window('A');
+        win.applyRect({ x: 10, y: 20, width: 200, height: 150 });
+        minimizeIntoRail(win, rail);
+        rail.flushLayout();
+
+        expect(rail.handleMainAxisOffset(win)).toBe(0);
+
+        const { tx, ty } = parseTranslate(genieTransform(win));
+        expect(tx).toBe(0 - 10);
+        expect(ty).toBe(0 - 20);
+    });
+
+    it('the Nth handle targets its own offset, not 0 (restore path)', () => {
+        installTestDOM(CONFIG);
+        const rail = new Rail({ edge: Placement.WEST });
+        rail.mount();
+
+        const windows = [0, 1, 2].map(i => {
+            const w = new Window(`W${i}`);
+            w.applyRect({ x: 10, y: 20, width: 200, height: 150 });
+            return w;
+        });
+
+        for (const w of windows) {
+            minimizeIntoRail(w, rail);
+        }
+        rail.flushLayout();
+
+        const third = windows[2];
+        const offset = rail.handleMainAxisOffset(third);
+
+        expect(offset).toBeGreaterThan(0);
+
+        const { ty } = parseTranslate(genieTransform(third));
+        expect(ty).toBe(offset - 20);
+    });
+
+    it('the collapse path predicts the append slot for a not-yet-minimized window', () => {
+        installTestDOM(CONFIG);
+        const rail = new Rail({ edge: Placement.WEST });
+        rail.mount();
+
+        const first  = new Window('First');
+        const second = new Window('Second');
+
+        first.applyRect({ x: 10, y: 20, width: 200, height: 150 });
+        second.applyRect({ x: 10, y: 20, width: 200, height: 150 });
+        minimizeIntoRail(first, rail);
+        minimizeIntoRail(second, rail);
+        rail.flushLayout();
+
+        // Registered, but never minimized — no handle exists yet.
+        const third = new Window('Third');
+        third.setRail(rail);
+
+        const handles = rail.getComponents();
+        const last    = handles[handles.length - 1];
+        const lm      = rail.getLayoutManager();
+        const spacing = lm instanceof BoxLayout ? lm.getComponentSpacing() : 0;
+
+        expect(rail.handleMainAxisOffset(third)).toBe(last.getY() + last.getHeight() + spacing);
+    });
+
+    it('EAST keeps the cross-axis target and gains the main-axis target', () => {
+        installTestDOM(CONFIG);
+        const rail = new Rail({ edge: Placement.EAST });
+        rail.mount();
+
+        const windows = [0, 1].map(i => {
+            const w = new Window(`W${i}`);
+            w.applyRect({ x: 900, y: 20, width: 200, height: 150 });
+            return w;
+        });
+
+        for (const w of windows) {
+            minimizeIntoRail(w, rail);
+        }
+        rail.flushLayout();
+
+        const second = windows[1];
+        const offset = rail.handleMainAxisOffset(second);
+        expect(offset).toBeGreaterThan(0);
+
+        const { tx, ty } = parseTranslate(genieTransform(second));
+        expect(tx).toBe((CONFIG.viewport.width - rail.getThickness()) - 900);
+        expect(ty).toBe(offset - 20);
+    });
+
+    it('SOUTH moves the main-axis target along X', () => {
+        installTestDOM(CONFIG);
+        const rail = new Rail({ edge: Placement.SOUTH });
+        rail.mount();
+
+        const windows = [0, 1].map(i => {
+            const w = new Window(`W${i}`);
+            w.applyRect({ x: 10, y: 500, width: 200, height: 150 });
+            return w;
+        });
+
+        for (const w of windows) {
+            minimizeIntoRail(w, rail);
+        }
+        rail.flushLayout();
+
+        const second = windows[1];
+        const offset = rail.handleMainAxisOffset(second);
+        expect(offset).toBeGreaterThan(0);
+
+        const { tx, ty } = parseTranslate(genieTransform(second));
+        expect(tx).toBe(offset - 10);
+        expect(ty).toBe((CONFIG.viewport.height - rail.getThickness()) - 500);
+    });
+
+    it('NORTH moves the main-axis target along X, with a 0 cross-axis target', () => {
+        installTestDOM(CONFIG);
+        const rail = new Rail({ edge: Placement.NORTH });
+        rail.mount();
+
+        const windows = [0, 1].map(i => {
+            const w = new Window(`W${i}`);
+            w.applyRect({ x: 10, y: 20, width: 200, height: 150 });
+            return w;
+        });
+
+        for (const w of windows) {
+            minimizeIntoRail(w, rail);
+        }
+        rail.flushLayout();
+
+        const second = windows[1];
+        const offset = rail.handleMainAxisOffset(second);
+        expect(offset).toBeGreaterThan(0);
+
+        const { tx, ty } = parseTranslate(genieTransform(second));
+        expect(tx).toBe(offset - 10);
+        expect(ty).toBe(0 - 20);
+    });
+
+    it('an empty rail returns offset 0 for an unregistered window', () => {
+        installTestDOM(CONFIG);
+        const rail = new Rail({ edge: Placement.WEST });
+        rail.mount();
+
+        const win = new Window('Unregistered');
+
+        expect(() => rail.handleMainAxisOffset(win)).not.toThrow();
+        expect(rail.handleMainAxisOffset(win)).toBe(0);
     });
 });
