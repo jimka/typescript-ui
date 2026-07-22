@@ -156,7 +156,7 @@ function moduleSections(node: ApiNavNode, dir: string): IndexSection[] {
 
     return [
         ...(subs.length > 0
-            ? [{ heading: 'Modules', links: subs.map((child) => link(child, `${dir}/${child.label}`)) }]
+            ? [{ heading: 'Modules', links: subs.map((child) => link(child, child.label)) }]
             : []),
         ...kinds.map((kind) => ({
             heading: kind.label,

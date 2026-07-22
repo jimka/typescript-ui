@@ -313,7 +313,7 @@ describe('fetchApiPage', () => {
 
         expect(fetchSpy).not.toHaveBeenCalled();
         expect(source).toContain('## Modules');
-        expect(source).toContain('- [component/button](button/index.md)');
+        expect(source).toContain('- [button](button/index.md)');
     });
 
     it('fetches a namespace index for real — it is not synthesized', async () => {
