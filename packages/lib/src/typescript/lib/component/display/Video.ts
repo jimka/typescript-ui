@@ -464,8 +464,12 @@ class Video extends Component<VideoOptions> {
 
     /**
      * Replays the cached media options onto the freshly created element and wires
-     * the native, non-bubbling media listeners. Setter DOM writes no-op before
-     * the element exists, so the constructor-time configuration is applied here.
+     * the native, non-bubbling media listeners. The base class's
+     * `setElementAttribute` now also caches and replays the attribute-backed
+     * options (`src`, `poster`, `preload`, `autoplay`, `loop`, `muted`), making
+     * that part of the replay redundant — kept anyway, see
+     * {@link replayMediaOptions} for why this call still matters for `volume` /
+     * `playbackRate` / live-property `muted`.
      *
      * @param element - The element being initialised, when provided by the caller.
      *
@@ -513,19 +517,22 @@ class Video extends Component<VideoOptions> {
     }
 
     /**
-     * Re-applies every cached media option onto the freshly-rendered element so
-     * the DOM writes that no-op'd during detached construction take effect.
+     * Re-applies every cached media option onto the freshly-rendered element.
      *
-     * @remarks Writes go to the **passed** `element`, never through the
-     * `getElement()`-based setters. During `init()` the element has been created
-     * but is not yet attached to the document, and `render()` stores it as the
-     * component's element only *after* `init()` returns — so `getElement()`
-     * (which resolves by document id) returns nothing in a live DOM and every
-     * setter write would silently no-op, dropping `src` and the rest. Writing to
-     * the passed element mirrors the base `init()` replay of cached attributes
-     * and aria. (The offline modelled source resolves detached elements by id,
-     * which is why this was invisible to the recording-sink tests and had to be
-     * caught live.)
+     * @remarks The `setAttr` block below (`src`/`poster`/`preload`/`autoplay`/
+     * `loop`/`muted`) is now redundant with the base class's
+     * `setElementAttribute` cache, which `Component.init()` already replays
+     * onto this same `element` parameter — kept here for parity with the rest
+     * of this method rather than split out. `volume`, `playbackRate`, and
+     * `muted` as a live IDL property have no reflecting attribute, so they are
+     * never covered by that cache and this method remains the only place they
+     * get applied to a freshly-created element. Writes go to the **passed**
+     * `element`, never through the `getElement()`-based setters: during
+     * `init()` the element has been created but `render()` stores it as the
+     * component's element only *after* `init()` returns, so `getElement()`
+     * (which resolves by document id) returns nothing yet. (The offline
+     * modelled source resolves detached elements by id, which is why this was
+     * invisible to the recording-sink tests and had to be caught live.)
      *
      * @param element - The rendered (still-detached) video element.
      */
