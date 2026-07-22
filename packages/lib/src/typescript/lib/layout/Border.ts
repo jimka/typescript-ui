@@ -1121,6 +1121,12 @@ class Border extends LayoutManager {
         this._collapseAnimation?.();
         this._collapseAnimation = null;
 
+        // That canceller's `onIdle` is the only place `_collapsing` is cleared,
+        // and cancelling suppressed it. Left set, a swapped-out-then-reattached
+        // Border takes the unframed / clearClipFrame branch for every region
+        // forever, so the clip frames never come back.
+        this._collapsing = false;
+
         // Two shapes of detach. A manager swap leaves the panes mounted, so
         // their primed transitions must be settled — cleared — or each keeps a
         // live transition and a permanent compositor layer. A dispose reaches

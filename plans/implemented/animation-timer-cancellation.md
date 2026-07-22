@@ -567,6 +567,14 @@ the container still has children — the manager-swap path — and merely cancel
 them when it does not, which is the dispose path, where every participant has
 already been destroyed and touching one would write through a released handle.
 
+The rule applies to the *geometry* canceller too, not only the primed
+transitions: `Border`'s `onIdle` is the sole place `_collapsing` is cleared, so
+cancelling it on a manager-swap detach left a re-attached `Border` taking the
+unframed / `clearClipFrame` branch for every region permanently. `Border.detach()`
+now clears the flag itself. `Split` needed no equivalent because its `onIdle`
+only nulls the field that `detach()` already nulls by hand — an asymmetry worth
+remembering, since it is what made the `Border` case easy to miss.
+
 Two new test files pin this: `tests/component/layout/CollapseAnimationTeardown.test.ts`
 (six cases) and the teardown block in `tests/core/Animation.test.ts`. Each was
 checked to fail when its corresponding fix is reverted.

@@ -15,6 +15,9 @@ import { Container } from '~/core/Container';
 import { Component } from '~/core/Component';
 import { Accordion } from '~/layout/Accordion';
 import { Split } from '~/layout/Split';
+import { Border } from '~/layout/Border';
+import { LayoutConstraints } from '~/layout/LayoutConstraints';
+import { Placement } from '~/primitive/Placement';
 import { AccordionConstraints } from '~/layout/AccordionConstraints';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
@@ -49,7 +52,7 @@ describe('collapse-animation teardown', () => {
     }
 
     /** A host driven by `manager`, sized and with insets cleared. */
-    function host(manager: Accordion | Split, children: number): Container {
+    function host(manager: Accordion | Split | Border, children: number): Container {
         const container = new Container({ layoutManager: manager });
 
         container.getElement(true);
@@ -199,6 +202,95 @@ describe('collapse-animation teardown', () => {
 
             split.setPaneCollapsed(0, true);
             split.detach();
+
+            const mark = sink.writes.length;
+
+            vi.advanceTimersByTime(PAST_FALLBACK_MS);
+
+            expect(sink.writes.slice(mark).filter(entry => entry.op === 'apply')).toEqual([]);
+
+            container.dispose();
+        });
+
+        it('abandons the primed transitions without touching a pane when disposed mid-collapse', () => {
+            install();
+
+            const split = new Split({ orientation: 'horizontal' });
+            const container = host(split, 3);
+
+            split.setPaneCollapsed(0, true);
+
+            const mark = sink.writes.length;
+
+            // dispose() destroys the children first and only then detaches the
+            // manager, so `detach` finds an empty container: the participants'
+            // handles are already released and settling them would write
+            // through a released handle. It must abandon them silently.
+            container.dispose();
+
+            vi.advanceTimersByTime(PAST_FALLBACK_MS);
+
+            const paneWrites = sink.writes
+                .slice(mark)
+                .filter(entry => entry.op === 'apply')
+                .map(entry => (entry.args[1] as { style?: Record<string, string | null> }).style)
+                .filter((style): style is Record<string, string | null> => style !== undefined)
+                .filter(style => 'transition' in style || 'willChange' in style);
+
+            expect(paneWrites).toEqual([]);
+        });
+    });
+
+    describe('Border', () => {
+        /** A Border host with one collapsible west region plus a centre. */
+        function borderHost(border: Border): Container {
+            const container = new Container({ layoutManager: border });
+
+            container.getElement(true);
+            container.setWidth(400);
+            container.setHeight(300);
+            container.clearInsets();
+
+            for (const placement of [Placement.WEST, Placement.CENTER]) {
+                const child = new Component({ preferredSize: { width: 80, height: 80 } });
+
+                child.getElement(true);
+                container.addComponent(child, Object.assign(new LayoutConstraints(), {
+                    placement,
+                    collapsible: placement === Placement.WEST,
+                }));
+            }
+
+            container.doLayout();
+
+            return container;
+        }
+
+        it('clears the collapsing flag when the manager is swapped out mid-collapse', () => {
+            install();
+
+            const border = new Border();
+            const container = borderHost(border);
+
+            border.setRegionCollapsed(Placement.WEST, true);
+            border.detach();
+
+            // The cancelled geometry animation's onIdle is the only place this
+            // is reset; left set, every region of a re-attached Border takes the
+            // unframed branch forever.
+            expect((border as unknown as { _collapsing: boolean })._collapsing).toBe(false);
+
+            container.dispose();
+        });
+
+        it('arms no fallback that survives detach', () => {
+            install();
+
+            const border = new Border();
+            const container = borderHost(border);
+
+            border.setRegionCollapsed(Placement.WEST, true);
+            border.detach();
 
             const mark = sink.writes.length;
 
