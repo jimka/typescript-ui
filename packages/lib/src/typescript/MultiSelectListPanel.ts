@@ -24,8 +24,10 @@ class MultiSelectListPanel extends Panel {
 
         // ── Section 1: Static items ──────────────────────────────────────────
 
+        const staticItems = ["Apple", "Banana", "Cherry", "Date", "Elderberry"];
+
         const staticList = new MultiSelectList();
-        staticList.setItems(["Apple", "Banana", "Cherry", "Date", "Elderberry"]);
+        staticList.setItems(staticItems);
 
         const selectionText = new Text("Selected: (none)");
 
@@ -38,7 +40,9 @@ class MultiSelectListPanel extends Panel {
         const clearBtn      = new Button("Clear");
 
         selectAllBtn.on("action", () => {
-            staticList.setValues(["0", "1", "2", "3", "4"]);
+            // A plain-string item is keyed by its own value, so the selection
+            // is written as the item strings — not as their indices.
+            staticList.setValues(staticItems);
             selectionText.setText(`Selected: ${staticList.getValue().join(", ")}`);
         });
 

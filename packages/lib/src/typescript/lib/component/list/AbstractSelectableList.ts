@@ -52,7 +52,8 @@ export interface SelectableListItem {
 
 /**
  * Accepted form for a single item passed to a custom list's `setItems` /
- * `addItem`: either a plain string (auto-keyed by its array position) or a
+ * `addItem`: either a plain string (which becomes both the item's key and its
+ * label, so a selection is written and read back as the string itself) or a
  * pre-formed {@link SelectableListItem} with an explicit caller-supplied key.
  *
  * @category Components
@@ -1141,10 +1142,10 @@ abstract class AbstractSelectableList<
 
     /**
      * Replaces all items with the given pre-formed `{key, label}` pairs.
-     * Mirrors {@link setItems} but skips the auto-keying step so a host
+     * Mirrors {@link setItems} but skips the key-from-label step so a host
      * that already owns typed items (e.g. the [`ComboBox`](/api/component/input/classes/ComboBox)
      * dropdown pushing a `SelectableListItem` array) can hand them over
-     * without the keys being clobbered to stringified indices. Selection and focus are reset; the row pool
+     * without the keys being overwritten by their labels. Selection and focus are reset; the row pool
      * is reconciled against the new length.
      *
      * Protected on the abstract base so each concrete subclass decides
