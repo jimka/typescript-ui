@@ -107,7 +107,21 @@ const REGISTRY: Array<{
     // ancestor-recursion contract this plan's fix depends on — for a real,
     // non-synthetic class.
     { name: 'Menu',    make: () => new Menu([{ text: 'A' }], () => {}) },
-    { name: 'Popover', make: () => new Popover() },
+    {
+        // `ensureArrow()` is lazy (only called from `show()`), so a bare
+        // `new Popover()` never builds `_arrowComponent` — call the private
+        // method directly to materialise it without needing a full
+        // `show()` (anchor element, LayerManager, fade timers) just to
+        // reach a one-line lazy builder.
+        name: 'Popover',
+        make: () => {
+            const popover = new Popover();
+
+            (popover as unknown as { ensureArrow(): void }).ensureArrow();
+
+            return popover;
+        },
+    },
     { name: 'Link',    make: () => new Link('x') },
     {
         name: 'TabBar',

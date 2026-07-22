@@ -592,12 +592,23 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
 
     /**
      * Releases per-instance resources. Closes the popover if it is still
-     * open, then defers to the base class for the rest of teardown.
+     * open, disposes the raw-appended arrow, then defers to the base class
+     * for the rest of teardown.
      */
     protected destructor(): void {
         if (this._isOpen) {
             this.hide();
         }
+
+        // `_titleComponent` / `_bodyComponent` / `_actionsRow` are all
+        // registered via `insertComponent` / `addComponent`, so
+        // `super.destructor()`'s child recursion below already disposes
+        // them — an explicit call here would run each one's destructor()
+        // a second time. `_arrowComponent`, by contrast, is inserted
+        // straight into the DOM via `ensureArrow()` (not registered in
+        // `_components`), so recursion can never reach it and it must be
+        // disposed explicitly.
+        this._arrowComponent?.dispose();
 
         this._anchorElement   = null;
         this._titleComponent  = null;
