@@ -778,12 +778,12 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
      * recursive teardown cannot reach them — or, through `_clip`, the items
      * it hosts.
      */
-    dispose(): void {
+    protected destructor(): void {
         this._clip.dispose();
         this._leadArrow?.dispose();
         this._trailArrow?.dispose();
 
-        super.dispose();
+        super.destructor();
     }
 }
 

@@ -511,11 +511,11 @@ class Markdown extends Component<MarkdownOptions> {
     /**
      * Detaches the theme-change listener, then defers to the base class for
      * the rest of teardown. Call when a dynamically-built Markdown is
-     * permanently removed from the page, mirroring `CodeEditor.dispose`.
+     * permanently removed from the page, mirroring `CodeEditor.destructor`.
      */
-    dispose(): void {
+    protected destructor(): void {
         this._unsubscribeTheme();
-        super.dispose();
+        super.destructor();
     }
 
     /**

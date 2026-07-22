@@ -128,6 +128,34 @@ describe('Component.dispose()', () => {
 
         expect(leakedKeys(before)).toEqual([]);
     });
+
+    it('reaches a registered child\'s destructor() override when the ancestor is disposed', () => {
+        // The contract a review found broken: `Component.destructor()` recurses
+        // into children via `child.destructor()`, not `child.dispose()`, so a
+        // subclass's own teardown logic MUST live on `destructor()` — never
+        // `dispose()` — to run when reached as a descendant of some ancestor's
+        // own teardown, rather than only when `dispose()` is called on it
+        // directly. `CleanupChild` models the correct (post-fix) pattern every
+        // library `dispose()` override was moved onto.
+        let childCleanupRan = false;
+
+        class CleanupChild extends Component {
+            protected destructor(): void {
+                childCleanupRan = true;
+                super.destructor();
+            }
+        }
+
+        const parent = new Component({});
+        const child = new CleanupChild({});
+
+        parent.addComponent(child);
+        parent.getElement(true);
+
+        parent.dispose();
+
+        expect(childCleanupRan).toBe(true);
+    });
 });
 
 describe('Animation.materialize — spinner and stale-result disposal', () => {
@@ -260,7 +288,8 @@ describe('Tab — spinner disposal when a lazy tab closes mid-build', () => {
         // Isolate the spinner's own keys from the strip's tab-button cell,
         // which `addComponent` above already minted — that cell's own
         // per-close teardown is a separate, out-of-scope leak class (see
-        // ARCHITECTURE.md's dispose() scope for this plan).
+        // plans/implemented/component-teardown-seam.md's dispose() scope for
+        // this plan).
         const beforeSpinner = ruleSnapshot();
 
         tab.setActiveTabIndex(0);
@@ -354,6 +383,60 @@ describe('ScrollStrip.dispose()', () => {
         // released `_clip`'s own rule, without `_clip` recursing into the
         // item it holds, would still pass a `_clip`-only check. Assert the
         // full known subtree instead.
+        const leaked = leakedKeys(before).filter((key) => ownIds.some((id) => key.includes(id)));
+        expect(leaked).toEqual([]);
+    });
+});
+
+describe('A container using a Tab layout manager disposes its strip on its own teardown', () => {
+    it('disposes the TabBar / ScrollStrip / tab-cell subtree via the container\'s dispose(), without Tab.detach() or bar.dispose() called directly', () => {
+        // This is the review-found gap itself: `Component.destructor()` never
+        // detached the layout manager, and `Tab.attach()` raw-appends `_bar`
+        // straight onto the container element instead of registering it as a
+        // child — so the base class's recursive teardown could never reach it.
+        // `Tab.detach()` (the strip's one real disposal path) was reachable
+        // only from `setLayoutManager` replacing the manager, never from the
+        // container itself being torn down.
+        const before = ruleSnapshot();
+
+        const tab     = new Tab();
+        const host    = new Container({ layoutManager: tab });
+        const content = new Component({});
+
+        host.addComponent(content);
+        tab.createTab(content);
+        host.getElement(true);
+
+        // Force a real layout pass so the strip lays out its clip and the tab
+        // cell gets an actual element (and rule) — mirroring how
+        // `ScrollStrip.dispose()`'s own test above forces its arrows open,
+        // since nothing here flushes the rAF-scheduled layout a live app would.
+        host.doLayout();
+
+        const bar = (tab as unknown as { _bar: TabBar })._bar;
+        const barInternals = bar as unknown as {
+            _tabClip: ScrollStrip; _toolGroup: Component; _leadGroup: Component;
+            _indicator: Component; _dropTint: Component; _reorderBar: Component;
+        };
+        const clipInternals = barInternals._tabClip as unknown as {
+            _clip: Component; _leadArrow: Component | null; _trailArrow: Component | null;
+        };
+
+        const ownIds = collectIds(bar, [
+            barInternals._tabClip, barInternals._toolGroup, barInternals._leadGroup,
+            barInternals._indicator, barInternals._dropTint, barInternals._reorderBar,
+            clipInternals._clip,
+            ...(clipInternals._leadArrow  ? [clipInternals._leadArrow]  : []),
+            ...(clipInternals._trailArrow ? [clipInternals._trailArrow] : []),
+        ]);
+
+        // Confirms the strip (and its tab cell) actually rendered rules before
+        // the assertion below, so a false negative can't hide behind "never
+        // had a key".
+        expect(_ruleCacheKeys().length).toBeGreaterThan(before.size);
+
+        host.dispose();
+
         const leaked = leakedKeys(before).filter((key) => ownIds.some((id) => key.includes(id)));
         expect(leaked).toEqual([]);
     });

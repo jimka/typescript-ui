@@ -434,7 +434,7 @@ class MenuItem extends Component {
      * Removes all Event listeners registered by this item, cancels any pending
      * submenu timer, then defers to the base class for the rest of teardown.
      */
-    dispose(): void {
+    protected destructor(): void {
         if (this._submenuTimer !== null) {
             clearTimeout(this._submenuTimer);
             this._submenuTimer = null;
@@ -444,7 +444,7 @@ class MenuItem extends Component {
         Event.removeListener(this, "mouseout", this._onMouseOut);
         Event.removeListener(this, "click", this._onClick);
 
-        super.dispose();
+        super.destructor();
     }
 
     /**

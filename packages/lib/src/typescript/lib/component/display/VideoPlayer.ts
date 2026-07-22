@@ -551,7 +551,7 @@ class VideoPlayer extends Component<VideoPlayerOptions> {
      * defers to the base class for the rest of teardown. Call before
      * discarding it so no stray native listener survives.
      */
-    dispose(): void {
+    protected destructor(): void {
         this._video.dispose();
 
         const element = this.getElement();
@@ -560,7 +560,7 @@ class VideoPlayer extends Component<VideoPlayerOptions> {
             DOM.sink.removeListener(element, "fullscreenchange", this._onFullscreenChange);
         }
 
-        super.dispose();
+        super.destructor();
     }
 
     /**

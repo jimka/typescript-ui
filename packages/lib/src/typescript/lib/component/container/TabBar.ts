@@ -785,7 +785,7 @@ class TabBar extends Container<TabBarOptions> {
      * they, and everything they in turn hold (tab cells, tool buttons, the
      * lead widget), must be disposed explicitly here.
      */
-    dispose(): void {
+    protected destructor(): void {
         this.teardownTabDnD();
         this.clearSpringRaise();
         this._moveTriggerTeardown?.();
@@ -798,7 +798,7 @@ class TabBar extends Container<TabBarOptions> {
         this._dropTint.dispose();
         this._reorderBar.dispose();
 
-        super.dispose();
+        super.destructor();
     }
 
     /**

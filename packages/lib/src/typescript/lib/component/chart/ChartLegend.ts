@@ -318,11 +318,11 @@ class ChartLegend extends Panel<ChartLegendOptions> {
      * for the rest of teardown. `Event.addSubtreeListener` holds a permanent
      * hard reference in a module-level map, so a legend that is never disposed
      * pins itself (and its DOM handles) for the life of the page; the owning
-     * chart calls this from its own `dispose`.
+     * chart calls this from its own `destructor`.
      */
-    dispose(): void {
+    protected destructor(): void {
         Event.removeSubtreeListener(this, "click", this.handleRowClick);
-        super.dispose();
+        super.destructor();
     }
 }
 

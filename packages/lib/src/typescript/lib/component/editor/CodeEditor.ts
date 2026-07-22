@@ -454,9 +454,9 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * Detaches the theme-change listener and destroys the live CodeMirror
      * view, then defers to the base class for the rest of teardown. Call
      * before discarding a dynamically-built `CodeEditor`, mirroring
-     * `Markdown.dispose`.
+     * `Markdown.destructor`.
      */
-    dispose(): void {
+    protected destructor(): void {
         this._unsubscribeTheme();
 
         if (this._view) {
@@ -465,7 +465,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         this._view?.destroy();
 
-        super.dispose();
+        super.destructor();
     }
 
     /**

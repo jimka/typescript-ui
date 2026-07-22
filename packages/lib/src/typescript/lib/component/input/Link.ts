@@ -266,11 +266,11 @@ class Link extends Text<LinkOptions> {
      * Removes the keyboard listener, then the inherited theme listener. Call
      * when the link is permanently removed.
      */
-    dispose(): void {
+    protected destructor(): void {
         // Unconditional — the listener is always registered.
         Event.removeListener(this, "keydown", this.handleKeyDown);
 
-        super.dispose();
+        super.destructor();
     }
 
     /**

@@ -594,7 +594,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * Releases per-instance resources. Closes the popover if it is still
      * open, then defers to the base class for the rest of teardown.
      */
-    dispose(): void {
+    protected destructor(): void {
         if (this._isOpen) {
             this.hide();
         }
@@ -605,7 +605,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         this._actionsRow      = null;
         this._arrowComponent  = null;
 
-        super.dispose();
+        super.destructor();
     }
 
     /**

@@ -495,7 +495,7 @@ class Video extends Component<VideoOptions> {
      * the base class for the rest of teardown. Call before discarding the
      * surface so no stray native listener survives.
      */
-    dispose(): void {
+    protected destructor(): void {
         const element = this.getElement();
 
         if (element) {
@@ -504,7 +504,7 @@ class Video extends Component<VideoOptions> {
             }
         }
 
-        super.dispose();
+        super.destructor();
     }
 
     /**

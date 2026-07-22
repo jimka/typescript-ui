@@ -1,25 +1,29 @@
-// Registry test enforcing that every `dispose()` override in the library
-// chains to `super.dispose()` — invisible to the typechecker and to any
-// single behavioural test, so it needs a table-driven, class-wide guard.
-// Mirrors tests/component/default-options-fallback.test.ts's
-// DEFAULT_RESOLUTION registry shape: one row per class, iterated by a single
-// `describe`/`it` loop so a missing row is as visible as a failing one.
+// Registry test enforcing that every library `dispose()` override — now
+// relocated to the protected `destructor()` override hook, so an ancestor's
+// own teardown recursing into a registered child actually reaches it — chains
+// to `super.destructor()` and leaves the component fully torn down.
+// Invisible to the typechecker and to any single behavioural test, so it
+// needs a table-driven, class-wide guard. Mirrors
+// tests/component/default-options-fallback.test.ts's DEFAULT_RESOLUTION
+// registry shape: one row per class, iterated by a single `describe`/`it`
+// loop so a missing row is as visible as a failing one.
 //
 // Row count is enforced structurally, not by a hard-coded literal (plan
 // counts written by hand go stale) — see the "regression checkpoints" step
 // in plans/implemented/component-teardown-seam.md, which greps
-// `^\s*dispose(` definitions in the library source and compares that count
-// against this registry by hand at implementation time.
+// `^\s*protected destructor(` definitions in the library source and compares
+// that count against this registry by hand at implementation time.
 //
 // Re-derived count (grep is a superset — read each hit before trusting it):
-// `grep -rn '^\s*dispose(' packages/lib/src/typescript/lib` currently
-// returns 18 hits. Three are not Component-subclass overrides and don't
-// belong in this registry: `Component.ts:706` is the base `dispose()` this
-// registry's rows override; `Component.ts:726` is a local variable named
-// `dispose` called inside a loop, not a method definition; and
-// `core/StyleTarget.ts:298` is `StyleRule.dispose()`, an unrelated class
-// hierarchy that never constructs a `Component` and so cannot appear here.
-// That leaves 15 real overrides, matching this registry's 15 rows.
+// `grep -rn '^\s*protected destructor(' packages/lib/src/typescript/lib`
+// currently returns 20 hits. `Component.ts:726` is the base `destructor()`
+// this registry's rows override and doesn't belong here. Of the remaining 19,
+// five predate this plan and were never `dispose()`-named — `StatusBar.ts`,
+// `Canvas.ts`, `WebGLCanvas.ts`, `core/Panel.ts`, `overlay/AbstractWindow.ts`
+// — so they are out of this registry's scope (the classes this plan's
+// contract covers) the same way they were before the dispose()-to-destructor()
+// move. That leaves 14 real relocated overrides — matching this registry's 15
+// rows minus `Menu`, whose row is explained below.
 import { describe, it, expect } from 'vitest';
 import { Component } from '~/core/Component';
 import { Markdown } from '~/component/display/Markdown';
@@ -94,6 +98,14 @@ const REGISTRY: Array<{
         name: 'PaginationBar',
         make: () => new PaginationBar(new MemoryStore(new Model([{ name: 'id' }], 'id'), [])),
     },
+    // Menu has no destructor() override of its own — its former dispose()
+    // override (a manual `_menuItems` re-disposal loop guarded to persistent
+    // mode) became fully redundant once every item's own cleanup moved onto
+    // destructor(): every `MenuItem` / `MenuSeparator` is registered via
+    // `addComponent` in both modes, so the base class's recursive teardown
+    // already reaches them. The row stays to cover exactly that — the
+    // ancestor-recursion contract this plan's fix depends on — for a real,
+    // non-synthetic class.
     { name: 'Menu',    make: () => new Menu([{ text: 'A' }], () => {}) },
     { name: 'Popover', make: () => new Popover() },
     { name: 'Link',    make: () => new Link('x') },

@@ -148,11 +148,11 @@ class PaginationBar extends Component<PaginationBarOptions> {
      * base class for the rest of teardown.
      *
      * @remarks
-     * Call this when permanently removing the bar (e.g. before discarding it,
-     * or when replacing it via [`TablePanel.setPaginationBar`](/api/component/table/classes/TablePanel#setpaginationbar)). After
+     * Call `dispose()` when permanently removing the bar (e.g. before
+     * discarding it, or when replacing it via [`TablePanel.setPaginationBar`](/api/component/table/classes/TablePanel#setpaginationbar)). After
      * disposal the bar will no longer track the store.
      */
-    dispose(): void {
+    protected destructor(): void {
         this._store.off('pagechange', this._onStoreUpdate);
         this._store.off('load', this._onStoreUpdate);
         this._store.off('datachange', this._onStoreUpdate);
@@ -160,7 +160,7 @@ class PaginationBar extends Component<PaginationBarOptions> {
         this._store.off('remove', this._onStoreUpdate);
         this._store.off('sync', this._onStoreUpdate);
 
-        super.dispose();
+        super.destructor();
     }
 
     /**
