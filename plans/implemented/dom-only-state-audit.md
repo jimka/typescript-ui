@@ -339,3 +339,63 @@ Examples of the form each such note takes:
   `AbstractSelectableList.ts:317-320` are constructor-time, not
   rebuild-time) — so it was left out of the third-failure-shape section
   rather than cited incorrectly.
+
+- **A third independent review found three more BLOCKING defects, fixed in a
+  second correction pass.** (1) The "third failure shape" site table was
+  materially incomplete and its stopping condition was wrong: the seam grep
+  (`DOM.(sink|source).`) bounds DOM-only *state*, but this failure shape
+  depends on `Event` registration, not `DOM` access, so it is not
+  seam-bounded — `ParentHeader.ts` and `ResizeHandle.ts` never touch the
+  seam and were invisible to the sweep entirely. A proper bounding grep
+  (`Event.add(Listener|SubtreeListener|ViewportListener)(` intersected with
+  `protected init(` overrides, 16 candidate files, each checked by hand)
+  found four more unconditional-registration sites beyond the original
+  three: `component/table/Body.ts:606-615` (the worst omission — two lines
+  past the file's own `VirtualRowView.initScroller` citation already in
+  Table A), `component/container/TabBar.ts:765` (previously miscategorized
+  as swept-clean — reconciled), `component/table/cell/ParentHeader.ts:204`,
+  and `component/table/cell/ResizeHandle.ts:134-135`. `core/Body.ts:85` fits
+  the same unconditional-registration pattern but is explicitly excluded: it
+  overrides `getElement()` to always return `document.body` and can never go
+  through `render()` again, so it can never rebuild. The inventory's "third
+  failure shape" section now states the non-seam-boundedness explicitly and
+  carries the full enumerated set, not a sample — the follow-up plan must
+  use that bounding grep, not the seam grep, when scoping this failure
+  shape's fix. (2) `component/diagram/DiagramEdgeLayer.ts` was wrongly filed
+  swept-clean as "fully self-healing by design." It is the opposite:
+  `render()` calls `super.render()` then `rebuildPaths()`, but
+  `rebuildPaths()` resolves its target via `this.getElement()` rather than
+  the handle `render()` just returned; since `Component._element` is
+  assigned only after `render()` returns, that call either resurrects a
+  still-live old element or (once release also detaches the node, as a
+  correct release must) misses and no-ops — either way the fresh `<svg>`
+  gets no `<path>` children and diagram edges silently vanish on rebuild.
+  Moved to Table A with verdict `replay`. Spot-checking the claim that this
+  is the only `render()` override with this shape (`grep -rl 'protected
+  render()'`, 15 files, all read) found one more:
+  `AbstractSelectableList.ts`'s `SelectableListRow.render()` calls
+  `applyRowClass()`, which writes through `this.setElementAttribute()` —
+  itself resolving via `this.getElement()` — the identical gap. Added as its
+  own Table A row; masked in practice because `syncRows()`/
+  `refreshRowVisualState()` re-drive the same path on every pool
+  reconciliation, so only a rebuild with no accompanying data/selection
+  change would surface it. (3) Two self-reported Coverage-section claims
+  were untrue and have been re-derived, not hand-adjusted: the `WebGLCanvas`
+  opt-out row carried neither `probe:` nor `manual-verify:` (now carries a
+  `manual-verify:` note); and the `TextInput` value row said "probe
+  confirms" instead of the mandated `probe:` token (normalized), making the
+  true `probe:` count 6, correcting the prior pass's same-looking-but-wrong
+  claim of 6 (which was actually backed by only 5 literal tokens). All row
+  and file counts in this file (43 Table A rows, 27 Table B rows, 7
+  third-failure-shape rows, 104 files) were re-counted directly from the
+  finished file with `grep`/`awk`, not adjusted arithmetically from the
+  prior pass's numbers.
+
+- **The full suite must be run with `--no-file-parallelism`.** Under plain
+  `npx vitest run`, `tests/unit/llms-generate.test.ts` fails and
+  `Animation.ts` emits unhandled-timer warnings — both pre-existing,
+  parallelism-dependent flakes, confirmed unrelated to this branch:
+  `tests/unit/llms-generate.test.ts` passes 24/24 under
+  `--no-file-parallelism`, and this branch's only diff from `master` is the
+  inventory and probe-test files (no library source is touched). Treat this
+  as a pre-existing parallelism flake, not something caused by this branch.
