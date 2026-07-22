@@ -8,7 +8,7 @@ import { CollapseDirection } from "~/component/container/CollapseButton.js";
 import { FillType } from "~/layout/FillType.js";
 import { Placement } from "~/primitive/Placement.js";
 import { Size, UNBOUNDED, saturate } from "~/primitive/Size.js";
-import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant } from "~/layout/CollapseSupport.js";
+import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant, CollapseHandle } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 
@@ -75,7 +75,7 @@ class Border extends LayoutManager {
     // Canceller for the in-flight region collapse/restore animation, or null
     // when idle. Calling it stops the rAF loop in place so a rapid re-toggle
     // re-snapshots and retargets without two loops fighting.
-    private _collapseAnimation: (() => void) | null = null;
+    private _collapseAnimation: CollapseHandle | null = null;
 
     // True while a collapse/restore animation is being driven. The animation
     // slides every region by writing each element's own `left`/`top` (via
@@ -1107,13 +1107,13 @@ class Border extends LayoutManager {
      * region element. `clearClipFrame` is a no-op for an unframed region.
      */
     detach(): this {
-        super.detach();
-
-        // Abandon any in-flight collapse: its primed transitions carry fallback
-        // timers that would otherwise outlive the element handles teardown
-        // releases.
-        this._collapseAnimation?.();
+        // Abandon any in-flight collapse first: its primed transitions carry
+        // fallback timers that would otherwise outlive the element handles
+        // teardown releases.
+        this._collapseAnimation?.cancelAll();
         this._collapseAnimation = null;
+
+        super.detach();
 
         for (const gutter of this._gutters.values()) {
             const element = gutter.getElement();

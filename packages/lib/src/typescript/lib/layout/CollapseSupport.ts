@@ -28,6 +28,30 @@ const COLLAPSE_EASING = "cubic-bezier(0.4, 0, 0.6, 1)";
 const NOOP_HANDLE: Animation.CancelHandle = { cancel: (): void => {} };
 
 /**
+ * Handle returned by {@link runCollapse}. The two channels exist because a
+ * re-toggle and a teardown want different things stopped.
+ *
+ * @category Layout
+ */
+export interface CollapseHandle {
+    /**
+     * Stops the JS-driven geometry animation only, leaving the primed CSS
+     * transitions to finish and run their own cleanup. This is what a re-toggle
+     * wants: it re-snapshots from the current mid-animation geometry, and the
+     * outgoing participants still need their `transition` / `will-change`
+     * cleared — which only their own completion callback does.
+     */
+    cancelLayout(): void;
+
+    /**
+     * Abandons the whole collapse, primed transitions included. For teardown,
+     * where the cleanup is moot and the primed transitions' fallback timers
+     * would otherwise outlive the participants' element handles.
+     */
+    cancelAll(): void;
+}
+
+/**
  * Primes a collapse/restore animation: installs a multi-property geometry
  * transition on every participating element, pre-promotes the driving element
  * to its own compositor layer, and schedules the layer's release plus
@@ -316,18 +340,22 @@ export interface CollapseParticipant {
  * @param participants - Every moving box, including `toggled`.
  * @param previous - The manager's current animation canceller, or null when idle.
  * @param onIdle - Invoked when the animation settles; clears the manager's handle.
- * @returns A canceller the manager stores and passes back as `previous` next time.
+ * @returns A handle the manager stores and passes back as `previous` next time.
  */
 export function runCollapse(
     container:    Component,
     toggled:      Component,
     participants: CollapseParticipant[],
-    previous:     (() => void) | null,
+    previous:     CollapseHandle | null,
     onIdle?:      () => void,
-): () => void {
+): CollapseHandle {
     // Stop any in-flight collapse so a rapid re-toggle re-snapshots from the
-    // current mid-animation geometry and retargets cleanly.
-    previous?.();
+    // current mid-animation geometry and retargets cleanly. Only the geometry
+    // animation is stopped: the primed CSS transitions are left to finish and
+    // run their own cleanup, because that cleanup (clearing `transition` and
+    // `will-change` on the previous participants) has no other trigger and the
+    // fresh prime below covers only the new participant set.
+    previous?.cancelLayout();
 
     // The toggled pane/region holds its final size and reveals only via a
     // clip-path transition; every other participant is JS-driven below so boxes
@@ -361,14 +389,14 @@ export function runCollapse(
 
     const cancelLayout = animateLayout(movers, onIdle);
 
-    // Fold the two primed transitions into the canceller the manager already
-    // stores, so one call abandons the whole collapse — including the fallback
-    // timers that would otherwise outlive the participants' element handles.
-    return (): void => {
-        cancelLayout();
+    return {
+        cancelLayout,
+        cancelAll: (): void => {
+            cancelLayout();
 
-        for (const animation of primed) {
-            animation.cancel();
-        }
+            for (const animation of primed) {
+                animation.cancel();
+            }
+        },
     };
 }

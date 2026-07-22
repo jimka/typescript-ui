@@ -312,6 +312,7 @@ export class Notification extends Component {
             return;
         }
 
+        this._showAnimation?.cancel();
         this._showAnimation = Animation.play(el, {
             from:       { transform: "translateX(100%)", opacity: "0" },
             to:         { transform: "translateX(0)",   opacity: "1" },
@@ -558,6 +559,7 @@ export class Notification extends Component {
             return;
         }
 
+        this._dismissAnimation?.cancel();
         this._dismissAnimation = Animation.play(el, {
             to:         { transform: "translateX(100%)", opacity: "0" },
             durationMs: DISMISS_DURATION_MS,

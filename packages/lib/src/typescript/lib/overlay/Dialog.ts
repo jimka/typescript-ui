@@ -844,6 +844,7 @@ class Dialog extends Component implements DismissableLayer {
             return;
         }
 
+        this._panelInAnimation?.cancel();
         this._panelInAnimation = Animation.play(el, {
             from:       { opacity: "0", transform: "scale(0.97)" },
             to:         { opacity: "1", transform: "scale(1)"    },
@@ -852,6 +853,7 @@ class Dialog extends Component implements DismissableLayer {
         });
 
         if (bdEl) {
+            this._backdropInAnimation?.cancel();
             this._backdropInAnimation = Animation.play(bdEl, {
                 from:       { opacity: "0" },
                 to:         { opacity: "1" },
@@ -1123,6 +1125,7 @@ class Dialog extends Component implements DismissableLayer {
             return this;
         }
 
+        this._panelOutAnimation?.cancel();
         this._panelOutAnimation = Animation.play(el, {
             to:         { opacity: "0", transform: "scale(0.97)" },
             durationMs: DIALOG_ANIM_DURATION_MS,
@@ -1131,6 +1134,7 @@ class Dialog extends Component implements DismissableLayer {
         });
 
         if (bdEl) {
+            this._backdropOutAnimation?.cancel();
             this._backdropOutAnimation = Animation.play(bdEl, {
                 to:         { opacity: "0" },
                 durationMs: DIALOG_ANIM_DURATION_MS,

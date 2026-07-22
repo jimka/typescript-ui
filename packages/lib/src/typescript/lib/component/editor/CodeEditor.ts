@@ -685,6 +685,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
             return;
         }
 
+        this._flashAnimation?.cancel();
         this._flashAnimation = Animation.play(this._flashOverlay, {
             from:       { opacity: String(READONLY_FLASH_PEAK_OPACITY) },
             to:         { opacity: "0" },

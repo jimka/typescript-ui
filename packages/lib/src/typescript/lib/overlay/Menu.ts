@@ -645,6 +645,7 @@ class Menu extends Component implements DismissableLayer {
      * fade-out so the deferred detach skips removing the still-visible panel.
      */
     private fadeIn(): void {
+        this._fadeShowAnimation?.cancel();
         this._fadeShowAnimation = fadeShow(this, { durationMs: MENU_ANIM_DURATION_MS });
     }
 
@@ -654,6 +655,7 @@ class Menu extends Component implements DismissableLayer {
      * `open()` during the fade cancels the deferred detach.
      */
     private fadeOutAndDetach(): void {
+        this._fadeHideAnimation?.cancel();
         this._fadeHideAnimation = fadeHideAndDetach(this, { durationMs: MENU_ANIM_DURATION_MS });
     }
 

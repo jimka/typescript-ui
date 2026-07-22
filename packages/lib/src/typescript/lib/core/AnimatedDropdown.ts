@@ -247,6 +247,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
 
         this.setWillChange("opacity, transform");
 
+        this._showAnimation?.cancel();
         this._showAnimation = Animation.play(el, {
             from:       { opacity: "0", transform: `translateY(-${this.getTranslatePx()}px)` },
             to:         { opacity: "1", transform: "translateY(0)" },
@@ -290,6 +291,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
         this._dismissing = true;
         this.setWillChange("opacity, transform");
 
+        this._hideAnimation?.cancel();
         this._hideAnimation = Animation.play(el, {
             to:         { opacity: "0", transform: `translateY(-${this.getTranslatePx()}px)` },
             durationMs: this.getDurationMs(),

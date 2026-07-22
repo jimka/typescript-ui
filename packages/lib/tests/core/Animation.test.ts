@@ -371,9 +371,26 @@ describe('Animation cancellation', () => {
             flushFrame();
             flushFrame();
 
+            const armed = sink.writes.filter((entry) => entry.op === 'setTimeout').length;
+
+            expect(armed).toBeGreaterThan(0);
+
+            const mark = sink.writes.length;
+
             dialog.dispose();
 
-            expect(() => vi.advanceTimersByTime(PAST_FALLBACK_MS)).not.toThrow();
+            // Asserting on the writes, not on a throw: the offline sink's
+            // release() keeps the stub alive, so a use-after-free is silent
+            // here and `not.toThrow()` would hold with or without the fix.
+            expect(sink.writes.slice(mark).some((entry) => entry.op === 'clearTimeout')).toBe(true);
+
+            const afterDispose = sink.writes.length;
+
+            vi.advanceTimersByTime(PAST_FALLBACK_MS);
+
+            // The fade's finish() would write `transition: null` through the
+            // panel's now-released handle. Nothing may reach the element.
+            expect(stylesSince(afterDispose)).toEqual([]);
         });
     });
 

@@ -7,7 +7,7 @@ import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size, UNBOUNDED } from "~/primitive/Size.js";
-import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant } from "~/layout/CollapseSupport.js";
+import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant, CollapseHandle } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -130,7 +130,7 @@ class Split extends LayoutManager {
     // Canceller for the in-flight collapse/restore animation, or null when
     // idle. Calling it stops the rAF loop in place so a rapid re-toggle can
     // re-snapshot the current geometry and retarget without two loops fighting.
-    private _collapseAnimation: (() => void) | null = null;
+    private _collapseAnimation: CollapseHandle | null = null;
 
     constructor(options?: SplitOptions) {
         // LayoutManager's constructor takes no options; applied via applyOptions below.
@@ -1026,13 +1026,13 @@ class Split extends LayoutManager {
      * Detaches from the container and removes all gutter elements from the DOM.
      */
     detach() : this {
-        super.detach();
-
-        // Abandon any in-flight collapse: its primed transitions carry fallback
-        // timers that would otherwise outlive the element handles teardown
-        // releases.
-        this._collapseAnimation?.();
+        // Abandon any in-flight collapse first: its primed transitions carry
+        // fallback timers that would otherwise outlive the element handles
+        // teardown releases.
+        this._collapseAnimation?.cancelAll();
         this._collapseAnimation = null;
+
+        super.detach();
 
         for (const gutter of this._gutters) {
             let gutterElement = gutter.getElement()!;

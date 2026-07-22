@@ -1644,6 +1644,7 @@ class Accordion extends LayoutManager {
 
             if (reflowAll || contentHeight !== oldHeight) {
                 if (shrinking) {
+                    this._shrinkAnimations.get(i)?.cancel();
                     this._shrinkAnimations.set(i, Animation.afterTransition({
                         component:        wrapper,
                         property:         "height",
@@ -2650,6 +2651,7 @@ class Accordion extends LayoutManager {
 
         this._toggleAnimations += 1;
 
+        this._wrapperAnimations.get(index)?.cancel();
         this._wrapperAnimations.set(index, Animation.afterTransition({
             component:        wrapper,
             property:         "height",

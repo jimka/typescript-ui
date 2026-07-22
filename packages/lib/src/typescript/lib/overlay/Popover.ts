@@ -489,6 +489,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         this.doLayout();
         this._reposition();
 
+        this._fadeShowAnimation?.cancel();
         this._fadeShowAnimation = fadeShow(this, { durationMs: POPOVER_FADE_DURATION_MS });
 
         this.attachRepositionListeners();
@@ -514,6 +515,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         LayerManager.unregister(this);
         untrapWheel(this);
 
+        this._fadeHideAnimation?.cancel();
         this._fadeHideAnimation = fadeHideAndDetach(this, { durationMs: POPOVER_FADE_DURATION_MS });
 
         return this;

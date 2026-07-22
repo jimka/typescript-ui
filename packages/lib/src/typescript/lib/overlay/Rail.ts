@@ -672,6 +672,7 @@ class Rail extends Component<RailOptions> {
 
         const tween = this.collapseTween(fromThickness, toThickness);
 
+        this._collapseAnimation?.cancel();
         this._collapseAnimation = Animation.play(element, {
             from:       tween.from,
             to:         tween.to,
@@ -839,6 +840,7 @@ class Rail extends Component<RailOptions> {
             return this;
         }
 
+        this._slideOutAnimation?.cancel();
         this._slideOutAnimation = Animation.play(element, {
             to:         { transform: this.offscreenTransform() },
             durationMs: RAIL_ANIM_DURATION_MS,
@@ -859,6 +861,7 @@ class Rail extends Component<RailOptions> {
             return;
         }
 
+        this._slideInAnimation?.cancel();
         this._slideInAnimation = Animation.play(element, {
             from:       { transform: this.offscreenTransform() },
             to:         { transform: "translate(0, 0)" },

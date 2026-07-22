@@ -953,8 +953,6 @@ class Tab extends LayoutManager {
      * down, removes the theme subscription, and removes the strip element.
      */
     detach(): this {
-        super.detach();
-
         this._tabFadeAnimation?.cancel();
         this._tabFadeAnimation = null;
 
@@ -962,6 +960,8 @@ class Tab extends LayoutManager {
             entry.materializeAnimation?.cancel();
             entry.materializeAnimation = null;
         }
+
+        super.detach();
 
         if (this._themeCleanup) {
             this._themeCleanup();
@@ -1572,6 +1572,7 @@ class Tab extends LayoutManager {
         entry.spinner = spinner;
         entry.state   = "building";
 
+        entry.materializeAnimation?.cancel();
         entry.materializeAnimation = Animation.materialize({
             host:             container,
             factory:          () => {
@@ -1844,6 +1845,7 @@ class Tab extends LayoutManager {
 
             const el = component.getElement();
             if (el) {
+                this._tabFadeAnimation?.cancel();
                 this._tabFadeAnimation = Animation.play(el, {
                     from:       { opacity: "0" },
                     to:         { opacity: "1" },

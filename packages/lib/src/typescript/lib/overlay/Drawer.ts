@@ -532,6 +532,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
             return;
         }
 
+        this._panelInAnimation?.cancel();
         this._panelInAnimation = Animation.play(element, {
             from:       { transform: this.offscreenTransform() },
             to:         { transform: "translate(0, 0)" },
@@ -566,6 +567,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
             return;
         }
 
+        this._panelOutAnimation?.cancel();
         this._panelOutAnimation = Animation.play(element, {
             to:         { transform: this.offscreenTransform() },
             durationMs: this.getDurationMs(),
@@ -590,6 +592,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         const backdropEl = this._backdrop.getElement(true)!;
         DOM.sink.appendChild(DOM.source.getDocumentElement(), backdropEl);
 
+        this._backdropInAnimation?.cancel();
         this._backdropInAnimation = Animation.play(backdropEl, {
             from:       { opacity: "0" },
             to:         { opacity: "1" },
@@ -609,6 +612,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
             return;
         }
 
+        this._backdropOutAnimation?.cancel();
         this._backdropOutAnimation = Animation.play(backdropEl, {
             to:         { opacity: "0" },
             durationMs: this.getDurationMs(),

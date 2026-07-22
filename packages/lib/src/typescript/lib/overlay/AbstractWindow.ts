@@ -625,6 +625,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         this.setVisible(true);
 
+        this._showAnimation?.cancel();
         this._showAnimation = Animation.play(el, {
             from:       { opacity: "0", transform: "scale(0.97)" },
             to:         { opacity: "1", transform: "scale(1)"    },
@@ -640,6 +641,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
             const spinner = createSpinnerWrap();
 
+            this._materializeAnimation?.cancel();
             this._materializeAnimation = Animation.materialize({
                 host:             this,
                 factory:          factory,
@@ -868,6 +870,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
+        this._closeAnimation?.cancel();
         this._closeAnimation = Animation.play(el, {
             to:         { opacity: "0", transform: "scale(0.97)" },
             durationMs: WINDOW_ANIM_DURATION_MS,
@@ -2073,6 +2076,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
+        this._railCollapseAnimation?.cancel();
         this._railCollapseAnimation = Animation.play(element, {
             from:       { transformOrigin: "0 0", transform: "translate(0, 0) scale(1)", opacity: "1" },
             to:         { transform: this.railGenieTransform(), opacity: "0" },
@@ -2094,6 +2098,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
+        this._railExpandAnimation?.cancel();
         this._railExpandAnimation = Animation.play(element, {
             from:       { transformOrigin: "0 0", transform: this.railGenieTransform(), opacity: "0" },
             to:         { transform: "translate(0, 0) scale(1)", opacity: "1" },

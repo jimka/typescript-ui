@@ -301,6 +301,7 @@ export class Tooltip extends Component {
             return;
         }
 
+        inst._showAnimation?.cancel();
         inst._showAnimation = Animation.play(el, {
             from:       { opacity: "0" },
             to:         { opacity: "1" },
@@ -337,6 +338,7 @@ export class Tooltip extends Component {
 
         Tooltip.dismissing = true;
 
+        inst._hideAnimation?.cancel();
         inst._hideAnimation = Animation.play(el, {
             to:         { opacity: "0" },
             durationMs: TOOLTIP_ANIM_DURATION_MS,
