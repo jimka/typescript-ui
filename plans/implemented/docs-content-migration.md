@@ -265,6 +265,7 @@ function stripCode(source: string): string {
 | Modify | `packages/docs/src/shell/DocsContent.ts` |
 | Modify | `packages/docs/tests/pages.test.ts` |
 | Create | `packages/docs/tests/content-constructs.test.ts` |
+| Create | `packages/docs/src/content/notFound.ts` (added during implementation — see `## Implementation Notes` 3) |
 
 No file under `packages/lib/src/` appears. That is the intended outcome of the survey, not an omission.
 
@@ -381,6 +382,23 @@ No public API changes, so no doc page needs an update on that account. The two a
 - **Rewriting doc content for the new renderer.** Only the two lines named in steps 1-2 change; the survey found no other page that needs it.
 
 ---
+
+## Implementation Notes
+
+Two regexes specified in `## Internal Structure` had to be corrected during implementation. Both changes keep the plan's intent; they fix snippets that would have failed against the real corpus.
+
+**1. `stripCode`'s inline-code regex.** The plan specified ``/`[^`\n]*`/g``, which only matches single-backtick spans. `packages/lib/docs/components/Markdown.md:37-38` uses a double-backtick span (`` `inline code` ``) and a four-backtick span (```` ``` ````) to quote literal backticks, and the same table cells quote raw HTML tags (`<strong>`, `<code>`, `<pre>`). Against that page the plan's regex desynchronises and leaves `<pre>` and `<code>` in the stripped output, so the *no raw HTML tag* guard fails on a page that is entirely correct — a false positive on the very construct the plan's `[^no-raw-html]` footnote says is safe to quote. The first attempted fix was ``/(`+)[\s\S]*?\1/g``, and it was **not sufficient** — an audit caught it. Capturing the opening run is not enough, because a run of N backticks can close against the first N backticks of a *longer* run. On `components/MarkdownEditor.md:53` (`` | Fenced code | ` ``` ` fence | ``) the 1-backtick opener closed against the head of the ``` run and the scan swallowed 12 lines, hiding a "raw HTML is not part of the dialect" paragraph and a `## Formatting` heading from every assertion in the file — on the very page whose `<kbd>` gap motivated this phase. The shipped form is ``/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g``, whose lookarounds require the closing run to be a whole run, which is CommonMark's own rule. Three cases in `describe('stripCode removes only the code it should')` pin this, and the full corpus passes with the 12 previously-hidden lines now actually being checked.
+
+**2. The `:::` container check is line-based, not a multiline regex.** Matching `/^:::\s*(\w+)/gm` over the whole source lets `\s*` run past a bare closing `:::` line's newline and capture the next paragraph's first word as a container type. The check therefore splits on newlines and tests each line independently. The reasoning is repeated as a comment at the call site so the next person does not "simplify" it back.
+
+**3. `notFoundSource` moved from `shell/DocsContent.ts` to a new `content/notFound.ts`.** Step 10 placed it in `DocsContent.ts`, and it was implemented there. An audit then found a correctness bug in it — the `/api/` predicate missed the bare `/api` route (see below) — and pinning the fix with a test proved impossible from `shell/`: importing `DocsContent.ts` constructs components at import time and throws `ReferenceError: document is not defined` under the docs package's node test environment. That is precisely why every other pure source transform in this app already lives in `src/content/` (`containers.ts`, `links.ts`, `pages.ts`) and why nothing in `shell/` has unit tests. Moving the function follows that existing split rather than inventing anything; the alternative was to leave a known-wrong branch covered only by a manual step. The file list in `## Files to Create / Modify / Delete` therefore gains one row, `Create packages/docs/src/content/notFound.ts`.
+
+Everything else follows the plan as written. No library source was touched.
+
+### Audit findings fixed after implementation
+
+- **The corpus guard's heading-id rule did not match the viewer's.** `headingIds` was fed `stripCode`'d source, so inline code was deleted from heading text before slugifying, while `Markdown.appendHeading` slugifies `token.text` with the backticked text intact. The rules disagreed on 22 of the 154 pages, so the guard would have false-failed a correctly authored anchor and passed a dead one. Heading ids now come from a fence-only strip. The corpus still passes under the corrected rule, which confirms the authored anchors were right all along.
+- **The API-reference not-found message never fired for `/api`.** `normalizePath` collapses the trailing slash on the corpus's `/api/` links, so the predicate `startsWith('/api/')` was false for exactly the links the special case existed to serve. The plan's own wording ("a path starting with `/api/`") is the proximate cause.
 
 ## Notes
 

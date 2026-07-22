@@ -42,11 +42,18 @@ class DocsShell extends Panel {
      * Shows `path` in the content pane and reflects it into the sidebar
      * selection — the one method the router's route handlers call.
      *
+     * `select` is async (it awaits a tree reveal) but this call is
+     * deliberately fire-and-forget: `router.start()` must apply the first
+     * route synchronously or the first frame shows the wrong page, so
+     * `showPath` and its callers stay synchronous — see "`select` is now
+     * async and called from a synchronous route handler" in
+     * plans/implemented/docs-content-migration.md.
+     *
      * @param path - The route path to show.
      */
     showPath(path: string): void {
         this._content.showPath(path);
-        this._sidebar.select(path);
+        void this._sidebar.select(path);
     }
 }
 

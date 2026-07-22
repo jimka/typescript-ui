@@ -5,18 +5,7 @@ import { Markdown } from '@jimka/typescript-ui/component/display';
 import { Router } from '@jimka/typescript-ui/router';
 import { getPage } from '../content/pages.js';
 import { resolveDocLink } from '../content/links.js';
-
-/**
- * Renders the not-found view's source for a route with no migrated page —
- * names the path so it reads as an intentional "not yet migrated" state,
- * never as a blank pane or a broken link.
- *
- * @param path - The route path that has no matching page.
- * @returns Markdown source for the not-found view.
- */
-function notFoundSource(path: string): string {
-    return `# Not found\n\n\`${path}\` has not been migrated to this preview yet.`;
-}
+import { notFoundSource } from '../content/notFound.js';
 
 /**
  * The centre content pane: a scrolling `Markdown` viewer showing the page for

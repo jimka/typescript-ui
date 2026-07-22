@@ -22,10 +22,13 @@ export interface NavEntry {
     label: string;
 }
 
-/** A sidebar section: a titled group of {@link NavEntry} entries. */
+/** A sidebar section: a titled group of entries, optionally holding subgroups. */
 export interface NavGroup {
-    title: string;
-    pages: NavEntry[];
+    title:   string;
+    /** Pages sitting directly under this group's node, rendered first. */
+    pages:   NavEntry[];
+    /** Nested subgroups, rendered after `pages`. Two levels deep at most. */
+    groups?: NavGroup[];
 }
 
 // `import.meta.glob` keys arrive as `../../../lib/docs/guide/installation.md`
@@ -33,7 +36,7 @@ export interface NavGroup {
 // `../../../lib/docs/` resolves to packages/lib/docs/ — the VitePress source
 // this app reads unmodified. See "Markdown content migrates as-is" in
 // plans/implemented/packages-docs.md.
-const RAW_SOURCES = import.meta.glob('../../../lib/docs/{guide,concepts}/*.md', {
+const RAW_SOURCES = import.meta.glob('../../../lib/docs/{guide,concepts,components,layouts,data,recipes,reference}/*.md', {
     query:  '?raw',
     import: 'default',
     eager:  true,
@@ -108,13 +111,14 @@ function requirePage(path: string): DocPage {
 }
 
 /**
- * The sidebar's Guide and Concepts sections, mirroring the VitePress sidebar
- * shape in packages/lib/docs/.vitepress/config.mts (same titles, same order)
- * — see "Route ⇄ file mapping" in plans/implemented/packages-docs.md. Each
- * label is copied from that config's `text`, not derived from the page's `# `
- * heading, so the tree reads exactly as VitePress renders it.
+ * The sidebar's seven sections, mirroring the VitePress sidebar shape in
+ * packages/lib/docs/.vitepress/config.mts (same titles, same order, same
+ * unwrap-first-group rule) — see "The sidebar becomes a three-level tree" in
+ * plans/implemented/docs-content-migration.md. Each label is copied from that
+ * config's `text`, not derived from the page's `# ` heading, so the tree
+ * reads exactly as VitePress renders it.
  *
- * @returns The two nav groups for the Phase-1 content slice.
+ * @returns The seven nav groups for the full 154-page corpus.
  */
 export function getNav(): NavGroup[] {
     const guide: NavEntry[] = [
@@ -138,12 +142,257 @@ export function getNav(): NavGroup[] {
         { path: '/concepts/dom-seams',           label: 'DOM seams' },
     ];
 
-    // Fail loudly on a hand-authored path that doesn't resolve to a migrated
-    // page — an authoring typo, not a runtime condition to handle gracefully.
-    [...guide, ...concepts].forEach((entry) => requirePage(entry.path));
+    const componentsCatalog: NavEntry[] = [
+        { path: '/components', label: 'Catalog' },
+    ];
+    const componentsCore: NavEntry[] = [
+        { path: '/components/Body',                 label: 'Body' },
+        { path: '/components/AbstractWindow',        label: 'AbstractWindow' },
+        { path: '/components/Window',                label: 'Window' },
+        { path: '/components/TabWindow',             label: 'TabWindow' },
+        { path: '/components/Dialog',                label: 'Dialog' },
+        { path: '/components/Drawer',                label: 'Drawer' },
+        { path: '/components/Rail',                  label: 'Rail' },
+        { path: '/components/Dock',                  label: 'Dock' },
+        { path: '/components/Tooltip',                label: 'Tooltip' },
+        { path: '/components/Popover',                label: 'Popover' },
+        { path: '/components/Notification',           label: 'Notification' },
+        { path: '/components/NotificationHistoryButton', label: 'NotificationHistoryButton' },
+        { path: '/components/AnimatedDropdown',       label: 'AnimatedDropdown' },
+    ];
+    const componentsButtons: NavEntry[] = [
+        { path: '/components/Button',         label: 'Button' },
+        { path: '/components/ToggleButton',   label: 'ToggleButton' },
+        { path: '/components/SplitButton',    label: 'SplitButton' },
+        { path: '/components/MenuButton',     label: 'MenuButton' },
+        { path: '/components/RadioButton',    label: 'RadioButton' },
+        { path: '/components/ButtonGroup',    label: 'ButtonGroup' },
+        { path: '/components/SpinButton',     label: 'SpinButton' },
+        { path: '/components/TabButton',      label: 'TabButton' },
+        { path: '/components/TabCloseButton', label: 'TabCloseButton' },
+    ];
+    const componentsInputs: NavEntry[] = [
+        { path: '/components/Form',              label: 'Form' },
+        { path: '/components/TextField',         label: 'TextField' },
+        { path: '/components/TextArea',          label: 'TextArea' },
+        { path: '/components/PasswordField',     label: 'PasswordField' },
+        { path: '/components/UsernameField',     label: 'UsernameField' },
+        { path: '/components/Checkbox',          label: 'Checkbox' },
+        { path: '/components/Toggle',            label: 'Toggle' },
+        { path: '/components/ComboBox',          label: 'ComboBox' },
+        { path: '/components/AutoCompleteField', label: 'AutoCompleteField' },
+        { path: '/components/DateField',         label: 'DateField' },
+        { path: '/components/TimeField',         label: 'TimeField' },
+        { path: '/components/DateTimeField',     label: 'DateTimeField' },
+        { path: '/components/NumberSpinner',     label: 'NumberSpinner' },
+        { path: '/components/Slider',            label: 'Slider' },
+        { path: '/components/FileField',         label: 'FileField' },
+        { path: '/components/FileDropZone',      label: 'FileDropZone' },
+    ];
+    const componentsDisplay: NavEntry[] = [
+        { path: '/components/Label',           label: 'Label' },
+        { path: '/components/Header',          label: 'Header' },
+        { path: '/components/Text',            label: 'Text' },
+        { path: '/components/Link',            label: 'Link' },
+        { path: '/components/Image',           label: 'Image' },
+        { path: '/components/Canvas',          label: 'Canvas' },
+        { path: '/components/WebGLCanvas',     label: 'WebGLCanvas' },
+        { path: '/components/Glyph',           label: 'Glyph' },
+        { path: '/components/Glyphs',          label: 'Glyphs' },
+        { path: '/components/IconText',        label: 'IconText' },
+        { path: '/components/IconLabel',       label: 'IconLabel' },
+        { path: '/components/Markdown',        label: 'Markdown' },
+        { path: '/components/CodeEditor',      label: 'CodeEditor' },
+        { path: '/components/MarkdownEditor',  label: 'MarkdownEditor' },
+        { path: '/components/FieldSet',        label: 'FieldSet' },
+        { path: '/components/LabeledFieldSet', label: 'LabeledFieldSet' },
+        { path: '/components/LabeledGrid',     label: 'LabeledGrid' },
+        { path: '/components/Legend',          label: 'Legend' },
+        { path: '/components/ProgressBar',     label: 'ProgressBar' },
+        { path: '/components/ProgressSpinner', label: 'ProgressSpinner' },
+        { path: '/components/PaginationBar',   label: 'PaginationBar' },
+        { path: '/components/Video',           label: 'Video' },
+        { path: '/components/VideoPlayer',     label: 'VideoPlayer' },
+        { path: '/components/Spacer',          label: 'Spacer' },
+        { path: '/components/StatusBar',       label: 'StatusBar' },
+    ];
+    const componentsCharts: NavEntry[] = [
+        { path: '/components/LineChart',   label: 'LineChart' },
+        { path: '/components/BarChart',    label: 'BarChart' },
+        { path: '/components/ChartLegend', label: 'ChartLegend' },
+    ];
+    const componentsLists: NavEntry[] = [
+        { path: '/components/List',            label: 'List' },
+        { path: '/components/MultiSelectList', label: 'MultiSelectList' },
+        { path: '/components/ListItem',        label: 'ListItem' },
+        { path: '/components/BulletedList',    label: 'BulletedList' },
+        { path: '/components/NumberedList',    label: 'NumberedList' },
+    ];
+    const componentsToolbar: NavEntry[] = [
+        { path: '/components/ToolBar',          label: 'ToolBar' },
+        { path: '/components/ToolBarSeparator', label: 'ToolBarSeparator' },
+    ];
+    const componentsMenus: NavEntry[] = [
+        { path: '/components/MenuBar',       label: 'MenuBar' },
+        { path: '/components/MenuBarButton', label: 'MenuBarButton' },
+        { path: '/components/Menu',          label: 'Menu' },
+        { path: '/components/MenuItem',      label: 'MenuItem' },
+        { path: '/components/MenuSeparator', label: 'MenuSeparator' },
+    ];
+    const componentsTree: NavEntry[] = [
+        { path: '/components/Tree', label: 'Tree' },
+    ];
+    const componentsDiagram: NavEntry[] = [
+        { path: '/components/DiagramView', label: 'DiagramView' },
+    ];
+    const componentsContainers: NavEntry[] = [
+        { path: '/components/TabBar',         label: 'TabBar' },
+        { path: '/components/TabPanel',       label: 'TabPanel' },
+        { path: '/components/AccordionPanel', label: 'AccordionPanel' },
+    ];
+    const componentsTable: NavEntry[] = [
+        { path: '/components/Table',           label: 'Table' },
+        { path: '/components/TablePanel',      label: 'TablePanel' },
+        { path: '/components/TreeTable',       label: 'TreeTable' },
+        { path: '/components/TreeTablePanel',  label: 'TreeTablePanel' },
+        { path: '/components/TableInternals',  label: 'Table internals' },
+    ];
+    const componentsScrolling: NavEntry[] = [
+        { path: '/components/Scrollbar',       label: 'Scrollbar' },
+        { path: '/components/ScrollStrip',     label: 'ScrollStrip' },
+        { path: '/components/VirtualScroller', label: 'VirtualScroller' },
+    ];
 
-    return [
+    const layouts: NavEntry[] = [
+        { path: '/layouts',             label: 'Overview' },
+        { path: '/layouts/Constraints', label: 'Constraints' },
+    ];
+    const layoutManagers: NavEntry[] = [
+        { path: '/layouts/Absolute',  label: 'Absolute' },
+        { path: '/layouts/Anchor',    label: 'Anchor' },
+        { path: '/layouts/Fit',       label: 'Fit' },
+        { path: '/layouts/Border',    label: 'Border' },
+        { path: '/layouts/HBox',      label: 'HBox' },
+        { path: '/layouts/VBox',      label: 'VBox' },
+        { path: '/layouts/HFlow',     label: 'HFlow' },
+        { path: '/layouts/VFlow',     label: 'VFlow' },
+        { path: '/layouts/Grid',      label: 'Grid' },
+        { path: '/layouts/Card',      label: 'Card' },
+        { path: '/layouts/Tab',       label: 'Tab' },
+        { path: '/layouts/Split',     label: 'Split' },
+        { path: '/layouts/Accordion', label: 'Accordion' },
+    ];
+    const docking: NavEntry[] = [
+        { path: '/layouts/DockRegion', label: 'DockRegion' },
+    ];
+    const serialization: NavEntry[] = [
+        { path: '/layouts/LayoutSerialization', label: 'Layout serialization' },
+    ];
+
+    const data: NavEntry[] = [
+        { path: '/data',             label: 'Overview' },
+        { path: '/data/model',       label: 'Model' },
+        { path: '/data/store',       label: 'Store' },
+        { path: '/data/proxy',       label: 'Proxy' },
+        { path: '/data/record',      label: 'Record' },
+        { path: '/data/associations', label: 'Associations' },
+        { path: '/data/binding',     label: 'Binding' },
+    ];
+
+    const recipes: NavEntry[] = [
+        { path: '/recipes', label: 'Overview' },
+    ];
+    const recipesDataUi: NavEntry[] = [
+        { path: '/recipes/crud-table',       label: 'CRUD with a Table' },
+        { path: '/recipes/bind-form',         label: 'Bind a record to a form' },
+        { path: '/recipes/custom-cell',       label: 'Custom cell type' },
+        { path: '/recipes/virtualized-list',  label: 'Virtualized lists' },
+    ];
+    const recipesWindowsDialogs: NavEntry[] = [
+        { path: '/recipes/floating-window',   label: 'Floating window' },
+        { path: '/recipes/dialog-modal',       label: 'Modal dialog' },
+        { path: '/recipes/right-click-menu',  label: 'Right-click menu' },
+        { path: '/recipes/notifications',     label: 'Notifications' },
+    ];
+    const recipesThemingInteraction: NavEntry[] = [
+        { path: '/recipes/custom-theme',        label: 'Custom brand theme' },
+        { path: '/recipes/keyboard-shortcuts',  label: 'Keyboard shortcuts' },
+        { path: '/recipes/drag-and-drop',       label: 'Drag-and-drop' },
+        { path: '/recipes/focus-history',       label: 'Focus history' },
+    ];
+    const recipesConstructionPatterns: NavEntry[] = [
+        { path: '/recipes/component-options', label: 'Component constructor options' },
+    ];
+    const recipesLocalDevelopment: NavEntry[] = [
+        { path: '/recipes/local-development', label: 'Linking a local library checkout' },
+    ];
+
+    const reference: NavEntry[] = [
+        { path: '/reference',                    label: 'Overview' },
+        { path: '/reference/glossary',            label: 'Glossary' },
+        { path: '/reference/faq',                 label: 'FAQ' },
+        { path: '/reference/troubleshooting',     label: 'Troubleshooting' },
+        { path: '/reference/browser-support',     label: 'Browser support' },
+        { path: '/reference/migration',           label: 'Migration' },
+        { path: '/reference/changelog',           label: 'Changelog' },
+    ];
+
+    const nav: NavGroup[] = [
         { title: 'Guide',    pages: guide },
         { title: 'Concepts', pages: concepts },
+        {
+            title: 'Components',
+            pages:  componentsCatalog,
+            groups: [
+                { title: 'Core',       pages: componentsCore },
+                { title: 'Buttons',    pages: componentsButtons },
+                { title: 'Inputs',     pages: componentsInputs },
+                { title: 'Display',    pages: componentsDisplay },
+                { title: 'Charts',     pages: componentsCharts },
+                { title: 'Lists',      pages: componentsLists },
+                { title: 'Toolbar',    pages: componentsToolbar },
+                { title: 'Menus',      pages: componentsMenus },
+                { title: 'Tree',       pages: componentsTree },
+                { title: 'Diagram',    pages: componentsDiagram },
+                { title: 'Containers', pages: componentsContainers },
+                { title: 'Table',      pages: componentsTable },
+                { title: 'Scrolling',  pages: componentsScrolling },
+            ],
+        },
+        {
+            title: 'Layouts',
+            pages:  layouts,
+            groups: [
+                { title: 'Layout managers', pages: layoutManagers },
+                { title: 'Docking',         pages: docking },
+                { title: 'Serialization',   pages: serialization },
+            ],
+        },
+        { title: 'Data', pages: data },
+        {
+            title: 'Recipes',
+            pages:  recipes,
+            groups: [
+                { title: 'Data + UI',            pages: recipesDataUi },
+                { title: 'Windows + dialogs',     pages: recipesWindowsDialogs },
+                { title: 'Theming + interaction', pages: recipesThemingInteraction },
+                { title: 'Construction patterns', pages: recipesConstructionPatterns },
+                { title: 'Local development',     pages: recipesLocalDevelopment },
+            ],
+        },
+        { title: 'Reference', pages: reference },
     ];
+
+    // Fail loudly on a hand-authored path that doesn't resolve to a migrated
+    // page — an authoring typo, not a runtime condition to handle gracefully.
+    (function requireAll(groups: NavGroup[]): void {
+        for (const group of groups) {
+            group.pages.forEach((entry) => requirePage(entry.path));
+            if (group.groups) {
+                requireAll(group.groups);
+            }
+        }
+    })(nav);
+
+    return nav;
 }
