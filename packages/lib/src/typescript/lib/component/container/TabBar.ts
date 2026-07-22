@@ -1807,25 +1807,43 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
+     * Reports whether any tab in the strip is closeable — the strip-wide flag
+     * that makes {@link computeTabButtonInsets} reserve the close gutter on
+     * every tab, so tabs sharing one cell give their labels equal clearance.
+     *
+     * @returns True when at least one entry carries `closeable` constraints.
+     */
+    private stripHasCloseable(): boolean {
+        return this._entries.some(entry => entry.constraints?.closeable === true);
+    }
+
+    /**
      * Derives a tab button's insets from the current `_compact` flag and the
      * active theme's resolved scale. The label gets two `pad` units of breathing
      * room per side (`pad` is the resolved `scale.tabButtonInset`, halved when
-     * compact); closeable tabs additionally reserve the resolved `scale.tabClose`
-     * close-button box on the edge where {@link positionCloseButtons} pins the ✕ —
-     * the right for upright text (north/south and west/east horizontal), the
-     * bottom or top for rotated cw / ccw text — so the label never runs under it.
-     * Both the reservation and the pad scale with the base, while only the pad
+     * compact); every tab reserves the resolved `scale.tabClose` close-button box
+     * on the edge where {@link positionCloseButtons} pins the ✕ — the right for
+     * upright text (north/south and west/east horizontal), the bottom or top for
+     * rotated cw / ccw text — whenever the strip contains **any** closeable tab,
+     * so tabs sharing one cell give their labels equal clearance (a
+     * non-closeable tab's reserve is blank space, not a close button). Both the
+     * reservation and the pad scale with the base, while only the pad
      * additionally shrinks in the dense strip, so the glyph keeps its clearance.
      *
      * @param constraints - The tab's layout constraints; `constraints.closeable`
-     *   adds the close-button reservation.
+     *   adds the close-button reservation (as does any other tab in the strip
+     *   being closeable).
      *
      * @returns The insets to apply to the tab button.
      */
     private computeTabButtonInsets(constraints?: LayoutConstraints): Insets {
         const scale = ThemeManager.getResolvedScale();
         const pad = this._compact ? Math.round(scale.tabButtonInset / 2) : scale.tabButtonInset;
-        const closeReserve = constraints?.closeable ? scale.tabClose : 0;
+        // Reserve the close gutter on every tab whenever the strip has any
+        // closeable tab, so tabs that share one cell devote the same space to
+        // the reserve — otherwise a closeable tab's label is squeezed by the
+        // reserve while a non-closeable tab in the same cell keeps it all.
+        const closeReserve = (constraints?.closeable || this.stripHasCloseable()) ? scale.tabClose : 0;
 
         if (this.isRotatedText()) {
             // Rotated label runs along the cell, ending where it stops reading:
