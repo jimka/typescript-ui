@@ -7,7 +7,7 @@ import { Router } from '@jimka/typescript-ui/router';
 import { getNav } from '../content/pages.js';
 import type { NavGroup, NavEntry } from '../content/pages.js';
 import { API_PREFIX, getApiNav } from '../content/api.js';
-import type { ApiNavNode } from 'virtual:typedoc-api';
+import type { ApiNavNode } from '../content/api.js';
 
 // Wide enough for the longest nav label ("Linking a local library checkout"),
 // which sits one indent level deeper than any Phase-1 label, without
@@ -73,8 +73,9 @@ class DocsSidebar extends Panel {
     /**
      * Builds the `Tree`'s root nodes: {@link getNav}'s seven authored-page
      * sections, followed by an eighth "API Reference" root driven by
-     * {@link getApiNav} — see "Navigation is a third sidebar root, driven by
-     * typedoc-sidebar.json" in plans/implemented/docs-typedoc-reference.md.
+     * {@link getApiNav}, which derives the tree from the generated file list
+     * — see "The API nav tree is derived from `apiFiles`" in
+     * plans/implemented/docs-sidebar-index-and-kind-grouping.md.
      * Every leaf page node's path is recorded in {@link _nodesByPath} as it goes.
      *
      * @returns The root {@link TreeNode} array for `Tree.setNodes`.
@@ -87,21 +88,29 @@ class DocsSidebar extends Panel {
     }
 
     /**
-     * Recursively builds a group's `TreeNode`, its own pages first and its
-     * nested subgroups after — see "Building the tree nodes" in
-     * plans/implemented/docs-content-migration.md.
+     * Recursively builds a group's `TreeNode`, its nested subgroups first and
+     * its own pages after — see "Building the tree nodes" in
+     * plans/implemented/docs-content-migration.md. The node itself carries the
+     * section's own route, recorded in {@link _nodesByPath} when present.
      *
      * @param group - The nav group to build a node for.
      * @returns The group's {@link TreeNode}.
      */
     private buildGroupNode(group: NavGroup): TreeNode {
-        return {
+        const node: TreeNode = {
             label:    group.title,
+            data:     group.path,
             children: [
-                ...group.pages.map((page) => this.buildPageNode(page)),
                 ...(group.groups ?? []).map((child) => this.buildGroupNode(child)),
+                ...group.pages.map((page) => this.buildPageNode(page)),
             ],
         };
+
+        if (group.path !== undefined) {
+            this._nodesByPath.set(group.path, node);
+        }
+
+        return node;
     }
 
     /**
@@ -122,8 +131,8 @@ class DocsSidebar extends Panel {
     /**
      * Recursively builds an {@link ApiNavNode}'s `TreeNode`, recording its
      * path in {@link _nodesByPath} when it has one — a grouping-only node
-     * (e.g. the `component` category, which has no page of its own) is built
-     * the same way but simply never gets an entry.
+     * (e.g. a module's `Classes` kind directory, which has no page of its
+     * own) is built the same way but simply never gets an entry.
      *
      * @param node - The API nav node to build a `TreeNode` for.
      * @returns The node's {@link TreeNode}.

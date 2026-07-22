@@ -4,7 +4,7 @@ import { Placement } from '@jimka/typescript-ui/primitive';
 import { Header } from '@jimka/typescript-ui/component/display';
 import { StatusBar } from '@jimka/typescript-ui/component/container';
 import { Router } from '@jimka/typescript-ui/router';
-import { moduleCount, symbolCount } from 'virtual:typedoc-api';
+import { moduleCount, symbolCount } from '../content/api.js';
 import { DocsSidebar } from './DocsSidebar.js';
 import { DocsContent } from './DocsContent.js';
 
@@ -29,7 +29,7 @@ class DocsShell extends Panel {
         this._content = new DocsContent(router);
 
         const statusBar = new StatusBar({
-            message: `${moduleCount} modules · ${symbolCount} documented symbols`,
+            message: `${moduleCount()} modules · ${symbolCount()} documented symbols`,
         });
 
         this.addComponent(header,         { placement: Placement.NORTH });
