@@ -329,5 +329,5 @@ export function moduleCount(): number {
  * @returns `apiFiles.length` minus the number of entries whose name is `index.md`.
  */
 export function symbolCount(): number {
-    return apiFiles.filter((file) => !file.endsWith('index.md')).length;
+    return apiFiles.filter((file) => file !== 'index.md' && !file.endsWith('/index.md')).length;
 }
