@@ -171,7 +171,17 @@ class TabButton extends ToggleButton {
         // (Glyph.setPreferredSize locks min/max too) so the line-height sync
         // never re-tracks the glyph to the title line height; TabBar's
         // per-layout re-pin keeps it at the base-scaled size.
-        closeButton.pinGlyphSize(ThemeManager.getResolvedScale().tabCloseGlyph);
+        // Size the box here, not only in TabBar's per-layout pass. The ✕ is
+        // raw-appended rather than enrolled in a layout, so nothing else gives
+        // it a width until that pass runs — and a Button whose own width is
+        // still unresolved centres its content at 0,0 and keeps it there, which
+        // is what left the ✕ jammed into the corner on every tab that existed
+        // at the strip's first layout.
+        const closeScale = ThemeManager.getResolvedScale();
+
+        closeButton.setWidth(closeScale.tabClose);
+        closeButton.setHeight(closeScale.tabClose);
+        closeButton.pinGlyphSize(closeScale.tabCloseGlyph);
 
         // Overlay it on this button's own element rather than enrolling it in a
         // layout (which would stretch it over the whole tab); TabBar pins it to

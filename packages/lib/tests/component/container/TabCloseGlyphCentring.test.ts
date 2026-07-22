@@ -12,6 +12,8 @@
 // run as "the contract still holds offline", not as coverage of that bug.
 import { describe, it, expect, afterEach } from 'vitest';
 import { TabBar } from '~/component/container/TabBar';
+import { TabButton } from '~/component/button/TabButton';
+import { ThemeManager } from '~/core/Theme';
 import { Tab } from '~/layout/Tab';
 import { Component } from '~/core/Component';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
@@ -70,6 +72,23 @@ function glyphOffset(bar: TabBar, id: string): { x: number; y: number; box: numb
 
 describe('tab close-glyph centring', () => {
     afterEach(() => DOM.reset());
+
+    // The live failure's mechanism: a Button whose own width is still
+    // unresolved centres its content at 0,0 and keeps it there. Nothing else
+    // sizes the raw-appended ✕ until TabBar's first layout pass, so it must
+    // leave the constructor already sized.
+    it('gives the close button a resolved size at construction', () => {
+        installTestDOM(CONFIG);
+
+        const button = new TabButton('Alpha', { closeable: true });
+        const close  = button.getCloseButton();
+
+        expect(close).not.toBeNull();
+
+        const expected = ThemeManager.getResolvedScale().tabClose;
+
+        expect({ w: close!.getWidth(), h: close!.getHeight() }).toEqual({ w: expected, h: expected });
+    });
 
     it('centres the glyph when the strip is driven by a Tab layout manager', () => {
         installTestDOM(CONFIG);
