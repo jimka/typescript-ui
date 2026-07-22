@@ -242,3 +242,160 @@ Examples of the form each such note takes:
 [^probes]: The alternative was to classify by reading alone. It was rejected because the single most error-prone judgement in this audit — "is this state already replayed?" — is exactly what a recorded write set answers mechanically, and `init()` replays enough (id, classes, buffered inline styles, the attribute map, ARIA, `applyStyle`, child re-append) that reading each subclass override and reasoning about what it covers is both slow and easy to get wrong. Writing a throwaway `release()` for the test was also rejected: a test-only reimplementation would prove things about itself, not about the shipped path, whereas `render()` is the real rebuild half and exists today.
 
 [^attrs]: 26 call sites across `TextArea`, `Video`, `FileField`, `MarkdownEditor`, `TextInput`, `AbstractSelectableList`, and `TextInputCellEditor` write through `setElementAttribute`, plus 11 through `removeElementAttribute`. Some already carry their own replay field and reapply it from a subclass `init()` (`TextInput` does this for `type`, `name`, `placeholder`, `readonly`, `maxlength`, `inputmode`; `MarkdownEditor` does it for `contenteditable` at [MarkdownEditor.ts:201](packages/lib/src/typescript/lib/component/editor/MarkdownEditor.ts#L201)); others do not. Enumerating which is which is precisely what `element-attribute-replay-buffer` is doing, and two independently-maintained lists of the same call sites would diverge on the first change. The one thing the audit must still catch: a `setElementAttribute` site whose state is *not* recoverable from an attribute value (a `<video>` `src` mid-download, say) gets its own Table A row, because an attribute replay buffer would not restore it.
+
+## Implementation Notes
+
+- **The mandated `TextInput` value row was factually wrong and was corrected
+  after review.** This plan hard-codes that row at line 74 as "already
+  verified" and instructs the implementer to reproduce it verbatim, so the
+  implementer had no licence to correct it. The row attributed the `value`
+  write to `init()`. `TextInput.init()` ([TextInput.ts:651-685](packages/lib/src/typescript/lib/component/input/TextInput.ts#L651-L685))
+  replays only `type`/`name`/`placeholder`/`readOnly`/`maxLength`/`inputMode`/`autoComplete`
+  and never calls `setValue`; the write lives in the `render()` override
+  ([TextInput.ts:692-698](packages/lib/src/typescript/lib/component/input/TextInput.ts#L692-L698)),
+  which calls `super.render()` — that is what runs `init()` — and *then* writes
+  the value. The `accept-loss` verdict still holds, because `_options.text`
+  mirrors the live value (kept current by the `"input"` listener at
+  [TextInput.ts:119](packages/lib/src/typescript/lib/component/input/TextInput.ts#L119))
+  and a rebuild through `getElement(true)` reaches `render()`. The distinction
+  is load-bearing for the follow-up feature: a release path that re-ran `init()`
+  alone would leave the input blank.
+
+- **`writesFor(handle)` could not filter by `args[0] === handle` as specified.**
+  `RecordingDOMSink` (`tests/dom/TestDOM.ts`) only includes the target handle
+  in `args` for a minority of ops (`apply`, `appendChild`, `release`); most
+  single-purpose ops the probes need — `setValue`, `setSelectionRange`,
+  `addListener`, `focus`, `blur`, `setCurrentTime`, `setMuted`, `setVolume`,
+  `setPlaybackRate` — omit the handle from `args` entirely (e.g.
+  `setValue(handle, value)` records `{op: 'setValue', args: [value]}`, not
+  `[handle, value]`). Filtering on `args[0] === handle` is therefore unusable
+  for exactly the ops this file's cases depend on. `rebuild()` still returns a
+  plain `Handle` exactly as specified; `writesFor(handle)` still takes just a
+  `Handle` exactly as specified. Internally, `rebuild()` now records the
+  write-log length just before calling `render()` into a small `Map<Handle,
+  number>`, and `writesFor` returns the slice from that index onward. Since
+  each probe renders exactly one component with no children, every write in
+  that slice is unambiguously the fresh element's — the temporal window
+  achieves the same isolation the plan's handle-filter approach intended.
+  `Handle` is also a branded `number` (`core/DOM.ts`), not an object, so the
+  first attempt (a `WeakMap`) threw `TypeError: Invalid value used as weak
+  map key` — switched to a plain `Map`.
+- **`rebuild`/`setRawAttribute`'s parameter type is `Component<any>`, not
+  `Component`.** A bare `Component` parameter rejected `TextInput<{text:
+  string}>` under `--strict` (`_options` on the narrower generic instance has
+  no properties in common with `ComponentOptions`). `Component<any>` accepts
+  every specialization while keeping the cast — not the parameter type — as
+  the type-safety escape hatch, matching the plan's intent that only the cast
+  itself is the sanctioned unsafe surface.
+- **`npm run lint` does not pass clean**, contrary to the plan's Verification
+  step. Five pre-existing `eslint` errors exist on unmodified `master`
+  (confirmed: this branch's `src/` tree is byte-identical to `master`'s — the
+  only diff is the two new files) in `component/editor/CodeEditor.ts` and
+  `component/table/cell/renderer/Link.ts`, unrelated to this audit and out of
+  scope to fix (`## Non-Goals`: no library source file changes). Recorded
+  here rather than silently declared "clean."
+- **Table A verdict divergence at two structurally similar bypass sites.**
+  `PickerColumn.ts:389` and `AbstractSelectableList.ts:2010-2012` both write
+  `scrollTop` directly, bypassing `Component`'s scroll mirror — but they
+  reach different verdicts (`accept-loss` vs `replay`) because the caller
+  context differs: `PickerColumn`'s write is reactively re-issued by the next
+  relevant interaction, `AbstractSelectableList`'s is not. This is a
+  deliberate per-site judgement, not an inconsistency to reconcile.
+
+- **Corrections from independent review.** Two independent reviewers audited
+  the inventory after the first pass and found six factual defects, fixed in
+  a follow-up pass without reopening the plan. The two that change what the
+  follow-up feature plan must do: (1) Table B was missing `Component`'s own
+  `_clipFrame`/`_contentFrame`/`_ownedHandles` — a lead the plan's own
+  starting list named ([Component.ts:409](packages/lib/src/typescript/lib/core/Component.ts#L409),
+  [:419](packages/lib/src/typescript/lib/core/Component.ts#L419),
+  [:325](packages/lib/src/typescript/lib/core/Component.ts#L325)) but the
+  audit had silently dropped; both frame guards (`if (!this._clipFrame)` /
+  `if (!this._contentFrame)`) block re-wrapping the fresh element after a
+  rebuild, and `_ownedHandles` accumulates dead handles across release
+  cycles — base-class state affecting every clipping or `autoScroll`
+  component. (5) A third failure shape neither table represents: an `init()`
+  override that calls `Event.addListener`/`addSubtreeListener`
+  unconditionally (confirmed in `Tree`, `HeaderCell`, `DiagramView`)
+  double-registers on every rebuild, because `Event`'s registration path
+  ends in a bare, undeduped `.push()`. This gets its own new section, "A
+  third failure shape," plus a new probe test, rather than being forced into
+  Table A or B. The other four corrections: `overlay/Rail.ts` (and, on
+  inspection, `overlay/Drawer.ts` — the identical bug shape, found while
+  fixing Rail's mischaracterizing group sentence) were wrongly filed as
+  swept-clean and are now Table B rows for their persistent
+  `documentElement` self-append; the `VirtualRowView`/`_rowPool` rows were
+  hedged behind a manual-verify that was actually decidable from the two
+  confirmed call sites (`Tree.ts:1133`, `Body.ts:604`) and are now stated as
+  fact; the "Lazy re-materialization" verified assumption skipped
+  `getElement`'s id-lookup step, which is the actual risk surface for a
+  release that doesn't detach the node; and the `Canvas`
+  `_syncedWidth`/`_syncedHeight`/`_syncedDpr` row carried verdict `replay`
+  when the correct action is invalidation (reset to `NOT_YET_SYNCED`) — the
+  row's own Notes already described why replaying would reproduce the
+  300×150 bug, so only the verdict word was wrong. One reviewer-cited call
+  site (`AbstractSelectableList.ts:508`) did not hold up under inspection —
+  that `init()` override does not call `Event.addListener` (the listeners at
+  `AbstractSelectableList.ts:317-320` are constructor-time, not
+  rebuild-time) — so it was left out of the third-failure-shape section
+  rather than cited incorrectly.
+
+- **A third independent review found three more BLOCKING defects, fixed in a
+  second correction pass.** (1) The "third failure shape" site table was
+  materially incomplete and its stopping condition was wrong: the seam grep
+  (`DOM.(sink|source).`) bounds DOM-only *state*, but this failure shape
+  depends on `Event` registration, not `DOM` access, so it is not
+  seam-bounded — `ParentHeader.ts` and `ResizeHandle.ts` never touch the
+  seam and were invisible to the sweep entirely. A proper bounding grep
+  (`Event.add(Listener|SubtreeListener|ViewportListener)(` intersected with
+  `protected init(` overrides, 16 candidate files, each checked by hand)
+  found four more unconditional-registration sites beyond the original
+  three: `component/table/Body.ts:606-615` (the worst omission — two lines
+  past the file's own `VirtualRowView.initScroller` citation already in
+  Table A), `component/container/TabBar.ts:765` (previously miscategorized
+  as swept-clean — reconciled), `component/table/cell/ParentHeader.ts:204`,
+  and `component/table/cell/ResizeHandle.ts:134-135`. `core/Body.ts:85` fits
+  the same unconditional-registration pattern but is explicitly excluded: it
+  overrides `getElement()` to always return `document.body` and can never go
+  through `render()` again, so it can never rebuild. The inventory's "third
+  failure shape" section now states the non-seam-boundedness explicitly and
+  carries the full enumerated set, not a sample — the follow-up plan must
+  use that bounding grep, not the seam grep, when scoping this failure
+  shape's fix. (2) `component/diagram/DiagramEdgeLayer.ts` was wrongly filed
+  swept-clean as "fully self-healing by design." It is the opposite:
+  `render()` calls `super.render()` then `rebuildPaths()`, but
+  `rebuildPaths()` resolves its target via `this.getElement()` rather than
+  the handle `render()` just returned; since `Component._element` is
+  assigned only after `render()` returns, that call either resurrects a
+  still-live old element or (once release also detaches the node, as a
+  correct release must) misses and no-ops — either way the fresh `<svg>`
+  gets no `<path>` children and diagram edges silently vanish on rebuild.
+  Moved to Table A with verdict `replay`. Spot-checking the claim that this
+  is the only `render()` override with this shape (`grep -rl 'protected
+  render()'`, 15 files, all read) found one more:
+  `AbstractSelectableList.ts`'s `SelectableListRow.render()` calls
+  `applyRowClass()`, which writes through `this.setElementAttribute()` —
+  itself resolving via `this.getElement()` — the identical gap. Added as its
+  own Table A row; masked in practice because `syncRows()`/
+  `refreshRowVisualState()` re-drive the same path on every pool
+  reconciliation, so only a rebuild with no accompanying data/selection
+  change would surface it. (3) Two self-reported Coverage-section claims
+  were untrue and have been re-derived, not hand-adjusted: the `WebGLCanvas`
+  opt-out row carried neither `probe:` nor `manual-verify:` (now carries a
+  `manual-verify:` note); and the `TextInput` value row said "probe
+  confirms" instead of the mandated `probe:` token (normalized), making the
+  true `probe:` count 6, correcting the prior pass's same-looking-but-wrong
+  claim of 6 (which was actually backed by only 5 literal tokens). All row
+  and file counts in this file (43 Table A rows, 27 Table B rows, 7
+  third-failure-shape rows, 104 files) were re-counted directly from the
+  finished file with `grep`/`awk`, not adjusted arithmetically from the
+  prior pass's numbers.
+
+- **The full suite must be run with `--no-file-parallelism`.** Under plain
+  `npx vitest run`, `tests/unit/llms-generate.test.ts` fails and
+  `Animation.ts` emits unhandled-timer warnings — both pre-existing,
+  parallelism-dependent flakes, confirmed unrelated to this branch:
+  `tests/unit/llms-generate.test.ts` passes 24/24 under
+  `--no-file-parallelism`, and this branch's only diff from `master` is the
+  inventory and probe-test files (no library source is touched). Treat this
+  as a pre-existing parallelism flake, not something caused by this branch.
