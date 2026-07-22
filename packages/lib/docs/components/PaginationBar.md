@@ -66,8 +66,8 @@ the call is a no-op and the store emits `'pagechangeblocked'`.
 
 ## Disposal
 
-Call `bar.dispose()` when permanently removing the bar to detach its
-store listeners:
+Call `bar.dispose()` when permanently removing the bar. It detaches its
+store listeners and fully tears the bar down:
 
 ```typescript
 const bar = PaginationBar(store);

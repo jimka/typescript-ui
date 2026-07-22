@@ -125,12 +125,15 @@ If you write your own component subclass, override these in addition to whatever
 | `init()` (protected) | Called once the element exists | Wire native listeners, apply initial styles. The framework calls this after `render()`. |
 | `doLayout()` | Called on every layout pass | Override only if you need custom positioning beyond what a `LayoutManager` provides. |
 | `destructor()` (protected) | Called on removal / disposal | Clean up listeners, timers, theme subscriptions. |
+| `dispose()` | Called by the owner to tear a component down | Release resources the base class can't reach on its own (native listeners, subscriptions held outside `subscribeTheme`). Must end with `super.dispose()`. |
 
-The framework uses these in built-in components — `Button` adds a label in `init()`, `Window` wires drag handlers, `Text` subscribes to `ThemeManager.onThemeChange`.
+The framework uses these in built-in components — `Button` adds a label in `init()`, `Window` wires drag handlers, `Text` subscribes to `ThemeManager.onThemeChange` through `subscribeTheme`.
 
 ## Disposal
 
-[`Text`](/components/Text) (and anything that subclasses it — [`Label`](/components/Label), [`Legend`](/components/Legend)) registers a theme-change listener on construction. **Custom components that create `Text` instances dynamically and remove them must call `text.dispose()`** to detach the listener and avoid memory leaks. The framework does this automatically for built-in components attached and removed through normal `addComponent` / `removeComponent` flows.
+Call `component.dispose()` on any component you construct and discard yourself, outside the normal `addComponent` / `removeComponent` flow — a factory-built placeholder, a component held only in a private field. `dispose()` recursively destroys the component's children, releases every tracked theme subscription, removes the DOM element, deletes its per-instance stylesheet rules, and releases tracked handles; it is idempotent, so calling it twice is harmless. The framework does this automatically for built-in components attached and removed through normal `addComponent` / `removeComponent` flows.
+
+If you write your own component subclass that holds a native listener, a timer, or a subscription outside `subscribeTheme`, override `dispose()` to release it and end the override with `super.dispose()` — a `dispose()` that doesn't chain to `super` silently leaves the rest of the teardown undone.
 
 ## See also
 

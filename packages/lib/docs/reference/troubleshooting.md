@@ -78,9 +78,9 @@ Most often a [`Text`](/components/Text)-derived listener leak. Custom components
 class StatusBar extends Component {
     private message: Text = Text('');
 
-    protected destructor(): void {
+    dispose(): void {
         this.message.dispose();
-        super.destructor();
+        super.dispose();
     }
 }
 ```

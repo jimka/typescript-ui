@@ -89,9 +89,9 @@ class StatusBar extends Component {
         this.addComponent(this.message);
     }
 
-    protected destructor() {
+    dispose(): void {
         this.message.dispose();  // detach theme listener
-        super.destructor();
+        super.dispose();
     }
 }
 ```

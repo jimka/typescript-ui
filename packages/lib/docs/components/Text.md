@@ -41,7 +41,7 @@ Pass `null` to drop back to the theme's additive line box (`font-size + --ts-ui-
 
 ## Memory leaks
 
-`Text` subscribes to the active theme on construction so it can re-measure itself on every theme change. **Custom components that create `Text` instances dynamically** and remove them must call `text.dispose()` to detach the listener. The framework does this automatically for built-in components.
+`Text` subscribes to the active theme on construction so it can re-measure itself on every theme change. **Custom components that create `Text` instances dynamically** and remove them must call `text.dispose()` — the general teardown call every component supports — to detach the listener. The framework does this automatically for built-in components.
 
 ## See also
 
