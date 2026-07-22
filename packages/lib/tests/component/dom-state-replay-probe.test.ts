@@ -16,6 +16,7 @@ import { TextInput } from '~/component/input/TextInput';
 import { Video } from '~/component/display/Video';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
+import { Event } from '~/core/Event';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -75,6 +76,29 @@ function rebuild(component: Component<any>): Handle {
 /** Writes through the raw `setElementAttribute` escape hatch, via the same cast `rebuild` uses. */
 function setRawAttribute(component: Component<any>, key: string, value: string): void {
     (component as unknown as Reboundable).setElementAttribute(key, value);
+}
+
+// Distinct per this file so a stray registration from another test never
+// collides with the count-based assertion below (see "A third failure shape"
+// in the inventory — Event keeps module-level state with no reset hook).
+const LISTENER_PROBE_EVENT_TYPE = 'dom-state-probe-init-listener';
+
+/**
+ * Registers one listener unconditionally from `init()`, mirroring the
+ * unguarded pattern `Tree`/`HeaderCell`/`DiagramView` use in the library. The
+ * listener is a stable bound field (not an inline closure) so the same
+ * reference can be passed to `Event.removeListener` to prove how many times
+ * it was pushed.
+ */
+class ListenerOnInitComponent extends Component {
+    readonly handleProbe = (): void => {};
+
+    protected init(element?: Handle): this {
+        super.init(element);
+        Event.addListener(this, LISTENER_PROBE_EVENT_TYPE, this.handleProbe);
+
+        return this;
+    }
 }
 
 /** The writes recorded while rebuilding `handle` — see the temporal-window note above. */
@@ -165,5 +189,28 @@ describe('DOM-state replay probe', () => {
         );
 
         expect(wrote).toBe(false);
+    });
+
+    it('double-registers an init()-installed listener across a rebuild (Component)', () => {
+        const component = new ListenerOnInitComponent({});
+        component.getElement(true);
+        rebuild(component);
+
+        const recorder            = DOM.sink as unknown as Recorder;
+        const removeListenerCount = () => recorder.writes.filter(w =>
+            w.op === 'removeListener' && w.args[0] === LISTENER_PROBE_EVENT_TYPE
+        ).length;
+
+        // One `removeListener` call only drops ONE of the two pushed entries —
+        // the window-level base listener stays installed, proving a second
+        // registration is still sitting in Event's listener array.
+        Event.removeListener(component, LISTENER_PROBE_EVENT_TYPE, component.handleProbe);
+        expect(removeListenerCount()).toBe(0);
+
+        // The second call drains the array to empty, which is what finally
+        // uninstalls the base listener — confirming exactly two registrations,
+        // not more.
+        Event.removeListener(component, LISTENER_PROBE_EVENT_TYPE, component.handleProbe);
+        expect(removeListenerCount()).toBe(1);
     });
 });
