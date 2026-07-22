@@ -242,3 +242,46 @@ Examples of the form each such note takes:
 [^probes]: The alternative was to classify by reading alone. It was rejected because the single most error-prone judgement in this audit — "is this state already replayed?" — is exactly what a recorded write set answers mechanically, and `init()` replays enough (id, classes, buffered inline styles, the attribute map, ARIA, `applyStyle`, child re-append) that reading each subclass override and reasoning about what it covers is both slow and easy to get wrong. Writing a throwaway `release()` for the test was also rejected: a test-only reimplementation would prove things about itself, not about the shipped path, whereas `render()` is the real rebuild half and exists today.
 
 [^attrs]: 26 call sites across `TextArea`, `Video`, `FileField`, `MarkdownEditor`, `TextInput`, `AbstractSelectableList`, and `TextInputCellEditor` write through `setElementAttribute`, plus 11 through `removeElementAttribute`. Some already carry their own replay field and reapply it from a subclass `init()` (`TextInput` does this for `type`, `name`, `placeholder`, `readonly`, `maxlength`, `inputmode`; `MarkdownEditor` does it for `contenteditable` at [MarkdownEditor.ts:201](packages/lib/src/typescript/lib/component/editor/MarkdownEditor.ts#L201)); others do not. Enumerating which is which is precisely what `element-attribute-replay-buffer` is doing, and two independently-maintained lists of the same call sites would diverge on the first change. The one thing the audit must still catch: a `setElementAttribute` site whose state is *not* recoverable from an attribute value (a `<video>` `src` mid-download, say) gets its own Table A row, because an attribute replay buffer would not restore it.
+
+## Implementation Notes
+
+- **`writesFor(handle)` could not filter by `args[0] === handle` as specified.**
+  `RecordingDOMSink` (`tests/dom/TestDOM.ts`) only includes the target handle
+  in `args` for a minority of ops (`apply`, `appendChild`, `release`); most
+  single-purpose ops the probes need — `setValue`, `setSelectionRange`,
+  `addListener`, `focus`, `blur`, `setCurrentTime`, `setMuted`, `setVolume`,
+  `setPlaybackRate` — omit the handle from `args` entirely (e.g.
+  `setValue(handle, value)` records `{op: 'setValue', args: [value]}`, not
+  `[handle, value]`). Filtering on `args[0] === handle` is therefore unusable
+  for exactly the ops this file's cases depend on. `rebuild()` still returns a
+  plain `Handle` exactly as specified; `writesFor(handle)` still takes just a
+  `Handle` exactly as specified. Internally, `rebuild()` now records the
+  write-log length just before calling `render()` into a small `Map<Handle,
+  number>`, and `writesFor` returns the slice from that index onward. Since
+  each probe renders exactly one component with no children, every write in
+  that slice is unambiguously the fresh element's — the temporal window
+  achieves the same isolation the plan's handle-filter approach intended.
+  `Handle` is also a branded `number` (`core/DOM.ts`), not an object, so the
+  first attempt (a `WeakMap`) threw `TypeError: Invalid value used as weak
+  map key` — switched to a plain `Map`.
+- **`rebuild`/`setRawAttribute`'s parameter type is `Component<any>`, not
+  `Component`.** A bare `Component` parameter rejected `TextInput<{text:
+  string}>` under `--strict` (`_options` on the narrower generic instance has
+  no properties in common with `ComponentOptions`). `Component<any>` accepts
+  every specialization while keeping the cast — not the parameter type — as
+  the type-safety escape hatch, matching the plan's intent that only the cast
+  itself is the sanctioned unsafe surface.
+- **`npm run lint` does not pass clean**, contrary to the plan's Verification
+  step. Five pre-existing `eslint` errors exist on unmodified `master`
+  (confirmed: this branch's `src/` tree is byte-identical to `master`'s — the
+  only diff is the two new files) in `component/editor/CodeEditor.ts` and
+  `component/table/cell/renderer/Link.ts`, unrelated to this audit and out of
+  scope to fix (`## Non-Goals`: no library source file changes). Recorded
+  here rather than silently declared "clean."
+- **Table A verdict divergence at two structurally similar bypass sites.**
+  `PickerColumn.ts:389` and `AbstractSelectableList.ts:2010-2012` both write
+  `scrollTop` directly, bypassing `Component`'s scroll mirror — but they
+  reach different verdicts (`accept-loss` vs `replay`) because the caller
+  context differs: `PickerColumn`'s write is reactively re-issued by the next
+  relevant interaction, `AbstractSelectableList`'s is not. This is a
+  deliberate per-site judgement, not an inconsistency to reconcile.
