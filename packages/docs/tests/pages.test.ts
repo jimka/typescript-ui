@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getPage, getNav } from '../src/content/pages.js';
-import { notFoundSource } from '../src/content/notFound.js';
+import { notFoundSource, fetchErrorSource } from '../src/content/notFound.js';
 import type { NavEntry, NavGroup } from '../src/content/pages.js';
 
 // Independent of pages.ts's own glob, so the bijection test below is a real
@@ -179,5 +179,18 @@ describe('notFoundSource', () => {
 
     it('does not treat a path merely prefixed with "api" as the API reference', () => {
         expect(notFoundSource('/apiary')).not.toContain('API reference');
+    });
+
+    it('names the API reference for a path with no matching generated file', () => {
+        expect(notFoundSource('/api/nope')).toContain('API reference');
+    });
+});
+
+describe('fetchErrorSource', () => {
+    it('names the path and the API reference', () => {
+        const source = fetchErrorSource('/api/core/classes/Component');
+
+        expect(source).toContain('/api/core/classes/Component');
+        expect(source).toContain('API reference');
     });
 });

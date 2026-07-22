@@ -48,7 +48,10 @@ jobs:
             # VitePress site — vite.config.ts's `base` is
             # /typescript-ui/next/, so its assets resolve correctly once
             # copied under the VitePress output that upload-pages-artifact
-            # ships below.
+            # ships below. packages/docs/dist now also carries a static copy
+            # of the generated API Markdown (packages/lib/docs/api/, minus
+            # the JSON model and sidebar file) that the docs app fetches one
+            # page at a time — see plans/implemented/docs-typedoc-reference.md.
             - run: npm run build:docs
               env:
                   NODE_OPTIONS: --max-old-space-size=12288

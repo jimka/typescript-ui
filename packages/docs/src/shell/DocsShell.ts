@@ -4,7 +4,7 @@ import { Placement } from '@jimka/typescript-ui/primitive';
 import { Header } from '@jimka/typescript-ui/component/display';
 import { StatusBar } from '@jimka/typescript-ui/component/container';
 import { Router } from '@jimka/typescript-ui/router';
-import { moduleCount, symbolCount } from 'virtual:typedoc-summary';
+import { moduleCount, symbolCount } from 'virtual:typedoc-api';
 import { DocsSidebar } from './DocsSidebar.js';
 import { DocsContent } from './DocsContent.js';
 
