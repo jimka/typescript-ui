@@ -576,13 +576,17 @@ only nulls the field that `detach()` already nulls by hand — an asymmetry wort
 remembering, since it is what made the `Border` case easy to miss.
 
 Two new test files pin this: `tests/component/layout/CollapseAnimationTeardown.test.ts`
-(six cases) and the teardown block in `tests/core/Animation.test.ts`. Each was
-checked to fail when its corresponding fix is reverted.
+(nine cases) and the teardown block in `tests/core/Animation.test.ts` (five). Each
+was checked to fail when its corresponding fix is reverted — the check that caught
+a `Dialog` test which had been passing vacuously, because the offline sink's
+`release()` keeps a released stub resolvable and so never throws on a
+use-after-free the way production does.
 
 **The manual verification in `## Verification` step 6 was NOT run.** Rows 15-16 of
 `## Expected Behaviour` — the demo-app smoke test of the normal-completion path
 and the `transitionend`-wins path — remain outstanding. The offline harness cannot
 reach either (`transitionend` never fires under the modelled sink), so the
 normal-completion path after `finish` was hoisted out of `applyTransitionAndTo`
-has no automated coverage. This is recorded rather than quietly skipped; the smoke
-test is the one piece of the plan's verification still owed.
+is covered offline only through the recorded `transitionend` handler and the
+fallback timer, never against a real element. This is recorded rather than quietly
+skipped; the smoke test is the one piece of the plan's verification still owed.

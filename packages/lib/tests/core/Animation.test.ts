@@ -19,6 +19,8 @@ import { Component } from '~/core/Component';
 import { Container } from '~/core/Container';
 import { Dialog } from '~/overlay/Dialog';
 import { AnimatedDropdown } from '~/core/AnimatedDropdown';
+import { Drawer } from '~/overlay/Drawer';
+import { Notification } from '~/overlay/Notification';
 import { LayerManager } from '~/core/LayerManager';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
@@ -438,6 +440,48 @@ describe('Animation cancellation', () => {
             // is walked on the next document pointerdown, resolving an element
             // handle dispose already released.
             expect(unregister).toHaveBeenCalledWith(dropdown);
+        });
+
+        it('releases the backdrop and the layer when a Drawer is disposed mid-close', () => {
+            const drawer = new Drawer();
+
+            drawer.open();
+            flushFrame();
+            flushFrame();
+
+            drawer.close();
+
+            const unregister = vi.spyOn(LayerManager, 'unregister');
+
+            drawer.dispose();
+
+            // The close animation's completion callback is the only place the
+            // drawer leaves the layer tree and tears down its backdrop. The
+            // backdrop is a private field, never a registered child, so the base
+            // class's recursion cannot reach it: without the re-home it stays
+            // mounted over the app.
+            expect(unregister).toHaveBeenCalledWith(drawer);
+            expect((drawer as unknown as { _backdrop: unknown })._backdrop).toBeNull();
+        });
+
+        it('drops a Notification from the static active list when disposed mid-dismiss', () => {
+            const active = (): unknown[] =>
+                (Notification as unknown as { activeNotifications: unknown[] }).activeNotifications;
+
+            Notification.show('Saved');
+            flushFrame();
+            flushFrame();
+
+            const notification = active()[0] as Component;
+
+            expect(notification).toBeDefined();
+
+            notification.dispose();
+
+            // `finishDismiss` is the only place a notification leaves this
+            // static list, which outlives every teardown. Left in it, `restack`
+            // would later position it through its released element handle.
+            expect(active()).not.toContain(notification);
         });
     });
 
