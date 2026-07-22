@@ -100,13 +100,12 @@ import { file_lines }    from '@jimka/typescript-ui/glyphs/solid/file_lines';
 import { floppy_disk }   from '@jimka/typescript-ui/glyphs/solid/floppy_disk';
 import { filter }        from '@jimka/typescript-ui/glyphs/solid/filter';
 import { circle_info }   from '@jimka/typescript-ui/glyphs/solid/circle_info';
-import { hourglass }     from '@jimka/typescript-ui/glyphs/solid/hourglass';
 import { exclamation_triangle } from '@jimka/typescript-ui/glyphs/solid/exclamation_triangle';
 import { ToolBar } from '~/component/menubar/ToolBar';
 import { VBoxPanel } from './VBoxPanel';
 
 Glyph.register(xmark, arrow_right, arrow_down, folder, file, file_code, file_lines, floppy_disk, filter, circle_info,
-               hourglass, exclamation_triangle);
+               exclamation_triangle);
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and
  * pretends to be a slow network request so the spinner overlay is visible.
@@ -1044,7 +1043,7 @@ class MiscPanel extends Panel {
                 dock.addLazyPanel({
                     id:      `async-${asyncPanelCounter}`,
                     title:   "Async",
-                    glyph:   "hourglass",
+                    glyph:   "file-lines",
                     tooltip: "Resolves after a wait",
                     content: () => dockAsyncPanel("Async — resolved after a wait."),
                 });
