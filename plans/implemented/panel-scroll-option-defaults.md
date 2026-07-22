@@ -193,6 +193,16 @@ The only doc edits are the JSDoc `@returns` lines on the three getters (step 5).
 
 ---
 
+## Implementation Notes
+
+Steps 1-6 landed first (test-first: the four `ScrollingPanel` registry rows failed red exactly as predicted, then the defaults-bag seed, the folded getters and the repointed dispatches turned them green). Full `packages/lib` suite green at 214 files / 2742 tests — higher than the plan's recorded 212/2618 baseline because `master` advanced since the plan was written — and `tsc --noEmit` showed the same pre-existing errors as unmodified `master`, none new.
+
+Step 7 was deliberately deferred rather than done in sequence. `packages/docs/src/shell/DocsContent.ts` was being rewritten concurrently by `docs-content-migration` and `docs-typedoc-reference`, so this branch was rebased on top of that pair and step 7 applied last, against the settled file.
+
+**A verification trap worth recording.** The first browser check of step 7 appeared to show the fix had *broken* scrolling: the pane reported `overflow-y: hidden`, had no `PanelOverlayScroller` and no `Scrollbar` children. The code was fine. A git worktree has no `node_modules` of its own, so Node resolution walks up and finds the **main** working tree's `node_modules/@jimka/typescript-ui`, which symlinks to the main tree's `packages/lib` — i.e. `master`, without this fix. The dev server was faithfully serving the unfixed library while the branch under test sat unused on disk. Symlinking `<worktree>/node_modules/@jimka/typescript-ui -> ../../packages/lib` (it is gitignored) makes the worktree resolve its own build, after which the pane reports `overflow-y: auto`, one `PanelOverlayScroller` child, two `Scrollbar` children, and scrolls.
+
+The lesson generalises to every browser check run from a worktree in this repo: confirm which `packages/lib` the page actually loaded before believing a negative result. Offline the trap does not exist, because the unit tests import through the `~/` alias and always read the worktree's own source — which is why the same behaviour passed in vitest and failed in the browser at the same commit.
+
 ## Notes
 
 [^shape]: ARCHITECTURE.md's *Class-level defaults must survive the getter* offers two remedies — "fold it in the getter" and "always-dispatch" — and `Panel` needs both at once: the fold makes the value resolvable while the backing field is still `undefined`, and the always-dispatch makes the setter's construction-time side effects (the `overflow` writes, the layout-manager overflow flags, the overlay/shadow refresh) fire for a defaulted panel too. `ToolBar.applyOptions` is that exact combination, and its comment claims to mirror `Panel.setAutoScroll` — `ToolBar` implemented the idiom correctly and `Panel`, the class it cites, did not.

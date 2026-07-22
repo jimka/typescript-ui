@@ -109,8 +109,11 @@ export interface PanelOptions extends ContainerOptions {
  * final value, so a caller-supplied `insets` wins over the panel default.
  */
 const _defaultPanelOptions: Partial<PanelOptions> = {
-    tag:    "div",
-    insets: new Insets(4, 4, 4, 4),
+    tag:            "div",
+    insets:         new Insets(4, 4, 4, 4),
+    autoScroll:     "none",
+    scrollShadows:  true,
+    scrollbarStyle: "overlay",
 };
 
 /**
@@ -281,12 +284,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         this._shadowEdges       = { top: 0, bottom: 0, left: 0, right: 0 };
         this._lastContentExtent = { width: 0, height: 0 };
 
-        // Always dispatch `setAutoScroll` — the `?? "none"` covers the
-        // no-option default. Routing through the setter (even for the
-        // default) keeps the `declare`d backing field initialised and
-        // dodges the class-field super-cascade trap that would bite a
-        // `= "none"` initialiser.
-        this.setAutoScroll(options.autoScroll ?? "none");
+        // Always dispatch `setAutoScroll` — the fallback is the class
+        // default from `_defaultPanelOptions`. Routing through the setter
+        // (even for the default) keeps the `declare`d backing field
+        // initialised and dodges the class-field super-cascade trap that
+        // would bite a `= "none"` initialiser.
+        this.setAutoScroll(options.autoScroll ?? this.getAutoScroll());
 
         // Seed the `declare`d overlay/handler fields before `setScrollShadows`
         // dispatches — the setter's teardown branch reads them, and the
@@ -294,9 +297,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         this._shadowOverlay        = null;
         this._shadowScrollHandler  = null;
 
-        // Always dispatch (default on) so the backing field is seeded through
-        // the setter, mirroring the `setAutoScroll` cascade above.
-        this.setScrollShadows(options.scrollShadows ?? true);
+        // Always dispatch so the backing field is seeded through the setter,
+        // mirroring the `setAutoScroll` cascade above; the fallback is the
+        // class default from `_defaultPanelOptions`.
+        this.setScrollShadows(options.scrollShadows ?? this.getScrollShadows());
 
         // Seed the `declare`d overlay fields before `setScrollbarStyle`
         // dispatches — its refresh path (via `refreshOverlayScrollbars` ->
@@ -307,11 +311,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         this._scrollbarH           = null;
         this._overlayScrollHandler = null;
 
-        // Always dispatch so the backing field is seeded through the setter
-        // (default "overlay"), mirroring the `setAutoScroll` / `setScrollShadows`
-        // cascades above. Must run after `setAutoScroll` — the install path
-        // this triggers reads `_autoScroll`.
-        this.setScrollbarStyle(options.scrollbarStyle ?? "overlay");
+        // Always dispatch so the backing field is seeded through the setter,
+        // mirroring the `setAutoScroll` / `setScrollShadows` cascades above;
+        // the fallback is the class default from `_defaultPanelOptions`. Must
+        // run after `setAutoScroll` — the install path this triggers reads
+        // `_autoScroll`.
+        this.setScrollbarStyle(options.scrollbarStyle ?? this.getScrollbarStyle());
 
         return this;
     }
@@ -411,10 +416,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     /**
      * Returns the panel's current scroll mode.
      *
-     * @returns The cached {@link AutoScrollMode}; `"none"` if never set.
+     * @returns The cached {@link AutoScrollMode}, or the class default when never set.
      */
     getAutoScroll(): AutoScrollMode {
-        return this._autoScroll;
+        return this._autoScroll ?? this._defaultOptions.autoScroll!;
     }
 
     /**
@@ -449,10 +454,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     /**
      * Returns whether the panel's scroll edge shadows are enabled.
      *
-     * @returns The cached `scrollShadows` flag; `true` unless explicitly disabled.
+     * @returns The cached `scrollShadows` flag, or the class default when never set.
      */
     getScrollShadows(): boolean {
-        return this._scrollShadows;
+        return this._scrollShadows ?? this._defaultOptions.scrollShadows!;
     }
 
     /**
@@ -482,11 +487,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     /**
      * Returns the panel's current scrollbar style.
      *
-     * @returns The cached {@link ScrollbarStyle}; `"overlay"` unless
-     * explicitly set to `"native"`.
+     * @returns The cached {@link ScrollbarStyle}, or the class default when never set.
      */
     getScrollbarStyle(): ScrollbarStyle {
-        return this._scrollbarStyle;
+        return this._scrollbarStyle ?? this._defaultOptions.scrollbarStyle!;
     }
 
     /**

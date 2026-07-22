@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Component, ComponentOptions } from '~/core/Component';
+import { Panel, PanelOptions } from '~/core/Panel';
+import { Fit } from '~/layout/Fit';
 import { Absolute } from '~/layout/Absolute';
 import { BulletedList } from '~/component/list/BulletedList';
 import { BulletedListItemStyle } from '~/component/list/BulletedListItemStyle';
@@ -35,6 +37,21 @@ class Defaulted extends Component {
             border:       '2px solid red',
             overflow:     'auto',
         } as Partial<ComponentOptions>);
+    }
+}
+
+// Panel subclass seeding autoScroll/scrollShadows/scrollbarStyle through
+// subclassDefaults, the way real subclasses do — this is the defect
+// panel-scroll-option-defaults.md fixes: Panel.applyOptions always-dispatched
+// these three setters with a hardcoded literal instead of a class default.
+class ScrollingPanel extends Panel {
+    constructor(options?: PanelOptions) {
+        super(options, {
+            layoutManager:  new Fit(),
+            autoScroll:     'y',
+            scrollShadows:  false,
+            scrollbarStyle: 'native',
+        } as Partial<PanelOptions>);
     }
 }
 
@@ -187,6 +204,13 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'Link foregroundColor',         resolve: () => new Link().getForegroundColor(),                            expected: 'var(--ts-ui-link-color, rgb(21, 101, 192))' },
     { label: 'Link cursor',                  resolve: () => new Link().getCursor(),                                     expected: 'pointer' },
     { label: 'Link interactive',             resolve: () => new Link().isInteractive(),                                 expected: true },
+    { label: 'Panel autoScroll',             resolve: () => new Panel({}).getAutoScroll(),                              expected: 'none' },
+    { label: 'Panel scrollShadows',          resolve: () => new Panel({}).getScrollShadows(),                           expected: true },
+    { label: 'Panel scrollbarStyle',         resolve: () => new Panel({}).getScrollbarStyle(),                          expected: 'overlay' },
+    { label: 'ScrollingPanel autoScroll',     resolve: () => new ScrollingPanel().getAutoScroll(),                       expected: 'y' },
+    { label: 'ScrollingPanel overflowY',      resolve: () => new ScrollingPanel().getOverflowY(),                        expected: 'auto' },
+    { label: 'ScrollingPanel scrollShadows',  resolve: () => new ScrollingPanel().getScrollShadows(),                    expected: false },
+    { label: 'ScrollingPanel scrollbarStyle', resolve: () => new ScrollingPanel().getScrollbarStyle(),                   expected: 'native' },
 ];
 
 describe('default-resolution registry: a bare construction resolves every class default', () => {
@@ -215,6 +239,35 @@ describe('an explicit value wins over a class default', () => {
         const list = new BulletedList() as any;
         expect(list._options.itemStyle).toBeUndefined();   // resolved via getStyle fold, never stored
         expect(tb._options.backgroundColor).toBeUndefined(); // resolved via getBackgroundColor fold
+    });
+
+    it('a caller value beats the ScrollingPanel subclass defaults', () => {
+        const panel = new ScrollingPanel({
+            autoScroll:     'none',
+            scrollShadows:  true,
+            scrollbarStyle: 'overlay',
+        });
+        expect(panel.getAutoScroll()).toBe('none');
+        expect(panel.getScrollShadows()).toBe(true);
+        expect(panel.getScrollbarStyle()).toBe('overlay');
+    });
+
+    it('a runtime setAutoScroll call beats both the caller value and the subclass default', () => {
+        const panel = new ScrollingPanel();
+        panel.setAutoScroll('auto');
+        expect(panel.getAutoScroll()).toBe('auto');
+        expect(panel.getOverflowY()).toBe('auto');
+    });
+
+    it('clearAutoScroll resolves to "none", not back to the subclass default', () => {
+        const panel = new ScrollingPanel();
+        panel.clearAutoScroll();
+        expect(panel.getAutoScroll()).toBe('none');
+        expect(panel.getOverflowY()).toBe('hidden');
+    });
+
+    it('a subclass default is never dispatched into the _options bag', () => {
+        expect((new ScrollingPanel() as any)._options.autoScroll).toBeUndefined();
     });
 });
 
