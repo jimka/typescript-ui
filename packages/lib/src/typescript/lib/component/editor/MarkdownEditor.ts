@@ -180,10 +180,10 @@ class WysiwygSurface extends Component {
     /**
      * Replays the cached `contenteditable` state onto the freshly-created
      * element. `setContentEditable` (called during detached construction, before
-     * an element exists) caches into `_contentEditable` but its underlying
-     * `setElementAttribute` is write-through only, so the constructor-time write
-     * is dropped; without this replay the mounted element never becomes editable
-     * and the WYSIWYG view silently behaves read-only.
+     * an element exists) caches into `_contentEditable`, and its underlying
+     * `setElementAttribute` now also caches into the base class's
+     * `_elementAttributes` map and replays it from `Component.init()`, so this
+     * replay is redundant — kept anyway for the reason below.
      *
      * The write targets the `element` handle directly — as the base class does
      * for its own cached attributes — because at init time the element is not yet
@@ -207,10 +207,11 @@ class WysiwygSurface extends Component {
     /**
      * Sets whether this surface's element hosts an editable region. Caches the
      * state in `_contentEditable` and writes the `contenteditable` attribute
-     * through to the element. The underlying `setElementAttribute` is
-     * write-through only, so a call made during detached construction (before the
-     * element exists) is a no-op on the DOM; {@link WysiwygSurface.init} replays
-     * the cached state onto the element once it is created.
+     * through to the element. The underlying `setElementAttribute` caches and
+     * replays the value itself now; {@link WysiwygSurface.init} also replays
+     * the cached `_contentEditable` state directly onto the element once it is
+     * created, redundantly but for the `getElement()`-timing reason documented
+     * there.
      *
      * @param contentEditable - Whether the element is contenteditable.
      * @returns This surface, for method chaining.
