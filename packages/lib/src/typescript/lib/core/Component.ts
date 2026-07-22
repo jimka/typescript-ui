@@ -336,6 +336,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private readonly _themeCleanups : Array<() => void>      = [];
     private _tag                  : string                  = "div";
     private _attributes           : Map<string, string>;
+    // Every attribute written through setElementAttribute, cached so init() can
+    // replay it onto a freshly created element. Assigned in the constructor body
+    // (not a field initializer) because applyOptions dispatches setters that write
+    // it from inside super().
+    private _elementAttributes    : Map<string, string>;
     private _boxSizing            : string | null;
 
     // Geometry: NaN sentinels mean "never assigned", so equality guards on
@@ -474,6 +479,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `ensureCSSRule`.
         this._components         = [];
         this._attributes         = new Map<string, string>();
+        this._elementAttributes  = new Map<string, string>();
         this._deferredStyleRules = new Map<string, StyleRule>();
         this.trackSelector(this._styleRule.getSelector());
 
@@ -1238,23 +1244,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      *
-     * @remarks Write-through to the element only — no internal cache. Setters
-     * that need their value to survive detached construction store it in
-     * their own specialized field (e.g. `_options.placeholder`,
-     * `_disabledAttribute`) and replay it from the subclass `init()` after
-     * the element is created.
+     * @remarks Cached and replayed by `init()` on every render, so a value set
+     * while the component is detached survives until the element is created
+     * (and any later re-render). `removeElementAttribute` drops the cached
+     * entry.
      */
     protected setElementAttribute(key: string, value: Object | null | undefined): this {
         if (value === null || value === undefined) {
             return this.removeElementAttribute(key);
         }
 
-        let element = this.getElement();
-        if (!element) {
-            return this;
-        }
+        const stringValue = String(value);
 
-        DOM.sink.apply(element, { setAttr: { [key]: String(value) } });
+        this._elementAttributes.set(key, stringValue);
+
+        let element = this.getElement();
+        if (element) {
+            DOM.sink.apply(element, { setAttr: { [key]: stringValue } });
+        }
 
         return this;
     }
@@ -1265,14 +1272,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param key - The attribute name to remove.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks Drops the cached entry `init()` would otherwise replay, in
+     * addition to removing the attribute from a live element.
      */
     protected removeElementAttribute(key: string): this {
-        let element = this.getElement();
-        if (!element) {
-            return this;
-        }
+        this._elementAttributes.delete(key);
 
-        DOM.sink.apply(element, { removeAttr: [key] });
+        let element = this.getElement();
+        if (element) {
+            DOM.sink.apply(element, { removeAttr: [key] });
+        }
 
         return this;
     }
@@ -5249,7 +5259,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         DOM.sink.setId(element, this.getId());
-        DOM.sink.apply(element, { addClass: [this.constructor.name] });
 
         // Bind the inline-style buffer so any writes queued during detached
         // construction flush into the live element, and subsequent setters
@@ -5279,7 +5288,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             }
         }
 
+        for (const [key, value] of this._elementAttributes) {
+            setAttr[key] = value;
+        }
+
         DOM.sink.apply(element, { setAttr });
+        DOM.sink.apply(element, { addClass: [this.constructor.name] });
 
         this._aria?.applyToElement(element);
 

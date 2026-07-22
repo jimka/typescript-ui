@@ -149,9 +149,9 @@ class HiddenFileInput extends Component {
 
     /**
      * Replays the cached behavioural attributes onto the freshly created element.
-     * `setElementAttribute` is a no-op before the element exists (it does not
-     * queue), so the constructor-time / constructor-tail writes must be
-     * re-applied here — the same replay TextInput's `init()` performs.
+     * `setElementAttribute` now caches into the base class's `_elementAttributes`
+     * map and replays it from `Component.init()`, so this replay is redundant —
+     * kept anyway, matching the same replay TextInput's `init()` performs.
      *
      * @param element - The element being initialised, when provided by the caller.
      *
