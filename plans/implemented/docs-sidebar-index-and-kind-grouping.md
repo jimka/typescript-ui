@@ -253,7 +253,7 @@ function moduleSections(node: ApiNavNode, dir: string): IndexSection[] {
 
     return [
         ...(subs.length > 0
-            ? [{ heading: 'Modules', links: subs.map((child) => link(child, `${dir}/${child.label}`)) }]
+            ? [{ heading: 'Modules', links: subs.map((child) => link(child, child.label)) }]
             : []),
         ...kinds.map((kind) => ({
             heading: kind.label,
@@ -263,13 +263,13 @@ function moduleSections(node: ApiNavNode, dir: string): IndexSection[] {
 }
 ```
 
-The `slice(dir.length + 1)` drops the module directory prefix, which makes every href relative to the page's own directory:
+The `slice(dir.length + 1)` drops the module directory prefix, which makes every href relative to the page's own directory. The link text is always the child's own label, unprefixed — a submodule's `component/` prefix would be redundant on a page the reader is already inside `component` to reach:
 
 | Module `dir` | Child node `path` | `apiFileFor` | Emitted href | Link text |
 |---|---|---|---|---|
 | `core` | `/api/core/classes/Component` | `core/classes/Component.md` | `classes/Component.md` | `Component` |
 | `core` | `/api/core/namespaces/Animation` | `core/namespaces/Animation/index.md` | `namespaces/Animation/index.md` | `Animation` |
-| `component` | `/api/component/button` | `component/button/index.md` | `button/index.md` | `component/button` |
+| `component` | `/api/component/button` | `component/button/index.md` | `button/index.md` | `button` |
 | `component/button` | `/api/component/button/classes/Button` | `component/button/classes/Button.md` | `classes/Button.md` | `Button` |
 
 Because the sections are read off `API_NAV`, which is already sorted, the page's sections and each section's links come out in the same order as the tree — no second sort.
@@ -318,10 +318,10 @@ and `moduleIndexSource('component', …)`:
 
 ## Modules
 
-- [component/button](button/index.md)
-- [component/chart](chart/index.md)
+- [button](button/index.md)
+- [chart](chart/index.md)
 …
-- [component/tree](tree/index.md)
+- [tree](tree/index.md)
 ```
 
 A section with no links still emits its heading; a module with no sections emits breadcrumb and heading only.
@@ -553,7 +553,7 @@ The two literal values are pinned deliberately: they are what the status bar sho
 | `moduleIndexSource` with a section whose `links` is `[]` | the `## ` heading is present, no bullets follow it |
 | `moduleIndexSource(m, [])` | breadcrumb and heading only, no `## ` heading |
 | `fetchApiPage('core/index.md')` | resolves without calling `fetch`; result contains `## Classes` and `## Namespaces`, and contains neither `## Theme` nor `## Other` |
-| `fetchApiPage('component/index.md')` | resolves without calling `fetch`; contains `## Modules` and `- [component/button](button/index.md)` |
+| `fetchApiPage('component/index.md')` | resolves without calling `fetch`; contains `## Modules` and `- [button](button/index.md)` |
 | `fetchApiPage('core/namespaces/Animation/index.md')` | performs a real fetch — a namespace index is not synthesized |
 | `collapseModuleGroups(root, ['component'])` | the eleven `- [component/*](component/*/index.md)` lines become the single line `- [component](component/index.md)` at the first line's position; `- [core](core/index.md)` and the other module lines are untouched |
 | `collapseModuleGroups(s, ['component'])` where `s` has no match | returns `s` byte-identical |
@@ -686,6 +686,8 @@ These need the running app (`npm run docs:dev`, http://localhost:5173) — the o
 
 - **`npm run docs:build` (root) does not build the docs app this plan changes.** The plan's `## Verification` names `npm run docs:build` as "docs app build", but that root script maps to `npm -w packages/lib run docs:build` — the old VitePress site under `packages/lib/docs/`, unaffected by this plan except for the six sorted `index.md` files. The Vite app this plan actually modifies (`packages/docs`) builds via the differently-named root script `npm run build:docs` (`npm -w packages/docs run build`). Verification ran `build:docs`, and confirmed its `dist/api/` copy still contains the full generated tree including the unrendered `dist/api/core/index.md`, with `typedoc-sidebar.json` excluded — the substance of the plan's check, under the correct command.
 - **Two pre-existing JSDoc comments needed updating beyond the steps that touched their functions**, because Part B/C's changes made their prose factually wrong, not just incomplete: `DocsSidebar.buildNodes`'s comment named `typedoc-sidebar.json` as what drives the API root, which stopped being true once Part C derived the tree from `apiFiles` instead (reworded to point at this plan's own architecture-decision heading rather than `docs-typedoc-reference.md`, and to describe `apiFiles`-derivation instead of the deleted sidebar-JSON mechanism). `DocsSidebar.buildApiNode`'s comment used "the `component` category, which has no page of its own" as its example grouping-only node — wrong after Part E, since `component` is exactly the node Part E gives a synthesized page and a non-null `path`; reworded to use a kind directory (e.g. a module's `Classes` node) as the grouping-only example instead, which stays accurate at every level of the tree.
+- **`KIND_LABELS` is exported from `api.ts`, beyond the plan's `## Public API` list.** An audit pass found the kind-label coverage test comparing `apiFiles` against a `KIND_LABELS` copy hand-duplicated in the test file, with an exemption check that re-tested the same not-a-kind condition its own guarding `if` had already established — so it could never fail even for a genuinely new, unmapped TypeDoc kind directory, the exact drift `## Potential Challenges` says the test exists to catch. Fixed by exporting the real `KIND_LABELS` (mirroring the `MODULE_INDEX_FILES` export's "exported so tests can assert" precedent) and rewriting the test as the plan's literal rule — a directory with no `index.md` of its own is either first-level or a known kind — checked directly against `apiFiles` with no derived module-directory predicate standing in the way.
+- **A submodule's link text on its group's synthesized page dropped the group prefix.** `moduleSections` (`api.ts`, "Building a module's sections") originally built a submodule link's text as `` `${dir}/${child.label}` `` — e.g. `component/button` on the `component` page — mirroring TypeDoc's own root index, which lists every submodule with its full `component/x` name because the root page isn't inside any module. A live browser check on the `component` page itself found this redundant: the reader is already inside `component`, so `component/button` reads as `component/button` when `button` says the same thing with no prefix to parse past. Changed to `child.label` (the bare submodule name); the root index's own `component/button` listing is untouched — `collapseModuleGroups` there still collapses TypeDoc's real `component/*` lines, and that page is outside every module so the prefix there is not redundant. Fixed in `moduleSections`, its `## Internal Structure` code block and table, the `moduleIndexSource('component', …)` worked example, and the `fetchApiPage('component/index.md')` row.
 - No other deviations. `MODULE_INDEX_FILES` came out to 19 entries and the API root to 8 children (including `router`) as corrected in the plan; `moduleCount()` = 18 and `symbolCount()` = 683 as originally pinned — see the plan-correction commit that preceded implementation.
 
 ---
