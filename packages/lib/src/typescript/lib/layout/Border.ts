@@ -8,7 +8,8 @@ import { CollapseDirection } from "~/component/container/CollapseButton.js";
 import { FillType } from "~/layout/FillType.js";
 import { Placement } from "~/primitive/Placement.js";
 import { Size, UNBOUNDED, saturate } from "~/primitive/Size.js";
-import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant, CollapseHandle } from "~/layout/CollapseSupport.js";
+import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant } from "~/layout/CollapseSupport.js";
+import type { Animation } from "~/core/Animation.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 
@@ -75,7 +76,15 @@ class Border extends LayoutManager {
     // Canceller for the in-flight region collapse/restore animation, or null
     // when idle. Calling it stops the rAF loop in place so a rapid re-toggle
     // re-snapshots and retargets without two loops fighting.
-    private _collapseAnimation: CollapseHandle | null = null;
+    private _collapseAnimation: (() => void) | null = null;
+
+    // Collapse/restore CSS transitions primed by `runCollapse` that have not
+    // settled yet. Cancelled on detach so their fallback timers cannot fire
+    // against released element handles. Held separately from
+    // `_collapseAnimation` because that field is nulled when the geometry
+    // animation settles — ~40ms before these fallbacks disarm — and is replaced
+    // outright by a re-toggle while these may still be running.
+    private readonly _pendingCollapseTransitions: Animation.CancelHandle[] = [];
 
     // True while a collapse/restore animation is being driven. The animation
     // slides every region by writing each element's own `left`/`top` (via
@@ -302,7 +311,7 @@ class Border extends LayoutManager {
             ...[...this._gutters.values()].map(gutter => ({ component: gutter, relayout: false })),
         ];
 
-        this._collapseAnimation = runCollapse(container, component, participants, this._collapseAnimation, () => {
+        this._collapseAnimation = runCollapse(container, component, participants, this._collapseAnimation, this._pendingCollapseTransitions, () => {
             this._collapseAnimation = null;
 
             // Leave the animated phase and re-lay-out so the non-collapsible
@@ -1107,11 +1116,16 @@ class Border extends LayoutManager {
      * region element. `clearClipFrame` is a no-op for an unframed region.
      */
     detach(): this {
-        // Abandon any in-flight collapse first: its primed transitions carry
-        // fallback timers that would otherwise outlive the element handles
-        // teardown releases.
-        this._collapseAnimation?.cancelAll();
+        // Abandon any in-flight collapse first: the primed CSS transitions
+        // carry fallback timers that would otherwise outlive the element
+        // handles teardown releases.
+        this._collapseAnimation?.();
         this._collapseAnimation = null;
+
+        for (const animation of this._pendingCollapseTransitions) {
+            animation.cancel();
+        }
+        this._pendingCollapseTransitions.length = 0;
 
         super.detach();
 

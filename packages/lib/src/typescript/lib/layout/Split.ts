@@ -7,7 +7,8 @@ import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size, UNBOUNDED } from "~/primitive/Size.js";
-import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant, CollapseHandle } from "~/layout/CollapseSupport.js";
+import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant } from "~/layout/CollapseSupport.js";
+import type { Animation } from "~/core/Animation.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -130,7 +131,15 @@ class Split extends LayoutManager {
     // Canceller for the in-flight collapse/restore animation, or null when
     // idle. Calling it stops the rAF loop in place so a rapid re-toggle can
     // re-snapshot the current geometry and retarget without two loops fighting.
-    private _collapseAnimation: CollapseHandle | null = null;
+    private _collapseAnimation: (() => void) | null = null;
+
+    // Collapse/restore CSS transitions primed by `runCollapse` that have not
+    // settled yet. Cancelled on detach so their fallback timers cannot fire
+    // against released element handles. Held separately from
+    // `_collapseAnimation` because that field is nulled when the geometry
+    // animation settles — ~40ms before these fallbacks disarm — and is replaced
+    // outright by a re-toggle while these may still be running.
+    private readonly _pendingCollapseTransitions: Animation.CancelHandle[] = [];
 
     constructor(options?: SplitOptions) {
         // LayoutManager's constructor takes no options; applied via applyOptions below.
@@ -387,7 +396,7 @@ class Split extends LayoutManager {
             ...this._gutters.map(gutter => ({ component: gutter, relayout: false })),
         ];
 
-        this._collapseAnimation = runCollapse(container, pane, participants, this._collapseAnimation, () => {
+        this._collapseAnimation = runCollapse(container, pane, participants, this._collapseAnimation, this._pendingCollapseTransitions, () => {
             this._collapseAnimation = null;
         });
 
@@ -1029,8 +1038,13 @@ class Split extends LayoutManager {
         // Abandon any in-flight collapse first: its primed transitions carry
         // fallback timers that would otherwise outlive the element handles
         // teardown releases.
-        this._collapseAnimation?.cancelAll();
+        this._collapseAnimation?.();
         this._collapseAnimation = null;
+
+        for (const animation of this._pendingCollapseTransitions) {
+            animation.cancel();
+        }
+        this._pendingCollapseTransitions.length = 0;
 
         super.detach();
 

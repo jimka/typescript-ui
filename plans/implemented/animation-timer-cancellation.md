@@ -515,6 +515,18 @@ and `cancelAll()` (everything, including the primed transitions — what teardow
 wants). `Split` and `Border` hold a `CollapseHandle` instead of a `() => void` and
 call `cancelAll()` from `detach()`.
 
+**The `CollapseHandle` two-channel split was itself replaced.** The first attempt
+at the fix above returned a handle with `cancelLayout()` and `cancelAll()`. A
+second audit pass showed that still leaked: the manager nulls its canceller when
+the *geometry* animation settles, ~40 ms before the primed transitions' fallbacks
+disarm, and a re-toggle replaces the handle outright while the previous toggle's
+transitions may still be running — both strand a live handle no `detach()` can
+reach. `runCollapse` therefore went back to returning a plain `() => void`
+(as on `master`) and now takes the manager's `pending` list of primed transitions,
+which each entry removes itself from on completion. `Split` and `Border` hold that
+list in `_pendingCollapseTransitions` and cancel exactly the live entries on
+`detach()`.
+
 **Every handle assignment cancels the outgoing handle first.** The plan's
 ownership table gives each call site one field but never says what happens when a
 site fires twice inside one animation duration. Assigning over a live handle
@@ -523,3 +535,25 @@ exists to remove — a rapid re-toggle of one `Accordion` section, or a fast tab
 switch, was enough. Each assignment is now preceded by a cancel of the outgoing
 handle, matching the precedent already in `AbstractWindow.setWindowState`, which
 cancels and nulls `_stateAnimHandle` before installing the next tween.
+
+That blanket guard was wrong in one place, and the second audit pass caught it:
+`Accordion.primeWrapper` incremented `_toggleAnimations` *before* cancelling, and
+the matching decrement lived only in the cancelled animation's `onComplete`. A
+re-toggle inside the animation duration therefore lost a decrement permanently,
+so the counter never returned to zero and `setSectionTransitions(false)` was
+unreachable for the rest of the manager's life — a regression against `master`.
+A replacement animation now inherits the outgoing one's slot in the counter
+rather than adding a second, completed animations delete themselves from both
+maps so a `get` only ever returns a live handle, and `Accordion.detach()` runs the
+toggle-cleanup work the animations it cancels would have run. The general lesson,
+which cost two audit cycles: cancelling a handle suppresses its completion
+callback, so any cleanup that callback uniquely owns must be re-homed at the
+cancel site.
+
+**The manual verification in `## Verification` step 6 was NOT run.** Rows 15-16 of
+`## Expected Behaviour` — the demo-app smoke test of the normal-completion path
+and the `transitionend`-wins path — remain outstanding. The offline harness cannot
+reach either (`transitionend` never fires under the modelled sink), so the
+normal-completion path after `finish` was hoisted out of `applyTransitionAndTo`
+has no automated coverage. This is recorded rather than quietly skipped; the smoke
+test is the one piece of the plan's verification still owed.
