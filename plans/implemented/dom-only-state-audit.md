@@ -245,6 +245,22 @@ Examples of the form each such note takes:
 
 ## Implementation Notes
 
+- **The mandated `TextInput` value row was factually wrong and was corrected
+  after review.** This plan hard-codes that row at line 74 as "already
+  verified" and instructs the implementer to reproduce it verbatim, so the
+  implementer had no licence to correct it. The row attributed the `value`
+  write to `init()`. `TextInput.init()` ([TextInput.ts:651-685](packages/lib/src/typescript/lib/component/input/TextInput.ts#L651-L685))
+  replays only `type`/`name`/`placeholder`/`readOnly`/`maxLength`/`inputMode`/`autoComplete`
+  and never calls `setValue`; the write lives in the `render()` override
+  ([TextInput.ts:692-698](packages/lib/src/typescript/lib/component/input/TextInput.ts#L692-L698)),
+  which calls `super.render()` — that is what runs `init()` — and *then* writes
+  the value. The `accept-loss` verdict still holds, because `_options.text`
+  mirrors the live value (kept current by the `"input"` listener at
+  [TextInput.ts:119](packages/lib/src/typescript/lib/component/input/TextInput.ts#L119))
+  and a rebuild through `getElement(true)` reaches `render()`. The distinction
+  is load-bearing for the follow-up feature: a release path that re-ran `init()`
+  alone would leave the input blank.
+
 - **`writesFor(handle)` could not filter by `args[0] === handle` as specified.**
   `RecordingDOMSink` (`tests/dom/TestDOM.ts`) only includes the target handle
   in `args` for a minority of ops (`apply`, `appendChild`, `release`); most
