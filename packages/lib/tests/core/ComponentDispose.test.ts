@@ -156,6 +156,35 @@ describe('Component.dispose()', () => {
 
         expect(childCleanupRan).toBe(true);
     });
+
+    it('runs a registered child\'s destructor() override exactly once', () => {
+        // Regression for the double-teardown class a review found in
+        // AbstractChart / VideoPlayer / MarkdownEditor: each explicitly tore
+        // down a field (`_legend.dispose()`, `_video.dispose()`,
+        // `_codeEditor.dispose()`) that was ALSO registered via
+        // `addComponent`, so the child's `destructor()` ran twice — once
+        // from the explicit call, once from `super.destructor()`'s
+        // recursion below it. The boolean flag the test above checks can't
+        // catch a double run; this counts invocations instead.
+        let destructorRunCount = 0;
+
+        class CountingChild extends Component {
+            protected destructor(): void {
+                destructorRunCount++;
+                super.destructor();
+            }
+        }
+
+        const parent = new Component({});
+        const child = new CountingChild({});
+
+        parent.addComponent(child);
+        parent.getElement(true);
+
+        parent.dispose();
+
+        expect(destructorRunCount).toBe(1);
+    });
 });
 
 describe('Animation.materialize — spinner and stale-result disposal', () => {

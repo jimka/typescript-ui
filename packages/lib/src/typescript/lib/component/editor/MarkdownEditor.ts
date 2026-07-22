@@ -805,17 +805,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Detaches the Lexical registrations and both surfaces' live views, then
-     * defers to the base class for the rest of teardown. Call before
-     * discarding a dynamically-built `MarkdownEditor`, mirroring
-     * `CodeEditor.destructor`.
+     * Detaches the Lexical registrations and the WYSIWYG surface's live view,
+     * then defers to the base class for the rest of teardown — including
+     * disposing the registered `_codeEditor` child, which mirrors
+     * `CodeEditor.destructor`. Call before discarding a dynamically-built
+     * `MarkdownEditor`.
      */
     protected destructor(): void {
         this._unregisterTableView?.();
         this._unregister?.();
         this._editor?.setRootElement(null);
-        this._codeEditor.dispose();
 
+        // `_codeEditor` is registered via `addComponent`, so
+        // `super.destructor()`'s child recursion below already disposes it —
+        // an explicit call here would run `CodeEditor.destructor()` a second
+        // time.
         super.destructor();
     }
 

@@ -552,8 +552,9 @@ class VideoPlayer extends Component<VideoPlayerOptions> {
      * discarding it so no stray native listener survives.
      */
     protected destructor(): void {
-        this._video.dispose();
-
+        // `_video` is registered via `addComponent`, so `super.destructor()`'s
+        // child recursion below already disposes it — an explicit call here
+        // would run `Video.destructor()` a second time.
         const element = this.getElement();
 
         if (element) {

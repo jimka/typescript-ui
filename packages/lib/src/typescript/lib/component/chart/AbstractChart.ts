@@ -1087,8 +1087,9 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
         // lesson at final teardown, not just per repaint.
         this.clearMarks();
 
-        this._legend.dispose();
-
+        // `_legend` is registered via `addComponent`, so `super.destructor()`'s
+        // child recursion below already disposes it — an explicit call here
+        // would run `ChartLegend.destructor()` a second time.
         Tooltip.hide();
 
         super.destructor();
