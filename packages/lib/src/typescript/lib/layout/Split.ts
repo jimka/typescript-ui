@@ -7,8 +7,7 @@ import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size, UNBOUNDED } from "~/primitive/Size.js";
-import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant } from "~/layout/CollapseSupport.js";
-import type { Animation } from "~/core/Animation.js";
+import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant, CollapseTransition } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -139,7 +138,7 @@ class Split extends LayoutManager {
     // `_collapseAnimation` because that field is nulled when the geometry
     // animation settles — ~40ms before these fallbacks disarm — and is replaced
     // outright by a re-toggle while these may still be running.
-    private readonly _pendingCollapseTransitions: Animation.CancelHandle[] = [];
+    private readonly _pendingCollapseTransitions: CollapseTransition[] = [];
 
     constructor(options?: SplitOptions) {
         // LayoutManager's constructor takes no options; applied via applyOptions below.
@@ -1041,8 +1040,20 @@ class Split extends LayoutManager {
         this._collapseAnimation?.();
         this._collapseAnimation = null;
 
-        for (const animation of this._pendingCollapseTransitions) {
-            animation.cancel();
+        // Two shapes of detach. A manager swap leaves the panes mounted, so
+        // their primed transitions must be settled — cleared — or each keeps a
+        // live transition and a permanent compositor layer. A dispose reaches
+        // here from `Component.destructor`, which already destroyed the
+        // children (so `getComponents()` is empty), and touching one would
+        // write through a released element handle: cancel silently instead.
+        const survives = (this.getContainer()?.getComponents().length ?? 0) > 0;
+
+        for (const transition of this._pendingCollapseTransitions) {
+            if (survives) {
+                transition.settle();
+            } else {
+                transition.cancel();
+            }
         }
         this._pendingCollapseTransitions.length = 0;
 

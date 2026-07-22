@@ -759,6 +759,21 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         this._backdropOutAnimation?.cancel();
         this._backdropOutAnimation = null;
 
+        // The close animation's completion callback is the only place these are
+        // released, and cancelling above suppressed it: the backdrop is a
+        // private field rather than a registered child, so the base class's
+        // recursion cannot reach it and it would stay mounted over the app.
+        // Each of these is idempotent, so a drawer disposed while already
+        // closed pays nothing. The `"close"` emit is deliberately NOT re-homed
+        // — disposal is not a close, and emitting into consumer code from a
+        // destructor invites re-entrancy.
+        this.teardownBackdrop();
+        LayerManager.unregister(this);
+        untrapWheel(this);
+
+        this._open    = false;
+        this._closing = false;
+
         super.destructor();
     }
 }

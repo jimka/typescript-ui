@@ -550,6 +550,27 @@ which cost two audit cycles: cancelling a handle suppresses its completion
 callback, so any cleanup that callback uniquely owns must be re-homed at the
 cancel site.
 
+**Cancelling a closing animation drops the teardown its callback owned.** The
+same lesson, found a third time and this time across five classes. A dismiss
+animation's `onComplete` is often the *only* place a component leaves the layer
+tree, tears down a privately-held backdrop, drops out of a static list, or
+settles the promise its `show()` handed the caller — none of which
+`super.destructor()`'s child recursion reaches. Cancelling it on dispose
+therefore lost that work silently. `AnimatedDropdown`, `Dialog`, `Drawer` and
+`Notification` now re-home their callback's bookkeeping into `destructor()`;
+`Dialog` needs a `_finalizing` guard because its `finalize` calls `destructor()`
+partway through and resolves the caller's real result afterwards. `Menu`,
+`Popover` and `AbstractWindow` needed nothing — each already unregisters its
+layer before starting the fade. `Split` and `Border` got the layout-manager
+version: `detach()` *settles* the primed transitions (running their cleanup) when
+the container still has children — the manager-swap path — and merely cancels
+them when it does not, which is the dispose path, where every participant has
+already been destroyed and touching one would write through a released handle.
+
+Two new test files pin this: `tests/component/layout/CollapseAnimationTeardown.test.ts`
+(six cases) and the teardown block in `tests/core/Animation.test.ts`. Each was
+checked to fail when its corresponding fix is reverted.
+
 **The manual verification in `## Verification` step 6 was NOT run.** Rows 15-16 of
 `## Expected Behaviour` — the demo-app smoke test of the normal-completion path
 and the `transitionend`-wins path — remain outstanding. The offline harness cannot

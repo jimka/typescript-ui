@@ -28,6 +28,29 @@ const COLLAPSE_EASING = "cubic-bezier(0.4, 0, 0.6, 1)";
 const NOOP_HANDLE: Animation.CancelHandle = { cancel: (): void => {} };
 
 /**
+ * A primed CSS transition that has not settled yet, as held in a manager's
+ * pending list. Two dispositions, because teardown has two shapes.
+ *
+ * @category Layout
+ */
+export interface CollapseTransition {
+    /**
+     * Abandons the transition and its completion callback. For the dispose
+     * path, where every participant is being destroyed anyway and touching one
+     * would write through a released element handle.
+     */
+    cancel(): void;
+
+    /**
+     * Abandons the transition but runs its cleanup — clearing `transition` on
+     * every participant and `will-change` on the animating one — immediately.
+     * For the manager-swap path, where the participants stay mounted and would
+     * otherwise keep a live transition and a permanent compositor layer.
+     */
+    settle(): void;
+}
+
+/**
  * Primes a transition via `create` and adds its handle to `pending`, arranging
  * for the handle to remove itself once the transition settles. The list is
  * therefore always exactly the set of transitions still in flight — which is
@@ -38,26 +61,41 @@ const NOOP_HANDLE: Animation.CancelHandle = { cancel: (): void => {} };
  * @param pending - The manager's live-transition list.
  * @param create - Primes the transition, given the callback that prunes it.
  */
-function track(pending: Animation.CancelHandle[], create: (onSettled: () => void) => Animation.CancelHandle): void {
-    let handle: Animation.CancelHandle | null = null;
+function track(
+    pending: CollapseTransition[],
+    create:  (onSettled: () => void) => { handle: Animation.CancelHandle; cleanup: () => void },
+): void {
+    let entry: CollapseTransition | null = null;
+    let settled = false;
 
     const prune = (): void => {
-        const index = handle === null ? -1 : pending.indexOf(handle);
+        settled = true;
+
+        const index = entry === null ? -1 : pending.indexOf(entry);
 
         if (index >= 0) {
             pending.splice(index, 1);
         }
     };
 
-    handle = create(prune);
+    const { handle, cleanup } = create(prune);
 
-    // A reduced-motion prime settles inside `create`, before `handle` is bound,
-    // so its `prune` found nothing to remove and there is nothing to add.
-    if (Animation.isReducedMotion()) {
+    // `create` settles synchronously under reduced motion, and also when the
+    // animating component has no element — in both cases `prune` already ran,
+    // before `entry` existed, so there is nothing live to track.
+    if (settled) {
         return;
     }
 
-    pending.push(handle);
+    entry = {
+        cancel: (): void => handle.cancel(),
+        settle: (): void => {
+            handle.cancel();
+            cleanup();
+        },
+    };
+
+    pending.push(entry);
 }
 
 /**
@@ -97,11 +135,19 @@ function primeCollapse(
     participants:       Component[],
     onSettled:          () => void,
     completionProperty?: string,
-): Animation.CancelHandle {
+): { handle: Animation.CancelHandle; cleanup: () => void } {
+    const cleanup = (): void => {
+        for (const participant of participants) {
+            participant.setTransition(null);
+        }
+
+        animating.setWillChange(null);
+    };
+
     if (Animation.isReducedMotion()) {
         onSettled();
 
-        return NOOP_HANDLE;
+        return { handle: NOOP_HANDLE, cleanup };
     }
 
     const transition = properties
@@ -114,20 +160,18 @@ function primeCollapse(
 
     animating.setWillChange(properties.join(", "));
 
-    return Animation.afterTransition({
+    const handle = Animation.afterTransition({
         component:        animating,
         property:         completionProperty ?? properties[0],
         durationMs:       COLLAPSE_DURATION,
         fallbackBufferMs: 40,
         onComplete:       () => {
-            for (const participant of participants) {
-                participant.setTransition(null);
-            }
-
-            animating.setWillChange(null);
+            cleanup();
             onSettled();
         },
     });
+
+    return { handle, cleanup };
 }
 
 /** An axis-aligned box used to snapshot and interpolate a participant's bounds. */
@@ -374,7 +418,7 @@ export function runCollapse(
     toggled:      Component,
     participants: CollapseParticipant[],
     previous:     (() => void) | null,
-    pending:      Animation.CancelHandle[],
+    pending:      CollapseTransition[],
     onIdle?:      () => void,
 ): () => void {
     // Stop any in-flight collapse so a rapid re-toggle re-snapshots from the

@@ -545,6 +545,13 @@ class Dialog extends Component implements DismissableLayer {
     private _panelOutAnimation   : Animation.CancelHandle | null = null;
     private _backdropOutAnimation: Animation.CancelHandle | null = null;
 
+    // True once `hide()`'s finalize has begun. `finalize` calls `destructor()`
+    // partway through and finishes the rest afterwards, so the destructor uses
+    // this to tell "reached from a completing hide" (leave the remainder to
+    // finalize) from "reached from a bare dispose" (run it here, because the
+    // cancelled dismiss animation will never call finalize at all).
+    private _finalizing: boolean = false;
+
     /**
      * Constructs a Dialog but does not display it. Call `show()` to open.
      *
@@ -1100,6 +1107,8 @@ class Dialog extends Component implements DismissableLayer {
         Event.removeViewportListener(this, 'resize', this._boundResizeHandler);
 
         const finalize = (): void => {
+            this._finalizing = true;
+
             this._backdrop.destroy();
             this.removeElement();
             this.destructor();
@@ -1160,6 +1169,27 @@ class Dialog extends Component implements DismissableLayer {
         this._panelOutAnimation = null;
         this._backdropOutAnimation?.cancel();
         this._backdropOutAnimation = null;
+
+        // A dispose that lands mid-dismiss cancels the animation whose
+        // completion callback owns the rest of teardown, so run that work here.
+        // The backdrop is a private field rather than a registered child, so the
+        // base class's recursion cannot reach it and it would otherwise stay
+        // mounted over the whole app; the promise `show()` handed the caller
+        // would never settle. Skipped when `finalize` is already running, which
+        // reaches this method partway through and completes the rest itself —
+        // including resolving with the caller's real result rather than the
+        // `"close"` stand-in used here.
+        if (!this._finalizing) {
+            this._backdrop.destroy();
+
+            LayerManager.unregister(this);
+            untrapWheel(this);
+
+            if (this._resolvePromise) {
+                this._resolvePromise('close');
+                this._resolvePromise = null;
+            }
+        }
 
         super.destructor();
     }

@@ -169,6 +169,28 @@ describe('collapse-animation teardown', () => {
             container.dispose();
         });
 
+        it('clears the primed transitions when the manager is swapped out mid-collapse', () => {
+            install();
+
+            const split = new Split({ orientation: 'horizontal' });
+            const container = host(split, 3);
+            const panes = container.getComponents();
+
+            split.setPaneCollapsed(0, true);
+
+            expect(panes.some(p => p.getTransition() !== null)).toBe(true);
+
+            // A manager swap leaves the panes mounted, so detach must settle the
+            // primed transitions rather than abandon them — otherwise each keeps
+            // a live transition and a permanent compositor layer.
+            split.detach();
+
+            expect(panes.map(p => p.getTransition())).toEqual([null, null, null]);
+            expect(panes.map(p => p.getWillChange())).toEqual([null, null, null]);
+
+            container.dispose();
+        });
+
         it('arms no fallback that survives detach', () => {
             install();
 

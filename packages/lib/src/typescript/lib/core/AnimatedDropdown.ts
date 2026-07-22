@@ -406,6 +406,14 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
         this._hideAnimation?.cancel();
         this._hideAnimation = null;
 
+        // `hideAnimated`'s completion callback is the only place the dropdown
+        // leaves the layer tree, and cancelling above suppressed it. A layer
+        // left registered is walked on the next document pointerdown, where the
+        // containment test resolves the element handle released below — the
+        // very use-after-free this cancellation exists to prevent. Idempotent,
+        // so the already-unregistered cases cost nothing.
+        LayerManager.unregister(this);
+
         super.destructor();
     }
 

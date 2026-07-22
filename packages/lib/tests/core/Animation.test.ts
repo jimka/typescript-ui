@@ -18,6 +18,8 @@ import { Animation } from '~/core/Animation';
 import { Component } from '~/core/Component';
 import { Container } from '~/core/Container';
 import { Dialog } from '~/overlay/Dialog';
+import { AnimatedDropdown } from '~/core/AnimatedDropdown';
+import { LayerManager } from '~/core/LayerManager';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
@@ -391,6 +393,51 @@ describe('Animation cancellation', () => {
             // The fade's finish() would write `transition: null` through the
             // panel's now-released handle. Nothing may reach the element.
             expect(stylesSince(afterDispose)).toEqual([]);
+        });
+    });
+
+    describe('teardown re-homes the cancelled callback\'s bookkeeping', () => {
+        // Cancelling a closing animation suppresses its completion callback.
+        // Where that callback uniquely owned non-DOM bookkeeping — leaving the
+        // layer tree, dropping out of a static list, settling a promise — the
+        // destructor has to do that work instead, or teardown silently loses it.
+        it('settles the show() promise when a Dialog is disposed mid-dismiss', async () => {
+            const dialog = new Dialog({ title: 'Confirm', message: 'Proceed?' });
+            const settled = vi.fn();
+
+            void dialog.show().then(settled);
+
+            flushFrame();
+            flushFrame();
+
+            dialog.hide('confirm');
+            dialog.dispose();
+
+            await Promise.resolve();
+
+            expect(settled).toHaveBeenCalledTimes(1);
+        });
+
+        it('leaves the layer tree when a dropdown is disposed mid-hide', () => {
+            const dropdown = new AnimatedDropdown();
+
+            dropdown.getElement(true);
+            dropdown.showAnimated();
+
+            flushFrame();
+            flushFrame();
+
+            const unregister = vi.spyOn(LayerManager, 'unregister');
+
+            dropdown.hideAnimated();
+            dropdown.dispose();
+
+            // hideAnimated's completion callback is the only place the dropdown
+            // leaves the layer tree; cancelling it on dispose suppressed that,
+            // so the destructor has to unregister instead. A layer left behind
+            // is walked on the next document pointerdown, resolving an element
+            // handle dispose already released.
+            expect(unregister).toHaveBeenCalledWith(dropdown);
         });
     });
 

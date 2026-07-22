@@ -647,6 +647,17 @@ export class Notification extends Component {
         this._dismissAnimation?.cancel();
         this._dismissAnimation = null;
 
+        // `finishDismiss` is the only place a notification leaves the static
+        // active list, and cancelling above suppressed it. That list outlives
+        // every teardown, and `restack` writes setX/setY to each entry — so a
+        // disposed notification left in it is positioned through the element
+        // handle released below. Re-stack afterwards so the survivors close the
+        // gap, exactly as a completed dismiss would have left them.
+        if (Notification.activeNotifications.includes(this)) {
+            Notification.activeNotifications = Notification.activeNotifications.filter(n => n !== this);
+            Notification.restack();
+        }
+
         super.destructor();
     }
 }
