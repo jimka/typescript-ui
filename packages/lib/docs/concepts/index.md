@@ -6,17 +6,17 @@ If you are new here, start with the [mental model](/guide/mental-model) in the G
 
 ## Pages
 
+- [Accessibility](/concepts/accessibility) — ARIA, keyboard navigation, `RovingTabIndex`.
 - [Component lifecycle](/concepts/component-lifecycle) — construction, render, `doLayout`, dispose.
 - [Constructing components](/concepts/construction) — callable shorthand, options bags, and which exports need `new`.
-- [Layout system](/concepts/layout-system) — how `LayoutManager` resolves fill / anchor constraints.
-- [Sizing](/concepts/sizing) — preferred / min / max / fixed sizes.
+- [Data binding](/concepts/data-binding) — Model / Store / Proxy / `Binding` overview.
+- [DOM seams](/concepts/dom-seams) — the swappable `DOMSink` / `DOMSource` write and read boundary behind offline geometry tests.
 - [Events](/concepts/events) — `addListener` vs `addSubtreeListener`, hover quirks.
 - [Layering](/concepts/layering) — the runtime layer tree, z-index bands, and dismiss modes behind overlays.
-- [Theming](/concepts/theming) — design tokens, custom themes, theme-change listeners.
-- [Data binding](/concepts/data-binding) — Model / Store / Proxy / `Binding` overview.
-- [Routing](/concepts/routing) — mapping the URL hash to a top-level app section with `Router`.
-- [Accessibility](/concepts/accessibility) — ARIA, keyboard navigation, `RovingTabIndex`.
+- [Layout system](/concepts/layout-system) — how `LayoutManager` resolves fill / anchor constraints.
 - [Performance](/concepts/performance) — `pauseLayout`, virtual scrolling, dispose patterns.
-- [DOM seams](/concepts/dom-seams) — the swappable `DOMSink` / `DOMSource` write and read boundary behind offline geometry tests.
+- [Routing](/concepts/routing) — mapping the URL hash to a top-level app section with `Router`.
+- [Sizing](/concepts/sizing) — preferred / min / max / fixed sizes.
+- [Theming](/concepts/theming) — design tokens, custom themes, theme-change listeners.
 
 If you are building custom components or layouts, the **lifecycle**, **layout system**, and **events** pages are the load-bearing reading. For app-level work, **theming** and **data binding** are the most useful entry points.

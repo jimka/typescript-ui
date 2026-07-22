@@ -4,9 +4,9 @@ Quick-lookup material — definitions, common questions, runtime troubleshooting
 
 ## Pages
 
-- [Glossary](/reference/glossary) — terms used throughout the documentation.
-- [FAQ](/reference/faq) — short answers to recurring questions.
-- [Troubleshooting](/reference/troubleshooting) — diagnosing common runtime issues.
 - [Browser support](/reference/browser-support) — what's verified, what's not.
-- [Migration](/reference/migration) — version-to-version breaking-change notes.
 - [Changelog](/reference/changelog) — release history.
+- [FAQ](/reference/faq) — short answers to recurring questions.
+- [Glossary](/reference/glossary) — terms used throughout the documentation.
+- [Migration](/reference/migration) — version-to-version breaking-change notes.
+- [Troubleshooting](/reference/troubleshooting) — diagnosing common runtime issues.

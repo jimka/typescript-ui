@@ -28,7 +28,7 @@ Components and layout managers are callable — `Window('Hello')` works without 
 
 ## Next steps
 
-- [Concepts](/concepts/) — the framework's mental model.
-- [Components](/components/) — per-component reference.
-- [Layouts](/layouts/) — the layout managers.
 - [API Reference](/api/) — generated TypeDoc output.
+- [Components](/components/) — per-component reference.
+- [Concepts](/concepts/) — the framework's mental model.
+- [Layouts](/layouts/) — the layout managers.
