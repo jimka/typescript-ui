@@ -305,6 +305,20 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
         return element;
     }
+
+    /**
+     * Tears the strip down completely: its element, its tracked handles, and
+     * both of its per-instance stylesheet rules (`#uuid` and the lazy
+     * `#uuid.snap-target`). Called by the owning window when it closes.
+     *
+     * A strip is appended straight to the window element rather than registered
+     * as a child component, so the window's inherited teardown — which recurses
+     * over its child list — cannot reach it. Without this the strips' rules
+     * stayed on the shared stylesheet for the life of the page.
+     */
+    dispose(): void {
+        this.destructor();
+    }
 }
 
 const WindowBorderCallable = callable(WindowBorder);
