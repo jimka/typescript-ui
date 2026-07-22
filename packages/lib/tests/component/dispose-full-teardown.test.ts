@@ -10,6 +10,16 @@
 // in plans/implemented/component-teardown-seam.md, which greps
 // `^\s*dispose(` definitions in the library source and compares that count
 // against this registry by hand at implementation time.
+//
+// Re-derived count (grep is a superset — read each hit before trusting it):
+// `grep -rn '^\s*dispose(' packages/lib/src/typescript/lib` currently
+// returns 18 hits. Three are not Component-subclass overrides and don't
+// belong in this registry: `Component.ts:706` is the base `dispose()` this
+// registry's rows override; `Component.ts:726` is a local variable named
+// `dispose` called inside a loop, not a method definition; and
+// `core/StyleTarget.ts:298` is `StyleRule.dispose()`, an unrelated class
+// hierarchy that never constructs a `Component` and so cannot appear here.
+// That leaves 15 real overrides, matching this registry's 15 rows.
 import { describe, it, expect } from 'vitest';
 import { Component } from '~/core/Component';
 import { Markdown } from '~/component/display/Markdown';
@@ -28,6 +38,7 @@ import { Menu } from '~/overlay/Menu';
 import { Popover } from '~/overlay/Popover';
 import { Link } from '~/component/input/Link';
 import { TabBar } from '~/component/container/TabBar';
+import { ScrollStrip } from '~/component/container/ScrollStrip';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
 
 /**
@@ -103,6 +114,25 @@ const REGISTRY: Array<{
                 bar._tabClip, bar._toolGroup, bar._leadGroup,
                 bar._indicator, bar._dropTint, bar._reorderBar,
             ]);
+        },
+    },
+    // `_clip`, `_leadArrow`, and `_trailArrow` are raw-appended to the strip's
+    // own element rather than registered via `addComponent` (see
+    // ScrollStrip.dispose), so they need `extraSubtrees` the same way
+    // TabBar's chrome overlays do above. The arrows are only built lazily on
+    // overflow, so they stay `null` (and out of `extraSubtrees`) here.
+    {
+        name: 'ScrollStrip',
+        make: () => new ScrollStrip(),
+        ownIds: (c) => {
+            const strip = c as unknown as {
+                _clip: Component;
+                _leadArrow: Component | null;
+                _trailArrow: Component | null;
+            };
+
+            return collectIds(c, [strip._clip, strip._leadArrow, strip._trailArrow]
+                .filter((child): child is Component => child !== null));
         },
     },
 ];

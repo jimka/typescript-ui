@@ -15,6 +15,8 @@ import { Component } from '~/core/Component';
 import { Container } from '~/core/Container';
 import { Tab } from '~/layout/Tab';
 import { TabBar } from '~/component/container/TabBar';
+import { ScrollStrip } from '~/component/container/ScrollStrip';
+import { Button } from '~/component/button/Button';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { Animation } from '~/core/Animation';
 import { createSpinnerWrap } from '~/component/display/SpinnerWrap';
@@ -317,6 +319,41 @@ describe('TabBar.dispose()', () => {
         // raw-append shape, but in a class this plan's dispose() contract
         // does not cover) that a blanket diff cannot distinguish from a
         // regression here.
+        const leaked = leakedKeys(before).filter((key) => ownIds.some((id) => key.includes(id)));
+        expect(leaked).toEqual([]);
+    });
+});
+
+describe('ScrollStrip.dispose()', () => {
+    it('recurses into a still-attached item inside `_clip`, and into forced-open paging arrows', () => {
+        const before = ruleSnapshot();
+
+        const strip = new ScrollStrip();
+        const item = new Button({ text: 'A' });
+        strip.addItem(item);
+        strip.getElement(true);
+
+        // `layoutContent` is `layoutArrows`'s public entry point; calling it
+        // directly with a nonzero reserve reaches the private `ensureArrows()`
+        // (ScrollStrip.ts:556) without needing a real overflow-triggering
+        // layout pass, so `_leadArrow` / `_trailArrow` exist for this test too.
+        strip.layoutContent(24, 0);
+
+        const stripInternals = strip as unknown as { _clip: Component; _leadArrow: Component; _trailArrow: Component };
+        const ownIds = collectIds(strip, [stripInternals._clip, stripInternals._leadArrow, stripInternals._trailArrow]);
+
+        // Confirms the item and arrows actually rendered a rule before the
+        // assertion below, so a false negative can't hide behind "never had a key".
+        expect(_ruleCacheKeys().length).toBeGreaterThan(before.size);
+        expect(ownIds).toContain(item.getId());
+
+        strip.dispose();
+
+        // `_clip` (holding the item) and the two arrows are raw-appended
+        // outside `_components` (see ScrollStrip.dispose) — a fix that only
+        // released `_clip`'s own rule, without `_clip` recursing into the
+        // item it holds, would still pass a `_clip`-only check. Assert the
+        // full known subtree instead.
         const leaked = leakedKeys(before).filter((key) => ownIds.some((id) => key.includes(id)));
         expect(leaked).toEqual([]);
     });
