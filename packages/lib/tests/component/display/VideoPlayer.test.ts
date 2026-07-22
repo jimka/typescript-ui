@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { VideoPlayer, formatMediaTime } from '~/component/display/VideoPlayer';
 import { Video } from '~/component/display/Video';
 import { ProgressiveEngine } from '~/component/display/PlaybackEngine';
@@ -264,5 +264,27 @@ describe('VideoPlayer fullscreen relayout', () => {
 
         expect(player.isFullscreen()).toBe(false);
         expect(player.getInnerSize()).not.toEqual(fullscreenInner);
+    });
+});
+
+describe('VideoPlayer dispose', () => {
+    it('runs the registered _video child\'s destructor() exactly once', () => {
+        const player = new VideoPlayer();
+
+        // `_video` is a registered child (added via `addComponent`), so its
+        // teardown is reached through the base class's recursive
+        // `destructor()` call — a redundant explicit call in
+        // `VideoPlayer.destructor()` would run it twice. Regression for
+        // that double-teardown class, matching Chart.test.ts's
+        // `_legend.destructor` spy.
+        const videoDestructor = vi.spyOn(
+            (player as unknown as { _video: { destructor(): void } })._video as unknown as { destructor(): void },
+            'destructor'
+        );
+
+        player.getElement(true);
+        player.dispose();
+
+        expect(videoDestructor).toHaveBeenCalledTimes(1);
     });
 });
