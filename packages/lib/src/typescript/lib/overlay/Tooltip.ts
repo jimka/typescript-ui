@@ -69,6 +69,12 @@ interface ElementTooltipAttachment {
 // The singleton is exported directly (see `overlay/index.ts`).
 export class Tooltip extends Component {
 
+    // In-flight fades, cancelled on teardown so their fallback timers cannot
+    // fire against this tooltip's released element handle. Instance fields
+    // written through the singleton `inst` in the static show / hide below.
+    private _showAnimation: Animation.CancelHandle | null = null;
+    private _hideAnimation: Animation.CancelHandle | null = null;
+
     private static instance: Tooltip | null = null;
     private static showTimer: ReturnType<typeof setTimeout> | null = null;
     private static attachments: Map<string, TooltipAttachment> = new Map();
@@ -295,7 +301,8 @@ export class Tooltip extends Component {
             return;
         }
 
-        Animation.play(el, {
+        inst._showAnimation?.cancel();
+        inst._showAnimation = Animation.play(el, {
             from:       { opacity: "0" },
             to:         { opacity: "1" },
             durationMs: TOOLTIP_ANIM_DURATION_MS,
@@ -331,7 +338,8 @@ export class Tooltip extends Component {
 
         Tooltip.dismissing = true;
 
-        Animation.play(el, {
+        inst._hideAnimation?.cancel();
+        inst._hideAnimation = Animation.play(el, {
             to:         { opacity: "0" },
             durationMs: TOOLTIP_ANIM_DURATION_MS,
             properties: ["opacity"],
@@ -617,5 +625,19 @@ export class Tooltip extends Component {
         this._text.setHeight(this._lineCount * this._perLine);
 
         return this;
+    }
+
+    /**
+     * Cancels any in-flight fade, then defers to the base class. Cancelling
+     * first keeps their fallback timers from firing after `super.destructor()`
+     * has released this tooltip's element handle.
+     */
+    protected destructor(): void {
+        this._showAnimation?.cancel();
+        this._showAnimation = null;
+        this._hideAnimation?.cancel();
+        this._hideAnimation = null;
+
+        super.destructor();
     }
 }

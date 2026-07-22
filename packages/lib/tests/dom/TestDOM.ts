@@ -12,7 +12,7 @@
 // reads the recorded scroll / value / id state back off that stub. The shared
 // `TestHandleTable` is what lets a write through the sink be read by the source.
 
-import { DOM, type DOMSink, type DOMSource, type ElementPatch, type Handle, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize, type MediaState } from '~/core/DOM';
+import { DOM, type DOMSink, type DOMSource, type ElementPatch, type Handle, type TimerId, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize, type MediaState } from '~/core/DOM';
 import type { Component } from '~/core/Component';
 import type { Size } from '~/primitive/Size';
 import type { TextMeasureOptions, TextMetrics } from '~/core/Util';
@@ -320,6 +320,9 @@ export class RecordingDOMSink implements DOMSink {
      */
     private readonly _listeners = new Map<Handle, Map<string, Set<Function>>>();
 
+    /** Timers scheduled through this sink that have not yet fired. */
+    private readonly _timers = new Set<TimerId>();
+
     private record(op: string, ...args: unknown[]): void {
         this.writes.push({ op, args });
     }
@@ -544,6 +547,40 @@ export class RecordingDOMSink implements DOMSink {
 
     cancelAnimationFrame(handle: number): void {
         this.record('cancelAnimationFrame', handle);
+    }
+
+    /**
+     * Delegates to the global timer rather than swallowing the callback the way
+     * {@link requestAnimationFrame} does, so `vi.useFakeTimers()` and
+     * `vi.advanceTimersByTime` keep driving animation fallbacks offline.
+     */
+    setTimeout(callback: () => void, delayMs: number): TimerId {
+        this.record('setTimeout', delayMs);
+
+        const id = setTimeout(() => {
+            this._timers.delete(id);
+            callback();
+        }, delayMs);
+
+        this._timers.add(id);
+
+        return id;
+    }
+
+    clearTimeout(id: TimerId): void {
+        this.record('clearTimeout', id);
+        this._timers.delete(id);
+        clearTimeout(id);
+    }
+
+    clearAllTimeouts(): void {
+        this.record('clearAllTimeouts');
+
+        for (const id of this._timers) {
+            clearTimeout(id);
+        }
+
+        this._timers.clear();
     }
 
     setId(handle: Handle, id: string): void {

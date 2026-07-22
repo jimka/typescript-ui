@@ -6,6 +6,7 @@ import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerMa
 import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
 import { Util } from "~/core/Util.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
+import type { Animation } from "~/core/Animation.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
 import type { Edge } from "~/primitive/Edge.js";
 import { Position } from "~/primitive/Position.js";
@@ -155,6 +156,11 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
     declare private _titleComponent:    Text | null;
     private _bodyComponent:             Component | null = null;
     private _actionsRow:        Component | null = null;
+
+    // In-flight fades, cancelled on teardown so their fallback timers cannot
+    // fire against this popover's released element handle.
+    private _fadeShowAnimation: Animation.CancelHandle | null = null;
+    private _fadeHideAnimation: Animation.CancelHandle | null = null;
     private _anchorElement:     Handle | null = null;
     private _arrowComponent:    Component | null = null;
     private _isOpen:            boolean = false;
@@ -483,7 +489,8 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         this.doLayout();
         this._reposition();
 
-        fadeShow(this, { durationMs: POPOVER_FADE_DURATION_MS });
+        this._fadeShowAnimation?.cancel();
+        this._fadeShowAnimation = fadeShow(this, { durationMs: POPOVER_FADE_DURATION_MS });
 
         this.attachRepositionListeners();
 
@@ -508,7 +515,8 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         LayerManager.unregister(this);
         untrapWheel(this);
 
-        fadeHideAndDetach(this, { durationMs: POPOVER_FADE_DURATION_MS });
+        this._fadeHideAnimation?.cancel();
+        this._fadeHideAnimation = fadeHideAndDetach(this, { durationMs: POPOVER_FADE_DURATION_MS });
 
         return this;
     }
@@ -608,6 +616,14 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         // straight into the DOM via `ensureArrow()` (not registered in
         // `_components`), so recursion can never reach it and it must be
         // disposed explicitly.
+        // After `hide()` above, since that starts a fresh fade-out whose
+        // fallback timer would otherwise outlive the element handle
+        // `super.destructor()` releases below.
+        this._fadeShowAnimation?.cancel();
+        this._fadeShowAnimation = null;
+        this._fadeHideAnimation?.cancel();
+        this._fadeHideAnimation = null;
+
         this._arrowComponent?.dispose();
 
         this._anchorElement   = null;

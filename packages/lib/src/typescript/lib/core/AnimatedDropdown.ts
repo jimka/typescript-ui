@@ -21,6 +21,9 @@ const DEFAULT_TRANSLATE_PX: number = 4;
  */
 const _dismissingByComponent: WeakMap<Component, boolean> = new WeakMap();
 
+/** Handle for the fade paths that finish before there is anything to cancel. */
+const NOOP_HANDLE: Animation.CancelHandle = { cancel: (): void => {} };
+
 /**
  * Construction-time options for {@link AnimatedDropdown}.
  *
@@ -109,6 +112,11 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     // test so the click that toggles the dropdown does not immediately
     // re-close it. Null for dropdowns whose host owns the toggle gating.
     private _anchorElement: Handle | null = null;
+
+    // In-flight entrance / exit fades, cancelled on teardown so their fallback
+    // timers cannot fire against this dropdown's released element handle.
+    private _showAnimation: Animation.CancelHandle | null = null;
+    private _hideAnimation: Animation.CancelHandle | null = null;
 
     /**
      * @param options - Optional construction-time options.
@@ -239,7 +247,8 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
 
         this.setWillChange("opacity, transform");
 
-        Animation.play(el, {
+        this._showAnimation?.cancel();
+        this._showAnimation = Animation.play(el, {
             from:       { opacity: "0", transform: `translateY(-${this.getTranslatePx()}px)` },
             to:         { opacity: "1", transform: "translateY(0)" },
             durationMs: this.getDurationMs(),
@@ -282,7 +291,8 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
         this._dismissing = true;
         this.setWillChange("opacity, transform");
 
-        Animation.play(el, {
+        this._hideAnimation?.cancel();
+        this._hideAnimation = Animation.play(el, {
             to:         { opacity: "0", transform: `translateY(-${this.getTranslatePx()}px)` },
             durationMs: this.getDurationMs(),
             properties: ["opacity", "transform"],
@@ -383,6 +393,28 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      */
     protected onHideComplete(): void {
         // default: no-op
+    }
+
+    /**
+     * Cancels any in-flight entrance / exit fade, then defers to the base
+     * class. Cancelling first keeps the fade's fallback timer from firing after
+     * `super.destructor()` has released this dropdown's element handle.
+     */
+    protected destructor(): void {
+        this._showAnimation?.cancel();
+        this._showAnimation = null;
+        this._hideAnimation?.cancel();
+        this._hideAnimation = null;
+
+        // `hideAnimated`'s completion callback is the only place the dropdown
+        // leaves the layer tree, and cancelling above suppressed it. A layer
+        // left registered is walked on the next document pointerdown, where the
+        // containment test resolves the element handle released below — the
+        // very use-after-free this cancellation exists to prevent. Idempotent,
+        // so the already-unregistered cases cost nothing.
+        LayerManager.unregister(this);
+
+        super.destructor();
     }
 
     // ----- DismissableLayer -----
@@ -486,8 +518,9 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
  *
  * @param component - The component to fade in.
  * @param options - Optional duration / translate / animated overrides.
+ * @returns A handle the caller stores and cancels on its own teardown.
  */
-export function fadeShow(component: Component, options?: FadeOptions): void {
+export function fadeShow(component: Component, options?: FadeOptions): Animation.CancelHandle {
     const durationMs  = options?.durationMs  ?? DEFAULT_DURATION_MS;
     const translatePx = options?.translatePx ?? DEFAULT_TRANSLATE_PX;
     const animated    = options?.animated    ?? true;
@@ -498,17 +531,17 @@ export function fadeShow(component: Component, options?: FadeOptions): void {
 
     if (!el) {
         options?.onComplete?.();
-        return;
+        return NOOP_HANDLE;
     }
 
     if (!animated) {
         options?.onComplete?.();
-        return;
+        return NOOP_HANDLE;
     }
 
     component.setWillChange("opacity, transform");
 
-    Animation.play(el, {
+    return Animation.play(el, {
         from:       { opacity: "0", transform: `translateY(-${translatePx}px)` },
         to:         { opacity: "1", transform: "translateY(0)" },
         durationMs: durationMs,
@@ -530,8 +563,9 @@ export function fadeShow(component: Component, options?: FadeOptions): void {
  *
  * @param component - The component to fade out and detach.
  * @param options - Optional duration / translate / animated overrides; `onComplete` fires after detach.
+ * @returns A handle the caller stores and cancels on its own teardown.
  */
-export function fadeHideAndDetach(component: Component, options?: FadeOptions): void {
+export function fadeHideAndDetach(component: Component, options?: FadeOptions): Animation.CancelHandle {
     const durationMs  = options?.durationMs  ?? DEFAULT_DURATION_MS;
     const translatePx = options?.translatePx ?? DEFAULT_TRANSLATE_PX;
     const animated    = options?.animated    ?? true;
@@ -545,13 +579,13 @@ export function fadeHideAndDetach(component: Component, options?: FadeOptions): 
 
     if (!el || !animated) {
         finalize();
-        return;
+        return NOOP_HANDLE;
     }
 
     _dismissingByComponent.set(component, true);
     component.setWillChange("opacity, transform");
 
-    Animation.play(el, {
+    return Animation.play(el, {
         to:         { opacity: "0", transform: `translateY(-${translatePx}px)` },
         durationMs: durationMs,
         properties: ["opacity", "transform"],

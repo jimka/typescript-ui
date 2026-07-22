@@ -537,6 +537,21 @@ class Dialog extends Component implements DismissableLayer {
     private _boundKeyHandler : (e: KeyboardEvent) => Event.ListenerResult;
     private _boundResizeHandler: () => void;
 
+    // In-flight entrance / dismiss animations for the panel and its backdrop,
+    // cancelled on teardown so their fallback timers cannot fire against
+    // released element handles.
+    private _panelInAnimation    : Animation.CancelHandle | null = null;
+    private _backdropInAnimation : Animation.CancelHandle | null = null;
+    private _panelOutAnimation   : Animation.CancelHandle | null = null;
+    private _backdropOutAnimation: Animation.CancelHandle | null = null;
+
+    // True once `hide()`'s finalize has begun. `finalize` calls `destructor()`
+    // partway through and finishes the rest afterwards, so the destructor uses
+    // this to tell "reached from a completing hide" (leave the remainder to
+    // finalize) from "reached from a bare dispose" (run it here, because the
+    // cancelled dismiss animation will never call finalize at all).
+    private _finalizing: boolean = false;
+
     /**
      * Constructs a Dialog but does not display it. Call `show()` to open.
      *
@@ -836,7 +851,8 @@ class Dialog extends Component implements DismissableLayer {
             return;
         }
 
-        Animation.play(el, {
+        this._panelInAnimation?.cancel();
+        this._panelInAnimation = Animation.play(el, {
             from:       { opacity: "0", transform: "scale(0.97)" },
             to:         { opacity: "1", transform: "scale(1)"    },
             durationMs: DIALOG_ANIM_DURATION_MS,
@@ -844,7 +860,8 @@ class Dialog extends Component implements DismissableLayer {
         });
 
         if (bdEl) {
-            Animation.play(bdEl, {
+            this._backdropInAnimation?.cancel();
+            this._backdropInAnimation = Animation.play(bdEl, {
                 from:       { opacity: "0" },
                 to:         { opacity: "1" },
                 durationMs: DIALOG_ANIM_DURATION_MS,
@@ -1090,6 +1107,8 @@ class Dialog extends Component implements DismissableLayer {
         Event.removeViewportListener(this, 'resize', this._boundResizeHandler);
 
         const finalize = (): void => {
+            this._finalizing = true;
+
             this._backdrop.destroy();
             this.removeElement();
             this.destructor();
@@ -1115,7 +1134,8 @@ class Dialog extends Component implements DismissableLayer {
             return this;
         }
 
-        Animation.play(el, {
+        this._panelOutAnimation?.cancel();
+        this._panelOutAnimation = Animation.play(el, {
             to:         { opacity: "0", transform: "scale(0.97)" },
             durationMs: DIALOG_ANIM_DURATION_MS,
             properties: ["opacity", "transform"],
@@ -1123,7 +1143,8 @@ class Dialog extends Component implements DismissableLayer {
         });
 
         if (bdEl) {
-            Animation.play(bdEl, {
+            this._backdropOutAnimation?.cancel();
+            this._backdropOutAnimation = Animation.play(bdEl, {
                 to:         { opacity: "0" },
                 durationMs: DIALOG_ANIM_DURATION_MS,
                 properties: ["opacity"],
@@ -1131,6 +1152,46 @@ class Dialog extends Component implements DismissableLayer {
         }
 
         return this;
+    }
+
+    /**
+     * Cancels any in-flight panel / backdrop animation, then defers to the base
+     * class. Reached from `hide()`'s completion callback as well as from a
+     * direct dispose: on that path the dismiss animation is already finished, so
+     * cancelling it is a no-op.
+     */
+    protected destructor(): void {
+        this._panelInAnimation?.cancel();
+        this._panelInAnimation = null;
+        this._backdropInAnimation?.cancel();
+        this._backdropInAnimation = null;
+        this._panelOutAnimation?.cancel();
+        this._panelOutAnimation = null;
+        this._backdropOutAnimation?.cancel();
+        this._backdropOutAnimation = null;
+
+        // A dispose that lands mid-dismiss cancels the animation whose
+        // completion callback owns the rest of teardown, so run that work here.
+        // The backdrop is a private field rather than a registered child, so the
+        // base class's recursion cannot reach it and it would otherwise stay
+        // mounted over the whole app; the promise `show()` handed the caller
+        // would never settle. Skipped when `finalize` is already running, which
+        // reaches this method partway through and completes the rest itself —
+        // including resolving with the caller's real result rather than the
+        // `"close"` stand-in used here.
+        if (!this._finalizing) {
+            this._backdrop.destroy();
+
+            LayerManager.unregister(this);
+            untrapWheel(this);
+
+            if (this._resolvePromise) {
+                this._resolvePromise('close');
+                this._resolvePromise = null;
+            }
+        }
+
+        super.destructor();
     }
 
     /**

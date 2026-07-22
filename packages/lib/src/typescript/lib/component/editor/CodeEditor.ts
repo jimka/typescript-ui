@@ -123,6 +123,10 @@ class CodeEditor extends Component<CodeEditorOptions> {
     /** Overlay flashed on a rejected read-only edit; `null` until mounted (or forever, offline). */
     private _flashOverlay: Handle | null = null;
 
+    // In-flight read-only flash, cancelled on teardown so its fallback timer
+    // cannot fire against the overlay's released element handle.
+    private _flashAnimation: Animation.CancelHandle | null = null;
+
     /** Reconfigured by {@link CodeEditor.setLanguage} to swap the active grammar. */
     private readonly _langCompartment: Compartment = new Compartment();
 
@@ -457,6 +461,11 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * `Markdown.destructor`.
      */
     protected destructor(): void {
+        // Before `super.destructor()` releases the overlay's element handle,
+        // which the flash's fallback timer would otherwise write to.
+        this._flashAnimation?.cancel();
+        this._flashAnimation = null;
+
         this._unsubscribeTheme();
 
         if (this._view) {
@@ -676,7 +685,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
             return;
         }
 
-        Animation.play(this._flashOverlay, {
+        this._flashAnimation?.cancel();
+        this._flashAnimation = Animation.play(this._flashOverlay, {
             from:       { opacity: String(READONLY_FLASH_PEAK_OPACITY) },
             to:         { opacity: "0" },
             durationMs: READONLY_FLASH_MS,

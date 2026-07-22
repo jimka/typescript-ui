@@ -124,7 +124,7 @@ If you write your own component subclass, override these in addition to whatever
 | `render()` (protected) | Called by `getElement()` on first access | Build the DOM element. Default returns a `<div>` (or whatever was passed to `super(tag)`). |
 | `init()` (protected) | Called once the element exists | Wire native listeners, apply initial styles. The framework calls this after `render()`. |
 | `doLayout()` | Called on every layout pass | Override only if you need custom positioning beyond what a `LayoutManager` provides. |
-| `destructor()` (protected) | Called on disposal (`dispose()`), including via an ancestor's own teardown — never on `removeComponent` | Clean up listeners, timers, theme subscriptions. Always runs, including when an ancestor's own teardown recurses into this component — this is the hook to override, never `dispose()`. |
+| `destructor()` (protected) | Called on disposal (`dispose()`), including via an ancestor's own teardown — never on `removeComponent` | Clean up listeners, timers, theme subscriptions, and any in-flight animation (cancel its `Animation.CancelHandle` *before* `super.destructor()`, which releases the element handle the animation would otherwise write to). Always runs, including when an ancestor's own teardown recurses into this component — this is the hook to override, never `dispose()`. |
 
 The framework uses these in built-in components — `Button` adds a label in `init()`, `Window` wires drag handlers, `Text` subscribes to `ThemeManager.onThemeChange` through `subscribeTheme`.
 

@@ -111,6 +111,15 @@ export interface MediaState {
 export type Handle = number & { readonly __handleBrand: unique symbol };
 
 /**
+ * A timer id as returned by the host's `setTimeout`. Node and the browser
+ * disagree on the concrete type (`Timeout` object vs `number`), so the seam
+ * carries whichever the host produces rather than committing to one.
+ *
+ * @category Core
+ */
+export type TimerId = ReturnType<typeof setTimeout>;
+
+/**
  * A batch of mutations applied to a single element with one handle resolve.
  * Every field is plain serialisable data — no live element, no function — so a
  * worker transport forwards an entire patch as one `postMessage`.
@@ -688,6 +697,30 @@ export interface DOMSink {
      * @param handle - The handle returned by {@link requestAnimationFrame}.
      */
     cancelAnimationFrame(handle: number): void;
+
+    /**
+     * Schedules `callback` to run after `delayMs`.
+     *
+     * @param callback - The timer callback.
+     * @param delayMs - Delay before the callback runs, in milliseconds.
+     * @returns The timer id, for {@link clearTimeout}.
+     */
+    setTimeout(callback: () => void, delayMs: number): TimerId;
+
+    /**
+     * Cancels a timer scheduled through {@link setTimeout}. A timer that has
+     * already fired, or an id already cleared, is ignored.
+     *
+     * @param id - The id returned by {@link setTimeout}.
+     */
+    clearTimeout(id: TimerId): void;
+
+    /**
+     * Cancels every timer this sink scheduled that has not yet fired. Called by
+     * `DOM.reset()` so a torn-down environment cannot be reached by a callback
+     * scheduled against the previous one.
+     */
+    clearAllTimeouts(): void;
 
     /**
      * Sets an element's `id`.
@@ -1336,6 +1369,13 @@ function toRect(domRect: DOMRect): Rect {
  */
 export class ProductionDOMSink implements DOMSink {
     /**
+     * Timers scheduled through this sink that have not yet fired. Tracked so
+     * `DOM.reset()` can disarm them: a pending `setTimeout` lives in the host's
+     * scheduler, so discarding the sink object leaves it running.
+     */
+    private readonly _timers = new Set<TimerId>();
+
+    /**
      * Applies a batch of mutations to one element with a single handle resolve.
      * The hot-path primitive — a layout commit (width + height + classes + an
      * attribute) costs one `Map.get`, not one per write.
@@ -1552,6 +1592,33 @@ export class ProductionDOMSink implements DOMSink {
     /** @inheritDoc */
     cancelAnimationFrame(handle: number): void {
         cancelAnimationFrame(handle);
+    }
+
+    /** @inheritDoc */
+    setTimeout(callback: () => void, delayMs: number): TimerId {
+        const id = setTimeout(() => {
+            this._timers.delete(id);
+            callback();
+        }, delayMs);
+
+        this._timers.add(id);
+
+        return id;
+    }
+
+    /** @inheritDoc */
+    clearTimeout(id: TimerId): void {
+        this._timers.delete(id);
+        clearTimeout(id);
+    }
+
+    /** @inheritDoc */
+    clearAllTimeouts(): void {
+        for (const id of this._timers) {
+            clearTimeout(id);
+        }
+
+        this._timers.clear();
     }
 
     /** @inheritDoc */
@@ -2163,6 +2230,12 @@ export const DOM: DOMSeams = {
     },
 
     reset(): void {
+        // Disarm before anything is rebuilt. A pending timer lives in the host
+        // scheduler and reads the *current* seams when it fires, so one left
+        // armed here would run against the fresh registry with a handle minted
+        // against the old one — the use-after-free `resolve` throws on.
+        DOM.sink.clearAllTimeouts();
+
         // Rebuild the shared registry alongside the seams so a test never
         // resolves a handle minted against the previous DOM.
         _registry  = new HandleRegistry();

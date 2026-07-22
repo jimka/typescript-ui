@@ -490,3 +490,103 @@ Offline-testable rows use the modelled DOM harness. Because `RecordingDOMSink.re
 [^field-per-site]: One field per call site rather than one shared bag per class, or a `trackAnimation()` helper on `Component`. A per-class bag has to prune completed handles or it grows without bound on a long-lived component that animates repeatedly, and a `Component`-level bag could not serve `Tab`, `Accordion`, `Split`, or `Border` at all, since a `LayoutManager` is not a `Component`. Named fields are bounded by the number of call sites, are greppable, and say which animation is which at the cancel site. The cost is verbosity — `AbstractWindow` carries five fields, `Dialog` and `Drawer` four each.
 
 [^recording-delegates]: `RecordingDOMSink.requestAnimationFrame` discards its callback and returns `0`, but `setTimeout` must **not** follow that part of the pattern: [`ComponentDispose.test.ts:245`](packages/lib/tests/core/ComponentDispose.test.ts#L245) drives `play`'s fallback with `vi.advanceTimersByTime(300)` to prove the materialize spinner gets disposed. Delegating to the global keeps that test working unchanged, keeps `vi.useFakeTimers()` effective, and leaves `DOM.reset()`'s sweep — not a swallowed callback — as the thing that fixes the flake.
+
+---
+
+## Implementation Notes
+
+Two deviations from the plan as written, both surfaced by the post-implementation audit.
+
+**`runCollapse` returns a two-channel handle, not one folded canceller.** The plan
+said the two `primeCollapse` handles should "fold into that existing canceller
+rather than adding a second channel" (`## Architecture Decisions`, *Free functions
+return their handle to the caller*). That is wrong on the re-toggle path.
+`runCollapse` invokes the previous canceller as `previous?.()` before priming the
+new toggle, so folding made a second toggle cancel the *first* toggled
+component's `afterTransition` — and that callback is the only thing that clears
+its `transition` and `will-change`. The result was a stale `clip-path` transition
+and a permanent compositor layer on the previously toggled pane: a regression
+against `master`, where the primed transitions always ran to completion. The plan
+considered only the teardown use of the canceller, not the re-toggle use.
+
+The fix keeps the two intents separate. `runCollapse` now returns a
+`CollapseHandle` with `cancelLayout()` (geometry only — what a re-toggle wants)
+and `cancelAll()` (everything, including the primed transitions — what teardown
+wants). `Split` and `Border` hold a `CollapseHandle` instead of a `() => void` and
+call `cancelAll()` from `detach()`.
+
+**The `CollapseHandle` two-channel split was itself replaced.** The first attempt
+at the fix above returned a handle with `cancelLayout()` and `cancelAll()`. A
+second audit pass showed that still leaked: the manager nulls its canceller when
+the *geometry* animation settles, ~40 ms before the primed transitions' fallbacks
+disarm, and a re-toggle replaces the handle outright while the previous toggle's
+transitions may still be running — both strand a live handle no `detach()` can
+reach. `runCollapse` therefore went back to returning a plain `() => void`
+(as on `master`) and now takes the manager's `pending` list of primed transitions,
+which each entry removes itself from on completion. `Split` and `Border` hold that
+list in `_pendingCollapseTransitions` and cancel exactly the live entries on
+`detach()`.
+
+**Every handle assignment cancels the outgoing handle first.** The plan's
+ownership table gives each call site one field but never says what happens when a
+site fires twice inside one animation duration. Assigning over a live handle
+orphans it, which reintroduces exactly the uncancellable fallback timer this plan
+exists to remove — a rapid re-toggle of one `Accordion` section, or a fast tab
+switch, was enough. Each assignment is now preceded by a cancel of the outgoing
+handle, matching the precedent already in `AbstractWindow.setWindowState`, which
+cancels and nulls `_stateAnimHandle` before installing the next tween.
+
+That blanket guard was wrong in one place, and the second audit pass caught it:
+`Accordion.primeWrapper` incremented `_toggleAnimations` *before* cancelling, and
+the matching decrement lived only in the cancelled animation's `onComplete`. A
+re-toggle inside the animation duration therefore lost a decrement permanently,
+so the counter never returned to zero and `setSectionTransitions(false)` was
+unreachable for the rest of the manager's life — a regression against `master`.
+A replacement animation now inherits the outgoing one's slot in the counter
+rather than adding a second, completed animations delete themselves from both
+maps so a `get` only ever returns a live handle, and `Accordion.detach()` runs the
+toggle-cleanup work the animations it cancels would have run. The general lesson,
+which cost two audit cycles: cancelling a handle suppresses its completion
+callback, so any cleanup that callback uniquely owns must be re-homed at the
+cancel site.
+
+**Cancelling a closing animation drops the teardown its callback owned.** The
+same lesson, found a third time and this time across five classes. A dismiss
+animation's `onComplete` is often the *only* place a component leaves the layer
+tree, tears down a privately-held backdrop, drops out of a static list, or
+settles the promise its `show()` handed the caller — none of which
+`super.destructor()`'s child recursion reaches. Cancelling it on dispose
+therefore lost that work silently. `AnimatedDropdown`, `Dialog`, `Drawer` and
+`Notification` now re-home their callback's bookkeeping into `destructor()`;
+`Dialog` needs a `_finalizing` guard because its `finalize` calls `destructor()`
+partway through and resolves the caller's real result afterwards. `Menu`,
+`Popover` and `AbstractWindow` needed nothing — each already unregisters its
+layer before starting the fade. `Split` and `Border` got the layout-manager
+version: `detach()` *settles* the primed transitions (running their cleanup) when
+the container still has children — the manager-swap path — and merely cancels
+them when it does not, which is the dispose path, where every participant has
+already been destroyed and touching one would write through a released handle.
+
+The rule applies to the *geometry* canceller too, not only the primed
+transitions: `Border`'s `onIdle` is the sole place `_collapsing` is cleared, so
+cancelling it on a manager-swap detach left a re-attached `Border` taking the
+unframed / `clearClipFrame` branch for every region permanently. `Border.detach()`
+now clears the flag itself. `Split` needed no equivalent because its `onIdle`
+only nulls the field that `detach()` already nulls by hand — an asymmetry worth
+remembering, since it is what made the `Border` case easy to miss.
+
+Two new test files pin this: `tests/component/layout/CollapseAnimationTeardown.test.ts`
+(nine cases) and the teardown block in `tests/core/Animation.test.ts` (five). Each
+was checked to fail when its corresponding fix is reverted — the check that caught
+a `Dialog` test which had been passing vacuously, because the offline sink's
+`release()` keeps a released stub resolvable and so never throws on a
+use-after-free the way production does.
+
+**The manual verification in `## Verification` step 6 was NOT run.** Rows 15-16 of
+`## Expected Behaviour` — the demo-app smoke test of the normal-completion path
+and the `transitionend`-wins path — remain outstanding. The offline harness cannot
+reach either (`transitionend` never fires under the modelled sink), so the
+normal-completion path after `finish` was hoisted out of `applyTransitionAndTo`
+is covered offline only through the recorded `transitionend` handler and the
+fallback timer, never against a real element. This is recorded rather than quietly
+skipped; the smoke test is the one piece of the plan's verification still owed.

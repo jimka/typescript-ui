@@ -258,6 +258,12 @@ interface WindowRegistration {
  */
 class Rail extends Component<RailOptions> {
 
+    // In-flight animations, cancelled on teardown so their fallback timers
+    // cannot fire against this rail's released element handle.
+    private _collapseAnimation: Animation.CancelHandle | null = null;
+    private _slideOutAnimation: Animation.CancelHandle | null = null;
+    private _slideInAnimation:  Animation.CancelHandle | null = null;
+
     /** Typed-event fan-out for `"register"` / `"unregister"`. */
     private _listeners: ListenerBag<RailEvent> = new ListenerBag<RailEvent>();
 
@@ -666,7 +672,8 @@ class Rail extends Component<RailOptions> {
 
         const tween = this.collapseTween(fromThickness, toThickness);
 
-        Animation.play(element, {
+        this._collapseAnimation?.cancel();
+        this._collapseAnimation = Animation.play(element, {
             from:       tween.from,
             to:         tween.to,
             durationMs: RAIL_ANIM_DURATION_MS,
@@ -833,7 +840,8 @@ class Rail extends Component<RailOptions> {
             return this;
         }
 
-        Animation.play(element, {
+        this._slideOutAnimation?.cancel();
+        this._slideOutAnimation = Animation.play(element, {
             to:         { transform: this.offscreenTransform() },
             durationMs: RAIL_ANIM_DURATION_MS,
             properties: ["transform"],
@@ -853,7 +861,8 @@ class Rail extends Component<RailOptions> {
             return;
         }
 
-        Animation.play(element, {
+        this._slideInAnimation?.cancel();
+        this._slideInAnimation = Animation.play(element, {
             from:       { transform: this.offscreenTransform() },
             to:         { transform: "translate(0, 0)" },
             durationMs: RAIL_ANIM_DURATION_MS,
@@ -1259,6 +1268,22 @@ class Rail extends Component<RailOptions> {
      */
     protected emit(event: RailEvent, target: Drawer | AbstractWindow): void {
         this._listeners.fire(event, target);
+    }
+
+    /**
+     * Cancels any in-flight collapse / slide animation, then defers to the base
+     * class. Cancelling first keeps their fallback timers from firing after
+     * `super.destructor()` has released this rail's element handle.
+     */
+    protected destructor(): void {
+        this._collapseAnimation?.cancel();
+        this._collapseAnimation = null;
+        this._slideOutAnimation?.cancel();
+        this._slideOutAnimation = null;
+        this._slideInAnimation?.cancel();
+        this._slideInAnimation = null;
+
+        super.destructor();
     }
 }
 

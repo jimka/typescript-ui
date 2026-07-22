@@ -24,6 +24,80 @@ const COLLAPSE_DURATION = 200;
 // material curves. Shared with Accordion deliberately for a consistent feel.
 const COLLAPSE_EASING = "cubic-bezier(0.4, 0, 0.6, 1)";
 
+/** Handle for the reduced-motion path, where no transition is primed at all. */
+const NOOP_HANDLE: Animation.CancelHandle = { cancel: (): void => {} };
+
+/**
+ * A primed CSS transition that has not settled yet, as held in a manager's
+ * pending list. Two dispositions, because teardown has two shapes.
+ *
+ * @category Layout
+ */
+export interface CollapseTransition {
+    /**
+     * Abandons the transition and its completion callback. For the dispose
+     * path, where every participant is being destroyed anyway and touching one
+     * would write through a released element handle.
+     */
+    cancel(): void;
+
+    /**
+     * Abandons the transition but runs its cleanup — clearing `transition` on
+     * every participant and `will-change` on the animating one — immediately.
+     * For the manager-swap path, where the participants stay mounted and would
+     * otherwise keep a live transition and a permanent compositor layer.
+     */
+    settle(): void;
+}
+
+/**
+ * Primes a transition via `create` and adds its handle to `pending`, arranging
+ * for the handle to remove itself once the transition settles. The list is
+ * therefore always exactly the set of transitions still in flight — which is
+ * what a manager's `detach` needs, and what neither the geometry canceller nor
+ * a per-toggle field can hold (both are replaced or nulled while primed
+ * transitions from an earlier toggle are still running).
+ *
+ * @param pending - The manager's live-transition list.
+ * @param create - Primes the transition, given the callback that prunes it.
+ */
+function track(
+    pending: CollapseTransition[],
+    create:  (onSettled: () => void) => { handle: Animation.CancelHandle; cleanup: () => void },
+): void {
+    let entry: CollapseTransition | null = null;
+    let settled = false;
+
+    const prune = (): void => {
+        settled = true;
+
+        const index = entry === null ? -1 : pending.indexOf(entry);
+
+        if (index >= 0) {
+            pending.splice(index, 1);
+        }
+    };
+
+    const { handle, cleanup } = create(prune);
+
+    // `create` settles synchronously under reduced motion, and also when the
+    // animating component has no element — in both cases `prune` already ran,
+    // before `entry` existed, so there is nothing live to track.
+    if (settled) {
+        return;
+    }
+
+    entry = {
+        cancel: (): void => handle.cancel(),
+        settle: (): void => {
+            handle.cancel();
+            cleanup();
+        },
+    };
+
+    pending.push(entry);
+}
+
 /**
  * Primes a collapse/restore animation: installs a multi-property geometry
  * transition on every participating element, pre-promotes the driving element
@@ -49,13 +123,31 @@ const COLLAPSE_EASING = "cubic-bezier(0.4, 0, 0.6, 1)";
  * @param participants - Every element that should carry the transition for this
  *   toggle: the gutter plus whatever shifts to fill — `Border` passes the gutter
  *   and the centre; `Split` passes all panes and gutters.
+ * @param onSettled - Invoked once the transition completes (or immediately under
+ *   reduced motion), so the caller can drop this handle from its live list.
  * @param completionProperty - Which property's `transitionend` ends the
  *   animation. Defaults to the first property; pass the size property (whose
  *   `transitionend` fires reliably) when the move delta may be zero.
  */
-function primeCollapse(animating: Component, properties: string[], participants: Component[], completionProperty?: string): void {
+function primeCollapse(
+    animating:          Component,
+    properties:         string[],
+    participants:       Component[],
+    onSettled:          () => void,
+    completionProperty?: string,
+): { handle: Animation.CancelHandle; cleanup: () => void } {
+    const cleanup = (): void => {
+        for (const participant of participants) {
+            participant.setTransition(null);
+        }
+
+        animating.setWillChange(null);
+    };
+
     if (Animation.isReducedMotion()) {
-        return;
+        onSettled();
+
+        return { handle: NOOP_HANDLE, cleanup };
     }
 
     const transition = properties
@@ -68,19 +160,18 @@ function primeCollapse(animating: Component, properties: string[], participants:
 
     animating.setWillChange(properties.join(", "));
 
-    Animation.afterTransition({
+    const handle = Animation.afterTransition({
         component:        animating,
         property:         completionProperty ?? properties[0],
         durationMs:       COLLAPSE_DURATION,
         fallbackBufferMs: 40,
         onComplete:       () => {
-            for (const participant of participants) {
-                participant.setTransition(null);
-            }
-
-            animating.setWillChange(null);
+            cleanup();
+            onSettled();
         },
     });
+
+    return { handle, cleanup };
 }
 
 /** An axis-aligned box used to snapshot and interpolate a participant's bounds. */
@@ -312,6 +403,13 @@ export interface CollapseParticipant {
  * @param toggled - The pane/region being collapsed or restored (clip-revealed).
  * @param participants - Every moving box, including `toggled`.
  * @param previous - The manager's current animation canceller, or null when idle.
+ * @param pending - The manager's list of primed CSS transitions that have not
+ *   settled yet. `runCollapse` appends to it and each entry removes itself on
+ *   completion, so the manager's `detach` can cancel exactly the live ones.
+ *   Kept off the returned canceller deliberately: that canceller is nulled when
+ *   the geometry animation settles, ~40 ms before the primed transitions'
+ *   fallbacks disarm, and a re-toggle replaces it while old transitions are
+ *   still running — either would strand a live handle.
  * @param onIdle - Invoked when the animation settles; clears the manager's handle.
  * @returns A canceller the manager stores and passes back as `previous` next time.
  */
@@ -320,16 +418,21 @@ export function runCollapse(
     toggled:      Component,
     participants: CollapseParticipant[],
     previous:     (() => void) | null,
+    pending:      CollapseTransition[],
     onIdle?:      () => void,
 ): () => void {
     // Stop any in-flight collapse so a rapid re-toggle re-snapshots from the
-    // current mid-animation geometry and retargets cleanly.
+    // current mid-animation geometry and retargets cleanly. Only the geometry
+    // animation is stopped: the primed CSS transitions are left to finish and
+    // run their own cleanup, because that cleanup (clearing `transition` and
+    // `will-change` on the previous participants) has no other trigger and the
+    // fresh prime below covers only the new participant set.
     previous?.();
 
     // The toggled pane/region holds its final size and reveals only via a
     // clip-path transition; every other participant is JS-driven below so boxes
     // and contents move together.
-    primeCollapse(toggled, ["clip-path"], [toggled], "clip-path");
+    track(pending, handle => primeCollapse(toggled, ["clip-path"], [toggled], handle, "clip-path"));
 
     // Cross-fade each gutter's fill between its transparent divider colour and
     // its opaque strip colour as it morphs, so the strip doesn't pop in or out.
@@ -340,7 +443,7 @@ export function runCollapse(
     // geometry's duration and curve.
     const gutters = participants.filter(participant => !participant.relayout).map(participant => participant.component);
     if (gutters.length > 0) {
-        primeCollapse(gutters[0], ["background-color"], gutters, "background-color");
+        track(pending, handle => primeCollapse(gutters[0], ["background-color"], gutters, handle, "background-color"));
     }
 
     // Snapshot the start geometry, write the end layout, then capture the end

@@ -11,7 +11,7 @@ export type { SmoothScrollTarget, ScrollAxis } from '~/core/SmoothScroller.js';
 export { Util } from '~/core/Util.js';
 export type { TextMeasureOptions, TextMetrics } from '~/core/Util.js';
 export { DOM, ProductionDOMSink, ProductionDOMSource, PatchBuilder } from '~/core/DOM.js';
-export type { DOMSink, DOMSource, DOMSeams, Rect, ScrollMetrics, OffsetSize, MediaState, Handle, ElementPatch, MediaQueryResult } from '~/core/DOM.js';
+export type { DOMSink, DOMSource, DOMSeams, Rect, ScrollMetrics, OffsetSize, MediaState, Handle, TimerId, ElementPatch, MediaQueryResult } from '~/core/DOM.js';
 export { callable } from '~/core/Callable.js';
 export type { Callable } from '~/core/Callable.js';
 export { Component } from '~/core/Component.js';

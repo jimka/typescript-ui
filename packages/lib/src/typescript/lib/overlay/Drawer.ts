@@ -155,6 +155,13 @@ const _defaultDrawerOptions: Partial<DrawerOptions> = {
  */
 class Drawer extends Component<DrawerOptions> implements DismissableLayer {
 
+    // In-flight panel / backdrop animations, cancelled on teardown so their
+    // fallback timers cannot fire against released element handles.
+    private _panelInAnimation    : Animation.CancelHandle | null = null;
+    private _panelOutAnimation   : Animation.CancelHandle | null = null;
+    private _backdropInAnimation : Animation.CancelHandle | null = null;
+    private _backdropOutAnimation: Animation.CancelHandle | null = null;
+
     /** Whether the drawer is currently open (or mid-entrance). */
     private _open: boolean = false;
 
@@ -525,7 +532,8 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
             return;
         }
 
-        Animation.play(element, {
+        this._panelInAnimation?.cancel();
+        this._panelInAnimation = Animation.play(element, {
             from:       { transform: this.offscreenTransform() },
             to:         { transform: "translate(0, 0)" },
             durationMs: this.getDurationMs(),
@@ -559,7 +567,8 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
             return;
         }
 
-        Animation.play(element, {
+        this._panelOutAnimation?.cancel();
+        this._panelOutAnimation = Animation.play(element, {
             to:         { transform: this.offscreenTransform() },
             durationMs: this.getDurationMs(),
             properties: ["transform"],
@@ -583,7 +592,8 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         const backdropEl = this._backdrop.getElement(true)!;
         DOM.sink.appendChild(DOM.source.getDocumentElement(), backdropEl);
 
-        Animation.play(backdropEl, {
+        this._backdropInAnimation?.cancel();
+        this._backdropInAnimation = Animation.play(backdropEl, {
             from:       { opacity: "0" },
             to:         { opacity: "1" },
             durationMs: this.getDurationMs(),
@@ -602,7 +612,8 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
             return;
         }
 
-        Animation.play(backdropEl, {
+        this._backdropOutAnimation?.cancel();
+        this._backdropOutAnimation = Animation.play(backdropEl, {
             to:         { opacity: "0" },
             durationMs: this.getDurationMs(),
             properties: ["opacity"],
@@ -731,6 +742,39 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         if (this._backdrop !== null) {
             this._backdrop.setZIndex(zIndex - 1);
         }
+    }
+
+    /**
+     * Cancels any in-flight panel / backdrop animation, then defers to the base
+     * class. Cancelling first keeps their fallback timers from firing after
+     * `super.destructor()` has released the animated element handles.
+     */
+    protected destructor(): void {
+        this._panelInAnimation?.cancel();
+        this._panelInAnimation = null;
+        this._panelOutAnimation?.cancel();
+        this._panelOutAnimation = null;
+        this._backdropInAnimation?.cancel();
+        this._backdropInAnimation = null;
+        this._backdropOutAnimation?.cancel();
+        this._backdropOutAnimation = null;
+
+        // The close animation's completion callback is the only place these are
+        // released, and cancelling above suppressed it: the backdrop is a
+        // private field rather than a registered child, so the base class's
+        // recursion cannot reach it and it would stay mounted over the app.
+        // Each of these is idempotent, so a drawer disposed while already
+        // closed pays nothing. The `"close"` emit is deliberately NOT re-homed
+        // — disposal is not a close, and emitting into consumer code from a
+        // destructor invites re-entrancy.
+        this.teardownBackdrop();
+        LayerManager.unregister(this);
+        untrapWheel(this);
+
+        this._open    = false;
+        this._closing = false;
+
+        super.destructor();
     }
 }
 
