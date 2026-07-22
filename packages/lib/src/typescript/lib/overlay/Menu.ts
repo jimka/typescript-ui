@@ -114,9 +114,12 @@ class Menu extends Component implements DismissableLayer {
     // `destructor()` override of its own — the base class's recursive
     // teardown already disposes each item. (A prior override manually
     // re-disposed them here, guarded to persistent mode only via
-    // `assertPersistentMode`, which would have thrown when reached through
-    // an ancestor's teardown recursing into a rebuild-mode menu; removed as
-    // redundant instead of guarded.)
+    // `assertPersistentMode`. That guard was never reachable through ancestor
+    // teardown — no `Menu` anywhere in the library is itself registered via
+    // `addComponent` (`Table._columnContextMenu` / `TabBar._contextMenu` are
+    // plain fields, never added as children), so an ancestor's `destructor()`
+    // recursion can never reach a `Menu` at all. The loop was removed simply
+    // because it was redundant, not because the guard made it unsafe.)
     private _menuItems: Array<MenuItem | MenuSeparator> = [];
     private _focusedIndex: number = -1;
     private _openSubmenuPanel: Menu | null = null;

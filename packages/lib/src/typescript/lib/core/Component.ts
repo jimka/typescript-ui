@@ -734,11 +734,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._components = [];
 
         // Detach the layout manager before the element is removed below, so
-        // an override that reads the container's element while tearing down
-        // its own pieces (e.g. `Accordion.detach()` re-parenting live content
-        // back onto it) still finds a real one instead of triggering
-        // `getElement()`'s create-on-demand path against a component that is
-        // mid-teardown. This is also what makes `Tab.detach()` reachable on
+        // a detach() override whose descendant components resolve their own
+        // element through getElement()'s getElementById fallback (an
+        // uncached `_element` field — e.g. Accordion's headers / panel
+        // wrappers, Split's gutters) can still find them: that fallback only
+        // succeeds while the container's own element is still connected to
+        // the document. Removing the container's element first would detach
+        // the whole subtree, so those descendant lookups would come back
+        // empty. This is also what makes `Tab.detach()` reachable on
         // this path at all — it disposes the raw-appended `TabBar`
         // (`Tab.attach()` appends it directly to the container element
         // instead of registering it as a child), which the child-destruction
