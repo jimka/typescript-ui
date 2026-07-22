@@ -682,6 +682,14 @@ These need the running app (`npm run docs:dev`, http://localhost:5173) — the o
 
 ---
 
+## Implementation Notes
+
+- **`npm run docs:build` (root) does not build the docs app this plan changes.** The plan's `## Verification` names `npm run docs:build` as "docs app build", but that root script maps to `npm -w packages/lib run docs:build` — the old VitePress site under `packages/lib/docs/`, unaffected by this plan except for the six sorted `index.md` files. The Vite app this plan actually modifies (`packages/docs`) builds via the differently-named root script `npm run build:docs` (`npm -w packages/docs run build`). Verification ran `build:docs`, and confirmed its `dist/api/` copy still contains the full generated tree including the unrendered `dist/api/core/index.md`, with `typedoc-sidebar.json` excluded — the substance of the plan's check, under the correct command.
+- **Two pre-existing JSDoc comments needed updating beyond the steps that touched their functions**, because Part B/C's changes made their prose factually wrong, not just incomplete: `DocsSidebar.buildNodes`'s comment named `typedoc-sidebar.json` as what drives the API root, which stopped being true once Part C derived the tree from `apiFiles` instead (reworded to point at this plan's own architecture-decision heading rather than `docs-typedoc-reference.md`, and to describe `apiFiles`-derivation instead of the deleted sidebar-JSON mechanism). `DocsSidebar.buildApiNode`'s comment used "the `component` category, which has no page of its own" as its example grouping-only node — wrong after Part E, since `component` is exactly the node Part E gives a synthesized page and a non-null `path`; reworded to use a kind directory (e.g. a module's `Classes` node) as the grouping-only example instead, which stays accurate at every level of the tree.
+- No other deviations. `MODULE_INDEX_FILES` came out to 19 entries and the API root to 8 children (including `router`) as corrected in the plan; `moduleCount()` = 18 and `symbolCount()` = 683 as originally pinned — see the plan-correction commit that preceded implementation.
+
+---
+
 ## Notes
 
 [^ordering-reversal]: The original decision bundled two things: *where labels come from* and *what order entries appear in*. The label half stands — `config.mts` remains the authoritative label source, because three page headings differ from their sidebar title and one leaks backticks into a plain tree label. The ordering half only made sense while each section's index page was pinned first as `Introduction` / `Overview` / `Catalog`; alphabetising would have buried it mid-list. Once the index page moves onto the branch node, nothing is left that depends on position, and 91 component entries in transcription order are harder to scan than the same 91 sorted.
