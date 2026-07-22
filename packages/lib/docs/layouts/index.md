@@ -69,8 +69,8 @@ There is no automatic re-layout on size changes. If you change a child's preferr
 
 ## See also
 
-- [Layout system](/concepts/layout-system) — deep-dive on constraint resolution.
-- [Sizing](/concepts/sizing) — preferred / min / max / fixed size semantics.
-- [`LayoutConstraints`](/api/layout/classes/LayoutConstraints) — the constraint base class.
 - [`AnchorType`](/api/layout/enumerations/AnchorType), [`FillType`](/api/layout/enumerations/FillType), [`Placement`](/api/primitive/enumerations/Placement) — constraint enums.
 - [`AxisPosition`](/api/primitive/type-aliases/AxisPosition), [`AxisSpread`](/api/primitive/type-aliases/AxisSpread) — the shared axis position/spread vocabulary that `BoxJustify` and the flow/tab `align`/`justify`/`textAlign` fields draw from.
+- [`LayoutConstraints`](/api/layout/classes/LayoutConstraints) — the constraint base class.
+- [Layout system](/concepts/layout-system) — deep-dive on constraint resolution.
+- [Sizing](/concepts/sizing) — preferred / min / max / fixed size semantics.

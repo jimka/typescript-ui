@@ -4,8 +4,8 @@ Task-oriented end-to-end snippets. Each recipe walks from imports through behavi
 
 ## Data + UI
 
-- [CRUD with a Table](/recipes/crud-table) — `Table` + `Store` + `AjaxProxy` + add / remove / sync toolbar.
 - [Bind a record to a form](/recipes/bind-form) — wire `TextField` / `Checkbox` / `ComboBox` to a `ModelRecord` via `Binding`.
+- [CRUD with a Table](/recipes/crud-table) — `Table` + `Store` + `AjaxProxy` + add / remove / sync toolbar.
 - [Custom cell type](/recipes/custom-cell) — build a `CurrencyCell` with renderer + editor.
 - [Virtualized lists](/recipes/virtualized-list) — large datasets in `Tree` and `Table`.
 
@@ -19,9 +19,9 @@ Task-oriented end-to-end snippets. Each recipe walks from imports through behavi
 ## Theming + interaction
 
 - [Custom brand theme](/recipes/custom-theme) — derive from `ClassicTheme`.
-- [Keyboard shortcuts in `MenuBar`](/recipes/keyboard-shortcuts) — pair shortcut hints with real handlers.
 - [Drag-and-drop with `DragManager`](/recipes/drag-and-drop) — turn any `Component` into a drag source or drop target.
 - [Focus history navigation](/recipes/focus-history) — `FocusHistory`'s keyboard back/forward accelerator over the focus trail.
+- [Keyboard shortcuts in `MenuBar`](/recipes/keyboard-shortcuts) — pair shortcut hints with real handlers.
 
 ## Construction patterns
 

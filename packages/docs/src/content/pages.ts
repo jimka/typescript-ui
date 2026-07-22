@@ -1,4 +1,5 @@
 import { expandContainers } from './containers.js';
+import { compareLabels } from './labelOrder.js';
 
 /** A single migrated documentation page. */
 export interface DocPage {
@@ -25,6 +26,8 @@ export interface NavEntry {
 /** A sidebar section: a titled group of entries, optionally holding subgroups. */
 export interface NavGroup {
     title:   string;
+    /** The route of this section's own index page. Absent for a subgroup, which has no page of its own. */
+    path?:   string;
     /** Pages sitting directly under this group's node, rendered first. */
     pages:   NavEntry[];
     /** Nested subgroups, rendered after `pages`. Two levels deep at most. */
@@ -118,16 +121,15 @@ function requirePage(path: string): DocPage {
  * config's `text`, not derived from the page's `# ` heading, so the tree
  * reads exactly as VitePress renders it.
  *
- * @returns The seven nav groups for the full 154-page corpus.
+ * @returns The seven nav groups, covering 147 leaf entries plus their seven
+ *   section paths — 154 pages total.
  */
 export function getNav(): NavGroup[] {
     const guide: NavEntry[] = [
-        { path: '/guide',              label: 'Introduction' },
         { path: '/guide/installation', label: 'Installation' },
         { path: '/guide/mental-model', label: 'Mental model' },
     ];
     const concepts: NavEntry[] = [
-        { path: '/concepts',                     label: 'Overview' },
         { path: '/concepts/component-lifecycle', label: 'Component lifecycle' },
         { path: '/concepts/construction',        label: 'Constructing components' },
         { path: '/concepts/layout-system',       label: 'Layout system' },
@@ -142,9 +144,6 @@ export function getNav(): NavGroup[] {
         { path: '/concepts/dom-seams',           label: 'DOM seams' },
     ];
 
-    const componentsCatalog: NavEntry[] = [
-        { path: '/components', label: 'Catalog' },
-    ];
     const componentsCore: NavEntry[] = [
         { path: '/components/Body',                 label: 'Body' },
         { path: '/components/AbstractWindow',        label: 'AbstractWindow' },
@@ -264,7 +263,6 @@ export function getNav(): NavGroup[] {
     ];
 
     const layouts: NavEntry[] = [
-        { path: '/layouts',             label: 'Overview' },
         { path: '/layouts/Constraints', label: 'Constraints' },
     ];
     const layoutManagers: NavEntry[] = [
@@ -290,7 +288,6 @@ export function getNav(): NavGroup[] {
     ];
 
     const data: NavEntry[] = [
-        { path: '/data',             label: 'Overview' },
         { path: '/data/model',       label: 'Model' },
         { path: '/data/store',       label: 'Store' },
         { path: '/data/proxy',       label: 'Proxy' },
@@ -299,9 +296,6 @@ export function getNav(): NavGroup[] {
         { path: '/data/binding',     label: 'Binding' },
     ];
 
-    const recipes: NavEntry[] = [
-        { path: '/recipes', label: 'Overview' },
-    ];
     const recipesDataUi: NavEntry[] = [
         { path: '/recipes/crud-table',       label: 'CRUD with a Table' },
         { path: '/recipes/bind-form',         label: 'Bind a record to a form' },
@@ -328,7 +322,6 @@ export function getNav(): NavGroup[] {
     ];
 
     const reference: NavEntry[] = [
-        { path: '/reference',                    label: 'Overview' },
         { path: '/reference/glossary',            label: 'Glossary' },
         { path: '/reference/faq',                 label: 'FAQ' },
         { path: '/reference/troubleshooting',     label: 'Troubleshooting' },
@@ -338,11 +331,12 @@ export function getNav(): NavGroup[] {
     ];
 
     const nav: NavGroup[] = [
-        { title: 'Guide',    pages: guide },
-        { title: 'Concepts', pages: concepts },
+        { title: 'Guide',    path: '/guide',    pages: guide },
+        { title: 'Concepts', path: '/concepts', pages: concepts },
         {
             title: 'Components',
-            pages:  componentsCatalog,
+            path:   '/components',
+            pages:  [],
             groups: [
                 { title: 'Core',       pages: componentsCore },
                 { title: 'Buttons',    pages: componentsButtons },
@@ -361,6 +355,7 @@ export function getNav(): NavGroup[] {
         },
         {
             title: 'Layouts',
+            path:   '/layouts',
             pages:  layouts,
             groups: [
                 { title: 'Layout managers', pages: layoutManagers },
@@ -368,10 +363,11 @@ export function getNav(): NavGroup[] {
                 { title: 'Serialization',   pages: serialization },
             ],
         },
-        { title: 'Data', pages: data },
+        { title: 'Data', path: '/data', pages: data },
         {
             title: 'Recipes',
-            pages:  recipes,
+            path:   '/recipes',
+            pages:  [],
             groups: [
                 { title: 'Data + UI',            pages: recipesDataUi },
                 { title: 'Windows + dialogs',     pages: recipesWindowsDialogs },
@@ -380,16 +376,31 @@ export function getNav(): NavGroup[] {
                 { title: 'Local development',     pages: recipesLocalDevelopment },
             ],
         },
-        { title: 'Reference', pages: reference },
+        { title: 'Reference', path: '/reference', pages: reference },
     ];
 
     // Fail loudly on a hand-authored path that doesn't resolve to a migrated
     // page — an authoring typo, not a runtime condition to handle gracefully.
     (function requireAll(groups: NavGroup[]): void {
         for (const group of groups) {
+            if (group.path !== undefined) {
+                requirePage(group.path);
+            }
             group.pages.forEach((entry) => requirePage(entry.path));
             if (group.groups) {
                 requireAll(group.groups);
+            }
+        }
+    })(nav);
+
+    // Each group's own pages and subgroups are freshly built literals on
+    // every call, so sorting them in place is safe.
+    (function sortGroups(groups: NavGroup[]): void {
+        for (const group of groups) {
+            group.pages.sort((a, b) => compareLabels(a.label, b.label));
+            if (group.groups) {
+                group.groups.sort((a, b) => compareLabels(a.title, b.title));
+                sortGroups(group.groups);
             }
         }
     })(nav);
