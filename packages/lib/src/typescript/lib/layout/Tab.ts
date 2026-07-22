@@ -236,6 +236,13 @@ interface ContentEntry {
     factory: ComponentFactory | null;
     spinner: Component | null;
     state: TabEntryState;
+
+    /**
+     * In-flight `Animation.materialize` for a lazy entry, cancelled when the
+     * entry leaves `_contents` or the manager detaches — otherwise its fade's
+     * fallback timer outlives the element handle the teardown releases.
+     */
+    materializeAnimation: Animation.CancelHandle | null;
 }
 
 /**
@@ -282,6 +289,10 @@ class Tab extends LayoutManager {
     // against `_selectedTabIndex` so the cross-tab fade fires only on actual
     // selection changes (not on every relayout, e.g. window resize).
     private _lastFadedTabIndex: number = -1;
+
+    // In-flight cross-tab fade, cancelled on detach so its fallback timer
+    // cannot fire against a released content-element handle.
+    private _tabFadeAnimation: Animation.CancelHandle | null = null;
     private _listeners: ListenerBag<TabEvent> = new ListenerBag<TabEvent>();
 
     // When true, doLayout grows the bar to the container's outer edges and hands
@@ -944,6 +955,14 @@ class Tab extends LayoutManager {
     detach(): this {
         super.detach();
 
+        this._tabFadeAnimation?.cancel();
+        this._tabFadeAnimation = null;
+
+        for (const entry of this._contents) {
+            entry.materializeAnimation?.cancel();
+            entry.materializeAnimation = null;
+        }
+
         if (this._themeCleanup) {
             this._themeCleanup();
             this._themeCleanup = null;
@@ -1056,6 +1075,8 @@ class Tab extends LayoutManager {
         const wasSelected = this._selectedTabIndex === idx;
         const content = this._contents[idx].component;
         const spinner = this._contents[idx].spinner;
+
+        this._contents[idx].materializeAnimation?.cancel();
 
         this._bar.removeBarEntry(id);
         this._contents.splice(idx, 1);
@@ -1355,6 +1376,7 @@ class Tab extends LayoutManager {
             factory: null,
             spinner: null,
             state: "ready",
+            materializeAnimation: null,
         });
 
         this.wireComponentAria(id, component);
@@ -1428,6 +1450,7 @@ class Tab extends LayoutManager {
             factory,
             spinner: null,
             state: "lazy",
+            materializeAnimation: null,
         });
 
         this.getContainer()?.scheduleLayout();
@@ -1549,7 +1572,7 @@ class Tab extends LayoutManager {
         entry.spinner = spinner;
         entry.state   = "building";
 
-        Animation.materialize({
+        entry.materializeAnimation = Animation.materialize({
             host:             container,
             factory:          () => {
                 const result = factory();
@@ -1821,7 +1844,7 @@ class Tab extends LayoutManager {
 
             const el = component.getElement();
             if (el) {
-                Animation.play(el, {
+                this._tabFadeAnimation = Animation.play(el, {
                     from:       { opacity: "0" },
                     to:         { opacity: "1" },
                     durationMs: TAB_FADE_DURATION_MS,
@@ -1981,6 +2004,11 @@ class Tab extends LayoutManager {
         }
 
         const wasSelected = this._selectedTabIndex === idx;
+
+        // The content is moving to another host; an in-flight materialize is
+        // still pointed at this container, so it is abandoned rather than
+        // carried across.
+        this._contents[idx].materializeAnimation?.cancel();
 
         this._bar.removeBarEntry(id);
         this._contents.splice(idx, 1);

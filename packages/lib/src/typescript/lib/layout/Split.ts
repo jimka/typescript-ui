@@ -1028,6 +1028,12 @@ class Split extends LayoutManager {
     detach() : this {
         super.detach();
 
+        // Abandon any in-flight collapse: its primed transitions carry fallback
+        // timers that would otherwise outlive the element handles teardown
+        // releases.
+        this._collapseAnimation?.();
+        this._collapseAnimation = null;
+
         for (const gutter of this._gutters) {
             let gutterElement = gutter.getElement()!;
             DOM.sink.removeChild(DOM.source.getParentNode(gutterElement)!, gutterElement);

@@ -236,7 +236,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private _rail:              Rail | null = null;
     /** Typed-event fan-out for `"minimize"` / `"restore"` / `"close"`. */
     private _windowListeners:   ListenerBag<WindowEvent> = new ListenerBag<WindowEvent>();
-    private _stateAnimHandle:   Animation.TweenHandle | null = null;
+    private _stateAnimHandle:   Animation.CancelHandle | null = null;
+
+    // In-flight animations, cancelled on teardown so their fallback timers
+    // cannot fire against this window's released element handle.
+    private _showAnimation:         Animation.CancelHandle | null = null;
+    private _materializeAnimation:  Animation.CancelHandle | null = null;
+    private _closeAnimation:        Animation.CancelHandle | null = null;
+    private _railCollapseAnimation: Animation.CancelHandle | null = null;
+    private _railExpandAnimation:   Animation.CancelHandle | null = null;
     private _viewportResizeBound: boolean = false;
 
     private _snapEnabled:       boolean = false;
@@ -617,7 +625,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         this.setVisible(true);
 
-        Animation.play(el, {
+        this._showAnimation = Animation.play(el, {
             from:       { opacity: "0", transform: "scale(0.97)" },
             to:         { opacity: "1", transform: "scale(1)"    },
             durationMs: WINDOW_ANIM_DURATION_MS,
@@ -632,7 +640,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
             const spinner = createSpinnerWrap();
 
-            Animation.materialize({
+            this._materializeAnimation = Animation.materialize({
                 host:             this,
                 factory:          factory,
                 spinnerComponent: spinner,
@@ -860,7 +868,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
-        Animation.play(el, {
+        this._closeAnimation = Animation.play(el, {
             to:         { opacity: "0", transform: "scale(0.97)" },
             durationMs: WINDOW_ANIM_DURATION_MS,
             properties: ["opacity", "transform"],
@@ -877,6 +885,21 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * page, and the sheet growing with every open/close cycle.
      */
     protected destructor(): void {
+        // Before `super.destructor()` releases this window's element handle,
+        // which every one of these animations' fallback timers would write to.
+        this._stateAnimHandle?.cancel();
+        this._stateAnimHandle = null;
+        this._showAnimation?.cancel();
+        this._showAnimation = null;
+        this._materializeAnimation?.cancel();
+        this._materializeAnimation = null;
+        this._closeAnimation?.cancel();
+        this._closeAnimation = null;
+        this._railCollapseAnimation?.cancel();
+        this._railCollapseAnimation = null;
+        this._railExpandAnimation?.cancel();
+        this._railExpandAnimation = null;
+
         for (const border of Object.values(this._borderComponents)) {
             border.dispose();
         }
@@ -2050,7 +2073,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
-        Animation.play(element, {
+        this._railCollapseAnimation = Animation.play(element, {
             from:       { transformOrigin: "0 0", transform: "translate(0, 0) scale(1)", opacity: "1" },
             to:         { transform: this.railGenieTransform(), opacity: "0" },
             durationMs: WINDOW_ANIM_DURATION_MS,
@@ -2071,7 +2094,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
-        Animation.play(element, {
+        this._railExpandAnimation = Animation.play(element, {
             from:       { transformOrigin: "0 0", transform: this.railGenieTransform(), opacity: "0" },
             to:         { transform: "translate(0, 0) scale(1)", opacity: "1" },
             durationMs: WINDOW_ANIM_DURATION_MS,

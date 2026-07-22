@@ -6,6 +6,7 @@ import type { Handle, Rect } from "~/core/DOM.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { positionAligned, positionFlexibleAnchored } from "~/core/OverlayPosition.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
+import type { Animation } from "~/core/Animation.js";
 import { Insets } from "~/primitive/Insets.js";
 import type { Size } from "~/primitive/Size.js";
 import { VBox } from "~/layout/VBox.js";
@@ -110,9 +111,10 @@ class Menu extends Component implements DismissableLayer {
     private readonly _itemsProvider: (() => MenuItemConfig[]) | null;
     private readonly _onClose: (() => void) | null;
     // In both modes every entry is registered via `addComponent` (see
-    // `showAnchored` / `buildPersistentItems`), so `Menu` needs no
-    // `destructor()` override of its own — the base class's recursive
-    // teardown already disposes each item. (A prior override manually
+    // `showAnchored` / `buildPersistentItems`), so the `destructor()` override
+    // below has no item disposal to do — the base class's recursive teardown
+    // already disposes each item; the override exists only to cancel the
+    // in-flight fades. (A prior override manually
     // re-disposed them here, guarded to persistent mode only via
     // `assertPersistentMode`. That guard was never reachable through ancestor
     // teardown — no `Menu` anywhere in the library is itself registered via
@@ -121,6 +123,11 @@ class Menu extends Component implements DismissableLayer {
     // recursion can never reach a `Menu` at all. The loop was removed simply
     // because it was redundant, not because the guard made it unsafe.)
     private _menuItems: Array<MenuItem | MenuSeparator> = [];
+
+    // In-flight fades, cancelled on teardown so their fallback timers cannot
+    // fire against this menu's released element handle.
+    private _fadeShowAnimation: Animation.CancelHandle | null = null;
+    private _fadeHideAnimation: Animation.CancelHandle | null = null;
     private _focusedIndex: number = -1;
     private _openSubmenuPanel: Menu | null = null;
     private _openSubmenuItem: MenuItem | null = null;
@@ -638,7 +645,7 @@ class Menu extends Component implements DismissableLayer {
      * fade-out so the deferred detach skips removing the still-visible panel.
      */
     private fadeIn(): void {
-        fadeShow(this, { durationMs: MENU_ANIM_DURATION_MS });
+        this._fadeShowAnimation = fadeShow(this, { durationMs: MENU_ANIM_DURATION_MS });
     }
 
     /**
@@ -647,7 +654,21 @@ class Menu extends Component implements DismissableLayer {
      * `open()` during the fade cancels the deferred detach.
      */
     private fadeOutAndDetach(): void {
-        fadeHideAndDetach(this, { durationMs: MENU_ANIM_DURATION_MS });
+        this._fadeHideAnimation = fadeHideAndDetach(this, { durationMs: MENU_ANIM_DURATION_MS });
+    }
+
+    /**
+     * Cancels any in-flight fade, then defers to the base class. Cancelling
+     * first keeps a fade's fallback timer from firing after `super.destructor()`
+     * has released this menu's element handle.
+     */
+    protected destructor(): void {
+        this._fadeShowAnimation?.cancel();
+        this._fadeShowAnimation = null;
+        this._fadeHideAnimation?.cancel();
+        this._fadeHideAnimation = null;
+
+        super.destructor();
     }
 
     /**

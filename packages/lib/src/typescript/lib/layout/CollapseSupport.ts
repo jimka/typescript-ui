@@ -24,6 +24,9 @@ const COLLAPSE_DURATION = 200;
 // material curves. Shared with Accordion deliberately for a consistent feel.
 const COLLAPSE_EASING = "cubic-bezier(0.4, 0, 0.6, 1)";
 
+/** Handle for the reduced-motion path, where no transition is primed at all. */
+const NOOP_HANDLE: Animation.CancelHandle = { cancel: (): void => {} };
+
 /**
  * Primes a collapse/restore animation: installs a multi-property geometry
  * transition on every participating element, pre-promotes the driving element
@@ -53,9 +56,9 @@ const COLLAPSE_EASING = "cubic-bezier(0.4, 0, 0.6, 1)";
  *   animation. Defaults to the first property; pass the size property (whose
  *   `transitionend` fires reliably) when the move delta may be zero.
  */
-function primeCollapse(animating: Component, properties: string[], participants: Component[], completionProperty?: string): void {
+function primeCollapse(animating: Component, properties: string[], participants: Component[], completionProperty?: string): Animation.CancelHandle {
     if (Animation.isReducedMotion()) {
-        return;
+        return NOOP_HANDLE;
     }
 
     const transition = properties
@@ -68,7 +71,7 @@ function primeCollapse(animating: Component, properties: string[], participants:
 
     animating.setWillChange(properties.join(", "));
 
-    Animation.afterTransition({
+    return Animation.afterTransition({
         component:        animating,
         property:         completionProperty ?? properties[0],
         durationMs:       COLLAPSE_DURATION,
@@ -329,7 +332,7 @@ export function runCollapse(
     // The toggled pane/region holds its final size and reveals only via a
     // clip-path transition; every other participant is JS-driven below so boxes
     // and contents move together.
-    primeCollapse(toggled, ["clip-path"], [toggled], "clip-path");
+    const primed: Animation.CancelHandle[] = [primeCollapse(toggled, ["clip-path"], [toggled], "clip-path")];
 
     // Cross-fade each gutter's fill between its transparent divider colour and
     // its opaque strip colour as it morphs, so the strip doesn't pop in or out.
@@ -340,7 +343,7 @@ export function runCollapse(
     // geometry's duration and curve.
     const gutters = participants.filter(participant => !participant.relayout).map(participant => participant.component);
     if (gutters.length > 0) {
-        primeCollapse(gutters[0], ["background-color"], gutters, "background-color");
+        primed.push(primeCollapse(gutters[0], ["background-color"], gutters, "background-color"));
     }
 
     // Snapshot the start geometry, write the end layout, then capture the end
@@ -356,5 +359,16 @@ export function runCollapse(
         end:       captureRect(participant.component),
     }));
 
-    return animateLayout(movers, onIdle);
+    const cancelLayout = animateLayout(movers, onIdle);
+
+    // Fold the two primed transitions into the canceller the manager already
+    // stores, so one call abandons the whole collapse — including the fallback
+    // timers that would otherwise outlive the participants' element handles.
+    return (): void => {
+        cancelLayout();
+
+        for (const animation of primed) {
+            animation.cancel();
+        }
+    };
 }

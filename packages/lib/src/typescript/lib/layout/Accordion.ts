@@ -242,6 +242,13 @@ class Accordion extends LayoutManager {
     // global disable waits until this returns to zero — single-open mode primes
     // several sections at once, and the first to finish must not snap the rest.
     private _toggleAnimations: number = 0;
+
+    // In-flight height transitions, keyed by section index and cancelled on
+    // detach so their fallback timers cannot fire against released wrapper
+    // element handles. Two channels, because a section can be mid-shrink from a
+    // reflow while a toggle animation is separately in flight on the same index.
+    private _shrinkAnimations:  Map<number, Animation.CancelHandle> = new Map();
+    private _wrapperAnimations: Map<number, Animation.CancelHandle> = new Map();
     // Stable bound reference so add/removeViewportListener target the same
     // callback; Accordion is a LayoutManager, not a Component, so it cannot
     // key the registration on `this` the way every Component call site does —
@@ -1123,6 +1130,16 @@ class Accordion extends LayoutManager {
     detach(): this {
         const container = this.getContainer();
 
+        for (const animation of this._shrinkAnimations.values()) {
+            animation.cancel();
+        }
+        this._shrinkAnimations.clear();
+
+        for (const animation of this._wrapperAnimations.values()) {
+            animation.cancel();
+        }
+        this._wrapperAnimations.clear();
+
         // A detach mid-drag would otherwise leak the viewport listeners
         // registered in onGutterDragStart and strand the drag pair. `_dragUpper`
         // is non-null only while a drag is live (set alongside those listeners),
@@ -1627,13 +1644,13 @@ class Accordion extends LayoutManager {
 
             if (reflowAll || contentHeight !== oldHeight) {
                 if (shrinking) {
-                    Animation.afterTransition({
+                    this._shrinkAnimations.set(i, Animation.afterTransition({
                         component:        wrapper,
                         property:         "height",
                         durationMs:       this._animationDuration,
                         fallbackBufferMs: 40,
                         onComplete:       () => component.doLayout(),
-                    });
+                    }));
                 } else {
                     component.doLayout();
                 }
@@ -2633,7 +2650,7 @@ class Accordion extends LayoutManager {
 
         this._toggleAnimations += 1;
 
-        Animation.afterTransition({
+        this._wrapperAnimations.set(index, Animation.afterTransition({
             component:        wrapper,
             property:         "height",
             durationMs:       this._animationDuration,
@@ -2662,7 +2679,7 @@ class Accordion extends LayoutManager {
                     this.relayoutHost();
                 }
             },
-        });
+        }));
     }
 
     /**

@@ -84,6 +84,11 @@ const ENTRANCE_DURATION_MS: number = 200;
  */
 export class Notification extends Component {
 
+    // In-flight entrance / dismiss animations, cancelled on teardown so their
+    // fallback timers cannot fire against this notification's released handle.
+    private _showAnimation:    Animation.CancelHandle | null = null;
+    private _dismissAnimation: Animation.CancelHandle | null = null;
+
     private static readonly WIDTH: number          = 320;
     private static readonly HEIGHT: number         = 64;
     private static readonly MARGIN: number         = 16;
@@ -307,7 +312,7 @@ export class Notification extends Component {
             return;
         }
 
-        Animation.play(el, {
+        this._showAnimation = Animation.play(el, {
             from:       { transform: "translateX(100%)", opacity: "0" },
             to:         { transform: "translateX(0)",   opacity: "1" },
             durationMs: ENTRANCE_DURATION_MS,
@@ -553,7 +558,7 @@ export class Notification extends Component {
             return;
         }
 
-        Animation.play(el, {
+        this._dismissAnimation = Animation.play(el, {
             to:         { transform: "translateX(100%)", opacity: "0" },
             durationMs: DISMISS_DURATION_MS,
             properties: ["transform", "opacity"],
@@ -627,5 +632,19 @@ export class Notification extends Component {
         this._closeButton.doLayout();
 
         return this;
+    }
+
+    /**
+     * Cancels any in-flight entrance / dismiss animation, then defers to the
+     * base class. Cancelling first keeps their fallback timers from firing
+     * after `super.destructor()` has released the animated element handles.
+     */
+    protected destructor(): void {
+        this._showAnimation?.cancel();
+        this._showAnimation = null;
+        this._dismissAnimation?.cancel();
+        this._dismissAnimation = null;
+
+        super.destructor();
     }
 }

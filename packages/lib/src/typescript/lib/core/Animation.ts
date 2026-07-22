@@ -3,7 +3,7 @@
 import { Component } from "~/core/Component.js";
 import type { ComponentFactory } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
-import type { Handle } from "~/core/DOM.js";
+import type { Handle, TimerId } from "~/core/DOM.js";
 import { InlineStyle } from "~/core/StyleTarget.js";
 
 /**
@@ -90,8 +90,12 @@ export namespace Animation {
      *
      * Honours `prefers-reduced-motion: reduce`: when set, the `to` styles are
      * applied synchronously and `onComplete` fires on the same tick.
+     *
+     * @returns A handle whose `cancel()` abandons the animation and suppresses
+     * `onComplete`. Cancelling touches no DOM, so it stays safe once the
+     * element's handle has been released.
      */
-    export function play(el: Handle, config: PlayConfig): void {
+    export function play(el: Handle, config: PlayConfig): CancelHandle {
         const easing   = config.easing ?? "ease-out";
         const fallback = config.fallbackBufferMs ?? 40;
 
@@ -106,10 +110,45 @@ export namespace Animation {
         if (isReducedMotion()) {
             buf.setMany(config.to as Record<string, string | null>);
             config.onComplete?.();
-            return;
+            return NOOP_HANDLE;
         }
 
+        let done      = false;
+        let cancelled = false;
+        let frameId: number  | null = null;
+        let timerId: TimerId | null = null;
+
+        const finish = (): void => {
+            if (done || cancelled) {
+                return;
+            }
+            done = true;
+
+            // transitionend won the race: disarm the fallback so it can never
+            // run against an element that may be torn down by then.
+            if (timerId !== null) {
+                DOM.sink.clearTimeout(timerId);
+                timerId = null;
+            }
+
+            // Clear the transition rule so subsequent style changes
+            // (e.g. a Window drag setting `transform: translate(...)`
+            // after the entrance fade) aren't retroactively animated
+            // through it. Done before `onComplete` so callers that
+            // start a fresh `play()` from the callback can install
+            // their own transition without it being clobbered.
+            buf.set("transition", null);
+
+            config.onComplete?.();
+        };
+
         const applyTransitionAndTo = (): void => {
+            frameId = null;
+
+            if (cancelled) {
+                return;
+            }
+
             buf.set(
                 "transition",
                 config.properties
@@ -119,36 +158,38 @@ export namespace Animation {
 
             buf.setMany(config.to as Record<string, string | null>);
 
-            let done = false;
-            const finish = (): void => {
-                if (done) {
-                    return;
-                }
-                done = true;
-
-                // Clear the transition rule so subsequent style changes
-                // (e.g. a Window drag setting `transform: translate(...)`
-                // after the entrance fade) aren't retroactively animated
-                // through it. Done before `onComplete` so callers that
-                // start a fresh `play()` from the callback can install
-                // their own transition without it being clobbered.
-                buf.set("transition", null);
-
-                config.onComplete?.();
-            };
-
             DOM.sink.addListener(el, "transitionend", finish, { once: true });
-            setTimeout(finish, config.durationMs + fallback);
+            timerId = DOM.sink.setTimeout(finish, config.durationMs + fallback);
         };
 
         if (config.from) {
             buf.setMany(config.from as Record<string, string | null>);
-            DOM.sink.requestAnimationFrame(() => {
-                DOM.sink.requestAnimationFrame(applyTransitionAndTo);
+            frameId = DOM.sink.requestAnimationFrame(() => {
+                frameId = DOM.sink.requestAnimationFrame(applyTransitionAndTo);
             });
         } else {
             applyTransitionAndTo();
         }
+
+        return {
+            cancel: (): void => {
+                if (done || cancelled) {
+                    return;
+                }
+
+                cancelled = true;
+
+                if (frameId !== null) {
+                    DOM.sink.cancelAnimationFrame(frameId);
+                    frameId = null;
+                }
+
+                if (timerId !== null) {
+                    DOM.sink.clearTimeout(timerId);
+                    timerId = null;
+                }
+            },
+        };
     }
 
     /**
@@ -205,21 +246,36 @@ export namespace Animation {
      * [`Accordion`](/api/layout/classes/Accordion), whose section heights are
      * written by the parent layout's `getPreferredSize` query) stay
      * consistent with the framework's one-finish-only contract.
+     *
+     * @returns A handle whose `cancel()` abandons the wait and suppresses
+     * `onComplete`. Like `play`'s, cancelling touches no DOM — it leaves the
+     * `transitionend` listener attached but inert.
      */
-    export function afterTransition(config: AfterTransitionConfig): void {
+    export function afterTransition(config: AfterTransitionConfig): CancelHandle {
         const el = config.component.getElement();
 
         if (!el) {
             config.onComplete();
-            return;
+            return NOOP_HANDLE;
         }
 
-        let done = false;
+        let done      = false;
+        let cancelled = false;
+        let timerId: TimerId | null = null;
+
         const finish = (): void => {
-            if (done) {
+            if (done || cancelled) {
                 return;
             }
             done = true;
+
+            // transitionend won the race: disarm the fallback before it can
+            // fire against an element that may be torn down by then.
+            if (timerId !== null) {
+                DOM.sink.clearTimeout(timerId);
+                timerId = null;
+            }
+
             DOM.sink.removeListener(el, "transitionend", onEnd);
             config.onComplete();
         };
@@ -231,7 +287,22 @@ export namespace Animation {
         };
 
         DOM.sink.addListener(el, "transitionend", onEnd);
-        setTimeout(finish, config.durationMs + (config.fallbackBufferMs ?? 40));
+        timerId = DOM.sink.setTimeout(finish, config.durationMs + (config.fallbackBufferMs ?? 40));
+
+        return {
+            cancel: (): void => {
+                if (done || cancelled) {
+                    return;
+                }
+
+                cancelled = true;
+
+                if (timerId !== null) {
+                    DOM.sink.clearTimeout(timerId);
+                    timerId = null;
+                }
+            },
+        };
     }
 
     /**
@@ -267,15 +338,24 @@ export namespace Animation {
     }
 
     /**
-     * Handle returned by {@link Animation.tween}. Call `cancel()` to stop the
-     * tween mid-flight; subsequent calls are no-ops.
+     * Handle returned by every animation helper here. Call `cancel()` to
+     * abandon the animation mid-flight: its completion callback is suppressed
+     * and any pending frame or fallback timer is disarmed.
+     *
+     * @remarks Cancelling performs no DOM write, so an owner may call it from
+     * teardown without caring whether the animated element's handle has already
+     * been released. It is idempotent, and a no-op once the animation has
+     * completed.
      *
      * @category Core
      */
-    export interface TweenHandle {
-        /** Stops the rAF loop. Idempotent. */
+    export interface CancelHandle {
+        /** Abandons the animation. Idempotent; a no-op after completion. */
         cancel(): void;
     }
+
+    /** Shared handle for the paths that finish before there is anything to cancel. */
+    const NOOP_HANDLE: CancelHandle = { cancel: (): void => {} };
 
     /**
      * Drives a JS-side numeric tween via `requestAnimationFrame`, interpolating
@@ -292,12 +372,12 @@ export namespace Animation {
      * (window-rect transitions, scroll-to, animated layout swaps); for raw
      * CSS-property transitions use {@link Animation.play} instead.
      */
-    export function tween<T extends { [K in keyof T]: number }>(config: TweenConfig<T>): TweenHandle {
+    export function tween<T extends { [K in keyof T]: number }>(config: TweenConfig<T>): CancelHandle {
         if (isReducedMotion()) {
             config.onStep(config.to);
             config.onComplete?.();
 
-            return { cancel: (): void => {} };
+            return NOOP_HANDLE;
         }
 
         const startTime = performance.now();
@@ -428,12 +508,19 @@ export namespace Animation {
      * `play()` performs for entrance transitions. The spinner is removed in
      * the fade's `onComplete` so the brief overlap reads as "spinner fades
      * into content" without an extra animation.
+     *
+     * @returns A handle whose `cancel()` abandons the materialization: the
+     * factory's eventual result is discarded and the cross-fade, if it has
+     * started, is cancelled too.
      */
-    export function materialize(config: MaterializeConfig): void {
+    export function materialize(config: MaterializeConfig): CancelHandle {
         const host    = config.host;
         const factory = config.factory;
         const spinner = config.spinnerComponent;
         const fadeMs  = config.fadeMs ?? MATERIALIZE_FADE_DURATION_MS;
+
+        let cancelled = false;
+        let fade: CancelHandle | null = null;
 
         const dropSpinner = (): void => {
             host.removeComponent(spinner);
@@ -442,6 +529,15 @@ export namespace Animation {
         };
 
         const attach = (component: Component): void => {
+            // The owner was torn down while the factory was in flight. Its own
+            // teardown already disposed the spinner (a registered child), so
+            // touch nothing on the host — just discard the built component.
+            if (cancelled) {
+                component.dispose();
+
+                return;
+            }
+
             // The caller lost interest during the yield or the await (e.g. its
             // tab was closed): drop the spinner and discard the built component.
             if (config.isStale?.()) {
@@ -456,7 +552,7 @@ export namespace Animation {
             const el = component.getElement(true)!;
             host.scheduleLayout();
 
-            play(el, {
+            fade = play(el, {
                 from:       { opacity: "0" },
                 to:         { opacity: "1" },
                 durationMs: fadeMs,
@@ -469,6 +565,12 @@ export namespace Animation {
         };
 
         const fail = (error: unknown): void => {
+            // The owner was torn down mid-flight; its teardown already disposed
+            // the spinner, and there is nobody left to report the failure to.
+            if (cancelled) {
+                return;
+            }
+
             dropSpinner();
 
             // The caller lost interest during the await (its tab was closed):
@@ -485,6 +587,10 @@ export namespace Animation {
 
         DOM.sink.requestAnimationFrame(() => {
             DOM.sink.requestAnimationFrame(() => {
+                if (cancelled) {
+                    return;
+                }
+
                 const result = factory();
 
                 // Only a thenable takes the async branch, so a synchronous
@@ -497,5 +603,12 @@ export namespace Animation {
                 }
             });
         });
+
+        return {
+            cancel: (): void => {
+                cancelled = true;
+                fade?.cancel();
+            },
+        };
     }
 }
