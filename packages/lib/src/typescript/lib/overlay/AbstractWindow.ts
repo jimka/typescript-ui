@@ -876,6 +876,22 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
+     * Tears the eight resize-border strips down before the inherited destructor
+     * runs. They are appended straight to the window element by `renderContent`
+     * rather than registered as child components, so the base destructor's
+     * recursion over the child list never reaches them — leaving each strip's
+     * per-instance stylesheet rules on the shared sheet for the life of the
+     * page, and the sheet growing with every open/close cycle.
+     */
+    protected destructor(): void {
+        for (const border of Object.values(this._borderComponents)) {
+            border.dispose();
+        }
+
+        super.destructor();
+    }
+
+    /**
      * Returns the current lifecycle state (`"normal"`, `"minimized"`, or
      * `"maximized"`).
      *
