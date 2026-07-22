@@ -178,7 +178,14 @@ describe('DOM-state replay probe', () => {
         expect(types).toContain('play');
     });
 
-    it('does not replay an attribute written through the raw setElementAttribute seam', () => {
+    // This probe originally asserted the opposite — that the seam dropped the
+    // attribute on rebuild — which was true when this audit was written. The
+    // sibling `element-attribute-replay-buffer` work then gave
+    // `setElementAttribute` a cache that `init()` replays on every render,
+    // closing the gap. The probe is kept, inverted, as the regression guard for
+    // that buffer: it is the only test that drives the seam through a full
+    // release-and-rebuild rather than a first render.
+    it('replays an attribute written through the raw setElementAttribute seam', () => {
         const component = new Component({});
         component.getElement(true);
         setRawAttribute(component, 'data-probe', '1');
@@ -188,7 +195,7 @@ describe('DOM-state replay probe', () => {
             w.op === 'apply' && 'data-probe' in ((w.args[1] as { setAttr?: Record<string, string> }).setAttr ?? {})
         );
 
-        expect(wrote).toBe(false);
+        expect(wrote).toBe(true);
     });
 
     it('double-registers an init()-installed listener across a rebuild (Component)', () => {
