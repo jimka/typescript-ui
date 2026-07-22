@@ -124,16 +124,18 @@ If you write your own component subclass, override these in addition to whatever
 | `render()` (protected) | Called by `getElement()` on first access | Build the DOM element. Default returns a `<div>` (or whatever was passed to `super(tag)`). |
 | `init()` (protected) | Called once the element exists | Wire native listeners, apply initial styles. The framework calls this after `render()`. |
 | `doLayout()` | Called on every layout pass | Override only if you need custom positioning beyond what a `LayoutManager` provides. |
-| `destructor()` (protected) | Called on removal / disposal | Clean up listeners, timers, theme subscriptions. |
-| `dispose()` | Called by the owner to tear a component down | Release resources the base class can't reach on its own (native listeners, subscriptions held outside `subscribeTheme`). Must end with `super.dispose()`. |
+| `destructor()` (protected) | Called on removal / disposal | Clean up listeners, timers, theme subscriptions. Always runs, including when an ancestor's own teardown recurses into this component — this is the hook to override, never `dispose()`. |
 
 The framework uses these in built-in components — `Button` adds a label in `init()`, `Window` wires drag handlers, `Text` subscribes to `ThemeManager.onThemeChange` through `subscribeTheme`.
 
 ## Disposal
 
-Call `component.dispose()` on any component you construct and discard yourself, outside the normal `addComponent` / `removeComponent` flow — a factory-built placeholder, a component held only in a private field. `dispose()` recursively destroys the component's children, releases every tracked theme subscription, removes the DOM element, deletes its per-instance stylesheet rules, and releases tracked handles; it is idempotent, so calling it twice is harmless. The framework does this automatically for built-in components attached and removed through normal `addComponent` / `removeComponent` flows.
+`destructor()` (protected, in the table above) and `dispose()` (public) are not interchangeable — they're the two ends of the same seam:
 
-If you write your own component subclass that holds a native listener, a timer, or a subscription outside `subscribeTheme`, override `dispose()` to release it and end the override with `super.dispose()` — a `dispose()` that doesn't chain to `super` silently leaves the rest of the teardown undone.
+- **`destructor()` is the override hook.** Write your subclass's cleanup there. It always runs, whether this component is destroyed directly or reached as a descendant of some ancestor's own teardown.
+- **`dispose()` is the public call entry point.** Call it — never override it — to tear down a component you own that is *not* a registered child, so nothing else would ever reach it: a factory-built placeholder, a component held only in a private field. It recursively destroys the component's children, releases every tracked theme subscription, removes the DOM element, deletes its per-instance stylesheet rules, and releases tracked handles; it is idempotent, so calling it twice is harmless.
+
+A registered child (anything passed to `addComponent` / `insertComponent`) needs none of this from its owner: when the parent itself is torn down, its teardown recurses into every registered child automatically. `removeComponent`, on the other hand, only detaches — it does not call `dispose()` or `destructor()`. A component you `removeComponent`'d and are discarding for good still needs an explicit `dispose()` call; nothing does that step for you.
 
 ## See also
 
