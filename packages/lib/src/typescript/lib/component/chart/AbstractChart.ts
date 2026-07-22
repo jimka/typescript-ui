@@ -1090,5 +1090,7 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
         this._legend.dispose();
 
         Tooltip.hide();
+
+        super.dispose();
     }
 }

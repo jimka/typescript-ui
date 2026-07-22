@@ -13,8 +13,7 @@ import { AbstractWindow } from "~/overlay/AbstractWindow.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Animation } from "~/core/Animation.js";
 import { FillType } from "~/layout/FillType.js";
-import { Fit } from "~/layout/Fit.js";
-import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
+import { createSpinnerWrap } from "~/component/display/SpinnerWrap.js";
 import { Button } from "~/component/button/Button.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { tabDragRegistry } from "~/overlay/DragManager.js";
@@ -1070,6 +1069,7 @@ class Tab extends LayoutManager {
         // pass mints a phantom tab for it.
         if (spinner) {
             container.removeComponent(spinner);
+            spinner.dispose();
         }
 
         if (content) {
@@ -1473,24 +1473,6 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Builds the spinner placeholder for a tab entry: a fixed-size
-     * `ProgressSpinner` wrapped in a [`Fit`](/api/layout/classes/Fit) layout
-     * configured with `FillType.NONE` so the spinner sits at its preferred
-     * size in the geometric centre of the container's content area. The
-     * diameter (24 px) matches `TablePanel`'s store-loading spinner so a
-     * slow lazy panel and a slow data load look identical.
-     *
-     * @returns A Component owning a single `ProgressSpinner` child.
-     */
-    private createSpinnerWrap(): Component {
-        const wrap = new Component();
-        wrap.setLayoutManager(new Fit({ fill: FillType.NONE }));
-        wrap.addComponent(new ProgressSpinner(24));
-
-        return wrap;
-    }
-
-    /**
      * Catches the tab strip up to any container child that no content entry owns
      * yet — the bare-`Panel` eager path, where a consumer called `addComponent`
      * directly and expects a tab to appear.
@@ -1563,7 +1545,7 @@ class Tab extends LayoutManager {
             return;
         }
 
-        const spinner = this.createSpinnerWrap();
+        const spinner = createSpinnerWrap();
         entry.spinner = spinner;
         entry.state   = "building";
 

@@ -491,19 +491,20 @@ class Video extends Component<VideoOptions> {
     }
 
     /**
-     * Detaches the native media listeners installed at render. Call before
-     * discarding the surface so no stray native listener survives.
+     * Detaches the native media listeners installed at render, then defers to
+     * the base class for the rest of teardown. Call before discarding the
+     * surface so no stray native listener survives.
      */
     dispose(): void {
         const element = this.getElement();
 
-        if (!element) {
-            return;
+        if (element) {
+            for (const [type, handler] of this._mediaHandlers) {
+                DOM.sink.removeListener(element, type, handler);
+            }
         }
 
-        for (const [type, handler] of this._mediaHandlers) {
-            DOM.sink.removeListener(element, type, handler);
-        }
+        super.dispose();
     }
 
     /**

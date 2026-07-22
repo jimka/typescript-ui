@@ -160,11 +160,14 @@ class MenuBarButton extends Button<MenuBarButtonOptions> {
     }
 
     /**
-     * Removes Event listeners registered by this button.
+     * Removes Event listeners registered by this button, then defers to the
+     * base class for the rest of teardown.
      */
     dispose(): void {
         Event.removeListener(this, "click",     this._onClickHandler);
         Event.removeListener(this, "mouseover", this._onMouseOverHandler);
+
+        super.dispose();
     }
 }
 

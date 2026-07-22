@@ -437,6 +437,7 @@ export namespace Animation {
 
         const dropSpinner = (): void => {
             host.removeComponent(spinner);
+            spinner.dispose();
             host.scheduleLayout();
         };
 
@@ -445,6 +446,7 @@ export namespace Animation {
             // tab was closed): drop the spinner and discard the built component.
             if (config.isStale?.()) {
                 dropSpinner();
+                component.dispose();
 
                 return;
             }

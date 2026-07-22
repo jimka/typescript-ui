@@ -314,13 +314,15 @@ class ChartLegend extends Panel<ChartLegendOptions> {
     }
 
     /**
-     * Removes the self-subtree click listener. `Event.addSubtreeListener` holds a
-     * permanent hard reference in a module-level map, so a legend that is never
-     * disposed pins itself (and its DOM handles) for the life of the page; the
-     * owning chart calls this from its own `dispose`.
+     * Removes the self-subtree click listener, then defers to the base class
+     * for the rest of teardown. `Event.addSubtreeListener` holds a permanent
+     * hard reference in a module-level map, so a legend that is never disposed
+     * pins itself (and its DOM handles) for the life of the page; the owning
+     * chart calls this from its own `dispose`.
      */
     dispose(): void {
         Event.removeSubtreeListener(this, "click", this.handleRowClick);
+        super.dispose();
     }
 }
 

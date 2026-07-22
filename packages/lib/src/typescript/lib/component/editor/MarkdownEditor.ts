@@ -805,8 +805,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Detaches the Lexical registrations and both surfaces' live views. Call
-     * before discarding a dynamically-built `MarkdownEditor`, mirroring
+     * Detaches the Lexical registrations and both surfaces' live views, then
+     * defers to the base class for the rest of teardown. Call before
+     * discarding a dynamically-built `MarkdownEditor`, mirroring
      * `CodeEditor.dispose`.
      */
     dispose(): void {
@@ -814,6 +815,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         this._unregister?.();
         this._editor?.setRootElement(null);
         this._codeEditor.dispose();
+
+        super.dispose();
     }
 
     /**

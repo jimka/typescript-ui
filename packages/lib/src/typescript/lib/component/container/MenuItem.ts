@@ -431,7 +431,8 @@ class MenuItem extends Component {
     }
 
     /**
-     * Removes all Event listeners registered by this item and cancels any pending submenu timer.
+     * Removes all Event listeners registered by this item, cancels any pending
+     * submenu timer, then defers to the base class for the rest of teardown.
      */
     dispose(): void {
         if (this._submenuTimer !== null) {
@@ -442,6 +443,8 @@ class MenuItem extends Component {
         Event.removeListener(this, "mouseover", this._onMouseOver);
         Event.removeListener(this, "mouseout", this._onMouseOut);
         Event.removeListener(this, "click", this._onClick);
+
+        super.dispose();
     }
 
     /**

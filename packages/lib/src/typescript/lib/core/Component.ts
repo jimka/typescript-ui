@@ -694,6 +694,20 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Destroys this component: recursively destroys its children, releases
+     * every tracked theme subscription, removes the DOM element, deletes the
+     * component's per-instance stylesheet rules, and releases tracked handles.
+     *
+     * @remarks Idempotent — calling this more than once is a harmless no-op.
+     * This is the call entry point for teardown; a subclass overriding it to
+     * release its own resources MUST end the override with `super.dispose()`
+     * or its share of the work is silently skipped.
+     */
+    dispose(): void {
+        this.destructor();
+    }
+
+    /**
      * Removes the component's DOM element when the component is destroyed.
      */
     protected destructor() {

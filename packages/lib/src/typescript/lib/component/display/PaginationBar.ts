@@ -144,7 +144,8 @@ class PaginationBar extends Component<PaginationBarOptions> {
     }
 
     /**
-     * Detaches the store listeners installed by this bar.
+     * Detaches the store listeners installed by this bar, then defers to the
+     * base class for the rest of teardown.
      *
      * @remarks
      * Call this when permanently removing the bar (e.g. before discarding it,
@@ -158,6 +159,8 @@ class PaginationBar extends Component<PaginationBarOptions> {
         this._store.off('add', this._onStoreUpdate);
         this._store.off('remove', this._onStoreUpdate);
         this._store.off('sync', this._onStoreUpdate);
+
+        super.dispose();
     }
 
     /**

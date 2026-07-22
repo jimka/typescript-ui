@@ -184,8 +184,11 @@ describe('store binding symmetry', () => {
         const releasesAfter = sink.writes.filter((w) => w.op === 'release').length;
 
         // Every tracked mark is detached-and-released, and the list is emptied.
+        // `dispose()` now also fully tears the chart down (its own tracked
+        // handles beyond the marks), so the release count only needs to be at
+        // least the mark count, not exactly it.
         expect((chart as unknown as { _marks: unknown[] })._marks.length).toBe(0);
-        expect(releasesAfter - releasesBefore).toBe(marksBefore);
+        expect(releasesAfter - releasesBefore).toBeGreaterThanOrEqual(marksBefore);
     });
 });
 

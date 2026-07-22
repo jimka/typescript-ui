@@ -763,7 +763,8 @@ class Menu extends Component implements DismissableLayer {
     }
 
     /**
-     * Disposes all [`MenuItem`](/api/component/container/classes/MenuItem) children, removing their Event listeners.
+     * Disposes all [`MenuItem`](/api/component/container/classes/MenuItem) children, removing their Event listeners,
+     * then defers to the base class for the rest of teardown.
      * **Persistent-mode only.**
      */
     dispose(): void {
@@ -774,6 +775,8 @@ class Menu extends Component implements DismissableLayer {
                 item.dispose();
             }
         }
+
+        super.dispose();
     }
 
     /**

@@ -204,10 +204,13 @@ describe('PaginationBar dispose', () => {
 
         const bar = new PaginationBar(store);
 
-        const label = (): string =>
-            (bar as unknown as { getComponents(): { getText(): string }[] }).getComponents()[2].getText();
+        // Captured before dispose(): dispose() now tears the bar's whole
+        // subtree down (including this label), so the assertion below reads
+        // the label component directly rather than re-resolving it through
+        // `bar.getComponents()`, which is empty afterwards.
+        const label = (bar as unknown as { getComponents(): { getText(): string }[] }).getComponents()[2];
 
-        expect(label()).toBe('Page 2 of 4');
+        expect(label.getText()).toBe('Page 2 of 4');
 
         bar.dispose();
 
@@ -215,6 +218,6 @@ describe('PaginationBar dispose', () => {
         // last-rendered label in place rather than refreshing to "Page 3 of 4".
         store.goToPage(3);
 
-        expect(label()).toBe('Page 2 of 4');
+        expect(label.getText()).toBe('Page 2 of 4');
     });
 });

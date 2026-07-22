@@ -766,6 +766,25 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
 
         return false;
     }
+
+    /**
+     * Disposes the scrolling clip (and every item added via `addItem` it
+     * holds) and the paging arrows, when built, then defers to the base
+     * class for the rest of teardown.
+     *
+     * @remarks `_clip` / `_leadArrow` / `_trailArrow` are raw-appended to
+     * this strip's own element rather than registered via `addComponent`
+     * (see the constructor and `ensureArrows`), so the base class's
+     * recursive teardown cannot reach them — or, through `_clip`, the items
+     * it hosts.
+     */
+    dispose(): void {
+        this._clip.dispose();
+        this._leadArrow?.dispose();
+        this._trailArrow?.dispose();
+
+        super.dispose();
+    }
 }
 
 const ScrollStripCallable = callable(ScrollStrip);
