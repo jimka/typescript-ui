@@ -26,7 +26,6 @@ The constructor signature is `Text(text?, tag = "span")` — the second argument
 | `setFontWeight(value)` / `setFontStyle(value)` / `setFontVariant(value)` | Font style controls. |
 | `setTextAlign(value)` / `setTextShadow(value)` | Text appearance. |
 | `centerInHeight(px)` | Set line-height equal to a container's height so a single-line text sits vertically centred. Pass `null` to revert to the theme's additive line box (`font-size + --ts-ui-line-padding`). |
-| `dispose()` | Detach the theme-change listener — call this before removing a `Text` from the page so the listener doesn't leak. |
 
 ## Centring text in a fixed-height box
 
@@ -41,7 +40,7 @@ Pass `null` to drop back to the theme's additive line box (`font-size + --ts-ui-
 
 ## Memory leaks
 
-`Text` subscribes to the active theme on construction so it can re-measure itself on every theme change. **Custom components that create `Text` instances dynamically** and remove them must call `text.dispose()` to detach the listener. The framework does this automatically for built-in components.
+`Text` subscribes to the active theme on construction so it can re-measure itself on every theme change. **Custom components that create `Text` instances dynamically** and remove them must call `text.dispose()` — the general teardown call every component supports — to detach the listener. The framework does this automatically for built-in components.
 
 ## See also
 

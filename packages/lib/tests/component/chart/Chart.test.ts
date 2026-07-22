@@ -158,7 +158,14 @@ describe('store binding symmetry', () => {
         const off = vi.spyOn(store, 'off');
 
         const chart = new _LineChart({ store, xField: 'x', yField: 'y' });
-        const legendDispose = vi.spyOn((chart as unknown as { _legend: { dispose(): void } })._legend, 'dispose');
+        // `_legend` is a registered child (added via `addComponent`), so its
+        // teardown is reached through the base class's recursive
+        // `destructor()` call, never through its own public `dispose()` —
+        // spy on `destructor` to match that contract.
+        const legendDestructor = vi.spyOn(
+            (chart as unknown as { _legend: { destructor(): void } })._legend as unknown as { destructor(): void },
+            'destructor'
+        );
 
         chart.dispose();
 
@@ -166,7 +173,7 @@ describe('store binding symmetry', () => {
         expect(chart.getStore()).toBeNull();
         // The internally-owned legend must be disposed too, or its subtree click
         // listener leaks in Event's module-level map.
-        expect(legendDispose).toHaveBeenCalledTimes(1);
+        expect(legendDestructor).toHaveBeenCalledTimes(1);
     });
 
     it('dispose releases the last repaint marks (no retained-handle leak)', () => {
@@ -184,8 +191,11 @@ describe('store binding symmetry', () => {
         const releasesAfter = sink.writes.filter((w) => w.op === 'release').length;
 
         // Every tracked mark is detached-and-released, and the list is emptied.
+        // `dispose()` now also fully tears the chart down (its own tracked
+        // handles beyond the marks), so the release count only needs to be at
+        // least the mark count, not exactly it.
         expect((chart as unknown as { _marks: unknown[] })._marks.length).toBe(0);
-        expect(releasesAfter - releasesBefore).toBe(marksBefore);
+        expect(releasesAfter - releasesBefore).toBeGreaterThanOrEqual(marksBefore);
     });
 });
 

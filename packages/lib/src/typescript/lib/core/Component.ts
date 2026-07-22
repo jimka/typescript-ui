@@ -694,7 +694,34 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Removes the component's DOM element when the component is destroyed.
+     * Tears this component down: the public call entry point for teardown.
+     * The entire body defers to `destructor()`, which recursively destroys
+     * this component's children, releases every tracked theme subscription,
+     * detaches its layout manager, removes the DOM element, deletes the
+     * component's per-instance stylesheet rules, and releases tracked
+     * handles.
+     *
+     * @remarks Idempotent — calling this more than once is a harmless no-op.
+     * Never override this method — override `destructor()` instead, so an
+     * ancestor's own teardown recursing into this component still reaches
+     * your cleanup.
+     */
+    dispose(): void {
+        this.destructor();
+    }
+
+    /**
+     * Destroys this component: recursively destroys its children, releases
+     * every tracked theme subscription, detaches its layout manager, removes
+     * the DOM element, deletes the component's per-instance stylesheet
+     * rules, and releases tracked handles.
+     *
+     * @remarks Idempotent — calling this more than once is a harmless no-op.
+     * This is the override hook — a subclass releasing its own resources
+     * MUST end the override with `super.destructor()` or its share of the
+     * work is silently skipped. Reached both from `dispose()` (the public
+     * entry point) and, recursively, from an ancestor's own `destructor()` —
+     * never call it directly from outside a `Component` subclass.
      */
     protected destructor() {
         // Discard the subtree eagerly — a destroyed container destroys its
@@ -705,6 +732,37 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             child.destructor();
         }
         this._components = [];
+
+        // Detach the layout manager before the element is removed below.
+        // This is defensive, not proven necessary: a `LayoutManager.detach()`
+        // override could touch the container's element through `getElement()`
+        // — whose `getElementById` fallback needs a connected document — so
+        // detaching first is the safer order. But no current override
+        // demonstrably requires it: `Accordion.detach()` and `Split.detach()`
+        // (the two overrides three successive review cycles pointed to as
+        // the reason) both resolve their header / panel-wrapper / gutter
+        // elements through `getElement()` calls that never reach the
+        // fallback, because those components cache `_element` at creation
+        // via `getElement(true)` (`Accordion.ts:1357-1358`, `Split.ts:1185`).
+        // The offline test harness cannot settle the question either way:
+        // its modelled `getElementById` (`TestHandleTable._byId`) is never
+        // evicted on `removeElement`, so a stale id keeps resolving
+        // regardless of ordering. Reordering this to run after element
+        // removal left the full suite green — the ordering is not known to
+        // matter today, kept this way only as a defensive default. This is
+        // also what makes `Tab.detach()` reachable on this path at all — it
+        // disposes the raw-appended `TabBar` (`Tab.attach()` appends it
+        // directly to the container element instead of registering it as a
+        // child), which the child-destruction loop above cannot reach on its
+        // own. Resolved directly against `_options` / `_defaultOptions`,
+        // rather than through `getLayoutManager()`, whose lazy-attach branch
+        // would re-attach (and then immediately re-detach) a manager that was
+        // never actually in use — which would break idempotency on a second
+        // `destructor()` call by re-attaching every time.
+        const layoutManager = (this._options.layoutManager ?? this._defaultOptions.layoutManager) as LayoutManager;
+        if (layoutManager && layoutManager.getContainer() === this) {
+            layoutManager.detach();
+        }
 
         // Release every recorded theme subscription (includes border
         // invalidation, folded into this bag by setBorder).

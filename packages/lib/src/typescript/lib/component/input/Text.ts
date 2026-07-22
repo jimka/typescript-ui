@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Util } from "~/core/Util.js";
@@ -90,9 +89,9 @@ const ADDITIVE_LINE_HEIGHT_RULE = "calc(1em + var(--ts-ui-line-padding, 2px))";
  * Uses an off-screen probe element to measure text dimensions and automatically
  * updates the preferred size whenever the text or a font property changes.
  *
- * `Text` subscribes to {@link ThemeManager} on construction so it re-measures itself
- * on every theme change. Components that create `Text` instances dynamically and
- * remove them from the page should call `text.dispose()` to detach the listener.
+ * `Text` subscribes to [`ThemeManager`](/api/core/classes/ThemeManager) on construction so it re-measures itself
+ * on every theme change, through the base class's `subscribeTheme` — released
+ * automatically on `dispose()`.
  *
  * @category Components
  */
@@ -101,7 +100,6 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private _hasExplicitPreferredSize: boolean = false;
     private _fontSizeCSSVar : string | null = "--ts-ui-font-size";
     private _fontSizeCSSRule: string | null = "var(--ts-ui-font-size, 14px)";
-    private readonly _unsubscribeTheme: () => void;
     private _lineHeightCSSVar : string | null = null;
     private _lineHeightCSSRule: string | null = ADDITIVE_LINE_HEIGHT_RULE;
     private _measuredBaseline: number | null = null;
@@ -142,7 +140,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         this.clearInsets();
         this.setElementCSSRule("lineHeight", this._lineHeightCSSRule);
 
-        this._unsubscribeTheme = ThemeManager.onThemeChange(() => {
+        this.subscribeTheme(() => {
             if (this._fontSizeCSSVar) {
                 // Resolve from the element's computed font-size (the cascade has
                 // applied the new var by the time onThemeChange fires); the root
@@ -1267,13 +1265,6 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         });
 
         return this;
-    }
-
-    /**
-     * Removes the theme-change listener. Call when the component is permanently removed.
-     */
-    dispose() {
-        this._unsubscribeTheme();
     }
 
     /**

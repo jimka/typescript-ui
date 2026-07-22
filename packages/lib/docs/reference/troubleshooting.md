@@ -72,7 +72,7 @@ Event.removeListener(button, 'click', onClick);
 
 ## "I'm seeing growing memory usage over time"
 
-Most often a [`Text`](/components/Text)-derived listener leak. Custom components that create `Text`, [`Label`](/components/Label), [`Header`](/components/Header), or [`Legend`](/components/Legend) instances dynamically and remove them must call `text.dispose()` to detach the theme-change listener:
+Most often a [`Text`](/components/Text)-derived listener leak. Custom components that hold `Text`, [`Label`](/components/Label), [`Header`](/components/Header), or [`Legend`](/components/Legend) instances in a field without ever adding them via `addComponent` must call `text.dispose()` to detach the theme-change listener — from a `protected destructor()` override, so it runs whenever this component is torn down, not only when someone happens to call `dispose()` on it directly:
 
 ```typescript
 class StatusBar extends Component {
@@ -85,7 +85,7 @@ class StatusBar extends Component {
 }
 ```
 
-Built-in components attached and removed through normal `addComponent` / `removeComponent` flow have this handled automatically.
+A `Text` added as a registered child via `addComponent` needs none of this — its owner's own teardown recurses into every registered child automatically. `removeComponent`, though, only detaches; it never calls `dispose()`, so a component you remove and discard for good still needs an explicit `dispose()` call.
 
 ## "My filter or sort is throwing in a Worker"
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import type { MarkdownEditorChange } from '~/component/editor/MarkdownEditor';
 import { TRANSFORMERS } from '~/component/editor/markdownTransformers';
@@ -497,5 +497,27 @@ describe('MarkdownEditor table commands', () => {
                 .insertTableColumn()
                 .deleteTableColumn()
         ).not.toThrow();
+    });
+});
+
+describe('MarkdownEditor dispose', () => {
+    it('runs the registered _codeEditor child\'s destructor() exactly once', () => {
+        const editor = new MarkdownEditor();
+
+        // `_codeEditor` is a registered child (added via `addComponent`), so
+        // its teardown is reached through the base class's recursive
+        // `destructor()` call — a redundant explicit call in
+        // `MarkdownEditor.destructor()` would run it twice. Regression for
+        // that double-teardown class, matching Chart.test.ts's
+        // `_legend.destructor` spy.
+        const codeEditorDestructor = vi.spyOn(
+            (editor as unknown as { _codeEditor: { destructor(): void } })._codeEditor as unknown as { destructor(): void },
+            'destructor'
+        );
+
+        editor.getElement(true);
+        editor.dispose();
+
+        expect(codeEditorDestructor).toHaveBeenCalledTimes(1);
     });
 });

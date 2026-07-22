@@ -9,9 +9,7 @@ import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
-import { Fit } from "~/layout/Fit.js";
-import { FillType } from "~/layout/FillType.js";
-import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
+import { createSpinnerWrap } from "~/component/display/SpinnerWrap.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -632,12 +630,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             this._contentFactory       = null;
             this._contentReadyCallback = null;
 
-            // The 24 px diameter matches `TablePanel`'s store-loading
-            // spinner so a slow window-content build and a slow data load
-            // look identical from the user's perspective.
-            const spinner = new Component();
-            spinner.setLayoutManager(new Fit({ fill: FillType.NONE }));
-            spinner.addComponent(new ProgressSpinner(24));
+            const spinner = createSpinnerWrap();
 
             Animation.materialize({
                 host:             this,

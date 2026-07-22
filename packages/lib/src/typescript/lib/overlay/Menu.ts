@@ -109,6 +109,17 @@ class Menu extends Component implements DismissableLayer {
     // null when the items were passed as a fixed array (built once, never rebuilt).
     private readonly _itemsProvider: (() => MenuItemConfig[]) | null;
     private readonly _onClose: (() => void) | null;
+    // In both modes every entry is registered via `addComponent` (see
+    // `showAnchored` / `buildPersistentItems`), so `Menu` needs no
+    // `destructor()` override of its own — the base class's recursive
+    // teardown already disposes each item. (A prior override manually
+    // re-disposed them here, guarded to persistent mode only via
+    // `assertPersistentMode`. That guard was never reachable through ancestor
+    // teardown — no `Menu` anywhere in the library is itself registered via
+    // `addComponent` (`Table._columnContextMenu` / `TabBar._contextMenu` are
+    // plain fields, never added as children), so an ancestor's `destructor()`
+    // recursion can never reach a `Menu` at all. The loop was removed simply
+    // because it was redundant, not because the guard made it unsafe.)
     private _menuItems: Array<MenuItem | MenuSeparator> = [];
     private _focusedIndex: number = -1;
     private _openSubmenuPanel: Menu | null = null;
@@ -760,20 +771,6 @@ class Menu extends Component implements DismissableLayer {
      */
     getExcludedElement(): Handle | null {
         return this._excludedEl;
-    }
-
-    /**
-     * Disposes all [`MenuItem`](/api/component/container/classes/MenuItem) children, removing their Event listeners.
-     * **Persistent-mode only.**
-     */
-    dispose(): void {
-        this.assertPersistentMode("dispose");
-
-        for (const item of this._menuItems) {
-            if (item instanceof MenuItem) {
-                item.dispose();
-            }
-        }
     }
 
     /**

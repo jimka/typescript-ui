@@ -78,7 +78,7 @@ Custom filter predicates passed to `filterBy` must be **pure functions** with no
 
 [`Text`](/components/Text) and its subclasses ([`Label`](/components/Label), [`Legend`](/components/Legend)) subscribe to [`ThemeManager.onThemeChange`](/api/core/classes/ThemeManager) on construction so they re-measure on every theme change.
 
-**Custom components that create `Text` instances dynamically and remove them must call `text.dispose()`** to detach the listener:
+**A `Text` added as a registered child needs no explicit cleanup** — its owner's own teardown recurses into every registered child and releases each one's theme subscription automatically:
 
 ```typescript
 class StatusBar extends Component {
@@ -88,15 +88,21 @@ class StatusBar extends Component {
         super('div');
         this.addComponent(this.message);
     }
+}
+```
 
-    protected destructor() {
-        this.message.dispose();  // detach theme listener
+**A `Text` held only in a field — never passed to `addComponent` — is unreachable by that recursion**, so its owner must dispose it explicitly. Do this from a `protected destructor()` override, not `dispose()`: `destructor()` is the hook that always runs, including when an ancestor's teardown recurses into this component, while `dispose()` only runs when something calls it directly.
+
+```typescript
+class StatusBar extends Component {
+    private tooltip: Text = Text('');  // never added as a child
+
+    protected destructor(): void {
+        this.tooltip.dispose();  // detach theme listener
         super.destructor();
     }
 }
 ```
-
-Built-in components attached and removed through the normal `addComponent` / `removeComponent` flow have this handled for you. The leak only appears when you create a `Text` outside that flow.
 
 ## Avoiding layout thrash
 

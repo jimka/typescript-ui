@@ -494,7 +494,6 @@ class TabBar extends Container<TabBarOptions> {
     private _fixedWidth: number = 120;
     private _underBorderFullWidth: boolean = true;
     private _underBorderFromTheme: boolean = true;
-    private _themeCleanup: (() => void) | null = null;
     private _indicator: TabIndicator = new TabIndicator();
 
     private _side: TabSide = "north";
@@ -627,9 +626,10 @@ class TabBar extends Container<TabBarOptions> {
         this._leadGroup.setPointerEvents("none");
 
         // Follow the active theme's under-border default until a consumer pins it
-        // explicitly. Torn down in dispose(). The owner re-lays-out the strip on
-        // theme change (it owns the band geometry); this only tracks the border.
-        this._themeCleanup = ThemeManager.onThemeChange(() => {
+        // explicitly. Released by the base class's dispose(). The owner
+        // re-lays-out the strip on theme change (it owns the band geometry);
+        // this only tracks the border.
+        this.subscribeTheme(() => {
             if (!this._underBorderFromTheme) {
                 return;
             }
@@ -774,28 +774,31 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Tears the strip down: removes the theme subscription and all drag wiring,
-     * then removes the element from the DOM. Called by the owner when it detaches.
+     * Tears down all drag wiring and the raw-appended chrome overlays (see
+     * `init()`), then defers to the base class for the theme subscription,
+     * the element, and everything else. Called by the owner when it detaches.
      *
-     * @returns This tab strip, for method chaining.
+     * @remarks `_tabClip` / `_toolGroup` / `_leadGroup` / `_indicator` /
+     * `_dropTint` / `_reorderBar` are appended straight to the strip element
+     * rather than registered via `addComponent` (mirroring `WindowBorder`'s
+     * strips), so the base class's recursive teardown cannot reach them —
+     * they, and everything they in turn hold (tab cells, tool buttons, the
+     * lead widget), must be disposed explicitly here.
      */
-    dispose(): this {
-        if (this._themeCleanup) {
-            this._themeCleanup();
-            this._themeCleanup = null;
-        }
-
+    protected destructor(): void {
         this.teardownTabDnD();
         this.clearSpringRaise();
         this._moveTriggerTeardown?.();
         this._moveTriggerTeardown = null;
 
-        const el = this.getElement();
-        if (el) {
-            DOM.sink.removeElement(el);
-        }
+        this._tabClip.dispose();
+        this._toolGroup.dispose();
+        this._leadGroup.dispose();
+        this._indicator.dispose();
+        this._dropTint.dispose();
+        this._reorderBar.dispose();
 
-        return this;
+        super.destructor();
     }
 
     /**

@@ -1062,7 +1062,7 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
      * Unbinds the store, removes the theme and interaction subscriptions, and
      * hides any open tooltip. Call when the chart is permanently removed.
      */
-    dispose(): void {
+    protected destructor(): void {
         if (this._boundStore) {
             for (const event of STORE_EVENTS) {
                 this._boundStore.off(event, this._onStoreRefresh);
@@ -1087,8 +1087,11 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
         // lesson at final teardown, not just per repaint.
         this.clearMarks();
 
-        this._legend.dispose();
-
+        // `_legend` is registered via `addComponent`, so `super.destructor()`'s
+        // child recursion below already disposes it — an explicit call here
+        // would run `ChartLegend.destructor()` a second time.
         Tooltip.hide();
+
+        super.destructor();
     }
 }

@@ -451,18 +451,28 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
-     * Detaches the theme-change listener and destroys the live CodeMirror view.
-     * Call before discarding a dynamically-built `CodeEditor`, mirroring
-     * `Markdown.dispose`.
+     * Detaches the theme-change listener and destroys the live CodeMirror
+     * view, then defers to the base class for the rest of teardown. Call
+     * before discarding a dynamically-built `CodeEditor`, mirroring
+     * `Markdown.destructor`.
      */
-    dispose(): void {
+    protected destructor(): void {
         this._unsubscribeTheme();
 
         if (this._view) {
             Event.removeSubtreeListener(this, "wheel", this._onWheelClaim);
         }
 
+        // Nulled after destroy so a second destructor() pass on this same
+        // instance (dispose() is documented idempotent — a harmless no-op —
+        // but CodeMirror's own EditorView.destroy() is not guarded against a
+        // repeat call) finds `_view` already null and no-ops via the `?.`
+        // above. Cheap insurance on a path the offline test harness cannot
+        // reach: it never constructs a live `EditorView`.
         this._view?.destroy();
+        this._view = null;
+
+        super.destructor();
     }
 
     /**

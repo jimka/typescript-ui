@@ -238,5 +238,5 @@ unsubscribe();
 ```
 
 ::: warning Memory leaks
-Custom components that create [`Text`](/api/component/input/classes/Text) instances and are removed from the page should call `text.dispose()` to detach the listener and avoid memory leaks. The framework does this automatically for built-in components, but a `Text` you create yourself is your responsibility.
+Custom components that create [`Text`](/api/component/input/classes/Text) instances and are removed from the page should call `text.dispose()` — the general teardown call every component supports, not a `Text`-specific one — to detach the listener and avoid memory leaks. The framework does this automatically for built-in components, but a `Text` you create yourself is your responsibility.
 :::

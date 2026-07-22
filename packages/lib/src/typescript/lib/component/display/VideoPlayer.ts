@@ -547,17 +547,21 @@ class VideoPlayer extends Component<VideoPlayerOptions> {
     }
 
     /**
-     * Detaches the native + video listeners installed by this player. Call before
+     * Detaches the native + video listeners installed by this player, then
+     * defers to the base class for the rest of teardown. Call before
      * discarding it so no stray native listener survives.
      */
-    dispose(): void {
-        this._video.dispose();
-
+    protected destructor(): void {
+        // `_video` is registered via `addComponent`, so `super.destructor()`'s
+        // child recursion below already disposes it — an explicit call here
+        // would run `Video.destructor()` a second time.
         const element = this.getElement();
 
         if (element) {
             DOM.sink.removeListener(element, "fullscreenchange", this._onFullscreenChange);
         }
+
+        super.destructor();
     }
 
     /**
