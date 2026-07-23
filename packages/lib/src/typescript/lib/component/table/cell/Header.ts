@@ -322,10 +322,11 @@ class HeaderCell extends DefaultCell {
     }
 
     /**
-     * Replaces the base header label (the required marker and sort arrow that
-     * {@link _renderTitle} appends are preserved). Re-applied on every header
-     * reconcile so a column config that overrides the label — or clears the
-     * override — takes effect on a surviving cell, mirroring {@link setRequired}.
+     * Replaces the base header label. The required marker and sort arrow are
+     * re-composed onto the new label automatically, so neither is lost.
+     * Re-applied on every header reconcile so a column config that overrides
+     * the label — or clears the override — takes effect on a surviving cell,
+     * mirroring {@link setRequired}.
      *
      * @param text - The new base label.
      * @returns This header cell, for method chaining.
