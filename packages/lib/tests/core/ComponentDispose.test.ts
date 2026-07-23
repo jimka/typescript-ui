@@ -41,9 +41,16 @@ function ruleSnapshot(): Set<string> {
     return new Set(_ruleCacheKeys());
 }
 
-/** Rule-cache keys present now that were absent from `before`. */
+// The framework-wide rule (plans/implemented/class-scoped-style-rules.md) is
+// permanent, module-scoped state, created once per process and never
+// disposed — so the first test in the whole run to render any `Component`
+// legitimately sees it appear relative to its `before` snapshot. It is not a
+// leak: excluded here the same way pre-existing module state is.
+const FRAMEWORK_SELECTOR = ':where(.ts-ui-component)';
+
+/** Rule-cache keys present now that were absent from `before`, excluding the permanent framework rule. */
 function leakedKeys(before: Set<string>): string[] {
-    return _ruleCacheKeys().filter((key) => !before.has(key));
+    return _ruleCacheKeys().filter((key) => !before.has(key) && key !== FRAMEWORK_SELECTOR);
 }
 
 /**

@@ -19,6 +19,7 @@ import { StyleRule, InlineStyle, disposeStyleRule } from "~/core/StyleTarget.js"
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
+import { COMPONENT_CLASS, ensureClassStyleRule } from "~/core/ClassStyleRules.js";
 
 //import { FastDom } from "~/FastDom.js";
 
@@ -405,6 +406,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // queues `element.style.X = ...` writes until `init()` attaches it.
     private _styleRule            : StyleRule    = new StyleRule({ scope: "component", name: this.getId(), materialize: false });
     private _inlineStyle          : InlineStyle  = new InlineStyle();
+    // Per-render cache of what the framework and class rules already deliver
+    // for this concrete class — the merged bag `ensureClassStyleRule` returns.
+    // Set at the top of `applyStyle` and consulted by `writeRuleDeclaration`
+    // so each phase can skip a write already served by a lower tier.
+    private _inheritedStyleBag    : Readonly<Record<string, string>> | null = null;
     // Optional clip frame: a presentational wrapper element interposed between
     // this component's element and its DOM parent, sized to a cell rect with
     // `overflow: hidden` so a layout manager can visually clip an element that
@@ -854,14 +860,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Returns the component's dedicated CSS style rule for applying class-level styles.
+     * Returns the component's dedicated `#id` CSS style rule.
      *
      * @returns The CSSStyleRule scoped to this component's ID.
      *
      * @remarks Forces the underlying stylesheet rule to materialize on first
      * access. After {@link ensureCSSRule} runs, any pending writes queued in
      * `styleRule` are flushed onto the live rule so callers can read / mutate
-     * it directly.
+     * it directly. This `#id` rule no longer holds a component's full
+     * effective style: declarations that are uniform for this class are
+     * served instead by a framework-wide rule shared by every component, and
+     * a rule shared by every instance of this concrete class where its
+     * defaults deviate from that; this rule carries only the declarations an
+     * individual instance deviates on.
      */
     protected getCSSRule(): CSSStyleRule {
         return this.ensureCSSRule();
@@ -4353,6 +4364,27 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Routes one `applyStyle` rule declaration to the rule that should carry
+     * it: dropped when the framework or class rule already delivers the same
+     * key/value, queued onto the per-component `#id` rule otherwise.
+     *
+     * @param key - The CSS property name (camelCase).
+     * @param value - The value to write, or null to remove the property.
+     *
+     * @remarks Only skips a write issued from `applyStyle` itself — a runtime
+     * setter calling `setElementCSSRule` never goes through this helper, so
+     * it always reaches `#id` and wins on specificity regardless of what the
+     * framework or class rule already holds.
+     */
+    private writeRuleDeclaration(key: string, value: string | null): void {
+        if (this._inheritedStyleBag !== null && this._inheritedStyleBag[key] === value) {
+            return;
+        }
+
+        this._styleRule.queue(key, value);
+    }
+
+    /**
      * Writes all current style properties to the given element and its associated CSS rule.
      *
      * @param element - The element handle to apply styles to.
@@ -4360,12 +4392,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      *
      * @remarks Clears all existing inline styles on the element before re-applying, ensuring a clean state.
-     * The component's stylesheet rule is inserted only when a declaration was
-     * queued during this pass; a component that contributes no declaration gets
-     * no rule on the shared stylesheet until a later setter writes one.
+     * Declarations that are uniform for this class — the same value every
+     * instance would produce from its defaults — are served by a
+     * framework-wide `:where(.ts-ui-component)` rule and, where this class's
+     * defaults deviate from that, a shared `.ClassName` rule; only a value an
+     * instance actually deviates on is queued into this component's own
+     * `#id` rule. The `#id` rule is inserted only when a declaration was
+     * queued during this pass; a component that contributes no deviation
+     * gets no rule on the shared stylesheet until a later setter writes one.
      */
     applyStyle(element: Handle): this {
         DOM.sink.apply(element, { removeAttr: ["style"] });
+
+        // Resolve the declarations this class inherits from the framework and
+        // class rules before the phases run, so each phase can skip one it
+        // already gets from a lower tier.
+        this._inheritedStyleBag = ensureClassStyleRule(this.constructor, this._defaultOptions);
 
         this.applyBoxAndVisibilityStyles();
         this.replayGeometryStyles();
@@ -4394,10 +4436,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // class-level defaults reach the DOM even when no setter has fired —
         // the getter owns the fallback; there is no merged bag to drift from.
         if (this._boxSizing) {
-            this._styleRule.queue("boxSizing", this._boxSizing);
+            this.writeRuleDeclaration("boxSizing", this._boxSizing);
         }
 
-        this._styleRule.queue("position", this._position);
+        this.writeRuleDeclaration("position", this._position);
 
         const visible = this.isVisible();
         if (visible != null) {
@@ -4406,34 +4448,34 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             // is switched away). This mirrors the live `setVisible` setter, which
             // also writes `inherit` for `true`; writing `visible` here would pin
             // the element on screen and defeat ancestor-based hiding.
-            this._styleRule.queue("visibility", visible ? "inherit" : "hidden");
+            this.writeRuleDeclaration("visibility", visible ? "inherit" : "hidden");
         } else {
-            this._styleRule.queue("visibility", "inherit");
+            this.writeRuleDeclaration("visibility", "inherit");
         }
 
         const displayed = this.isDisplayed();
         if (displayed != null) {
-            this._styleRule.queue("display", displayed ? "block" : "none");
+            this.writeRuleDeclaration("display", displayed ? "block" : "none");
         }
 
         const cursor = this.getCursor();
         if (cursor) {
-            this._styleRule.queue("cursor", cursor);
+            this.writeRuleDeclaration("cursor", cursor);
         }
 
         const foregroundColor = this.getForegroundColor();
         if (foregroundColor) {
-            this._styleRule.queue("color", foregroundColor);
+            this.writeRuleDeclaration("color", foregroundColor);
         }
 
         const backgroundColor = this.getBackgroundColor();
         if (backgroundColor) {
-            this._styleRule.queue("backgroundColor", backgroundColor);
+            this.writeRuleDeclaration("backgroundColor", backgroundColor);
         }
 
         const backgroundImage = this.getBackgroundImage();
         if (backgroundImage) {
-            this._styleRule.queue("backgroundImage", backgroundImage);
+            this.writeRuleDeclaration("backgroundImage", backgroundImage);
         }
     }
 
@@ -4480,14 +4522,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // engine). Read the option/default directly, never via the getter.
         const minSize = this.getMinSizeConstraint();
         if (minSize) {
-            this._styleRule.queue("minWidth",  minSize.width  + "px");
-            this._styleRule.queue("minHeight", minSize.height + "px");
+            this.writeRuleDeclaration("minWidth",  minSize.width  + "px");
+            this.writeRuleDeclaration("minHeight", minSize.height + "px");
         }
 
         const maxSize = this.getMaxSizeConstraint();
         if (maxSize) {
-            this._styleRule.queue("maxWidth",  isUnbounded(maxSize.width)  ? "none" : maxSize.width  + "px");
-            this._styleRule.queue("maxHeight", isUnbounded(maxSize.height) ? "none" : maxSize.height + "px");
+            this.writeRuleDeclaration("maxWidth",  isUnbounded(maxSize.width)  ? "none" : maxSize.width  + "px");
+            this.writeRuleDeclaration("maxHeight", isUnbounded(maxSize.height) ? "none" : maxSize.height + "px");
             this.setDataAttribute("maxSize", formatSizeAttr(maxSize.width, maxSize.height));
         }
     }
@@ -4499,11 +4541,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private applyOverflowStyles(): void {
         const overflowX = this.getOverflowX();
         if (overflowX !== null) {
-            this._styleRule.queue("overflowX", overflowX);
+            this.writeRuleDeclaration("overflowX", overflowX);
         }
         const overflowY = this.getOverflowY();
         if (overflowY !== null) {
-            this._styleRule.queue("overflowY", overflowY);
+            this.writeRuleDeclaration("overflowY", overflowY);
         }
 
         // A scrollable *default* overflow (e.g. Drawer's `"auto"`) no longer
@@ -4521,22 +4563,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (this._border) {
             this._styleRule.queueMany(borderToStyle(this._border));
         } else {
-            this._styleRule.queue("border", null);
+            this.writeRuleDeclaration("border", null);
         }
 
         const outline = this.getOutline();
         if (outline) {
-            this._styleRule.queue("outline", outline);
+            this.writeRuleDeclaration("outline", outline);
         }
 
         const borderRadius = this.getBorderRadius();
         if (borderRadius) {
-            this._styleRule.queue("borderRadius", borderRadius);
+            this.writeRuleDeclaration("borderRadius", borderRadius);
         }
 
         const shadow = this.getShadow();
         if (shadow) {
-            this._styleRule.queue("boxShadow", shadow);
+            this.writeRuleDeclaration("boxShadow", shadow);
         }
     }
 
@@ -4547,7 +4589,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     private applyMiscInlineStyles(): void {
         if (this._whiteSpace) {
-            this._styleRule.queue("whiteSpace", this._whiteSpace);
+            this.writeRuleDeclaration("whiteSpace", this._whiteSpace);
         }
 
         const pointerEvents = this.getPointerEvents();
@@ -4579,12 +4621,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         if (this._userSelect) {
-            this._styleRule.queue("userSelect", this._userSelect);
+            this.writeRuleDeclaration("userSelect", this._userSelect);
         }
 
         const padding = this.getPadding();
         if (padding) {
-            this._styleRule.queue("padding", padding.render());
+            this.writeRuleDeclaration("padding", padding.render());
         }
 
         const insets = this.getInsets();
@@ -4592,7 +4634,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this.setDataAttribute("insets", insets.render());
         }
 
-        this._styleRule.queue("margin", "0px 0px 0px 0px");
+        this.writeRuleDeclaration("margin", "0px 0px 0px 0px");
     }
 
     /**
@@ -5402,7 +5444,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         DOM.sink.apply(element, { setAttr });
-        DOM.sink.apply(element, { addClass: [this.constructor.name] });
+        DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, this.constructor.name] });
 
         this._aria?.applyToElement(element);
 

@@ -43,7 +43,10 @@ describe('AbstractWindow — style-rule disposal on teardown', () => {
 
         // The contract is total: a closed window must not retain a single rule
         // on the shared sheet, or the sheet grows without bound across churn.
-        const leaked = _ruleCacheKeys().filter((key) => !before.has(key));
+        // The one documented exception is the framework-wide rule
+        // (plans/implemented/class-scoped-style-rules.md) — permanent,
+        // module-scoped state created once per process and never disposed.
+        const leaked = _ruleCacheKeys().filter((key) => !before.has(key) && key !== ':where(.ts-ui-component)');
 
         expect(leaked).toEqual([]);
     });

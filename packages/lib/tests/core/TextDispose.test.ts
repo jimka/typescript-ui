@@ -53,7 +53,11 @@ describe('Text — theme subscription released on dispose', () => {
 
         expect(ThemeManager._themeListenerCount()).toBe(listenersBefore);
 
-        const leaked = _ruleCacheKeys().filter((key) => !before.has(key));
+        // The framework-wide rule (plans/implemented/class-scoped-style-rules.md)
+        // is permanent, module-scoped state, created once per process and
+        // never disposed — excluded here as not a leak, the same way
+        // ComponentDispose.test.ts and AbstractWindow.styleRuleDisposal.test.ts do.
+        const leaked = _ruleCacheKeys().filter((key) => !before.has(key) && key !== ':where(.ts-ui-component)');
         expect(leaked).toEqual([]);
     });
 

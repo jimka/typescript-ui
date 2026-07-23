@@ -148,8 +148,12 @@ describe('StyleRule — batched flush (Component.applyStyle)', () => {
 
         expect(ops.length).toBe(1);
         const bag = ops[0].args[1] as Record<string, string | null>;
-        expect(bag.position).toBeDefined();
-        expect(bag.margin).toBeDefined();
+        // `position` / `margin` are now served by the framework-wide rule
+        // (plans/implemented/class-scoped-style-rules.md), so a bare
+        // `Component` writes nothing for them to its own `#id` rule; `cursor`
+        // and `border` stay conditional and always land at `#id`.
+        expect(bag.cursor).toBeDefined();
+        expect(bag.border).toBeDefined();
     });
 
     it('case 7: sync() produces exactly one further setRuleStyles op, not one per declaration', () => {
