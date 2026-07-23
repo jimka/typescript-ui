@@ -611,8 +611,24 @@ export class Cell<T> extends Component {
             Event.addListener(renderer, 'dblclick', () => this.startEdit());
         }
 
+        const changed = this._renderer !== renderer;
+
         this._renderer = renderer;
         this.getLayoutManager().setVisibleComponentId(renderer.getId());
+
+        // Re-fit the newly visible renderer to the cell, mirroring startEdit /
+        // stopEdit's Card swaps. Body.bindAndPositionRows skips a rebound
+        // cell's own doLayout when its column geometry is unchanged (a pure
+        // scroll) — safe for a fixed-type column, but a DynamicCell can swap
+        // its active renderer on that same rebind. Without this the swapped-in
+        // variant keeps its stale (zero) size and vanishes: the rotated value
+        // column's number/date/boolean rows blank out on scroll. Guarded on an
+        // actual variant change so stable-type rebinds keep that skip. (On the
+        // cell's very first bind the cell is not yet sized, so this lays out to
+        // zero — harmless, as Body's first geometry pass re-runs doLayout.)
+        if (changed) {
+            this.doLayout();
+        }
     }
 
     /**

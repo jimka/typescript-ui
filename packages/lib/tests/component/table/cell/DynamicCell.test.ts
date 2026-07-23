@@ -149,6 +149,30 @@ describe('DynamicCell slot reuse across rebinds', () => {
         // Cached renderer reused, not rebuilt.
         expect(cell.getRenderer()).toBe(booleanRenderer);
     });
+
+    it('re-fits the swapped-in renderer to the cell on a variant change without an external relayout', () => {
+        const cell = new DynamicCell('value', 'auto', config);
+        cell.getElement(true);
+        cell.setWidth(120);
+        cell.setHeight(20);
+
+        // Initial bind + layout sizes the first variant, as Body's first
+        // geometry pass does for a freshly bound pool slot.
+        cell.bindRecord(recordFor('string', 'hello'));
+        cell.doLayout();
+        expect(cell.getRenderer().getHeight()).toBeGreaterThan(0);
+
+        // Rebind to a different variant WITHOUT calling doLayout again — this
+        // is the pure-scroll rebind Body performs, where it skips the cell's
+        // own layout because the column geometry is unchanged. The swapped-in
+        // renderer must still be sized (it vanished at zero height before).
+        cell.bindRecord(recordFor('number', 42));
+
+        const swapped = cell.getRenderer();
+
+        expect(swapped).toBeInstanceOf(NumberRenderer);
+        expect(swapped.getHeight()).toBeGreaterThan(0);
+    });
 });
 
 describe('DynamicCell per-row combo options', () => {
