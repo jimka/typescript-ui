@@ -8,11 +8,14 @@ import type { CellClickEvent } from "~/component/table/Body.js";
 import { FooterRow } from "~/component/table/Footer.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
+import { MemoryStore } from "~/data/MemoryStore.js";
+import { Model } from "~/data/Model.js";
+import type { Field } from "~/data/Field.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { Column } from "~/component/table/Column.js";
-import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
+import type { CellType, ColumnConfig, ComboOption } from "~/component/table/ColumnConfig.js";
 import { ColumnSpec } from "~/component/table/ColumnConfig.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
@@ -22,6 +25,19 @@ import { callable } from "~/core/Callable.js";
 
 /** Events emitted by {@link Table}. */
 export type TableEvent = "selection" | "cellclick";
+
+/** Which presentation a Table renders: record-per-row, or one record as key/value rows. */
+export type TableDisplayMode = "normal" | "rotated";
+
+// The two-field model backing the rotated key/value projection: one record per
+// source field, `field` holding the field name and `value` holding that
+// field's value on the displayed record. `value` is declared `'auto'` because
+// the projection carries every source field's native type (string, number,
+// boolean, Date, …) in the same column.
+const ROTATED_MODEL = new Model([
+    { name: 'field', type: 'string', order: 0 },
+    { name: 'value', type: 'auto',   order: 1 },
+]);
 
 /**
  * Construction-time options for {@link Table}.
@@ -47,6 +63,14 @@ export interface TableOptions extends ComponentOptions {
  * constraints (`minWidth`, `maxWidth`), and initial visibility. When no spec is
  * supplied the table auto-generates one column per model field — identical to the
  * pre-spec behaviour.
+ *
+ * {@link setDisplayMode | Rotated mode} (`"normal"` | `"rotated"`) swaps the
+ * presentation to psql `\x`-style key/value rows: one `field`/`value` row per
+ * source field of the selected record, built from a two-field
+ * [`Model`](/api/data/classes/Model) projection and driven through the same
+ * header and body — including per-field cell variants via
+ * {@link ColumnConfig}'s `cellType` / `cellValues`. The projection is
+ * read-only; see {@link setDisplayMode} for details.
  *
  * @example
  * ```typescript
@@ -92,6 +116,14 @@ class Table extends Component<TableOptions> {
     private _columnConfigs    : Map<string, ColumnConfig> = new Map();
     private _exportMenuEnabled: boolean = false;
     private _listeners        : ListenerBag<TableEvent> = new ListenerBag<TableEvent>();
+    private _displayMode      : TableDisplayMode = "normal";
+    private _rotatedRecord    : ModelRecord | null = null;
+    private _rotatedStore     : MemoryStore | null = null;
+    private _rotatedColumns   : Column[] = [];
+    private _rotatedConfigs   : Map<string, ColumnConfig> = new Map();
+    private _fieldByRotatedRecord: Map<ModelRecord, Field> = new Map();
+    private _sourceRefresh    : (() => void) | null = null;
+    private _suppressSelectionForward: boolean = false;
 
     /**
      * Constructs a Table bound to the given store, optionally constrained by a
@@ -122,6 +154,8 @@ class Table extends Component<TableOptions> {
         this._headerVisible = true;
         this._bodyVisible = true;
         this._footerVisible = false;
+
+        this.bindSourceStore(store);
 
         this._resolvedColumns = Column.resolve(store.model.getFields(), spec);
         this.initHiddenFromSpec();
@@ -177,8 +211,17 @@ class Table extends Component<TableOptions> {
 
         // Surface the body's selection changes on the Table's own event so
         // consumers can react (e.g. enabling a delete action) without reaching
-        // into the private body.
-        this._body.on("selection", records => this.emit("selection", records));
+        // into the private body. Suppressed during a bindView re-bind (whose
+        // transient `_body.selectRecord(null)` would otherwise leak a spurious
+        // empty selection) and while rotated, where selection is driven by
+        // `_rotatedRecord` instead of the body's own selection state.
+        this._body.on("selection", records => {
+            if (this._suppressSelectionForward || this._displayMode === "rotated") {
+                return;
+            }
+
+            this.emit("selection", records);
+        });
 
         // Forward the body's column-aware cell-click on the Table's own event,
         // mirroring the selection forward above so consumers can react to a
@@ -236,17 +279,78 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Returns the resolved, visible columns in display order.
+     * Returns the columns this table currently renders: the two-column
+     * `field`/`value` projection while {@link getDisplayMode} is `"rotated"`,
+     * otherwise the resolved source columns (see {@link getSourceColumns}).
+     *
+     * @returns The active {@link Column} instances in display order.
+     */
+    getColumns(): Column[] {
+        return this._displayMode === "rotated" ? this._rotatedColumns : this.getSourceColumns();
+    }
+
+    /**
+     * Returns the resolved, visible source columns in display order,
+     * regardless of the active display mode.
      *
      * Excludes columns that are currently hidden (via runtime toggle or the spec's
      * `hidden` flag) and columns excluded by a strict spec (`appendUnlisted: false`).
      *
-     * @returns Visible {@link Column} instances in field display order.
+     * @returns Visible source {@link Column} instances in field display order.
      */
-    getColumns(): Column[] {
+    private getSourceColumns(): Column[] {
         const effective = this.getEffectiveHiddenSet();
 
         return this._resolvedColumns.filter(c => !effective.has(c.getField().getName()));
+    }
+
+    /**
+     * Returns the active display mode.
+     *
+     * @returns `"normal"` (one row per record) or `"rotated"` (one selected
+     *   record shown as key/value rows). Defaults to `"normal"`.
+     */
+    getDisplayMode(): TableDisplayMode {
+        return this._displayMode;
+    }
+
+    /**
+     * Switches between the normal (record-per-row) and rotated (key/value)
+     * presentations. No-op when already in `mode`.
+     *
+     * Entering `"rotated"` adopts the currently selected record as the
+     * displayed record — falling back to the store's first record, then to
+     * nothing — and re-points the header and body at a two-column `field`/
+     * `value` projection built from it; see the [`Table` rotated record
+     * view](/components/Table#rotated-record-view) docs. Returning to
+     * `"normal"` restores the source columns and re-selects the record that
+     * was displayed while rotated. The projection is read-only; sorting it
+     * reorders the field rows without touching the source store's own sort.
+     *
+     * @param mode - The display mode to switch to.
+     * @returns This table, for method chaining.
+     */
+    setDisplayMode(mode: TableDisplayMode): this {
+        if (mode === this._displayMode) {
+            return this;
+        }
+
+        this._displayMode = mode;
+
+        if (mode === "rotated") {
+            this._rotatedRecord = this._body.getSelectedRecord() ?? this._store.getRecords()[0] ?? null;
+
+            const rotatedStore = this.ensureRotatedStore();
+
+            this.rebuildRotatedStore();
+            this.bindView(rotatedStore, this._rotatedColumns, this._rotatedConfigs, new Set(), () => true);
+            this.emit("selection", this._rotatedRecord ? [this._rotatedRecord] : []);
+        } else {
+            this.bindView(this._store, this.getSourceColumns(), this._columnConfigs, this.getEffectiveHiddenSet(), this._spec?.rowReadOnly ?? null);
+            this._body.selectRecord(this._rotatedRecord);
+        }
+
+        return this;
     }
 
     /**
@@ -269,15 +373,24 @@ class Table extends Component<TableOptions> {
 
     /**
      * Replaces the data store, re-resolves columns from the new model, and updates
-     * the body and header to reflect the change.
+     * the body and header to reflect the change. Leaves rotated mode first — the
+     * projection is built from the outgoing store, and would sort/select the
+     * wrong store otherwise.
      *
      * @param store - The new store to bind to the table.
      */
     setStore(store: AbstractStore): this {
+        this.setDisplayMode("normal");
+
+        this._header.setStore(store);
+        this.unbindSourceStore(this._store);
+
         this._store = store;
         this._columnWidths = [];
         this._savedColumnWidths = new Map();
         this._resolvedColumns = Column.resolve(store.model.getFields(), this._spec);
+
+        this.bindSourceStore(store);
 
         this._body.setStore(store);
         this._header.setModel(store.model);
@@ -335,10 +448,17 @@ class Table extends Component<TableOptions> {
      * columns are proportionally trimmed via `trimToTarget` to make room before
      * the layout manager runs.
      *
+     * A no-op while {@link getDisplayMode} is `"rotated"` — the projection's
+     * `field` and `value` columns are always both shown.
+     *
      * @param fieldName - The model field name of the column to toggle.
      * @param visible   - `true` to show the column, `false` to hide it.
      */
     setColumnVisible(fieldName: string, visible: boolean): this {
+        if (this._displayMode === "rotated") {
+            return this;
+        }
+
         if (!visible) {
             const col = this._resolvedColumns.find(c => c.getField().getName() === fieldName);
 
@@ -429,14 +549,23 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Adds a new record to the store, scrolls to it, and selects it.
+     * Adds a new record to the store, scrolls to it, and selects it. While
+     * rotated, the new record becomes the displayed record instead of
+     * scrolling (there is no row to scroll to — see {@link selectRecord}).
      *
      * @param defaults - Optional initial field values for the new record.
-     * 
+     *
      * @returns The newly created {@link ModelRecord}.
      */
     addRow(defaults: Record<string, any> = {}): ModelRecord {
         const [record] = this._store.add(defaults);
+
+        if (this._displayMode === "rotated") {
+            this.selectRecord(record);
+
+            return record;
+        }
+
         this._body.scrollToRecord(record);
         this._body.selectRecord(record);
 
@@ -444,9 +573,19 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Removes the currently selected record from the store.
+     * Removes the currently selected record from the store. While rotated,
+     * removes the displayed record; the source-store listener then re-targets
+     * the view to the store's next remaining record.
      */
     removeSelectedRow(): this {
+        if (this._displayMode === "rotated") {
+            if (this._rotatedRecord) {
+                this._store.remove(this._rotatedRecord);
+            }
+
+            return this;
+        }
+
         const record = this._body.getSelectedRecord();
 
         if (!record) {
@@ -468,11 +607,23 @@ class Table extends Component<TableOptions> {
      * `"selection"` event like a user click, so a caller that drives it in
      * response to its own `"selection"` handler must guard against re-entrancy.
      *
+     * While {@link getDisplayMode} is `"rotated"`, this re-targets the
+     * projection: `record` becomes the displayed record and its field/value
+     * rows are rebuilt, instead of moving the normal-mode row selection.
+     *
      * @param record - The record to select and reveal, or `null` to clear.
      *
      * @returns This table, for method chaining.
      */
     selectRecord(record: ModelRecord | null): this {
+        if (this._displayMode === "rotated") {
+            this._rotatedRecord = record;
+            this.rebuildRotatedStore();
+            this.emit("selection", record ? [record] : []);
+
+            return this;
+        }
+
         if (record) {
             this._body.scrollToRecord(record);
         }
@@ -501,19 +652,31 @@ class Table extends Component<TableOptions> {
 
     /**
      * Returns the currently selected record, or null if none is selected.
+     * While {@link getDisplayMode} is `"rotated"`, returns the displayed
+     * source record — never a projection (`field`/`value`) record.
      *
      * @returns The selected {@link ModelRecord}, or null.
      */
     getSelectedRecord(): ModelRecord | null {
+        if (this._displayMode === "rotated") {
+            return this._rotatedRecord;
+        }
+
         return this._body.getSelectedRecord();
     }
 
     /**
-     * Returns all currently selected records.
+     * Returns all currently selected records. While {@link getDisplayMode}
+     * is `"rotated"`, returns the single displayed source record (or an
+     * empty array when none is displayed) — never projection records.
      *
      * @returns An array of selected {@link ModelRecord} instances.
      */
     getSelectedRecords(): ModelRecord[] {
+        if (this._displayMode === "rotated") {
+            return this._rotatedRecord ? [this._rotatedRecord] : [];
+        }
+
         return this._body.getSelectedRecords();
     }
 
@@ -669,13 +832,245 @@ class Table extends Component<TableOptions> {
     }
 
     /**
+     * Subscribes to the source store's mutation events so a rotated view
+     * tracks the record it displays. Stores the callback in `_sourceRefresh`
+     * so {@link unbindSourceStore} can remove exactly this registration later.
+     *
+     * @param store - The source store to subscribe to.
+     */
+    private bindSourceStore(store: AbstractStore): void {
+        const refresh = () => this.onSourceStoreChange();
+
+        this._sourceRefresh = refresh;
+
+        store.on('load', refresh);
+        store.on('add', refresh);
+        store.on('remove', refresh);
+        store.on('datachange', refresh);
+    }
+
+    /**
+     * Unsubscribes the callback installed by {@link bindSourceStore} from `store`.
+     *
+     * @param store - The store to unsubscribe from.
+     */
+    private unbindSourceStore(store: AbstractStore): void {
+        if (!this._sourceRefresh) {
+            return;
+        }
+
+        (['load', 'add', 'remove', 'datachange'] as const).forEach(e =>
+            store.off(e, this._sourceRefresh!)
+        );
+    }
+
+    /**
+     * Keeps the rotated projection in sync with the source store. A no-op
+     * outside rotated mode. Re-targets `_rotatedRecord` to the store's first
+     * record (firing `"selection"`) when the displayed record no longer
+     * exists in the store — e.g. it was removed, or the store was reloaded —
+     * then rebuilds the projection against the (possibly new) record.
+     */
+    private onSourceStoreChange(): void {
+        if (this._displayMode !== "rotated") {
+            return;
+        }
+
+        const records = this._store.getRecords();
+        const stillPresent = this._rotatedRecord !== null && records.includes(this._rotatedRecord);
+
+        if (!stillPresent) {
+            this._rotatedRecord = records[0] ?? null;
+            this.emit("selection", this._rotatedRecord ? [this._rotatedRecord] : []);
+        }
+
+        this.rebuildRotatedStore();
+    }
+
+    /**
+     * Returns the lazily-built projection store, constructing it (and the
+     * two resolved `field`/`value` columns and their configs) on first use.
+     *
+     * @returns The projection {@link MemoryStore}, reused across mode switches.
+     */
+    private ensureRotatedStore(): MemoryStore {
+        if (this._rotatedStore) {
+            return this._rotatedStore;
+        }
+
+        const spec: ColumnSpec = {
+            columns: [
+                { field: 'field', minWidth: 80, unhideable: true },
+                {
+                    field: 'value',
+                    minWidth: 120,
+                    unhideable: true,
+                    cellType:   (r) => this.rotatedCellType(r),
+                    cellValues: (r) => this.rotatedCellValues(r),
+                },
+            ],
+            rowReadOnly: () => true,
+        };
+
+        this._rotatedStore   = new MemoryStore(ROTATED_MODEL, []);
+        this._rotatedColumns = Column.resolve(ROTATED_MODEL.getFields(), spec);
+        this._rotatedConfigs = this.buildColumnConfigs(spec);
+
+        return this._rotatedStore;
+    }
+
+    /**
+     * Rebuilds the projection store's records from `_rotatedRecord` — one row
+     * per visible source field — and refreshes the `_fieldByRotatedRecord`
+     * map used by {@link rotatedCellType} / {@link rotatedCellValues} to
+     * resolve each row's source field. Pairing is by the row's own `field`
+     * value (not by index), so the map stays correct after the projection is
+     * sorted by clicking a header.
+     */
+    private rebuildRotatedStore(): void {
+        const store  = this.ensureRotatedStore();
+        const fields = this.getSourceColumns().map(c => c.getField());
+        const record = this._rotatedRecord;
+
+        store.loadData(record
+            ? fields.map(f => ({ field: f.getName(), value: record.get(f.getName()) }))
+            : []);
+
+        const byName = new Map(fields.map(f => [f.getName(), f]));
+
+        this._fieldByRotatedRecord = new Map();
+
+        for (const r of store.getRecords()) {
+            const field = byName.get(r.get('field') as string);
+
+            if (field) {
+                this._fieldByRotatedRecord.set(r, field);
+            }
+        }
+    }
+
+    /**
+     * Per-row cell-variant resolver for the rotated `value` column
+     * (`ColumnConfig.cellType`): a row whose source field declares `values`
+     * in the table's own spec renders as a combo, otherwise it renders as
+     * its source field's own type. O(1) and pure, as the `cellType` contract
+     * requires.
+     *
+     * @param record - The projection record for one field/value row.
+     * @returns The cell variant to render, or `null` if the row's source
+     *   field cannot be resolved (should not happen for a row this table built).
+     */
+    private rotatedCellType(record: ModelRecord): CellType | null {
+        const field = this._fieldByRotatedRecord.get(record);
+
+        if (!field) {
+            return null;
+        }
+
+        const values = this._columnConfigs.get(field.getName())?.values;
+
+        return (values && values.length > 0) ? 'combo' : field.getType();
+    }
+
+    /**
+     * Per-row combo-option resolver for the rotated `value` column
+     * (`ColumnConfig.cellValues`), consulted only for rows where
+     * {@link rotatedCellType} resolves to `'combo'`. O(1) and pure, as the
+     * `cellValues` contract requires.
+     *
+     * @param record - The projection record for one field/value row.
+     * @returns The source field's declared `values`, or `undefined`.
+     */
+    private rotatedCellValues(record: ModelRecord): Array<ComboOption | string> | undefined {
+        const field = this._fieldByRotatedRecord.get(record);
+
+        return field ? this._columnConfigs.get(field.getName())?.values : undefined;
+    }
+
+    /**
+     * Re-points the header and body at `store` / `columns`, the shared
+     * sequence behind both {@link setDisplayMode} and {@link setStore}.
+     *
+     * @param store - The store the header and body should render.
+     * @param columns - The resolved columns to display.
+     * @param configs - The column-config map (drives `cellType` / `cellValues` / etc).
+     * @param hidden - The set of field names to hide.
+     * @param rowReadOnly - The row-level read-only predicate, or `null`.
+     *
+     * @remarks `Body.setStore` re-renders with pool rows whose cells still
+     * match the outgoing model; `setColumns` (called after `setStore`) is
+     * what re-syncs those cells, so the order matters. `_body.selectRecord(null)`
+     * transiently fires the body's own `"selection"` — `_suppressSelectionForward`
+     * gates the Table-level forwarder for the duration of the re-bind so that
+     * transient clear never reaches consumers. Clearing `_columnWidths` /
+     * `_savedColumnWidths` is what makes the layout manager re-initialise
+     * widths for the new column count on the next `doLayout`.
+     *
+     * `setStore` is called again at the end (re-assigning the same store) to
+     * force a second full rebind after the column/config/hidden/read-only
+     * state has settled: `Body`'s own per-slot metadata (read-only tint,
+     * required-empty, ARIA) is only re-applied on a slot whose bound index
+     * changes, and the first `setStore` call already consumed that "changed"
+     * signal — on the model swap alone, before `setColumnConfigs` /
+     * `setColumns` have synced the pool's cells to the new column shape. A
+     * second `setStore` re-triggers the same store-change rebind, this time
+     * over the fully-synced cells, so e.g. a rotated column's freshly-built
+     * `DynamicCell` actually receives `setReadOnly(true)`.
+     */
+    private bindView(
+        store:       AbstractStore,
+        columns:     Column[],
+        configs:     Map<string, ColumnConfig>,
+        hidden:      Set<string>,
+        rowReadOnly: ((record: ModelRecord) => boolean) | null,
+    ): void {
+        this._suppressSelectionForward = true;
+
+        this._header.setStore(store);
+        this._header.setModel(store.model);
+        this._header.setColumns(columns);
+        this._header.setHiddenColumns(hidden);
+
+        this._body.selectRecord(null);
+        this._body.setStore(store);
+        this._body.setColumnConfigs(configs);
+        this._body.setColumns(columns);
+        this._body.setHiddenColumns(hidden);
+        this._body.setRowReadOnly(rowReadOnly);
+        this._body.setStore(store);
+
+        this._suppressSelectionForward = false;
+
+        this._columnWidths      = [];
+        this._savedColumnWidths = new Map();
+
+        this.getAria().setColCount(this.getColumns().length);
+        this.doLayout();
+    }
+
+    /**
      * Displays the column visibility context menu, listing only columns present in
-     * the resolved column list (excluded columns do not appear).
+     * the resolved column list (excluded columns do not appear). While rotated,
+     * shows only the export entries (when enabled) — there are no per-column
+     * show/hide toggles for a two-column projection.
      *
      * @param x - Viewport x coordinate for the menu.
      * @param y - Viewport y coordinate for the menu.
      */
     private showColumnMenu(x: number, y: number): void {
+        if (this._displayMode === "rotated") {
+            if (!this._exportMenuEnabled) {
+                return;
+            }
+
+            this._columnContextMenu.show(x, y, [
+                { text: 'Export as CSV',  action: () => this.exportCSV()  },
+                { text: 'Export as JSON', action: () => this.exportJSON() },
+            ]);
+
+            return;
+        }
+
         const columns = this._resolvedColumns
             .slice()
             .sort((a, b) => a.getField().getOrder() - b.getField().getOrder());
@@ -753,7 +1148,9 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Triggers a CSV download of the current store view.
+     * Triggers a CSV download of the current store view. Mode-independent:
+     * always exports the source table's records and columns, never the
+     * rotated field/value projection.
      *
      * @param options - Optional export options (e.g. include hidden columns, custom filename).
      */
@@ -765,7 +1162,9 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Triggers a JSON download of the current store view.
+     * Triggers a JSON download of the current store view. Mode-independent:
+     * always exports the source table's records and columns, never the
+     * rotated field/value projection.
      *
      * @param options - Optional export options (e.g. include hidden columns, custom filename).
      */
@@ -783,7 +1182,7 @@ class Table extends Component<TableOptions> {
      * @returns The columns to export, in display order.
      */
     private getExportColumns(includeHidden: boolean): Column[] {
-        return includeHidden ? this._resolvedColumns.slice() : this.getColumns();
+        return includeHidden ? this._resolvedColumns.slice() : this.getSourceColumns();
     }
 
     /**

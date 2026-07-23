@@ -91,6 +91,20 @@ class TableHeader extends Component {
     }
 
     /**
+     * Swaps the store whose sort state this header drives and displays.
+     *
+     * @param store - The new store to bind to this header.
+     *
+     * @remarks Internal wiring called by the owning {@link Table} when its
+     * bound store or display mode changes. Not for consumer use.
+     */
+    setStore(store: AbstractStore): this {
+        this._store = store;
+
+        return this;
+    }
+
+    /**
      * Replaces the model, rebuilding header cells only when the visible field list changes.
      *
      * @param model - The new model to bind to the header.
