@@ -16,6 +16,7 @@ import { Aria } from "~/core/Aria.js";
 import { Event } from "~/core/Event.js";
 import { SmoothScroller, consumeWheel, type ScrollAxis } from "~/core/SmoothScroller.js";
 import { StyleRule, InlineStyle, disposeStyleRule } from "~/core/StyleTarget.js";
+import { ElementAttributes } from "~/core/ElementAttributes.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
@@ -337,12 +338,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // clobber it.
     private readonly _themeCleanups : Array<() => void>      = [];
     private _tag                  : string                  = "div";
-    private _attributes           : Map<string, string>;
-    // Every attribute written through setElementAttribute, cached so init() can
-    // replay it onto a freshly created element. Assigned in the constructor body
-    // (not a field initializer) because applyOptions dispatches setters that write
-    // it from inside super().
-    private _elementAttributes    : Map<string, string>;
+    // Every attribute the component currently intends its element to carry —
+    // from setElementAttribute/removeElementAttribute, setDataAttribute/
+    // delDataAttribute, the `attributes` options bag, setDisabledAttribute,
+    // and Aria's mutators (which all route through applyAriaAttribute). One
+    // channel, so init() replays it onto a freshly created element with a
+    // single attach() call. Assigned in the constructor body (not a field
+    // initializer) because applyOptions dispatches setters — including the
+    // `attributes` bag itself — that write it from inside super().
+    private _elementAttributes    : ElementAttributes;
     private _boxSizing            : string | null;
 
     // Geometry: NaN sentinels mean "never assigned", so equality guards on
@@ -396,6 +400,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _borderWidths         : PerimeterSize | null      = null;
     private _borderThemeSubscribed : boolean                   = false;
     private _autoCommitStyle      : boolean                 = true;
+    private _autoCommitAttributes : boolean                 = true;
     private _layoutPaused         : boolean                 = false;
     private _aria                : Aria | null             = null;
     private _whiteSpace           : string | null;
@@ -498,8 +503,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // render; the dirty-style path queues writes until then. See
         // `ensureCSSRule`.
         this._components         = [];
-        this._attributes         = new Map<string, string>();
-        this._elementAttributes  = new Map<string, string>();
+        this._elementAttributes  = new ElementAttributes();
         this._deferredStyleRules = new Map<string, StyleRule>();
         this.trackSelector(this._styleRule.getSelector());
 
@@ -593,16 +597,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         if (options.attributes !== undefined) {
             // The options bag's `attributes` is a raw-HTML-attribute escape
-            // hatch — callers pass arbitrary attribute names (e.g.
-            // `placeholder`, `data-foo`, `aria-bar`) and expect a literal
-            // write. Stash on `_options.attributes` so `init()` can replay
-            // them when the element is created; write through immediately if
-            // the element already exists.
-            this._options.attributes = options.attributes;
-
-            const element = this.getElement();
-            if (element) {
-                DOM.sink.apply(element, { setAttr: options.attributes });
+            // hatch — callers pass arbitrary attribute names (`placeholder`,
+            // `data-foo`, `aria-bar`) and expect a literal write. Route each
+            // entry through the typed seam so the channel is the only store:
+            // it writes through when the element already exists and replays
+            // at render when it does not.
+            for (const key of Object.keys(options.attributes)) {
+                this.setElementAttribute(key, options.attributes[key]);
             }
         }
 
@@ -1313,10 +1314,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      *
-     * @remarks Cached and replayed by `init()` on every render, so a value set
-     * while the component is detached survives until the element is created
-     * (and any later re-render). `removeElementAttribute` drops the cached
-     * entry.
+     * @remarks The value is held by a buffer that binds to the element at
+     * render and writes through afterwards, so a value set while the
+     * component is detached survives until the element is created (and any
+     * later re-render). A write made after the element exists reaches it
+     * immediately unless a batching window is open (see
+     * {@link setAutoCommitAttributes}).
      */
     protected setElementAttribute(key: string, value: Object | null | undefined): this {
         if (value === null || value === undefined) {
@@ -1325,12 +1328,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const stringValue = String(value);
 
-        this._elementAttributes.set(key, stringValue);
-
-        let element = this.getElement();
-        if (element) {
-            DOM.sink.apply(element, { setAttr: { [key]: stringValue } });
-        }
+        if (this._autoCommitAttributes) this._elementAttributes.set(key, stringValue);
+        else                             this._elementAttributes.queue(key, stringValue);
 
         return this;
     }
@@ -1342,16 +1341,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      *
-     * @remarks Drops the cached entry `init()` would otherwise replay, in
-     * addition to removing the attribute from a live element.
+     * @remarks Drops the cached entry the attribute buffer would otherwise
+     * replay, in addition to removing the attribute from a live element
+     * unless a batching window is open (see {@link setAutoCommitAttributes}).
      */
     protected removeElementAttribute(key: string): this {
-        this._elementAttributes.delete(key);
-
-        let element = this.getElement();
-        if (element) {
-            DOM.sink.apply(element, { removeAttr: [key] });
-        }
+        if (this._autoCommitAttributes) this._elementAttributes.remove(key);
+        else                             this._elementAttributes.queueRemove(key);
 
         return this;
     }
@@ -1425,6 +1421,39 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `inlineStyle.flush()` is a no-op when the element isn't yet attached
         // — dirty entries stay queued for the next flush after `init()`.
         this._inlineStyle.flush();
+
+        return this;
+    }
+
+    /**
+     * Returns whether attribute changes are immediately committed to the DOM.
+     *
+     * @returns True if auto-commit is enabled, false if changes are batched.
+     */
+    getAutoCommitAttributes(): boolean {
+        return this._autoCommitAttributes;
+    }
+
+    /**
+     * Enables or disables auto-commit; flushing all pending attribute changes when re-enabled.
+     *
+     * @param value - True to enable immediate commits; false to batch changes until manually flushed.
+     */
+    setAutoCommitAttributes(value: boolean): this {
+        this._autoCommitAttributes = value;
+
+        if (value) {
+            this.commitElementAttributes();
+        }
+
+        return this;
+    }
+
+    /**
+     * Flushes all queued attribute changes to the DOM element and clears the pending set.
+     */
+    protected commitElementAttributes(): this {
+        this._elementAttributes.flush();
 
         return this;
     }
@@ -1568,11 +1597,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @remarks Symmetric with {@link setDataAttribute}: the key is normalised
      * with a leading `data-` (idempotent if already prefixed) before lookup.
+     * Reads the component's attribute buffer, not the live DOM, so it stays
+     * correct while detached and inside an open batching window.
      */
     getDataAttribute(key: string): string | undefined {
         const dataKey = key.startsWith("data-") ? key : `data-${key}`;
 
-        return this._attributes.get(dataKey);
+        return this._elementAttributes.get(dataKey);
     }
 
     /**
@@ -1590,21 +1621,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     setDataAttribute(key: string, value: string): this {
         if (value === null) {
-            this.delDataAttribute(key);
-
-            return this;
+            return this.delDataAttribute(key);
         }
 
         const dataKey = key.startsWith("data-") ? key : `data-${key}`;
 
-        this._attributes.set(dataKey, value);
-
-        let element = this.getElement();
-        if (element) {
-            DOM.sink.apply(element, { setAttr: { [dataKey]: value } });
-        }
-
-        return this;
+        return this.setElementAttribute(dataKey, value);
     }
 
     /**
@@ -1616,14 +1638,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     delDataAttribute(key: string): this {
         const dataKey = key.startsWith("data-") ? key : `data-${key}`;
 
-        this._attributes.delete(dataKey);
-
-        let element = this.getElement();
-        if (element) {
-            DOM.sink.apply(element, { removeAttr: [dataKey] });
-        }
-
-        return this;
+        return this.removeElementAttribute(dataKey);
     }
 
     /**
@@ -5395,7 +5410,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Sets the element ID, adds the class name, mirrors attributes, applies style, and appends child elements.
+     * Sets the element ID, attaches the style and attribute buffers, applies style, and appends child elements.
      *
      * @param element - Optional. The element to initialise. Falls back to getElement() if omitted.
      *
@@ -5411,42 +5426,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         DOM.sink.setId(element, this.getId());
 
-        // Bind the inline-style buffer so any writes queued during detached
-        // construction flush into the live element, and subsequent setters
-        // write through directly.
+        // Bind the inline-style and attribute buffers so any writes queued
+        // during detached construction flush into the live element, and
+        // subsequent setters write through directly.
         this._inlineStyle.attach(element);
+        this._elementAttributes.attach(element);
 
-        // `for…in` walks own enumerable property names. A `Map` has no own
-        // enumerable properties (its entries live behind its public API), so
-        // the prior `for (let key in this._attributes)` form silently iterated
-        // nothing — every attribute cached during detached construction was
-        // dropped at render time. Use the `Map` iterator directly.
-        const setAttr: Record<string, string> = {};
-
-        for (const [key, value] of this._attributes) {
-            if (value != null) {
-                setAttr[key.valueOf()] = value.valueOf();
-            }
-        }
-
-        if (this._disabledAttribute) {
-            setAttr.disabled = "";
-        }
-
-        if (this._options.attributes) {
-            for (const key of Object.keys(this._options.attributes)) {
-                setAttr[key] = this._options.attributes[key];
-            }
-        }
-
-        for (const [key, value] of this._elementAttributes) {
-            setAttr[key] = value;
-        }
-
-        DOM.sink.apply(element, { setAttr });
         DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, this.constructor.name] });
-
-        this._aria?.applyToElement(element);
 
         this.applyStyle(element);
 
@@ -5456,6 +5442,32 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             let compElement = component.getElement(true);
 
             DOM.sink.appendChild(element, compElement!);
+        }
+
+        return this;
+    }
+
+    /**
+     * Re-binds the style and attribute buffers to the component's current
+     * element, without re-running the rest of `init()` (no class list, no
+     * `applyStyle`, no child re-append).
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks For almost every component `getElement()` returns a cached
+     * field set once at render, so the buffers stay bound to the right
+     * handle for the component's lifetime. `Body` is the one component whose
+     * `getElement()` always resolves the live document body afresh instead
+     * of a cached field, so a caller that re-mounts it against a different
+     * DOM (only relevant to a swappable seam, e.g. a test harness) calls
+     * this first to keep the buffers pointed at the current element.
+     */
+    protected reattachElementBuffers(): this {
+        const element = this.getElement();
+
+        if (element) {
+            this._inlineStyle.attach(element);
+            this._elementAttributes.attach(element);
         }
 
         return this;

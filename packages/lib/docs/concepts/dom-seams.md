@@ -18,7 +18,7 @@ Two minting modes draw the leak-safety line:
 
 Resolving a released or collected handle **throws**, turning a use-after-free into a loud failure rather than the silent no-op a stale element pointer would give.
 
-`apply(handle, patch)` is the write primitive: one handle resolve performs every mutation in the patch, so a layout commit (width + height + classes + an attribute) costs one registry lookup, not one per write. The per-frame inline-style flush in `StyleTarget` batches its whole dirty bag into a single `apply`. A fluent `edit(handle).style(…).addClass(…).commit()` builder is sugar for cold call sites.
+`apply(handle, patch)` is the write primitive: one handle resolve performs every mutation in the patch, so a layout commit (width + height + classes + an attribute) costs one registry lookup, not one per write. The per-frame inline-style flush in `StyleTarget` batches its whole dirty bag into a single `apply`. Element attributes have the same batching shape behind `setAutoCommitAttributes`, off by default because attribute writes change behaviour and not only appearance. A fluent `edit(handle).style(…).addClass(…).commit()` builder is sugar for cold call sites.
 
 ## Why two interfaces
 

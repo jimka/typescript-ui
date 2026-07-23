@@ -229,6 +229,7 @@ Never assign to `CSSStyleRule.style` or `HTMLElement.style` directly — no `rul
 |---|---|---|
 | `CSSStyleRule` (any selector — `#id`, `.class`, `:hover`, …) | `StyleRule` | Component rule, state rules, shared class rules |
 | `HTMLElement.style` (inline) | `InlineStyle` | `setElementStyle(s)` |
+| `HTMLElement` attributes | `ElementAttributes` | `setElementAttribute` / `removeElementAttribute` / `setDataAttribute` / the `attributes` option |
 
 Both buffer writes into a dirty bag until the target materialises, then flush via camelCase property assignment. Going through the buffer keeps construction-time writes safe (queued before element/rule exists), keeps theme-toggle re-flushes intact, and gives logging/audits a single seam.
 

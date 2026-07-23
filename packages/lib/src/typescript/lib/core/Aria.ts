@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { DOM } from "~/core/DOM.js";
-import type { Handle } from "~/core/DOM.js";
 
 /**
  * Valid WAI-ARIA landmark and widget roles used by this framework.
@@ -70,8 +68,9 @@ export type AriaOrientation = 'horizontal' | 'vertical';
  *
  * Obtained via {@link Component.getAria}. Each attribute has its own getter/setter
  * with a proper TypeScript type so that attribute names and values cannot be
- * misspelled. State is stored internally and flushed to the DOM element by
- * {@link applyToElement}, which {@link Component} calls during initialisation.
+ * misspelled. State is stored internally and each setter writes through the
+ * component's attribute channel, which replays the value onto a freshly
+ * created element.
  *
  * @example
  * ```typescript
@@ -777,31 +776,6 @@ export class Aria {
      */
     getOrientation(): AriaOrientation | null {
         return (this._attributes.get("orientation") as AriaOrientation) ?? null;
-    }
-
-    /**
-     * Flushes all stored ARIA state to the given DOM element.
-     *
-     * @remarks Called by {@link Component} during element initialisation, ensuring
-     * attributes set before render are applied to the real DOM node.
-     * @param element - The component's root DOM element handle.
-     */
-    applyToElement(element: Handle): void {
-        const setAttr: Record<string, string> = {};
-
-        if (this._role !== null) {
-            setAttr.role = this._role;
-        }
-
-        if (this._tabIndex !== null) {
-            setAttr.tabindex = String(this._tabIndex);
-        }
-
-        for (const [name, value] of this._attributes) {
-            setAttr["aria-" + name] = value;
-        }
-
-        DOM.sink.apply(element, { setAttr });
     }
 
     /**

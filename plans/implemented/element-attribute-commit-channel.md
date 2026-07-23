@@ -485,6 +485,46 @@ Nothing here needs manual verification in a browser — detached construction, r
 
 ---
 
+## Implementation Notes
+
+- **`Body.ts` needed a fix outside the plan's file list.** The full test suite
+  surfaced a regression in `Body.test.ts` that the plan didn't anticipate:
+  `Body` is a module-level singleton constructed once, and its
+  `getElement()` override always resolves the *live* document body afresh
+  (`DOM.source.getBody()`) rather than a cached `_element` field. The old
+  `setDataAttribute`/`setElementAttribute` wrote through that fresh lookup
+  on every call, so they never cared which DOM seam was currently installed.
+  `ElementAttributes.attach()` caches a `_handle` the way `InlineStyle`
+  already does, and once `setDataAttribute` started routing through
+  `setElementAttribute` (this plan's whole point), it inherited that cached
+  handle too — so a `Body` write issued after the global test harness
+  reinstalls a fresh DOM (`tests/setup/node-setup.ts`'s per-test
+  `installTestDOM`) tried to `apply` a handle number the *new* sink's
+  registry had never seen. This is the identical "resurrected element"
+  exposure `## Potential Challenges` already names for `_inlineStyle` — just
+  newly exercised because `setDataAttribute` no longer dodges it. Fixed with
+  a new `protected Component.reattachElementBuffers()` (re-binds
+  `_inlineStyle` and `_elementAttributes` to the component's current
+  `getElement()` without re-running the rest of `init()` — no class list, no
+  `applyStyle`, no child re-append, so it doesn't double-register `Body`'s
+  viewport/theme listeners the way calling `init()` again would), called
+  from `Body.static init()` before dispatching options. In production this
+  is a harmless no-op re-bind (the DOM seam never swaps after construction);
+  it only matters under the test harness's per-test DOM swap. `Body.ts` is
+  therefore an added file beyond the plan's `## Files to Create / Modify /
+  Delete` table.
+- **Case 21's test assertion was loosened from "exactly one `setAttr` apply"
+  to "exactly one `setAttr` apply carrying the `x` key."** `applyStyle`
+  (called from `init()` right after the `attach` call) unconditionally
+  re-asserts `data-maxSize` / `data-insets` constraint attributes on every
+  render via `setDataAttribute`, as pre-existing behaviour unrelated to this
+  plan. Those land as separate `apply` patches on the same handle, so a
+  strict "only one `setAttr`-bearing apply total" assertion fails for
+  reasons orthogonal to the case (rebuild-in-one-attach-patch). The loosened
+  assertion still proves the thing the case is about: all five ARIA/
+  disabled/plain-attribute values land together in the single `attach`
+  patch, identified by the `x` key rather than by being the only write.
+
 ## Notes
 
 [^not-perf]: Two things were checked before making the throughput claim, and both argue against it. First, where attributes get written: the sweep in `plans/dom-only-state-inventory.md` counts 26 `setElementAttribute` and 14 `removeElementAttribute` call sites across 8 files, and they are input configuration (`type`, `placeholder`, `readonly`, `maxlength`), media configuration (`src`, `poster`, `preload`), ARIA state, and one whole-`class` write in `AbstractSelectableList`. None is in `doLayout` or a per-frame commit — unlike inline style, whose per-frame geometry flush is exactly why `InlineStyle.flushDirty` collapses the bag into one `apply`. The `data-*` writes folded in by this plan sit on the same cold paths: `setLayoutManager`, `setInsets`, and the three size setters. Second, what the batching would save: one `apply` per attribute versus one per batch, where `apply` is a handle-registry lookup plus a `setAttribute` loop. With auto-commit on by default (the decision above), even that saving is not on the default path. The honest gains are the two named in `## Overview`.

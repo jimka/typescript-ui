@@ -45,8 +45,16 @@ export class Body extends Component {
      * @param options - Component options to apply (layout manager, children, …).
      *
      * @returns The singleton Body instance, for chaining.
+     *
+     * @remarks Re-binds the style and attribute buffers to the current body
+     * element before dispatching `options` — see
+     * `Component.reattachElementBuffers`. The singleton is constructed once
+     * per page load, so this only matters when the underlying DOM has been
+     * swapped since construction (a test harness); it is a no-op rebind
+     * otherwise.
      */
     static init(options: ComponentOptions = {}): Body {
+        this.INSTANCE.reattachElementBuffers();
         this.INSTANCE.applyOptions(options);
 
         return this.INSTANCE;
