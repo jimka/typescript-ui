@@ -89,6 +89,14 @@ abstract class StyleTarget<T> {
         return this._target !== null;
     }
 
+    /**
+     * Returns whether any write is waiting in the dirty bag. Owners that decide
+     * whether the target is worth materialising at all read this first.
+     */
+    hasQueuedWrites(): boolean {
+        return Object.keys(this._dirty).length > 0;
+    }
+
     protected materialize(target: T): void {
         this._target = target;
         this.flushDirty(this._dirty);
@@ -98,7 +106,7 @@ abstract class StyleTarget<T> {
     /**
      * Terminal write for a single property onto the now-attached target. Each
      * subclass resolves its own target kind through the seam — an element via
-     * {@link DOMSink.apply}, a rule via {@link DOMSink.setRuleStyle} — so the
+     * {@link DOMSink.apply}, a rule via {@link DOMSink.setRuleStyles} — so the
      * base never touches a `.style` declaration directly.
      *
      * @param key - The CSS property name (camelCase, or `--custom-property`).
@@ -107,9 +115,8 @@ abstract class StyleTarget<T> {
     protected abstract writeStyle(key: string, value: string | null): void;
 
     /**
-     * Drains a bag of accumulated writes onto the now-attached target. The
-     * inline-style subclass batches the whole bag into one seam write; the rule
-     * subclass writes each property individually.
+     * Drains a bag of accumulated writes onto the now-attached target. Both
+     * subclasses batch the whole bag into one seam write.
      *
      * @param dirty - The accumulated property writes to flush.
      */
@@ -303,14 +310,16 @@ class StyleRule extends StyleTarget<CSSStyleRule> {
 
     /** @inheritDoc */
     protected writeStyle(key: string, value: string | null): void {
-        DOM.sink.setRuleStyle(this._target!, key, value);
+        DOM.sink.setRuleStyles(this._target!, { [key]: value });
     }
 
     /** @inheritDoc */
     protected flushDirty(dirty: Record<string, string | null>): void {
-        for (const key of Object.keys(dirty)) {
-            DOM.sink.setRuleStyle(this._target!, key, dirty[key]);
+        if (Object.keys(dirty).length === 0) {
+            return;
         }
+
+        DOM.sink.setRuleStyles(this._target!, dirty);
     }
 
     /**

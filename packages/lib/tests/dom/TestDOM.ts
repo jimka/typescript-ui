@@ -383,8 +383,8 @@ export class RecordingDOMSink implements DOMSink {
         this.record('release', handle);
     }
 
-    setRuleStyle(_rule: CSSStyleRule, key: string, value: string | null): void {
-        this.record('setRuleStyle', key, value);
+    setRuleStyles(rule: CSSStyleRule, styles: Record<string, string | null>): void {
+        this.record('setRuleStyles', (rule as { selectorText?: string }).selectorText ?? '', styles);
     }
 
     ensureStyleRule(selector: string): CSSStyleRule {
@@ -674,6 +674,35 @@ export class RecordingDOMSink implements DOMSink {
         this.record('exitFullscreen');
         _fullscreenHandle = null;
     }
+}
+
+/**
+ * Flattens every recorded `setRuleStyles` op into one `{ selector, key, value }`
+ * row per declaration, in bag insertion order within recording order. Lets
+ * assertions keep their existing per-declaration key/value shape without
+ * depending on how many declarations a given sink call batched together.
+ *
+ * @param sink - The recording sink to read.
+ */
+export function ruleStyleWrites(
+    sink: RecordingDOMSink
+): Array<{ selector: string; key: string; value: string | null }> {
+    const rows: Array<{ selector: string; key: string; value: string | null }> = [];
+
+    for (const write of sink.writes) {
+        if (write.op !== 'setRuleStyles') {
+            continue;
+        }
+
+        const selector = write.args[0] as string;
+        const styles   = write.args[1] as Record<string, string | null>;
+
+        for (const key of Object.keys(styles)) {
+            rows.push({ selector, key, value: styles[key] });
+        }
+    }
+
+    return rows;
 }
 
 /**
