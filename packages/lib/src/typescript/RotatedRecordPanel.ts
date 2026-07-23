@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { callable, Component, Panel } from '@jimka/typescript-ui/core';
-import { Border, HBox } from '@jimka/typescript-ui/layout';
+import { Border } from '@jimka/typescript-ui/layout';
 import { Placement } from '@jimka/typescript-ui/primitive';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { Table } from '@jimka/typescript-ui/component/table';
 import { Button } from '@jimka/typescript-ui/component/button';
+import { ToolBar } from '@jimka/typescript-ui/component/menubar';
 import { Glyph } from '@jimka/typescript-ui/component/display';
 import { Tooltip } from '@jimka/typescript-ui/overlay';
 import { table_list }  from '@jimka/typescript-ui/glyphs/solid/table_list';
@@ -113,32 +114,36 @@ class RotatedRecordPanel extends Panel {
     }
 
     private buildToolbar(): Component {
-        const toolbar = Component({ layoutManager: HBox() });
+        const toolbar = new ToolBar();
 
+        // `text` (with `showText: false`) supplies each icon-only button its
+        // accessible name; ToolBar renders the glyph compactly and sizes its
+        // own height to the buttons, so nothing is clipped.
         const rotateBtn = Button({
-            glyph:         'table-list',
-            preferredSize: { width: 28, height: 28 },
-            listeners:     { action: () => this.toggleRotate() },
+            glyph:     'table-list',
+            text:      'Toggle rotated (key/value) view',
+            showText:  false,
+            listeners: { action: () => this.toggleRotate() },
         });
         Tooltip.attach(rotateBtn, 'Toggle rotated (key/value) view');
 
         const prevBtn = Button({
-            glyph:         'angle-left',
-            preferredSize: { width: 28, height: 28 },
-            listeners:     { action: () => this.stepRecord(-1) },
+            glyph:     'angle-left',
+            text:      'Previous record',
+            showText:  false,
+            listeners: { action: () => this.stepRecord(-1) },
         });
         Tooltip.attach(prevBtn, 'Previous record');
 
         const nextBtn = Button({
-            glyph:         'angle-right',
-            preferredSize: { width: 28, height: 28 },
-            listeners:     { action: () => this.stepRecord(1) },
+            glyph:     'angle-right',
+            text:      'Next record',
+            showText:  false,
+            listeners: { action: () => this.stepRecord(1) },
         });
         Tooltip.attach(nextBtn, 'Next record');
 
-        toolbar.addComponent(rotateBtn);
-        toolbar.addComponent(prevBtn);
-        toolbar.addComponent(nextBtn);
+        toolbar.addComponents(rotateBtn, prevBtn, nextBtn);
 
         return toolbar;
     }
