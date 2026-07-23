@@ -2,6 +2,37 @@
 
 Release history for `@jimka/typescript-ui`.
 
+## 0.3.0
+
+### Breaking changes
+
+**Breaking:** `Aria.applyToElement` is removed. Every `Aria` mutator already
+writes through the component's attribute channel, so ARIA state reaches the
+element without a second flush; no consumer replacement is needed, since no
+consumer had a reason to call it directly.
+
+See [Migration](/reference/migration#upgrading-from-0-2-x-to-0-3-0) for the
+full upgrade note.
+
+### Changed
+
+- `Component`'s `data-*` map, its `attributes` options bag, the
+  `_disabledAttribute` replay, and `Aria`'s DOM writes now share one
+  attribute buffer instead of four separate stores. Two narrow behaviour
+  changes follow: `getDataAttribute` now also answers for a `data-`-prefixed
+  key written through the `attributes` bag or through `setElementAttribute`
+  (previously `undefined`), and a post-construction `setElementAttribute` /
+  `setDataAttribute` write is no longer undone by a later re-render when the
+  same key also appears in the `attributes` bag.
+
+### Added
+
+- **`ElementAttributes`** (`core`) — the deferred-write buffer backing every
+  attribute write, exported alongside `StyleTarget` / `InlineStyle`. A new
+  `setAutoCommitAttributes` / `getAutoCommitAttributes` /
+  `commitElementAttributes` switch on `Component` batches attribute writes,
+  mirroring the existing style-commit switch.
+
 ## 0.2.0
 
 ### Breaking changes

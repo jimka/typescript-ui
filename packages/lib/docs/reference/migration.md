@@ -216,6 +216,24 @@ Anything you could previously pass as an untyped `Function` is now checked
 against the listener contract, so an `async` handler or a value-returning
 concise arrow fails here for the same reasons described above.
 
+## Upgrading from 0.2.x to 0.3.0
+
+### `Aria.applyToElement` was removed
+
+Every `Aria` mutator (`setRole`, `setSelected`, `setSort`, …) already writes
+through the component's attribute channel, so the ARIA state it flushed is
+already on the element with no second call. Delete the call site; nothing
+replaces it.
+
+```typescript
+// Before
+component.getAria().setRole("grid");
+component.getAria().applyToElement(element);
+
+// After
+component.getAria().setRole("grid");
+```
+
 ## Versioning policy
 
 The package follows [Semantic Versioning](https://semver.org), with the standard pre-1.0 caveat:
