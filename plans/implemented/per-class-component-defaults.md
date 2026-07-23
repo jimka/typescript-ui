@@ -373,3 +373,27 @@ Every current theme subscriber, classified as the brief requires: does the callb
 [^util-precedent]: `Util` already holds `linePaddingCache`, `rootFontSizeCache`, `textBaselineCache`, and `opticalOffsetCache` — theme-derived numbers cached at module scope, read lazily, and cleared as a group by `invalidateTextMetricsCache()`, which `ThemeManager.reflowText()` (Theme.ts:1343-1347) already calls before notifying listeners. `Util.lineHeightPx` — the whole body of `Text.readThemeLineHeightPx`'s default path — is therefore already one shared arithmetic step over cached values, which is why `_defaultOptions.lineHeight` can be deleted outright rather than replaced by a new per-class cache: the cache it was duplicating already exists one layer down. The only genuinely uncached read left in `Text`'s callback is `resolveBoundFontSizePx`, and the new `Util.boundFontSizePx` map joins the same invalidation family. A footnote-worthy detail: the callback's `_defaultOptions.lineHeight` write at `Text.ts:161` is already dead, because it only runs when `_lineHeightCSSVar` is set, and the only path that sets it (`setLineHeight(varName)`) also writes `_options.lineHeight`, which shadows the default in `getLineHeight()`.
 
 [^root-reflow]: `ThemeManager.setTheme` rewrites the root CSS variables, so the browser repaints at the new font size immediately; what goes stale is the framework's measured geometry, and that only refreshes when a layout pass runs. Today the pass is triggered bottom-up — each `Text` re-measures, `setPreferredSize` fires `_onPreferredSizeChange`, and the parent chain schedules a layout. With the re-measure deferred, the trigger has to come from the top instead. `Body` is the singleton page root (`Body.ts:23`) and `AbstractWindow` is the root of every floating window (windows are appended to `document.documentElement`, not to the body), so one `scheduleLayout()` on each covers the two places long-lived, text-heavy content lives. A general root registry inside `Component` was considered and rejected: it would add module state and three new maintenance points (`init`, `wireChild`, `unwireChild`) to the file with the widest blast radius, to cover overlays that are transient anyway.
+
+---
+
+## Implementation Notes
+
+- **Typecheck baseline mismatch.** `## Verification` states "exactly 7
+  pre-existing errors, no more." At implementation time (branch point
+  `feature/stylerule-batched-flush`), `npm run typecheck` from `packages/lib`
+  was already clean at **0** errors before this plan's changes — the sibling
+  plans in the batch had evidently already fixed whatever produced the
+  plan's assumed 7. Treated the orchestrating instruction's baseline ("0,
+  keep it at 0") as authoritative rather than stopping to ask; typecheck
+  stayed at 0 errors after the full implementation.
+- **Line numbers in `## Ordered Implementation Steps` and the footnotes
+  drifted** from the plan's assumed source (e.g. `getLayoutManager()` moved
+  from `:4960` to `:5009` and the destructor's inline layout-manager read
+  sits at `:761`, not literally inside a method named `getLayoutManager`).
+  Content and intent matched exactly; edits were made by locating the
+  described code rather than trusting absolute line numbers.
+- Everything else in the plan (the four instance-varying `subclassDefaults`
+  classes, the `layoutManager` exclusion, the `Util` metrics-cache
+  extension, the `Body`/`AbstractWindow` root reflow subscriptions, the two
+  `TextDispose.test.ts` assertions) was implemented exactly as specified,
+  with no other deviation.
