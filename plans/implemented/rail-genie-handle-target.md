@@ -229,3 +229,16 @@ Manual-verify (visual, not offline-exercisable):
 [^sync-handles]: `registerWindow` (line 983) ends with `if (window.isMinimized()) { this.showWindowHandle(window); }`, and `AbstractWindow.setWindowState` sets `this._options.windowState = state` (line 1003) before any animation, so `isMinimized()` is true synchronously after `minimize()`. Thus `window.minimize()` then `window.setRail(rail)` seeds the handle with no genie playback — the offline test never depends on animation completion (the test DOM reports `prefers-reduced-motion: false`, so `Animation.play` would otherwise complete asynchronously).
 
 [^flush]: `scheduleLayout` (Component.ts line 5152) defers to an animation frame; `flushLayout` is its synchronous escape hatch (noted at Component.ts line 5149). Handle positions (`getY`/`getX`) are only committed after a layout pass, so the test calls `rail.flushLayout()` after seeding handles and before reading the transform.
+
+---
+
+## Implementation Notes
+
+### Follow-up: centre the window along the handle's length (not just its offset)
+
+After the original fix landed, the window still minimized to the **leading corner** of its handle rather than the handle's centre along the rail. This follow-up centres it along the handle's length, on user request. The cross axis is deliberately left alone — the scaled window already fits the rail thickness, and adding a cross-axis shift would push it half outside the rail.
+
+- New public `Rail.handleMainAxisExtent(window)` reports the handle's main-axis length: measured when the handle exists (restore, or an already-minimized window), predicted from the current last handle on the collapse path (siblings run close in size), and `0` for an empty rail (no sample) — where the caller keeps the window at the slot's leading edge.
+- `railGenieTransform` now aims the window's own centre at the handle's centre: `mainTarget = mainOffset + (handleExtent − scaledMain) / 2`, where `scaledMain` is the shrunken window's main-axis size. When `handleExtent` is `0` it falls back to `mainOffset`.
+- The offline tests assert the true contract — the window's scaled main-axis centre coincides with the handle's centre — by reading the parsed transform, the window's live `getRect()`, and the measured handle geometry, never the implementation's own formula.
+- Limitation: the very first minimize into an empty rail has no handle to sample, so that one window stays at the slot's leading edge; every subsequent minimize and every restore centres. The collapse-path prediction is exact only when the new handle matches its predecessor's length.
