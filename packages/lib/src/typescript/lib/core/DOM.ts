@@ -316,6 +316,22 @@ function writeDeclaration(style: CSSStyleDeclaration, key: string, value: string
 }
 
 /**
+ * Module-private, never appended to the document: a detached element whose
+ * inline style is a real `CSSStyleDeclaration`. Writing to it costs nothing at
+ * the document level, so a bag can be merged property-by-property here and
+ * land on the shared sheet as one mutation.
+ */
+let _scratch: CSSStyleDeclaration | null = null;
+
+function scratchDeclaration(): CSSStyleDeclaration | null {
+    if (typeof document === "undefined") {
+        return null;
+    }
+
+    return _scratch ??= document.createElement("div").style;
+}
+
+/**
  * Applies an {@link ElementPatch} to a resolved element — the terminal raw-DOM
  * write for the batched {@link DOMSink.apply} path. Fixed order: styles, class
  * removals before additions, attribute removals before sets, then dataset /
@@ -503,19 +519,21 @@ export interface DOMSink {
     release(handle: Handle): void;
 
     /**
-     * Writes a single style property onto a `CSSStyleRule`'s declaration. A
-     * `CSSStyleRule` has no element, so it gets its own method.
+     * Writes a bag of style properties onto a `CSSStyleRule`'s declaration as
+     * one sheet mutation. A `CSSStyleRule` has no element, so it gets its own
+     * method — mirroring how {@link apply}'s `style` patch serves both the
+     * single and the bulk element-style path.
      *
      * @param rule - The target `CSSStyleRule`.
-     * @param key - The CSS property name (camelCase, or `--custom-property`).
-     * @param value - The value to set, or null to remove the property.
+     * @param styles - Camel-cased property keys mapped to string values (or
+     *   null to remove the property).
      */
-    setRuleStyle(rule: CSSStyleRule, key: string, value: string | null): void;
+    setRuleStyles(rule: CSSStyleRule, styles: Record<string, string | null>): void;
 
     /**
      * Finds, or inserts, the framework's shared-stylesheet `CSSStyleRule` for a
      * selector, so callers never walk a `CSSStyleSheet` directly. The returned
-     * rule is handed to {@link setRuleStyle}.
+     * rule is handed to {@link setRuleStyles}.
      *
      * @param selector - The CSS selector text.
      * @returns The existing or newly-inserted rule.
@@ -1413,8 +1431,32 @@ export class ProductionDOMSink implements DOMSink {
     }
 
     /** @inheritDoc */
-    setRuleStyle(rule: CSSStyleRule, key: string, value: string | null): void {
-        writeDeclaration(rule.style, key, value);
+    setRuleStyles(rule: CSSStyleRule, styles: Record<string, string | null>): void {
+        const keys = Object.keys(styles);
+
+        if (keys.length === 0) {
+            return;
+        }
+
+        const scratch = keys.length === 1 ? null : scratchDeclaration();
+
+        // One declaration is already one mutation, and the headless path (no
+        // document, so no scratch element) falls back to the same direct writes.
+        if (!scratch) {
+            for (const key of keys) {
+                writeDeclaration(rule.style, key, styles[key]);
+            }
+
+            return;
+        }
+
+        scratch.cssText = rule.style.cssText;
+
+        for (const key of keys) {
+            writeDeclaration(scratch, key, styles[key]);
+        }
+
+        rule.style.cssText = scratch.cssText;
     }
 
     /** @inheritDoc */

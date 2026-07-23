@@ -15,7 +15,7 @@ import { _Panel } from '~/core/Panel';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { ScrollStrip } from '~/component/container/ScrollStrip';
-import { installTestDOM } from '../dom/TestDOM';
+import { installTestDOM, ruleStyleWrites } from '../dom/TestDOM';
 import type { RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -100,8 +100,8 @@ describe('Panel — overlay scrollbar default', () => {
         // Does not hide the native bar: the teardown guard's resting write
         // (scrollbarWidth -> null, a harmless no-op un-hide) is fine, but
         // "none" is never written for a panel that never installed.
-        const hidesScrollbarWidth = sink.writes.some(
-            (w) => w.op === 'setRuleStyle' && w.args[0] === 'scrollbarWidth' && w.args[1] === 'none'
+        const hidesScrollbarWidth = ruleStyleWrites(sink).some(
+            (w) => w.key === 'scrollbarWidth' && w.value === 'none'
         );
         expect(hidesScrollbarWidth).toBe(false);
     });
@@ -164,8 +164,8 @@ describe('Panel — overlay scrollbar default', () => {
         const panel = new _Panel({ autoScroll: 'y' });
         panel.getElement(true);
 
-        const hidesScrollbarWidth = sink.writes.some(
-            (w) => w.op === 'setRuleStyle' && w.args[0] === 'scrollbarWidth' && w.args[1] === 'none'
+        const hidesScrollbarWidth = ruleStyleWrites(sink).some(
+            (w) => w.key === 'scrollbarWidth' && w.value === 'none'
         );
         expect(hidesScrollbarWidth).toBe(true);
     });
@@ -193,11 +193,9 @@ describe('Panel — overlay scrollbar default', () => {
 
         // The native bar is un-hidden on teardown: the last scrollbarWidth
         // write for this instance is the un-hide (null), not "none".
-        const scrollbarWidthWrites = sink.writes.filter(
-            (w) => w.op === 'setRuleStyle' && w.args[0] === 'scrollbarWidth'
-        );
+        const scrollbarWidthWrites = ruleStyleWrites(sink).filter((w) => w.key === 'scrollbarWidth');
         expect(scrollbarWidthWrites.length).toBeGreaterThan(0);
-        expect(scrollbarWidthWrites[scrollbarWidthWrites.length - 1].args[1]).toBeNull();
+        expect(scrollbarWidthWrites[scrollbarWidthWrites.length - 1].value).toBeNull();
 
         // Re-enter overlay mode, then tear down via the style switch instead.
         panel.setAutoScroll('y');

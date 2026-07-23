@@ -17,7 +17,7 @@ import type { LinkOptions } from '~/component/input/Link';
 import { Text } from '~/component/input/Text';
 import { DOM } from '~/core/DOM';
 import { Event } from '~/core/Event';
-import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent, ruleStyleWrites, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -76,9 +76,7 @@ function pressKey(link: Link, key: string): void {
 
 /** Every recorded style-rule write, as `[property, value]` pairs. */
 function ruleStyles(): unknown[][] {
-    return sink.writes
-        .filter((w) => w.op === 'setRuleStyle')
-        .map((w) => [w.args[0], w.args[1]]);
+    return ruleStyleWrites(sink).map((w) => [w.key, w.value]);
 }
 
 /** Latest recorded `setAttr` value for `attr` on any handle, or undefined. */

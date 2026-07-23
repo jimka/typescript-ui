@@ -4,7 +4,7 @@ import { Insets } from '~/primitive/Insets';
 import { UNBOUNDED } from '~/primitive/Size';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { DOM } from '~/core/DOM';
-import { installTestDOM, RecordingDOMSink } from '../dom/TestDOM';
+import { installTestDOM, RecordingDOMSink, ruleStyleWrites } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { _ruleCacheHas, _ruleCacheKeys } from '~/core/StyleTarget';
 import { Button } from '~/component/button/Button';
@@ -153,9 +153,9 @@ describe('Component size setters take a Size (size-setter-interface plan)', () =
         c.getElement(true);
         c.setMinSize({ width: 180, height: 0 });
 
-        const recorder = DOM.sink as unknown as { writes: { op: string; args: unknown[] }[] };
-        expect(recorder.writes.some((w) => w.op === 'setRuleStyle' && w.args[0] === 'minWidth' && w.args[1] === '180px')).toBe(true);
-        expect(recorder.writes.some((w) => w.op === 'setRuleStyle' && w.args[0] === 'minHeight' && w.args[1] === '0px')).toBe(true);
+        const rows = ruleStyleWrites(DOM.sink as RecordingDOMSink);
+        expect(rows.some((w) => w.key === 'minWidth' && w.value === '180px')).toBe(true);
+        expect(rows.some((w) => w.key === 'minHeight' && w.value === '0px')).toBe(true);
         expect(c.getDataAttribute('minSize')).toBe('180px 0px');
     });
 
@@ -164,9 +164,9 @@ describe('Component size setters take a Size (size-setter-interface plan)', () =
         c.getElement(true);
         c.setMaxSize({ width: UNBOUNDED, height: 24 });
 
-        const recorder = DOM.sink as unknown as { writes: { op: string; args: unknown[] }[] };
-        expect(recorder.writes.some((w) => w.op === 'setRuleStyle' && w.args[0] === 'maxWidth' && w.args[1] === 'none')).toBe(true);
-        expect(recorder.writes.some((w) => w.op === 'setRuleStyle' && w.args[0] === 'maxHeight' && w.args[1] === '24px')).toBe(true);
+        const rows = ruleStyleWrites(DOM.sink as RecordingDOMSink);
+        expect(rows.some((w) => w.key === 'maxWidth' && w.value === 'none')).toBe(true);
+        expect(rows.some((w) => w.key === 'maxHeight' && w.value === '24px')).toBe(true);
     });
 
     it('case 4: two value-equal but distinct Size objects fire onPreferredSizeChange once, not twice', () => {

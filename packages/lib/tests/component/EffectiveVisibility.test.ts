@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Component } from '~/core/Component';
 import { Canvas } from '~/component/display/Canvas';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../dom/TestDOM';
+import { installTestDOM, ruleStyleWrites, type RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -22,8 +22,6 @@ const CONFIG = {
 
 beforeEach(() => installTestDOM(CONFIG));
 afterEach(() => DOM.reset());
-
-type Recorder = { writes: { op: string; args: unknown[] }[] };
 
 /** Reads the protected hook off an arbitrary component for spying. */
 function hookTarget(c: Component): { onEffectiveVisibilityChange(effective: boolean): void } {
@@ -75,9 +73,8 @@ describe('Per-node CSS animation pause on hide (case 2)', () => {
 
         expect(c.getAnimationPlayState()).toBe('paused');
 
-        const recorder = DOM.sink as unknown as Recorder;
-        const pausedWrite = recorder.writes.some(w =>
-            w.op === 'setRuleStyle' && w.args[0] === 'animationPlayState' && w.args[1] === 'paused');
+        const pausedWrite = ruleStyleWrites(DOM.sink as RecordingDOMSink).some(w =>
+            w.key === 'animationPlayState' && w.value === 'paused');
         expect(pausedWrite).toBe(true);
 
         c.setVisible(true);
@@ -111,8 +108,7 @@ describe('Non-animated components pay nothing (case 3)', () => {
         c.setVisible(false);
         Component.flushEffectiveVisibility();
 
-        const recorder = DOM.sink as unknown as Recorder;
-        const wrote = recorder.writes.some(w => w.op === 'setRuleStyle' && w.args[0] === 'animationPlayState');
+        const wrote = ruleStyleWrites(DOM.sink as RecordingDOMSink).some(w => w.key === 'animationPlayState');
 
         expect(wrote).toBe(false);
         expect(c.getAnimationPlayState()).toBeNull();
@@ -191,17 +187,16 @@ describe('Idempotent setVisible (cases 13-15)', () => {
         const c = new Component({});
         c.getElement(true);
 
-        const recorder = DOM.sink as unknown as Recorder;
         // Baseline after render (which already writes an initial "inherit"
         // visibility rule via applyBoxAndVisibilityStyles) — count only writes
         // caused by the two setVisible(false) calls below.
-        const visWritesBefore = recorder.writes.filter(w => w.op === 'setRuleStyle' && w.args[0] === 'visibility').length;
+        const visWritesBefore = ruleStyleWrites(DOM.sink as RecordingDOMSink).filter(w => w.key === 'visibility').length;
         const spy = vi.spyOn(hookTarget(c), 'onEffectiveVisibilityChange');
 
         c.setVisible(false);
         c.setVisible(false);
 
-        const visWritesAfter = recorder.writes.filter(w => w.op === 'setRuleStyle' && w.args[0] === 'visibility').length;
+        const visWritesAfter = ruleStyleWrites(DOM.sink as RecordingDOMSink).filter(w => w.key === 'visibility').length;
         expect(visWritesAfter - visWritesBefore).toBe(1);
 
         Component.flushEffectiveVisibility();
@@ -234,14 +229,13 @@ describe('Idempotent setVisible (cases 13-15)', () => {
         const c = new Component({});
         c.getElement(true);
 
-        const recorder = DOM.sink as unknown as Recorder;
-        const visWritesBefore = recorder.writes.filter(w => w.op === 'setRuleStyle' && w.args[0] === 'visibility').length;
+        const visWritesBefore = ruleStyleWrites(DOM.sink as RecordingDOMSink).filter(w => w.key === 'visibility').length;
         const spy = vi.spyOn(hookTarget(c), 'onEffectiveVisibilityChange');
 
         c.setVisible(false);
         c.setVisible(true);
 
-        const visWritesAfter = recorder.writes.filter(w => w.op === 'setRuleStyle' && w.args[0] === 'visibility').length;
+        const visWritesAfter = ruleStyleWrites(DOM.sink as RecordingDOMSink).filter(w => w.key === 'visibility').length;
         expect(visWritesAfter - visWritesBefore).toBe(2);
 
         Component.flushEffectiveVisibility();
