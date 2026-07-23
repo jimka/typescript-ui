@@ -121,7 +121,7 @@ class Table extends Component<TableOptions> {
     private _rotatedStore     : MemoryStore | null = null;
     private _rotatedColumns   : Column[] = [];
     private _rotatedConfigs   : Map<string, ColumnConfig> = new Map();
-    private _fieldByRotatedRecord: Map<ModelRecord, Field> = new Map();
+    private _rotatedFieldByName: Map<string, Field> = new Map();
     private _sourceRefresh    : (() => void) | null = null;
     private _suppressSelectionForward: boolean = false;
 
@@ -921,32 +921,30 @@ class Table extends Component<TableOptions> {
 
     /**
      * Rebuilds the projection store's records from `_rotatedRecord` — one row
-     * per visible source field — and refreshes the `_fieldByRotatedRecord`
-     * map used by {@link rotatedCellType} / {@link rotatedCellValues} to
-     * resolve each row's source field. Pairing is by the row's own `field`
-     * value (not by index), so the map stays correct after the projection is
-     * sorted by clicking a header.
+     * per visible source field — and refreshes the `_rotatedFieldByName` map
+     * used by {@link rotatedCellType} / {@link rotatedCellValues} to resolve
+     * each row's source field. Resolution is by the row's own `field` value
+     * (not by index), so it stays correct after the projection is sorted by
+     * clicking a header.
      */
     private rebuildRotatedStore(): void {
         const store  = this.ensureRotatedStore();
         const fields = this.getSourceColumns().map(c => c.getField());
         const record = this._rotatedRecord;
 
+        // Refresh the field lookup BEFORE loadData. loadData fires the store's
+        // `load` event synchronously, and while the body is already bound to
+        // the projection store (i.e. switching the displayed record) that
+        // reraises straight into rotatedCellType / rotatedCellValues to rebind
+        // each value cell. Building the lookup afterwards left that first
+        // render resolving every value cell against a stale map: cellType fell
+        // back to the column's `auto` type, the string renderer was swapped in
+        // unlaid-out, and the value column stayed blank until the next scroll.
+        this._rotatedFieldByName = new Map(fields.map(f => [f.getName(), f]));
+
         store.loadData(record
             ? fields.map(f => ({ field: f.getName(), value: record.get(f.getName()) }))
             : []);
-
-        const byName = new Map(fields.map(f => [f.getName(), f]));
-
-        this._fieldByRotatedRecord = new Map();
-
-        for (const r of store.getRecords()) {
-            const field = byName.get(r.get('field') as string);
-
-            if (field) {
-                this._fieldByRotatedRecord.set(r, field);
-            }
-        }
     }
 
     /**
@@ -961,7 +959,7 @@ class Table extends Component<TableOptions> {
      *   field cannot be resolved (should not happen for a row this table built).
      */
     private rotatedCellType(record: ModelRecord): CellType | null {
-        const field = this._fieldByRotatedRecord.get(record);
+        const field = this._rotatedFieldByName.get(record.get('field') as string);
 
         if (!field) {
             return null;
@@ -982,7 +980,7 @@ class Table extends Component<TableOptions> {
      * @returns The source field's declared `values`, or `undefined`.
      */
     private rotatedCellValues(record: ModelRecord): Array<ComboOption | string> | undefined {
-        const field = this._fieldByRotatedRecord.get(record);
+        const field = this._rotatedFieldByName.get(record.get('field') as string);
 
         return field ? this._columnConfigs.get(field.getName())?.values : undefined;
     }

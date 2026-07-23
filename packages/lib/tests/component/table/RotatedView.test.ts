@@ -158,6 +158,36 @@ describe('Table rotated mode', () => {
         expect(seen).toEqual([[record3]]);
     });
 
+    it('keeps each value cell at its source-field variant after switching the displayed record', async () => {
+        const { store, records } = await makeStore();
+        const table = makeTable(store);
+
+        table.selectRecord(records[0]);
+        table.setDisplayMode('rotated');
+        table.setWidth(600);
+        table.setHeight(400);
+        table.doLayout();
+
+        // Switch the displayed record. selectRecord -> rebuildRotatedStore ->
+        // store.loadData fires the body's `load` refresh synchronously, which
+        // rebinds every value cell through rotatedCellType. A field lookup that
+        // is stale at that instant resolves the `id` cell to the column's
+        // fallback `auto` variant (a string renderer swapped in unlaid-out),
+        // which is the blank-value-column bug this pins.
+        table.selectRecord(records[1]);
+
+        const pool = (table as any)._body.getRowPool();
+        const idRow = pool.find((r: any) => r.getData()?.get('field') === 'id');
+
+        expect(idRow).toBeDefined();
+
+        // Column order is [field, value]; `id` is a number field, so its value
+        // cell must render (and edit) as a number, not the string fallback.
+        const valueCell = idRow.getComponents()[1];
+
+        expect(valueCell.getEditorKey()).toBe('number');
+    });
+
     it('rotating an empty store yields no rows and no selection', async () => {
         const store = new MemoryStore(MODEL, []);
         await store.load();
