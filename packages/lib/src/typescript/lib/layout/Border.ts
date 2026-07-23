@@ -408,6 +408,26 @@ class Border extends LayoutManager {
     }
 
     /**
+     * Floors a region's preferred main-axis extent at the region component's
+     * own minimum main-axis extent, so a region whose consumer pinned a
+     * sub-minimum `preferredSize` is still reserved — and clip-framed — at the
+     * size the component clamps itself up to on commit. Mirrors
+     * {@link VBox.preferredChildHeight} / {@link HBox.preferredChildWidth}.
+     * Reading the region's `getMinSize()` here is a non-recursive sibling call,
+     * not a re-entry into this manager's own size gathering.
+     *
+     * @param preferred - The region's preferred main-axis extent.
+     * @param min - The region's min-size, or null.
+     * @param vertical - True for NORTH/SOUTH (height axis), false for WEST/EAST (width axis).
+     * @returns `max(preferred, region min on the main axis)`.
+     */
+    private flooredMainExtent(preferred: number, min: Size | null, vertical: boolean): number {
+        const minMain = min ? (vertical ? min.height : min.width) : 0;
+
+        return Math.max(preferred, minMain);
+    }
+
+    /**
      * Clips a region's element toward its outer edge for the current collapse
      * state. The component is always laid out at its full size; collapsing
      * progressively clips it away (animated via a `clip-path` transition) so the
@@ -559,23 +579,26 @@ class Border extends LayoutManager {
         if (north) {
             let size = north.getPreferredSize();
             if (size) {
+                const flooredHeight = this.flooredMainExtent(size.height, north.getMinSize(), true);
                 innerWidth = Math.max(innerWidth, size.width);
-                innerHeight += this.isRegionCollapsed(Placement.NORTH) ? COLLAPSE_STRIP_SIZE : size.height;
+                innerHeight += this.isRegionCollapsed(Placement.NORTH) ? COLLAPSE_STRIP_SIZE : flooredHeight;
             }
         }
 
         if (south) {
             let size = south.getPreferredSize();
             if (size) {
+                const flooredHeight = this.flooredMainExtent(size.height, south.getMinSize(), true);
                 innerWidth = Math.max(innerWidth, size.width);
-                innerHeight += this.isRegionCollapsed(Placement.SOUTH) ? COLLAPSE_STRIP_SIZE : size.height;
+                innerHeight += this.isRegionCollapsed(Placement.SOUTH) ? COLLAPSE_STRIP_SIZE : flooredHeight;
             }
         }
 
         if (west) {
             let size = west.getPreferredSize();
             if (size) {
-                middleWidth += this.isRegionCollapsed(Placement.WEST) ? COLLAPSE_STRIP_SIZE : size.width;
+                const flooredWidth = this.flooredMainExtent(size.width, west.getMinSize(), false);
+                middleWidth += this.isRegionCollapsed(Placement.WEST) ? COLLAPSE_STRIP_SIZE : flooredWidth;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
@@ -591,7 +614,8 @@ class Border extends LayoutManager {
         if (east) {
             let size = east.getPreferredSize();
             if (size) {
-                middleWidth += this.isRegionCollapsed(Placement.EAST) ? COLLAPSE_STRIP_SIZE : size.width;
+                const flooredWidth = this.flooredMainExtent(size.width, east.getMinSize(), false);
+                middleWidth += this.isRegionCollapsed(Placement.EAST) ? COLLAPSE_STRIP_SIZE : flooredWidth;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
@@ -902,7 +926,8 @@ class Border extends LayoutManager {
                 throw new Error("Unable to determine preferred size for north component.");
             }
 
-            let northHeight = this.regionExtent(Placement.NORTH, preferredSize.height);
+            const northExtent = this.flooredMainExtent(preferredSize.height, north.getMinSize(), true);
+            let northHeight = this.regionExtent(Placement.NORTH, northExtent);
             let northX = constraints.ignoreParentInsets ? 0 : containerInsets.getLeft();
             let northY = constraints.ignoreParentInsets ? 0 : containerInsets.getTop();
             let northWidth = width + (constraints.ignoreParentInsets ? containerInsets.getLeft() + containerInsets.getRight() : 0);
@@ -921,7 +946,7 @@ class Border extends LayoutManager {
                     northX,
                     northY,
                     northWidth,
-                    preferredSize.height + northInsetTop,
+                    northExtent + northInsetTop,
                     FillType.BOTH
                 );
                 north.clearClipFrame();
@@ -933,8 +958,8 @@ class Border extends LayoutManager {
                 // prior collapsible state (setRegionCollapsible can flip a region
                 // at runtime); this branch never calls applyRegionClip.
                 north.setClipPath(null);
-                north.setClipFrame(northX, northY, northWidth, preferredSize.height + northInsetTop);
-                this.commitBounds(north, 0, 0, northWidth, preferredSize.height + northInsetTop);
+                north.setClipFrame(northX, northY, northWidth, northExtent + northInsetTop);
+                this.commitBounds(north, 0, 0, northWidth, northExtent + northInsetTop);
             }
 
             this.updateRegionGutter(Placement.NORTH, northX, northY, northWidth, middleY);
@@ -953,7 +978,8 @@ class Border extends LayoutManager {
                 throw new Error("Unable to determine preferred size for south component.");
             }
 
-            let southHeight = this.regionExtent(Placement.SOUTH, preferredSize.height);
+            const southExtent = this.flooredMainExtent(preferredSize.height, south.getMinSize(), true);
+            let southHeight = this.regionExtent(Placement.SOUTH, southExtent);
             let southX = containerInsets.getLeft();
             let southY = containerInsets.getTop() + height - southHeight;
 
@@ -962,7 +988,7 @@ class Border extends LayoutManager {
 
             // Full-size and bottom-anchored, clipped toward the bottom while
             // collapsed; the gutter uses the strip rect (`southY`/`southHeight`).
-            let southFullY = containerInsets.getTop() + height - preferredSize.height;
+            let southFullY = containerInsets.getTop() + height - southExtent;
 
             if (this.isRegionCollapsible(Placement.SOUTH) || this._collapsing) {
                 this.placeComponent(
@@ -970,7 +996,7 @@ class Border extends LayoutManager {
                     southX,
                     southFullY,
                     width,
-                    preferredSize.height,
+                    southExtent,
                     FillType.BOTH
                 );
                 south.clearClipFrame();
@@ -980,8 +1006,8 @@ class Border extends LayoutManager {
                 // non-collapsible full position equals the strip position, so the
                 // element commits at (0, 0) inside the frame.
                 south.setClipPath(null);
-                south.setClipFrame(southX, southFullY, width, preferredSize.height);
-                this.commitBounds(south, 0, 0, width, preferredSize.height);
+                south.setClipFrame(southX, southFullY, width, southExtent);
+                this.commitBounds(south, 0, 0, width, southExtent);
             }
 
             this.updateRegionGutter(Placement.SOUTH, southX, southY, width, southHeight);
@@ -999,8 +1025,9 @@ class Border extends LayoutManager {
             if (!eastPreferred) {
                 throw new Error("Unable to determine preferred size for east component.");
             }
-            eastFullWidth = eastPreferred.width;
-            eastPreferredWidth = this.regionExtent(Placement.EAST, eastPreferred.width);
+            const eastExtent = this.flooredMainExtent(eastPreferred.width, east.getMinSize(), false);
+            eastFullWidth = eastExtent;
+            eastPreferredWidth = this.regionExtent(Placement.EAST, eastExtent);
         }
 
         if (west) {
@@ -1009,7 +1036,8 @@ class Border extends LayoutManager {
                 throw new Error("Unable to determine preferred size for west component.");
             }
 
-            let westWidth = Math.max(0, Math.min(this.regionExtent(Placement.WEST, preferredSize.width), width - eastPreferredWidth));
+            const westExtent = this.flooredMainExtent(preferredSize.width, west.getMinSize(), false);
+            let westWidth = Math.max(0, Math.min(this.regionExtent(Placement.WEST, westExtent), width - eastPreferredWidth));
             let westX = containerInsets.getLeft();
             let westY = containerInsets.getTop() + middleY;
 
@@ -1017,7 +1045,7 @@ class Border extends LayoutManager {
 
             // Full-size and left-anchored, clipped toward the left while
             // collapsed; the centre and gutter use the strip extent (`westWidth`).
-            let westFullWidth = Math.max(0, Math.min(preferredSize.width, width - eastPreferredWidth));
+            let westFullWidth = Math.max(0, Math.min(westExtent, width - eastPreferredWidth));
 
             if (this.isRegionCollapsible(Placement.WEST) || this._collapsing) {
                 this.placeComponent(
