@@ -137,8 +137,9 @@ table.setDisplayMode("normal");   // back to one row per record
 - **Per-field cell variants** come from the same `cellType` / `cellValues` mechanism described above — a boolean source field's row renders a checkbox, a `values`-constrained field's row renders a combo showing the option label, and so on.
 - **The view is read-only.** Every value cell refuses inline editing; there is no write-back path from a field/value row to the source record.
 - **Sorting the projection reorders the field rows** (e.g. alphabetically by field name) — it does not touch the source store's own sort, and un-rotating restores the normal column order.
+- **The `field` and `value` columns stay compact** — each is capped at a bounded width so a wide record does not stretch them across the whole table; a blank, expanding trailing column absorbs the leftover width, keeping the label and its value grouped on the left.
 - **Export always covers the source table** — `exportCSV()` / `exportJSON()` serialize every source record and column regardless of the active display mode, never the field/value projection.
-- `setColumnVisible` is a no-op while rotated (the projection's two columns are always both shown), and the column-header context menu shows only the export entries.
+- `setColumnVisible` is a no-op while rotated (the projection's data columns are always shown), and the column-header context menu shows only the export entries.
 
 ## Parent headers
 
