@@ -263,6 +263,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private readonly _boundOnSnapBlur:       () => void                = () => this.clearSnapState();
     private readonly _boundOnBorderResize:   (border: WindowBorder, e: MouseEvent) => void = (border, e) => this.onResize(border, e);
     private readonly _boundOnBringToFront:   () => void                = () => this.bringToFront();
+    // Schedules a layout pass on theme change, so every `Text` under this
+    // window re-measures lazily against the new theme's metrics — windows
+    // are appended to `document.documentElement`, not to `Body`, so they need
+    // their own root reflow subscription rather than sharing Body's.
+    private readonly _boundOnThemeReflow:    () => void                = () => this.scheduleLayout();
 
     /**
      * Builds the chrome-agnostic, dereference-free part of a window: the eight
@@ -276,6 +281,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     constructor(options?: WindowOptions) {
         super(options, _defaultWindowOptions);
+
+        this.subscribeTheme(this._boundOnThemeReflow);
 
         this._borderComponents = {
             west: new WindowBorder(Direction.WEST),

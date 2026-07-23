@@ -51,6 +51,16 @@ export namespace Util {
     let textBaselineCache: number = -1;
     let opticalOffsetCache: number = -1;
 
+    // Generation counter bumped by `invalidateTextMetricsCache`, so a caller
+    // (e.g. `Text.needsMeasure`) can tell whether its last measurement
+    // predates the active theme without holding its own subscription.
+    let metricsGeneration = 0;
+
+    // Resolved bound-font-size results, keyed by `cssVar + "|" + cssRule`, so
+    // every `Text` bound to the same CSS var/rule pair shares one resolution
+    // per theme change instead of each instance re-probing the cascade.
+    const boundFontSizeCache = new Map<string, number | null>();
+
     /**
      * Measures the rendered size of a text string using an off-screen probe `<span>`.
      *
@@ -251,8 +261,62 @@ export namespace Util {
     }
 
     /**
-     * Discards every cached text metric (line box, baseline, optical offset) so
-     * the next read re-measures against the active theme font.
+     * Returns the generation counter for the cached text metrics, bumped once
+     * every time {@link invalidateTextMetricsCache} runs.
+     *
+     * @returns The current generation number.
+     *
+     * @remarks Lets a caller that measured against a past generation (stashed
+     * from a prior read of this function) tell, cheaply and without holding
+     * its own theme subscription, whether a re-measure is due — the pattern
+     * `Text` uses instead of subscribing to `ThemeManager` per instance.
+     */
+    export function textMetricsGeneration(): number {
+        return metricsGeneration;
+    }
+
+    /**
+     * Resolves a CSS custom property bound to a control's font size to a
+     * pixel number, caching the result per `cssVar`/`cssRule` pair so every
+     * control bound to the same token shares one resolution per theme change.
+     *
+     * @param cssVar - The CSS custom property name (e.g. `"--ts-ui-font-size"`).
+     * @param cssRule - The CSS value the control's `font-size` rule is set to
+     *   (e.g. `"var(--ts-ui-font-size, 14px)"`), used as the fallback probe
+     *   when `cssVar`'s raw value isn't a bare, parseable pixel number (a
+     *   `calc(...)`-valued relative token). Pass `null` when the control has
+     *   no rule text of its own; the probe then falls back to `var(${cssVar})`.
+     * @returns The resolved pixel size.
+     *
+     * @remarks Mirrors the theme-var-then-probe strategy every other cached
+     * metric in this namespace uses: a simple var parses straight off its raw
+     * string; a `calc(...)`-valued token falls back to
+     * {@link DOMSource.resolveFontSizePx}, a cascade-evaluating probe. Cleared
+     * together with the rest of the text metrics by
+     * {@link invalidateTextMetricsCache}.
+     */
+    export function boundFontSizePx(cssVar: string, cssRule: string | null): number | null {
+        const key    = cssVar + "|" + (cssRule ?? "");
+        const cached = boundFontSizeCache.get(key);
+
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        const raw      = parseFloat(DOM.source.getThemeVar(cssVar));
+        const resolved = isNaN(raw)
+            ? DOM.source.resolveFontSizePx(cssRule ?? `var(${cssVar})`)
+            : raw;
+
+        boundFontSizeCache.set(key, resolved);
+
+        return resolved;
+    }
+
+    /**
+     * Discards every cached text metric (line box, baseline, optical offset,
+     * bound font sizes) so the next read re-measures against the active theme
+     * font.
      *
      * @remarks Call this whenever the active theme's font size, family, or
      * line-height changes, since the cached values reflect the font in use at
@@ -264,6 +328,8 @@ export namespace Util {
         rootFontSizeCache  = -1;
         textBaselineCache  = -1;
         opticalOffsetCache = -1;
+        boundFontSizeCache.clear();
+        metricsGeneration++;
     }
 
     /**

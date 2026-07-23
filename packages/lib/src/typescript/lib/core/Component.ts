@@ -18,6 +18,7 @@ import { SmoothScroller, consumeWheel, type ScrollAxis } from "~/core/SmoothScro
 import { StyleRule, InlineStyle, disposeStyleRule } from "~/core/StyleTarget.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
+import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
 
 //import { FastDom } from "~/FastDom.js";
 
@@ -441,15 +442,28 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     // Two bags. `_options` holds values supplied by the caller or written by a
     // setter — i.e. the *explicit* state for this component. `_defaultOptions`
-    // holds class-level defaults consulted as a fallback by getters; nothing
-    // ever writes into `_defaultOptions` after construction. Splitting the two
-    // lets subclass guards of the form `if (this._options.X === undefined)`
-    // detect "the caller didn't supply X" without false-firing on defaults
-    // that base classes pre-seeded. Both are initialized in the constructor
-    // body (not via field initializers) so subclass field initializers can't
-    // clobber them. See `plans/options-bag-state-refactor.md` for rationale.
+    // holds class-level defaults consulted as a fallback by getters. It is a
+    // single frozen object **shared by every instance of the concrete class**,
+    // cached on the class constructor by `resolveClassDefaults` — nothing
+    // writes into it after it is built, and the freeze turns an accidental
+    // write into a runtime throw. Splitting the two bags lets subclass guards
+    // of the form `if (this._options.X === undefined)` detect "the caller
+    // didn't supply X" without false-firing on defaults that base classes
+    // pre-seeded. Both are initialized in the constructor body (not via field
+    // initializers) so subclass field initializers can't clobber them. See
+    // `plans/options-bag-state-refactor.md` and
+    // `plans/implemented/per-class-component-defaults.md` for rationale.
+    //
+    // `layoutManager` never enters this bag — a layout manager holds
+    // per-instance `_container` state, so sharing one across every instance
+    // of a class would have each instance's layout stomp the others'.
+    // `_defaultLayoutManager` is the per-instance slot: seeded from
+    // `subclassDefaults.layoutManager` when the subclass supplied one,
+    // otherwise lazily filled with `new Absolute()` the first time
+    // `getLayoutManager()` resolves it.
     protected _options!:        TOptions;
-    protected _defaultOptions!: TOptions;
+    protected _defaultOptions!: Readonly<TOptions>;
+    private   _defaultLayoutManager: LayoutManager | null;
 
     /**
      * @param options - Caller-supplied options bag.
@@ -492,28 +506,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // Class-level defaults — fallback values consulted by getters when the
         // caller (or a setter) hasn't written to `_options`, and the source
         // every `applyOptions` cascade merges over before dispatching setters.
-        // Subclass defaults are layered on top of the Component defaults here
-        // so deepest-class wins; `applyOptions` and its overrides then merge
-        // user `options` on top of this bag at dispatch time.
-        this._defaultOptions = {
-            layoutManager: new Absolute(),
-            cursor       : "default",
-            insets       : new Insets(0, 0, 0, 0),
-            minSize      : { width: 0, height: 0 },
-            maxSize      : { width: UNBOUNDED, height: UNBOUNDED },
-            // `hidden` is deliberate and load-bearing beyond just clipping: it
-            // visually EXPOSES layout-calculation bugs. When a layout lays a
-            // child out larger than the box its parent sized for it — i.e. when
-            // `getPreferredSize`/`getMinSize` under-report what `doLayout`
-            // actually produces — the overflow is clipped rather than silently
-            // spilling, so the size-negotiation mistake shows up on screen
-            // instead of hiding. Don't relax this to "fix" a clip; find the
-            // preferred-vs-doLayout discrepancy it revealed.
-            overflow     : "hidden",
-            zIndex       : 0,
-            displayed    : true,
-            ...(subclassDefaults ?? {}),
-        } as TOptions;
+        // Subclass defaults are layered on top of the Component defaults by
+        // `resolveClassDefaults`, which also caches the frozen result on
+        // `this.constructor` so every instance of this concrete class shares
+        // one bag. `layoutManager` is resolved separately into a per-instance
+        // slot — see `_defaultLayoutManager`'s field comment.
+        this._defaultLayoutManager = (subclassDefaults?.layoutManager as LayoutManager | undefined) ?? null;
+        this._defaultOptions       = resolveClassDefaults<TOptions>(this.constructor, subclassDefaults);
 
         // Explicit state — starts empty. Only values the caller passed or that
         // setters wrote ever land here. This is what `if (this._options.X ===
@@ -759,7 +758,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // would re-attach (and then immediately re-detach) a manager that was
         // never actually in use — which would break idempotency on a second
         // `destructor()` call by re-attaching every time.
-        const layoutManager = (this._options.layoutManager ?? this._defaultOptions.layoutManager) as LayoutManager;
+        const layoutManager = (this._options.layoutManager as LayoutManager | undefined)
+            ?? (this._defaultLayoutManager ??= new Absolute());
         if (layoutManager && layoutManager.getContainer() === this) {
             layoutManager.detach();
         }
@@ -5007,7 +5007,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The current LayoutManager instance.
      */
     getLayoutManager(): LayoutManager {
-        const layoutManager = (this._options.layoutManager ?? this._defaultOptions.layoutManager) as LayoutManager;
+        const layoutManager = (this._options.layoutManager as LayoutManager | undefined)
+            ?? (this._defaultLayoutManager ??= new Absolute());
 
         // The class-level default manager is no longer dispatched through
         // `setLayoutManager`, so attach it lazily the first time it is
