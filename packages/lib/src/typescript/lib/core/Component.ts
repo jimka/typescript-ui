@@ -2594,7 +2594,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The constraint Size, or null when none is set.
      */
     getPreferredSizeConstraint(): Size | null {
-        return (this._options.preferredSize ?? this._defaultOptions.preferredSize) ?? null;
+        return "preferredSize" in this._options
+            ? (this._options.preferredSize ?? null)
+            : (this._defaultOptions.preferredSize ?? null);
     }
 
     /**
@@ -2681,6 +2683,32 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const next: Size = { width: size.width, height: size.height };
         this._options.preferredSize = next;
         this.setDataAttribute("preferredSize", formatSizeAttr(next.width, next.height));
+        this._onPreferredSizeChange?.();
+
+        return this;
+    }
+
+    /**
+     * Drops this component's preferred-size constraint, including one that came
+     * from a class default, so its size is derived from its content and layout
+     * manager instead.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks The options bag cannot express this: `applyOptions` skips an
+     * `undefined` entry, so `preferredSize: undefined` never reaches `_options`
+     * and a class default (a `FieldSet`'s fixed square, say) keeps winning.
+     * This writes the key with an `undefined` value, which is what tells
+     * {@link getPreferredSizeConstraint} that the size was *cleared* rather than
+     * *never set* — the same key-presence rule `clearPadding` follows.
+     */
+    clearPreferredSize(): this {
+        if ("preferredSize" in this._options && this._options.preferredSize === undefined) {
+            return this;
+        }
+
+        this._options.preferredSize = undefined;
+        this.delDataAttribute("preferredSize");
         this._onPreferredSizeChange?.();
 
         return this;

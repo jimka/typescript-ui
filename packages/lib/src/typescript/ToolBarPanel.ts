@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { callable, Panel }            from '@jimka/typescript-ui/core';
-import { ButtonGroup } from '@jimka/typescript-ui/overlay';
 import { VBox }                                    from '@jimka/typescript-ui/layout';
 import { Spacer }                                  from '@jimka/typescript-ui/component/container';
 import { ComboBox, Text }                          from '@jimka/typescript-ui/component/input';
@@ -19,8 +18,9 @@ Glyph.register(scissors, copyGlyph, pasteGlyph);
 /**
  * Demo panel showcasing the `ToolBar` component.
  *
- * Demonstrates: a flat (default) horizontal toolbar with a Bold/Italic/Underline
- * `ButtonGroup` whose selected button reads depressed, a separator, glyph-only
+ * Demonstrates: a flat (default) horizontal toolbar with independent
+ * Bold/Italic/Underline `ToggleButton`s that read depressed while on and
+ * combine freely, a separator, glyph-only
  * Cut/Copy/Paste buttons that render as compact squares yet keep a hover
  * tooltip and accessible name via `showText: false`, a `SplitButton` whose
  * main face fires the primary action while its trailing chevron opens a
@@ -51,11 +51,11 @@ class ToolBarPanel extends Panel {
         const italic    = new ToggleButton("I");
         const underline = new ToggleButton("U");
 
-        const styleGroup = new ButtonGroup({ buttons: [
-            bold,
-            italic,
-            underline
-        ]});
+        // Deliberately NOT a ButtonGroup: bold/italic/underline are independent
+        // toggles — they combine, and all three can be off. ButtonGroup is a
+        // radio group (it re-selects the button you click to keep exactly one
+        // active), which is the wrong contract here; see its demos in
+        // ComplexUIPanel / LayoutTestPanel / MiscPanel for the exclusive case.
 
         bold.on("action", () => { status("Toggle Bold"); });
         italic.on("action", () => { status("Toggle Italic"); });
@@ -83,7 +83,7 @@ class ToolBarPanel extends Panel {
         zoom.on("action", (value: string) => { status("Zoom " + value); });
 
         bar.addComponents(
-            styleGroup.getButtons(),
+            [bold, italic, underline],
             ToolBarSeparator(),
             cut,
             copy,

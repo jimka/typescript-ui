@@ -48,6 +48,18 @@ sidebar.setMaxSize({ width: 360, height: 0 });
 
 A `0` value for either width or height is conventionally a "don't care" — the layout manager treats it as unbounded.
 
+### Escaping a class default
+
+Some components ship a preferred size as a **class default** — a [`FieldSet`](/components/FieldSet) is a fixed 200×200 square unless you say otherwise. Passing `preferredSize: undefined` in the options bag does *not* undo that: construction skips an `undefined` entry, so the default still wins and short content trails dead space. Call `clearPreferredSize()` to drop the constraint entirely and let the component size to its content and layout manager instead.
+
+```typescript
+const row = FieldSet('justify', { layoutManager: HBox() });
+
+row.clearPreferredSize();   // sizes to its content, not to 200x200
+```
+
+The component's **minimum** is unaffected — a `FieldSet` still floors at its 100×100 default — so clear the minimum too if you need it smaller.
+
 ## The size invariant
 
 The three hints satisfy `min ≤ preferred ≤ max` on each axis. When you set them in conflict, the framework resolves on read with **min winning**: a preferred below the minimum is lifted to the minimum, and a minimum above the maximum still wins (the maximum is treated as at least the minimum). So `setMinSize({ width: 120, height: 0 })` followed by `setPreferredSize({ width: 0, height: 0 })` reports a preferred width of 120, not 0. How that range binds the *committed* size — and whether the binding minimum is your explicit one or one derived from the component's children — depends on the component; see [Content size vs. allocated size](#content-size-vs-allocated-size) below.
