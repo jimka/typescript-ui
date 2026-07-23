@@ -289,6 +289,16 @@ Returning to normal restores four source columns; the filler exists only in the 
 
 ---
 
+## Implementation Notes
+
+**Header label must be re-applied on every reconcile, not only at cell construction.** The plan had `headerText` consumed at the single `new HeaderCell(...)` site (`col?.getHeaderText() ?? field.getName()`), assuming that reads the resolved column. It does not always: `Table.bindView` calls `_header.setModel(store.model)` *before* `_header.setColumns(columns)`, and `setModel` runs `rebuildCells()` while `this._columns` still holds the outgoing (source) columns. At that moment `columnMap.get('filler')` is `undefined`, so the filler header cell is created with the field-name fallback (`'filler'`); the later `setColumns` rebuild reuses that cell via `byName` and the `if (!cell)` block never re-evaluates its label. The header showed `filler` instead of a blank.
+
+Fix: a new `HeaderCell.setHeaderText(text)` (mirrors `setRequired`), called **unconditionally on every `rebuildCells` pass** next to the existing `groupColor` / `required` re-application — those already re-apply on every sync for exactly this "surviving cell keeps stale config" reason. The construction-site read stays as the initial value. Files added beyond the plan's table: `component/table/cell/Header.ts` (the `setHeaderText` method). A `'renders the filler column header blank…'` offline test was added to pin it (the plan had only a manual-verification step for the blank header).
+
+The plan cited the `new HeaderCell(...)` site as `component/table/cell/Header.ts:451`; the actual site is `component/table/Header.ts:451` (the `TableHeader`) — a path typo in the plan, code otherwise as described.
+
+---
+
 ## Notes
 
 [^bounds]: `field` at 200 px comfortably holds a source field name; `value` at 360 px holds typical string / number / date values while keeping a right-aligned number close to its label. Both exceed their existing minima (`field` 80, `value` 120), preserving `min ≤ max`. The exact pixels are presentation defaults, not load-bearing — a later tweak needs no structural change.

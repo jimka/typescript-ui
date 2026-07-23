@@ -71,7 +71,7 @@ describe('Table rotated mode', () => {
         expect(table.getColumns().length).toBe(4);
     });
 
-    it('rotation swaps the column set to field/value', async () => {
+    it('rotation swaps the column set to field/value/filler', async () => {
         const { store } = await makeStore();
         const table = makeTable(store);
 
@@ -79,8 +79,30 @@ describe('Table rotated mode', () => {
 
         const cols = table.getColumns();
 
-        expect(cols.length).toBe(2);
-        expect(cols.map(c => c.getField().getName())).toEqual(['field', 'value']);
+        expect(cols.length).toBe(3);
+        expect(cols.map(c => c.getField().getName())).toEqual(['field', 'value', 'filler']);
+    });
+
+    it('renders the filler column header blank while data headers keep their names', async () => {
+        const { store } = await makeStore();
+        const table = makeTable(store);
+
+        table.setWidth(600);
+        table.setHeight(400);
+        table.setDisplayMode('rotated');
+        table.doLayout();
+
+        const headerRow = (table as any)._header.getComponents()[1];
+        const cells     = headerRow.getComponents();
+        const cellFor   = (name: string) => cells.find((c: any) => c._fieldName === name);
+
+        expect(cellFor('filler')).toBeDefined();
+        // The filler's headerText: '' must win over its field name, even though
+        // the header cell is first built during a rebuild where the filler
+        // column is not yet resolved (and is then reused).
+        expect(String(cellFor('filler')._text)).toBe('');
+        expect(String(cellFor('field')._text)).toBe('field');
+        expect(String(cellFor('value')._text)).toBe('value');
     });
 
     it('produces one projection row per visible source column, in source order', async () => {
@@ -284,7 +306,7 @@ describe('Table rotated mode', () => {
         expect(seen.length).toBe(1);
     });
 
-    it('re-initializes column widths for the two-column layout after doLayout', async () => {
+    it('re-initializes column widths for the three-column layout after doLayout', async () => {
         const { store } = await makeStore();
         const table = makeTable(store);
 
@@ -295,9 +317,28 @@ describe('Table rotated mode', () => {
 
         const widths = table.getColumnWidths();
 
-        expect(widths.length).toBe(2);
+        expect(widths.length).toBe(3);
         expect(widths[0]).toBeGreaterThanOrEqual(80);
         expect(widths[1]).toBeGreaterThanOrEqual(120);
+        expect(widths[0]).toBeLessThanOrEqual(200);   // field cap
+        expect(widths[1]).toBeLessThanOrEqual(360);   // value cap
+    });
+
+    it('bounds field/value and lets the filler absorb the slack on a wide table', async () => {
+        const { store } = await makeStore();
+        const table = makeTable(store);
+
+        table.setWidth(1200);
+        table.setHeight(400);
+        table.setDisplayMode('rotated');
+        table.doLayout();
+
+        const widths = table.getColumnWidths();
+
+        expect(widths.length).toBe(3);
+        expect(widths[0]).toBe(200);                  // field clamped to its max
+        expect(widths[1]).toBe(360);                  // value clamped to its max
+        expect(widths[2]).toBeGreaterThan(widths[1]); // filler is widest — took the slack
     });
 
     it('makes setColumnVisible inert while rotated', async () => {
@@ -307,7 +348,7 @@ describe('Table rotated mode', () => {
         table.setDisplayMode('rotated');
         table.setColumnVisible('id', false);
 
-        expect(table.getColumns().length).toBe(2);
+        expect(table.getColumns().length).toBe(3);
     });
 
     it('leaves rotated mode when setStore is called', async () => {

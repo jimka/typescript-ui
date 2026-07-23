@@ -29,14 +29,16 @@ export type TableEvent = "selection" | "cellclick";
 /** Which presentation a Table renders: record-per-row, or one record as key/value rows. */
 export type TableDisplayMode = "normal" | "rotated";
 
-// The two-field model backing the rotated key/value projection: one record per
-// source field, `field` holding the field name and `value` holding that
-// field's value on the displayed record. `value` is declared `'auto'` because
-// the projection carries every source field's native type (string, number,
-// boolean, Date, …) in the same column.
+// The model backing the rotated key/value projection: one record per source
+// field, `field` holding the field name and `value` holding that field's value
+// on the displayed record. `value` is declared `'auto'` because the projection
+// carries every source field's native type (string, number, boolean, Date, …)
+// in the same column. `filler` is a blank, unbounded spacer column that soaks
+// up leftover table width so `field` / `value` stay compact on a wide table.
 const ROTATED_MODEL = new Model([
-    { name: 'field', type: 'string', order: 0 },
-    { name: 'value', type: 'auto',   order: 1 },
+    { name: 'field',  type: 'string', order: 0 },
+    { name: 'value',  type: 'auto',   order: 1 },
+    { name: 'filler', type: 'string', order: 2 },   // blank spacer column; absorbs leftover width
 ]);
 
 /**
@@ -900,14 +902,16 @@ class Table extends Component<TableOptions> {
 
         const spec: ColumnSpec = {
             columns: [
-                { field: 'field', minWidth: 80, unhideable: true },
+                { field: 'field', minWidth: 80, maxWidth: 200, unhideable: true },
                 {
                     field: 'value',
                     minWidth: 120,
+                    maxWidth: 360,
                     unhideable: true,
                     cellType:   (r) => this.rotatedCellType(r),
                     cellValues: (r) => this.rotatedCellValues(r),
                 },
+                { field: 'filler', headerText: '', minWidth: 0, unhideable: true },
             ],
             rowReadOnly: () => true,
         };

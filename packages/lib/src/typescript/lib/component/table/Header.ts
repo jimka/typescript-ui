@@ -448,7 +448,7 @@ class TableHeader extends Component {
             if (!cell) {
                 const glyph = col?.getHeaderGlyph() ?? null;
 
-                cell = new HeaderCell(field.getName(), field.getName(), glyph);
+                cell = new HeaderCell(col?.getHeaderText() ?? field.getName(), field.getName(), glyph);
                 cell.setTooltip(field.getDescription());
 
                 row.addComponent(cell, { data: field });
@@ -462,6 +462,13 @@ class TableHeader extends Component {
                 // indices, and a single header click cycle the sort twice.
                 this.wireCell(cell);
             }
+
+            // Re-applied on every sync (like the tint and required marker
+            // below) so the label is right on a surviving cell: the first
+            // rebuild that creates the cell can run before this column is
+            // resolved (e.g. `bindView` sets the model before the columns),
+            // leaving `col` null and the label defaulted to the field name.
+            cell.setHeaderText(col?.getHeaderText() ?? field.getName());
 
             // Tint the column header with the group's `groupColor` so
             // the header band reads as one visual group above the
