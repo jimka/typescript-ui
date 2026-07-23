@@ -281,7 +281,7 @@ class Table extends Component<TableOptions> {
     /**
      * Returns the columns this table currently renders: the two-column
      * `field`/`value` projection while {@link getDisplayMode} is `"rotated"`,
-     * otherwise the resolved source columns (see {@link getSourceColumns}).
+     * otherwise the resolved, visible source columns in field display order.
      *
      * @returns The active {@link Column} instances in display order.
      */
