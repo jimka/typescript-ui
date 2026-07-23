@@ -3,7 +3,6 @@ import { Rail } from '~/overlay/Rail';
 import { Drawer } from '~/overlay/Drawer';
 import { Window } from '~/overlay/Window';
 import { Placement } from '~/primitive/Placement';
-import { BoxLayout } from '~/layout/BoxLayout';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -144,7 +143,7 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
         expect(ty).toBe(0 - 20);
     });
 
-    it('the Nth handle targets its own offset, not 0 (restore path)', () => {
+    it('the Nth handle targets its own laid-out offset, not 0 (handle-exists path)', () => {
         installTestDOM(CONFIG);
         const rail = new Rail({ edge: Placement.WEST });
         rail.mount();
@@ -169,7 +168,7 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
         expect(ty).toBe(offset - 20);
     });
 
-    it('the collapse path predicts the append slot for a not-yet-minimized window', () => {
+    it('the collapse path predicts the slot where the next handle actually lands', () => {
         installTestDOM(CONFIG);
         const rail = new Rail({ edge: Placement.WEST });
         rail.mount();
@@ -183,16 +182,26 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
         minimizeIntoRail(second, rail);
         rail.flushLayout();
 
-        // Registered, but never minimized — no handle exists yet.
-        const third = new Window('Third');
-        third.setRail(rail);
+        // Registered, but never minimized — no handle exists yet, so the offset
+        // comes from the predict branch (the append slot), not a live handle.
+        const pending = new Window('Pending');
+        pending.setRail(rail);
+        const predicted = rail.handleMainAxisOffset(pending);
+
+        expect(predicted).toBeGreaterThan(0);
+
+        // The stronger check: the prediction must equal where the next handle
+        // genuinely lands. Minimize a fresh window (its handle is created
+        // synchronously) and read the laid-out position off that real handle.
+        const next = new Window('Next');
+        next.applyRect({ x: 10, y: 20, width: 200, height: 150 });
+        minimizeIntoRail(next, rail);
+        rail.flushLayout();
 
         const handles = rail.getComponents();
-        const last    = handles[handles.length - 1];
-        const lm      = rail.getLayoutManager();
-        const spacing = lm instanceof BoxLayout ? lm.getComponentSpacing() : 0;
+        const landed  = handles[handles.length - 1];
 
-        expect(rail.handleMainAxisOffset(third)).toBe(last.getY() + last.getHeight() + spacing);
+        expect(landed.getY()).toBe(predicted);
     });
 
     it('EAST keeps the cross-axis target and gains the main-axis target', () => {

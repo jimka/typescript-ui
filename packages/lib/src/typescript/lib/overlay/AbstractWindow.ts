@@ -2035,6 +2035,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // window still visibly collapses rather than scaling up.
         const scale      = Math.min(0.5, thickness / Math.max(cur.width, 1));
 
+        // Each edge sets its main axis to the handle's along-rail offset and its
+        // cross axis to the rail edge; the two initialise to 0 so the axis an
+        // edge leaves untouched keeps the correct cross value (0 is the top/left
+        // edge for WEST/NORTH) — not a leftover from corner-targeting.
         let targetX = 0;
         let targetY = 0;
 
