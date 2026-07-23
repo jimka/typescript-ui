@@ -46,20 +46,20 @@ export interface TextOptions extends ComponentOptions {
  * Module-level class defaults forwarded to `super` via the options bag so the
  * `applyOptions` cascade dispatches each setter once with the final value.
  *
- * `fontFamily` and `lineHeight` are intentionally **omitted**:
+ * `lineHeight` is intentionally **omitted**: it is theme-derived
+ * (`readThemeLineHeightPx()`), so its getter falls back to that resolver
+ * directly rather than a value seeded here.
  *
- * - `fontFamily` must remain a getter-fallback only. Routing it through
- *   `setFontFamily(...)` would write the literal `var(--ts-ui-font-family, …)`
- *   onto every Text's CSS rule, blocking a parent's `font-family` override
- *   from cascading through.
- * - `lineHeight` is theme-derived (`readThemeLineHeightPx()`), so the value
- *   isn't known at module load. It is resolved lazily on first
- *   `calculateSize()` (post-attach), keeping construction JS-only per
- *   ARCHITECTURE.md "Defer DOM work to render time".
+ * `fontFamily` is a pure getter-fallback despite living in this bag:
+ * `_defaultOptions.fontFamily` is consulted by `getFontFamily()`, but is
+ * never dispatched through `setFontFamily(...)` — doing so would write the
+ * literal `var(--ts-ui-font-family, …)` onto every Text's CSS rule, blocking
+ * a parent's `font-family` override from cascading through.
  */
 const _defaultTextOptions: Partial<TextOptions> = {
     tag:            "span",
     textAlign:      "left",
+    fontFamily:     "var(--ts-ui-font-family, system-ui, sans-serif)",
     fontKerning:    "auto",
     fontSize:       14,
     fontSizeAdjust: "none",
@@ -89,10 +89,6 @@ const ADDITIVE_LINE_HEIGHT_RULE = "calc(1em + var(--ts-ui-line-padding, 2px))";
  * Uses an off-screen probe element to measure text dimensions and automatically
  * updates the preferred size whenever the text or a font property changes.
  *
- * `Text` subscribes to [`ThemeManager`](/api/core/classes/ThemeManager) on construction so it re-measures itself
- * on every theme change, through the base class's `subscribeTheme` — released
- * automatically on `dispose()`.
- *
  * @category Components
  */
 class Text<TOptions extends TextOptions = TextOptions> extends Component<TOptions> {
@@ -106,6 +102,11 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private _measuredMinSize: Size | null = null;
     private _autoMeasure: boolean = true;
     private _measurementDirty: boolean = true;
+    // The `Util.textMetricsGeneration()` value as of the last `calculateSize`,
+    // so a theme change (which bumps the generation) is noticed lazily by
+    // `needsMeasure()` without Text holding its own theme subscription. `-1`
+    // never matches a real generation, so an unmeasured Text is always due.
+    private _measuredGeneration: number = -1;
     private _wordBreak: string | null = null;
     private _lineClamp: number | null = null;
     private _textOverflow: string | null = null;
@@ -122,47 +123,16 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             { ..._defaultTextOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
         );
 
-        // Carve-out fallbacks — see `_defaultTextOptions` for why these two
-        // don't ride the merge-defaults cascade. Both are consulted by their
-        // getters as a fallback when `_options.X` is undefined.
-        //
-        // Note: the cascade-driven `setFontSize(14)` clobbers `fontSizeCSSVar`
-        // and `fontSizeCSSRule` to null, but Text's field initializers (which
-        // run after super returns) restore both to their var-binding values —
-        // so theme reactivity is preserved by the DOM `var(...)` binding even
-        // though the cascade temporarily writes a literal.
-        //
-        // `_defaultOptions.lineHeight` is resolved lazily on first
-        // `calculateSize()` (post-attach) — see ARCHITECTURE.md "Defer DOM
-        // work to render time".
-        this._defaultOptions.fontFamily = "var(--ts-ui-font-family, system-ui, sans-serif)";
-
+        // The cascade-driven `setFontSize(14)` clobbers `fontSizeCSSVar` and
+        // `fontSizeCSSRule` to null, but Text's field initializers (which run
+        // after super returns, i.e. right above this line) restore both to
+        // their var-binding values — so theme reactivity is preserved by the
+        // DOM `var(...)` binding even though the cascade temporarily writes a
+        // literal. `getFontSize()` / `getLineHeight()` re-resolve those bound
+        // vars live (through `Util`'s theme-invalidated metrics cache) rather
+        // than caching a value that would go stale on a theme change.
         this.clearInsets();
         this.setElementCSSRule("lineHeight", this._lineHeightCSSRule);
-
-        this.subscribeTheme(() => {
-            if (this._fontSizeCSSVar) {
-                // Resolve from the element's computed font-size (the cascade has
-                // applied the new var by the time onThemeChange fires); the root
-                // custom property reads back as an unevaluated calc() string.
-                const resolved = this.resolveBoundFontSizePx();
-
-                if (resolved !== null) {
-                    // Route to `_options` so the post-cascade explicit value
-                    // (set by `setFontSize(14)` during applyOptions) is
-                    // overwritten on theme change. Writing to `_defaultOptions`
-                    // here would be shadowed by `_options.fontSize = 14` in
-                    // the `getFontSize` fallback, breaking re-flow.
-                    this._options.fontSize = resolved as TOptions["fontSize"];
-                }
-            }
-
-            if (this._lineHeightCSSVar) {
-                this._defaultOptions.lineHeight = this.readThemeLineHeightPx();
-            }
-
-            this.calculateSize();
-        });
 
         // Positional `text` constructor argument: write to the bag only when
         // the caller didn't also pass `options.text` (which would have been
@@ -318,10 +288,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private resolveBoundFontSizePx(): number | null {
         if (!this._fontSizeCSSVar) return null;   // explicit px size — no var bound
 
-        const raw = parseFloat(DOM.source.getThemeVar(this._fontSizeCSSVar));
-        if (!isNaN(raw)) return raw;              // simple var — cheap, no probe
-
-        return DOM.source.resolveFontSizePx(this._fontSizeCSSRule ?? `var(${this._fontSizeCSSVar})`);
+        return Util.boundFontSizePx(this._fontSizeCSSVar, this._fontSizeCSSRule);
     }
 
     /**
@@ -355,17 +322,8 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * No-op when {@link setAutoMeasure} is `false` — the parent layout is expected to size this Text.
      */
     private calculateSize(): void {
-        this._measurementDirty = false;
-
-        // First-read deferral: populate the default line-height the first
-        // time we measure, when the component is attached and
-        // `getComputedStyle` is safe. Subsequent reads come through the
-        // `ThemeManager.onThemeChange` callback above. Placed before the
-        // `_autoMeasure` gate so non-measuring `Text` instances still get
-        // a resolved value populated for `getLineHeight()` callers.
-        if (this._defaultOptions.lineHeight === undefined) {
-            this._defaultOptions.lineHeight = this.readThemeLineHeightPx();
-        }
+        this._measurementDirty    = false;
+        this._measuredGeneration  = Util.textMetricsGeneration();
 
         if (!this._autoMeasure) {
             return;
@@ -416,6 +374,22 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
+     * Whether the cached measurement is stale — either because something
+     * marked it dirty (a text/font change) or because the active theme's
+     * text metrics have moved on since the last measurement.
+     *
+     * @returns `true` when the next size/baseline read should re-measure.
+     *
+     * @remarks Replaces a per-instance `ThemeManager` subscription: instead of
+     * every `Text` re-measuring eagerly on each theme change, it compares its
+     * own `_measuredGeneration` against `Util.textMetricsGeneration()` lazily,
+     * the next time a caller actually asks for a size.
+     */
+    private needsMeasure(): boolean {
+        return this._measurementDirty || this._measuredGeneration !== Util.textMetricsGeneration();
+    }
+
+    /**
      * Forces a one-off text measurement that ignores {@link setAutoMeasure}.
      * Use when the caller has opted out of auto-measure but needs an up-to-date
      * preferred size after a programmatic text change.
@@ -439,7 +413,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * shifts to whoever asks for a size first (usually `doLayout`).
      */
     getBaseline(): number | null {
-        if (this._measurementDirty) {
+        if (this.needsMeasure()) {
             this.calculateSize();
         }
 
@@ -570,7 +544,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * time rather than construction time.
      */
     getPreferredSize() {
-        if (this._measurementDirty) {
+        if (this.needsMeasure()) {
             this.calculateSize();
         }
 
@@ -619,7 +593,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * still wins via `Math.max`; a value shorter than one line is lifted to it.
      */
     getMinSize(): Size | null {
-        if (this._measurementDirty) {
+        if (this.needsMeasure()) {
             this.calculateSize();
         }
 
@@ -821,8 +795,21 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * Returns the font size in pixels.
      *
      * @returns The font size as a number, or null if not set.
+     *
+     * @remarks When a CSS var is bound (the default), this re-resolves it
+     * through `Util`'s theme-invalidated cache — so it tracks a theme change
+     * live — rather than the caller/class fallback, which is a stale snapshot
+     * of the last-resolved value.
      */
     getFontSize() {
+        if (this._fontSizeCSSVar) {
+            const resolved = this.resolveBoundFontSizePx();
+
+            if (resolved !== null) {
+                return resolved;
+            }
+        }
+
         return (this._options.fontSize as number | undefined) ?? (this._defaultOptions.fontSize as number | undefined) ?? null;
     }
 
@@ -985,12 +972,13 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
-     * Returns the line height in pixels, or null if not set.
+     * Returns the line height in pixels.
      *
-     * @returns The line height as a number, or null if not set.
+     * @returns The caller/setter value when one was set; otherwise the
+     *   resolved additive line box (font size plus the theme's line padding).
      */
     getLineHeight() {
-        return (this._options.lineHeight as number | undefined) ?? (this._defaultOptions.lineHeight as number | undefined) ?? null;
+        return (this._options.lineHeight as number | undefined) ?? (this._defaultOptions.lineHeight as number | undefined) ?? this.readThemeLineHeightPx();
     }
 
     /**

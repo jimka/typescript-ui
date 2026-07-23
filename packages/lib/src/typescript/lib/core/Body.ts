@@ -83,6 +83,7 @@ export class Body extends Component {
         this.clearInsets();
 
         Event.addViewportListener(this, "resize", this._onViewportResize);
+        this.subscribeTheme(this._onThemeReflow);
 
         return this;
     }
@@ -94,6 +95,16 @@ export class Body extends Component {
      */
     private _onViewportResize = (): void => {
         this.setSize(DOM.source.getViewportSize());
+    };
+
+    /**
+     * Bound theme-change handler. Schedules a layout pass so every `Text` in
+     * the page re-measures lazily against the new theme's metrics — replaces
+     * the per-`Text` theme subscription this component's children used to
+     * hold individually.
+     */
+    private _onThemeReflow = (): void => {
+        this.scheduleLayout();
     };
 
     /**

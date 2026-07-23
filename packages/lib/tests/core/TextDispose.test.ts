@@ -40,14 +40,14 @@ describe('Text — theme subscription released on dispose', () => {
         ThemeManager.setTheme(ModernTheme);
     });
 
-    it('releases the subscription and leaves zero new rule-cache keys', () => {
+    it('registers zero new theme listeners and leaves zero new rule-cache keys', () => {
         const listenersBefore = ThemeManager._themeListenerCount();
         const before = new Set(_ruleCacheKeys());
 
         const text = new Text('hi');
         text.getElement(true);
 
-        expect(ThemeManager._themeListenerCount()).toBe(listenersBefore + 1);
+        expect(ThemeManager._themeListenerCount()).toBe(listenersBefore);
 
         text.dispose();
 
@@ -57,17 +57,28 @@ describe('Text — theme subscription released on dispose', () => {
         expect(leaked).toEqual([]);
     });
 
-    it('does not run the theme-change callback once disposed', () => {
+    it('re-measures lazily on the next getPreferredSize() call while live, never once disposed', () => {
         const text = new Text('hi');
         text.getElement(true);
+        text.getPreferredSize(); // establishes the cached measurement
 
         const calculateSize = vi.spyOn(text as unknown as { calculateSize(): void }, 'calculateSize');
 
-        text.dispose();
-        calculateSize.mockClear();
-
         ThemeManager.setTheme(DarkTheme);
+        expect(calculateSize).not.toHaveBeenCalled(); // deferred, not eager
 
-        expect(calculateSize).not.toHaveBeenCalled();
+        text.getPreferredSize();
+        expect(calculateSize).toHaveBeenCalledTimes(1);
+
+        const disposedText = new Text('bye');
+        disposedText.getElement(true);
+        disposedText.getPreferredSize();
+        disposedText.dispose();
+
+        const disposedCalculateSize = vi.spyOn(disposedText as unknown as { calculateSize(): void }, 'calculateSize');
+
+        ThemeManager.setTheme(ModernTheme);
+
+        expect(disposedCalculateSize).not.toHaveBeenCalled();
     });
 });
