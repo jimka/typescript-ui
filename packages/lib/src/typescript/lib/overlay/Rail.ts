@@ -1190,6 +1190,38 @@ class Rail extends Component<RailOptions> {
     }
 
     /**
+     * Returns the main-axis length of a registered window's rail handle — the
+     * span the genie centres the shrinking window along. When the handle exists
+     * (restore, or an already-minimized window) this is its laid-out extent; when
+     * it does not yet exist (the collapse genie runs before the handle is
+     * created) it is predicted from the current last handle, since sibling
+     * handles run close in size. An empty rail has no handle to sample, so this
+     * returns 0 and the caller keeps the window at the slot's leading edge. Main
+     * axis is the height for a vertical (WEST/EAST) rail, the width for a
+     * horizontal (NORTH/SOUTH) one.
+     *
+     * @param window - The window whose handle to measure, registered or not.
+     *
+     * @returns The main-axis handle length in pixels, or 0 when unpredictable.
+     */
+    handleMainAxisExtent(window: AbstractWindow): number {
+        const vertical   = this.isVertical();
+        const mainExtent = (c: Component): number => vertical ? c.getHeight() : c.getWidth();
+
+        const handle = this._windows.get(window)?.handle ?? null;
+        if (handle !== null) {
+            return mainExtent(handle);
+        }
+
+        const handles = this.getComponents();
+        if (handles.length === 0) {
+            return 0;
+        }
+
+        return mainExtent(handles[handles.length - 1]);
+    }
+
+    /**
      * Returns the inter-handle gap the rail's `VBox` / `HBox` layout manager
      * applies between handles, or `0` before the layout manager exists.
      *

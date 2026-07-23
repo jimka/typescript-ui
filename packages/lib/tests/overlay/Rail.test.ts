@@ -114,6 +114,42 @@ function parseTranslate(transform: string): { tx: number; ty: number } {
     return { tx: Number(match[1]), ty: Number(match[2]) };
 }
 
+// Parses the `scale(s)` suffix of a genie transform string.
+function parseScale(transform: string): number {
+    const match = transform.match(/scale\(([-\d.]+)\)/);
+    if (!match) {
+        throw new Error(`transform did not match scale(...): ${transform}`);
+    }
+
+    return Number(match[1]);
+}
+
+// Asserts the shrunken window ends centred along its handle's length: the
+// window's scaled main-axis centre must coincide with the handle's main-axis
+// centre. Derived from the contract ("centre the window on the handle's
+// length"), reading only the parsed transform, the window's live rect, and the
+// measured handle geometry — never the implementation's own offset formula.
+// Main axis is Y for a vertical (WEST/EAST) rail, X for a horizontal one. The
+// rect is read live via getRect(), which is the same rect the transform is
+// built from (a minimized window's rect is not the pre-minimize one).
+function expectCenteredAlongHandle(rail: Rail, win: Window): void {
+    const edge     = rail.getEdge();
+    const vertical = edge === Placement.EAST || edge === Placement.WEST;
+
+    const rect          = win.getRect();
+    const transform     = genieTransform(win);
+    const { tx, ty }    = parseTranslate(transform);
+    const scale         = parseScale(transform);
+    const mainPos       = vertical ? rect.y : rect.x;
+    const mainSize      = vertical ? rect.height : rect.width;
+    const mainTranslate = vertical ? ty : tx;
+
+    const windowCentre = mainPos + mainTranslate + (mainSize * scale) / 2;
+    const handleCentre = rail.handleMainAxisOffset(win) + rail.handleMainAxisExtent(win) / 2;
+
+    expect(windowCentre).toBeCloseTo(handleCentre);
+}
+
 // Seeds a window's rail handle synchronously, with no genie playback: minimize
 // while the window has no rail yet (takes the built-in dock path, whose tween
 // never advances because the test DOM swallows requestAnimationFrame — see
@@ -126,31 +162,38 @@ function minimizeIntoRail(window: Window, rail: Rail): void {
 }
 
 describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
-    it('single handle targets the corner (offset 0)', () => {
+    it('single handle: the window is centred on the handle, not pinned to its corner', () => {
         installTestDOM(CONFIG);
         const rail = new Rail({ edge: Placement.WEST });
         rail.mount();
 
-        const win = new Window('A');
-        win.applyRect({ x: 10, y: 20, width: 200, height: 150 });
+        const rect = { x: 10, y: 20, width: 200, height: 150 };
+        const win  = new Window('A');
+        win.applyRect(rect);
         minimizeIntoRail(win, rail);
         rail.flushLayout();
 
+        // The lone handle sits at offset 0, but the window centres on its length
+        // rather than pinning its top-left corner there.
         expect(rail.handleMainAxisOffset(win)).toBe(0);
+        expect(rail.handleMainAxisExtent(win)).toBeGreaterThan(0);
 
-        const { tx, ty } = parseTranslate(genieTransform(win));
+        // Cross axis (WEST → X) is untouched: corner still lands on the edge.
+        const { tx } = parseTranslate(genieTransform(win));
         expect(tx).toBe(0 - 10);
-        expect(ty).toBe(0 - 20);
+        // Main axis (Y) is centred on the handle's length.
+        expectCenteredAlongHandle(rail, win);
     });
 
-    it('the Nth handle targets its own laid-out offset, not 0 (handle-exists path)', () => {
+    it('the Nth handle centres on its own laid-out slot, not slot 0 (handle-exists path)', () => {
         installTestDOM(CONFIG);
         const rail = new Rail({ edge: Placement.WEST });
         rail.mount();
 
+        const rect = { x: 10, y: 20, width: 200, height: 150 };
         const windows = [0, 1, 2].map(i => {
             const w = new Window(`W${i}`);
-            w.applyRect({ x: 10, y: 20, width: 200, height: 150 });
+            w.applyRect(rect);
             return w;
         });
 
@@ -160,12 +203,9 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
         rail.flushLayout();
 
         const third = windows[2];
-        const offset = rail.handleMainAxisOffset(third);
 
-        expect(offset).toBeGreaterThan(0);
-
-        const { ty } = parseTranslate(genieTransform(third));
-        expect(ty).toBe(offset - 20);
+        expect(rail.handleMainAxisOffset(third)).toBeGreaterThan(0);
+        expectCenteredAlongHandle(rail, third);
     });
 
     it('the collapse path predicts the slot where the next handle actually lands', () => {
@@ -209,9 +249,10 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
         const rail = new Rail({ edge: Placement.EAST });
         rail.mount();
 
+        const rect = { x: 900, y: 20, width: 200, height: 150 };
         const windows = [0, 1].map(i => {
             const w = new Window(`W${i}`);
-            w.applyRect({ x: 900, y: 20, width: 200, height: 150 });
+            w.applyRect(rect);
             return w;
         });
 
@@ -221,12 +262,13 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
         rail.flushLayout();
 
         const second = windows[1];
-        const offset = rail.handleMainAxisOffset(second);
-        expect(offset).toBeGreaterThan(0);
+        expect(rail.handleMainAxisOffset(second)).toBeGreaterThan(0);
 
-        const { tx, ty } = parseTranslate(genieTransform(second));
+        // Cross axis (EAST → X) is the rail edge, untouched by centring.
+        const { tx } = parseTranslate(genieTransform(second));
         expect(tx).toBe((CONFIG.viewport.width - rail.getThickness()) - 900);
-        expect(ty).toBe(offset - 20);
+        // Main axis (Y) is centred on the handle's length.
+        expectCenteredAlongHandle(rail, second);
     });
 
     it('SOUTH moves the main-axis target along X', () => {
@@ -234,9 +276,10 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
         const rail = new Rail({ edge: Placement.SOUTH });
         rail.mount();
 
+        const rect = { x: 10, y: 500, width: 200, height: 150 };
         const windows = [0, 1].map(i => {
             const w = new Window(`W${i}`);
-            w.applyRect({ x: 10, y: 500, width: 200, height: 150 });
+            w.applyRect(rect);
             return w;
         });
 
@@ -246,12 +289,13 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
         rail.flushLayout();
 
         const second = windows[1];
-        const offset = rail.handleMainAxisOffset(second);
-        expect(offset).toBeGreaterThan(0);
+        expect(rail.handleMainAxisOffset(second)).toBeGreaterThan(0);
 
-        const { tx, ty } = parseTranslate(genieTransform(second));
-        expect(tx).toBe(offset - 10);
+        // Cross axis (SOUTH → Y) is the rail edge, untouched by centring.
+        const { ty } = parseTranslate(genieTransform(second));
         expect(ty).toBe((CONFIG.viewport.height - rail.getThickness()) - 500);
+        // Main axis (X) is centred on the handle's length.
+        expectCenteredAlongHandle(rail, second);
     });
 
     it('NORTH moves the main-axis target along X, with a 0 cross-axis target', () => {
@@ -259,9 +303,10 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
         const rail = new Rail({ edge: Placement.NORTH });
         rail.mount();
 
+        const rect = { x: 10, y: 20, width: 200, height: 150 };
         const windows = [0, 1].map(i => {
             const w = new Window(`W${i}`);
-            w.applyRect({ x: 10, y: 20, width: 200, height: 150 });
+            w.applyRect(rect);
             return w;
         });
 
@@ -271,12 +316,13 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
         rail.flushLayout();
 
         const second = windows[1];
-        const offset = rail.handleMainAxisOffset(second);
-        expect(offset).toBeGreaterThan(0);
+        expect(rail.handleMainAxisOffset(second)).toBeGreaterThan(0);
 
-        const { tx, ty } = parseTranslate(genieTransform(second));
-        expect(tx).toBe(offset - 10);
+        // Cross axis (NORTH → Y) is the top edge (0), untouched by centring.
+        const { ty } = parseTranslate(genieTransform(second));
         expect(ty).toBe(0 - 20);
+        // Main axis (X) is centred on the handle's length.
+        expectCenteredAlongHandle(rail, second);
     });
 
     it('an empty rail returns offset 0 for an unregistered window', () => {
@@ -288,5 +334,7 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
 
         expect(() => rail.handleMainAxisOffset(win)).not.toThrow();
         expect(rail.handleMainAxisOffset(win)).toBe(0);
+        // No handle to sample, so there is no length to centre against.
+        expect(rail.handleMainAxisExtent(win)).toBe(0);
     });
 });

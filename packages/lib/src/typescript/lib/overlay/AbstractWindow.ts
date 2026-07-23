@@ -2017,9 +2017,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Builds the genie `transform` that collapses the window into its own rail
-     * handle: it translates the window's top-left corner onto the rail edge
-     * (cross-axis) at the handle's along-rail position (main-axis, from
-     * `Rail.handleMainAxisOffset`) and scales it down to roughly the rail
+     * handle: it translates the window onto the rail edge (cross-axis) centred
+     * along the handle's length (main-axis, from `Rail.handleMainAxisOffset` and
+     * `Rail.handleMainAxisExtent`) and scales it down to roughly the rail
      * thickness, so the window appears to shrink into its own spot in the handle
      * stack. Paired with `transform-origin: 0 0` and an opacity fade by the
      * collapse/expand animations. Assumes a rail is attached.
@@ -2030,43 +2030,58 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         const rail       = this._rail as Rail;
         const thickness  = rail.getThickness();
         const cur        = this.currentRect();
-        const mainOffset = rail.handleMainAxisOffset(this);
         // Shrink to roughly the rail's thickness — clamped so an already-narrow
         // window still visibly collapses rather than scaling up.
         const scale      = Math.min(0.5, thickness / Math.max(cur.width, 1));
 
-        // Each edge sets its main axis to the handle's along-rail offset and its
-        // cross axis to the rail edge; the two initialise to 0 so the axis an
-        // edge leaves untouched keeps the correct cross value (0 is the top/left
-        // edge for WEST/NORTH) — not a leftover from corner-targeting.
+        // Centre the shrunken window along its handle's length rather than
+        // pinning its leading corner to the slot: aim the window's own centre at
+        // the handle's centre (offset + half the handle) by pulling the corner
+        // back half the scaled window. When no handle can be measured or
+        // predicted (the first minimise into an empty rail) the length is 0 and
+        // the window stays at the slot's leading edge. The cross axis is left
+        // alone — the scaled window already fits the thickness.
+        const edge         = rail.getEdge();
+        const vertical     = edge === Placement.EAST || edge === Placement.WEST;
+        const mainOffset   = rail.handleMainAxisOffset(this);
+        const handleExtent = rail.handleMainAxisExtent(this);
+        const scaledMain   = (vertical ? cur.height : cur.width) * scale;
+        const mainTarget   = handleExtent > 0
+            ? mainOffset + (handleExtent - scaledMain) / 2
+            : mainOffset;
+
+        // Each edge sets its main axis to the centred target and its cross axis to
+        // the rail edge; the two initialise to 0 so the axis an edge leaves
+        // untouched keeps the correct cross value (0 is the top/left edge for
+        // WEST/NORTH).
         let targetX = 0;
         let targetY = 0;
 
-        switch (rail.getEdge()) {
+        switch (edge) {
             case Placement.EAST:
                 targetX = DOM.source.getViewportSize().width - thickness;
-                targetY = mainOffset;
+                targetY = mainTarget;
 
                 break;
 
             case Placement.WEST:
-                targetY = mainOffset;
+                targetY = mainTarget;
 
                 break;
 
             case Placement.SOUTH:
-                targetX = mainOffset;
+                targetX = mainTarget;
                 targetY = DOM.source.getViewportSize().height - thickness;
 
                 break;
 
             case Placement.NORTH:
-                targetX = mainOffset;
+                targetX = mainTarget;
 
                 break;
 
             default:
-                targetY = mainOffset;
+                targetY = mainTarget;
 
                 break;
         }
