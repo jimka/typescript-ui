@@ -514,9 +514,8 @@ export interface DOMSink {
 
     /**
      * Finds, or inserts, the framework's shared-stylesheet `CSSStyleRule` for a
-     * selector. Encapsulates the `cssRules` scan and `insertRule` so callers
-     * never walk a `CSSStyleSheet` directly; the returned rule is handed to
-     * {@link setRuleStyle}.
+     * selector, so callers never walk a `CSSStyleSheet` directly. The returned
+     * rule is handed to {@link setRuleStyle}.
      *
      * @param selector - The CSS selector text.
      * @returns The existing or newly-inserted rule.
@@ -525,8 +524,7 @@ export interface DOMSink {
 
     /**
      * Removes the shared-stylesheet `CSSStyleRule` for a selector, if present.
-     * The inverse of {@link ensureStyleRule}; scans `cssRules` for the matching
-     * `selectorText` and `deleteRule()`s it. A no-op when no rule matches.
+     * The inverse of {@link ensureStyleRule}. A no-op when no rule matches.
      *
      * @param selector - The CSS selector text of the rule to remove.
      */
@@ -1375,6 +1373,12 @@ export class ProductionDOMSink implements DOMSink {
      */
     private readonly _timers = new Set<TimerId>();
 
+    /** Selector → rule for the sheet in `_indexedSheet`. Empty until first use. */
+    private _ruleIndex: Map<string, CSSStyleRule> = new Map();
+
+    /** The sheet `_ruleIndex` describes; `null` before the first build. */
+    private _indexedSheet: CSSStyleSheet | null = null;
+
     /**
      * Applies a batch of mutations to one element with a single handle resolve.
      * The hot-path primitive — a layout commit (width + height + classes + an
@@ -1415,19 +1419,20 @@ export class ProductionDOMSink implements DOMSink {
 
     /** @inheritDoc */
     ensureStyleRule(selector: string): CSSStyleRule {
-        const sheet = this.mainSheet();
+        const sheet  = this.mainSheet();
+        const index  = this.ruleIndex(sheet);
+        const cached = index.get(selector);
 
-        for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {
-            const rule = sheet.cssRules[idx] as CSSStyleRule;
-
-            if (rule.selectorText === selector) {
-                return rule;
-            }
+        if (cached) {
+            return cached;
         }
 
         const insertedAt = sheet.insertRule(selector + "{}", sheet.cssRules.length);
+        const rule       = sheet.cssRules[insertedAt] as CSSStyleRule;
 
-        return sheet.cssRules[insertedAt] as CSSStyleRule;
+        index.set(selector, rule);
+
+        return rule;
     }
 
     /** @inheritDoc */
@@ -1442,11 +1447,17 @@ export class ProductionDOMSink implements DOMSink {
         }
 
         const sheet = this.mainSheet();
+        const index = this.ruleIndex(sheet);
+        const rule  = index.get(selector);
+
+        if (!rule) {
+            return;
+        }
+
+        index.delete(selector);
 
         for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {
-            const rule = sheet.cssRules[idx] as CSSStyleRule;
-
-            if (rule.selectorText === selector) {
+            if (sheet.cssRules[idx] === rule) {
                 sheet.deleteRule(idx);
                 return;
             }
@@ -1466,6 +1477,40 @@ export class ProductionDOMSink implements DOMSink {
         }
 
         sheet.insertRule('@keyframes ' + name + ' { ' + body + ' }', sheet.cssRules.length);
+    }
+
+    /**
+     * Returns the selector → rule index for `sheet`, building it with one walk
+     * of `cssRules` the first time this sheet is seen and reusing it on every
+     * later call while `sheet` stays the same object. Building from the live
+     * sheet — rather than starting empty — is what keeps a fresh sink (e.g.
+     * after `DOM.reset()`, which replaces the sink but not the `<style
+     * id="Base">` element) honest about rules a previous sink already left on
+     * it. Assumes a single writer: a second `ProductionDOMSink` concurrently
+     * writing the same sheet would keep its own index and not see this one's
+     * inserts.
+     *
+     * @param sheet - The sheet to index.
+     */
+    private ruleIndex(sheet: CSSStyleSheet): Map<string, CSSStyleRule> {
+        if (this._indexedSheet === sheet) {
+            return this._ruleIndex;
+        }
+
+        const index = new Map<string, CSSStyleRule>();
+
+        for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {
+            const rule = sheet.cssRules[idx];
+
+            if (rule.type === CSSRule.STYLE_RULE) {
+                index.set((rule as CSSStyleRule).selectorText, rule as CSSStyleRule);
+            }
+        }
+
+        this._ruleIndex    = index;
+        this._indexedSheet = sheet;
+
+        return index;
     }
 
     /**
