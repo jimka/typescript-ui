@@ -119,6 +119,28 @@ const table = Table(store, {
 - `readOnly` / `cellReadOnly` / `rowReadOnly` compose with a `cellType` column exactly as with any other cell.
 - The boolean variant has no separate edit cycle — clicking the checkbox commits immediately, mirroring plain boolean columns.
 
+## Rotated record view
+
+`setDisplayMode("rotated")` swaps the table from one row per record to a psql `\x`-style expanded view: one `field` / `value` row per source column, showing a single record's fields as key/value pairs. This is the fix for a query result with dozens of columns, where reading one record in the normal view means scrolling horizontally across the whole width.
+
+```typescript
+import { Table } from '@jimka/typescript-ui/component/table';
+
+const table = Table(store);
+
+table.setDisplayMode("rotated");  // key/value rows for the selected record
+table.getDisplayMode();           // "rotated"
+table.setDisplayMode("normal");   // back to one row per record
+```
+
+- **The displayed record is the table's selection** — there is one concept, not two. Entering `"rotated"` adopts the current selection (falling back to the first visible record, then to nothing). While rotated, `table.selectRecord(record)` re-targets the view, and `getSelectedRecord()` / `getSelectedRecords()` keep returning that source record — never a projection (`field`/`value`) record. `Table` ships no stepper chrome; a consumer steps records by calling `selectRecord` with a neighbour from `table.getStore().getRecords()`, as the [Rotated demo](/components/) panel does with its Previous/Next buttons.
+- **Per-field cell variants** come from the same `cellType` / `cellValues` mechanism described above — a boolean source field's row renders a checkbox, a `values`-constrained field's row renders a combo showing the option label, and so on.
+- **The view is read-only.** Every value cell refuses inline editing; there is no write-back path from a field/value row to the source record.
+- **Sorting the projection reorders the field rows** (e.g. alphabetically by field name) — it does not touch the source store's own sort, and un-rotating restores the normal column order.
+- **The `field` and `value` columns stay compact** — each is capped at a bounded width so a wide record does not stretch them across the whole table; a blank, expanding trailing column absorbs the leftover width, keeping the label and its value grouped on the left.
+- **Export always covers the source table** — `exportCSV()` / `exportJSON()` serialize every source record and column regardless of the active display mode, never the field/value projection.
+- `setColumnVisible` is a no-op while rotated (the projection's data columns are always shown), and the column-header context menu shows only the export entries.
+
 ## Parent headers
 
 Tag adjacent columns with a `group` name and the table renders a second header row above the column-header row, with one cell spanning each contiguous group:

@@ -402,6 +402,14 @@ Fixture for the cases below: a model of four fields — `id` (number), `name` (s
 
 ---
 
+## Implementation Notes
+
+- **`bindView` needed a second `Body.setStore(store)` call the plan's given body didn't have.** As written, `bindView` calls `Body.setStore` first (so `syncPoolCells`'s later `row.syncCells(this._store.model, …)` calls target the right model), then `setColumnConfigs` / `setColumns` / `setHiddenColumns` / `setRowReadOnly`. But `Body.setStore`'s forced full rebind (`_boundIndices.fill(-1)`) is the *only* thing that makes `Body.applyReadOnlyState` re-run for a pool slot — and it fires on that first `setStore` call, before `setColumnConfigs`/`setColumns` have swapped the pool's cells to the new (rotated) column shape via `Row.syncCells`. Every later call in the sequence (`setColumnConfigs`, `setColumns`, `setHiddenColumns`) reconciles cell instances via `syncPoolCells()` but never resets `_boundIndices`, so `wasRebound` stays `false` for already-bound slots and `applyReadOnlyState` never runs again — a freshly-built rotated `DynamicCell` (for the `value` column) never got `setReadOnly(true)` applied, so plan Expected-Behaviour case 17 ("every cell in every projection row reports `isReadOnly() === true`") failed red before this fix. Values rendered correctly regardless, because `Row.syncCells` pushes the row's own cached bound record into any newly-created cell directly.
+
+  The fix stays inside `bindView` (no `Body.ts` change, honouring the plan's stated file boundary): call `this._body.setStore(store)` a second time, after `setRowReadOnly`, re-assigning the same store. This forces a second full rebind once the column/config/hidden/read-only state has fully settled, so `applyReadOnlyState` re-applies to the now-correctly-synced cells. Confirmed via the test-first cycle: case 17's test failed with `expected false to be true` under the plan's literal `bindView` body, and passed once the second `setStore` call was added; no other case's expectation needed to change.
+
+---
+
 ## Notes
 
 [^projection]: Three shapes were considered. (a) A new `RotatedBody extends VirtualRowView` with its own row type — roughly 400 lines re-implementing pooling, geometry, keyboard navigation and cell layout that `Body` already owns. (b) A standalone sibling component owning an inner `Table` — avoids all changes to `Table.ts` and so avoids the parked branch entirely, but contradicts the requested scope and leaves two components a consumer must choose between for the same data. (c) The projection store, chosen here: the rotated view *is* a two-column table over derived records, so the existing pipeline needs no new class at all. The cost is that `Table` briefly holds two stores, which is contained by keeping `_store` permanently the source store and never exposing the projection store publicly.

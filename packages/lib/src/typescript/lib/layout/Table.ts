@@ -325,7 +325,7 @@ class Table extends LayoutManager {
             ? (availableWidth - fixedTotal) / flexCount
             : 0;
 
-        return intrinsic.map((w, i) => {
+        const widths = intrinsic.map((w, i) => {
             if (w !== null) {
                 return w;
             }
@@ -336,6 +336,8 @@ class Table extends LayoutManager {
 
             return Util.clamp(rawFlex, min, max);
         });
+
+        return this.absorbSlackIntoGreedy(columns, widths, availableWidth);
     }
 
     /**
@@ -365,13 +367,60 @@ class Table extends LayoutManager {
 
         const ratio = newFlexTotal / prevFlexTotal;
 
-        return columnWidths.map((w, i) => {
+        const rescaled = columnWidths.map((w, i) => {
             if (isFixed[i]) {
                 return w;
             }
 
             return this.clamp(w * ratio, columns[i]);
         });
+
+        return this.absorbSlackIntoGreedy(columns, rescaled, availableWidth);
+    }
+
+    /**
+     * Adds any positive leftover width — space freed when a flexible column
+     * clamped to its `maxWidth` — to the flexible columns that declare no
+     * `maxWidth`, so an unbounded "filler" column grows to fill the table
+     * instead of leaving dead space at the right edge. A no-op when the columns
+     * already fill the width (the common case: no flexible column is capped) or
+     * overflow it.
+     *
+     * @param columns        - The visible resolved columns.
+     * @param widths         - The per-column widths computed so far.
+     * @param availableWidth - Total available pixel width for columns.
+     * @returns The widths with any positive slack handed to unbounded flexible columns.
+     */
+    private absorbSlackIntoGreedy(columns: Column[], widths: number[], availableWidth: number): number[] {
+        const slack = availableWidth - widths.reduce((s, w) => s + w, 0);
+
+        if (slack <= 0.5) {
+            return widths;
+        }
+
+        const greedy: number[] = [];
+
+        columns.forEach((col, i) => {
+            const t      = col.getField().getType();
+            const isFlex = t !== 'boolean' && t !== 'number' && t !== 'date';
+
+            if (isFlex && col.getMaxWidth() === undefined) {
+                greedy.push(i);
+            }
+        });
+
+        if (greedy.length === 0) {
+            return widths;
+        }
+
+        const share  = slack / greedy.length;
+        const result = [...widths];
+
+        for (const i of greedy) {
+            result[i] += share;
+        }
+
+        return result;
     }
 
     /**

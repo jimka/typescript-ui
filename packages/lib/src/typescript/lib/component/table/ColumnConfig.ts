@@ -186,6 +186,12 @@ export interface ColumnConfig {
      */
     headerGlyph ?: string;
     /**
+     * Overrides the header label for this column. Defaults to the field name.
+     * Set to `''` to render a blank header (used by the rotated view's filler
+     * column).
+     */
+    headerText  ?: string;
+    /**
      * Name of the parent-header group this column belongs to. Adjacent columns
      * sharing the same group name render under a single spanning parent header
      * cell. Non-adjacent same-named columns render as two separate parent cells.

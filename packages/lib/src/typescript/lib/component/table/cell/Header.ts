@@ -322,6 +322,27 @@ class HeaderCell extends DefaultCell {
     }
 
     /**
+     * Replaces the base header label. The required marker and sort arrow are
+     * re-composed onto the new label automatically, so neither is lost.
+     * Re-applied on every header reconcile so a column config that overrides
+     * the label — or clears the override — takes effect on a surviving cell,
+     * mirroring {@link setRequired}.
+     *
+     * @param text - The new base label.
+     * @returns This header cell, for method chaining.
+     */
+    setHeaderText(text: String): this {
+        if (this._text === text) {
+            return this;
+        }
+
+        this._text = text;
+        this._renderTitle();
+
+        return this;
+    }
+
+    /**
      * Composes the header label from the base title plus the required
      * asterisk (` *`, when `_required`) and the sort arrow (` ▲`/` ▼`,
      * when a sort state is active), and writes it to the renderer.

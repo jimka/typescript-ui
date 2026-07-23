@@ -23,6 +23,7 @@ export class Column {
     private _unhideable  : boolean;
     private _readOnly    : boolean;
     private _headerGlyph : string | null;
+    private _headerText  : string | null;
     private _group       : string | null;
     private _groupColor  : string | null;
     private _required    : boolean;
@@ -41,6 +42,7 @@ export class Column {
         this._unhideable  = config?.unhideable ?? false;
         this._readOnly    = config?.readOnly ?? false;
         this._headerGlyph = config?.headerGlyph ?? null;
+        this._headerText  = config?.headerText ?? null;
         this._group       = config?.group ?? null;
         this._groupColor  = config?.groupColor ?? null;
         this._required    = config?.required ?? false;
@@ -111,6 +113,16 @@ export class Column {
      */
     getHeaderGlyph(): string | null {
         return this._headerGlyph;
+    }
+
+    /**
+     * Returns the configured header-label override for this column.
+     *
+     * @returns The override text, or `null` when unset (the header falls back to
+     *   the field name).
+     */
+    getHeaderText(): string | null {
+        return this._headerText;
     }
 
     /**
