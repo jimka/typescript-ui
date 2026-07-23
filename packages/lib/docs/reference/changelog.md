@@ -4,6 +4,8 @@ Release history for `@jimka/typescript-ui`.
 
 ## 0.2.0
 
+### Breaking changes
+
 **Breaking:** `Component.setPreferredSize`, `setMinSize`, and `setMaxSize` now
 take a single `Size` object instead of two loose numbers, matching the
 `Size`-typed `preferredSize` / `minSize` / `maxSize` options-bag fields and
@@ -34,7 +36,62 @@ it — `AbstractWindow.onMouseUp`, `SplitGutter.onDragStop`, and
 override written against the old signature still compiles and silently stops
 consuming; see the migration note.
 
+**Breaking:** six public listener-forwarding methods narrowed their parameter
+from `Function` to `Event.Listener` — `Component.addMouseDownListener` /
+`removeMouseDownListener`, `Component.addMouseDownSubtreeListener` /
+`removeMouseDownSubtreeListener`, `Button.addPointerDownListener`, and
+`WindowHeader.addHeaderDoubleClickListener` — so a handler passed to any of them
+is now checked against the listener contract and an `async` or value-returning
+one no longer typechecks.
+
 See [Migration](/reference/migration#upgrading-from-0-1-x-to-0-2-0) for the full upgrade note.
+
+### Added
+
+- **`Component.dispose()`** — a public teardown call that detaches a component
+  from its parent and recursively tears down its subtree (releasing theme
+  subscriptions, style rules, and DOM). Teardown was previously reachable only
+  through the protected `destructor()`.
+- A subclass can now **clear a preferred size inherited from a class default**
+  by declaring `preferredSize: undefined` in its own defaults, so a
+  content-sized subclass no longer inherits a fixed box and leaves dead space.
+
+### Fixed
+
+- Animations cancelled on teardown no longer let their fallback timers fire
+  after the component is disposed.
+- A window's resize borders and the `Popover` arrow now remove their rules from
+  the shared stylesheet on teardown, fixing a steadily growing rule count.
+- Attributes set on a detached component now replay when it renders, instead of
+  being silently dropped.
+- A tab reserves its close-button gutter per tab so label justification keeps
+  its space, and the close glyph is centred.
+- A minimized window's genie animation targets the window's own rail handle.
+
+## 0.1.1
+
+### Added
+
+- **New `@jimka/typescript-ui/router` subpath** — a hash router (`Router`, with
+  `RouteParams`, `RouteHandler`, `RouterEvent`, `RouteMatch`, and
+  `RouterOptions`) that maps the URL hash to registered `"/data/rows/:sel"`-style
+  patterns, picking the most specific match.
+- **GFM tables in Markdown** — the `Markdown` viewer renders GFM pipe tables and
+  the `MarkdownEditor` edits them WYSIWYG.
+- **Markdown heading ids and a link resolver** — the `Markdown` viewer emits
+  heading-id slugs and accepts a `linkResolver`; the new `MarkdownLinkResolution`
+  and `MarkdownLinkResolver` types are exported from the display barrel.
+- **`Body.init`** — a mount idiom that constructs and mounts the body singleton
+  in one call: `Body.init({ layoutManager: Fit(), components: [shell] })`.
+- **Tab indents in `CodeEditor`** — Tab is bound to indent the current line or
+  selection.
+
+### Fixed
+
+- The viewport event dispatcher no longer swallows every event app-wide;
+  viewport listeners follow a documented propagation policy.
+- The `Accordion` drag-end now consumes correctly, and `AbstractWindow.onMouseUp`
+  stays source-compatible.
 
 ## 0.1.0
 
