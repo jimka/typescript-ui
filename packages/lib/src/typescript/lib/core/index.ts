@@ -38,6 +38,7 @@ export type { Theme, DeepPartial, ScaleToken, ResolvedScale, FontSizeToken } fro
 
 export { StyleTarget, StyleRule, InlineStyle } from '~/core/StyleTarget.js';
 export type { StyleRuleScope, StyleRuleSpec } from '~/core/StyleTarget.js';
+export { ElementAttributes } from '~/core/ElementAttributes.js';
 
 export { Binding } from '~/core/Binding.js';
 export type { BeforeRecordListener, BindingEvent } from '~/core/Binding.js';

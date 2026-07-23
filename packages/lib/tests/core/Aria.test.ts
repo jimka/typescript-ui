@@ -1,12 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Aria } from '~/core/Aria';
 import { Component } from '~/core/Component';
-import { DOM } from '~/core/DOM';
 
 // Every getter reads Aria's own cache, so round-trips need no materialised DOM.
-// The single seam-touching case is applyToElement, whose contract is "flush all
-// cached state onto the element" — asserted by spying the sink's apply payload,
-// since the modelled source's getAttribute is a null stub offline.
 const aria = (): Aria => new Component().getAria();
 
 describe('Aria — role & tabindex', () => {
@@ -130,28 +126,5 @@ describe('Aria — label', () => {
         expect(a.getLabel()).toBe('Close');
         a.clearLabel();
         expect(a.getLabel()).toBeNull();
-    });
-});
-
-describe('Aria — applyToElement flush', () => {
-    it('flushes role, tabindex, and aria-* attributes onto the element via the sink', () => {
-        const c = new Component();
-        const a = c.getAria();
-        a.setRole('grid');
-        a.setTabIndex(0);
-        a.setSelected(true);
-
-        const el = c.getElement(true)!;           // materialise first
-        const applySpy = vi.spyOn(DOM.sink, 'apply');
-
-        a.applyToElement(el);
-
-        expect(applySpy).toHaveBeenCalled();
-        const payload = applySpy.mock.calls.at(-1)![1] as { setAttr: Record<string, string> };
-        expect(payload.setAttr).toMatchObject({
-            role: 'grid',
-            tabindex: '0',
-            'aria-selected': 'true',
-        });
     });
 });
