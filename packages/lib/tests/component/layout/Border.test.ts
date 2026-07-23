@@ -293,6 +293,46 @@ describe('Border region min-floor (sub-minimum preferred)', () => {
     });
 });
 
+describe('Border middle-row height aggregation', () => {
+    afterEach(() => DOM.reset());
+
+    // WEST | CENTER | EAST sit side by side sharing one height band, so the
+    // middle row's height contribution is the *tallest* region, not the sum —
+    // matching getMaxSize's "the row height is the tallest region" and its
+    // docstring. A `+=` of a Math.max over-reports the container height.
+
+    it('reports the middle row preferred height as the tallest region, not the sum', () => {
+        installTestDOM(CONFIG);
+
+        const border = new Border();
+        const host = hostBorder(400, 300, border);
+        const west = new Component({ preferredSize: { width: 40, height: 20 } });
+        const center = new Component({ preferredSize: { width: 100, height: 50 } });
+
+        host.addComponent(west, placement(Placement.WEST));
+        host.addComponent(center, placement(Placement.CENTER));
+
+        // max(20, 50) = 50, not 20 + 50 = 70. (clearInsets => zero perimeter.)
+        expect(border.getPreferredSize()!.height).toBe(50);
+    });
+
+    it('reports the middle row min height as the tallest region min, not the sum', () => {
+        installTestDOM(CONFIG);
+
+        const border = new Border();
+        const host = hostBorder(400, 300, border);
+        const west = new Component({ preferredSize: { width: 40, height: 20 } });
+        west.setMinSize({ width: 40, height: 20 });
+        const center = new Component({ preferredSize: { width: 100, height: 50 } });
+        center.setMinSize({ width: 100, height: 50 });
+
+        host.addComponent(west, placement(Placement.WEST));
+        host.addComponent(center, placement(Placement.CENTER));
+
+        expect(border.getMinSize()!.height).toBe(50);
+    });
+});
+
 describe('Border overflow inflation', () => {
     afterEach(() => DOM.reset());
 

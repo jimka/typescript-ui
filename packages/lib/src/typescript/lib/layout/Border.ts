@@ -599,7 +599,7 @@ class Border extends LayoutManager {
             if (size) {
                 const flooredWidth = this.flooredMainExtent(size.width, west.getMinSize(), false);
                 middleWidth += this.isRegionCollapsed(Placement.WEST) ? COLLAPSE_STRIP_SIZE : flooredWidth;
-                middleHeight += Math.max(middleHeight, size.height);
+                middleHeight = Math.max(middleHeight, size.height);
             }
         }
 
@@ -607,7 +607,7 @@ class Border extends LayoutManager {
             let size = center.getPreferredSize();
             if (size) {
                 middleWidth += size.width;
-                middleHeight += Math.max(middleHeight, size.height);
+                middleHeight = Math.max(middleHeight, size.height);
             }
         }
 
@@ -616,7 +616,7 @@ class Border extends LayoutManager {
             if (size) {
                 const flooredWidth = this.flooredMainExtent(size.width, east.getMinSize(), false);
                 middleWidth += this.isRegionCollapsed(Placement.EAST) ? COLLAPSE_STRIP_SIZE : flooredWidth;
-                middleHeight += Math.max(middleHeight, size.height);
+                middleHeight = Math.max(middleHeight, size.height);
             }
         }
 
@@ -678,7 +678,7 @@ class Border extends LayoutManager {
             let size = west.getMinSize();
             if (size) {
                 middleWidth += this.isRegionCollapsed(Placement.WEST) ? COLLAPSE_STRIP_SIZE : size.width;
-                middleHeight += Math.max(middleHeight, size.height);
+                middleHeight = Math.max(middleHeight, size.height);
             }
         }
 
@@ -686,7 +686,7 @@ class Border extends LayoutManager {
             let size = center.getMinSize();
             if (size) {
                 middleWidth += size.width;
-                middleHeight += Math.max(middleHeight, size.height);
+                middleHeight = Math.max(middleHeight, size.height);
             }
         }
 
@@ -694,7 +694,7 @@ class Border extends LayoutManager {
             let size = east.getMinSize();
             if (size) {
                 middleWidth += this.isRegionCollapsed(Placement.EAST) ? COLLAPSE_STRIP_SIZE : size.width;
-                middleHeight += Math.max(middleHeight, size.height);
+                middleHeight = Math.max(middleHeight, size.height);
             }
         }
 
