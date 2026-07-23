@@ -181,8 +181,16 @@ describe('tab closeable-label squeeze in shared-cell modes', () => {
 
         const [closeableEntry, plainEntry] = entries(bar);
 
-        expect(closeableEntry.button._content.getHeight()).toBe(closeableEntry.button._content.getPreferredSize()?.height);
-        expect(plainEntry.button._content.getHeight()).toBe(plainEntry.button._content.getPreferredSize()?.height);
+        const closeablePreferred = closeableEntry.button._content.getPreferredSize();
+        const plainPreferred     = plainEntry.button._content.getPreferredSize();
+
+        // Guard the preferred size explicitly: a null here is a setup failure and
+        // should read as one, not silently become `undefined` inside the compare.
+        expect(closeablePreferred).not.toBeNull();
+        expect(plainPreferred).not.toBeNull();
+
+        expect(closeableEntry.button._content.getHeight()).toBe(closeablePreferred!.height);
+        expect(plainEntry.button._content.getHeight()).toBe(plainPreferred!.height);
 
         host.dispose();
     });
