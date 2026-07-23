@@ -64,7 +64,7 @@ Every category that was once a holdout now funnels through the seam: computed bo
 
 The result: **`src/typescript/lib/core/DOM.ts` is the single module that reads, writes, or even *holds a reference to* the real DOM.** Everything else routes through `DOM.sink` / `DOM.source` and names elements only by `Handle`. The `local/no-raw-dom` rule enforces this with an empty baseline — any new raw access *or* element-typed declaration is a build error.
 
-The one deliberate exception is `getViewportRect(component)`, which stays keyed on the `Component` (not a handle) because the offline geometry oracle reproduces the rectangle by walking `getParentComponent()` — a `Component` is a framework type, not a DOM type, so it does not breach the boundary. The rule-style path (`setRuleStyle` / `ensureStyleRule`) is also untouched: a `CSSStyleRule` is not an element and never carried a handle.
+The one deliberate exception is `getViewportRect(component)`, which stays keyed on the `Component` (not a handle) because the offline geometry oracle reproduces the rectangle by walking `getParentComponent()` — a `Component` is a framework type, not a DOM type, so it does not breach the boundary. The rule-style path (`setRuleStyles` / `ensureStyleRule`) is also untouched: a `CSSStyleRule` is not an element and never carried a handle.
 
 A few things stay deliberately outside the rule because they are **not DOM interaction**: raw `setTimeout` / `clearTimeout` (timers), `performance.now()` (high-resolution time), and Web Worker entry modules (`self` / `postMessage` are worker-scope messaging, not the document). `scrollIntoView` / `scrollTo` have no call sites today; the rule forbids any future one.
 
