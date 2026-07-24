@@ -1,6 +1,18 @@
 # DOM-Only State Inventory
 
-<!-- Not an implementation plan. A catalogue produced by plans/dom-only-state-audit.md. -->
+> **Document type:** reference catalogue, **not** an implementation plan — it
+> prescribes no code change. It is the read-only output of the audit plan
+> [plans/implemented/dom-only-state-audit.md](implemented/dom-only-state-audit.md).
+>
+> **Relied on by:** [plans/component-element-release.md](component-element-release.md)
+> — the plan that designs the release-and-rebuild feature. That plan consumes
+> this catalogue as its per-component risk list (its `## Critical Files`,
+> `## Non-Goals`, and `## Addendum: Follow-Up Roadmap` all cite the rows below).
+>
+> **Caveat:** the `Component.ts`/etc. line numbers cited throughout have drifted
+> since this was written (e.g. `getElement` moved from `:863` to `:939`). The
+> *findings* remain accurate; re-locate each symbol by name before trusting a
+> printed line number.
 
 This is a read-only audit: it catalogues state that a future release-and-rebuild
 feature would lose or dangle, and prescribes no code change. Verdicts on
