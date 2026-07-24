@@ -527,3 +527,75 @@ The capability manifest changes in two places: `manifest.data.mjs`'s `Router` ta
 [^modifier-keys]: Phase 1's handler cancels every route click unconditionally. That was survivable while route hrefs were hash fragments, since a new tab on `…/next/#/guide/x` is an odd thing to want. A base-prefixed path href is an ordinary link, and readers Ctrl-click ordinary links in documentation constantly. The check has to come before the in-page branch too, so a modified click on `#anchor` also falls through to the browser.
 
 [^frozen-status]: The step-1 check is the only place this plan can catch a missing route before it becomes a 404 on a published README link. It is deliberately a manual browser check rather than a grep: whether a path renders depends on the route table *and* the page registry, and only the running app knows both.
+
+---
+
+## Implementation Notes
+
+This run implemented Ordered Implementation Steps 1–14 only (Preconditions
+through "Docs app: base, hrefs, fallback") and stopped at the Step 15 review
+gate, by design — that step requires a human to look at the running app in a
+real browser and say "continue," which this run had no way to do. Steps
+16 onward (llms.txt re-home, deployment cutover, VitePress deletion) were not
+started.
+
+Three deviations from the plan's literal text, all needed to reach a working
+implementation:
+
+- **`Router._mode` / `_base` are not `readonly`.** The plan's `## Public API`
+  says "Backing state: private readonly `_mode` and `_base`, assigned in
+  `applyOptions`." That combination does not typecheck under this project's
+  `strict` config: TypeScript's `strictPropertyInitialization` only permits a
+  `readonly` field to be written from the literal constructor body or a field
+  initializer, not from a method the constructor merely calls (confirmed with
+  a standalone `tsc --strict` repro before touching the real file) —
+  `applyOptions` is exactly such a method, and existing `Router` code already
+  calls it that way for every other option. The fields are plain private
+  fields instead (`private _mode!: RouterMode;`), assigned once in
+  `applyOptions` and never reassigned after. The externally-visible contract
+  the plan cares about — no public setter, mode/base fixed for the router's
+  lifetime — holds exactly as specified; only the internal `readonly` keyword
+  is dropped.
+- **`resolveApiLink` also gained a `router: Router` parameter.** The plan's
+  `## Public API` only specifies the new `resolveDocLink(href, router)`
+  signature. But `resolveApiLink` (same file, `links.ts`) calls `hashHref`
+  directly for its relative-`.md`-link branch and delegates to
+  `resolveDocLink(href)` for its absolute-path branch — both call sites break
+  once `hashHref` is deleted and `resolveDocLink` requires a second argument.
+  Per the plan's own footnote `[^hashhref-deleted]`, "Under History mode there
+  is nothing left for [`hashHref`] to do," so the fix is `resolveApiLink`
+  taking `router` and using `router.getHref(...)` / `resolveDocLink(href,
+  router)` in its place. `DocsContent.ts`'s `resolveLink` closure passes
+  `this._router` to whichever resolver it calls, and `links.test.ts`'s
+  existing `resolveApiLink` cases were updated to pass the fixture router and
+  expect base-joined hrefs instead of hash hrefs — none of the assertions'
+  *shape* changed, only the URL form each one expects.
+- **`vite.config.ts`'s `API_URL` dev-middleware regex also changed.** The
+  regex hardcoded the old base: `/^(?:\/typescript-ui\/next)?\/api\/(.+\.md)$/`,
+  matching a request either bare or prefixed with the Phase-1 preview path.
+  Since `docs:api` fetches now go out under the new base
+  (`${import.meta.env.BASE_URL}api/...`, per `packages/docs/src/content/
+  api.ts`), the regex was updated to `/^(?:\/typescript-ui)?\/api\/(.+\.md)$/`
+  so the dev-server middleware that serves generated API Markdown keeps
+  matching. Left unmentioned by step 10, but required by the same base change
+  step 10 makes.
+
+One environment note, not a plan-file deviation: this worktree has no
+`node_modules` of its own (worktrees don't get a fresh `npm install`), so
+`npm`/Vite resolve `node_modules` by walking up to the main tree's, whose
+`@jimka/typescript-ui` symlink points at the *main tree's* `packages/lib` —
+not this worktree's edited copy. A local override symlink,
+`packages/docs/node_modules/@jimka/typescript-ui` → `../../../lib`, was
+created so `packages/docs`'s typecheck/build/test actually exercise this
+branch's library code. It is untracked (`node_modules` is gitignored) and
+worktree-local; anyone continuing this work in the same worktree should
+either keep it or reproduce it before trusting a docs-app check.
+
+One pre-existing, unrelated test failure was found and left alone:
+`packages/docs/tests/api.test.ts`'s `symbolCount() is 683` fails with
+"expected 690 to be 683" on a completely clean `master` checkout too (verified
+by running `npm run docs:api` and the same test directly against `master`,
+before any of this plan's edits existed) — a hardcoded documented-symbol count
+that has drifted out of sync with the library's growth, unrelated to routing.
+It is not in this plan's `## Files to Create / Modify / Delete` table and was
+not touched.
