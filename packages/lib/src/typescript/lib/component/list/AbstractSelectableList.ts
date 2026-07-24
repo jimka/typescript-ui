@@ -18,6 +18,7 @@ import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
 import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
+import { COMPONENT_CLASS } from "~/core/ClassStyleRules.js";
 import { Text } from "~/component/input/Text.js";
 
 /**
@@ -550,9 +551,15 @@ class SelectableListRow extends Component {
      * Computes the row's class list from the cached selected/focused
      * state. Writes via `setElementAttribute("class", …)` so the framework
      * defer-write seam owns the DOM write.
+     *
+     * The write replaces the whole `class` attribute, so it must re-state the
+     * framework `COMPONENT_CLASS` that `Component.init` adds — otherwise a
+     * post-init rewrite (a selection change) drops it, and with it the
+     * `:where(.ts-ui-component)` rule that supplies `position: absolute`,
+     * collapsing every row to `top: auto` so they stack on top of each other.
      */
     private applyRowClass(): void {
-        const classes = ["SelectableListRow"];
+        const classes = [COMPONENT_CLASS, "SelectableListRow"];
 
         if (this._selected) {
             classes.push("selected");
