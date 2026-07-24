@@ -283,6 +283,110 @@ describe('Body selection event', () => {
     });
 });
 
+describe('Body selection event — fires only when the set changes', () => {
+    it('selectRecord called twice in a row for the same record fires "selection" once', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1' }, { a: '2' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const recs = store.getAll();
+        let emitted = 0;
+        b.on('selection', () => { emitted += 1; });
+
+        b.selectRecord(recs[0]);
+        b.selectRecord(recs[0]);
+
+        expect(emitted).toBe(1);
+    });
+
+    it('selectRecord(null) on an already-empty selection does not fire', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        let emitted = 0;
+        b.on('selection', () => { emitted += 1; });
+
+        b.selectRecord(null);
+
+        expect(emitted).toBe(0);
+    });
+
+    it('setSelectedRecords with the same two records reversed does not fire — membership, not order', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1' }, { a: '2' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const recs = store.getAll();
+        b.setSelectedRecords([recs[0], recs[1]]);
+
+        let emitted = 0;
+        b.on('selection', () => { emitted += 1; });
+
+        b.setSelectedRecords([recs[1], recs[0]]);
+
+        expect(emitted).toBe(0);
+    });
+
+    it('two plain clicks on the same row fire "selection" once, not twice', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const row = (b as any).getRowPool()[0];
+        let emitted = 0;
+        b.on('selection', () => { emitted += 1; });
+
+        (b as any).onRowClick(row, makeEvent(row.getElement(), 'click'));
+        (b as any).onRowClick(row, makeEvent(row.getElement(), 'click'));
+
+        expect(emitted).toBe(1);
+    });
+
+    it('a ctrl/cmd-click on an unselected row, then a plain click on a different row, fires on both', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1' }, { a: '2' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const rows = (b as any).getRowPool();
+        let emitted = 0;
+        b.on('selection', () => { emitted += 1; });
+
+        (b as any).onRowClick(rows[0], makeEvent(rows[0].getElement(), 'click', { ctrlKey: true }));
+        (b as any).onRowClick(rows[1], makeEvent(rows[1].getElement(), 'click'));
+
+        expect(emitted).toBe(2);
+    });
+
+    it('keyboard row navigation at a boundary does not emit; moving to a different row does', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1' }, { a: '2' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.selectRecord(store.getAll()[0]);
+
+        let emitted = 0;
+        b.on('selection', () => { emitted += 1; });
+
+        (b as any).onKeyDown({ key: 'ArrowUp', preventDefault: () => {} });
+        expect(emitted).toBe(0); // already the first row — clamps in place
+
+        (b as any).onKeyDown({ key: 'ArrowDown', preventDefault: () => {} });
+        expect(emitted).toBe(1); // moved to a different row — a real change
+    });
+});
+
 describe('resolveClickedColumn', () => {
     it('returns the index of a cell whose element is the target', async () => {
         const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);

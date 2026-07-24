@@ -13,6 +13,7 @@ import { ComboEditor } from "~/component/table/cell/editor/Combo.js";
 import { Event } from "~/core/Event.js";
 import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
 import { reduceModifierSelection } from "~/component/shared/reduceModifierSelection.js";
+import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Util } from "~/core/Util.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
@@ -865,6 +866,7 @@ class Body extends VirtualRowView<Row> {
         if (!record) return;
 
         const records = this.getVisibleRecords();
+        const before  = new Set(this._selectedRecords);
 
         this._anchorRecord = reduceModifierSelection(
             this._selectedRecords,
@@ -879,7 +881,7 @@ class Body extends VirtualRowView<Row> {
             if (dataIdx !== -1) this.updateRowVisualState(i);
         });
 
-        this.notifySelectionChange();
+        this.notifySelectionChange(before);
 
         // Determine which column was clicked and update focused cell
         const targetHandle = e.target === null ? null : DOM.source.intern(e.target);
@@ -923,6 +925,8 @@ class Body extends VirtualRowView<Row> {
      * @param record - The record to select, or null to clear the selection.
      */
     selectRecord(record: ModelRecord | null): void {
+        const before = new Set(this._selectedRecords);
+
         this._selectedRecords.clear();
         this._anchorRecord = record;
 
@@ -934,7 +938,7 @@ class Body extends VirtualRowView<Row> {
             if (dataIdx !== -1) this.updateRowVisualState(i);
         });
 
-        this.notifySelectionChange();
+        this.notifySelectionChange(before);
     }
 
     /**
@@ -965,6 +969,8 @@ class Body extends VirtualRowView<Row> {
      *   first record (if any) becomes the new anchor.
      */
     setSelectedRecords(records: ModelRecord[]): void {
+        const before = new Set(this._selectedRecords);
+
         this._selectedRecords.clear();
         this._anchorRecord = records.length > 0 ? records[0] : null;
 
@@ -976,7 +982,7 @@ class Body extends VirtualRowView<Row> {
             if (dataIdx !== -1) this.updateRowVisualState(i);
         });
 
-        this.notifySelectionChange();
+        this.notifySelectionChange(before);
     }
 
     /**
@@ -984,10 +990,10 @@ class Body extends VirtualRowView<Row> {
      * `"verticalscroll"` fires after the body scrolls vertically with the
      * new `scrollY`; `"horizontalscroll"` fires after a horizontal scroll
      * with the new `scrollX`; `"selection"` fires with the current
-     * selected-record array; `"cellclick"` fires when a data cell is clicked,
-     * carrying the clicked record, the column's field name and visible index,
-     * the cell value, the record's row index in the visible-records view, and
-     * the raw mouse event.
+     * selected-record array when the selected set changes; `"cellclick"`
+     * fires when a data cell is clicked, carrying the clicked record, the
+     * column's field name and visible index, the cell value, the record's
+     * row index in the visible-records view, and the raw mouse event.
      *
      * @param event - The event name.
      * @param listener - Receives the new pixel offset along the scroll axis
@@ -1045,8 +1051,19 @@ class Body extends VirtualRowView<Row> {
         this._listeners.fire(event, payload);
     }
 
-    /** Fire `"selection"` with the current selection. */
-    private notifySelectionChange(): void {
+    /**
+     * Fires `"selection"` with the current selection, unless it has the same
+     * membership as `before` — in which case the gesture that ran did not
+     * actually change what was selected, and the event is skipped.
+     *
+     * @param before - The selection as it stood immediately before the
+     *   mutating gesture ran.
+     */
+    private notifySelectionChange(before: ReadonlySet<ModelRecord>): void {
+        if (selectionsEqual(before, this._selectedRecords)) {
+            return;
+        }
+
         this.emit("selection", this.getSelectedRecords());
     }
 

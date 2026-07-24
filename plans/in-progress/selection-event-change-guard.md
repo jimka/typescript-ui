@@ -304,3 +304,22 @@ Nothing in this plan requires manual verification — every guarded site is alre
 [^snapshot-vs-cache]: A cache-based alternative — an instance field holding "the last emitted selection," updated only when an emit actually fires, compared against on every guarded call — was considered and rejected. That form breaks the moment a silent setter (`Tree.selectNode`, `DiagramView.selectNode`) changes the live selection without emitting: the cache goes stale relative to the live selection, and the next guarded call compares against the wrong baseline — it could wrongly suppress an emit for a selection that differs from what the cache remembers, or wrongly allow one for a selection that matches the live (but not cached) state. The snapshot-before/compare-after form sidesteps this entirely because "before" is read fresh, from live state, at the top of every guarded call — there is nothing to keep in sync with the silent setters.
 
 [^shared-precedent]: Searched `packages/lib/src/typescript/lib/component/shared/` (contains only `VirtualRowView.ts` and `reduceModifierSelection.ts`) and grepped for existing `Set`-equality or array-equality helpers across the package (`ModelRecord.arraysEqual`, a private static used only for deep-equality of field values — not selection-shaped, and not exported/shared) and for any other "fires only on change" comment (`Toggle.ts`, `TabBar.ts`). No existing shared selection-equality helper was found; `reduceModifierSelection.ts` is the nearest sibling in both purpose (a selection primitive shared across `Body` and `MultiSelectList`) and shape (single exported generic function, `@internal`, own file), so `selectionsEqual.ts` follows it rather than introducing a new convention.
+
+---
+
+## Implementation Notes
+
+Step 17 called for updating three JSDoc sites — `Tree`'s `on`/`emit` overload
+docs, `Body`'s `on` doc, and `Table`'s forwarding doc — to say the event
+"fires when the selected set changes" instead of implying it fires on every
+click. Re-reading the current source at implementation time (not just the
+plan's own citations) found that `Tree.on`'s doc already reads `"selection"
+fires whenever the selection changes` (`Tree.ts`, near line 370) and
+`Table.on`'s doc already reads `"selection" fires whenever the
+selected-record set changes` (`Table.ts`, near line 238) — both already
+state the post-fix contract accurately, the same situation the plan itself
+already called out for `DiagramView`'s doc comment. Only `Body`'s `on` doc
+was actually vague ("fires with the current selected-record array", with no
+"when" clause), so only that one line was edited. Tree.ts and Table.ts were
+left untouched per the surgical-changes convention — editing accurate,
+unrelated doc text is not something this change should do.

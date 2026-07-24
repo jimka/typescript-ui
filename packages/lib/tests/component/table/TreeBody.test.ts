@@ -199,3 +199,23 @@ describe('TreeBody orphan-as-root', () => {
         expect(flatIds(tb).sort()).toEqual([1, 2]);
     });
 });
+
+// moveFocusTo calls the inherited (now-guarded) Body.selectRecord with no
+// TreeBody-specific override — this pins that the guard's fix is inherited,
+// not just present on the base class.
+describe('TreeBody moveFocusTo — selection event fires only on a real change', () => {
+    it('calling moveFocusTo twice for the same record fires "selection" once', () => {
+        const tb = tree([
+            { id: 1, parent: null, name: 'a' },
+            { id: 2, parent: null, name: 'b' },
+        ]);
+
+        let emitted = 0;
+        tb.on('selection', () => { emitted += 1; });
+
+        (tb as any).moveFocusTo(rec(tb, 1));
+        (tb as any).moveFocusTo(rec(tb, 1));
+
+        expect(emitted).toBe(1);
+    });
+});

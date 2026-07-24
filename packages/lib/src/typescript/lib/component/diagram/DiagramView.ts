@@ -682,6 +682,10 @@ class DiagramView extends Panel<DiagramViewOptions> {
         const id = this.nodeIdAt(event.target);
 
         if (id !== null) {
+            if (id === (this._selection[0]?.id ?? null)) {
+                return;
+            }
+
             this.setSelection(id);
             this.emit("selection", this.getSelection());
         } else if (this._selection.length > 0) {

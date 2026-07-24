@@ -6,6 +6,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
+import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
 import { TreeRow } from "~/component/tree/TreeRow.js";
 import { TreeNodeRenderer } from "~/component/tree/TreeNodeRenderer.js";
@@ -632,6 +633,22 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
+     * Fires `"selection"` with the current selection, unless it has the same
+     * membership as `before` — in which case the gesture that ran did not
+     * actually change what was selected, and the event is skipped.
+     *
+     * @param before - The selection as it stood immediately before the
+     *   mutating gesture ran.
+     */
+    private _notifySelectionChange(before: ReadonlySet<TreeNode>): void {
+        if (selectionsEqual(before, this._selectedNodes)) {
+            return;
+        }
+
+        this.emit("selection", this.getSelectedNodes());
+    }
+
+    /**
      * Fills `_selectedNodes` with every node in `_flatRows` between `anchorIdx` and `focusIdx` (inclusive).
      *
      * @param anchorIdx - One end of the range.
@@ -659,6 +676,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         }
 
         const node = this._flatRows[index].node;
+        const before = new Set(this._selectedNodes);
 
         this._selectedNodes.clear();
         this._selectedNodes.add(node);
@@ -669,7 +687,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this._scrollIntoView(index);
         this.renderWindow();
         this._updateActiveDescendant();
-        this.emit("selection", this.getSelectedNodes());
+        this._notifySelectionChange(before);
     }
 
     /**
@@ -682,6 +700,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             return;
         }
 
+        const before = new Set(this._selectedNodes);
+
         const anchorIdx = this._anchorNode
             ? this._flatRows.findIndex(r => r.node === this._anchorNode)
             : index;
@@ -693,7 +713,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this._scrollIntoView(index);
         this.renderWindow();
         this._updateActiveDescendant();
-        this.emit("selection", this.getSelectedNodes());
+        this._notifySelectionChange(before);
     }
 
     /**
@@ -838,6 +858,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             if (e.shiftKey && this._anchorNode) {
                 this._extendSelectionTo(clickedIdx);
             } else if (e.ctrlKey || e.metaKey) {
+                const before = new Set(this._selectedNodes);
+
                 if (this._selectedNodes.has(node)) {
                     this._selectedNodes.delete(node);
                 } else {
@@ -847,7 +869,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
                 this._anchorNode = node;
                 this._focusNode = node;
                 this._updateSelectionStyle();
-                this.emit("selection", this.getSelectedNodes());
+                this._notifySelectionChange(before);
             } else {
                 this._selectAtIndex(clickedIdx);
             }
