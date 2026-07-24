@@ -323,3 +323,26 @@ was actually vague ("fires with the current selected-record array", with no
 "when" clause), so only that one line was edited. Tree.ts and Table.ts were
 left untouched per the surgical-changes convention — editing accurate,
 unrelated doc text is not something this change should do.
+
+**Post-audit addendum.** An independent audit of the implemented branch found
+that the plan's Overview claim — "Guarding `Body` alone covers `Table` and
+`TreeTable`" — is incomplete: `Table.ts` also drives selection directly
+through its own `_rotatedRecord` field while {@link Table.setDisplayMode} is
+`"rotated"`, via three of its own `emit("selection", …)` call sites
+(`Table.ts` near lines 349, 624, 886) that bypass `Body`'s guarded choke
+point entirely. Of the three, `setDisplayMode`'s entry-into-rotated emit
+(~349) is already guarded by that method's own `mode === this._displayMode`
+early return, so it cannot re-fire for an unchanged selection. The other two
+were genuinely unguarded and have been fixed as a follow-up to the audit,
+test-first, in `packages/lib/tests/component/table/RotatedView.test.ts`:
+
+- `Table.selectRecord`'s rotated branch (~624) now early-returns when
+  `record === this._rotatedRecord`, mirroring `DiagramView`'s scalar
+  comparison (this is a single-record field, not a `Set`, so
+  `selectionsEqual` does not apply — same reasoning as the plan's
+  `[^diagram-scalar]` footnote).
+- `Table.onSourceStoreChange`'s re-target on a removed/reloaded record
+  (~886) now only emits when the newly resolved `_rotatedRecord` differs
+  from what it was before the retarget, so a reload that leaves an
+  already-`null` rotated selection at `null` no longer re-fires
+  `"selection"`.

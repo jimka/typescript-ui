@@ -306,6 +306,37 @@ describe('Table rotated mode', () => {
         expect(seen.length).toBe(1);
     });
 
+    it('selectRecord called twice with the same record while rotated fires "selection" once, not twice', async () => {
+        const { store, records } = await makeStore();
+        const table = makeTable(store);
+        const record2 = records[1];
+
+        table.setDisplayMode('rotated');
+
+        const seen: ModelRecord[][] = [];
+        table.on('selection', recs => seen.push(recs));
+
+        table.selectRecord(record2);
+        table.selectRecord(record2);
+
+        expect(seen).toEqual([[record2]]);
+    });
+
+    it('reloading an already-empty rotated store to another empty state does not re-fire "selection"', async () => {
+        const store = new MemoryStore(MODEL, []);
+        await store.load();
+        const table = makeTable(store);
+
+        table.setDisplayMode('rotated');
+
+        const seen: ModelRecord[][] = [];
+        table.on('selection', recs => seen.push(recs));
+
+        store.loadData([]);
+
+        expect(seen).toHaveLength(0);
+    });
+
     it('re-initializes column widths for the three-column layout after doLayout', async () => {
         const { store } = await makeStore();
         const table = makeTable(store);
