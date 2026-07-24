@@ -1,5 +1,5 @@
 import { defineConfig, type Plugin } from 'vite'
-import { readFileSync, readdirSync, cpSync } from 'node:fs'
+import { readFileSync, readdirSync, cpSync, copyFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 import path from 'node:path'
 
@@ -9,7 +9,7 @@ const VIRTUAL = 'virtual:typedoc-api'
 // A dev request may or may not carry the app's base — Vite strips it for some
 // middleware stages but not this custom one — so both forms of the same file
 // path must resolve to the same file on disk.
-const API_URL = /^(?:\/typescript-ui\/next)?\/api\/(.+\.md)$/
+const API_URL = /^(?:\/typescript-ui)?\/api\/(.+\.md)$/
 
 /**
  * Recursively walks `dir` and returns every `.md` file beneath it, as a path
@@ -96,9 +96,36 @@ function typedocApi(): Plugin {
   }
 }
 
+// GitHub Pages serves the site's own 404.html for any path with no file
+// behind it. A byte copy of index.html under that name boots the app for
+// every unknown path, which then reads the real path itself — the SPA
+// fallback History-mode routing needs. Runs as a plugin (not a workflow-level
+// `cp`) so `vite preview` gets the fallback too, which is what the review
+// gate exercises.
+function spaFallback(): Plugin {
+  let root = ''
+  let outDir = ''
+  let command: 'build' | 'serve' = 'serve'
+
+  return {
+    name: 'spa-fallback',
+    configResolved(config) {
+      root = config.root
+      outDir = config.build.outDir
+      command = config.command
+    },
+    closeBundle() {
+      // Same vitest-stubbed-outDir concern as typedocApi() above.
+      if (command !== 'build') return
+
+      copyFileSync(path.resolve(root, outDir, 'index.html'), path.resolve(root, outDir, '404.html'))
+    },
+  }
+}
+
 export default defineConfig({
-  base: '/typescript-ui/next/',
-  plugins: [typedocApi()],
+  base: '/typescript-ui/',
+  plugins: [typedocApi(), spaFallback()],
   // packages/lib/docs/ sits outside this package root; without this the dev
   // server 404s the raw `?raw` glob reads in pages.ts even though the
   // production build (which bundles them at build time) is unaffected.

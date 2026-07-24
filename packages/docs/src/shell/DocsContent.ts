@@ -9,6 +9,11 @@ import { resolveDocLink, resolveApiLink } from '../content/links.js';
 import { apiFileFor, apiDirOf, fetchApiPage } from '../content/api.js';
 import { notFoundSource, fetchErrorSource } from '../content/notFound.js';
 
+// The path prefix the site is served under — matches the base the app's
+// Router is constructed with (see main.ts), so a clicked href counts as a
+// route exactly when it falls under this prefix.
+const BASE_URL = import.meta.env.BASE_URL;
+
 /**
  * The centre content pane: a scrolling `Markdown` viewer showing the page for
  * the current route, with in-app link interception — see "The app intercepts
@@ -43,7 +48,7 @@ class DocsContent extends Panel {
     // on every render, and which rule applies depends on _linkBaseDir at that
     // moment, so it can't be bound once to either resolver.
     private readonly resolveLink: (href: string) => MarkdownLinkResolution = (href) =>
-        (this._linkBaseDir === null ? resolveDocLink(href) : resolveApiLink(href, this._linkBaseDir));
+        (this._linkBaseDir === null ? resolveDocLink(href, this._router) : resolveApiLink(href, this._linkBaseDir, this._router));
 
     constructor(router: Router, options?: PanelOptions) {
         super(options, { layoutManager: Fit(), autoScroll: 'y' });
@@ -119,15 +124,22 @@ class DocsContent extends Panel {
 
     /**
      * Intercepts a click on an authored `<a>` in the rendered Markdown.
-     * Interception is load-bearing, not a convenience: a bare `#fragment` href
+     * Interception is load-bearing for an in-page `#fragment` href, which
      * would otherwise change the hash natively and hand the router an
      * unmatchable path — see "Interception is load-bearing" in
-     * plans/implemented/packages-docs.md.
+     * plans/implemented/packages-docs.md. A route href is now an ordinary
+     * base-prefixed path, so a modified click (Ctrl, Cmd, Shift, Alt, or a
+     * non-primary button) is left to the browser before anything else is
+     * checked, the same as it would be for any other link.
      *
      * @param e - The bubbled click event.
      */
     private onLinkClick(e: MouseEvent): void {
         if (!(e instanceof MouseEvent) || e.target === null) {
+            return;
+        }
+
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) {
             return;
         }
 
@@ -143,12 +155,12 @@ class DocsContent extends Panel {
             return;
         }
 
-        if (href.startsWith('#/')) {
-            e.preventDefault();
-            this._router.navigate(href.slice(1));
-        } else if (href.startsWith('#')) {
+        if (href.startsWith('#')) {
             e.preventDefault();
             this.scrollToHeading(href.slice(1));
+        } else if (href === BASE_URL || href.startsWith(BASE_URL)) {
+            e.preventDefault();
+            this._router.navigate(this._router.getPath(href));
         }
         // Anything else (external hrefs) is left to the browser.
     }

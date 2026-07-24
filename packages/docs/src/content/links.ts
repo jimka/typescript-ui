@@ -1,34 +1,26 @@
 import type { MarkdownLinkResolution } from '@jimka/typescript-ui/component/display';
+import type { Router } from '@jimka/typescript-ui/router';
 import { apiRouteFor } from './api.js';
 
 /**
- * Builds the in-app href for a site path.
- *
- * @param path - A leading-slash site path, e.g. `/guide/installation`.
- * @returns The in-app hash href, e.g. `#/guide/installation`.
- */
-export function hashHref(path: string): string {
-    return '#' + path;
-}
-
-/**
  * Maps an authored doc href to its rendered form, by kind: a route (`/…`) is
- * rewritten through {@link hashHref} with any `#fragment` stripped first, an
+ * rewritten through `router.getHref` with any `#fragment` stripped first, an
  * in-page reference (`#…`) passes through unchanged and non-external, and
  * everything else (`http:`, `mailto:`, …) passes through unchanged and
  * external — see "Link resolution in the docs app" in
  * plans/implemented/packages-docs.md.
  *
  * @param href - The authored Markdown link href.
+ * @param router - The app's router; owns the href encoding for its mode and base.
  * @returns The rendered href and whether it is external.
  */
-export function resolveDocLink(href: string): MarkdownLinkResolution {
+export function resolveDocLink(href: string, router: Router): MarkdownLinkResolution {
     if (href.startsWith('#')) {
         return { href, external: false };
     }
 
     if (href.startsWith('/')) {
-        return { href: hashHref(href.split('#')[0]), external: false };
+        return { href: router.getHref(href.split('#')[0]), external: false };
     }
 
     return { href, external: true };
@@ -71,21 +63,22 @@ function joinApiPath(baseDir: string, href: string): string {
  *
  * @param href - The authored href, as it appears in the generated Markdown.
  * @param baseDir - The directory of the page being rendered, e.g. "component/button/classes".
+ * @param router - The app's router; owns the href encoding for its mode and base.
  * @returns The rendered href and whether it is external.
  */
-export function resolveApiLink(href: string, baseDir: string): MarkdownLinkResolution {
+export function resolveApiLink(href: string, baseDir: string, router: Router): MarkdownLinkResolution {
     if (href.startsWith('#')) {
         return { href, external: false };
     }
 
     if (href.startsWith('/')) {
-        return resolveDocLink(href);
+        return resolveDocLink(href, router);
     }
 
     const withoutFragment = href.split('#')[0];
 
     if (withoutFragment.endsWith('.md')) {
-        return { href: hashHref(apiRouteFor(joinApiPath(baseDir, withoutFragment))), external: false };
+        return { href: router.getHref(apiRouteFor(joinApiPath(baseDir, withoutFragment))), external: false };
     }
 
     return { href, external: true };

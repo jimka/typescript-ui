@@ -5,7 +5,7 @@ import { DocsShell } from './shell/DocsShell.js'
 
 const DEFAULT_PATH = '/guide'
 
-const router = new Router()
+const router = new Router({ mode: 'history', base: import.meta.env.BASE_URL })
 const shell  = new DocsShell(router)
 
 function showDefaultPage(): void {
