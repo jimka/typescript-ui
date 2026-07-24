@@ -8,6 +8,7 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Router, type RouteMatch, type RouteParams } from '~/router/Router';
+import { normalizePath } from '~/router/RoutePattern';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -271,5 +272,150 @@ describe('Router — lifecycle and navigation', () => {
         router.start();
 
         expect(navigateEvents).toEqual([{ pattern: '/settings', params: {}, path: '/settings' }]);
+    });
+});
+
+describe('Router — History mode', () => {
+    it('a router constructed with no mode behaves exactly as today: getPath() still reads the hash', () => {
+        installTestDOM(CONFIG);
+        DOM.sink.setLocationHash('#/settings');
+
+        const router = new Router();
+
+        expect(router.getPath()).toBe('/settings');
+    });
+
+    it.each([
+        ['/typescript-ui/guide', '/guide'],
+        ['/typescript-ui/',      '/'],
+        ['/typescript-ui',       '/'],
+    ])('getPath() strips the base from the modelled pathname %j to %j', (pathname, expected) => {
+        const sink = installTestDOM(CONFIG);
+
+        sink.pushHistoryPath(pathname);
+        const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+        expect(router.getPath()).toBe(expected);
+    });
+
+    it('getHref returns a base-joined path in History mode and a hash fragment in hash mode', () => {
+        installTestDOM(CONFIG);
+
+        const historyRouter = new Router({ mode: 'history', base: '/typescript-ui/' });
+        const hashRouter    = new Router();
+
+        expect(historyRouter.getHref('/guide/installation')).toBe('/typescript-ui/guide/installation');
+        expect(hashRouter.getHref('/guide/installation')).toBe('#/guide/installation');
+    });
+
+    it.each([
+        ['/guide'],
+        ['/guide/'],
+        ['/a b'],
+        ['/'],
+    ])('getPath(getHref(%j)) round-trips to the normalized path, in both modes', (path) => {
+        installTestDOM(CONFIG);
+
+        const historyRouter = new Router({ mode: 'history', base: '/typescript-ui/' });
+        const hashRouter    = new Router();
+        const expected      = normalizePath(path);
+
+        expect(historyRouter.getPath(historyRouter.getHref(path))).toBe(expected);
+        expect(hashRouter.getPath(hashRouter.getHref(path))).toBe(expected);
+    });
+
+    it('navigate("/settings") records one pushHistoryPath write and calls the matching handler once', () => {
+        const sink = installTestDOM(CONFIG);
+
+        let runs = 0;
+        const router = new Router({ mode: 'history', base: '/typescript-ui/', routes: { '/settings': () => { runs += 1; } } });
+
+        router.navigate('/settings');
+
+        expect(sink.writes.filter((w) => w.op === 'pushHistoryPath')).toEqual([{ op: 'pushHistoryPath', args: ['/typescript-ui/settings'] }]);
+        expect(runs).toBe(1);
+    });
+
+    it('navigate("/settings", { replace: true }) records replaceHistoryPath, not pushHistoryPath', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+        router.navigate('/settings', { replace: true });
+
+        expect(sink.writes.some((w) => w.op === 'replaceHistoryPath' && w.args[0] === '/typescript-ui/settings')).toBe(true);
+        expect(sink.writes.some((w) => w.op === 'pushHistoryPath')).toBe(false);
+    });
+
+    it('navigate to the path already current records no write and calls no handler', () => {
+        const sink = installTestDOM(CONFIG);
+        sink.pushHistoryPath('/typescript-ui/settings');
+
+        let runs = 0;
+        const router = new Router({ mode: 'history', base: '/typescript-ui/', routes: { '/settings': () => { runs += 1; } } });
+
+        router.start();
+        expect(runs).toBe(1);
+
+        const writesBefore = sink.writes.length;
+        router.navigate('/settings');
+
+        expect(sink.writes.length).toBe(writesBefore);
+        expect(runs).toBe(1);
+    });
+
+    it('a popstate dispatched after the modelled pathname changes calls the newly matching handler and emits navigate', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const calls: RouteParams[] = [];
+        const navigateEvents: RouteMatch[] = [];
+        const router = new Router({ mode: 'history', base: '/typescript-ui/', routes: { '/data/rows/:sel': (params) => calls.push(params) } });
+
+        router.on('navigate', (match) => navigateEvents.push(match));
+        router.start();
+
+        sink.pushHistoryPath('/typescript-ui/data/rows/5');
+        DOM.sink.dispatchCustomEvent(DOM.source.getWindow(), 'popstate');
+
+        expect(calls).toEqual([{ sel: '5' }]);
+        expect(navigateEvents.at(-1)).toEqual({ pattern: '/data/rows/:sel', params: { sel: '5' }, path: '/data/rows/5' });
+    });
+
+    it('start() registers a popstate listener and no hashchange listener; stop() removes it', () => {
+        const sink = installTestDOM(CONFIG);
+        const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+        router.start();
+
+        expect(sink.writes.some((w) => w.op === 'addListener' && w.args[0] === 'popstate')).toBe(true);
+        expect(sink.writes.some((w) => w.op === 'addListener' && w.args[0] === 'hashchange')).toBe(false);
+
+        router.stop();
+
+        expect(sink.writes.some((w) => w.op === 'removeListener' && w.args[0] === 'popstate')).toBe(true);
+    });
+
+    it('in hash mode, start() registers hashchange and no popstate; stop() removes it (the reverse of History mode)', () => {
+        const sink = installTestDOM(CONFIG);
+        const router = new Router();
+
+        router.start();
+
+        expect(sink.writes.some((w) => w.op === 'addListener' && w.args[0] === 'hashchange')).toBe(true);
+        expect(sink.writes.some((w) => w.op === 'addListener' && w.args[0] === 'popstate')).toBe(false);
+
+        router.stop();
+
+        expect(sink.writes.some((w) => w.op === 'removeListener' && w.args[0] === 'hashchange')).toBe(true);
+    });
+
+    it('with base "/", getHref("/guide") is "/guide" and getPath() reads the pathname unchanged', () => {
+        const sink = installTestDOM(CONFIG);
+        sink.pushHistoryPath('/guide');
+
+        const router = new Router({ mode: 'history', base: '/' });
+
+        expect(router.getHref('/guide')).toBe('/guide');
+        expect(router.getPath()).toBe('/guide');
     });
 });

@@ -104,6 +104,8 @@ class TestHandleTable {
     private _next = 1;
     /** The modelled `location.hash`, seeded empty. Shared so a sink write is visible to a source read. */
     private _locationHash = '';
+    /** The modelled `location.pathname`, seeded `'/'`. Shared so a sink write is visible to a source read. */
+    private _locationPathname = '/';
 
     /**
      * Mints a fresh handle for a created element / interned target.
@@ -271,6 +273,24 @@ class TestHandleTable {
      */
     setLocationHash(hash: string): void {
         this._locationHash = hash;
+    }
+
+    /**
+     * Returns the modelled `location.pathname`.
+     *
+     * @returns The current path, always starting with `"/"`.
+     */
+    locationPathname(): string {
+        return this._locationPathname;
+    }
+
+    /**
+     * Writes the modelled `location.pathname`.
+     *
+     * @param pathname - The new path.
+     */
+    setLocationPathname(pathname: string): void {
+        this._locationPathname = pathname;
     }
 }
 
@@ -482,6 +502,18 @@ export class RecordingDOMSink implements DOMSink {
         if (hash !== previous) {
             this.dispatchEvent(_windowHandle, makeEvent(_windowHandle, 'hashchange'));
         }
+    }
+
+    /** Writes the modelled pathname. Dispatches nothing, mirroring `history.pushState`. */
+    pushHistoryPath(url: string): void {
+        this.record('pushHistoryPath', url);
+        _table.setLocationPathname(url);
+    }
+
+    /** Writes the modelled pathname. Dispatches nothing, mirroring `history.replaceState`. */
+    replaceHistoryPath(url: string): void {
+        this.record('replaceHistoryPath', url);
+        _table.setLocationPathname(url);
     }
 
     addListener<T extends Event = Event>(target: Handle, type: string, handler: (event: T) => void, _options?: boolean | AddEventListenerOptions): void {
@@ -1019,6 +1051,11 @@ export class ModelledDOMSource implements DOMSource {
     /** Reads the modelled hash written by {@link RecordingDOMSink.setLocationHash} / `replaceLocationHash`. */
     getLocationHash(): string {
         return _table.locationHash();
+    }
+
+    /** Reads the modelled pathname written by {@link RecordingDOMSink.pushHistoryPath} / `replaceHistoryPath`. */
+    getLocationPathname(): string {
+        return _table.locationPathname();
     }
 
     /** Climbs `node`'s recorded parents looking for `ancestor` (inclusive). */

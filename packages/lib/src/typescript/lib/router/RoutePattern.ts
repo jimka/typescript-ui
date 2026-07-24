@@ -55,6 +55,60 @@ export function splitPath(path: string): string[] {
 }
 
 /**
+ * Normalizes a base to leading-and-trailing-slash form, so
+ * {@link stripBase} and {@link joinBase} can both assume that shape.
+ * `""`, `"/"`, `"x"`, `"/x"`, and `"/x/"` all become `"/"` or `"/x/"`.
+ *
+ * @param base - The raw base path.
+ * @returns The normalized base.
+ */
+export function normalizeBase(base: string): string {
+    const segments = splitPath(base);
+
+    return segments.length === 0 ? "/" : "/" + segments.join("/") + "/";
+}
+
+/**
+ * Removes `base` from the front of `pathname`, then normalizes what is
+ * left through {@link normalizePath}. A `pathname` that does not start with
+ * `base` is normalized as-is rather than rejected.
+ *
+ * @param base - The site base, in any shape {@link normalizeBase} accepts.
+ * @param pathname - The URL path to strip the base from.
+ * @returns The normalized path with `base` removed.
+ */
+export function stripBase(base: string, pathname: string): string {
+    const normalizedBase = normalizeBase(base);
+    // Base without its trailing slash, e.g. "/typescript-ui" ("" at the root).
+    const basePrefix = normalizedBase.slice(0, -1);
+
+    if (basePrefix !== "" && (pathname === basePrefix || pathname.startsWith(basePrefix + "/"))) {
+        return normalizePath(pathname.slice(basePrefix.length));
+    }
+
+    return normalizePath(pathname);
+}
+
+/**
+ * Joins a normalized base and a normalized path into a URL path — the
+ * inverse of {@link stripBase}.
+ *
+ * @param base - The site base, in any shape {@link normalizeBase} accepts.
+ * @param path - The route path, in any shape {@link normalizePath} accepts.
+ * @returns The joined URL path.
+ */
+export function joinBase(base: string, path: string): string {
+    const normalizedBase = normalizeBase(base);
+    const normalizedPath = normalizePath(path);
+
+    if (normalizedPath === "/") {
+        return normalizedBase;
+    }
+
+    return normalizedBase.slice(0, -1) + normalizedPath;
+}
+
+/**
  * Parses a registered pattern into {@link RouteSegment}s and derives its
  * ambiguity key.
  *
