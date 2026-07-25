@@ -52,6 +52,11 @@ class DiagramGroupNode extends Panel<DiagramGroupNodeOptions> {
     constructor(options?: DiagramGroupNodeOptions) {
         super(options, { layoutManager: new Absolute() });
 
+        // A container is a selectable node like any leaf, so it carries the same
+        // pointer cursor `DiagramNode` does — left at the Component default it
+        // would read as an arrow and promise a pan its own box does not perform.
+        this.setCursor("pointer");
+
         this.setBackgroundColor("var(--ts-ui-diagram-group-bg, rgba(120, 120, 120, 0.08))");
         this.setBorder("1px solid var(--ts-ui-diagram-group-border, var(--ts-ui-border-color, rgb(180, 180, 180)))");
         this.setBorderRadius(GROUP_BORDER_RADIUS);
