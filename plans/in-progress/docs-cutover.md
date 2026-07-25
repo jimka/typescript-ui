@@ -599,3 +599,72 @@ before any of this plan's edits existed) — a hardcoded documented-symbol count
 that has drifted out of sync with the library's growth, unrelated to routing.
 It is not in this plan's `## Files to Create / Modify / Delete` table and was
 not touched.
+
+---
+
+This run implemented Ordered Implementation Steps 16–27 (re-homing
+`llms.txt`, cutting the deployment over, VitePress removal, and the
+manifest/documentation follow-through), completing the plan.
+
+One deviation, needed to reach `npm run docs:api`'s zero-warning requirement
+(the step 19 check and the `## Verification` block both run it):
+
+- **`packages/lib/src/typescript/lib/router/index.ts` gains a `RouterMode`
+  type export.** The plan's `## Documentation Impact` section states
+  "`RouterMode` rides that same barrel export alongside `RouterEvent` and
+  `RouteMatch`, so no new subpath or barrel entry is needed" — but `RouterMode`
+  was never actually added to the barrel's `export type { … }` list in step 6
+  (it only exists as an unexported-from-the-barrel type in `Router.ts`).
+  Running `docs:api` after step 16 surfaced this concretely: TypeDoc emitted
+  "`RouterMode` … is referenced by `router.RouterOptions.mode` but not
+  included in the documentation," which is exactly the class of warning
+  `CODE_CONVENTIONS.md`'s `{@link}` rule exists to prevent, applied here to a
+  type reference rather than a `{@link}`. Adding `RouterMode` to
+  `router/index.ts`'s `export type { … }` list (alongside `RouteParams`,
+  `RouteHandler`, `RouterEvent`, `RouteMatch`, `RouterOptions`) resolved it
+  with zero other changes — the type's shape and its `## Public API` listing
+  were already correct; only its barrel visibility was missing. This also
+  shifted `packages/docs/tests/api.test.ts`'s `symbolCount()` baseline
+  mismatch by exactly one (690 → 691 documented symbols against the
+  hardcoded-683 literal), confirmed by toggling the export off and back on
+  and re-running `docs:api`; the mismatch itself remains the pre-existing,
+  unrelated baseline recorded above.
+
+Regenerating `packages/lib/llms.txt` (step 23) after this fix and the step 22
+task-text edit produced exactly one changed line — the `Router` catalog
+row's task text — confirming no other emitted content moved.
+
+The `.worktrees/docs-cutover/packages/docs/node_modules/@jimka/typescript-ui`
+override symlink recorded above was blown away by step 19's `npm install`, as
+anticipated, and was recreated immediately afterward; every subsequent
+docs-app typecheck/build/test in this run ran against the recreated symlink.
+
+Step 20's inline check text ("only `packages/lib/typedoc.json`'s plugin entry
+remains") undercounts by one match: `packages/lib/package.json`'s
+`typedoc-vitepress-theme` devDependency line also contains the substring
+`vitepress` and is matched by the same grep, because step 19 explicitly keeps
+that dependency ("Leave `typedoc`, `typedoc-plugin-markdown`, and
+`typedoc-vitepress-theme`"). Both matches are the plan's intended end state;
+the check's prose just didn't anticipate its own grep matching the kept
+dependency's name. No `vitepress` (the actual site generator package) remains
+anywhere in the tree outside `node_modules`/`package-lock.json`.
+
+Local build-output verification (the parts of step 27 that don't require a
+live deployment): `packages/docs/dist/404.html` is byte-identical to
+`packages/docs/dist/index.html`; `packages/docs/dist/llms.txt` exists (88
+`jimka.github.io` links, unchanged from a control generation at the old
+output path before the step-16 edit); no `next/` or `hashHref` matches
+anywhere in `packages/docs/dist/index.html` or `packages/docs/`; `docs:api`
+finishes with zero warnings post-`vitepress`-removal. A `vite preview` smoke
+check via chrome-devtools confirmed the production build boots at
+`/typescript-ui/` and that `/typescript-ui/concepts/theming`, typed directly
+into the address bar, renders the Theming page (not the default route) with
+no console errors — the same behaviour the step-15 review gate already
+confirmed for the pre-cutover build, now re-confirmed against the real
+`404.html`/`llms.txt` artifacts step 15's second bullet asked for.
+
+The plan's step 27 live-deployment check — `curl -I` every row of *Where each
+frozen URL lands* against `https://jimka.github.io/typescript-ui/` after the
+branch merges to `master` and Pages redeploys — could not be run from this
+worktree; nothing is deployed yet. It remains a manual step for whoever merges
+the branch.
