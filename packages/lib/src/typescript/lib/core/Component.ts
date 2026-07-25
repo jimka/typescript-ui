@@ -730,6 +730,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * never call it directly from outside a `Component` subclass.
      */
     protected destructor() {
+        // Drop any queued layout before this component's handles are released
+        // below. `pendingLayouts` is module-level and outlives the component, so
+        // a teardown landing between `scheduleLayout()` and the next animation
+        // frame would otherwise leave the flush to lay out a corpse: `doLayout`
+        // writes through handles this destructor has already released, which
+        // throws against the production sink and aborts the rest of that flush,
+        // leaving every component queued behind it unlaid. Descendants are
+        // covered by the child recursion below, which reaches this same line for
+        // each of them.
+        pendingLayouts.delete(this);
+
         // Discard the subtree eagerly — a destroyed container destroys its
         // children too. `removeComponent` never calls destructor (a removed
         // child may be re-parented by a move), so recursion here only reaches
