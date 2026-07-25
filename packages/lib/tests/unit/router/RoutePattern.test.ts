@@ -4,7 +4,7 @@
 // normalization, pattern compilation (including the ambiguity key), match +
 // param extraction, and specificity ranking. No DOM seam involved.
 import { describe, it, expect } from 'vitest';
-import { normalizePath, splitPath, compilePattern, matchPattern, selectPattern, type CompiledPattern } from '~/router/RoutePattern';
+import { normalizePath, splitPath, splitFragment, compilePattern, matchPattern, selectPattern, normalizeBase, stripBase, joinBase, type CompiledPattern } from '~/router/RoutePattern';
 
 describe('normalizePath', () => {
     it.each([
@@ -26,6 +26,19 @@ describe('splitPath', () => {
     it('splits a normalized path into its non-empty segments', () => {
         expect(splitPath('/data/rows/42')).toEqual(['data', 'rows', '42']);
         expect(splitPath('/')).toEqual([]);
+    });
+});
+
+describe('splitFragment', () => {
+    it.each([
+        ['/concepts/sizing#the-size-invariant', '/concepts/sizing', 'the-size-invariant'],
+        ['/concepts/sizing',                    '/concepts/sizing', ''],
+        ['/concepts/sizing#',                   '/concepts/sizing', ''],
+        ['#the-size-invariant',                 '',                 'the-size-invariant'],
+        ['/a#b#c',                              '/a',               'b#c'],
+        ['',                                    '',                 ''],
+    ])('splits %j into path %j and fragment %j', (input, path, fragment) => {
+        expect(splitFragment(input)).toEqual({ path, fragment });
     });
 });
 
@@ -141,5 +154,44 @@ describe('selectPattern — specificity ranking', () => {
 
     it('returns null when nothing matches, including an empty pattern list', () => {
         expect(selectPattern([] as CompiledPattern[], '/anything')).toBeNull();
+    });
+});
+
+describe('normalizeBase', () => {
+    it.each([
+        ['/typescript-ui/', '/typescript-ui/'],
+        ['/typescript-ui',  '/typescript-ui/'],
+        ['typescript-ui',   '/typescript-ui/'],
+        ['/',               '/'],
+        ['',                '/'],
+    ])('normalizes %j to %j', (base, expected) => {
+        expect(normalizeBase(base)).toBe(expected);
+    });
+});
+
+describe('stripBase', () => {
+    it.each([
+        ['/typescript-ui/', '/typescript-ui/',                    '/'],
+        ['/typescript-ui/', '/typescript-ui',                     '/'],
+        ['/typescript-ui/', '/typescript-ui/guide/installation',  '/guide/installation'],
+        ['/typescript-ui/', '/typescript-ui/components/',         '/components'],
+        ['/typescript-ui/', '/elsewhere',                         '/elsewhere'],
+        ['/',               '/guide',                             '/guide'],
+    ])('stripBase(%j, %j) is %j', (base, pathname, expected) => {
+        expect(stripBase(base, pathname)).toBe(expected);
+    });
+});
+
+describe('joinBase', () => {
+    it.each([
+        ['/typescript-ui/', '/guide/installation', '/typescript-ui/guide/installation'],
+        ['/typescript-ui/', '/',                    '/typescript-ui/'],
+        ['/',               '/guide',               '/guide'],
+    ])('joinBase(%j, %j) is %j', (base, path, expected) => {
+        expect(joinBase(base, path)).toBe(expected);
+    });
+
+    it('keeps the base\'s trailing slash for the root path', () => {
+        expect(joinBase('/typescript-ui/', '/')).toBe('/typescript-ui/');
     });
 });

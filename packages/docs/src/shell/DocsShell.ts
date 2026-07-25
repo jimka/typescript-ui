@@ -39,8 +39,9 @@ class DocsShell extends Panel {
     }
 
     /**
-     * Shows `path` in the content pane and reflects it into the sidebar
-     * selection — the one method the router's route handlers call.
+     * Shows `path` in the content pane, scrolled to `fragment`'s heading,
+     * and reflects `path` into the sidebar selection — the one method the
+     * router's route handlers call.
      *
      * `select` is async (it awaits a tree reveal) but this call is
      * deliberately fire-and-forget: `router.start()` must apply the first
@@ -50,9 +51,11 @@ class DocsShell extends Panel {
      * plans/implemented/docs-content-migration.md.
      *
      * @param path - The route path to show.
+     * @param fragment - The URL fragment to scroll to, without its `"#"`, or
+     * `""` to scroll to the top.
      */
-    showPath(path: string): void {
-        this._content.showPath(path);
+    showPath(path: string, fragment: string): void {
+        this._content.showPath(path, fragment);
         void this._sidebar.select(path);
     }
 }

@@ -154,9 +154,21 @@ class DocsSidebar extends Panel {
     private onSelection(nodes: TreeNode[]): void {
         const node = nodes[0];
 
-        if (node && node.data !== undefined) {
-            this._router.navigate(node.data as string);
+        if (!node || node.data === undefined) {
+            return;
         }
+
+        if (node.data === this._router.getPath()) {
+            // Reflecting the current route (DocsShell.showPath just called
+            // select(), which fired this listener), not a user action. A
+            // bare-path navigate() here would widen-guard past a fragment
+            // already in the URL and strip it — see "The sidebar can strip
+            // the fragment it was just given" in
+            // plans/implemented/docs-fragment-navigation.md.
+            return;
+        }
+
+        this._router.navigate(node.data as string);
     }
 }
 

@@ -2,16 +2,19 @@
 
 import { DOM } from '~/core/DOM.js';
 import { ListenerBag } from '~/core/ListenerBag.js';
-import { compilePattern, normalizePath, splitPath, selectPattern, type CompiledPattern } from '~/router/RoutePattern.js';
+import { compilePattern, normalizePath, splitPath, splitFragment, selectPattern, normalizeBase, stripBase, joinBase, type CompiledPattern } from '~/router/RoutePattern.js';
 
 /** Params extracted from a matched pattern's `:name` segments. */
 export type RouteParams = Record<string, string>;
 
 /** A registered route's callback: drives whatever it fronts, never builds it. */
-export type RouteHandler = (params: RouteParams, path: string) => void;
+export type RouteHandler = (params: RouteParams, path: string, fragment: string) => void;
 
 /** The events a {@link Router} emits. */
 export type RouterEvent = "navigate" | "nomatch";
+
+/** Where a {@link Router} reads and writes the route: the URL hash, or the path. */
+export type RouterMode = "hash" | "history";
 
 /** The pattern and params a navigation resolved to. */
 export interface RouteMatch {
@@ -20,10 +23,16 @@ export interface RouteMatch {
     params:  RouteParams;
     /** The normalized path that was matched. */
     path:    string;
+    /** The URL fragment without its `"#"`, or `""` when there is none. Always `""` in hash mode. */
+    fragment: string;
 }
 
 /** Construction options for {@link Router}. */
 export interface RouterOptions {
+    /** Defaults to `"hash"`. */
+    mode?:      RouterMode;
+    /** Path prefix the site is served under, e.g. `"/typescript-ui/"`. History mode only; defaults to `"/"`. */
+    base?:      string;
     /** Patterns to `register` at construction, keyed by pattern string. */
     routes?:    Record<string, RouteHandler>;
     listeners?: Partial<{
@@ -36,17 +45,17 @@ export interface RouterOptions {
 type CompiledRoute = CompiledPattern & { handler: RouteHandler };
 
 /**
- * Maps the URL hash to a single top-level app section. Patterns are
+ * Maps the URL hash or path to a single top-level app section. Patterns are
  * registered with {@link register} (e.g. `"/data/rows/:sel"`); on a
  * navigation, the router selects the most specific matching pattern, extracts
  * its `:param` values, and calls that pattern's handler — the handler drives
  * components that already exist, it never builds them.
  *
- * {@link start} reads the current hash, applies the matching route
- * synchronously, then installs the `hashchange` listener; call it once the
- * app has built its component tree and before the first layout pass runs, so
- * the routed section is already selected when that pass runs. {@link stop}
- * removes the listener.
+ * {@link start} reads the current hash or path, applies the matching route
+ * synchronously, then installs the `hashchange` (or, in History mode,
+ * `popstate`) listener; call it once the app has built its component tree
+ * and before the first layout pass runs, so the routed section is already
+ * selected when that pass runs. {@link stop} removes the listener.
  *
  * It is a plain class (no DOM element, so not `callable()`-wrapped) — it
  * follows the shape of a data store: an options bag, a private listener bag,
@@ -59,9 +68,15 @@ export class Router {
     private _routes:    Map<string, CompiledRoute> = new Map();
     private _listeners: ListenerBag<RouterEvent>   = new ListenerBag<RouterEvent>();
     private _started:   boolean                    = false;
+    // Set once in applyOptions and never reassigned after — construction-only,
+    // like the compiled route table. Not `readonly`: strictPropertyInitialization
+    // rejects a readonly field assigned from a method the constructor merely calls.
+    private _mode!: RouterMode;
+    private _base!: string;
 
-    // Stable reference so add/remove pair up; delegates to a named method.
+    // Stable references so add/remove pair up; each delegates to a named method.
     private readonly _onHashChange: () => void = () => this.handleHashChange();
+    private readonly _onPopState:   () => void = () => this.handlePopState();
 
     /**
      * @param options - Routes and listeners to register at construction.
@@ -97,8 +112,9 @@ export class Router {
     }
 
     /**
-     * Reads the current hash, applies the matching route synchronously, then
-     * installs the `hashchange` listener. Calling `start()` again on an
+     * Reads the current hash or path, applies the matching route
+     * synchronously, then installs the `hashchange` (hash mode) or
+     * `popstate` (History mode) listener. Calling `start()` again on an
      * already-started router logs a warning and is otherwise a no-op — it
      * does not install a second listener.
      *
@@ -113,14 +129,19 @@ export class Router {
 
         this._started = true;
         this.applyCurrentRoute();
-        DOM.sink.addListener(DOM.source.getWindow(), "hashchange", this._onHashChange);
+
+        if (this._mode === "history") {
+            DOM.sink.addListener(DOM.source.getWindow(), "popstate", this._onPopState);
+        } else {
+            DOM.sink.addListener(DOM.source.getWindow(), "hashchange", this._onHashChange);
+        }
 
         return this;
     }
 
     /**
-     * Removes the `hashchange` listener. Safe to call when never started, or
-     * more than once.
+     * Removes the `hashchange` (hash mode) or `popstate` (History mode)
+     * listener. Safe to call when never started, or more than once.
      *
      * @returns This router, for chaining.
      */
@@ -129,43 +150,160 @@ export class Router {
             return this;
         }
 
-        DOM.sink.removeListener(DOM.source.getWindow(), "hashchange", this._onHashChange);
+        if (this._mode === "history") {
+            DOM.sink.removeListener(DOM.source.getWindow(), "popstate", this._onPopState);
+        } else {
+            DOM.sink.removeListener(DOM.source.getWindow(), "hashchange", this._onHashChange);
+        }
+
         this._started = false;
 
         return this;
     }
 
     /**
-     * Writes `path` into the hash — pushing a history entry, or replacing the
-     * current one when `options.replace` is `true`. Each segment is
-     * percent-encoded. Writing the path already in the hash is a same-value
-     * write: it fires no `hashchange` and re-runs no handler.
+     * Navigates to `path` — pushing a history entry, or replacing the
+     * current one when `options.replace` is `true`. In hash mode this writes
+     * the hash, discarding any `#fragment` in `path` (the `#` is already
+     * spent on the route); in History mode this writes `location.pathname`
+     * and `location.hash` via `pushState` / `replaceState` and — since
+     * neither fires an event — applies the matching route itself. Either
+     * way, navigating to the path (and, in History mode, fragment) already
+     * current is a same-value write: no history entry is written and no
+     * handler re-runs.
      *
-     * @param path - The path to navigate to, e.g. `"/settings"`.
+     * @param path - The path to navigate to, e.g. `"/settings"` or, in
+     * History mode, `"/settings#section"`.
      * @param options - `replace` to replace the current history entry instead
      * of pushing a new one.
      * @returns This router, for chaining.
      */
     navigate(path: string, options?: { replace?: boolean }): this {
-        const segments = splitPath(normalizePath(path));
-        const hash = "#/" + segments.map((segment) => encodeURIComponent(segment)).join("/");
+        const split = splitFragment(path);
+
+        if (this._mode === "hash") {
+            const segments = splitPath(normalizePath(split.path));
+            const hash = "#/" + segments.map((segment) => encodeURIComponent(segment)).join("/");
+
+            if (options?.replace === true) {
+                DOM.sink.replaceLocationHash(hash);
+            } else {
+                DOM.sink.setLocationHash(hash);
+            }
+
+            return this;
+        }
+
+        const target   = normalizePath(split.path);
+        const fragment = split.fragment;
+
+        if (target === this.getPath() && fragment === this.getFragment()) {
+            return this;
+        }
+
+        const url = this.getHref(fragment === "" ? target : `${target}#${fragment}`);
 
         if (options?.replace === true) {
-            DOM.sink.replaceLocationHash(hash);
+            DOM.sink.replaceHistoryPath(url);
         } else {
-            DOM.sink.setLocationHash(hash);
+            DOM.sink.pushHistoryPath(url);
         }
+
+        this.applyCurrentRoute(); // pushState/replaceState fire no event; apply it ourselves
 
         return this;
     }
 
     /**
-     * The normalized path currently in the hash.
+     * The href an `<a>` for `path` should carry, in this router's mode and
+     * base: a `"#/…"` fragment in hash mode, a base-joined path in History
+     * mode. Each segment is percent-encoded. A `#fragment` in `path` is
+     * dropped first and, in History mode only, re-appended verbatim
+     * (unencoded, so it keeps matching a heading `id`) after the encoded
+     * path — hash mode has nowhere to put it, since its own `#` is already
+     * spent on the route.
      *
-     * @returns The current path.
+     * @param path - The route path to format, e.g. `"/guide/installation"`
+     * or, in History mode, `"/guide/installation#section"`.
+     * @returns The formatted href.
      */
-    getPath(): string {
-        return normalizePath(DOM.source.getLocationHash());
+    getHref(path: string): string {
+        const split = splitFragment(path);
+        const segments = splitPath(normalizePath(split.path)).map((segment) => encodeURIComponent(segment));
+        const encodedPath = "/" + segments.join("/");
+
+        if (this._mode === "hash") {
+            return "#" + encodedPath;
+        }
+
+        const href = joinBase(this._base, encodedPath);
+
+        return split.fragment === "" ? href : `${href}#${split.fragment}`;
+    }
+
+    /**
+     * The route path for `href`, or — with no argument — for the current
+     * URL. The inverse of {@link getHref}: percent-encoded segments are
+     * decoded, and in History mode the base is stripped first and any
+     * `#fragment` is split off before normalizing (see {@link getFragment}
+     * to read it).
+     *
+     * @param href - The href to parse; defaults to the current hash (hash
+     * mode) or `location.pathname` (History mode), read through the DOM seam.
+     * @returns The normalized, decoded path, without a fragment.
+     */
+    getPath(href?: string): string {
+        if (this._mode === "hash") {
+            const raw = href ?? DOM.source.getLocationHash();
+
+            return this.decodePath(normalizePath(raw));
+        }
+
+        const raw = href ?? DOM.source.getLocationPathname();
+
+        return this.decodePath(stripBase(this._base, splitFragment(raw).path));
+    }
+
+    /**
+     * The fragment for `href`, or — with no argument — for the current URL,
+     * without its leading `"#"`. Always `""` in hash mode, since the `#`
+     * there is already spent on the route.
+     *
+     * @param href - The href to parse; defaults to the current
+     * `location.hash`, read through the DOM seam.
+     * @returns The fragment, or `""` when there is none.
+     */
+    getFragment(href?: string): string {
+        if (this._mode === "hash") {
+            return "";
+        }
+
+        if (href !== undefined) {
+            return splitFragment(href).fragment;
+        }
+
+        const hash = DOM.source.getLocationHash();
+
+        return hash.startsWith("#") ? hash.slice(1) : hash;
+    }
+
+    /**
+     * Decodes each percent-encoded segment of an already-normalized path,
+     * falling back to the raw segment text on a malformed escape.
+     *
+     * @param path - The normalized path to decode.
+     * @returns The decoded path.
+     */
+    private decodePath(path: string): string {
+        const segments = splitPath(path).map((segment) => {
+            try {
+                return decodeURIComponent(segment);
+            } catch {
+                return segment;
+            }
+        });
+
+        return "/" + segments.join("/");
     }
 
     on(event: "navigate", listener: (match: RouteMatch) => void): this;
@@ -210,13 +348,15 @@ export class Router {
     }
 
     /**
-     * Reads the current hash and calls the most specific matching pattern's
-     * handler, emitting `"navigate"` — or emits `"nomatch"` when nothing
-     * matches. Shared by {@link start} and the `hashchange` listener.
+     * Reads the current hash or path and calls the most specific matching
+     * pattern's handler, emitting `"navigate"` — or emits `"nomatch"` when
+     * nothing matches. Shared by {@link start}, the `hashchange` listener,
+     * the `popstate` listener, and History-mode {@link navigate}.
      */
     private applyCurrentRoute(): void {
-        const path   = this.getPath();
-        const result = selectPattern(Array.from(this._routes.values()), path);
+        const path     = this.getPath();
+        const fragment = this.getFragment();
+        const result   = selectPattern(Array.from(this._routes.values()), path);
 
         if (result === null) {
             this.emit("nomatch", path);
@@ -224,20 +364,23 @@ export class Router {
             return;
         }
 
-        const match: RouteMatch = { pattern: result.compiled.pattern, params: result.params, path };
+        const match: RouteMatch = { pattern: result.compiled.pattern, params: result.params, path, fragment };
 
-        result.compiled.handler(result.params, path);
+        result.compiled.handler(result.params, path, fragment);
         this.emit("navigate", match);
     }
 
     /**
-     * Applies an {@link RouterOptions} bag: registers `routes`, then wires
-     * `listeners`. Called from the constructor body, after every field
-     * initializer has run.
+     * Applies an {@link RouterOptions} bag: sets `mode` and `base`, registers
+     * `routes`, then wires `listeners`. Called from the constructor body,
+     * after every field initializer has run.
      *
      * @param options - The options bag to apply.
      */
     protected applyOptions(options: RouterOptions): void {
+        this._mode = options.mode ?? "hash";
+        this._base = normalizeBase(options.base ?? "/");
+
         if (options.routes !== undefined) {
             for (const pattern of Object.keys(options.routes)) {
                 this.register(pattern, options.routes[pattern]);
@@ -256,6 +399,10 @@ export class Router {
     }
 
     private handleHashChange(): void {
+        this.applyCurrentRoute();
+    }
+
+    private handlePopState(): void {
         this.applyCurrentRoute();
     }
 }

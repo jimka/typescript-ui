@@ -12,6 +12,26 @@ const RAW_SOURCES = import.meta.glob(
 const PAGES = Object.entries(RAW_SOURCES);
 
 /**
+ * Maps a glob key to its route path, mirroring `packages/docs/src/content/
+ * pages.ts`'s `routePathFor` — duplicated (like {@link slugify} below)
+ * rather than imported, so this guard resolves a cross-page link's target
+ * from the corpus it reads independently, not from anything `pages.ts`
+ * derives from it.
+ *
+ * @param globKey - The glob-relative path, e.g. `../../lib/docs/guide/index.md`.
+ * @returns The route path, e.g. `/guide`.
+ */
+function routePathFor(globKey: string): string {
+    const withoutPrefix = globKey.replace(/^\.\.\/\.\.\/lib\/docs/, '');
+    const withoutExt    = withoutPrefix.replace(/\.md$/, '');
+
+    return withoutExt.replace(/\/index$/, '');
+}
+
+/** Every migrated page's raw source, keyed by its route path. */
+const SOURCE_BY_ROUTE = new Map<string, string>(PAGES.map(([globKey, raw]) => [routePathFor(globKey), raw]));
+
+/**
  * Strips fenced code blocks (including list-indented ones) and inline code
  * spans from `source`, longest-first, so a construct quoted inside backticks
  * or a sample block is never mistaken for live syntax — see "The survey's
@@ -104,14 +124,25 @@ function headingIds(strippedSource: string): Set<string> {
 
 /**
  * Every bare `#anchor` link target on the page (excluding a `/path#fragment`
- * cross-page link, which this phase does not resolve — see `## Non-Goals` in
- * plans/implemented/docs-content-migration.md).
+ * cross-page link, which {@link crossPageFragmentLinks} handles).
  *
  * @param strippedSource - A page's source with {@link stripCode} applied.
  * @returns The referenced anchor ids, in document order.
  */
 function bareAnchorLinks(strippedSource: string): string[] {
     return [...strippedSource.matchAll(/\]\(#([a-zA-Z0-9-]+)\)/g)].map((match) => match[1]);
+}
+
+/**
+ * Every `/path#fragment` cross-page link on the page (excluding a bare
+ * `#anchor` in-page reference, which {@link bareAnchorLinks} handles).
+ *
+ * @param strippedSource - A page's source with {@link stripCode} applied.
+ * @returns The referenced `{ path, fragment }` pairs, in document order.
+ */
+function crossPageFragmentLinks(strippedSource: string): Array<{ path: string; fragment: string }> {
+    return [...strippedSource.matchAll(/\]\((\/[^)#]*)#([a-zA-Z0-9-]+)\)/g)]
+        .map((match) => ({ path: match[1], fragment: match[2] }));
 }
 
 describe('content-constructs guard', () => {
@@ -165,6 +196,18 @@ describe('content-constructs guard', () => {
         const dangling = bareAnchorLinks(stripCode(raw)).filter((anchor) => !ids.has(anchor));
 
         expect(dangling, `${path} links #anchor(s) with no matching heading: ${dangling.join(', ')}`).toHaveLength(0);
+    });
+
+    it.each(PAGES)('%s resolves every /path#fragment link to a heading on the target page', (path, raw) => {
+        // A link into /api/… is skipped: SOURCE_BY_ROUTE only covers this
+        // guard's own migrated-page glob, so getPage's null-for-unmigrated
+        // behaviour is mirrored by has() returning false.
+        const dangling = crossPageFragmentLinks(stripCode(raw))
+            .filter((link) => SOURCE_BY_ROUTE.has(link.path))
+            .filter((link) => !headingIds(stripFences(SOURCE_BY_ROUTE.get(link.path)!)).has(link.fragment))
+            .map((link) => `${link.path}#${link.fragment} (page ${link.path})`);
+
+        expect(dangling, `${path} links /path#fragment target(s) with no matching heading: ${dangling.join(', ')}`).toHaveLength(0);
     });
 });
 

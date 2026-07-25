@@ -655,6 +655,23 @@ export interface DOMSink {
     replaceLocationHash(hash: string): void;
 
     /**
+     * `history.pushState` with `url`, pushing a history entry. Fires no
+     * event — the caller is responsible for applying the new route.
+     *
+     * @param url - The new path (and optional query/fragment) to push.
+     */
+    pushHistoryPath(url: string): void;
+
+    /**
+     * `history.replaceState` with `url`, replacing the current history
+     * entry. Fires no event — the caller is responsible for applying the new
+     * route.
+     *
+     * @param url - The new path (and optional query/fragment) to write.
+     */
+    replaceHistoryPath(url: string): void;
+
+    /**
      * Registers a native event listener on a target. The framework's
      * {@link Event} class is the component-level routing layer; this seam covers
      * the low-level native hook it (and a few primitives) sits on.
@@ -1116,6 +1133,14 @@ export interface DOMSource {
      * @returns The hash including its leading `"#"`, or `""` when empty.
      */
     getLocationHash(): string;
+
+    /**
+     * The current `location.pathname`, boxed so the raw global never escapes
+     * the seam.
+     *
+     * @returns The path, always starting with `"/"`.
+     */
+    getLocationPathname(): string;
 
     /**
      * Whether a node is the ancestor of (or equal to) another node.
@@ -1652,6 +1677,16 @@ export class ProductionDOMSink implements DOMSink {
     }
 
     /** @inheritDoc */
+    pushHistoryPath(url: string): void {
+        history.pushState(null, "", url);
+    }
+
+    /** @inheritDoc */
+    replaceHistoryPath(url: string): void {
+        history.replaceState(null, "", url);
+    }
+
+    /** @inheritDoc */
     addListener<T extends Event = Event>(target: Handle, type: string, handler: (event: T) => void, options?: boolean | AddEventListenerOptions): void {
         _registry.resolve(target).addEventListener(type, handler as EventListener, options);
     }
@@ -2083,6 +2118,11 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getLocationHash(): string {
         return location.hash;
+    }
+
+    /** @inheritDoc */
+    getLocationPathname(): string {
+        return location.pathname;
     }
 
     /** @inheritDoc */
