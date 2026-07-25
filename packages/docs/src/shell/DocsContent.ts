@@ -29,6 +29,15 @@ class DocsContent extends Panel {
     // fragment-only navigation only scrolls.
     private _path: string | null = null;
 
+    // The fragment the most recent showPath call asked for, written
+    // unconditionally at the top of every call. showSource reads this
+    // rather than taking a fragment parameter, so a still-in-flight API
+    // fetch started by an earlier call applies whatever fragment is current
+    // by the time it resolves, not the one closed over when it started —
+    // otherwise a second same-path navigation arriving before the first
+    // fetch settles would have its fragment overwritten by the stale one.
+    private _targetFragment: string = '';
+
     // The fragment to scroll to once the next layout flush settles the
     // pane's scroll extent, or null when nothing is pending. Overwritten by
     // a second navigation arriving before the callback drains, so the last
@@ -93,6 +102,8 @@ class DocsContent extends Panel {
      * `""` to scroll to the top.
      */
     showPath(path: string, fragment: string): void {
+        this._targetFragment = fragment;
+
         if (path === this._path) {
             this.applyFragment(fragment);
             return;
@@ -105,21 +116,21 @@ class DocsContent extends Panel {
         const page = getPage(path);
         if (page) {
             this._linkBaseDir = null;
-            this.showSource(page.source, fragment);
+            this.showSource(page.source);
             return;
         }
 
         const file = apiFileFor(path);
         if (file === null) {
             this._linkBaseDir = null;
-            this.showSource(notFoundSource(path), fragment);
+            this.showSource(notFoundSource(path));
             return;
         }
 
         const cached = this._apiSources.get(file);
         if (cached !== undefined) {
             this._linkBaseDir = apiDirOf(file);
-            this.showSource(cached, fragment);
+            this.showSource(cached);
             return;
         }
 
@@ -128,29 +139,31 @@ class DocsContent extends Panel {
                 this._apiSources.set(file, source);
                 if (token === this._requestToken) {
                     this._linkBaseDir = apiDirOf(file);
-                    this.showSource(source, fragment);
+                    this.showSource(source);
                 }
             },
             () => {
                 if (token === this._requestToken) {
                     this._linkBaseDir = null;
-                    this.showSource(fetchErrorSource(path), fragment);
+                    this.showSource(fetchErrorSource(path));
                 }
             },
         );
     }
 
     /**
-     * Shows `source` in the viewer, then applies `fragment` — the tail
-     * shared by every re-rendering branch of {@link showPath}.
+     * Shows `source` in the viewer, then applies {@link _targetFragment} —
+     * the tail shared by every re-rendering branch of {@link showPath}.
+     * Reading the field rather than taking a fragment parameter matters for
+     * the async fetch branch: by the time a fetch resolves, a later
+     * same-path `showPath` call may have asked for a different fragment,
+     * and {@link _targetFragment} always holds that latest one.
      *
      * @param source - The Markdown source to render.
-     * @param fragment - The URL fragment to scroll to, without its `"#"`, or
-     * `""` to scroll to the top.
      */
-    private showSource(source: string, fragment: string): void {
+    private showSource(source: string): void {
         this._markdown.setMarkdown(source);
-        this.applyFragment(fragment);
+        this.applyFragment(this._targetFragment);
     }
 
     /**

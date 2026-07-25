@@ -53,12 +53,13 @@ function joinApiPath(baseDir: string, href: string): string {
  * directory of the page being rendered, e.g. `component/button/classes`. The
  * first matching branch wins: an in-page `#fragment` passes through
  * unchanged; an absolute site path (`/…`) delegates to {@link resolveDocLink};
- * a relative `.md` link — with any `#fragment` stripped first, the same rule
- * {@link resolveDocLink} applies to a route href, since a member cross-link
- * like `BaseObject.md#constructor` is a link to another *page*, not an
- * in-page reference — is joined onto `baseDir` and mapped to its route
- * through {@link apiRouteFor}. Anything else is external, unchanged — see
- * "Links inside API pages resolve against the current page's directory" in
+ * a relative `.md` link — with any `#fragment` stripped first, since a member
+ * cross-link like `BaseObject.md#constructor` is a link to another *page*,
+ * not an in-page reference, and fragment-carrying is not implemented for
+ * this branch (unlike {@link resolveDocLink}'s route branch) — is joined
+ * onto `baseDir` and mapped to its route through {@link apiRouteFor}.
+ * Anything else is external, unchanged — see "Links inside API pages resolve
+ * against the current page's directory" in
  * plans/implemented/docs-typedoc-reference.md.
  *
  * @param href - The authored href, as it appears in the generated Markdown.
