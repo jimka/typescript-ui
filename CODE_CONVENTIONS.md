@@ -16,11 +16,11 @@ The complementary fix, for a field that genuinely needs a real initializer (a `L
 
 ## Don't `{@link}` internal symbols from public JSDoc
 
-The docs build (`npm run docs:build` → TypeDoc) excludes `private`, `protected`, and `@internal` members, as well as anything not re-exported from a package entry point. When a *public* (documented) symbol's JSDoc links to one of those excluded symbols — via `{@link Foo}` or `{@link Class.method}` — TypeDoc emits a *"links to X which was resolved but is not included in the documentation"* warning, because the generated page would point at a page that doesn't exist.
+The docs build (`npm run docs:api` → TypeDoc) excludes `private`, `protected`, and `@internal` members, as well as anything not re-exported from a package entry point. When a *public* (documented) symbol's JSDoc links to one of those excluded symbols — via `{@link Foo}` or `{@link Class.method}` — TypeDoc emits a *"links to X which was resolved but is not included in the documentation"* warning, because the generated page would point at a page that doesn't exist.
 
 The rule: **the JSDoc of an exported symbol may only `{@link}` other symbols that appear in the public API docs** (exported, and not `private`/`protected`/`@internal`). To reference internal mechanics, **describe the behaviour in prose** instead of naming the symbol — e.g. write "derived live from the content row + perimeter" rather than "derived via `{@link computePreferredSize}`". The link inside an internal symbol's own JSDoc is fine; the constraint is only on docs that actually render.
 
-Run `npm run docs:build` after touching public JSDoc — it must finish with zero warnings.
+Run `npm run docs:api` after touching public JSDoc — it must finish with zero warnings.
 
 ## Framework rules
 

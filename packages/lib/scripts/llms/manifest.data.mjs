@@ -122,7 +122,7 @@ export const groups = [
     ] },
 
     { name: "App shell", entries: [
-        { task: "Map the URL hash to a top-level app section", symbol: "Router", doc: "docs/concepts/routing.md" },
+        { task: "Map the URL to a top-level app section", symbol: "Router", doc: "docs/concepts/routing.md" },
     ] },
 ];
 

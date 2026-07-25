@@ -90,8 +90,8 @@ If instead you are consuming a local checkout of this library from your own app 
 | `npm run build:lib` | Per-subpath ESM bundles + `.d.ts` declarations to `dist/lib/` |
 | `npm run preview` | Preview the production build locally |
 | `npm run typecheck` | Strict TypeScript type check (no emit) |
-| `npm run docs:dev` | Serve this documentation site locally |
-| `npm run docs:build` | Build the documentation site |
+| `npm run docs:dev` | Serve the documentation app locally |
+| `npm run build:pages` | Build the full documentation site |
 | `npm run clean` | Delete `dist/` contents |
 
 ## Browser support

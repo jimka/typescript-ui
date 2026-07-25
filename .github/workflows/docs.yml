@@ -24,42 +24,33 @@ jobs:
                   node-version: 22
                   cache:        npm
             - run: npm ci
-            # Deploys the VitePress site from packages/lib — the docs that
-            # actually have content — as the site root, plus packages/docs
-            # (a docs app built with the library itself) as a preview at
-            # /next/ inside the same Pages artifact. VitePress keeps the site
-            # root, so every URL in the published packages/lib/README.md
-            # keeps resolving unchanged.
+            # packages/docs (a docs app built with the library itself) is now
+            # the site root, so every URL in the published
+            # packages/lib/README.md keeps resolving unchanged. The former
+            # preview build and its separate output-merging step are gone —
+            # there is only one site to build now.
             #
-            # docs:build runs docs:api (TypeDoc) and docs:llms itself, so they
-            # need no separate steps; build:lib precedes it because the docs
-            # import the built library. The NODE_OPTIONS heap pin is set at the
-            # step level so TypeDoc inherits it too while it emits the ~105 MB
-            # model. That requirement grows with the library, and the build now
-            # OOMs on smaller developer machines while still completing on CI
+            # build:pages runs build:lib, docs:api (TypeDoc), docs:llms, and
+            # the docs app's own build in sequence. The NODE_OPTIONS heap pin
+            # is set at the step level so TypeDoc inherits it while it emits
+            # the ~105 MB model — the one remaining build step heavy enough to
+            # need it now that the old static-site build is gone. That
+            # requirement grows with the library, and the build now OOMs on
+            # smaller developer machines while still completing on CI
             # runners — a local OOM here is expected, not a broken build.
-            - run: npm run build:lib
-            - run: npm run docs:build
+            #
+            # The docs typecheck/test steps run after it, not before: they
+            # type-check against packages/lib's built .d.ts output, which
+            # build:pages's build:lib substep is what produces.
+            - run: npm run build:pages
               env:
                   NODE_OPTIONS: --max-old-space-size=12288
             - run: npm -w packages/docs run typecheck
             - run: npm -w packages/docs run test
-            # packages/docs deploys to /next/ as a preview alongside the live
-            # VitePress site — vite.config.ts's `base` is
-            # /typescript-ui/next/, so its assets resolve correctly once
-            # copied under the VitePress output that upload-pages-artifact
-            # ships below. packages/docs/dist now also carries a static copy
-            # of the generated API Markdown (packages/lib/docs/api/, minus
-            # the JSON model and sidebar file) that the docs app fetches one
-            # page at a time — see plans/implemented/docs-typedoc-reference.md.
-            - run: npm run build:docs
-              env:
-                  NODE_OPTIONS: --max-old-space-size=12288
-            - run: cp -r packages/docs/dist packages/lib/docs/.vitepress/dist/next
             - uses: actions/configure-pages@v5
             - uses: actions/upload-pages-artifact@v3
               with:
-                  path: packages/lib/docs/.vitepress/dist
+                  path: packages/docs/dist
 
     deploy:
         needs:    build

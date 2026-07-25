@@ -12,8 +12,8 @@
     "lint": "npm -w packages/lib run lint",
     "docs:api": "npm -w packages/lib run docs:api",
     "docs:llms": "npm -w packages/lib run docs:llms",
-    "docs:build": "npm -w packages/lib run docs:build",
+    "docs:dev": "npm -w packages/docs run dev",
     "build:docs": "npm -w packages/docs run build",
-    "build:pages": "npm run build:lib && npm run docs:api && npm run build:docs"
+    "build:pages": "npm run build:lib && npm run docs:api && npm run docs:llms && npm run build:docs"
   }
 }
