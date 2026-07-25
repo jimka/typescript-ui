@@ -178,6 +178,11 @@ class DocsContent extends Panel {
      */
     private applyFragment(fragment: string): void {
         if (fragment === '') {
+            // Clears a callback an earlier call may have queued (see
+            // onScrollToFragment) so it finds null and no-ops instead of
+            // scrolling back down to a stale fragment after this scroll-to-top
+            // has already run.
+            this._pendingFragment = null;
             this.setScrollTop(0);
             return;
         }
