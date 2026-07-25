@@ -4,7 +4,7 @@
 // normalization, pattern compilation (including the ambiguity key), match +
 // param extraction, and specificity ranking. No DOM seam involved.
 import { describe, it, expect } from 'vitest';
-import { normalizePath, splitPath, compilePattern, matchPattern, selectPattern, normalizeBase, stripBase, joinBase, type CompiledPattern } from '~/router/RoutePattern';
+import { normalizePath, splitPath, splitFragment, compilePattern, matchPattern, selectPattern, normalizeBase, stripBase, joinBase, type CompiledPattern } from '~/router/RoutePattern';
 
 describe('normalizePath', () => {
     it.each([
@@ -26,6 +26,19 @@ describe('splitPath', () => {
     it('splits a normalized path into its non-empty segments', () => {
         expect(splitPath('/data/rows/42')).toEqual(['data', 'rows', '42']);
         expect(splitPath('/')).toEqual([]);
+    });
+});
+
+describe('splitFragment', () => {
+    it.each([
+        ['/concepts/sizing#the-size-invariant', '/concepts/sizing', 'the-size-invariant'],
+        ['/concepts/sizing',                    '/concepts/sizing', ''],
+        ['/concepts/sizing#',                   '/concepts/sizing', ''],
+        ['#the-size-invariant',                 '',                 'the-size-invariant'],
+        ['/a#b#c',                              '/a',               'b#c'],
+        ['',                                    '',                 ''],
+    ])('splits %j into path %j and fragment %j', (input, path, fragment) => {
+        expect(splitFragment(input)).toEqual({ path, fragment });
     });
 });
 

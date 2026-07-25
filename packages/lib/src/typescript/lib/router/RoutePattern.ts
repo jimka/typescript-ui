@@ -55,6 +55,25 @@ export function splitPath(path: string): string[] {
 }
 
 /**
+ * Splits a URL-ish string at its first `"#"`: the part before, and the
+ * fragment without its `"#"`. Everything after the first `"#"` is the
+ * fragment verbatim — a second `"#"` in the input stays part of it. Never
+ * normalizes either half; the caller runs `path` through {@link normalizePath}.
+ *
+ * @param input - The raw href or path, with or without a fragment.
+ * @returns The part before the first `"#"`, and the fragment without it.
+ */
+export function splitFragment(input: string): { path: string; fragment: string } {
+    const hashIndex = input.indexOf("#");
+
+    if (hashIndex === -1) {
+        return { path: input, fragment: "" };
+    }
+
+    return { path: input.slice(0, hashIndex), fragment: input.slice(hashIndex + 1) };
+}
+
+/**
  * Normalizes a base to leading-and-trailing-slash form, so
  * {@link stripBase} and {@link joinBase} can both assume that shape.
  * `""`, `"/"`, `"x"`, `"/x"`, and `"/x/"` all become `"/"` or `"/x/"`.

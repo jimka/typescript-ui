@@ -3,11 +3,11 @@ import type { Router } from '@jimka/typescript-ui/router';
 import { apiRouteFor } from './api.js';
 
 /**
- * Maps an authored doc href to its rendered form, by kind: a route (`/…`) is
- * rewritten through `router.getHref` with any `#fragment` stripped first, an
- * in-page reference (`#…`) passes through unchanged and non-external, and
- * everything else (`http:`, `mailto:`, …) passes through unchanged and
- * external — see "Link resolution in the docs app" in
+ * Maps an authored doc href to its rendered form, by kind: a route (`/…`,
+ * with any `#fragment` carried through) is rewritten through
+ * `router.getHref`, an in-page reference (`#…`) passes through unchanged and
+ * non-external, and everything else (`http:`, `mailto:`, …) passes through
+ * unchanged and external — see "Link resolution in the docs app" in
  * plans/implemented/packages-docs.md.
  *
  * @param href - The authored Markdown link href.
@@ -20,7 +20,7 @@ export function resolveDocLink(href: string, router: Router): MarkdownLinkResolu
     }
 
     if (href.startsWith('/')) {
-        return { href: router.getHref(href.split('#')[0]), external: false };
+        return { href: router.getHref(href), external: false };
     }
 
     return { href, external: true };

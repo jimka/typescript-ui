@@ -16,9 +16,23 @@ describe('resolveDocLink', () => {
         expect(resolveDocLink('/guide/', router)).toEqual({ href: '/typescript-ui/guide', external: false });
     });
 
-    it('strips a #fragment from a route href before router.getHref', () => {
-        expect(resolveDocLink('/guide/mental-model#jsx-shaped-without-jsx', router))
-            .toEqual({ href: '/typescript-ui/guide/mental-model', external: false });
+    it('carries a #fragment on a route href through router.getHref', () => {
+        expect(resolveDocLink('/concepts/sizing#the-size-invariant', router))
+            .toEqual({ href: '/typescript-ui/concepts/sizing#the-size-invariant', external: false });
+    });
+
+    it('carries the corpus\'s most-linked fragment (15 occurrences) through router.getHref', () => {
+        expect(resolveDocLink('/concepts/theming#theme-keys', router))
+            .toEqual({ href: '/typescript-ui/concepts/theming#theme-keys', external: false });
+    });
+
+    it('normalizes away the trailing slash of a directory-index route href while keeping the fragment', () => {
+        expect(resolveDocLink('/guide/#intro', router))
+            .toEqual({ href: '/typescript-ui/guide#intro', external: false });
+    });
+
+    it('passes an https href with a #fragment through unchanged, external', () => {
+        expect(resolveDocLink('https://example.com#x', router)).toEqual({ href: 'https://example.com#x', external: true });
     });
 
     it('passes an in-page href through unchanged, non-external', () => {

@@ -89,7 +89,7 @@ describe('Router — lifecycle and navigation', () => {
         router.start();
 
         expect(calls).toEqual([{ params: {}, path: '/settings' }]);
-        expect(navigateEvents).toEqual([{ pattern: '/settings', params: {}, path: '/settings' }]);
+        expect(navigateEvents).toEqual([{ pattern: '/settings', params: {}, path: '/settings', fragment: '' }]);
     });
 
     it('runs the "/" handler when the hash is empty before start()', () => {
@@ -271,7 +271,7 @@ describe('Router — lifecycle and navigation', () => {
 
         router.start();
 
-        expect(navigateEvents).toEqual([{ pattern: '/settings', params: {}, path: '/settings' }]);
+        expect(navigateEvents).toEqual([{ pattern: '/settings', params: {}, path: '/settings', fragment: '' }]);
     });
 });
 
@@ -324,6 +324,71 @@ describe('Router — History mode', () => {
         expect(hashRouter.getPath(hashRouter.getHref(path))).toBe(expected);
     });
 
+    it.each([
+        ['/concepts/sizing#the-size-invariant', '/typescript-ui/concepts/sizing#the-size-invariant'],
+        ['/concepts/sizing',                    '/typescript-ui/concepts/sizing'],
+        ['/guide/#intro',                       '/typescript-ui/guide#intro'],
+    ])('getHref(%j) is %j in History mode', (path, expected) => {
+        installTestDOM(CONFIG);
+
+        const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+        expect(router.getHref(path)).toBe(expected);
+    });
+
+    it.each([
+        ['/typescript-ui/concepts/sizing#the-size-invariant', '/concepts/sizing'],
+        ['/typescript-ui/concepts/sizing',                    '/concepts/sizing'],
+    ])('getPath(%j) is %j in History mode', (href, expected) => {
+        installTestDOM(CONFIG);
+
+        const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+        expect(router.getPath(href)).toBe(expected);
+    });
+
+    it.each([
+        ['/typescript-ui/concepts/sizing#the-size-invariant', 'the-size-invariant'],
+        ['/typescript-ui/concepts/sizing',                    ''],
+    ])('getFragment(%j) is %j in History mode', (href, expected) => {
+        installTestDOM(CONFIG);
+
+        const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+        expect(router.getFragment(href)).toBe(expected);
+    });
+
+    it('getHref(getPath(h) + "#" + getFragment(h)) round-trips h', () => {
+        installTestDOM(CONFIG);
+
+        const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+        const h = '/typescript-ui/concepts/sizing#the-size-invariant';
+
+        expect(router.getHref(router.getPath(h) + '#' + router.getFragment(h))).toBe(h);
+    });
+
+    it('getFragment() with no argument reads the modelled location.hash, and "" when it is empty', () => {
+        const sink = installTestDOM(CONFIG);
+        sink.pushHistoryPath('/typescript-ui/concepts/sizing');
+
+        const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+        expect(router.getFragment()).toBe('');
+
+        sink.pushHistoryPath('/typescript-ui/concepts/sizing#the-size-invariant');
+
+        expect(router.getFragment()).toBe('the-size-invariant');
+    });
+
+    it('in hash mode, getFragment() is always "" even when the modelled hash is a route', () => {
+        installTestDOM(CONFIG);
+        DOM.sink.setLocationHash('#/guide');
+
+        const router = new Router();
+
+        expect(router.getFragment()).toBe('');
+    });
+
     it('navigate("/settings") records one pushHistoryPath write and calls the matching handler once', () => {
         const sink = installTestDOM(CONFIG);
 
@@ -364,6 +429,102 @@ describe('Router — History mode', () => {
         expect(runs).toBe(1);
     });
 
+    it('navigate("/concepts/sizing#the-size-invariant") records one pushHistoryPath write and calls the handler once with the fragment', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const calls: Array<{ path: string; fragment: string }> = [];
+        const router = new Router({
+            mode:   'history',
+            base:   '/typescript-ui/',
+            routes: { '/concepts/sizing': (_params, path, fragment) => calls.push({ path, fragment }) },
+        });
+
+        router.navigate('/concepts/sizing#the-size-invariant');
+
+        expect(sink.writes.filter((w) => w.op === 'pushHistoryPath')).toEqual([
+            { op: 'pushHistoryPath', args: ['/typescript-ui/concepts/sizing#the-size-invariant'] },
+        ]);
+        expect(calls).toEqual([{ path: '/concepts/sizing', fragment: 'the-size-invariant' }]);
+    });
+
+    it('from a path with no fragment, navigating to the same path with a fragment records one write and calls the handler once', () => {
+        const sink = installTestDOM(CONFIG);
+        sink.pushHistoryPath('/typescript-ui/concepts/sizing');
+
+        let runs = 0;
+        const router = new Router({ mode: 'history', base: '/typescript-ui/', routes: { '/concepts/sizing': () => { runs += 1; } } });
+
+        router.start();
+        expect(runs).toBe(1);
+
+        const writesBefore = sink.writes.length;
+        router.navigate('/concepts/sizing#the-size-invariant');
+
+        expect(sink.writes.length).toBe(writesBefore + 1);
+        expect(runs).toBe(2);
+    });
+
+    it('navigating to the same path and fragment already current records no write and calls no handler', () => {
+        const sink = installTestDOM(CONFIG);
+        sink.pushHistoryPath('/typescript-ui/concepts/sizing#the-size-invariant');
+
+        let runs = 0;
+        const router = new Router({ mode: 'history', base: '/typescript-ui/', routes: { '/concepts/sizing': () => { runs += 1; } } });
+
+        router.start();
+        expect(runs).toBe(1);
+
+        const writesBefore = sink.writes.length;
+        router.navigate('/concepts/sizing#the-size-invariant');
+
+        expect(sink.writes.length).toBe(writesBefore);
+        expect(runs).toBe(1);
+    });
+
+    it('navigating from a fragment to the bare path records one write and calls the handler with an empty fragment', () => {
+        const sink = installTestDOM(CONFIG);
+        sink.pushHistoryPath('/typescript-ui/concepts/sizing#the-size-invariant');
+
+        const calls: string[] = [];
+        const router = new Router({
+            mode:   'history',
+            base:   '/typescript-ui/',
+            routes: { '/concepts/sizing': (_params, _path, fragment) => calls.push(fragment) },
+        });
+
+        router.navigate('/concepts/sizing');
+
+        expect(sink.writes.filter((w) => w.op === 'pushHistoryPath').at(-1)).toEqual(
+            { op: 'pushHistoryPath', args: ['/typescript-ui/concepts/sizing'] },
+        );
+        expect(calls).toEqual(['']);
+    });
+
+    it('the "navigate" event\'s RouteMatch carries the same fragment the handler received', () => {
+        installTestDOM(CONFIG);
+
+        const navigateEvents: RouteMatch[] = [];
+        const router = new Router({ mode: 'history', base: '/typescript-ui/', routes: { '/concepts/sizing': () => {} } });
+
+        router.on('navigate', (match) => navigateEvents.push(match));
+        router.navigate('/concepts/sizing#the-size-invariant');
+
+        expect(navigateEvents.at(-1)?.fragment).toBe('the-size-invariant');
+    });
+
+    it('in hash mode, navigate("/guide#intro") writes "#/guide" and discards the fragment', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const calls: string[] = [];
+        const router = new Router({ routes: { '/guide': (_params, _path, fragment) => calls.push(fragment) } });
+
+        router.navigate('/guide#intro');
+
+        expect(sink.writes.some((w) => w.op === 'setLocationHash' && w.args[0] === '#/guide')).toBe(true);
+        router.start();
+        expect(calls).toEqual(['']);
+    });
+
     it('a popstate dispatched after the modelled pathname changes calls the newly matching handler and emits navigate', () => {
         const sink = installTestDOM(CONFIG);
 
@@ -378,7 +539,28 @@ describe('Router — History mode', () => {
         DOM.sink.dispatchCustomEvent(DOM.source.getWindow(), 'popstate');
 
         expect(calls).toEqual([{ sel: '5' }]);
-        expect(navigateEvents.at(-1)).toEqual({ pattern: '/data/rows/:sel', params: { sel: '5' }, path: '/data/rows/5' });
+        expect(navigateEvents.at(-1)).toEqual({ pattern: '/data/rows/:sel', params: { sel: '5' }, path: '/data/rows/5', fragment: '' });
+    });
+
+    it('a popstate dispatched after the modelled pathname and hash change calls the handler with both the new path and the new fragment', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const calls: Array<{ path: string; fragment: string }> = [];
+        const navigateEvents: RouteMatch[] = [];
+        const router = new Router({
+            mode:   'history',
+            base:   '/typescript-ui/',
+            routes: { '/data/rows/:sel': (_params, path, fragment) => calls.push({ path, fragment }) },
+        });
+
+        router.on('navigate', (match) => navigateEvents.push(match));
+        router.start();
+
+        sink.pushHistoryPath('/typescript-ui/data/rows/5#detail');
+        DOM.sink.dispatchCustomEvent(DOM.source.getWindow(), 'popstate');
+
+        expect(calls).toEqual([{ path: '/data/rows/5', fragment: 'detail' }]);
+        expect(navigateEvents.at(-1)).toEqual({ pattern: '/data/rows/:sel', params: { sel: '5' }, path: '/data/rows/5', fragment: 'detail' });
     });
 
     it('start() registers a popstate listener and no hashchange listener; stop() removes it', () => {

@@ -8,12 +8,12 @@ const DEFAULT_PATH = '/guide'
 const router = new Router({ mode: 'history', base: import.meta.env.BASE_URL })
 const shell  = new DocsShell(router)
 
-function showDefaultPage(): void {
-    shell.showPath(DEFAULT_PATH)
+function showDefaultPage(_params: RouteParams, _path: string, fragment: string): void {
+    shell.showPath(DEFAULT_PATH, fragment)
 }
 
-function showRoutedPage(_params: RouteParams, path: string): void {
-    shell.showPath(path)
+function showRoutedPage(_params: RouteParams, path: string, fragment: string): void {
+    shell.showPath(path, fragment)
 }
 
 router.register('/',  showDefaultPage)

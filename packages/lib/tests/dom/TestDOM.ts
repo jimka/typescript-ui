@@ -504,16 +504,28 @@ export class RecordingDOMSink implements DOMSink {
         }
     }
 
-    /** Writes the modelled pathname. Dispatches nothing, mirroring `history.pushState`. */
+    /**
+     * Writes the modelled pathname and hash, splitting `url` at its first
+     * `"#"` the way a real `pushState` URL splits across
+     * `location.pathname` / `location.hash`. Dispatches nothing, mirroring
+     * `history.pushState`.
+     */
     pushHistoryPath(url: string): void {
         this.record('pushHistoryPath', url);
-        _table.setLocationPathname(url);
+        this.writeHistoryPath(url);
     }
 
-    /** Writes the modelled pathname. Dispatches nothing, mirroring `history.replaceState`. */
+    /** Same split as {@link pushHistoryPath}; the record differs so tests can tell the two apart. */
     replaceHistoryPath(url: string): void {
         this.record('replaceHistoryPath', url);
-        _table.setLocationPathname(url);
+        this.writeHistoryPath(url);
+    }
+
+    private writeHistoryPath(url: string): void {
+        const hashIndex = url.indexOf('#');
+
+        _table.setLocationPathname(hashIndex === -1 ? url : url.slice(0, hashIndex));
+        _table.setLocationHash(hashIndex === -1 ? '' : url.slice(hashIndex));
     }
 
     addListener<T extends Event = Event>(target: Handle, type: string, handler: (event: T) => void, _options?: boolean | AddEventListenerOptions): void {

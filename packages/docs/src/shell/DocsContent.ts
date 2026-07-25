@@ -1,4 +1,4 @@
-import { callable, DOM, Event, Panel } from '@jimka/typescript-ui/core';
+import { callable, Component, DOM, Event, Panel } from '@jimka/typescript-ui/core';
 import type { Handle, PanelOptions } from '@jimka/typescript-ui/core';
 import { Fit } from '@jimka/typescript-ui/layout';
 import { Markdown } from '@jimka/typescript-ui/component/display';
@@ -24,6 +24,17 @@ class DocsContent extends Panel {
     private readonly _router:   Router;
     private readonly _markdown: Markdown;
 
+    // The path currently rendered, or null before the first showPath call —
+    // showPath skips re-rendering when the incoming path is unchanged, so a
+    // fragment-only navigation only scrolls.
+    private _path: string | null = null;
+
+    // The fragment to scroll to once the next layout flush settles the
+    // pane's scroll extent, or null when nothing is pending. Overwritten by
+    // a second navigation arriving before the callback drains, so the last
+    // target wins.
+    private _pendingFragment: string | null = null;
+
     // null while an authored (bundled) page is shown; the rendered API page's
     // directory while an API page is shown — resolveLink reads this to decide
     // which link-resolution rule the current page's links need.
@@ -44,6 +55,11 @@ class DocsContent extends Panel {
     // function identity; delegates to the named handler below.
     private readonly handleLinkClick: (e: MouseEvent) => void = (e) => this.onLinkClick(e);
 
+    // Stable reference, mirroring handleLinkClick above: Component.afterNextLayout
+    // needs the same function identity every call; delegates to the named
+    // handler below.
+    private readonly handleScrollToFragment: () => void = () => this.onScrollToFragment();
+
     // Stable reference, mirroring handleLinkClick above: Markdown calls this
     // on every render, and which rule applies depends on _linkBaseDir at that
     // moment, so it can't be bound once to either resolver.
@@ -62,35 +78,48 @@ class DocsContent extends Panel {
     }
 
     /**
-     * Shows the page at `path`: an authored page renders synchronously; an
-     * API page renders from cache when already fetched this session, or
-     * starts a fetch and renders once it resolves; a path matching neither
-     * shows the not-found view. See "DocsContent state and flow" in
-     * plans/implemented/docs-typedoc-reference.md for the five-branch flow.
+     * Shows the page at `path`, then scrolls to `fragment`'s heading — or to
+     * the top when `fragment` is `""`. Re-rendering only happens when `path`
+     * differs from the page already shown, so a fragment-only navigation
+     * (the same page, a new fragment) just scrolls. When it does re-render:
+     * an authored page renders synchronously; an API page renders from cache
+     * when already fetched this session, or starts a fetch and renders once
+     * it resolves; a path matching neither shows the not-found view. See
+     * "DocsContent state and flow" in plans/implemented/docs-typedoc-reference.md
+     * for the five-branch flow.
      *
      * @param path - The route path to show.
+     * @param fragment - The URL fragment to scroll to, without its `"#"`, or
+     * `""` to scroll to the top.
      */
-    showPath(path: string): void {
+    showPath(path: string, fragment: string): void {
+        if (path === this._path) {
+            this.applyFragment(fragment);
+            return;
+        }
+
+        this._path = path;
+
         const token = ++this._requestToken;
 
         const page = getPage(path);
         if (page) {
             this._linkBaseDir = null;
-            this.showSource(page.source);
+            this.showSource(page.source, fragment);
             return;
         }
 
         const file = apiFileFor(path);
         if (file === null) {
             this._linkBaseDir = null;
-            this.showSource(notFoundSource(path));
+            this.showSource(notFoundSource(path), fragment);
             return;
         }
 
         const cached = this._apiSources.get(file);
         if (cached !== undefined) {
             this._linkBaseDir = apiDirOf(file);
-            this.showSource(cached);
+            this.showSource(cached, fragment);
             return;
         }
 
@@ -99,27 +128,68 @@ class DocsContent extends Panel {
                 this._apiSources.set(file, source);
                 if (token === this._requestToken) {
                     this._linkBaseDir = apiDirOf(file);
-                    this.showSource(source);
+                    this.showSource(source, fragment);
                 }
             },
             () => {
                 if (token === this._requestToken) {
                     this._linkBaseDir = null;
-                    this.showSource(fetchErrorSource(path));
+                    this.showSource(fetchErrorSource(path), fragment);
                 }
             },
         );
     }
 
     /**
-     * Shows `source` in the viewer and resets the pane's scroll offset to the
-     * top — the tail shared by every branch of {@link showPath}.
+     * Shows `source` in the viewer, then applies `fragment` — the tail
+     * shared by every re-rendering branch of {@link showPath}.
      *
      * @param source - The Markdown source to render.
+     * @param fragment - The URL fragment to scroll to, without its `"#"`, or
+     * `""` to scroll to the top.
      */
-    private showSource(source: string): void {
+    private showSource(source: string, fragment: string): void {
         this._markdown.setMarkdown(source);
-        this.setScrollTop(0);
+        this.applyFragment(fragment);
+    }
+
+    /**
+     * Scrolls to the top when `fragment` is `""`; otherwise queues a scroll
+     * to its heading for after the next layout flush. The heading ids exist
+     * as soon as `setMarkdown` returns, but the pane's scrollable extent does
+     * not: `Markdown.measureContentHeight` schedules the parent's layout, and
+     * a scroll offset past a stale extent is clamped away.
+     *
+     * @param fragment - The URL fragment to scroll to, without its `"#"`, or
+     * `""` to scroll to the top.
+     */
+    private applyFragment(fragment: string): void {
+        if (fragment === '') {
+            this.setScrollTop(0);
+            return;
+        }
+
+        this._pendingFragment = fragment;
+        Component.afterNextLayout(this.handleScrollToFragment);
+    }
+
+    /**
+     * Flushes the pane's own layout (folding Markdown's measured height into
+     * its scroll extent) and scrolls to the pending fragment's heading. A
+     * second navigation arriving before this callback drains overwrites
+     * {@link _pendingFragment}, so the last target wins and this finds `null`.
+     */
+    private onScrollToFragment(): void {
+        const fragment = this._pendingFragment;
+
+        this._pendingFragment = null;
+
+        if (fragment === null) {
+            return;
+        }
+
+        this.flushLayout();
+        this.scrollToHeading(fragment);
     }
 
     /**
@@ -127,10 +197,12 @@ class DocsContent extends Panel {
      * Interception is load-bearing for an in-page `#fragment` href, which
      * would otherwise change the hash natively and hand the router an
      * unmatchable path — see "Interception is load-bearing" in
-     * plans/implemented/packages-docs.md. A route href is now an ordinary
-     * base-prefixed path, so a modified click (Ctrl, Cmd, Shift, Alt, or a
-     * non-primary button) is left to the browser before anything else is
-     * checked, the same as it would be for any other link.
+     * plans/implemented/packages-docs.md. Both a bare `#fragment` href and a
+     * route href now route through `Router.navigate`, so the URL gains the
+     * fragment and the back button returns to the previous anchor either
+     * way. A modified click (Ctrl, Cmd, Shift, Alt, or a non-primary button)
+     * is left to the browser before anything else is checked, the same as it
+     * would be for any other link.
      *
      * @param e - The bubbled click event.
      */
@@ -157,10 +229,13 @@ class DocsContent extends Panel {
 
         if (href.startsWith('#')) {
             e.preventDefault();
-            this.scrollToHeading(href.slice(1));
+            this._router.navigate(this._router.getPath() + '#' + href.slice(1));
         } else if (href === BASE_URL || href.startsWith(BASE_URL)) {
+            const path     = this._router.getPath(href);
+            const fragment = this._router.getFragment(href);
+
             e.preventDefault();
-            this._router.navigate(this._router.getPath(href));
+            this._router.navigate(fragment === '' ? path : `${path}#${fragment}`);
         }
         // Anything else (external hrefs) is left to the browser.
     }
@@ -188,8 +263,12 @@ class DocsContent extends Panel {
     }
 
     /**
-     * Scrolls the pane so the heading with `id` sits at its top. A miss (no
-     * heading with that id) scrolls nowhere.
+     * Scrolls the pane so the heading with `id` sits at its top. The id is
+     * looked up document-wide (an id is unique per document, and a fragment
+     * is attacker-controlled text — `getElementById` takes it as data rather
+     * than building a CSS selector from it, which a leading digit or stray
+     * character could break or exploit) and rejected when it is not inside
+     * the pane. A miss scrolls nowhere.
      *
      * @param id - The heading's slugified id, from an in-page `#fragment` href.
      */
@@ -200,9 +279,9 @@ class DocsContent extends Panel {
             return;
         }
 
-        const heading = DOM.source.querySelector(scrollElement, '#' + id);
+        const heading = DOM.source.getElementById(id);
 
-        if (!heading) {
+        if (!heading || !DOM.source.contains(scrollElement, heading)) {
             return;
         }
 
