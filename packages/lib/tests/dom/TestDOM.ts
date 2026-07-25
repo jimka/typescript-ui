@@ -1357,16 +1357,17 @@ export function installTestDOM(config: ModelledDOMConfig): RecordingDOMSink {
  *
  * @param target - The element handle the event targets.
  * @param type - The event type (e.g. `"click"`).
- * @param init - Optional `clientX`/`clientY`/`key`/`keyCode`/`button`/`detail`/
- * `code`/modifier-key fields.
+ * @param init - Optional `clientX`/`clientY`/`key`/`keyCode`/`button`/`buttons`/
+ * `deltaY`/`detail`/`code`/modifier-key fields.
  * @returns The synthetic event.
  */
 export function makeEvent(
     target: Handle,
     type: string,
     init?: {
-        clientX?: number; clientY?: number; key?: string; keyCode?: number; button?: number; detail?: unknown;
-        code?: string; ctrlKey?: boolean; altKey?: boolean; shiftKey?: boolean; metaKey?: boolean;
+        clientX?: number; clientY?: number; key?: string; keyCode?: number; button?: number; buttons?: number;
+        deltaY?: number; detail?: unknown; code?: string; ctrlKey?: boolean; altKey?: boolean; shiftKey?: boolean;
+        metaKey?: boolean;
     }
 ): Event {
     const sentinel: SentinelTarget = { [SENTINEL_TARGET]: target };
@@ -1379,6 +1380,8 @@ export function makeEvent(
         key:             init?.key,
         keyCode:         init?.keyCode,
         button:          init?.button,
+        buttons:         init?.buttons,
+        deltaY:          init?.deltaY,
         detail:          init?.detail,
         code:            init?.code,
         ctrlKey:         init?.ctrlKey ?? false,

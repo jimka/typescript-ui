@@ -199,6 +199,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'LineChart xScaleType',         resolve: () => new LineChart({}).getXScaleType(),                          expected: 'linear' },
     { label: 'BarChart grouped (no data)',   resolve: () => new BarChart({}).isGrouped(),                               expected: false },
     { label: 'DiagramView zoom',             resolve: () => new DiagramView().getZoom(),                                expected: 1 },
+    { label: 'DiagramView controls',         resolve: () => new DiagramView().isControlsVisible(),                      expected: true },
     { label: 'MarkdownEditor readOnly',      resolve: () => new MarkdownEditor().getReadOnly(),                         expected: false },
     { label: 'Link tag',                     resolve: () => new Link().getTag(),                                        expected: 'a' },
     { label: 'Link foregroundColor',         resolve: () => new Link().getForegroundColor(),                            expected: 'var(--ts-ui-link-color, rgb(21, 101, 192))' },

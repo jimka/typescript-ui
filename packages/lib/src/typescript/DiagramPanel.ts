@@ -19,9 +19,6 @@ import { flag_checkered }    from '@jimka/typescript-ui/glyphs/solid/flag_checke
 // The demo's nodes render glyphs; register them at module load.
 Glyph.register(circle_play, gears, database, code_branch, flag_checkered);
 
-/** Multiplicative zoom step per toolbar button press. */
-const ZOOM_STEP = 1.25;
-
 const SAMPLE: DiagramData = {
     nodes: [
         { id: 'start', label: 'Start', glyph: 'circle-play' },
@@ -57,16 +54,19 @@ const SAMPLE: DiagramData = {
  * Demo panel showcasing the
  * [`DiagramView`](/api/component/diagram/classes/DiagramView): a read-only
  * automatic-layout graph laid out by ELK, with themed nodes, an SVG edge layer,
- * pan (drag / trackpad), wheel zoom, and node selection. A few sample edges
- * carry a `style` (crow's-foot cardinality markers, a dashed stroke, and a
- * mid-edge label) to showcase `DiagramEdgeData.style`; plain edges keep the
- * default single arrowhead. The "Process"/"Validate" nodes sit inside a
- * "Pipeline" compound container (`DiagramNodeData.children`), showcasing the
- * default `DiagramGroupNode` container renderer alongside plain leaf nodes.
+ * free (unbounded) pan, wheel zoom, node selection, and a right-click
+ * `"contextmenu"` event. A few sample edges carry a `style` (crow's-foot
+ * cardinality markers, a dashed stroke, and a mid-edge label) to showcase
+ * `DiagramEdgeData.style`; plain edges keep the default single arrowhead. The
+ * "Process"/"Validate" nodes sit inside a "Pipeline" compound container
+ * (`DiagramNodeData.children`), showcasing the default `DiagramGroupNode`
+ * container renderer alongside plain leaf nodes.
  *
- * A `Border` layout puts a toolbar (zoom in / out / fit-to-view) at the top and
- * the diagram in the centre; a status line reflects the selected node emitted by
- * the view's `"selection"` event.
+ * A `Border` layout puts a toolbar (zoom in / out / fit / reset) at the top and
+ * the diagram in the centre; the view's own built-in zoom / fit / reset cluster
+ * also shows in its bottom-right corner (the two are independent — either
+ * drives the same `DiagramView`). A status line reflects the selected node
+ * emitted by `"selection"` and the node right-clicked via `"contextmenu"`.
  */
 class DiagramPanel extends Panel {
 
@@ -74,23 +74,29 @@ class DiagramPanel extends Panel {
         super({ layoutManager: new Border() });
 
         const view   = new DiagramView({ data: SAMPLE });
-        const status = new Text('Click a node to select it. Drag to pan, wheel to zoom.');
+        const status = new Text('Click a node to select it. Drag to pan, wheel to zoom, right-click for a context menu.');
 
         view.on('selection', (nodes: DiagramNodeData[]) => {
             status.setText(nodes.length > 0 ? `Selected: ${nodes[0].label ?? nodes[0].id}` : 'Selection cleared.');
         });
 
+        view.on('contextmenu', (node: DiagramNodeData) => {
+            status.setText(`Right-clicked: ${node.label ?? node.id}`);
+        });
+
         const zoomIn  = new Button('Zoom In');
         const zoomOut = new Button('Zoom Out');
         const fit     = new Button('Fit');
+        const reset   = new Button('Reset');
 
-        zoomIn.on('action',  () => { view.setZoom(view.getZoom() * ZOOM_STEP); });
-        zoomOut.on('action', () => { view.setZoom(view.getZoom() / ZOOM_STEP); });
+        zoomIn.on('action',  () => { view.zoomIn(); });
+        zoomOut.on('action', () => { view.zoomOut(); });
         fit.on('action',     () => { view.zoomToFit(); });
+        reset.on('action',   () => { view.resetView(); });
 
         const bar = new ToolBar();
 
-        bar.addComponents(zoomIn, zoomOut, fit, Spacer.flex(), status);
+        bar.addComponents(zoomIn, zoomOut, fit, reset, Spacer.flex(), status);
 
         this.addComponent(bar,  { placement: Placement.NORTH });
         this.addComponent(view, { placement: Placement.CENTER });
