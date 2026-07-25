@@ -1255,14 +1255,18 @@ export interface DOMSource {
     getHead(): Handle;
 
     /**
-     * Registers a callback fired once the document's web fonts have finished
-     * loading (i.e. `document.fonts.ready` resolves). Text whose preferred size
-     * was measured against a fallback font before a `font-display: swap` web
-     * font swapped in must re-measure once the real font is available, or its
-     * stale (fallback-derived) size clips the now-wider glyphs. Offline sources
+     * Registers a callback fired each time the document's web fonts finish a
+     * batch of loading. Text whose preferred size was measured against a
+     * fallback font before a `font-display: swap` web font swapped in must
+     * re-measure once the real font is available, or its stale
+     * (fallback-derived) size clips the now-wider glyphs. Offline sources
      * measure against baked fonts with no async swap, so they never invoke it.
      *
-     * @param callback - Invoked once when font loading settles.
+     * @param callback - Invoked whenever a batch of font loads settles; never
+     *   invoked on a document that loads no web fonts at all, since no
+     *   measurement can go stale there. Implementations must not fire it merely
+     *   because the font set is momentarily idle — see the production
+     *   implementation for why that is the trap this contract exists to avoid.
      */
     onFontsReady(callback: () => void): void;
 
@@ -2227,10 +2231,17 @@ export class ProductionDOMSource implements DOMSource {
             return;
         }
 
-        // Resolves after every used `@font-face` settles (loaded or errored).
-        // If the font is already loaded the promise resolves on the next
-        // microtask — the re-measure it triggers is idempotent.
-        fonts.ready.then(() => callback());
+        // `loadingdone`, deliberately not `fonts.ready`: `ready` is a snapshot
+        // of the set's *current* state, and the set is idle at the moment the
+        // framework subscribes — `ensureFontLoaded` injected the `@font-face`
+        // rules microseconds earlier and no text has been laid out with them
+        // yet, so the browser has not begun fetching. A lone `ready.then`
+        // therefore resolves on the very next microtask, hundreds of ms before
+        // the real face arrives, and re-measures against the same fallback it
+        // exists to replace. `loadingdone` fires once each batch of faces
+        // settles (loaded or errored), so it catches the swap-in itself — and
+        // any later batch, such as a second subset or a lazily used family.
+        fonts.addEventListener('loadingdone', () => callback());
     }
 
     /** @inheritDoc */

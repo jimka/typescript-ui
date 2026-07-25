@@ -1315,16 +1315,18 @@ export class ThemeManager {
         ThemeManager.reflowText();
     }
 
-    // Guards the one-time `onFontsReady` subscription across repeated setTheme
-    // calls (the font swap happens once, not per theme).
+    // Guards the `onFontsReady` subscription across repeated setTheme calls —
+    // one subscription per process, not one per theme.
     private static fontReflowScheduled = false;
 
     /**
-     * Registers a one-time re-measure to run once the bundled web font finishes
-     * loading. Text measured against the fallback font before a
-     * `font-display: swap` swap-in caches a stale preferred size; refreshing the
-     * metrics and re-flowing every subscribed Text corrects boxes that would
-     * otherwise clip the wider real glyphs (e.g. content-sized tab labels).
+     * Subscribes a re-measure that runs whenever web-font loading settles.
+     * Text measured against the fallback font before a `font-display: swap`
+     * swap-in caches a stale preferred size; refreshing the metrics and
+     * re-flowing every subscribed Text corrects boxes that would otherwise clip
+     * the wider real glyphs (e.g. content-sized tab labels). The callback may
+     * fire more than once — a page can load faces in several batches — and each
+     * fire is idempotent.
      */
     private static scheduleFontReflow(): void {
         if (ThemeManager.fontReflowScheduled) {

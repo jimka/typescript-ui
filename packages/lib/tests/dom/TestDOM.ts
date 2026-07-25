@@ -1137,8 +1137,9 @@ export class ModelledDOMSource implements DOMSource {
     }
 
     /**
-     * Offline measurement uses baked fonts with no async swap, so there is no
-     * stale fallback to refresh — the callback never fires.
+     * Offline measurement uses baked fonts with no async swap, so no batch of
+     * font loads ever settles and there is no stale fallback to refresh — the
+     * callback never fires.
      */
     onFontsReady(_callback: () => void): void {
         // Intentionally inert offline.
