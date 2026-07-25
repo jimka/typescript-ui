@@ -317,3 +317,148 @@ describe('Tab lazy activation', () => {
         expect(ran).toBe(false);
     });
 });
+
+describe('Tab lazy activation events', () => {
+
+    /**
+     * Forces the reduced-motion branch so the materialize cross-fade completes
+     * synchronously — its `onReady` is what a deferred activation rides on, and
+     * offline there is no `transitionend` to end a real fade.
+     */
+    function useReducedMotion(): void {
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+    }
+
+    /**
+     * Drains the two frames the materialize helper yields before it runs the
+     * factory.
+     */
+    function runYield(): void {
+        rafQueue.splice(0).forEach(cb => cb(0));
+        rafQueue.splice(0).forEach(cb => cb(0));
+    }
+
+    it('emits activate for a first-time lazy selection once it materializes', () => {
+        const { host, tab } = hostTab();
+        const eager = new Component({ name: 'Eager' });
+        const built = new Component({ name: 'Heavy' });
+        const seen: Array<[string | null, number]> = [];
+
+        useReducedMotion();
+        host.getElement(true);
+        host.addComponent(eager);
+        host.addComponent(() => built, constraints({ name: 'Heavy' }));
+        tab.on('activate', (content, index) => seen.push([content.getName(), index]));
+
+        tab.setActiveTabIndex(1);
+
+        // The content does not exist at selection time, so the announcement is
+        // owed until the factory has produced it — not skipped.
+        expect(seen).toEqual([]);
+
+        runYield();
+
+        expect(seen).toEqual([['Heavy', 1]]);
+    });
+
+    it('announces a lazy selection exactly once, not again on re-selection', () => {
+        const { host, tab } = hostTab();
+        const eager = new Component({ name: 'Eager' });
+        const built = new Component({ name: 'Heavy' });
+        const seen: Array<[string | null, number]> = [];
+
+        useReducedMotion();
+        host.getElement(true);
+        host.addComponent(eager);
+        host.addComponent(() => built, constraints({ name: 'Heavy' }));
+        tab.on('activate', (content, index) => seen.push([content.getName(), index]));
+
+        tab.setActiveTabIndex(1);
+        runYield();
+        tab.setActiveTabIndex(0);
+        tab.setActiveTabIndex(1);
+
+        // Once materialized the entry announces itself synchronously, through
+        // the ordinary selection path — the owed announcement is not replayed.
+        expect(seen).toEqual([['Heavy', 1], ['Eager', 0], ['Heavy', 1]]);
+    });
+
+    it('emits select at press time for a lazy tab, before its content exists', () => {
+        const { host, tab } = hostTab();
+        const seen: Array<[number, string]> = [];
+
+        useReducedMotion();
+        host.getElement(true);
+        host.addComponent(new Component({ name: 'Eager' }));
+        host.addComponent(() => new Component({ name: 'Heavy' }), constraints({ name: 'Heavy' }));
+        tab.on('select', (index, label) => seen.push([index, label]));
+
+        tab.setActiveTabIndex(1);
+
+        // Selection intent is reported immediately — the whole point of the
+        // event is that it does not wait on the factory, so a router can write
+        // the destination while the spinner is still up.
+        expect(seen).toEqual([[1, 'Heavy']]);
+    });
+
+    it('emits select before activate for an already-built tab', () => {
+        const { host, tab } = hostTab();
+        const order: string[] = [];
+
+        useReducedMotion();
+        host.getElement(true);
+        host.addComponent(new Component({ name: 'Eager' }));
+        host.addComponent(new Component({ name: 'Second' }));
+
+        // Two eager children mint their tabs only in the ownership sweep, so
+        // without a layout pass there is nothing to select.
+        host.doLayout();
+
+        tab.on('select',   () => order.push('select'));
+        tab.on('activate', () => order.push('activate'));
+
+        tab.setActiveTabIndex(1);
+
+        // Intent precedes completion, so a listener on both sees the same
+        // ordering whether or not the content had to be built.
+        expect(order).toEqual(['select', 'activate']);
+    });
+
+    it('emits select on every selection, including a re-selection', () => {
+        const { host, tab } = hostTab();
+        const seen: number[] = [];
+
+        useReducedMotion();
+        host.getElement(true);
+        host.addComponent(new Component({ name: 'Eager' }));
+        host.addComponent(() => new Component({ name: 'Heavy' }), constraints({ name: 'Heavy' }));
+        tab.on('select', index => seen.push(index));
+
+        tab.setActiveTabIndex(1);
+        runYield();
+        tab.setActiveTabIndex(0);
+        tab.setActiveTabIndex(1);
+
+        expect(seen).toEqual([1, 0, 1]);
+    });
+
+    it('does not announce a build whose tab was deselected before it finished', () => {
+        const { host, tab } = hostTab();
+        const eager = new Component({ name: 'Eager' });
+        const seen: Array<[string | null, number]> = [];
+
+        useReducedMotion();
+        host.getElement(true);
+        host.addComponent(eager);
+        host.addComponent(() => new Component({ name: 'Heavy' }), constraints({ name: 'Heavy' }));
+        tab.on('activate', (content, index) => seen.push([content.getName(), index]));
+
+        tab.setActiveTabIndex(1);
+        tab.setActiveTabIndex(0);
+        runYield();
+
+        // The build lands behind a newer selection; announcing it would report
+        // an active tab that is not the one on screen.
+        expect(seen).toEqual([['Eager', 0]]);
+    });
+});
