@@ -219,6 +219,40 @@ describe('sql-formatter cursor clamp', () => {
     });
 });
 
+describe('CodeEditor smooth scrolling', () => {
+    // CodeMirror scrolls its own `.cm-scroller`, which the framework only
+    // reaches through the `getScrollElement` seam. The eased wheel scroller is
+    // gated on the component's own effective overflow (see
+    // `Component.applyOverflowStyles` -> `refreshWheelScrolling`), so a
+    // scrollable default is what opts the editor into it — exactly as it does
+    // for `TextArea`. The editor's own box never actually scrolls (CodeMirror's
+    // `.cm-editor` is `height: 100%`), so the value is inert as a style.
+    it('defaults to a scrollable overflow on both axes', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getOverflowX()).toBe('auto');
+        expect(editor.getOverflowY()).toBe('auto');
+    });
+
+    it('attaches the eased wheel scroller once rendered', () => {
+        const editor = new CodeEditor();
+
+        editor.getElement(true);
+
+        expect((editor as any)._wheelScroller).not.toBeNull();
+    });
+
+    it('getScrollElement falls back to the component element with no live view', () => {
+        const editor = new CodeEditor();
+        const element = editor.getElement(true);
+
+        // Offline the view never mounts, so there is no `.cm-scroller` to
+        // resolve — every scroll read/write must stay on the editor's own box
+        // rather than returning undefined and silently no-opping.
+        expect((editor as any).getScrollElement()).toBe(element);
+    });
+});
+
 describe('CodeEditor DOM seam: mountView', () => {
     it('RecordingDOMSink.mountView records the call and returns null without invoking the factory', () => {
         const recorder = DOM.sink as unknown as Recorder;

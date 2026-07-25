@@ -4,6 +4,8 @@
 
 `CodeEditor` is a **live-only** component, the same category as [`Canvas`](/components/Canvas): CodeMirror's `EditorView` takes a real DOM element and mutates a whole region of it directly, so under the framework's offline test seam the editor mounts nothing and every operation (`format()`, `setLanguage()`, …) no-ops. In a real browser it mounts once the component is connected and sized, fills its assigned box, and scrolls internally.
 
+Wheel scrolling inside the editor is driven by the framework's eased scroller, the same glide every other scrolling surface uses — `CodeEditor` points the framework's scroll plumbing at CodeMirror's own viewport rather than at its outer box. The scrollbars themselves are still the browser's native ones: the custom overlay [`Scrollbar`](/components/Scrollbar) is a [`Panel`](/api/core/classes/Panel) feature and does not reach a foreign widget's internal scroller.
+
 Highlighting grammars and formatters load lazily, per language, through `import()` — the base editor stays small and Prettier's much larger standalone bundle is only ever fetched behind a `format()` call.
 
 ## Usage

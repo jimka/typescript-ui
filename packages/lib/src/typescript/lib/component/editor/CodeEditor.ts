@@ -4,9 +4,7 @@ import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
-import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
-import { consumeWheel } from "~/core/SmoothScroller.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { EditorView, keymap, drawSelection, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view";
@@ -51,6 +49,28 @@ export interface CodeEditorOptions extends ComponentOptions {
     /** Construction-time listener bag; the events are `"change"` and `"readonlyedit"`. */
     listeners?: { change?: (payload: CodeEditorChange) => void; readonlyedit?: () => void };
 }
+
+/**
+ * User-overridable defaults forwarded to `super` via the options bag. The
+ * cascade in `Component`'s constructor dispatches each setter once with the
+ * final value, so any field the caller supplied wins.
+ */
+const _defaultCodeEditorOptions: Partial<CodeEditorOptions> = {
+    // Override Component's `overflow: "hidden"` default so the framework's
+    // eased wheel scroller attaches: `applyStyle` reads the effective overflow
+    // and installs the controller from it (see `Component.applyOverflowStyles`
+    // -> `refreshWheelScrolling`), which then drives whatever
+    // `getScrollElement` resolves to — CodeMirror's `.cm-scroller` once the
+    // view is mounted. Inert as a style: `.cm-editor` is `height: 100%` and the
+    // flash overlay is `inset: 0`, so the editor's own box has no overflow to
+    // scroll and never paints a native bar of its own. This mirrors how an
+    // overlay-mode `Panel` keeps `overflow: auto` on a panel element that can
+    // likewise never scroll.
+    overflow: "auto",
+};
+
+/** CodeMirror's scrolling viewport element, inside the mounted view. */
+const CM_SCROLLER_SELECTOR = ".cm-scroller";
 
 /** Duration of the read-only rejection flash, in milliseconds. */
 const READONLY_FLASH_MS = 300;
@@ -143,11 +163,11 @@ class CodeEditor extends Component<CodeEditorOptions> {
     private readonly _unsubscribeTheme: () => void;
 
     /**
-     * Stable reference for the subtree wheel-claim listener's add (in
-     * {@link CodeEditor.mount}) and remove (in {@link CodeEditor.dispose}); see
-     * {@link CodeEditor.claimScrollableWheel}.
+     * Handle for CodeMirror's own scrolling viewport, resolved once the view
+     * mounts; `null` until then (or forever, offline). Backs
+     * {@link CodeEditor.getScrollElement}.
      */
-    private readonly _onWheelClaim: (e: WheelEvent) => void = (e) => this.claimScrollableWheel(e);
+    private _scrollElement: Handle | null = null;
 
     /**
      * Constructs a code editor.
@@ -156,7 +176,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * @param options - Optional construction options.
      */
     constructor(value?: string, options?: CodeEditorOptions) {
-        super(options);
+        super(options, _defaultCodeEditorOptions);
 
         // Positional argument: cache it only when the caller didn't also pass
         // `options.value` (which the super-time cascade already stored).
@@ -468,9 +488,10 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         this._unsubscribeTheme();
 
-        if (this._view) {
-            Event.removeSubtreeListener(this, "wheel", this._onWheelClaim);
-        }
+        // Before the view is destroyed below, so any later scroll read (the
+        // base destructor's own teardown, a queued layout) resolves through the
+        // base element rather than a handle whose node CodeMirror has removed.
+        this._scrollElement = null;
 
         // Nulled after destroy so a second destructor() pass on this same
         // instance (dispose() is documented idempotent — a harmless no-op —
@@ -485,40 +506,23 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
-     * Marks a wheel event consumed (via {@link consumeWheel}) when CodeMirror's
-     * own scroller can move along the gesture's axis — WITHOUT
-     * `preventDefault()`, so CodeMirror still scrolls `.cm-scroller` natively.
+     * Routes every framework scroll read/write onto CodeMirror's own scrolling
+     * viewport (`.cm-scroller`) rather than the editor's outer box, so the
+     * eased wheel scroller, the scroll-offset cache, and
+     * {@link CodeEditor.getMaxScrollTop} all act on the element that actually
+     * moves.
      *
-     * @param e - The wheel event reaching this editor's subtree.
+     * @returns CodeMirror's scroller handle once mounted, else the editor's own
+     *   element.
      *
-     * @remarks A floating overlay installs a wheel trap (see `WheelTrap`) that
-     * `preventDefault()`s any wheel no inner scroller claimed, so an unconsumed
-     * wheel cannot fall through to content behind the overlay. CodeMirror
-     * scrolls natively without going through the framework's eased scroller, so
-     * it never claims the wheel — and the trap, firing last as the outermost
-     * ancestor, would cancel the editor's native scroll. Claiming here (the
-     * subtree walk reaches this inner editor before the outer overlay) lets the
-     * native scroll proceed. Only an axis with somewhere to go is claimed; at a
-     * fits-in-box axis the wheel stays unclaimed so the trap still swallows it.
+     * @remarks Falls back to the base element before the view mounts (and
+     * forever offline, where the view never mounts): the outer box has no
+     * overflow, so every scroll read reports zero extent and the wheel handler
+     * leaves the gesture unclaimed — the correct answer while there is nothing
+     * to scroll.
      */
-    private claimScrollableWheel(e: WheelEvent): void {
-        const scroller = this._view?.scrollDOM;
-
-        if (!scroller) {
-            return;
-        }
-
-        const extentX = scroller.scrollWidth  > scroller.clientWidth;
-        const extentY = scroller.scrollHeight > scroller.clientHeight;
-
-        // shift+wheel with a bare vertical delta scrolls horizontally (native
-        // behaviour CodeMirror preserves), so it targets the horizontal axis.
-        const targetsHorizontal = e.deltaX !== 0 || (e.shiftKey && e.deltaY !== 0);
-        const targetsVertical   = e.deltaY !== 0 && !e.shiftKey;
-
-        if ((targetsVertical && extentY) || (targetsHorizontal && extentX)) {
-            consumeWheel(e);
-        }
+    protected getScrollElement(): Handle | undefined {
+        return this._scrollElement ?? super.getScrollElement();
     }
 
     /**
@@ -583,11 +587,13 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         if (this._view) {
             this.mountFlashOverlay(element);
-            // Claim wheels CodeMirror's own scroller will act on, so an
-            // enclosing overlay's wheel trap leaves this editor's native scroll
-            // alone (see claimScrollableWheel). Descendant-first subtree
-            // dispatch reaches this editor before the overlay, so the claim wins.
-            Event.addSubtreeListener(this, "wheel", this._onWheelClaim, { passive: false });
+
+            // Hand the framework's scroll plumbing CodeMirror's own viewport
+            // (see getScrollElement). Resolved through the seam rather than
+            // from `_view.scrollDOM`, so no raw element crosses the boundary;
+            // the handle is interned weakly, so the live DOM keeps owning it
+            // and it must not be tracked as one of this component's own.
+            this._scrollElement = DOM.source.querySelector(element, CM_SCROLLER_SELECTOR);
         }
 
         const language = this.getLanguage();

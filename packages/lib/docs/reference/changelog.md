@@ -16,6 +16,12 @@ full upgrade note.
 
 ### Changed
 
+- `CodeEditor` now scrolls through the framework's eased wheel scroller
+  instead of CodeMirror's raw native scroll, so a wheel gesture inside the
+  editor glides like every other scrolling surface. `CodeEditor`'s effective
+  `overflow` default is `"auto"` rather than the inherited `"hidden"` (the
+  editor's own box still never scrolls — CodeMirror's inner viewport does).
+
 - `Component`'s `data-*` map, its `attributes` options bag, the
   `_disabledAttribute` replay, and `Aria`'s DOM writes now share one
   attribute buffer instead of four separate stores. Two narrow behaviour
