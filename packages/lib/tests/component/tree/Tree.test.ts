@@ -8,7 +8,7 @@ import { LabelTreeNodeRenderer } from '~/component/tree/renderer/Label';
 import { IconLabelTreeNodeRenderer } from '~/component/tree/renderer/IconLabel';
 import { Glyph } from '~/component/display/Glyph';
 import { Scrollbar } from '~/component/container/Scrollbar';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -218,14 +218,105 @@ interface TreePrivate {
     _flatten(): void;
     _onToggle(node: TreeNode): void;
     _isExpandable(node: TreeNode): boolean;
+    _selectAtIndex(index: number): void;
+    _extendSelectionTo(index: number): void;
+    _onKeyDown(e: KeyboardEvent): void;
     _flatRows: FlatRow[];
     _expandedNodes: Set<TreeNode>;
     _loadedNodes: Set<TreeNode>;
+    _selectedNodes: Set<TreeNode>;
+    _anchorNode: TreeNode | null;
 }
 
 function asPrivate(tree: _Tree): TreePrivate {
     return tree as unknown as TreePrivate;
 }
+
+// ---------------------------------------------------------------------------
+// Selection-event change guard: `"selection"` must fire only when the
+// selected set actually changes membership, not on every mutating call.
+// _selectAtIndex / _extendSelectionTo / _onKeyDown all gate their DOM-facing
+// calls (renderWindow, scrollIntoView) behind getElement()/the scroller being
+// present, so they run safely offline like the _onToggle block above.
+// ---------------------------------------------------------------------------
+describe('Tree (white-box) — selection event fires only on a real change', () => {
+    it('_selectAtIndex called twice for the same row fires "selection" once', () => {
+        const tree = new _Tree();
+        tree.setNodes(fruitTree());
+        const priv = asPrivate(tree);
+
+        let emitted = 0;
+        tree.on('selection', () => { emitted += 1; });
+
+        priv._selectAtIndex(0);
+        priv._selectAtIndex(0);
+
+        expect(emitted).toBe(1);
+    });
+
+    it('_selectAtIndex for two different rows fires "selection" twice', () => {
+        const tree = new _Tree();
+        tree.setNodes(fruitTree());
+        const priv = asPrivate(tree);
+
+        let emitted = 0;
+        tree.on('selection', () => { emitted += 1; });
+
+        priv._selectAtIndex(0);
+        priv._selectAtIndex(1);
+
+        expect(emitted).toBe(2);
+    });
+
+    it('_extendSelectionTo producing the same range twice fires "selection" once', () => {
+        const tree = new _Tree();
+        tree.setNodes(fruitTree());
+        const priv = asPrivate(tree);
+
+        priv._selectAtIndex(0); // anchors the range at row 0
+
+        let emitted = 0;
+        tree.on('selection', () => { emitted += 1; });
+
+        priv._extendSelectionTo(1);
+        priv._extendSelectionTo(1);
+
+        expect(emitted).toBe(1);
+    });
+
+    it('selectNode does not emit, and a click reproducing its selection does not emit either', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+        const priv = asPrivate(tree);
+
+        tree.selectNode(nodes[0]);
+
+        let emitted = 0;
+        tree.on('selection', () => { emitted += 1; });
+
+        priv._selectAtIndex(0); // reproduces exactly what selectNode already set
+
+        expect(emitted).toBe(0);
+    });
+
+    it('keyboard navigation at a boundary row does not emit; moving to a different row does', () => {
+        const tree = new _Tree();
+        tree.setNodes(fruitTree());
+        const priv = asPrivate(tree);
+
+        priv._selectAtIndex(0); // focus on the first (boundary) row
+
+        let emitted = 0;
+        tree.on('selection', () => { emitted += 1; });
+
+        priv._onKeyDown({ key: 'ArrowUp', shiftKey: false, preventDefault: () => {} } as KeyboardEvent);
+        expect(emitted).toBe(0); // already the first row — clamps in place
+
+        priv._onKeyDown({ key: 'ArrowDown', shiftKey: false, preventDefault: () => {} } as KeyboardEvent);
+        expect(emitted).toBe(1); // moved to a different row — a real change
+    });
+});
 
 describe('Tree (white-box) — _flatten depth / posInSet', () => {
     it('a collapsed parent contributes only itself', () => {
@@ -742,5 +833,46 @@ describe('Tree — horizontal content width is scroll-stable', () => {
         (tree as any).renderWindow();
 
         expect(p._lastRowWidth).toBeLessThan(wideWidth);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// _handleClick's ctrl/cmd-click toggle branch resolves the clicked node from
+// a real bound row element, so — unlike the offline block above — it needs a
+// mounted tree with a rendered row pool.
+// ---------------------------------------------------------------------------
+describe('Tree — ctrl/cmd-click selection event fires only on a real change', () => {
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => DOM.reset());
+
+    function mount(): _Tree {
+        const tree = new _Tree();
+        tree.getElement(true);
+        tree.setWidth(200);
+        tree.setHeight(200);
+        tree.setNodes(fruitTree());
+        (tree as any).renderWindow();
+        return tree;
+    }
+
+    it('toggling the same node off then on with ctrl/cmd-click fires "selection" on both clicks', () => {
+        const tree = mount();
+        const p = tree as any;
+        const nodeA = p._flatRows[0].node;
+        const rowA = p._rowPool.find((r: any) => r.getNode() === nodeA);
+
+        // Seed the selection so the first click is a removal.
+        p._selectedNodes.add(nodeA);
+        p._anchorNode = nodeA;
+
+        const fired: TreeNode[][] = [];
+        tree.on('selection', (nodes: TreeNode[]) => fired.push(nodes));
+
+        p._handleClick(makeEvent(rowA.getElement(), 'click', { ctrlKey: true }));
+        p._handleClick(makeEvent(rowA.getElement(), 'click', { ctrlKey: true }));
+
+        expect(fired).toHaveLength(2);
+        expect(fired[0]).toEqual([]);
+        expect(fired[1]).toEqual([nodeA]);
     });
 });

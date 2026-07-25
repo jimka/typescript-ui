@@ -255,6 +255,88 @@ describe('DiagramView — selection (U4)', () => {
         expect(view.getSelection()).toEqual([]);
         expect(fired).toHaveLength(0);
     });
+
+    it('two clicks on the same node fire "selection" once, not twice', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const fired: DiagramNodeData[][] = [];
+        const view = new StubDiagramView({ data: simpleGraph(), listeners: { selection: (nodes) => fired.push(nodes) } }) as any;
+
+        await flush();
+
+        const handle: Handle = view._nodeComponents.get('a').getElement(true);
+
+        view._handleClick(makeEvent(handle, 'click'));
+        view._handleClick(makeEvent(handle, 'click'));
+
+        expect(fired).toHaveLength(1);
+    });
+
+    it('a click on node A, then a click on node B, fires "selection" twice', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const fired: DiagramNodeData[][] = [];
+        const view = new StubDiagramView({ data: simpleGraph(), listeners: { selection: (nodes) => fired.push(nodes) } }) as any;
+
+        await flush();
+
+        const handleA: Handle = view._nodeComponents.get('a').getElement(true);
+        const handleB: Handle = view._nodeComponents.get('b').getElement(true);
+
+        view._handleClick(makeEvent(handleA, 'click'));
+        view._handleClick(makeEvent(handleB, 'click'));
+
+        expect(fired).toHaveLength(2);
+    });
+
+    it('a click on empty canvas when nothing is selected does not fire', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const fired: unknown[] = [];
+        const view = new StubDiagramView({ data: simpleGraph(), listeners: { selection: () => fired.push(1) } }) as any;
+
+        await flush();
+
+        const empty: Handle = view.getElement(true);
+
+        view._handleClick(makeEvent(empty, 'click'));
+
+        expect(fired).toHaveLength(0);
+    });
+
+    it('a click on node A, then a click on empty canvas, fires "selection" once (the clear)', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const fired: DiagramNodeData[][] = [];
+        const view = new StubDiagramView({ data: simpleGraph(), listeners: { selection: (nodes) => fired.push(nodes) } }) as any;
+
+        await flush();
+
+        const handleA: Handle = view._nodeComponents.get('a').getElement(true);
+        const empty: Handle = view.getElement(true);
+
+        view._handleClick(makeEvent(handleA, 'click'));
+        view._handleClick(makeEvent(empty, 'click'));
+
+        expect(fired).toHaveLength(2);
+        expect(fired[1]).toEqual([]);
+    });
+
+    it('a click reproducing what selectNode already selected does not emit', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const fired: unknown[] = [];
+        const view = new StubDiagramView({ data: simpleGraph(), listeners: { selection: () => fired.push(1) } }) as any;
+
+        await flush();
+
+        view.selectNode('a');
+        const handle: Handle = view._nodeComponents.get('a').getElement(true);
+
+        view._handleClick(makeEvent(handle, 'click'));
+
+        expect(fired).toHaveLength(0);
+    });
 });
 
 describe('DiagramView — zoom (U5, U6)', () => {

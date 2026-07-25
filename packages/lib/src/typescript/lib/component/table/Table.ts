@@ -619,6 +619,10 @@ class Table extends Component<TableOptions> {
      */
     selectRecord(record: ModelRecord | null): this {
         if (this._displayMode === "rotated") {
+            if (record === this._rotatedRecord) {
+                return this;
+            }
+
             this._rotatedRecord = record;
             this.rebuildRotatedStore();
             this.emit("selection", record ? [record] : []);
@@ -882,8 +886,12 @@ class Table extends Component<TableOptions> {
         const stillPresent = this._rotatedRecord !== null && records.includes(this._rotatedRecord);
 
         if (!stillPresent) {
+            const before = this._rotatedRecord;
             this._rotatedRecord = records[0] ?? null;
-            this.emit("selection", this._rotatedRecord ? [this._rotatedRecord] : []);
+
+            if (this._rotatedRecord !== before) {
+                this.emit("selection", this._rotatedRecord ? [this._rotatedRecord] : []);
+            }
         }
 
         this.rebuildRotatedStore();
