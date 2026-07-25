@@ -661,12 +661,18 @@ class DiagramView extends Panel<DiagramViewOptions> {
     protected init(element?: Handle): this {
         super.init(element);
 
+        // All six use the SUBTREE variant: the content (nodes, the SVG edge
+        // layer, and the Panel's own overlay-scroll element) are descendants of
+        // this view's root, so a real wheel/pointer event's target is never the
+        // root itself. An exact-target `addListener` would therefore never fire
+        // for pan/zoom — only `addSubtreeListener` sees the descendant events
+        // (mirrors click/dblclick, which is why selection worked but pan did not).
         Event.addSubtreeListener(this, "click", this._handleClick);
         Event.addSubtreeListener(this, "dblclick", this._handleDoubleClick);
-        Event.addListener(this, "wheel", this._handleWheel);
-        Event.addListener(this, "pointerdown", this._handlePointerDown);
-        Event.addListener(this, "pointermove", this._handlePointerMove);
-        Event.addListener(this, "pointerup", this._handlePointerUp);
+        Event.addSubtreeListener(this, "wheel", this._handleWheel);
+        Event.addSubtreeListener(this, "pointerdown", this._handlePointerDown);
+        Event.addSubtreeListener(this, "pointermove", this._handlePointerMove);
+        Event.addSubtreeListener(this, "pointerup", this._handlePointerUp);
 
         return this;
     }
@@ -796,6 +802,15 @@ class DiagramView extends Panel<DiagramViewOptions> {
      */
     private _handlePointerMove(event: PointerEvent): void {
         if (!this._panning) {
+            return;
+        }
+
+        // The primary button is no longer held — the pointer was released
+        // outside this view's subtree, so its `pointerup` never reached us. End
+        // the pan here rather than keep dragging on a button-up move.
+        if ((event.buttons & 1) === 0) {
+            this._panning = false;
+
             return;
         }
 
