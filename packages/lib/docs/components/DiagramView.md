@@ -1,6 +1,6 @@
 # DiagramView
 
-[`DiagramView`](/api/component/diagram/classes/DiagramView) is a **read-only** graph/diagram viewer. You give it a framework-native node/edge model; it runs the graph through [ElkJS](https://github.com/kieler/elkjs) for automatic layout, renders themed nodes plus an SVG edge layer with arrowheads, and supports pan, zoom, and node selection. ELK is layout-only — it takes JSON and returns the same JSON annotated with coordinates; every pixel is drawn through the framework's own component and DOM seams.
+[`DiagramView`](/api/component/diagram/classes/DiagramView) is a **read-only** graph/diagram viewer. You give it a framework-native node/edge model; it runs the graph through [ElkJS](https://github.com/kieler/elkjs) for automatic layout, renders themed nodes plus an SVG edge layer with arrowheads, and supports free (unbounded) pan, zoom, and node selection. ELK is layout-only — it takes JSON and returns the same JSON annotated with coordinates; every pixel is drawn through the framework's own component and DOM seams.
 
 ## Installation
 
@@ -100,18 +100,27 @@ A node with a non-empty `children` is a *container*: ELK computes its size and p
 | --- | --- |
 | `setData(data)` | Replace the graph; rebuilds nodes/edges and triggers an async layout. |
 | `getData()` | The current graph, or `null`. |
-| `setZoom(z)` / `getZoom()` | Set (clamped to `[minZoom, maxZoom]`) or read the zoom factor. |
-| `zoomToFit()` | Scale so the whole graph fits the viewport. |
+| `setZoom(z)` / `getZoom()` | Set (clamped to `[minZoom, maxZoom]`, adaptively lowered so a huge graph can still reach its fit zoom) or read the zoom factor. |
+| `zoomIn()` / `zoomOut()` | Step the zoom by a fixed multiplicative factor about the viewport centre. |
+| `zoomToFit()` | Scale so the whole graph fits the viewport, then centre it. |
+| `resetView()` | Reset to the default zoom and re-centre the graph. |
+| `revealNode(id)` | Pan so the given node is centred, without changing zoom, selection, or emitting. |
 | `selectNode(id)` | Select a node programmatically (or `null` to clear) — does **not** emit. |
 | `getSelection()` | The selected node data (single-select). |
+| `setControlsVisible(v)` / `isControlsVisible()` | Show/hide, or read the visibility of, the built-in zoom / fit / reset control cluster. |
 | `on('selection', fn)` | Fires when the selected node changes (a click), with the selected node data. |
 | `on('layout', fn)` | Fires after each successful ELK layout pass. |
+| `on('contextmenu', fn)` | Fires when a node is right-clicked, with the node data and the originating `MouseEvent`; suppresses the browser's native menu. A right-click on empty canvas is left to the browser. |
 
 ## Interaction
 
-- **Pan** — drag with the pointer, or use the trackpad / scrollbars (native scroll).
-- **Zoom** — the mouse wheel zooms about the pointer; `setZoom` / `zoomToFit` zoom programmatically.
+- **Initial view** — the first render centres the graph in the viewport, at whatever `zoom` was configured (default `1`) — the same placement the built-in Reset control returns to. It does **not** auto-fit: a graph larger than the viewport stays at its configured zoom and overflows. For auto-fit, call `zoomToFit()` from a `"layout"` listener: `view.on('layout', () => view.zoomToFit())`.
+- **Pan** — drag the **empty canvas** to pan freely, in any direction, with no clamping — the graph can be dragged into empty space past its own bounds (an infinite canvas). There are no scrollbars; content panned outside the viewport is simply clipped. A drag that starts on a node (leaf or container) or on the control cluster does not pan, so the cursor always says what a drag will do: `grab` over pannable canvas, `pointer` over a clickable node.
+- **Resize** — a viewport resize keeps whatever was at the centre of the viewport at the centre, so the diagram does not drift toward a corner as the window grows or shrinks. The zoom is never changed by a resize.
+- **Zoom** — the mouse wheel zooms about the pointer; `setZoom` / `zoomIn` / `zoomOut` / `zoomToFit` / `resetView` zoom programmatically.
 - **Select** — click a node to select and highlight it (a themed `.selected` state) and fire `"selection"`; click empty space to clear.
+- **Context menu** — right-click a node to fire `"contextmenu"` with its data (see [Common methods](#common-methods)).
+- **Control cluster** — a built-in zoom-in / zoom-out / fit / reset button cluster is pinned to the bottom-right corner by default (`controls: true`), staying put as the viewport resizes; pass `controls: false` to hide it, e.g. when driving the view from your own toolbar instead.
 
 ## Notes
 

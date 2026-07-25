@@ -293,9 +293,237 @@ Viewport is `1280 × 800` (the test `CONFIG`); graph fixture is `160 × 230` unl
 - **A clamped-pan compatibility mode.** Free pan is the only mode.
 - **Auto-fit on first layout.** Not done; consumers opt in via a `"layout"` listener.
 - **Minimap / overview panel.** Out of scope.
-- **Panning restricted to empty canvas (not over nodes).** Unchanged from today: a drag starting on a node still pans; only the control cluster is excluded.
+- **Panning restricted to empty canvas (not over nodes).** Unchanged from today: a drag starting on a node still pans; only the control cluster is excluded. *(Reversed after implementation at the user's request — see the Implementation Notes.)*
 - **App-side context-menu UI.** This plan only emits the `"contextmenu"` event; consuming it (a `Menu`) is a separate app-side plan.
 - **Touch / pinch gestures.** Pointer-drag and wheel only, as today.
+
+---
+
+## Implementation Notes
+
+The plan classified behaviours 16 ("Free pan") and 17 ("Grab cursor") as
+manual-verify, reasoning that "the offline harness cannot exercise
+pointer-drag sequences or rendered cursors". That premise turned out to be
+false: `_handlePointerDown` / `_handlePointerMove` / `_handlePointerUp` and
+`setCursor`/`getCursor` are all cached, DOM-read-free state, and the plan's
+own U4 selection tests already drive `_handleClick` offline the same way. The
+only real gap was that the test harness's `makeEvent` helper
+(`tests/dom/TestDOM.ts`) had no `buttons` field, needed for the
+`(event.buttons & 1) === 0` end-the-pan guard. That field was added, and
+behaviours 16/17 are now covered by automated tests
+(`DiagramView.test.ts`, "free pan drag + grab/grabbing cursor") instead of a
+manual-verify note — a drag sequence asserting the unbounded/negative pan
+transform and the grab→grabbing→grab cursor cycle.
+
+A follow-up audit pass found the same premise was also false for the
+remaining "manual-only" behaviours: 18 (wheel-zoom about the pointer) is
+testable because `DOM.source.getViewportRect` walks the (empty, for a
+standalone view) parent chain purely from cached geometry, with no real DOM
+read; 19 (the rendered, corner-pinned control cluster) is testable the same
+way `Anchor.test.ts` and `VideoPlayer.test.ts` already test their respective
+precedents — `doLayout()` commits real child rects offline, and the button
+wiring is asserted by invoking the registered handler fields directly; and 20
+(recovering a graph panned off-screen) is a drag sequence followed by
+`resetView()`, both already independently testable. All three now have
+automated tests (`DiagramView.test.ts`: "wheel-zoom about the pointer",
+"control cluster", and the "recovers a graph panned far off-screen" case
+under "resetView"); `makeEvent` gained `deltaY` for the wheel test. Behaviour
+19's *visual* rendering (does it actually look right on-screen) and the
+overall drag/wheel *feel* remain unautomatable and were not separately
+re-verified beyond what the offline assertions above cover.
+
+One test-infrastructure finding along the way: `Button.click()` cannot be
+used reliably except as a file's first-and-only such test, because `Event`'s
+window-level base listener is a module-level singleton never re-armed across
+`DOM.reset()` (see `tests/component/MenuButton.test.ts`'s file-level
+comment). A third audit pass pointed out that driving the control-cluster
+wiring test through the handler fields directly (as the first two rounds
+left it) never actually exercised `Button.on("action", ...)` — deleting
+`wireControlListeners()` from the constructor still left the suite green.
+The wiring is now covered by a real `Button.click()` dispatch, placed as the
+file's first describe block (before any other test in this file constructs a
+button and registers "click", which would otherwise have already claimed the
+module-level base listener) — matching the exact constraint
+`MenuButton.test.ts` documents. Every other test still drives the handler
+fields directly, which remains correct for asserting each method's own math.
+
+Similarly, a construction-time `controls: false` never actually hiding the
+cluster was untested: `isControlsVisible()` reads the cached `_options`
+value, which stays correct even if the constructor's own
+`setControlsVisible(...)` dispatch were deleted. A direct
+`_controls.isVisible()` assertion on a `{ controls: false }`-constructed view
+closes that gap.
+
+Separately, `zoomIn()` / `zoomOut()` / `resetView()` / `revealNode()` (and the
+`centreGraph()` / `zoomAboutViewportPoint()` helpers backing the first three)
+turned out to write a `NaN` pan when called on a view that has completed
+layout but has never been sized, or — for `revealNode` — whose target node
+has no committed real size either (`getWidth()`/`getHeight()` are `NaN`, not
+`0`, before the first `setSize` — the same fact `effectiveMinZoom` already
+guards against); each was given its own no-op guard and test. A third round
+found the same root cause also reaches `zoomToFit()` (`getWidth()/graphWidth`
+is `NaN`, so `zoomX`/`zoomY` are `NaN`) via a different symptom: it is the
+*zoom* that goes `NaN`, not the pan, and the plan's own sanctioned auto-fit
+recipe (`view.on("layout", () => view.zoomToFit())`) can fire before the view
+is ever sized. The prior rounds' claim that "a `NaN` zoom recovers on its own
+via `setZoom`" was false — `clampZoom` propagates `NaN` through
+`Math.max`/`Math.min` just like the pan math does. Rather than adding a fifth
+per-method guard, `setZoom()` itself now rejects a non-finite zoom request
+outright, which is the one gate every zoom-changing entry point already
+funnels through; `zoomToFit`'s existing `centreGraph()` call is separately
+guarded already, so no pan is written either.
+
+A fourth audit pass found three more issues. First, the `"contextmenu"` DOM
+wiring (`Event.addSubtreeListener(this, "contextmenu", this._handleContextMenu)`
+in `init()`) was never exercised end-to-end — every contextmenu test called
+`_handleContextMenu` directly, so deleting the registration line left the
+suite green. Fixed with a real `Event.fireEvent`-dispatched contextmenu,
+folded into the same file-first test that already drives the control
+cluster's real `Button.click()` dispatch — `init()` registers all seven
+subtree-listener types together, so both had to share that one
+first-in-file test to reliably claim their event types' window-level base
+listeners (mutation-verified: commenting out the registration now fails the
+test). Second, two pre-existing test comments/titles (U2's title, U2b's
+rationale) still described the old scaled-host-box / native-scroll model
+this branch replaced; corrected to describe the current unscaled-box /
+transform model without changing either test's assertions. Third, and most
+serious: the `"wheel"` subtree listener was registered without
+`{ passive: false }`, so — once `setAutoScroll("auto")` was removed — Chrome
+installs it as passive (`"wheel"` is in `Event.ts`'s `PASSIVE_TYPES`) and
+silently ignores `_handleWheel`'s `preventDefault()`, letting the page's
+native scroll/zoom fire alongside the diagram's own wheel-zoom; worse, if
+another component in the same app registers `"wheel"` non-passively (e.g.
+`Component.attachWheelScrolling` / `WheelTrap`), `installBaseListener`'s
+conflict check throws. Fixed by passing `{ passive: false }`, matching the
+established precedent at both call sites just named. It was also verified
+live: a real dev server (`npm run dev`) serving this worktree, driven via
+Chrome DevTools, confirmed (a) a dispatched wheel event over the diagram
+zooms with `defaultPrevented: true` and no console warning/error, and the
+page's own `scrollY` stays `0`; (b) a real
+`pointerdown`/`pointermove`/`pointerup` drag pans the diagram (unbounded)
+and cycles the cursor `grab` → `grabbing` → `grab`; (c) a real `contextmenu`
+dispatch over a node fires the demo's listener and shows "Right-clicked:
+Process" in the status line, with `defaultPrevented: true`; (d) the toolbar
+and the built-in bottom-right control cluster both render and drive the same
+view, and `Reset` recentres it — covering behaviours 16-20's residual
+visual/feel claims; no console errors were logged at any point.
+
+A fifth (final) audit pass found the claim that `{ passive: false }` "is not
+offline-observable" was itself false, and that the setting was still
+mutation-survivable (deleting it left the whole suite green) despite the
+live verification. `RecordingDOMSink.addListener` does drop the `options` it
+is given, but `Event.installBaseListener`'s own conflict guard makes the
+*effective* passive setting indirectly observable: once `"wheel"` is
+installed as `passive: false` (which `DiagramView.init()` does the moment a
+view's element is forced), a later `Event.addSubtreeListener(other, "wheel",
+fn, { passive: true })` call throws, while a matching `{ passive: false }`
+one does not. That probe now lives alongside the file-first click/contextmenu
+dispatch test (mutation-verified). Live verification remains valuable for
+what it independently confirms (the actual browser-observable effects —
+`defaultPrevented`, no page scroll, no console warning) but was not, on its
+own, a substitute for an automated regression guard here.
+
+**Post-implementation change, at the user's direction: the initial view is
+now centred.** This revises the `## Architecture Decisions` entry *"No
+auto-fit on first layout"*, which specified the initial render keep the
+configured zoom **at pan `0`** — showing a large graph's top-left corner.
+On review of the shipped behaviour the user asked that the first render
+instead show what the Reset control returns to, since the two disagreeing
+was the one jarring thing left. Only the *pan* half of that decision is
+revised: `applyLayout` now performs a one-time centring, and the **auto-fit
+non-goal still stands** — the configured `zoom` is deliberately left alone
+(unlike `resetView`, which also restores the default zoom), so
+`new DiagramView({ zoom: 2 })` still opens at 2, and an over-large graph
+still overflows rather than being fitted. The centring is one-time
+(`_needsInitialCentre`), so a later `setData` never yanks a pan the user has
+since dragged to, and it runs *before* the `"layout"` emit so the sanctioned
+auto-fit recipe (`view.on("layout", () => view.zoomToFit())`) still runs
+afterwards and wins.
+
+The first cut of that centring shipped with a race the user then hit: the
+graph still opened top-left much of the time. Its two inputs arrive
+asynchronously and in **either** order — the graph bounds from ELK, the
+viewport size from the host's layout pass — and the code assumed the size
+was either already there or would arrive via a single `onFirstLayout`
+firing. Worse, that callback cleared the pending flag *before* calling
+`centreGraph`, which silently no-ops (returns without writing) while the
+view has no committed size. So when the ELK result and that one firing both
+landed before the host sized the view, the one-shot was consumed by an
+attempt that did nothing and the centring was lost for good. It was
+timing-dependent, hence intermittent: a cache-cleared reload happened to
+order things favourably while a warm reload did not.
+
+The fix drops the one-shot entirely and makes the centring
+ordering-independent: `centreGraph` now **reports** whether it wrote a pan,
+`tryInitialCentre` clears the pending flag only on a confirmed success, and
+a `doLayout` override retries it on every layout pass until it succeeds.
+Whichever input lands last, the next layout centres. The override writes
+only the content host's transform — never a child's rect and never
+`scheduleLayout` — so it cannot feed back into the layout it runs inside,
+which is what made a `doLayout` override unsafe for the *control cluster*
+(see the `Anchor` decision) but fine here. Five tests cover it
+(sized-at-layout-time, configured-zoom preserved, the deferred/unsized path,
+first-layout-only, and a regression test that reproduces the exact losing
+order — a layout pass while still unsized must not consume the pending
+centring). That regression test fails on the old code with
+`translate(0px, 0px)`, i.e. the user-visible top-left symptom. Confirmed
+live afterwards across repeated warm and cache-ignoring reloads: the initial
+transform matches the transform after pressing Reset byte-for-byte
+(`matrix(1, 0, 0, 1, 571.5, 552)`), with a pan/Reset round trip still
+working and no console errors.
+
+**Second post-implementation request: a resize keeps the viewport centre
+fixed.** Previously the pan was left untouched across a viewport resize, so
+the graph point under the centre drifted toward a corner as the window grew
+or shrank. `doLayout` now also runs `anchorCentreAcrossResize`, which
+measures the extent delta since the last layout and shifts the pan by half
+of it on each axis — from `viewport = pan + graph·zoom`, holding the centre's
+graph point fixed is exactly `pan += (newExtent − oldExtent) / 2`, in which
+the zoom cancels, so it is correct at any zoom and never alters the zoom.
+The first sizing only records the extent (the initial centring owns that
+pass), and an unchanged size is a no-op, so this cannot perturb a settled
+view. Four tests cover it (grow, shrink, an off-centre pan at a non-default
+zoom, and the unchanged-size no-op). Verified live via CDP-driven window
+resizes: shrinking 1697×1211 → 992×634 and growing 992×634 → 1492×934 (the
+latter after zooming to 2.25× and dragging off-centre) both left the centre
+graph point drifting `0.0000`px on each axis, with the zoom unchanged.
+
+**Third post-implementation request: make the cursor honest, and stop drags
+on nodes from panning.** Two defects, one theme — the cursor was promising
+things the drag did not deliver.
+
+First, the cursor changed away from `grab` well outside any visible node.
+Cause: `ComponentDefaults` gives every `Component` `cursor: "default"`, which
+it stamps onto its own CSS rule, and the content host is an *invisible*
+`Container` spanning the whole graph bounds — so it painted an arrow across
+the entire canvas, masking the viewport's `grab`. A live cursor probe over a
+20px grid confirmed it: 277 sample points reading `default` from
+`Container`. Fixed by constructing the host with `cursor: "inherit"`, so the
+single cursor write on the view root governs the whole canvas.
+`DiagramGroupNode` had the same latent problem for the opposite reason — it
+set no cursor, so a *selectable container node* also read as `default`; it
+now sets `pointer`, matching `DiagramNode`. Re-probing shows only the three
+intended regions: `grab` on canvas (root **and** host), `pointer` on leaf and
+container nodes, `pointer` on the control buttons.
+
+Second, a drag starting on a node still panned. This **reverses the
+`## Non-Goals` entry** *"Panning restricted to empty canvas (not over
+nodes)"*, which had kept the pre-existing behaviour deliberately. The user's
+rule — the cursor must say what a drag will do — makes the two inseparable:
+having fixed the cursor to show `pointer` over nodes, panning from them
+would be exactly the lie the first fix removed. `_handlePointerDown` now
+bails on `nodeIdAt(event.target) !== null` alongside the existing
+`isControlsTarget` guard. Container nodes are included, since they are
+selectable nodes like any leaf — worth knowing, because it means the large
+empty interior of a group box is not pannable; that is the consistent
+reading of the rule, and easy to relax to leaves-only if it proves annoying.
+Five tests cover it (host cursor-transparent, container-node cursor,
+no-pan-on-leaf, no-pan-on-container, still-pans-from-canvas), and it was
+verified live: dragging a leaf and dragging a group interior both leave the
+transform untouched with the cursor never switching to `grabbing`, dragging
+canvas still pans, and clicks still select both node kinds
+("Selected: Start", "Selected: Pipeline") — so the pan guard does not
+swallow selection.
 
 ---
 
