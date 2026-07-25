@@ -7,11 +7,14 @@
  * `docs:api`, resolves each curated symbol to its owning module (= import subpath) and
  * first-paragraph JSDoc summary, and renders TWO variants of the manifest from one
  * resolved row set:
- *   - `llms.txt` (repo root, committed)      — filesystem-relative `.md` links, for
- *                                               coding agents that can `Read` the repo.
- *   - `docs/public/llms.txt` (gitignored)    — site URLs, for web agents fetching the
- *                                               hosted copy; VitePress deploys it at the
- *                                               site root. Contains zero `docs/` paths.
+ *   - `llms.txt` (repo root, committed)              — filesystem-relative `.md` links,
+ *                                                       for coding agents that can `Read`
+ *                                                       the repo.
+ *   - `../docs/public/llms.txt` (gitignored)         — site URLs, for web agents fetching
+ *                                                       the hosted copy; the docs app's
+ *                                                       Vite public directory copies it to
+ *                                                       the site root. Contains zero
+ *                                                       `docs/` paths.
  *
  * The seam holds every human-authored word; this script derives all import subpaths,
  * summaries, and links — so they cannot drift from source. A curated symbol that is
@@ -32,13 +35,13 @@ const MODEL_PATH = "docs/api/typedoc-model.json";
 /** Committed, filesystem-link output read by in-repo coding agents. */
 const ROOT_OUT = "llms.txt";
 
-/** Gitignored, site-link output VitePress deploys at the site root for web agents. */
-const SITE_OUT = "docs/public/llms.txt";
+/** Gitignored, site-link output the docs app's public directory deploys at the site root for web agents. */
+const SITE_OUT = "../docs/public/llms.txt";
 
 /** npm package name — the import-subpath prefix printed in every catalog row. */
 const PACKAGE = "@jimka/typescript-ui";
 
-/** Deployed docs-site base (VitePress `base` + `cleanUrls`); site-mode link prefix. */
+/** Deployed docs-site base (the docs app's Vite `base`); site-mode link prefix. */
 const SITE_BASE = "https://jimka.github.io/typescript-ui/";
 
 /** GitHub blob base for repo-root docs the site does not publish (ARCHITECTURE.md, …). */

@@ -10,7 +10,5 @@ coverage
 
 # Generated docs output
 packages/lib/docs/api
-packages/lib/docs/.vitepress/dist
-packages/lib/docs/.vitepress/cache
 # Generated hosted copy of the capability manifest (committed manifest is packages/lib/llms.txt)
-packages/lib/docs/public/llms.txt
+packages/docs/public/llms.txt
