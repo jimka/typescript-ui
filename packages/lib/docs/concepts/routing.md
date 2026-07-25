@@ -11,6 +11,12 @@
 
 `pushState` and `replaceState` fire no event — unlike a hash write, which fires `hashchange` for free. So in History mode, `navigate` applies the matching route itself immediately after writing the URL, rather than relying on a browser event to do it.
 
+### Fragments
+
+In History mode, `location.hash` is free to carry a real URL fragment alongside the path — the `#` isn't spent on the route the way it is in hash mode. `getFragment(href?)` reads it, without its leading `"#"`; called with no argument it reads the current URL. `getHref(path)` and `getPath(href?)` both understand a `#fragment` suffix on their input, splitting it off before working with the path and, for `getHref`, re-appending it (unencoded) to the built href. `navigate("/a#b")` treats a change in the fragment as a real navigation even when the path is unchanged — it writes the URL and calls the handler — and every route handler receives the fragment as its third argument, alongside `params` and `path`.
+
+Hash mode discards fragments everywhere: the `#` is already the route, so there's nowhere to put a second one. `getFragment()` always returns `""` in hash mode, and any `#fragment` passed into `getHref` or `navigate` is silently dropped.
+
 ## The surface
 
 ```typescript
