@@ -175,9 +175,20 @@ class DocsContent extends Panel {
 
     /**
      * Flushes the pane's own layout (folding Markdown's measured height into
-     * its scroll extent) and scrolls to the pending fragment's heading. A
-     * second navigation arriving before this callback drains overwrites
-     * {@link _pendingFragment}, so the last target wins and this finds `null`.
+     * its scroll extent), resyncs the scroll cache, and scrolls to the
+     * pending fragment's heading. A second navigation arriving before this
+     * callback drains overwrites {@link _pendingFragment}, so the last
+     * target wins and this finds `null`.
+     *
+     * The resync matters only on a cold direct load: the browser's own
+     * fragment-identifier handling scrolls the pane's real scrollable
+     * element natively as soon as the matching id appears in the DOM,
+     * bypassing {@link Component.setScrollTop} and leaving the cached
+     * `scrollTop` at its construction-time `0` — see {@link syncScrollOffsets}.
+     * Computing this component's delta-based scroll against that stale cache
+     * would then discard the browser's own scroll instead of refining it. A
+     * client-side navigation (`pushState`, no real page load) never triggers
+     * that native behaviour, so the resync is a no-op there.
      */
     private onScrollToFragment(): void {
         const fragment = this._pendingFragment;
@@ -189,6 +200,7 @@ class DocsContent extends Panel {
         }
 
         this.flushLayout();
+        this.syncScrollOffsets();
         this.scrollToHeading(fragment);
     }
 
