@@ -13,7 +13,7 @@ Full documentation lives at **<https://jimka.github.io/typescript-ui/>** *(deplo
 For local development of the docs site:
 
 ```bash
-npm -w packages/lib run docs:dev
+npm run docs:dev
 ```
 
 Highlights:
@@ -107,8 +107,8 @@ inside the library workspace.
 | `npm -w packages/lib run build` | Production bundle of the demo app to `packages/lib/dist/` |
 | `npm run build:lib` | Library bundle (ESM + `.d.ts`) to `packages/lib/dist/lib/` |
 | `npm run typecheck` | Strict TypeScript type check (no emit) |
-| `npm -w packages/lib run docs:dev` | Serve the VitePress documentation site locally |
-| `npm run docs:build` | Build the VitePress documentation site |
+| `npm run docs:dev` | Serve the documentation app locally |
+| `npm run build:pages` | Build the full documentation site |
 | `npm -w packages/lib run clean` | Delete `packages/lib/dist/` contents |
 
 ## License
