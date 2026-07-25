@@ -101,7 +101,10 @@ function showDefaultSection(): void {
     layoutManager.setActiveTabIndex(0);
 }
 
-function syncHashToTab(_content: Component, index: number): void {
+// Driven by "select" rather than "activate": the URL names the section the
+// moment its tab is picked, not once a lazy panel has finished building — so a
+// slow factory never leaves the location field trailing the visible tab.
+function syncHashToTab(index: number): void {
     router.navigate("/" + slugs[index]);
 }
 
@@ -112,7 +115,7 @@ const router = new Router({
     },
 });
 
-layoutManager.on("activate", syncHashToTab);
+layoutManager.on("select", syncHashToTab);
 router.start();
 
 const PersonModel = new Model([

@@ -33,16 +33,21 @@ import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
  * structural change that does *not* always empty the source strip; `"dock"`
  * fires when a foreign tab is dropped onto this strip (carrying the docked
  * content), the structural counterpart of `"detach"` — a tab arrived by drop;
- * `"activate"` fires when the active tab changes via a click or
- * {@link Tab.setActiveTabIndex} (carrying the now-active content and its index),
- * but *not* on the silent post-close re-selection of a surviving sibling;
+ * `"select"` fires the moment a tab is picked by a click or
+ * {@link Tab.setActiveTabIndex} (carrying its index and label), before any
+ * deferred content is built — selection *intent*, which is what a router should
+ * write its URL from; `"activate"` fires when the active tab's content is live
+ * (carrying that content and its index), which for a lazy tab's first selection
+ * is after its factory has run — completion, which is what a consumer needing
+ * the component waits for. Neither fires on the silent post-close re-selection
+ * of a surviving sibling;
  * `"exception"` fires when a deferred tab's asynchronous factory rejected
  * (carrying the rejection value and the tab's label), after that tab has already
  * been closed.
  *
  * @category Layouts
  */
-export type TabEvent = "tabclose" | "empty" | "detach" | "activate" | "dock" | "exception";
+export type TabEvent = "tabclose" | "empty" | "detach" | "select" | "activate" | "dock" | "exception";
 
 /**
  * How a torn-off tab's floating window hosts its content.
@@ -243,6 +248,15 @@ interface ContentEntry {
      * fallback timer outlives the element handle the teardown releases.
      */
     materializeAnimation: Animation.CancelHandle | null;
+
+    /**
+     * Set when this entry was selected while it had no `component` yet (a lazy
+     * entry, or one already building): the `"activate"` announcement is owed
+     * until materialization produces the content the event has to carry. Cleared
+     * when materialization settles it — and dropped without emitting if the
+     * selection has since moved on.
+     */
+    announceActivation: boolean;
 }
 
 /**
@@ -998,6 +1012,12 @@ class Tab extends LayoutManager {
 
             const entry = this._contents[idx];
 
+            // Selection intent, reported before the content is built (or even
+            // asked for) — a router writing its URL from this lands on the
+            // destination while the spinner is still up, rather than trailing a
+            // slow factory. "activate" below is the completion half.
+            this.emit("select", idx, this._bar.getEntryName(entry.id));
+
             if (entry.state === "lazy") {
                 this.materializeAsync(idx);
             }
@@ -1008,6 +1028,12 @@ class Tab extends LayoutManager {
             // not route through here, so a close never emits a spurious activation.
             if (entry.component) {
                 this.emit("activate", entry.component, idx);
+            } else {
+                // A deferred entry (lazy, or already building) has no content
+                // for the event to carry yet, so the announcement is owed
+                // rather than skipped — otherwise a first-time selection is
+                // silently unreported and only the second one is seen.
+                entry.announceActivation = true;
             }
         }
 
@@ -1377,6 +1403,7 @@ class Tab extends LayoutManager {
             spinner: null,
             state: "ready",
             materializeAnimation: null,
+            announceActivation: false,
         });
 
         this.wireComponentAria(id, component);
@@ -1451,6 +1478,7 @@ class Tab extends LayoutManager {
             spinner: null,
             state: "lazy",
             materializeAnimation: null,
+            announceActivation: false,
         });
 
         this.getContainer()?.scheduleLayout();
@@ -1608,8 +1636,29 @@ class Tab extends LayoutManager {
 
                 this.wireComponentAria(entry.id, component);
                 container.scheduleLayout();
+                this.announcePendingActivation(entry);
             }
         });
+    }
+
+    /**
+     * Settles the `"activate"` announcement a selection left owed because the
+     * entry had no content to carry at the time. Emitted only while the entry is
+     * still the selected one: a build that lands behind a newer selection would
+     * otherwise report an active tab that is not the one on screen.
+     *
+     * @param entry - The freshly materialized content entry.
+     */
+    private announcePendingActivation(entry: ContentEntry): void {
+        if (!entry.announceActivation || !entry.component) {
+            return;
+        }
+
+        entry.announceActivation = false;
+
+        if (this._contents[this._selectedTabIndex] === entry) {
+            this.emit("activate", entry.component, this._selectedTabIndex);
+        }
     }
 
     /**
@@ -2240,6 +2289,25 @@ class Tab extends LayoutManager {
      */
     on(event: "detach", listener: (window: AbstractWindow) => void): this;
     /**
+     * Registers a listener for the `"select"` event, which fires the moment a
+     * tab is picked by a click or {@link setActiveTabIndex}, carrying its
+     * zero-based index and label. It reports selection *intent*: it fires before
+     * a deferred tab's factory runs, so it carries no content component and
+     * never waits on a build — which is what makes it the right signal for a
+     * router, whose URL should name the destination while the spinner is still
+     * up. Wait for {@link on | `"activate"`} instead when you need the live
+     * content component.
+     *
+     * Like `"activate"`, it does not fire on the post-close re-selection of a
+     * surviving sibling (that re-selection is visual-only).
+     *
+     * @param event - The `"select"` event.
+     * @param listener - Invoked with the selected tab's index and label.
+     *
+     * @returns This tab layout, for method chaining.
+     */
+    on(event: "select", listener: (index: number, label: string) => void): this;
+    /**
      * Registers a listener for the `"activate"` event, which fires when the
      * active tab changes via a click or {@link setActiveTabIndex}, carrying the
      * now-active content component and its zero-based index. It does *not* fire
@@ -2247,6 +2315,13 @@ class Tab extends LayoutManager {
      * is visual-only), so a tree owner such as
      * [`Dock`](/api/overlay/classes/Dock) can treat it as a genuine
      * active-tab-change signal.
+     *
+     * Selecting a lazy tab for the first time defers the event until its factory
+     * has produced the content — the event always carries live content, never
+     * the spinner placeholder. A build that finishes after the selection has
+     * moved on is dropped rather than announced, so the reported tab is always
+     * the one on screen. Listen for {@link on | `"select"`} instead when you
+     * want the selection itself, unconditionally and without that delay.
      *
      * @param event - The `"activate"` event.
      * @param listener - Invoked with the now-active content and its index.
@@ -2314,6 +2389,7 @@ class Tab extends LayoutManager {
     protected emit(event: "tabclose", component: Component): void;
     protected emit(event: "empty"): void;
     protected emit(event: "detach", window: AbstractWindow): void;
+    protected emit(event: "select", index: number, label: string): void;
     protected emit(event: "activate", content: Component, index: number): void;
     protected emit(event: "dock",   content: Component): void;
     protected emit(event: "exception", error: unknown, label: string): void;
