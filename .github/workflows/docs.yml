@@ -24,8 +24,6 @@ jobs:
                   node-version: 22
                   cache:        npm
             - run: npm ci
-            - run: npm -w packages/docs run typecheck
-            - run: npm -w packages/docs run test
             # packages/docs (a docs app built with the library itself) is now
             # the site root, so every URL in the published
             # packages/lib/README.md keeps resolving unchanged. The former
@@ -40,9 +38,15 @@ jobs:
             # requirement grows with the library, and the build now OOMs on
             # smaller developer machines while still completing on CI
             # runners — a local OOM here is expected, not a broken build.
+            #
+            # The docs typecheck/test steps run after it, not before: they
+            # type-check against packages/lib's built .d.ts output, which
+            # build:pages's build:lib substep is what produces.
             - run: npm run build:pages
               env:
                   NODE_OPTIONS: --max-old-space-size=12288
+            - run: npm -w packages/docs run typecheck
+            - run: npm -w packages/docs run test
             - uses: actions/configure-pages@v5
             - uses: actions/upload-pages-artifact@v3
               with:
