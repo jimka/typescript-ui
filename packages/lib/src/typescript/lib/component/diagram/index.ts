@@ -9,5 +9,5 @@ export type { DiagramGroupNodeOptions } from '~/component/diagram/DiagramGroupNo
 export { DiagramEdgeLayer } from '~/component/diagram/DiagramEdgeLayer.js';
 export type { DiagramEdgeRoute } from '~/component/diagram/DiagramEdgeLayer.js';
 export { ElkLayoutEngine } from '~/component/diagram/ElkLayoutEngine.js';
-export type { DiagramLayoutResult, ElkEdgeSection, ElkPoint } from '~/component/diagram/ElkLayoutEngine.js';
+export type { DiagramLayoutResult, ElkEdgeSection, ElkPoint, ElkLayoutEngineOptions } from '~/component/diagram/ElkLayoutEngine.js';
 export type { DiagramData, DiagramNodeData, DiagramEdgeData, DiagramPortData, DiagramEdgeMarker, DiagramEdgeStyle } from '~/component/diagram/DiagramModel.js';
