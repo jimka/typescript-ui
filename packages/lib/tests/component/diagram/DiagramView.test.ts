@@ -26,6 +26,8 @@ const CONFIG = {
  */
 class StubEngine {
     lastArgs: { data: DiagramData; sizes: Map<string, { width: number; height: number }>; defaults?: Record<string, string> } | null = null;
+    /** How many times the view disposed this engine. */
+    disposed = 0;
     private _deferred: Array<{ resolve: (r: DiagramLayoutResult) => void; reject: (e: unknown) => void }> = [];
 
     constructor(private _result: DiagramLayoutResult, private _mode: 'resolve' | 'reject' | 'defer' = 'resolve') {}
@@ -46,6 +48,14 @@ class StubEngine {
 
     resolveDeferred(index: number, result: DiagramLayoutResult): void {
         this._deferred[index].resolve(result);
+    }
+
+    rejectDeferred(index: number, error: unknown): void {
+        this._deferred[index].reject(error);
+    }
+
+    dispose(): void {
+        this.disposed += 1;
     }
 }
 
@@ -1432,5 +1442,70 @@ describe('DiagramView — compound container nodes (U11)', () => {
         expect(sizes.has('schema:public')).toBe(true);
         expect(sizes.has('public.users')).toBe(true);
         expect(sizes.has('public.orders')).toBe(true);
+    });
+});
+
+// Disposal. The view owns its engine's lifetime: tearing the view down must
+// dispose the engine (which is what releases the ELK Web Worker), and a layout
+// still in flight at that moment must not write back into the torn-down view.
+
+describe('DiagramView — disposal', () => {
+    it('D1: disposing the view disposes its engine', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        await flush();
+
+        view.dispose();
+
+        expect(stubEngine.disposed).toBe(1);
+    });
+
+    it('D2: disposing twice does not throw', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        await flush();
+
+        view.dispose();
+
+        expect(() => view.dispose()).not.toThrow();
+    });
+
+    it('D3: a layout resolving after disposal is dropped, not applied', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        await flush();
+
+        const layouts: number[] = [];
+        view.on('layout', () => layouts.push(1));
+
+        view.dispose();
+        stubEngine.resolveDeferred(0, fixedResult());
+
+        await flush();
+
+        expect(layouts).toEqual([]);
+    });
+
+    it('D4: a layout rejecting after disposal does not strip the view\'s nodes', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        await flush();
+
+        expect(view._nodeComponents.size).toBe(2);
+
+        view.dispose();
+        stubEngine.rejectDeferred(0, new Error('elkjs unavailable'));
+
+        await flush();
+
+        // `handleLayoutFailure` tears every node off the view when it runs, so
+        // an untouched node map is what proves its generation guard dropped
+        // this stale failure. Asserting only "no unhandled rejection" would
+        // pass for any implementation — `relayout` always attaches a `.catch`.
+        expect(view._nodeComponents.size).toBe(2);
     });
 });

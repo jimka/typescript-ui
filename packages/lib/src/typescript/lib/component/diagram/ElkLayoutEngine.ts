@@ -80,6 +80,7 @@ interface ElkExtendedEdge {
 /** Minimal structural type for the lazily-imported ELK instance. */
 interface ElkInstance {
     layout(graph: unknown): Promise<unknown>;
+    terminateWorker(): void;
 }
 
 /**
@@ -95,6 +96,9 @@ const DEFAULT_NODE_WIDTH = 120;
  * single label line plus vertical breathing room.
  */
 const DEFAULT_NODE_HEIGHT = 40;
+
+/** Message carried by the rejection a disposed engine's `layout` produces. */
+const DISPOSED_MESSAGE = "ElkLayoutEngine has been disposed";
 
 /**
  * Merges layout-option maps left-to-right, so later arguments win. `undefined`
@@ -370,6 +374,10 @@ export interface ElkLayoutEngineOptions {
  * fallback is permanent for the instance's lifetime, so later layouts run on
  * the main thread even if the worker would have recovered.
  *
+ * In `workerFactory` mode the engine owns a real Web Worker for as long as it
+ * lives. Its owner is expected to call {@link ElkLayoutEngine.dispose} when
+ * discarding it, or that worker thread outlives the engine.
+ *
  * @category Components
  */
 export class ElkLayoutEngine {
@@ -385,6 +393,31 @@ export class ElkLayoutEngine {
      * `false` for good and a further failure propagates.
      */
     private _workerBacked = false;
+    /** True once `dispose` has run. A disposed engine never builds another ELK. */
+    private _disposed = false;
+    /**
+     * True while the ELK instance this engine holds — or is in the middle of
+     * building — drives a real Web Worker, which is the consumer-factory mode
+     * and only that mode. Cleared when the main-thread fallback replaces the
+     * instance. Deliberately NOT cleared by `dispose`: a construction still in
+     * flight sets this just before it builds, and the adopt-time check needs
+     * it afterward to terminate an instance `dispose` could not yet see.
+     */
+    private _ownsWorker = false;
+    /**
+     * The in-flight construction, shared by every `layout` that arrives while
+     * ELK is still being imported and built. Without it each of those builds
+     * its own ELK — and its own Worker — because `_elk` is still `null` for
+     * all of them, and `dispose` can only terminate the one instance the
+     * engine ends up keeping. Cleared whenever what it memoised stops being
+     * this engine's instance: a failed construction (so a later `layout`
+     * retries the import instead of replaying the failure), the main-thread
+     * fallback replacing the instance, and `dispose`. Keeping those in step
+     * is what stops the memo retaining an ELK — and its `Worker` — the engine
+     * has already abandoned, so any future code that assigns or nulls `_elk`
+     * must clear this too.
+     */
+    private _building: Promise<ElkInstance> | null = null;
 
     /**
      * @param options - Optional worker configuration. With neither field set,
@@ -407,14 +440,23 @@ export class ElkLayoutEngine {
      * @param sizes - Per-node resolved sizes.
      * @param defaults - View-level default ELK options.
      * @returns The mapped layout result.
-     * @throws Error - If `elkjs` is not installed / cannot be imported, or a
-     *   main-thread layout fails (no worker fallback remains at that point).
+     * @throws Error - If `elkjs` is not installed / cannot be imported, if a
+     *   main-thread layout fails (no worker fallback remains at that point),
+     *   or if the engine was already disposed when the call started or is
+     *   disposed while it is building or rebuilding its ELK. Disposal landing
+     *   during the layout compute itself does not reject — that call can still
+     *   resolve, which is why `DiagramView` drops late results by generation
+     *   rather than relying on this.
      */
     async layout(
         data: DiagramData,
         sizes: Map<string, { width: number; height: number }>,
         defaults?: Record<string, string>,
     ): Promise<DiagramLayoutResult> {
+        if (this._disposed) {
+            throw new Error(DISPOSED_MESSAGE);
+        }
+
         const graph = buildElkGraph(data, sizes, defaults);
 
         try {
@@ -422,18 +464,61 @@ export class ElkLayoutEngine {
 
             return mapElkResult(await elk.layout(graph) as ElkNode);
         } catch (error) {
-            if (!this._workerBacked) {
-                throw error; // Main-thread failure — elkjs itself is absent/broken; propagate.
+            // Disposed mid-flight: the engine is gone for good, so there is
+            // nothing to fall back onto. Main-thread failure: elkjs itself is
+            // absent/broken. Either way, propagate.
+            if (this._disposed || !this._workerBacked) {
+                throw error;
             }
 
             // Worker construction failed (factory threw, `Worker` undefined,
-            // CSP block) or its first compute failed. Rebuild on the main
-            // thread and retry once so the diagram still renders.
+            // CSP block) or its first compute failed. Terminate the worker
+            // being abandoned before the reference is dropped, then rebuild on
+            // the main thread and retry once so the diagram still renders.
+            this.terminateOwnedWorker(this._elk);
             this._workerBacked = false;
-            this._elk = await this.createMainThreadElk();
+            this._ownsWorker   = false;
 
-            return mapElkResult(await this._elk.layout(graph) as ElkNode);
+            const rebuilt = await this.createMainThreadElk();
+
+            // `dispose` can land while that rebuild is awaited. Adopting the
+            // instance then would leave a disposed engine holding a live ELK
+            // and laying out through it, so drop it. Unlike `ensureElk`'s
+            // equivalent check this does NOT terminate what it drops: the
+            // rebuild is main-thread, and terminating a non-factory instance
+            // throws a `TypeError` (see `terminateOwnedWorker`).
+            if (this._disposed) {
+                throw new Error(DISPOSED_MESSAGE);
+            }
+
+            this._elk = rebuilt;
+            // The memo still resolves to the worker-backed instance just
+            // abandoned; drop it so it does not outlive what it built.
+            this._building = null;
+
+            return mapElkResult(await rebuilt.layout(graph) as ElkNode);
         }
+    }
+
+    /**
+     * Terminates this engine's ELK Web Worker, if it owns one, and drops the
+     * ELK instance. A later {@link ElkLayoutEngine.layout} rejects rather than
+     * rebuilding, so a disposed engine never resurrects a worker. Idempotent,
+     * and a no-op on an engine that never laid out or never ran off-thread.
+     *
+     * A layout request outstanding in a real worker at this moment never
+     * settles — elkjs does not reject pending requests on termination — so a
+     * caller awaiting one must not depend on it resolving or rejecting.
+     */
+    dispose(): void {
+        this._disposed = true;
+
+        this.terminateOwnedWorker(this._elk);
+
+        this._elk = null;
+        // Dropped too, or the engine keeps the terminated instance reachable
+        // through the memoised construction for as long as the engine lives.
+        this._building = null;
     }
 
     /**
@@ -442,15 +527,55 @@ export class ElkLayoutEngine {
      * GWT bundle resolves from the consumer's install rather than being inlined.
      *
      * @returns The ELK engine instance.
+     * @throws Error - If the engine was disposed while ELK was still being
+     *   imported and constructed.
      */
     private async ensureElk(): Promise<ElkInstance> {
         if (this._elk) {
             return this._elk;
         }
 
-        this._elk = await this.createElk();
+        // Memoised so overlapping layouts share one construction rather than
+        // each building an ELK of its own — see `_building`. The adopt-or-
+        // terminate decision therefore runs exactly once however many callers
+        // are waiting, and they all settle on its outcome.
+        this._building ??= this.createElk()
+            .then((elk) => {
+                if (this._disposed) {
+                    // `dispose` ran while ELK was still being imported and
+                    // constructed, so it saw no instance to terminate.
+                    // Terminate this one rather than adopting it, or the
+                    // worker outlives the disposed engine.
+                    this.terminateOwnedWorker(elk);
 
-        return this._elk;
+                    throw new Error(DISPOSED_MESSAGE);
+                }
+
+                this._elk = elk;
+
+                return elk;
+            })
+            .catch((error: unknown) => {
+                this._building = null;
+
+                throw error;
+            });
+
+        return this._building;
+    }
+
+    /**
+     * Terminates `elk`'s Web Worker, but only when this engine built it from a
+     * consumer factory. In every other mode elkjs drives an in-process stand-in
+     * worker with no `terminate` method, and asking elkjs to terminate that
+     * throws a `TypeError` — so the guard is load-bearing, not defensive.
+     *
+     * @param elk - The instance to terminate, or `null` if none was built.
+     */
+    private terminateOwnedWorker(elk: ElkInstance | null): void {
+        if (elk && this._ownsWorker) {
+            elk.terminateWorker();
+        }
     }
 
     /**
@@ -469,6 +594,7 @@ export class ElkLayoutEngine {
 
         if (this._workerFactory) {
             this._workerBacked = true;
+            this._ownsWorker   = true;
 
             return new ELK({ workerFactory: this._workerFactory });
         }
