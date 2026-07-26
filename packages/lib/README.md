@@ -20,6 +20,10 @@ Highlights:
 - [Theming](https://jimka.github.io/typescript-ui/concepts/theming) — runtime-switchable design tokens.
 - [API reference](https://jimka.github.io/typescript-ui/api/) — TypeDoc-generated browser of every public class.
 
+## Demo application
+
+[SQLAdmin](https://github.com/jimka/sqladmin) is a complete application built with this library, and the most thorough worked example of it — a web-based PostgreSQL admin client with an object navigator, an editable data grid, a SQL workspace, and interactive schema and role diagrams. It was written in part to exercise `@jimka/typescript-ui` at real-application scale.
+
 ## Quick install
 
 ```bash
