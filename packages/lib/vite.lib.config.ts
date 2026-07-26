@@ -73,6 +73,12 @@ export default defineConfig({
       fileName: (_format, name) => `${name}.es.js`,
     },
     outDir: 'dist/lib',
+    // MUST stay false: `build:lib` emits declarations to dist/lib/types (via
+    // tsc) *before* this build runs, and every "types" entry in package.json's
+    // exports map points into that directory. Emptying dist/lib here would
+    // delete them, publishing a package whose types all 404. The build stays
+    // free of stale chunks via the `rimraf dist/lib` that starts `build:lib`,
+    // not via this flag.
     emptyOutDir: false,
     sourcemap: true,
     minify: 'oxc',

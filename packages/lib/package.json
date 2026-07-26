@@ -127,7 +127,7 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run typecheck && vite build",
-    "build:lib": "tsc -p tsconfig.lib.json && tsc-alias -p tsconfig.lib.json && vite build --config vite.lib.config.ts",
+    "build:lib": "rimraf dist/lib && tsc -p tsconfig.lib.json && tsc-alias -p tsconfig.lib.json && vite build --config vite.lib.config.ts",
     "prepublishOnly": "npm run build:lib",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.lib.json --noEmit",
