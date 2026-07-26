@@ -20,4 +20,10 @@ export interface ElkConstructorOptions {
 export default class ELK {
     constructor(options?: ElkConstructorOptions);
     layout(graph: unknown): Promise<unknown>;
+    /**
+     * Terminates the underlying Web Worker. Only safe on an instance built
+     * from a `workerFactory`: in every other mode elkjs drives an in-process
+     * stand-in worker that has no `terminate`, and this throws a `TypeError`.
+     */
+    terminateWorker(): void;
 }

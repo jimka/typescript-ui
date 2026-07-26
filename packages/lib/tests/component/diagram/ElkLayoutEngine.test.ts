@@ -8,11 +8,48 @@ import type { DiagramData } from '~/component/diagram/DiagramModel';
 
 let lastConstructorOptions: { workerFactory?: () => Worker; workerUrl?: string } | undefined;
 const layoutMock = vi.fn();
+// Records the constructor options of whichever instance was terminated, so a
+// test can tell the worker-backed instance from the main-thread one. Real
+// elkjs THROWS here for a non-factory instance (its in-process stand-in worker
+// has no `terminate`); the mock cannot reproduce that, which is why the guard
+// is additionally pinned against real elkjs in `DiagramView.createEngine.test.ts`.
+const terminateWorkerMock = vi.fn();
+/**
+ * How many ELK instances have been constructed. An engine that builds two must
+ * terminate two, so this is what makes "every worker built is a worker
+ * terminated" assertable rather than just "something was terminated".
+ */
+let constructionCount = 0;
+/**
+ * When set, the next ELK construction throws it and clears the slot, so a test
+ * can make construction fail exactly once and observe whether a later `layout`
+ * retries it.
+ */
+let constructionError: Error | null = null;
+/**
+ * Fired synchronously inside each ELK construction, before the mock invokes
+ * any `workerFactory`. Awaiting a promise always yields a microtask, so a hook
+ * running here lands *after* the instance exists but *before* the `await` that
+ * produced it resumes. That is the window E13 needs; disposal landing earlier
+ * — while `layout` is still parked on the dynamic import — needs no hook at
+ * all and is what E9/E10 use instead.
+ */
+let onConstruct: (() => void) | null = null;
 
 vi.mock('elkjs/lib/elk.bundled.js', () => {
     class MockELK {
+        options?: { workerFactory?: () => Worker; workerUrl?: string };
         constructor(options?: { workerFactory?: () => Worker; workerUrl?: string }) {
+            if (constructionError) {
+                const error = constructionError;
+                constructionError = null;
+                throw error;
+            }
+
+            this.options = options;
             lastConstructorOptions = options;
+            constructionCount += 1;
+            onConstruct?.();
             // Real elkjs invokes the factory during construction to spin up the
             // worker; mirrored here so a throwing consumer factory propagates
             // out of `new ELK(...)` exactly as it would for the real library.
@@ -20,6 +57,9 @@ vi.mock('elkjs/lib/elk.bundled.js', () => {
         }
         layout(graph: unknown) {
             return layoutMock(graph);
+        }
+        terminateWorker() {
+            terminateWorkerMock(this.options);
         }
     }
     return { default: MockELK };
@@ -425,6 +465,10 @@ describe('ElkLayoutEngine — worker modes and fallback', () => {
         lastConstructorOptions = undefined;
         layoutMock.mockReset();
         layoutMock.mockResolvedValue({ id: 'root', children: [], edges: [] });
+        terminateWorkerMock.mockReset();
+        constructionCount = 0;
+        constructionError = null;
+        onConstruct = null;
     });
 
     it('with no factory and no url, builds a plain ELK() and resolves', async () => {
@@ -547,4 +591,221 @@ describe('ElkLayoutEngine — worker modes and fallback', () => {
         await expect(engine.layout(DATA, SIZES)).rejects.toThrow('elkjs broken on retry');
         expect(layoutMock).toHaveBeenCalledTimes(1);
     });
+});
+
+// U3 — disposal. `terminateWorkerMock` records the constructor options of the
+// terminated instance, so each case can assert *which* instance was torn down
+// (or that none was). The guard these cases pin — "only a consumer-factory
+// instance may be terminated" — is why `dispose` cannot simply call
+// `terminateWorker` unconditionally; see `DiagramView.createEngine.test.ts`
+// for the real-elkjs half of that story.
+
+describe('ElkLayoutEngine — disposal', () => {
+    const DATA: DiagramData = { nodes: [{ id: 'a' }], edges: [] };
+    const SIZES = new Map<string, { width: number; height: number }>();
+    const WORKER_STUB = (): Worker => ({}) as Worker;
+
+    beforeEach(() => {
+        lastConstructorOptions = undefined;
+        layoutMock.mockReset();
+        layoutMock.mockResolvedValue({ id: 'root', children: [], edges: [] });
+        terminateWorkerMock.mockReset();
+        constructionCount = 0;
+        constructionError = null;
+        onConstruct = null;
+    });
+
+    it('E1: disposing an engine that never laid out constructs nothing and terminates nothing', () => {
+        const engine = new ElkLayoutEngine({ workerFactory: WORKER_STUB });
+
+        expect(() => engine.dispose()).not.toThrow();
+
+        expect(lastConstructorOptions).toBeUndefined();
+        expect(terminateWorkerMock).not.toHaveBeenCalled();
+    });
+
+    it('E2: terminates the worker of a factory-built instance', async () => {
+        const engine = new ElkLayoutEngine({ workerFactory: WORKER_STUB });
+
+        await engine.layout(DATA, SIZES);
+        engine.dispose();
+
+        expect(terminateWorkerMock).toHaveBeenCalledTimes(1);
+        expect(terminateWorkerMock).toHaveBeenCalledWith({ workerFactory: WORKER_STUB });
+    });
+
+    it('E3: does not terminate a main-thread instance', async () => {
+        const engine = new ElkLayoutEngine();
+
+        await engine.layout(DATA, SIZES);
+        engine.dispose();
+
+        expect(terminateWorkerMock).not.toHaveBeenCalled();
+    });
+
+    it('E4: does not terminate a workerUrl-only instance (elkjs never built a real worker)', async () => {
+        const engine = new ElkLayoutEngine({ workerUrl: 'https://example.com/elk-worker.js' });
+
+        await engine.layout(DATA, SIZES);
+        engine.dispose();
+
+        expect(terminateWorkerMock).not.toHaveBeenCalled();
+    });
+
+    it('E5: is idempotent — a second dispose neither throws nor terminates again', async () => {
+        const engine = new ElkLayoutEngine({ workerFactory: WORKER_STUB });
+
+        await engine.layout(DATA, SIZES);
+        engine.dispose();
+
+        expect(() => engine.dispose()).not.toThrow();
+        expect(terminateWorkerMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('E6: a disposed engine rejects a later layout and builds nothing', async () => {
+        const engine = new ElkLayoutEngine({ workerFactory: WORKER_STUB });
+
+        await engine.layout(DATA, SIZES);
+        engine.dispose();
+        layoutMock.mockClear();
+
+        await expect(engine.layout(DATA, SIZES)).rejects.toThrow('ElkLayoutEngine has been disposed');
+        expect(layoutMock).not.toHaveBeenCalled();
+    });
+
+    it('E7: the main-thread fallback terminates the worker it abandons', async () => {
+        layoutMock.mockRejectedValueOnce(new Error('worker crashed'));
+        layoutMock.mockResolvedValueOnce({ id: 'root', children: [], edges: [] });
+
+        const engine = new ElkLayoutEngine({ workerFactory: WORKER_STUB });
+        const result = await engine.layout(DATA, SIZES);
+
+        expect(result.nodes).toEqual([]);
+        expect(terminateWorkerMock).toHaveBeenCalledTimes(1);
+        expect(terminateWorkerMock).toHaveBeenCalledWith({ workerFactory: WORKER_STUB });
+        // The memo must not keep resolving to the worker-backed instance the
+        // fallback just abandoned — same invariant E14 pins for `dispose`.
+        // Internal state for the same reason: `ensureElk` short-circuits on
+        // `_elk`, so a stale memo has no public surface.
+        expect((engine as unknown as { _building: unknown })._building).toBeNull();
+    });
+
+    it('E8: disposing after a fallback does not terminate the main-thread replacement', async () => {
+        layoutMock.mockRejectedValueOnce(new Error('worker crashed'));
+        layoutMock.mockResolvedValueOnce({ id: 'root', children: [], edges: [] });
+
+        const engine = new ElkLayoutEngine({ workerFactory: WORKER_STUB });
+        await engine.layout(DATA, SIZES);
+
+        engine.dispose();
+
+        // Still just the fallback's own termination — the replacement has no worker.
+        expect(terminateWorkerMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('E9: a worker built by a construction in flight at disposal is terminated, not adopted', async () => {
+        const factory = vi.fn(WORKER_STUB);
+        const engine = new ElkLayoutEngine({ workerFactory: factory });
+
+        // `layout` parks on elkjs's dynamic import, so this synchronous
+        // `dispose` always lands inside the construction window.
+        const pending = engine.layout(DATA, SIZES);
+        engine.dispose();
+
+        await expect(pending).rejects.toThrow('ElkLayoutEngine has been disposed');
+        expect(factory).toHaveBeenCalled();
+        expect(terminateWorkerMock).toHaveBeenCalledTimes(1);
+        expect(terminateWorkerMock).toHaveBeenCalledWith({ workerFactory: factory });
+    });
+
+    it('E10: a main-thread construction in flight at disposal rejects and terminates nothing', async () => {
+        const engine = new ElkLayoutEngine();
+
+        const pending = engine.layout(DATA, SIZES);
+        engine.dispose();
+
+        await expect(pending).rejects.toThrow('ElkLayoutEngine has been disposed');
+        expect(terminateWorkerMock).not.toHaveBeenCalled();
+    });
+
+    it('E11: overlapping layouts share one ELK, so disposal leaves no worker behind', async () => {
+        const engine = new ElkLayoutEngine({ workerFactory: WORKER_STUB });
+
+        // Both calls park at elkjs's dynamic import before either stores an
+        // instance, which is exactly what `view.setData(a); view.setData(b);`
+        // produces in one tick. Without in-flight deduplication each builds its
+        // own ELK — and `dispose` can only ever terminate the one the engine
+        // kept, so the other worker outlives the engine.
+        const first  = engine.layout(DATA, SIZES);
+        const second = engine.layout(DATA, SIZES);
+
+        await Promise.all([first, second]);
+
+        expect(constructionCount).toBe(1);
+
+        engine.dispose();
+
+        // The real invariant: every worker built is a worker terminated.
+        expect(terminateWorkerMock).toHaveBeenCalledTimes(constructionCount);
+    });
+
+    it('E12: a failed construction is retried by the next layout, not replayed', async () => {
+        const engine = new ElkLayoutEngine();
+
+        // Construction fails once. Sharing one construction across overlapping
+        // layouts must not turn that into a permanent failure: the memoised
+        // promise is dropped on rejection so the next layout re-imports,
+        // matching the behaviour before construction was ever memoised.
+        constructionError = new Error('elkjs boom');
+
+        await expect(engine.layout(DATA, SIZES)).rejects.toThrow('elkjs boom');
+
+        const result = await engine.layout(DATA, SIZES);
+
+        expect(result.nodes).toEqual([]);
+        expect(constructionCount).toBe(1);
+    });
+    it('E13: disposal landing during the fallback rebuild is not adopted', async () => {
+        // The worker layout fails, so `layout` falls back and rebuilds on the
+        // main thread. Disposing while that rebuild is in flight must not
+        // leave the disposed engine holding — and laying out through — it.
+        layoutMock.mockRejectedValueOnce(new Error('worker crashed'));
+
+        const engine = new ElkLayoutEngine({ workerFactory: WORKER_STUB });
+
+        // Construction #1 is the worker-backed engine; #2 is the fallback's
+        // rebuild. Disposing inside #2 lands in exactly the window between the
+        // rebuild being built and `layout` resuming to adopt it.
+        onConstruct = () => {
+            if (constructionCount === 2) {
+                engine.dispose();
+            }
+        };
+
+        await expect(engine.layout(DATA, SIZES)).rejects.toThrow('ElkLayoutEngine has been disposed');
+
+        // Only the worker-backed instance is terminated — once, by the
+        // fallback. The dropped rebuild is main-thread, and terminating a
+        // non-factory instance throws a TypeError against real elkjs (the
+        // hazard R1/R2 exist for), so "drop without terminating" is the
+        // contract here, not an oversight.
+        expect(terminateWorkerMock).toHaveBeenCalledTimes(1);
+        expect(terminateWorkerMock).toHaveBeenCalledWith({ workerFactory: WORKER_STUB });
+    });
+
+    it('E14: disposal drops the memoised construction, not just the instance', async () => {
+        const engine = new ElkLayoutEngine({ workerFactory: WORKER_STUB });
+
+        await engine.layout(DATA, SIZES);
+        engine.dispose();
+
+        // Asserted against internal state deliberately: after disposal the
+        // entry guard in `layout` makes `ensureElk` unreachable, so a retained
+        // memo cannot change any observable behaviour — it would only keep the
+        // terminated ELK (and its Worker object) alive for the engine's
+        // lifetime. There is no public surface that can see the difference.
+        expect((engine as unknown as { _building: unknown })._building).toBeNull();
+        expect((engine as unknown as { _elk: unknown })._elk).toBeNull();
+    });
+
 });

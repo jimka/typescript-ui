@@ -285,6 +285,22 @@ class DiagramView extends Panel<DiagramViewOptions> {
     }
 
     /**
+     * Disposes the layout engine — releasing its ELK Web Worker, if it had one
+     * — before the inherited destructor detaches the element.
+     */
+    protected destructor(): void {
+        // Invalidate any layout still in flight before the engine goes away. A
+        // result landing afterwards would write into a torn-down view, and a
+        // failure landing afterwards would strip nodes off it; both guards
+        // compare against this token and drop a stale one.
+        this._layoutGeneration += 1;
+
+        this._engine.dispose();
+
+        super.destructor();
+    }
+
+    /**
      * Caches consumer-configurable fields pure to `_options`; effects that need
      * the content host (built in the constructor body) are dispatched there.
      *

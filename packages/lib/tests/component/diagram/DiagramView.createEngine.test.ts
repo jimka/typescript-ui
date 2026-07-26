@@ -65,3 +65,32 @@ describe('DiagramView — createEngine forwards worker options to the real ElkLa
         warn.mockRestore();
     });
 });
+
+// Disposal against real elkjs. These two are the load-bearing regression tests
+// for the "only terminate a factory-built instance" guard: real elkjs throws a
+// TypeError if a main-thread or workerUrl-mode instance is terminated, because
+// elkjs drives an in-process stand-in worker in both modes and that stand-in
+// has no `terminate`. The mocked suite in ElkLayoutEngine.test.ts cannot catch
+// this — its MockELK.terminateWorker never throws. R2 in particular fails if
+// the guard is written against `_workerBacked` (which workerUrl mode sets)
+// instead of `_ownsWorker`.
+
+describe('DiagramView — disposal against real elkjs', () => {
+    it('R1: disposing a main-thread view does not throw', async () => {
+        const view = new _DiagramView({}) as any;
+
+        await view._engine.layout(simpleGraph(), new Map());
+
+        expect(() => view.dispose()).not.toThrow();
+    });
+
+    it('R2: disposing a workerUrl-mode view does not throw', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const view = new _DiagramView({ elkWorkerUrl: 'https://example.com/elk-worker.js' }) as any;
+
+        await view._engine.layout(simpleGraph(), new Map());
+
+        expect(() => view.dispose()).not.toThrow();
+        warn.mockRestore();
+    });
+});
