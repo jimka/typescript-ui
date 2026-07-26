@@ -122,11 +122,28 @@ A node with a non-empty `children` is a *container*: ELK computes its size and p
 - **Context menu** — right-click a node to fire `"contextmenu"` with its data (see [Common methods](#common-methods)).
 - **Control cluster** — a built-in zoom-in / zoom-out / fit / reset button cluster is pinned to the bottom-right corner by default (`controls: true`), staying put as the viewport resizes; pass `controls: false` to hide it, e.g. when driving the view from your own toolbar instead.
 
+## Running ELK layout in a Web Worker
+
+Layout runs on the main thread by default. For a large graph, move ELK's compute off the main thread by passing a worker factory your bundler can resolve:
+
+```typescript
+const view = DiagramView({
+    data,
+    elkWorkerFactory: () =>
+        new Worker(new URL("elkjs/lib/elk-worker.min.js", import.meta.url), { type: "classic" }),
+});
+```
+
+- **Why `type: "classic"`** — `elk-worker.min.js` is a classic browserify script that references `module.exports` at top level; a `{ type: "module" }` worker would fail to load.
+- **Bundler requirement** — the factory lives in your app, so *your* bundler must understand `new Worker(new URL(..., import.meta.url))`. Vite and webpack 5 do, and emit the worker from your own `node_modules/elkjs`. Nothing is hosted by hand.
+- **If the worker fails to construct or errors**, the view transparently falls back to main-thread layout for the rest of its lifetime — a worker problem never breaks the diagram, but it also never recovers once the fallback fires.
+- **`elkWorkerUrl` (a URL string) does not achieve off-thread layout here.** It exists for parity with elkjs's own API, but this component always imports elkjs's `elk.bundled.js`, whose own worker-availability check can never succeed in that module — passing `elkWorkerUrl` alone still runs on the main thread (with a console warning logged by elkjs itself). Use `elkWorkerFactory` for real off-thread execution; it takes precedence when both are set.
+
 ## Notes
 
 - **Read-only.** There is no node dragging, in-place editing, or edge drawing. The node-renderer factory and model are shaped so an edit layer could be added later without breaking changes, but none of it is built here — ELK lays out once per data change.
 - **Custom node content.** `nodeRenderer` is a `(data) => Component` factory; the default builds a [`DiagramNode`](/api/component/diagram/classes/DiagramNode) (a themed box with an optional glyph + label). Supply your own to render arbitrary components — the view consumes them only through `Component` + `getPreferredSize()`. `groupRenderer` is the same shape for container nodes (see [Compound / container nodes](#compound-and-container-nodes)); its default builds a `DiagramGroupNode`.
-- **Off-thread layout (opt-in).** Layout runs on the main thread by default (still `await`-ed). Pass `elkWorkerUrl` pointing at a consumer-hosted `elk-worker.js` to run ELK's compute in a worker.
+- **Off-thread layout (opt-in).** Layout runs on the main thread by default (still `await`-ed). Pass `elkWorkerFactory` to move ELK's compute into a worker instead — see [Running ELK layout in a Web Worker](#running-elk-layout-in-a-web-worker) for why `elkWorkerUrl` alone does not.
 - **Graceful when ELK is absent.** If `elkjs` is not installed, a layout attempt fails quietly and the view stays empty rather than throwing.
 
 ## See also
