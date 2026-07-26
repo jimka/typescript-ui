@@ -12,6 +12,8 @@
 export interface ElkConstructorOptions {
     /** URL of a consumer-hosted `elk-worker.js` for off-thread layout. */
     workerUrl?: string;
+    /** Consumer-supplied factory returning a Web Worker for off-thread layout. */
+    workerFactory?: (url?: string) => Worker;
 }
 
 /** The ELK layout engine — takes a graph JSON, returns it annotated. */

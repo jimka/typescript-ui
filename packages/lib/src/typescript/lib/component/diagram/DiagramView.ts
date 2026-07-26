@@ -94,8 +94,24 @@ export interface DiagramViewOptions extends PanelOptions {
     groupRenderer?: DiagramNodeRenderer;
     /** Default ELK layout options applied to every layout pass. */
     layoutOptions?: Record<string, string>;
-    /** Optional URL of a consumer-hosted `elk-worker.js` for off-thread layout. */
+    /**
+     * URL of a consumer-hosted `elk-worker.js`, requesting off-thread layout.
+     * With the `elk.bundled.js` module this view's engine imports, elkjs's
+     * own worker-availability check always fails, so `workerUrl` alone never
+     * actually constructs a Worker; layout still runs on the main thread, via
+     * elkjs's own fallback. Pass {@link DiagramViewOptions.elkWorkerFactory}
+     * for real off-thread execution.
+     */
     elkWorkerUrl?: string;
+    /**
+     * Factory returning a Web Worker for off-thread ELK layout. When set,
+     * ELK's compute runs in the returned worker. Construct it in your app so
+     * your bundler emits the worker, e.g.
+     * `() => new Worker(new URL("elkjs/lib/elk-worker.min.js", import.meta.url), { type: "classic" })`.
+     * Takes precedence over {@link DiagramViewOptions.elkWorkerUrl} when both
+     * are set.
+     */
+    elkWorkerFactory?: () => Worker;
     /** Minimum zoom factor (default 0.25). */
     minZoom?: number;
     /** Maximum zoom factor (default 4). */
@@ -262,7 +278,10 @@ class DiagramView extends Panel<DiagramViewOptions> {
      * @returns A fresh {@link ElkLayoutEngine}.
      */
     protected createEngine(): ElkLayoutEngine {
-        return new ElkLayoutEngine(this._options.elkWorkerUrl);
+        return new ElkLayoutEngine({
+            workerFactory: this._options.elkWorkerFactory,
+            workerUrl:     this._options.elkWorkerUrl,
+        });
     }
 
     /**
@@ -274,14 +293,15 @@ class DiagramView extends Panel<DiagramViewOptions> {
     protected applyOptions(options: DiagramViewOptions): this {
         super.applyOptions(options);
 
-        if (options.data          !== undefined) this._options.data          = options.data;
-        if (options.nodeRenderer   !== undefined) this._options.nodeRenderer  = options.nodeRenderer;
-        if (options.groupRenderer  !== undefined) this._options.groupRenderer = options.groupRenderer;
-        if (options.layoutOptions  !== undefined) this._options.layoutOptions = options.layoutOptions;
-        if (options.elkWorkerUrl   !== undefined) this._options.elkWorkerUrl  = options.elkWorkerUrl;
-        if (options.minZoom        !== undefined) this._options.minZoom       = options.minZoom;
-        if (options.maxZoom        !== undefined) this._options.maxZoom       = options.maxZoom;
-        if (options.zoom           !== undefined) this._options.zoom          = options.zoom;
+        if (options.data              !== undefined) this._options.data              = options.data;
+        if (options.nodeRenderer      !== undefined) this._options.nodeRenderer      = options.nodeRenderer;
+        if (options.groupRenderer     !== undefined) this._options.groupRenderer     = options.groupRenderer;
+        if (options.layoutOptions     !== undefined) this._options.layoutOptions     = options.layoutOptions;
+        if (options.elkWorkerUrl      !== undefined) this._options.elkWorkerUrl      = options.elkWorkerUrl;
+        if (options.elkWorkerFactory  !== undefined) this._options.elkWorkerFactory  = options.elkWorkerFactory;
+        if (options.minZoom           !== undefined) this._options.minZoom           = options.minZoom;
+        if (options.maxZoom           !== undefined) this._options.maxZoom           = options.maxZoom;
+        if (options.zoom              !== undefined) this._options.zoom              = options.zoom;
         // Cached only: the control cluster does not exist yet during the
         // `super()` cascade. The constructor dispatches `setControlsVisible`
         // itself once the cluster is built.

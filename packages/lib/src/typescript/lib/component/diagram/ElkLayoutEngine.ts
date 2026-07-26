@@ -335,47 +335,105 @@ export function mapElkResult(result: ElkNode): DiagramLayoutResult {
     };
 }
 
+/** Construction options for {@link ElkLayoutEngine}. */
+export interface ElkLayoutEngineOptions {
+    /**
+     * Consumer-provided factory returning a Web Worker for off-thread ELK
+     * layout. Takes precedence over {@link ElkLayoutEngineOptions.workerUrl}
+     * when both are set.
+     */
+    workerFactory?: () => Worker;
+    /**
+     * URL of a consumer-hosted `elk-worker.js`, requesting off-thread layout.
+     * With the `elk.bundled.js` module this engine imports, elkjs's own
+     * worker-availability check (`require.resolve('web-worker')`) always
+     * fails — the browserify module system that check runs against has no
+     * `.resolve` — so `workerUrl` alone never actually constructs a Worker
+     * here; elkjs logs its own console warning and runs on the main thread via
+     * its in-process fallback. Pass
+     * {@link ElkLayoutEngineOptions.workerFactory} for real off-thread
+     * execution; `workerUrl` is kept only for parity with elkjs's own API.
+     */
+    workerUrl?: string;
+}
+
 /**
- * Lazily-loaded ELK layout adapter. One instance owns one lazily-imported ELK
- * engine; the import fires on the first {@link ElkLayoutEngine.layout} call and
- * the engine is reused afterward.
+ * Lazily-loaded ELK layout adapter. One instance owns one ELK engine, built on
+ * the first {@link ElkLayoutEngine.layout} call and reused afterward. With
+ * neither `workerFactory` nor `workerUrl` set, ELK runs on the main thread.
+ * Setting `workerFactory` runs layout in the Worker it returns. Setting
+ * `workerUrl` does not: see {@link ElkLayoutEngineOptions.workerUrl} — it
+ * always ends up on the main thread with this engine's `elk.bundled.js`
+ * import. Either mode falls back transparently to the main thread — within
+ * the same failing `layout` call, which rebuilds the engine and retries once
+ * — the first time its engine fails to construct or a layout rejects; that
+ * fallback is permanent for the instance's lifetime, so later layouts run on
+ * the main thread even if the worker would have recovered.
  *
  * @category Components
  */
 export class ElkLayoutEngine {
 
     private _elk: ElkInstance | null = null;
+    private readonly _workerFactory?: () => Worker;
     private readonly _workerUrl?: string;
+    /**
+     * True while `_elk` is worker-backed. Set before constructing a
+     * worker-backed engine and never cleared on a successful layout, so the
+     * *next* layout failure — whichever one it is — still triggers the
+     * one-time main-thread rebuild in {@link layout}; after that rebuild it is
+     * `false` for good and a further failure propagates.
+     */
+    private _workerBacked = false;
 
     /**
-     * @param workerUrl - Optional URL of a consumer-hosted `elk-worker.js`. When
-     *   set, ELK runs its layout compute off the main thread; otherwise the
-     *   zero-config main-thread bundle is used.
+     * @param options - Optional worker configuration. With neither field set,
+     *   ELK runs on the main thread via the zero-config bundle.
      */
-    constructor(workerUrl?: string) {
-        this._workerUrl = workerUrl;
+    constructor(options?: ElkLayoutEngineOptions) {
+        this._workerFactory = options?.workerFactory;
+        this._workerUrl     = options?.workerUrl;
     }
 
     /**
      * Lazily imports ELK (if needed), maps the model to ELK JSON, runs the
-     * layout, and maps the result back.
+     * layout, and maps the result back. The first time a worker-backed engine
+     * fails to construct or a layout rejects, rebuilds on the main thread and
+     * retries once, so a worker problem never surfaces as a diagram error;
+     * that switch to the main thread is permanent for this instance's
+     * lifetime, even if a later failure is unrelated to the worker itself.
      *
      * @param data - The framework-native graph.
      * @param sizes - Per-node resolved sizes.
      * @param defaults - View-level default ELK options.
      * @returns The mapped layout result.
-     * @throws Error - If `elkjs` is not installed / cannot be imported.
+     * @throws Error - If `elkjs` is not installed / cannot be imported, or a
+     *   main-thread layout fails (no worker fallback remains at that point).
      */
     async layout(
         data: DiagramData,
         sizes: Map<string, { width: number; height: number }>,
         defaults?: Record<string, string>,
     ): Promise<DiagramLayoutResult> {
-        const elk    = await this.ensureElk();
-        const graph  = buildElkGraph(data, sizes, defaults);
-        const result = await elk.layout(graph);
+        const graph = buildElkGraph(data, sizes, defaults);
 
-        return mapElkResult(result as ElkNode);
+        try {
+            const elk = await this.ensureElk();
+
+            return mapElkResult(await elk.layout(graph) as ElkNode);
+        } catch (error) {
+            if (!this._workerBacked) {
+                throw error; // Main-thread failure — elkjs itself is absent/broken; propagate.
+            }
+
+            // Worker construction failed (factory threw, `Worker` undefined,
+            // CSP block) or its first compute failed. Rebuild on the main
+            // thread and retry once so the diagram still renders.
+            this._workerBacked = false;
+            this._elk = await this.createMainThreadElk();
+
+            return mapElkResult(await this._elk.layout(graph) as ElkNode);
+        }
     }
 
     /**
@@ -390,13 +448,49 @@ export class ElkLayoutEngine {
             return this._elk;
         }
 
+        this._elk = await this.createElk();
+
+        return this._elk;
+    }
+
+    /**
+     * Builds the ELK engine per the configured mode: a consumer worker
+     * factory, a consumer-hosted worker URL, or the main-thread default —
+     * checked in that precedence order. `_workerBacked` is set *before*
+     * constructing a worker-backed engine, so a synchronous construction
+     * throw is still caught by {@link layout}'s retry.
+     *
+     * @returns The constructed ELK engine.
+     */
+    private async createElk(): Promise<ElkInstance> {
         // `elkjs` is an optional peer dep, typed by the local ambient shim in
         // `elkjs.d.ts` and resolved by the consumer's bundler at runtime.
         const { default: ELK } = await import("elkjs/lib/elk.bundled.js");
 
-        const elk = this._workerUrl ? new ELK({ workerUrl: this._workerUrl }) : new ELK();
-        this._elk = elk;
+        if (this._workerFactory) {
+            this._workerBacked = true;
 
-        return elk;
+            return new ELK({ workerFactory: this._workerFactory });
+        }
+
+        if (this._workerUrl) {
+            this._workerBacked = true;
+
+            return new ELK({ workerUrl: this._workerUrl });
+        }
+
+        return new ELK();
+    }
+
+    /**
+     * Builds a plain main-thread ELK engine, used both as the default mode
+     * and as the fallback after a worker-backed engine fails.
+     *
+     * @returns The constructed main-thread ELK engine.
+     */
+    private async createMainThreadElk(): Promise<ElkInstance> {
+        const { default: ELK } = await import("elkjs/lib/elk.bundled.js");
+
+        return new ELK();
     }
 }

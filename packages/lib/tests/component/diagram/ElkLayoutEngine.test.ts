@@ -1,6 +1,29 @@
-import { describe, it, expect } from 'vitest';
-import { buildElkGraph, mapElkResult } from '~/component/diagram/ElkLayoutEngine';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { buildElkGraph, mapElkResult, ElkLayoutEngine } from '~/component/diagram/ElkLayoutEngine';
 import type { DiagramData } from '~/component/diagram/DiagramModel';
+
+// U2 — worker-mode selection and main-thread fallback on `ElkLayoutEngine`
+// itself. `elkjs/lib/elk.bundled.js` is mocked so the constructor call and the
+// `layout` call can be observed/controlled without a real ELK/worker.
+
+let lastConstructorOptions: { workerFactory?: () => Worker; workerUrl?: string } | undefined;
+const layoutMock = vi.fn();
+
+vi.mock('elkjs/lib/elk.bundled.js', () => {
+    class MockELK {
+        constructor(options?: { workerFactory?: () => Worker; workerUrl?: string }) {
+            lastConstructorOptions = options;
+            // Real elkjs invokes the factory during construction to spin up the
+            // worker; mirrored here so a throwing consumer factory propagates
+            // out of `new ELK(...)` exactly as it would for the real library.
+            options?.workerFactory?.();
+        }
+        layout(graph: unknown) {
+            return layoutMock(graph);
+        }
+    }
+    return { default: MockELK };
+});
 
 // U1 — model → ELK mapping, and the result → coords mapping. Both mapping
 // functions are pure and synchronous, so they are exercised directly with no
@@ -391,5 +414,137 @@ describe('ElkLayoutEngine — mapElkResult', () => {
             id: 'e',
             sections: [{ startPoint: { x: 11, y: 22 }, endPoint: { x: 13, y: 24 } }],
         }]);
+    });
+});
+
+describe('ElkLayoutEngine — worker modes and fallback', () => {
+    const DATA: DiagramData = { nodes: [{ id: 'a' }], edges: [] };
+    const SIZES = new Map<string, { width: number; height: number }>();
+
+    beforeEach(() => {
+        lastConstructorOptions = undefined;
+        layoutMock.mockReset();
+        layoutMock.mockResolvedValue({ id: 'root', children: [], edges: [] });
+    });
+
+    it('with no factory and no url, builds a plain ELK() and resolves', async () => {
+        const engine = new ElkLayoutEngine();
+        const result = await engine.layout(DATA, SIZES);
+
+        expect(lastConstructorOptions).toBeUndefined();
+        expect(result.nodes).toEqual([]);
+    });
+
+    it('with workerFactory provided and healthy, builds new ELK({ workerFactory }) and resolves', async () => {
+        const factory = vi.fn((): Worker => ({}) as Worker);
+        const engine = new ElkLayoutEngine({ workerFactory: factory });
+
+        await engine.layout(DATA, SIZES);
+
+        expect(factory).toHaveBeenCalled();
+        expect(lastConstructorOptions).toEqual({ workerFactory: factory });
+    });
+
+    it('with workerUrl provided, builds new ELK({ workerUrl }) and resolves', async () => {
+        const engine = new ElkLayoutEngine({ workerUrl: 'https://example.com/elk-worker.js' });
+
+        await engine.layout(DATA, SIZES);
+
+        expect(lastConstructorOptions).toEqual({ workerUrl: 'https://example.com/elk-worker.js' });
+    });
+
+    it('falls back to the main thread when the workerFactory throws (e.g. Worker undefined / CSP)', async () => {
+        const factory = vi.fn((): Worker => { throw new Error('Worker is not defined'); });
+        const engine = new ElkLayoutEngine({ workerFactory: factory });
+
+        const result = await engine.layout(DATA, SIZES);
+
+        expect(factory).toHaveBeenCalled();
+        // The worker-backed construction recorded its options and then threw
+        // (from the factory call); the fallback construction that overwrote
+        // `lastConstructorOptions` afterward is the plain, argument-less ELK().
+        expect(lastConstructorOptions).toBeUndefined();
+        expect(result.nodes).toEqual([]);
+    });
+
+    it('falls back to the main thread when the worker constructs but the first layout rejects', async () => {
+        layoutMock.mockRejectedValueOnce(new Error('worker crashed'));
+        layoutMock.mockResolvedValueOnce({ id: 'root', children: [], edges: [] });
+
+        const engine = new ElkLayoutEngine({ workerFactory: (): Worker => ({}) as Worker });
+        const result = await engine.layout(DATA, SIZES);
+
+        expect(layoutMock).toHaveBeenCalledTimes(2);
+        expect(result.nodes).toEqual([]);
+    });
+
+    it('falls back to the main thread when a workerUrl-backed layout fails', async () => {
+        layoutMock.mockRejectedValueOnce(new Error('404'));
+        layoutMock.mockResolvedValueOnce({ id: 'root', children: [], edges: [] });
+
+        const engine = new ElkLayoutEngine({ workerUrl: 'https://example.com/elk-worker.js' });
+        const result = await engine.layout(DATA, SIZES);
+
+        expect(layoutMock).toHaveBeenCalledTimes(2);
+        expect(result.nodes).toEqual([]);
+    });
+
+    it('prefers workerFactory over workerUrl when both are set', async () => {
+        const factory = vi.fn((): Worker => ({}) as Worker);
+        const engine = new ElkLayoutEngine({
+            workerFactory: factory,
+            workerUrl: 'https://example.com/elk-worker.js',
+        });
+
+        await engine.layout(DATA, SIZES);
+
+        expect(lastConstructorOptions).toEqual({ workerFactory: factory });
+    });
+
+    it('propagates a main-thread failure (elkjs genuinely broken) without retrying', async () => {
+        layoutMock.mockRejectedValue(new Error('elkjs broken'));
+
+        const engine = new ElkLayoutEngine();
+
+        await expect(engine.layout(DATA, SIZES)).rejects.toThrow('elkjs broken');
+        expect(layoutMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('still falls back on a LATER layout failure, not just the first, since a success does not clear worker-backed state', async () => {
+        const engine = new ElkLayoutEngine({ workerFactory: (): Worker => ({}) as Worker });
+
+        // First layout succeeds on the worker — `_workerBacked` stays true.
+        await engine.layout(DATA, SIZES);
+        expect(layoutMock).toHaveBeenCalledTimes(1);
+
+        // A later layout on the same (still worker-backed) engine fails; the
+        // engine still rebuilds on the main thread and retries once.
+        layoutMock.mockRejectedValueOnce(new Error('worker crashed later'));
+        layoutMock.mockResolvedValueOnce({ id: 'root', children: [], edges: [] });
+
+        const result = await engine.layout(DATA, SIZES);
+
+        expect(layoutMock).toHaveBeenCalledTimes(3); // 1 success + 1 failed retry attempt + 1 main-thread retry
+        expect(result.nodes).toEqual([]);
+    });
+
+    it('propagates a failure after the one-time fallback has already happened, without retrying again', async () => {
+        const engine = new ElkLayoutEngine({ workerFactory: (): Worker => { throw new Error('Worker is not defined'); } });
+
+        // First layout: the worker fails to construct, falls back, and
+        // resolves on the main thread — `_workerBacked` is now false for good.
+        await engine.layout(DATA, SIZES);
+        layoutMock.mockClear();
+
+        // A later main-thread failure has no worker left to fall back to. If
+        // the engine wrongly retried, it would consume this trailing resolved
+        // value and the layout would resolve instead of reject — the "once"
+        // pairing (rather than a persistent reject) is what makes this test
+        // sensitive to a regression that removes the no-retry guard.
+        layoutMock.mockRejectedValueOnce(new Error('elkjs broken on retry'));
+        layoutMock.mockResolvedValueOnce({ id: 'root', children: [], edges: [] });
+
+        await expect(engine.layout(DATA, SIZES)).rejects.toThrow('elkjs broken on retry');
+        expect(layoutMock).toHaveBeenCalledTimes(1);
     });
 });
