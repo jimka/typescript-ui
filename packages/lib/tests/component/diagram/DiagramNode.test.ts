@@ -46,3 +46,44 @@ describe('DiagramNode — hover cursor', () => {
         expect(node._content.getPointerEvents()).toBe('none');
     });
 });
+
+describe('DiagramNode — badge', () => {
+    it('has no badge and keeps the bare Text as _content when none is given', () => {
+        const node = new DiagramNode({ label: 'users' }) as any;
+
+        expect(node.getBadge()).toBeNull();
+        expect(node._content).toBe(node._label);
+    });
+
+    it('wraps the label and badge in a pointer-transparent row when a badge is given', () => {
+        const node = new DiagramNode({ label: 'users', badge: '+3→' }) as any;
+
+        expect(node.getBadge()).toBe('+3→');
+        expect(node._content).not.toBe(node._label);
+        expect(node._content.getPointerEvents()).toBe('none');
+        expect(node._badge.getText()).toBe('+3→');
+    });
+
+    it('reports a wider preferred width for a badged node than the same node unbadged', () => {
+        const plain  = new DiagramNode({ label: 'users' }) as any;
+        const badged = new DiagramNode({ label: 'users', badge: '+3→' }) as any;
+
+        expect(badged.getPreferredSize().width).toBeGreaterThan(plain.getPreferredSize().width);
+    });
+
+    it('setLabel updates the label and leaves the badge unchanged', () => {
+        const node = new DiagramNode({ label: 'users', badge: '+3→' }) as any;
+
+        node.setLabel('orders');
+
+        expect(node.getLabel()).toBe('orders');
+        expect(node.getBadge()).toBe('+3→');
+    });
+
+    it('treats an empty-string badge as a badge, not as "none"', () => {
+        const node = new DiagramNode({ label: 'users', badge: '' }) as any;
+
+        expect(node.getBadge()).toBe('');
+        expect(node._content).not.toBe(node._label);
+    });
+});
