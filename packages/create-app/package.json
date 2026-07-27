@@ -1,6 +1,6 @@
 {
   "name": "@jimka/create-tsui-app",
-  "version": "0.0.1",
+  "version": "0.3.0",
   "description": "Scaffold a minimal typescript-ui starter project.",
   "keywords": ["typescript-ui", "scaffold", "starter", "create-app", "cli", "ui"],
   "author": "Jimmy Karlsson",
