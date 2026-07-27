@@ -202,9 +202,13 @@ SOFTWARE.
 ### Eclipse Public License 2.0
 
 - **elkjs** — the Eclipse Layout Kernel (JavaScript), © Kiel University and
-  contributors, licensed under the Eclipse Public License 2.0 (EPL-2.0). Full
-  text: <https://www.eclipse.org/legal/epl-2.0/> (also shipped as `LICENSE.md`
-  in the `elkjs` package).
+  contributors, licensed under `EPL-2.0 OR GPL-3.0-or-later`: the Eclipse Public
+  License 2.0, with GPL-3.0-or-later offered as a Secondary License. This
+  package neither bundles elkjs nor combines it with GPL-covered code, so the
+  EPL-2.0 terms are the ones that govern here. Full text:
+  <https://www.eclipse.org/legal/epl-2.0/> (also shipped as `LICENSE.md` in the
+  `elkjs` package, which names the Secondary License); the Secondary License
+  text is at <https://www.gnu.org/licenses/gpl-3.0-standalone.html>.
 
   elkjs is an **optional** peer dependency, used only by the `component/diagram`
   features. It is consumed as a separate, unmodified module (loaded via a dynamic

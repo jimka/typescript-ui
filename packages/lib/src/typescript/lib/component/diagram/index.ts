@@ -6,7 +6,7 @@ export { DiagramNode } from '~/component/diagram/DiagramNode.js';
 export type { DiagramNodeOptions } from '~/component/diagram/DiagramNode.js';
 export { DiagramGroupNode } from '~/component/diagram/DiagramGroupNode.js';
 export type { DiagramGroupNodeOptions } from '~/component/diagram/DiagramGroupNode.js';
-export { DiagramEdgeLayer } from '~/component/diagram/DiagramEdgeLayer.js';
+export { DiagramEdgeLayer, EDGE_MARKER_EXTENT } from '~/component/diagram/DiagramEdgeLayer.js';
 export type { DiagramEdgeRoute } from '~/component/diagram/DiagramEdgeLayer.js';
 export { ElkLayoutEngine } from '~/component/diagram/ElkLayoutEngine.js';
 export type { DiagramLayoutResult, ElkEdgeSection, ElkPoint, ElkLayoutEngineOptions } from '~/component/diagram/ElkLayoutEngine.js';

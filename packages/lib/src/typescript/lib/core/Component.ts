@@ -21,6 +21,7 @@ import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
 import { COMPONENT_CLASS, ensureClassStyleRule } from "~/core/ClassStyleRules.js";
+import { cancelTransitions } from "~/core/PendingTransitions.js";
 
 //import { FastDom } from "~/FastDom.js";
 
@@ -814,6 +815,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // subclass-created children) and disarm the GC finalizer, then clear the
         // cache so a stale handle is never resolved.
         _componentFinalizer.unregister(this);
+
+        // Abandon every transition still running against a handle released below. A
+        // pending deferred write — Animation.play's two-frame entrance dance, or the
+        // `transition: null` reset its completion performs — would otherwise resolve a
+        // released handle and throw, exactly the stale-deferred-work hazard
+        // `pendingLayouts.delete(this)` drops at the top of this method.
+        for (const handle of this._ownedHandles) {
+            cancelTransitions(handle);
+        }
 
         for (const handle of this._ownedHandles) {
             DOM.sink.release(handle);

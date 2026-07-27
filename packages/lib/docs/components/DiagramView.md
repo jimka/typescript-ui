@@ -37,7 +37,7 @@ view.on('selection', (nodes) => console.log('selected', nodes));
 panel.addComponent(view);
 ```
 
-The model is three plain interfaces — [`DiagramNodeData`](/api/component/diagram/interfaces/DiagramNodeData), [`DiagramEdgeData`](/api/component/diagram/interfaces/DiagramEdgeData), and [`DiagramData`](/api/component/diagram/interfaces/DiagramData). A node's size fed to ELK is its explicit `width`/`height` when given, else the node component's preferred size. `layoutOptions` (per-node and graph-level) pass straight through to ELK.
+The model is three plain interfaces — [`DiagramNodeData`](/api/component/diagram/interfaces/DiagramNodeData), [`DiagramEdgeData`](/api/component/diagram/interfaces/DiagramEdgeData), and [`DiagramData`](/api/component/diagram/interfaces/DiagramData). A node's size fed to ELK is its explicit `width`/`height` when given, else the node component's preferred size. `layoutOptions` (per-node and graph-level) pass straight through to ELK. A node's optional `badge` is a short marker the default renderer draws after the label, for annotations such as "N neighbours not shown".
 
 ## Edge style
 
@@ -54,6 +54,12 @@ edges: [
 ```
 
 `startMarker` / `endMarker` are each a [`DiagramEdgeMarker`](/api/component/diagram/type-aliases/DiagramEdgeMarker): `"arrow"` (the default arrowhead), `"one"` (mandatory-one, two bars), `"zeroOrOne"` (optional-one, a bar plus a circle), `"oneOrMany"` (mandatory-many, a crow's foot plus a bar), or `"zeroOrMany"` (optional-many, a crow's foot plus a circle). `dashed` switches the stroke to a dash pattern; `stroke` overrides the themed edge colour (e.g. a warning tint); `label` renders centred on the route. Every marker is defined once per `DiagramEdgeLayer` instance and reused at both ends via `orient="auto-start-reverse"`, so the same marker id reads correctly whether it is a `startMarker` or `endMarker`.
+
+Edge emphasis (`setEdgeEmphasis`) is a *view-level* concern layered over `DiagramEdgeStyle`: it dims every edge outside the given set rather than restyling anything, so a consumer's own `stroke` / marker choices on the emphasised edges are preserved unchanged. Node emphasis (`setNodeEmphasis`) is the same kind of view-level dimming, applied as opacity directly on each node component's own root, so a custom `nodeRenderer` needs no cooperation to support it.
+
+The dimming lives on a group, not on each dimmed edge: `DiagramEdgeLayer` keeps two `<g>` children and redraws each edge into whichever one matches its emphasis state. That matters wherever routes coincide — per-element alpha composites at an overlap, so two dimmed hairlines would resolve to a stronger line than one, and a bundle of overlapping routes would read as emphasised exactly where it was densest. Group opacity composites the whole group once instead. The full-strength group is painted second, so an emphasised edge always draws over a dimmed edge it crosses.
+
+`EDGE_MARKER_EXTENT` is how far, in unscaled graph units, the longest end marker reaches back along an edge from the point it attaches to. Anything a consumer places on a route within that distance of an endpoint sits underneath the marker glyph rather than beside it — so a consumer that rewrites routes (to branch a bundle away from a node, say) should keep clear of it.
 
 ## Ports
 
@@ -103,23 +109,32 @@ A node with a non-empty `children` is a *container*: ELK computes its size and p
 | `setZoom(z)` / `getZoom()` | Set (clamped to `[minZoom, maxZoom]`, adaptively lowered so a huge graph can still reach its fit zoom) or read the zoom factor. |
 | `zoomIn()` / `zoomOut()` | Step the zoom by a fixed multiplicative factor about the viewport centre. |
 | `zoomToFit()` | Scale so the whole graph fits the viewport, then centre it. |
-| `resetView()` | Reset to the default zoom and re-centre the graph. |
-| `revealNode(id)` | Pan so the given node is centred, without changing zoom, selection, or emitting. |
+| `resetView()` | Reset to the default zoom, then re-centre on the focus node (`initialFocusNode`, or the last `focusNode` target) if there is one, else on the graph bounds. |
+| `revealNode(id)` | Pan so the given node is centred, and lower the zoom if it does not fit the viewport whole (never raise it) — without changing selection or emitting. |
+| `focusNode(id)` | Centre a node, retried after each layout pass until it succeeds, lowering the zoom the same way `revealNode` does — the durable form of `revealNode`. |
 | `selectNode(id)` | Select a node programmatically (or `null` to clear) — does **not** emit. |
 | `getSelection()` | The selected node data (single-select). |
 | `setControlsVisible(v)` / `isControlsVisible()` | Show/hide, or read the visibility of, the built-in zoom / fit / reset control cluster. |
+| `whenLaidOut()` | Resolves once the layout pass in flight has placed its nodes; resolves at once when idle, and never rejects. |
 | `on('selection', fn)` | Fires when the selected node changes (a click), with the selected node data. |
 | `on('layout', fn)` | Fires after each successful ELK layout pass. |
 | `on('contextmenu', fn)` | Fires when a node is right-clicked, with the node data and the originating `MouseEvent`; suppresses the browser's native menu. A right-click on empty canvas is left to the browser. |
+| `setEdgeEmphasis(ids)` / `getEdgeEmphasis()` | Dim every edge outside the given set, so the named ones stand out; `null` clears. Reset by the next layout. |
+| `setNodeEmphasis(ids)` / `getNodeEmphasis()` | Dim every node outside the given set; `null` clears. Reset by the next layout. |
+| `on('edgehover', fn)` | Fires with **every** model edge within the pointer's hit tolerance and the originating `MouseEvent` — several where routes overlap. |
+| `on('edgeleave', fn)` | Fires when the pointer leaves whatever edge(s) it was hovering. |
 | `dispose()` | Tear the view down and terminate its ELK Web Worker — call before discarding a `DiagramView` that is not a child of something else being disposed. |
 
 ## Interaction
 
-- **Initial view** — the first render centres the graph in the viewport, at whatever `zoom` was configured (default `1`) — the same placement the built-in Reset control returns to. It does **not** auto-fit: a graph larger than the viewport stays at its configured zoom and overflows. For auto-fit, call `zoomToFit()` from a `"layout"` listener: `view.on('layout', () => view.zoomToFit())`.
-- **Pan** — drag the **empty canvas** to pan freely, in any direction, with no clamping — the graph can be dragged into empty space past its own bounds (an infinite canvas). There are no scrollbars; content panned outside the viewport is simply clipped. A drag that starts on a node (leaf or container) or on the control cluster does not pan, so the cursor always says what a drag will do: `grab` over pannable canvas, `pointer` over a clickable node.
+- **Initial view** — the first render centres the graph in the viewport, at whatever `zoom` was configured (default `1`) — the same placement the built-in Reset control returns to. It does **not** auto-fit: a graph larger than the viewport stays at its configured zoom and overflows. For auto-fit, call `zoomToFit()` from a `"layout"` listener: `view.on('layout', () => view.zoomToFit())`. Pass `initialFocusNode` to centre that node instead of the graph's bounds — an id naming no node in the graph falls back to the bounds, and the configured zoom stands unless the focus node is too large to fit the viewport, in which case it is lowered until the node fits.
+- **First paint** — node components are built and measured off the component tree, then mounted, positioned, and revealed together once ELK has placed them, so a diagram never paints an unplaced graph (stacked nodes snapping into position after the fact) and a graph superseded by a newer `setData` before its layout lands is never rendered at all. A `setData` on an already-laid-out view keeps the previous graph on screen, visible, until the new one is placed — a re-layout never blanks the canvas mid-round-trip. Await `whenLaidOut()` to gate a spinner (or any other "is it ready" state) on placement rather than on `setData` returning.
+- **Busy indicator** — while a layout pass is in flight the view covers itself with a translucent overlay carrying a centred spinner, so a live update reads as "working" rather than as a frozen canvas. It is shown by the view itself, needs no wiring, and cannot be turned off. A view with no committed size shows none, so the first pass — which every diagram runs before its host has sized it — stays uncovered and does not compete with a consumer's own loading placeholder. The overlay takes pointer events, so canvas interaction and the control cluster are unavailable until the pass settles.
+- **Pan** — drag **empty canvas or an edge** to pan freely, in any direction, with no clamping — the graph can be dragged into empty space past its own bounds (an infinite canvas). There are no scrollbars; content panned outside the viewport is simply clipped. Only a drag that starts on a node (leaf or container) or the control cluster does not pan, so the cursor always says what a drag will do: `grab` / `grabbing` over pannable canvas (including an edge), `pointer` over a clickable node.
 - **Resize** — a viewport resize keeps whatever was at the centre of the viewport at the centre, so the diagram does not drift toward a corner as the window grows or shrinks. The zoom is never changed by a resize.
-- **Zoom** — the mouse wheel zooms about the pointer; `setZoom` / `zoomIn` / `zoomOut` / `zoomToFit` / `resetView` zoom programmatically.
-- **Select** — click a node to select and highlight it (a themed `.selected` state) and fire `"selection"`; click empty space to clear.
+- **Zoom** — the mouse wheel zooms about the pointer; `setZoom` / `zoomIn` / `zoomOut` / `zoomToFit` / `resetView` zoom programmatically. `revealNode` / `focusNode` can also change the zoom, but only ever lower it, to fit a node too large for the viewport.
+- **Select** — click a node to select and highlight it (a themed `.selected` state) and fire `"selection"`; click empty space to clear. A drag never changes the selection: a press that travels more than a few pixels before release is treated as a pan, not a click, however it ends.
+- **Edges** — edges take pointer events through an invisible wide hit path, so hovering one fires `"edgehover"` while the canvas around it still pans. Dragging an edge pans the canvas exactly like empty canvas does; a press without movement still leaves the selection alone — this component adds no edge selection or edge context menu.
 - **Context menu** — right-click a node to fire `"contextmenu"` with its data (see [Common methods](#common-methods)).
 - **Control cluster** — a built-in zoom-in / zoom-out / fit / reset button cluster is pinned to the bottom-right corner by default (`controls: true`), staying put as the viewport resizes; pass `controls: false` to hide it, e.g. when driving the view from your own toolbar instead.
 
@@ -144,9 +159,11 @@ const view = DiagramView({
 ## Notes
 
 - **Read-only.** There is no node dragging, in-place editing, or edge drawing. The node-renderer factory and model are shaped so an edit layer could be added later without breaking changes, but none of it is built here — ELK lays out once per data change.
-- **Custom node content.** `nodeRenderer` is a `(data) => Component` factory; the default builds a [`DiagramNode`](/api/component/diagram/classes/DiagramNode) (a themed box with an optional glyph + label). Supply your own to render arbitrary components — the view consumes them only through `Component` + `getPreferredSize()`. `groupRenderer` is the same shape for container nodes (see [Compound / container nodes](#compound-and-container-nodes)); its default builds a `DiagramGroupNode`.
+- **Custom node content.** `nodeRenderer` is a `(data) => Component` factory; the default builds a [`DiagramNode`](/api/component/diagram/classes/DiagramNode) (a themed box with an optional glyph + label). Supply your own to render arbitrary components — the view consumes them only through `Component` + `getPreferredSize()`. A custom `nodeRenderer` receives `badge` like every other field on the data and must draw it itself; the default `groupRenderer` ignores it, so a container box never shows one. `groupRenderer` is the same shape for container nodes (see [Compound / container nodes](#compound-and-container-nodes)); its default builds a `DiagramGroupNode`.
+- **Growing a node to fit its edges needs `elk.nodeSize.constraints`.** The view always feeds ELK an explicit size for every leaf node — the model's `width`/`height` when set, else the node component's preferred size — and ELK treats a sized node with the default (empty) `elk.nodeSize.constraints` as fixed. To let ELK enlarge a node so its edge anchors clear each other, set `elk.nodeSize.constraints: 'PORTS'` (optionally `'PORTS,NODE_LABELS'`) plus `elk.portConstraints: 'FIXED_SIDE'` in that node's `layoutOptions`, and give `elk.nodeSize.minimum` so the node cannot shrink below its rendered content. The returned size is written back through `setPreferredSize`, so a grown node renders grown — which only helps if the node's renderer fills the extra space.
 - **Off-thread layout (opt-in).** Layout runs on the main thread by default (still `await`-ed). Pass `elkWorkerFactory` to move ELK's compute into a worker instead — see [Running ELK layout in a Web Worker](#running-elk-layout-in-a-web-worker) for why `elkWorkerUrl` alone does not. That worker lives as long as the view, so call `dispose()` when you discard one.
-- **Graceful when ELK is absent.** If `elkjs` is not installed, a layout attempt fails quietly and the view stays empty rather than throwing.
+- **Graceful when ELK is absent.** If `elkjs` is not installed, a layout attempt fails quietly and the view stays empty rather than throwing. A *re*-layout that fails this way leaves the previously laid-out graph on screen rather than emptying the view.
+- **Edges sharing a route cannot be told apart along the shared segment.** When several edges are routed through the same pixels (e.g. under ELK's `elk.layered.mergeEdges`), `"edgehover"` reports every one of them there, in draw order — a consumer describing the bundle (a tooltip listing each) is the intended way to disambiguate, since no per-edge styling can separate lines occupying the same pixels.
 
 ## See also
 

@@ -11,6 +11,13 @@ writes through the component's attribute channel, so ARIA state reaches the
 element without a second flush; no consumer replacement is needed, since no
 consumer had a reason to call it directly.
 
+**Breaking:** the optional `elkjs` peer dependency moved from `^0.10.0` to
+`^0.12.0`. A consumer of `@jimka/typescript-ui/component/diagram` that stays on
+elkjs 0.10.x now fails to install with an `ERESOLVE` peer conflict; bump elkjs
+alongside the library. No `layoutOptions` key changed — ELK 0.12 only added
+layout options — but laid-out coordinates can shift, so re-check any diagram
+whose spacing was tuned by eye.
+
 See [Migration](/reference/migration#upgrading-from-0-2-x-to-0-3-0) for the
 full upgrade note.
 
@@ -31,13 +38,139 @@ full upgrade note.
   `setDataAttribute` write is no longer undone by a later re-render when the
   same key also appears in the `attributes` bag.
 
+- `DiagramView.revealNode(id)` now lowers the zoom when the named node is too
+  large to fit the viewport whole, so a centred node is never clipped. It
+  never raises the zoom, so a node that already fits is centred at the
+  current zoom exactly as before.
+
+- A de-emphasised edge now recedes to `0.15` opacity instead of `0.4`, so an
+  emphasised edge stands out clearly on a dense graph — the previous strength
+  was tuned for a filled `ChartLegend` swatch, which reads very differently
+  from a 1.5px hairline. There is no option to restore the old strength.
+
 ### Added
+
+- **`EDGE_MARKER_EXTENT`.** Exported from
+  `@jimka/typescript-ui/component/diagram`: how far, in unscaled graph units,
+  the longest end marker reaches back along an edge from where it attaches.
+  A consumer that rewrites edge routes needs it to keep whatever it places on
+  the route from landing underneath the marker glyph.
+
+- **`DiagramView` busy indicator.** A view now covers itself with a spinner
+  overlay while a layout pass is in flight, so a live `setData` — a filter or
+  depth control being changed on a large graph — shows progress instead of a
+  frozen canvas. It is view-owned with nothing to wire and no opt-out, and it
+  stays up until the new graph is on screen rather than until the layout
+  result arrives. A view with no committed size shows none, so a consumer's
+  own first-load placeholder is never doubled.
 
 - **`ElementAttributes`** (`core`) — the deferred-write buffer backing every
   attribute write, exported alongside `StyleTarget` / `InlineStyle`. A new
   `setAutoCommitAttributes` / `getAutoCommitAttributes` /
   `commitElementAttributes` switch on `Component` batches attribute writes,
   mirroring the existing style-commit switch.
+
+- **`DiagramView.whenLaidOut()`** — resolves once the layout pass currently in
+  flight has finished placing nodes; resolves at once when idle, and never
+  rejects (a failed or disposed-mid-pass layout still settles it). Lets a
+  consumer gate a spinner, or any other "is it ready" state, on placement.
+
+- **`DiagramView.focusNode(id)`** — centres a node in the viewport, retried
+  after each layout pass until it succeeds, unlike `revealNode`, which only
+  centres when the graph and viewport are both already measured. Also lowers
+  the zoom, if needed, until the node's whole box fits the viewport; never
+  raises it.
+
+- **`DiagramViewOptions.initialFocusNode`** — the one-shot initial view
+  centres this node instead of the graph's bounds. An id naming no node in
+  the graph falls back to centring the bounds. The configured `zoom` is
+  honoured, except that a focus node too large to fit the viewport lowers it
+  until the node fits.
+
+- **`DiagramView.setEdgeEmphasis(ids)` / `getEdgeEmphasis()`** — dims every
+  drawn edge outside the given set to a reduced opacity while the named ones
+  keep their normal weight, so clicking a node's connection can highlight
+  just the edges attached to it. `null` or an empty array clears the
+  emphasis; the next `setData` clears it too, since the emphasis is computed
+  against the graph it was set on. Forwards to a new `DiagramEdgeLayer`
+  method of the same name.
+
+- **`DiagramView.setNodeEmphasis(ids)` / `getNodeEmphasis()`** — dims every
+  node component outside the given set to a reduced opacity while the named
+  ones keep full strength, mirroring `setEdgeEmphasis` for nodes. `null` or an
+  empty array clears the emphasis; the next `setData` clears it too. Emits
+  nothing.
+
+- **`DiagramView` `"edgehover"` / `"edgeleave"` events.** Each drawn edge now
+  carries an invisible wide hit path (`DiagramEdgeLayer.edgeIdAt` /
+  `edgesNear`) that opts itself back into pointer events without making the
+  layer as a whole interactive — the root `<svg>` stays `pointer-events:
+  none`, so empty canvas still pans and nodes still take their own clicks. An
+  edge press pans the canvas just like empty canvas does, and still never
+  clears the node selection. Hovering fires
+  `"edgehover"` with **every** model edge within a small hit tolerance of the
+  pointer (not just the topmost DOM hit), so a bundle of edges that share a
+  route — e.g. under `elk.layered.mergeEdges` — reports as a bundle instead
+  of an arbitrary single edge; moving off fires `"edgeleave"`.
+
+- **`DiagramNodeData.badge` / `DiagramNodeOptions.badge`** — an optional short
+  marker string drawn after the label by the default `DiagramNode` renderer,
+  in flow so ELK reserves room for it (e.g. a "+3 neighbours not shown"
+  annotation). Construction-time only, with no `setBadge`, mirroring the
+  neighbouring `glyph` field; read back with `DiagramNode.getBadge()`. A
+  custom `nodeRenderer` receives it like any other field and must draw it
+  itself; the default `groupRenderer` ignores it, so a container node never
+  shows one.
+
+### Fixed
+
+- **Dimmed diagram edges no longer stack where they overlap.** The emphasis
+  dimming moved from each dimmed edge onto a group holding all of them, so an
+  overlap composites once instead of once per path. Overlapping routes are
+  ordinary — a fan-in or fan-out bundle shares its approach to a node — and
+  two dimmed hairlines at `0.15` previously resolved to `0.28`, three to
+  `0.39`, so a bundle read as emphasised exactly where it was densest. The
+  full-strength group is painted second, so an emphasised edge now also draws
+  over any dimmed edge it crosses.
+
+- **`DiagramView` no longer paints an unplaced graph.** New node components
+  are now built and measured off the component tree and are mounted,
+  positioned, and revealed together once ELK has placed them, instead of
+  being mounted up front and appearing stacked at the content host's origin
+  until the first layout result lands. A `setData` on an already-laid-out
+  view keeps the previous graph on screen until the new one is placed, so a
+  re-layout never blanks the canvas mid-round-trip. A graph superseded by a
+  newer `setData` before its layout lands is now never rendered, so rapid
+  changes to a filter or depth control stop paying the render cost of graphs
+  the user never sees.
+
+- **Edges now draw when their routes arrive before the layer is mounted.** A
+  diagram built inside a dock tab runs its whole ELK layout while the tab is
+  still detached, so `DiagramEdgeLayer.setEdges` was handed the routes with no
+  element to draw into and the only draw for them was silently lost — the
+  diagram rendered its nodes with no edges at all until some later `setEdges`
+  happened to find an element (changing a filter or depth control redrew them).
+  The layer now defers that draw to its first connected layout.
+
+- **Disposing a component mid-transition no longer logs a stray
+  `DOM handle N is not registered` error.** `Component.destructor()` now
+  cancels every `Animation.play` transition still running against a handle
+  it is about to release, so a deferred write from that transition's
+  two-frame entrance dance — or the `transition: null` reset its completion
+  performs — never lands on an already-released handle.
+
+- **`DiagramView.resetView()` now returns to the focus node rather than
+  always to the graph bounds**, so on a rooted diagram the built-in Reset
+  control brings the root back instead of centring a graph the root may sit
+  far outside — which is what made Reset look broken after a live `setData`
+  re-layout grew the graph around the existing pan.
+
+- **A pan drag no longer clears the diagram's selection.** A press that
+  travels past a 4px slop before release is now treated as a drag, so the
+  native `click` it still fires (on the nearest common ancestor of press and
+  release) is ignored instead of clearing the node selection — this used to
+  happen for any pan, including one starting on empty canvas or ending there
+  after beginning on a node.
 
 ## 0.2.0
 

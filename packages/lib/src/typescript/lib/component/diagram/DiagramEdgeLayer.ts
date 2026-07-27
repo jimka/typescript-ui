@@ -3,8 +3,11 @@
 // One `<svg>` Component drawing the diagram's edges as `<path>` elements with a
 // shared arrowhead `<marker>`. Follows the Glyph SVG-through-the-seam pattern:
 // the root `<svg>` and every leaf child are created via `DOM.sink.createElementNS`
-// and tracked with `trackHandle`, never raw DOM. The layer is non-interactive
-// (`pointer-events: none`) so node clicks fall through to the node components.
+// and tracked with `trackHandle`, never raw DOM. The layer's root stays
+// non-interactive (`pointer-events: none`) so node clicks fall through to the
+// node components; each drawn edge additionally gets an invisible wide hit
+// path that opts itself back into pointer events, so hovering/pressing an edge
+// is possible without making the layer as a whole interactive.
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
@@ -39,6 +42,36 @@ const ARROW_SIZE = 8;
 
 /** Dash pattern applied when an edge's `style.dashed` is set. */
 const DASH_ARRAY = "6 4";
+
+/**
+ * Stroke width (px, unscaled graph units) of an edge's invisible hit path —
+ * ±6px either side of the 1.5px visible hairline. A hairline is far too thin
+ * to aim at, and this is deliberately wider than ELK's default 10px
+ * `elk.spacing.edgeEdge`, so a bundle of parallel routes reports as a bundle
+ * rather than forcing the user to land on exactly one of them.
+ */
+const EDGE_HIT_WIDTH = 12;
+
+/** Half the hit width: the distance from a route within which it answers `edgesNear`. */
+const EDGE_HIT_TOLERANCE = EDGE_HIT_WIDTH / 2;
+
+/**
+ * Opacity of the group holding every edge outside a non-empty emphasis set. A
+ * 1.5px hairline has almost no area, so it still reads as a full line at
+ * ChartLegend's `HIDDEN_OPACITY` (`0.4`), a strength tuned for a filled legend
+ * swatch — dimmed enough there is not dimmed enough for a stroke. `0.15` over
+ * the default light canvas resolves to a pale, still-traceable grey while
+ * leaving the emphasised edges clearly what the eye lands on.
+ *
+ * Carried by the dimmed *group* rather than each dimmed edge, because routes
+ * overlap by design: fan-in and fan-out bundles share a junction stub, so two
+ * or more dimmed paths coincide there. Per-element alpha composites at each
+ * overlap — two paths at `0.15` resolve to `0.28`, three to `0.39` — so a
+ * bundle read as emphasised precisely where it was densest. Group opacity
+ * composites the group's whole rendering once, so an overlap looks the same as
+ * a single line.
+ */
+const DIMMED_EDGE_OPACITY = "0.15";
 
 /**
  * Non-`"arrow"` crow's-foot marker kinds this layer pre-defines in `<defs>`.
@@ -102,6 +135,22 @@ const MARKER_GEOMETRY: Record<Exclude<DiagramEdgeMarker, "arrow">, MarkerGeometr
         ],
     },
 };
+
+/**
+ * How far, in unscaled graph units, the longest end marker reaches back along
+ * an edge from the point it attaches to. Every marker anchors its vertex at
+ * `x = width` (via `refX`) and opens toward `x = 0`, so a marker's `width` *is*
+ * its reach, and this is the widest of them all.
+ *
+ * Exported because a consumer that rewrites edge routes needs it: anything
+ * placed on the route within this distance of an endpoint lands underneath the
+ * marker glyph rather than beside it. SQLAdmin's junction stubs use it as the
+ * floor for how far from a node a bundle may branch.
+ *
+ * @category Components
+ */
+export const EDGE_MARKER_EXTENT: number =
+    Math.max(ARROW_SIZE, ...Object.values(MARKER_GEOMETRY).map(geometry => geometry.width));
 
 /**
  * A single routed edge: its identity, the ELK sections describing its
@@ -198,6 +247,70 @@ function buildPathData(sections: ElkEdgeSection[]): string {
 }
 
 /**
+ * The shortest distance from point `(px, py)` to the line segment `(ax, ay)`–
+ * `(bx, by)`, via the standard clamped projection onto the segment.
+ *
+ * @param px - Point x.
+ * @param py - Point y.
+ * @param ax - Segment start x.
+ * @param ay - Segment start y.
+ * @param bx - Segment end x.
+ * @param by - Segment end y.
+ * @returns The shortest distance from the point to the segment.
+ */
+function distanceToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSquared = dx * dx + dy * dy;
+
+    if (lengthSquared === 0) {
+        return Math.hypot(px - ax, py - ay);
+    }
+
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared));
+
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/**
+ * The shortest distance from point `(x, y)` to a routed edge's polyline —
+ * the minimum over every segment of every section, walking the same
+ * start/bend/end points {@link labelPoint} does.
+ *
+ * @param sections - The edge's routed sections.
+ * @param x - Point x in unscaled graph coordinates.
+ * @param y - Point y in unscaled graph coordinates.
+ * @returns The shortest distance to the route, or `Infinity` when it has no drawable segments.
+ */
+function distanceToRoute(sections: ElkEdgeSection[], x: number, y: number): number {
+    let min = Infinity;
+
+    for (const section of sections) {
+        const points = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint];
+
+        for (let i = 1; i < points.length; i++) {
+            min = Math.min(min, distanceToSegment(x, y, points[i - 1].x, points[i - 1].y, points[i].x, points[i].y));
+        }
+    }
+
+    return min;
+}
+
+/** The elements drawn for one edge, so it can be hit-tested and released. */
+interface DrawnEdge {
+    id:    string;
+    route: DiagramEdgeRoute;
+    /** The visible stroked path. */
+    path:  Handle;
+    /** The invisible wide path that takes pointer events. */
+    hit:   Handle;
+    /** The mid-route label, when the edge carries one. */
+    label: Handle | null;
+    /** The group the three elements above were appended into, so they can be removed from it. */
+    group: Handle;
+}
+
+/**
  * The SVG edge layer for a [`DiagramView`](/api/component/diagram/classes/DiagramView).
  * Owns exactly one `<svg>` element and rebuilds its `<path>` children from ELK
  * edge routes whenever the diagram re-lays-out.
@@ -209,8 +322,26 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
     /** Cached edge routes, redrawn at render time and on every `setEdges`. */
     private _edges: DiagramEdgeRoute[] = [];
 
-    /** Handles of the currently-drawn `<path>`/`<text>` children, released on rebuild. */
-    private _pathHandles: Handle[] = [];
+    /** Everything currently drawn, released and rebuilt by `rebuildPaths`. */
+    private _drawn: DrawnEdge[] = [];
+
+    /**
+     * The currently emphasised edge ids. Runtime interaction state (not a
+     * `ComponentOptions` field — see ARCHITECTURE.md's rule that transient,
+     * framework-managed state stays off the options bag). Cleared by `setEdges`.
+     */
+    private _edgeEmphasis: Set<string> = new Set();
+
+    /**
+     * The `<g>` holding every edge outside a non-empty emphasis set, carrying
+     * {@link DIMMED_EDGE_OPACITY}. Painted before `_normalLayer`, so an
+     * emphasised edge always draws over a dimmed one it crosses. Created by
+     * `createRootElement`, so it exists before any draw.
+     */
+    private _dimLayer!: Handle;
+
+    /** The `<g>` holding every edge drawn at full strength. Painted over `_dimLayer`. */
+    private _normalLayer!: Handle;
 
     /** Per-instance arrowhead marker id, referenced by each plain edge's `marker-end`. */
     private readonly _markerId: string;
@@ -228,6 +359,13 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
 
         // Non-interactive overlay: clicks must reach the node components beneath.
         this.setPointerEvents("none");
+
+        // Every Component stamps ComponentDefaults' "default" cursor into its
+        // own rule; left at that, a hit path inheriting from this `<svg>`
+        // would resolve to an arrow regardless of what it declares itself.
+        // Inheriting through to the view root's live grab/grabbing write is
+        // what lets an edge press pan the canvas honestly.
+        this.setCursor("inherit");
     }
 
     /**
@@ -248,7 +386,22 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
     }
 
     /**
-     * Replaces the drawn edges and rebuilds the path children.
+     * Replaces the drawn edges and rebuilds the path children. Clears any
+     * active edge emphasis first, so the freshly-drawn set always starts
+     * undimmed — a re-layout that swaps in a new graph is not the graph the
+     * emphasis was computed against.
+     *
+     * Routes routinely arrive before this layer has an element: a diagram built
+     * inside a dock tab runs its whole ELK layout while the tab is still
+     * detached (the app awaits
+     * [`DiagramView.whenLaidOut`](/api/component/diagram/classes/DiagramView)
+     * before mounting, so the layout *always* lands first), and `rebuildPaths`
+     * cannot draw without one. `render` only performs the first draw when it is
+     * what creates the element, which is not the case here — so without the
+     * deferral below the sole draw for those routes is silently lost and the
+     * diagram shows nodes with no edges until some later `setEdges` happens to
+     * find an element. {@link Component.onFirstLayout} exists for exactly this
+     * "content built before the host attaches it" case.
      *
      * @param edges - The routed edges to draw.
      *
@@ -256,9 +409,95 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
      */
     setEdges(edges: DiagramEdgeRoute[]): this {
         this._edges = edges;
+        this._edgeEmphasis = new Set();
+
+        if (this.getElement()) {
+            this.rebuildPaths();
+        } else {
+            this.onFirstLayout(() => this.rebuildPaths());
+        }
+
+        return this;
+    }
+
+    /**
+     * Sets the emphasised edge ids. While the set is non-empty every edge NOT
+     * in it is drawn at a reduced opacity; the emphasised edges keep their
+     * normal weight. `null` or an empty array clears the emphasis. Ids naming
+     * no drawn edge are kept but have no effect.
+     *
+     * @param ids - The edge ids to emphasise, or null to clear.
+     *
+     * @returns This layer, for method chaining.
+     */
+    setEdgeEmphasis(ids: readonly string[] | null): this {
+        this._edgeEmphasis = new Set(ids ?? []);
+
+        // A full redraw rather than a restyle in place: which of the two groups
+        // an edge belongs to is decided at draw time, and redrawing is what
+        // moves it. Cheap enough to do on a click — a redraw of a 1000-edge
+        // graph's paths measures around 20ms, against the seconds ELK itself
+        // takes — and it reuses the release/rebuild path already covered by
+        // tests instead of relying on appendChild's move semantics through the
+        // DOM seam.
         this.rebuildPaths();
 
         return this;
+    }
+
+    /**
+     * The currently emphasised edge ids.
+     *
+     * @returns A copy of the emphasised id array; empty when nothing is emphasised.
+     */
+    getEdgeEmphasis(): string[] {
+        return [...this._edgeEmphasis];
+    }
+
+    /**
+     * Resolves a raw DOM event target to the edge whose invisible hit path it is.
+     *
+     * @param target - The raw DOM event target.
+     * @returns The edge id, or null when the target is not an edge hit path.
+     */
+    edgeIdAt(target: EventTarget | null): string | null {
+        if (target === null) {
+            return null;
+        }
+
+        const handle = DOM.source.intern(target);
+
+        return this._drawn.find(d => d.hit === handle)?.id ?? null;
+    }
+
+    /**
+     * Every drawn edge whose route passes within the hit tolerance of a point,
+     * in draw order. Several edges answer here wherever their routes overlap —
+     * which is what makes a merged trunk answerable.
+     *
+     * @param x - Point x in unscaled graph coordinates.
+     * @param y - Point y in unscaled graph coordinates.
+     * @returns The routes within tolerance; empty when none is.
+     */
+    edgesNear(x: number, y: number): DiagramEdgeRoute[] {
+        return this._drawn
+            .filter(drawn => distanceToRoute(drawn.route.sections, x, y) <= EDGE_HIT_TOLERANCE)
+            .map(drawn => drawn.route);
+    }
+
+    /**
+     * Which group one edge draws into: the dimmed group when an emphasis set is
+     * active and this edge is not in it, the full-strength group otherwise.
+     *
+     * @param id - The edge id.
+     * @returns The group handle to append the edge's elements into.
+     */
+    private groupFor(id: string): Handle {
+        if (this._edgeEmphasis.size === 0 || this._edgeEmphasis.has(id)) {
+            return this._normalLayer;
+        }
+
+        return this._dimLayer;
     }
 
     /**
@@ -281,7 +520,33 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
         DOM.sink.appendChild(svg, defs);
         this.trackHandle(defs);
 
+        this._dimLayer    = this.createEdgeGroup(svg, DIMMED_EDGE_OPACITY);
+        this._normalLayer = this.createEdgeGroup(svg, null);
+
         return svg;
+    }
+
+    /**
+     * Creates one of the two persistent edge groups as a child of the root
+     * `<svg>`. Append order is paint order, so the caller creates the dimmed
+     * group first.
+     *
+     * @param svg - The root `<svg>` handle to append the group into.
+     * @param opacity - The group's opacity, or null to leave it at full strength.
+     *
+     * @returns The `<g>` handle.
+     */
+    private createEdgeGroup(svg: Handle, opacity: string | null): Handle {
+        const group = DOM.sink.createElementNS(SVG_NS, "g");
+
+        if (opacity !== null) {
+            DOM.sink.apply(group, { setAttr: { opacity } });
+        }
+
+        DOM.sink.appendChild(svg, group);
+        this.trackHandle(group);
+
+        return group;
     }
 
     /**
@@ -382,13 +647,11 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
             return;
         }
 
-        for (const handle of this._pathHandles) {
-            DOM.sink.removeChild(svg, handle);
-            this.untrackHandle(handle);
-            DOM.sink.release(handle);
+        for (const drawn of this._drawn) {
+            this.releaseDrawnEdge(drawn);
         }
 
-        this._pathHandles = [];
+        this._drawn = [];
 
         for (const edge of this._edges) {
             const d = buildPathData(edge.sections);
@@ -397,55 +660,126 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
                 continue;
             }
 
-            const path  = DOM.sink.createElementNS(SVG_NS, "path");
+            const group = this.groupFor(edge.id);
+            const hit   = this.drawHitPath(group, d);
+            const path  = this.drawVisiblePath(group, edge, d);
             const style = edge.style;
-
-            // No style: today's back-compat behaviour — a plain arrow at the end,
-            // no start marker. With a style, each end draws only the marker (if
-            // any) the style names; an edge can carry cardinality with no
-            // marker-end at all.
-            const markerEnd   = style ? this.markerUrl(style.endMarker) : this.markerUrl("arrow");
-            const markerStart = style ? this.markerUrl(style.startMarker) : undefined;
-
-            const attrs: Record<string, string> = {
-                d,
-                fill:           "none",
-                stroke:         style?.stroke ?? EDGE_STROKE,
-                "stroke-width": EDGE_STROKE_WIDTH,
-            };
-
-            if (markerEnd) {
-                attrs["marker-end"] = markerEnd;
-            }
-
-            if (markerStart) {
-                attrs["marker-start"] = markerStart;
-            }
-
-            if (style?.dashed) {
-                attrs["stroke-dasharray"] = DASH_ARRAY;
-            }
-
-            DOM.sink.apply(path, { setAttr: attrs });
-
-            DOM.sink.appendChild(svg, path);
-            this.trackHandle(path);
-            this._pathHandles.push(path);
+            let label: Handle | null = null;
 
             if (style?.label) {
-                this.drawLabel(svg, edge, style.label);
+                label = this.drawLabel(group, edge, style.label);
             }
+
+            this._drawn.push({ id: edge.id, route: edge, path, hit, label, group });
+        }
+    }
+
+    /**
+     * Draws one edge's invisible wide hit path: same `d` as the visible path,
+     * transparent stroke, and the only element in the layer that opts back
+     * into pointer events (`pointer-events: stroke`) — the root `<svg>` stays
+     * inert. Appended before the visible path.
+     *
+     * @param group - The edge group handle to append into.
+     * @param d - The edge's path data (shared with the visible path).
+     * @returns The hit path's handle.
+     */
+    private drawHitPath(group: Handle, d: string): Handle {
+        const hit = DOM.sink.createElementNS(SVG_NS, "path");
+
+        DOM.sink.apply(hit, { setAttr: {
+            d,
+            fill:             "none",
+            stroke:           "transparent",
+            "stroke-width":   String(EDGE_HIT_WIDTH),
+            "pointer-events": "stroke",
+            // Dragging an edge pans the canvas like empty canvas does, so the
+            // hit path takes the viewport's own live grab/grabbing cursor by
+            // inheriting rather than promising a cursor of its own.
+            cursor: "inherit",
+        } });
+
+        DOM.sink.appendChild(group, hit);
+        this.trackHandle(hit);
+
+        return hit;
+    }
+
+    /**
+     * Draws one edge's visible stroked path, carrying its markers and dash. The
+     * edge's emphasis state is not written here — it is the group the path is
+     * appended into (see {@link DIMMED_EDGE_OPACITY}).
+     *
+     * @param group - The edge group handle to append into.
+     * @param edge - The routed edge to draw.
+     * @param d - The edge's path data.
+     * @returns The visible path's handle.
+     */
+    private drawVisiblePath(group: Handle, edge: DiagramEdgeRoute, d: string): Handle {
+        const path  = DOM.sink.createElementNS(SVG_NS, "path");
+        const style = edge.style;
+
+        // No style: today's back-compat behaviour — a plain arrow at the end,
+        // no start marker. With a style, each end draws only the marker (if
+        // any) the style names; an edge can carry cardinality with no
+        // marker-end at all.
+        const markerEnd   = style ? this.markerUrl(style.endMarker) : this.markerUrl("arrow");
+        const markerStart = style ? this.markerUrl(style.startMarker) : undefined;
+
+        const attrs: Record<string, string> = {
+            d,
+            fill:           "none",
+            stroke:         style?.stroke ?? EDGE_STROKE,
+            "stroke-width": EDGE_STROKE_WIDTH,
+        };
+
+        if (markerEnd) {
+            attrs["marker-end"] = markerEnd;
+        }
+
+        if (markerStart) {
+            attrs["marker-start"] = markerStart;
+        }
+
+        if (style?.dashed) {
+            attrs["stroke-dasharray"] = DASH_ARRAY;
+        }
+
+        DOM.sink.apply(path, { setAttr: attrs });
+
+        DOM.sink.appendChild(group, path);
+        this.trackHandle(path);
+
+        return path;
+    }
+
+    /**
+     * Releases one previously-drawn edge's elements (hit path, visible path,
+     * and optional label) from the group they were appended into and from the
+     * tracked-handle set.
+     *
+     * @param drawn - The drawn edge record to release.
+     */
+    private releaseDrawnEdge(drawn: DrawnEdge): void {
+        const handles = [drawn.hit, drawn.path, ...(drawn.label ? [drawn.label] : [])];
+
+        for (const handle of handles) {
+            DOM.sink.removeChild(drawn.group, handle);
+            this.untrackHandle(handle);
+            DOM.sink.release(handle);
         }
     }
 
     /**
      * Draws one edge's optional mid-route label as a `<text>` element.
      *
-     * @param svg - The root `<svg>` handle to append into.
+     * @param group - The edge group handle to append into, which also carries
+     *   the label's emphasis state (see {@link DIMMED_EDGE_OPACITY}).
      * @param edge - The edge route the label belongs to (for its anchor point).
      * @param label - The label text.
+     * @returns The label's handle.
      */
-    private drawLabel(svg: Handle, edge: DiagramEdgeRoute, label: string): void {
+    private drawLabel(group: Handle, edge: DiagramEdgeRoute, label: string): Handle {
         const point = labelPoint(edge.sections);
         const text  = DOM.sink.createElementNS(SVG_NS, "text");
 
@@ -467,9 +801,10 @@ class DiagramEdgeLayer extends Component<ComponentOptions> {
             text: label,
         });
 
-        DOM.sink.appendChild(svg, text);
+        DOM.sink.appendChild(group, text);
         this.trackHandle(text);
-        this._pathHandles.push(text);
+
+        return text;
     }
 }
 

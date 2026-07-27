@@ -93,6 +93,32 @@ function fixedResult(): DiagramLayoutResult {
     };
 }
 
+/** A root card too large to fit the 1280×800 test viewport whole. */
+function oversizedNodeResult(): DiagramLayoutResult {
+    return {
+        nodes: [
+            { id: 'a', x: 100, y: 50, width: 2000, height: 1000 },
+            { id: 'b', x: 2300, y: 0, width: 60, height: 30 },
+        ],
+        edges: [],
+        width:  2400,
+        height: 1100,
+    };
+}
+
+/** Stands in for the post-depth-change re-layout: same node ids, moved. */
+function movedRootResult(): DiagramLayoutResult {
+    return {
+        nodes: [
+            { id: 'a', x: 500, y: 400, width: 60, height: 30 },
+            { id: 'b', x: 900, y: 700, width: 60, height: 30 },
+        ],
+        edges: [],
+        width:  2000,
+        height: 1200,
+    };
+}
+
 /** Parses a `translate(Xpx, Ypx) scale(Z)` transform string into its parts. */
 function parseTransform(transform: string): { panX: number; panY: number; zoom: number } {
     const match = transform.match(/^translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\((-?[\d.]+)\)$/);
@@ -1151,6 +1177,127 @@ describe('DiagramView — free pan drag + grab/grabbing cursor (behaviours 16, 1
     });
 });
 
+describe('DiagramView — a drag never changes the selection', () => {
+    it('a pan that starts and ends on empty canvas leaves an existing selection and fires no "selection"', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const fired: unknown[] = [];
+        const view = new StubDiagramView({ data: simpleGraph(), listeners: { selection: () => fired.push(1) } }) as any;
+
+        await flush();
+        view.selectNode('a');
+
+        const empty: Handle = view.getElement(true);
+
+        view._handlePointerDown(makeEvent(empty, 'pointerdown', { button: 0, clientX: 100, clientY: 100 }));
+        view._handlePointerMove(makeEvent(empty, 'pointermove', { clientX: 140, clientY: 130, buttons: 1 }));
+        view._handleClick(makeEvent(empty, 'click'));
+
+        expect(view.getSelection().map((n: DiagramNodeData) => n.id)).toEqual(['a']);
+        expect(fired).toHaveLength(0);
+    });
+
+    it('a drag that starts on a node and ends on empty canvas does not change the selection', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const fired: unknown[] = [];
+        const view = new StubDiagramView({ data: simpleGraph(), listeners: { selection: () => fired.push(1) } }) as any;
+
+        await flush();
+        view.selectNode('a');
+
+        const nodeHandle: Handle = view._nodeComponents.get('a').getElement(true);
+        const empty: Handle = view.getElement(true);
+
+        view._handlePointerDown(makeEvent(nodeHandle, 'pointerdown', { button: 0, clientX: 100, clientY: 100 }));
+        view._handlePointerMove(makeEvent(empty, 'pointermove', { clientX: 140, clientY: 130, buttons: 1 }));
+        // The browser fires "click" on the nearest common ancestor of press and
+        // release — here the view root — regardless of which target this
+        // synthetic event names.
+        view._handleClick(makeEvent(empty, 'click'));
+
+        expect(view.getSelection().map((n: DiagramNodeData) => n.id)).toEqual(['a']);
+        expect(fired).toHaveLength(0);
+    });
+
+    it('a press-and-release within the 4px slop still clicks: the selection clears and "selection" fires', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const fired: unknown[][] = [];
+        const view = new StubDiagramView({ data: simpleGraph(), listeners: { selection: (nodes: DiagramNodeData[]) => fired.push(nodes as unknown as unknown[]) } }) as any;
+
+        await flush();
+        view.selectNode('a');
+
+        const empty: Handle = view.getElement(true);
+
+        view._handlePointerDown(makeEvent(empty, 'pointerdown', { button: 0, clientX: 100, clientY: 100 }));
+        view._handlePointerMove(makeEvent(empty, 'pointermove', { clientX: 102, clientY: 101, buttons: 1 }));
+        view._handleClick(makeEvent(empty, 'click'));
+
+        expect(view.getSelection()).toEqual([]);
+        expect(fired).toHaveLength(1);
+        expect(fired[0]).toEqual([]);
+    });
+
+    it('_handleClick with no preceding _handlePointerDown still selects normally (the guard defaults to "not moved")', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        const handle: Handle = view._nodeComponents.get('a').getElement(true);
+
+        view._handleClick(makeEvent(handle, 'click'));
+
+        expect(view.getSelection().map((n: DiagramNodeData) => n.id)).toEqual(['a']);
+    });
+
+    it('an ambient pointermove with no button held (hover, before any press) does not arm the guard', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        const empty: Handle = view.getElement(true);
+        const handle: Handle = view._nodeComponents.get('a').getElement(true);
+
+        // A move far from the (0, 0) default press point, with no button
+        // held — ordinary mouse travel before the user ever presses down.
+        view._handlePointerMove(makeEvent(empty, 'pointermove', { clientX: 900, clientY: 700, buttons: 0 }));
+        view._handleClick(makeEvent(handle, 'click'));
+
+        expect(view.getSelection().map((n: DiagramNodeData) => n.id)).toEqual(['a']);
+    });
+
+    it('a second press resets the guard: a fresh unmoved press-and-click still clears the selection', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+        view.selectNode('a');
+
+        const empty: Handle = view.getElement(true);
+
+        // First: a drag that must not clear the selection.
+        view._handlePointerDown(makeEvent(empty, 'pointerdown', { button: 0, clientX: 100, clientY: 100 }));
+        view._handlePointerMove(makeEvent(empty, 'pointermove', { clientX: 140, clientY: 130, buttons: 1 }));
+        view._handleClick(makeEvent(empty, 'click'));
+
+        expect(view.getSelection().map((n: DiagramNodeData) => n.id)).toEqual(['a']);
+
+        // Second: a fresh press with no movement — the sticky flag from the
+        // first drag must not still be set.
+        view._handlePointerDown(makeEvent(empty, 'pointerdown', { button: 0, clientX: 200, clientY: 200 }));
+        view._handleClick(makeEvent(empty, 'click'));
+
+        expect(view.getSelection()).toEqual([]);
+    });
+});
+
 describe('DiagramView — wheel-zoom about the pointer (behaviour 18)', () => {
     it('zooms in toward the pointer, keeping the graph point under it fixed', async () => {
         stubEngine = new StubEngine(fixedResult());
@@ -1224,8 +1371,304 @@ describe('DiagramView — stale-layout guard (U7)', () => {
     });
 });
 
+describe('DiagramView — hidden until placed', () => {
+    it('mounts new node components hidden in the incoming set, revealing them only once laid out', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        expect(view._incomingComponents.size).toBe(2);
+        expect(view._nodeComponents.size).toBe(0);
+
+        for (const component of view._incomingComponents.values()) {
+            expect(component.isVisible()).toBe(false);
+        }
+
+        stubEngine.resolveDeferred(0, fixedResult());
+        await flush();
+
+        expect(view._nodeComponents.size).toBe(2);
+        expect(view._incomingComponents.size).toBe(0);
+
+        for (const component of view._nodeComponents.values()) {
+            expect(component.isVisible()).toBe(true);
+        }
+
+        expect(view._nodeComponents.get('a').getX()).toBe(10);
+        expect(view._nodeComponents.get('a').getY()).toBe(20);
+    });
+});
+
+describe('DiagramView — a re-layout keeps the previous graph painted', () => {
+    it('leaves the first graph shown and visible while the second lays out hidden alongside it', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView() as any;
+
+        const firstData: DiagramData = { nodes: [{ id: 'a' }], edges: [] };
+        const secondData: DiagramData = { nodes: [{ id: 'z' }], edges: [] };
+        const firstResult: DiagramLayoutResult = { nodes: [{ id: 'a', x: 1, y: 1, width: 10, height: 10 }], edges: [], width: 10, height: 10 };
+        const secondResult: DiagramLayoutResult = { nodes: [{ id: 'z', x: 9, y: 9, width: 20, height: 20 }], edges: [], width: 20, height: 20 };
+
+        view.setData(firstData);   // generation 1 → deferred[0]
+        stubEngine.resolveDeferred(0, firstResult);
+        await flush();
+
+        expect(view._nodeComponents.has('a')).toBe(true);
+
+        view.setData(secondData);  // generation 2 → deferred[1]; first graph must stay shown
+
+        expect(view._nodeComponents.has('a')).toBe(true);
+        expect(view._nodeComponents.get('a').isVisible()).toBe(true);
+        expect(view._incomingComponents.has('z')).toBe(true);
+        expect(view._incomingComponents.get('z').isVisible()).toBe(false);
+
+        stubEngine.resolveDeferred(1, secondResult);
+        await flush();
+
+        expect([...view._nodeComponents.keys()]).toEqual(['z']);
+    });
+});
+
+describe('DiagramView — layout failure leaves whatever was already shown', () => {
+    it('a failed first layout leaves both sets empty', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'reject');
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        expect(view._nodeComponents.size).toBe(0);
+        expect(view._incomingComponents.size).toBe(0);
+        expect(view.getSelection()).toEqual([]);
+    });
+
+    it('a failed re-layout after a settled first one leaves the first graph shown', async () => {
+        let call = 0;
+
+        // A custom stub (mirroring the z-index-reset test above) since a
+        // single StubEngine instance can only be all-resolve, all-reject, or
+        // all-defer — this needs the first call to succeed and the second
+        // to fail.
+        stubEngine = {
+            layout: (): Promise<DiagramLayoutResult> => {
+                call += 1;
+
+                return call === 1 ? Promise.resolve(fixedResult()) : Promise.reject(new Error('elkjs unavailable'));
+            },
+            dispose: () => {},
+        } as unknown as StubEngine;
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        await flush();
+
+        expect(view._nodeComponents.size).toBe(2);
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(view._nodeComponents.size).toBe(2);
+        expect(view._incomingComponents.size).toBe(0);
+    });
+});
+
+describe('DiagramView — whenLaidOut()', () => {
+    it('resolves immediately on a view with no data ever set', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView() as any;
+        const resolved = vi.fn();
+
+        view.whenLaidOut().then(resolved);
+        await flush();
+
+        expect(resolved).toHaveBeenCalledTimes(1);
+    });
+
+    it('resolves once a layout in flight delivers its result', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        const resolved = vi.fn();
+
+        view.whenLaidOut().then(resolved);
+        await flush();
+
+        expect(resolved).not.toHaveBeenCalled();
+
+        stubEngine.resolveDeferred(0, fixedResult());
+        await flush();
+
+        expect(resolved).toHaveBeenCalledTimes(1);
+    });
+
+    it('resolves, not rejects, when the in-flight layout fails', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        const resolved = vi.fn();
+        const rejected = vi.fn();
+
+        view.whenLaidOut().then(resolved, rejected);
+
+        stubEngine.rejectDeferred(0, new Error('elkjs unavailable'));
+        await flush();
+
+        expect(resolved).toHaveBeenCalledTimes(1);
+        expect(rejected).not.toHaveBeenCalled();
+    });
+
+    it('resolves when the view is disposed mid-pass and the result never arrives', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        const resolved = vi.fn();
+
+        view.whenLaidOut().then(resolved);
+
+        view.dispose();
+        await flush();
+
+        expect(resolved).toHaveBeenCalledTimes(1);
+    });
+
+    it('shares one promise across two setData calls before either lands, resolved by the second pass', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView() as any;
+
+        view.setData({ nodes: [{ id: 'a' }], edges: [] });   // generation 1 → deferred[0]
+        const first = view.whenLaidOut();
+
+        view.setData({ nodes: [{ id: 'z' }], edges: [] });   // generation 2 → deferred[1]
+        const second = view.whenLaidOut();
+
+        expect(second).toBe(first);
+
+        const resolved = vi.fn();
+        first.then(resolved);
+
+        stubEngine.resolveDeferred(1, { nodes: [{ id: 'z', x: 9, y: 9, width: 20, height: 20 }], edges: [], width: 20, height: 20 });
+        await flush();
+
+        expect(resolved).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('DiagramView — initialFocusNode / focusNode', () => {
+    it('centres the named node instead of the graph bounds, when sized before the layout lands', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        // Node 'a' is at (10, 20, 60, 30) → centre (40, 35).
+        expect(view._contentHost.getTransform()).toBe('translate(600px, 365px) scale(1)');
+    });
+
+    it('retries the named node\'s centring once the view is sized, when the layout lands first', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), initialFocusNode: 'a' }) as any;
+
+        // No setSize: the layout lands on an unsized view — the same retry
+        // tryInitialCentre already performs for the bounds-centring case.
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(0px, 0px) scale(1)');
+
+        vi.spyOn(DOM.source, 'isConnected').mockReturnValue(true);
+        view.getElement(true);
+        view.setSize({ width: 1280, height: 800 });
+        view.doLayout();
+
+        expect(view._contentHost.getTransform()).toBe('translate(600px, 365px) scale(1)');
+
+        vi.restoreAllMocks();
+    });
+
+    it('falls back to the graph bounds when the focus id names no node in the graph', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), initialFocusNode: 'nope' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+    });
+
+    it('centres the graph bounds, unchanged, when no initialFocusNode is configured', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+    });
+
+    it('is one-shot: a later setData does not re-yank a pan the user has since dragged to', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(600px, 365px) scale(1)');
+
+        view._panX = 99;
+        view._panY = 77;
+        view.applyTransformToHost();
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(99px, 77px) scale(1)');
+    });
+
+    it('focusNode centres a different node on a settled, sized view', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        view.focusNode('b');
+
+        // Node 'b' is at (100, 200, 60, 30) → centre (130, 215).
+        expect(view._contentHost.getTransform()).toBe('translate(510px, 185px) scale(1)');
+    });
+
+    it('focusNode on an unsized view writes nothing, retried once the view is sized', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        view.focusNode('a');
+
+        expect(view._contentHost.getTransform()).toBe('translate(0px, 0px) scale(1)');
+
+        vi.spyOn(DOM.source, 'isConnected').mockReturnValue(true);
+        view.getElement(true);
+        view.setSize({ width: 1280, height: 800 });
+        view.doLayout();
+
+        expect(view._contentHost.getTransform()).toBe('translate(600px, 365px) scale(1)');
+
+        vi.restoreAllMocks();
+    });
+});
+
 describe('DiagramEdgeLayer — edge routing (U8)', () => {
-    it('creates one path per routed edge and clears prior paths on re-setEdges', () => {
+    it('creates two paths (visible + invisible hit path) per routed edge and clears both on re-setEdges', () => {
         const layer = new _DiagramEdgeLayer();
 
         layer.getElement(true);  // render the <svg> + defs/marker/arrow
@@ -1237,7 +1680,7 @@ describe('DiagramEdgeLayer — edge routing (U8)', () => {
         ]);
 
         const created = sink.writes.filter((w) => w.op === 'createElementNS' && w.args[1] === 'path').length;
-        expect(created).toBe(2);
+        expect(created).toBe(4);
 
         sink.writes.length = 0;
 
@@ -1246,8 +1689,8 @@ describe('DiagramEdgeLayer — edge routing (U8)', () => {
         const removed = sink.writes.filter((w) => w.op === 'removeChild').length;
         const recreated = sink.writes.filter((w) => w.op === 'createElementNS' && w.args[1] === 'path').length;
 
-        expect(removed).toBe(2);
-        expect(recreated).toBe(1);
+        expect(removed).toBe(4);
+        expect(recreated).toBe(2);
     });
 });
 
@@ -1258,6 +1701,8 @@ describe('DiagramView — option routing (U9, extended by behaviour 15)', () => 
         const layoutFired: number[] = [];
         const customNodes: DiagramNodeData[] = [];
         const contextMenuFired: DiagramNodeData[] = [];
+        const edgehoverFired: unknown[][] = [];
+        const edgeleaveFired: number[] = [];
 
         const view = new StubDiagramView({
             data:          simpleGraph(),
@@ -1267,10 +1712,16 @@ describe('DiagramView — option routing (U9, extended by behaviour 15)', () => 
             zoom:          2,
             controls:      false,
             nodeRenderer:  (n) => { customNodes.push(n); return new Component({ preferredSize: { width: 30, height: 20 } }); },
-            listeners:     { layout: () => layoutFired.push(1), contextmenu: (n) => contextMenuFired.push(n) },
+            listeners:     {
+                layout: () => layoutFired.push(1),
+                contextmenu: (n) => contextMenuFired.push(n),
+                edgehover: (edges) => edgehoverFired.push(edges),
+                edgeleave: () => edgeleaveFired.push(1),
+            },
         }) as any;
 
         await flush();
+        view.getElement(true);
 
         expect(view.getZoom()).toBe(2);
         expect(view.getData()).toEqual(simpleGraph());
@@ -1284,6 +1735,15 @@ describe('DiagramView — option routing (U9, extended by behaviour 15)', () => 
         event.preventDefault = () => {};
         view._handleContextMenu(event);
         expect(contextMenuFired.map((n) => n.id)).toEqual(['a']);
+
+        // zoom: 2 above, pan (0,0) (the view is never sized, so the initial
+        // centring no-ops) — the route's midpoint (85,125) is at client (170,250).
+        const hitHandle: Handle = view._edgeLayer._drawn[0].hit;
+        view._handleEdgeMouseMove(makeEvent(hitHandle, 'mousemove', { clientX: 170, clientY: 250 }));
+        view._handleEdgeMouseOut(makeEvent(hitHandle, 'mouseout'));
+
+        expect(edgehoverFired).toHaveLength(1);
+        expect(edgeleaveFired).toHaveLength(1);
     });
 });
 
@@ -1298,7 +1758,404 @@ describe('DiagramView — graceful ELK-absent (U10)', () => {
         await flush();
 
         expect(view._nodeComponents.size).toBe(0);
+        expect(view._incomingComponents.size).toBe(0);
         expect(view.getSelection()).toEqual([]);
+    });
+});
+
+/** A graph whose sole edge carries a `data` payload, for hover-passthrough assertions. */
+function edgeHoverGraph(): DiagramData {
+    return {
+        nodes: [{ id: 'a', label: 'Hero' }, { id: 'b', label: 'World' }],
+        edges: [{ id: 'e', source: 'a', target: 'b', data: { note: 'fk' } }],
+    };
+}
+
+describe('DiagramView — setEdgeEmphasis / getEdgeEmphasis forward to the layer', () => {
+    it('reaches the layer and reads back the same value', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        view.setEdgeEmphasis(['e']);
+
+        expect(view._edgeLayer.getEdgeEmphasis()).toEqual(['e']);
+        expect(view.getEdgeEmphasis()).toEqual(['e']);
+    });
+});
+
+describe('DiagramView — setNodeEmphasis / getNodeEmphasis', () => {
+    it('dims every node component outside the given set, leaving the named ones at full opacity', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        view.setNodeEmphasis(['a']);
+
+        expect(view._nodeComponents.get('a').getOpacity()).toBeNull();
+        expect(view._nodeComponents.get('b').getOpacity()).toBe(0.35);
+    });
+
+    it('setNodeEmphasis(null) and setNodeEmphasis([]) both restore every node component to unset opacity', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        view.setNodeEmphasis(['a']);
+        view.setNodeEmphasis(null);
+
+        expect(view._nodeComponents.get('a').getOpacity()).toBeNull();
+        expect(view._nodeComponents.get('b').getOpacity()).toBeNull();
+
+        view.setNodeEmphasis(['a']);
+        view.setNodeEmphasis([]);
+
+        expect(view._nodeComponents.get('a').getOpacity()).toBeNull();
+        expect(view._nodeComponents.get('b').getOpacity()).toBeNull();
+    });
+
+    it('getNodeEmphasis reflects the set and the clear, and hands back a copy', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        view.setNodeEmphasis(['a']);
+        const ids = view.getNodeEmphasis();
+
+        expect(ids).toEqual(['a']);
+
+        ids.push('mutated');
+        expect(view.getNodeEmphasis()).toEqual(['a']);
+
+        view.setNodeEmphasis(null);
+        expect(view.getNodeEmphasis()).toEqual([]);
+    });
+
+    it('an emphasis set naming an unknown id dims every node without throwing, and is still reported back', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        expect(() => view.setNodeEmphasis(['nope'])).not.toThrow();
+
+        expect(view._nodeComponents.get('a').getOpacity()).toBe(0.35);
+        expect(view._nodeComponents.get('b').getOpacity()).toBe(0.35);
+        expect(view.getNodeEmphasis()).toEqual(['nope']);
+    });
+
+    it('emits nothing — no "selection", no "layout"', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const selectionFired: unknown[] = [];
+        const layoutFired: unknown[] = [];
+        const view = new StubDiagramView({
+            data: simpleGraph(),
+            listeners: { selection: () => selectionFired.push(1), layout: () => layoutFired.push(1) },
+        }) as any;
+
+        await flush();
+        layoutFired.length = 0;
+
+        view.setNodeEmphasis(['a']);
+
+        expect(selectionFired).toHaveLength(0);
+        expect(layoutFired).toHaveLength(0);
+    });
+
+    it('a setData whose layout lands clears the emphasis', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+        view.setNodeEmphasis(['a']);
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(view.getNodeEmphasis()).toEqual([]);
+        expect(view._nodeComponents.get('a').getOpacity()).toBeNull();
+        expect(view._nodeComponents.get('b').getOpacity()).toBeNull();
+    });
+
+    it('a setData whose layout fails leaves the previous graph\'s emphasis in place', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+        view.setNodeEmphasis(['a']);
+
+        stubEngine.layout = (): Promise<DiagramLayoutResult> => Promise.reject(new Error('elkjs unavailable'));
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(view.getNodeEmphasis()).toEqual(['a']);
+        expect(view._nodeComponents.get('a').getOpacity()).toBeNull();
+        expect(view._nodeComponents.get('b').getOpacity()).toBe(0.35);
+    });
+});
+
+describe('DiagramView — an edge press pans but still does not clear the selection', () => {
+    it('_handleClick on an edge hit path leaves an existing selection intact and emits no "selection"', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const fired: unknown[] = [];
+        const view = new StubDiagramView({ data: simpleGraph(), listeners: { selection: () => fired.push(1) } }) as any;
+
+        await flush();
+        view.getElement(true);
+
+        view.selectNode('a');
+
+        const hitHandle: Handle = view._edgeLayer._drawn[0].hit;
+
+        view._handleClick(makeEvent(hitHandle, 'click'));
+
+        expect(view.getSelection().map((n: DiagramNodeData) => n.id)).toEqual(['a']);
+        expect(fired).toHaveLength(0);
+    });
+
+    it('_handlePointerDown on an edge hit path pans, exactly like empty canvas', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+        // Forces the whole subtree (including the edge layer's <svg>) to
+        // render, so `_drawn` is populated — nothing renders eagerly in this
+        // offline harness (see Component.insertComponent: a child's element
+        // is only forced when its parent's own element already exists).
+        view.getElement(true);
+
+        const hitHandle: Handle = view._edgeLayer._drawn[0].hit;
+
+        view._handlePointerDown(makeEvent(hitHandle, 'pointerdown', { button: 0, clientX: 100, clientY: 100 }));
+
+        expect(view._panning).toBe(true);
+        expect(view.getCursor()).toBe('grabbing');
+    });
+
+    it('a following pointermove from an edge press pans the content host by the pointer delta', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+        view.getElement(true);
+
+        const hitHandle: Handle = view._edgeLayer._drawn[0].hit;
+
+        view._handlePointerDown(makeEvent(hitHandle, 'pointerdown', { button: 0, clientX: 100, clientY: 100 }));
+        view._handlePointerMove(makeEvent(hitHandle, 'pointermove', { clientX: 140, clientY: 130, buttons: 1 }));
+
+        expect(view._contentHost.getTransform()).toBe('translate(40px, 30px) scale(1)');
+    });
+
+    it('_handleDoubleClick on an edge hit path emits no "activate" (unchanged behaviour, pinned)', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const activated: unknown[] = [];
+        const view = new StubDiagramView({ data: simpleGraph(), listeners: { activate: () => activated.push(1) } }) as any;
+
+        await flush();
+        // Forces the whole subtree (including the edge layer's <svg>) to
+        // render, so `_drawn` is populated — nothing renders eagerly in this
+        // offline harness (see Component.insertComponent: a child's element
+        // is only forced when its parent's own element already exists).
+        view.getElement(true);
+
+        const hitHandle: Handle = view._edgeLayer._drawn[0].hit;
+
+        view._handleDoubleClick(makeEvent(hitHandle, 'dblclick'));
+
+        expect(activated).toHaveLength(0);
+    });
+
+    it('_handleContextMenu on an edge hit path emits no "contextmenu" (unchanged behaviour, pinned)', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const fired: unknown[] = [];
+        const view = new StubDiagramView({ data: simpleGraph(), listeners: { contextmenu: () => fired.push(1) } }) as any;
+
+        await flush();
+        // Forces the whole subtree (including the edge layer's <svg>) to
+        // render, so `_drawn` is populated — nothing renders eagerly in this
+        // offline harness (see Component.insertComponent: a child's element
+        // is only forced when its parent's own element already exists).
+        view.getElement(true);
+
+        const hitHandle: Handle = view._edgeLayer._drawn[0].hit;
+        const event = makeEvent(hitHandle, 'contextmenu') as any;
+        event.preventDefault = () => {};
+
+        view._handleContextMenu(event);
+
+        expect(fired).toHaveLength(0);
+    });
+});
+
+describe('DiagramView — "edgehover" / "edgeleave"', () => {
+    it('emits "edgehover" once with the model edges (data passthrough) and the originating event', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const hovered: Array<[unknown[], MouseEvent]> = [];
+        const view = new StubDiagramView({
+            data: edgeHoverGraph(),
+            listeners: { edgehover: (edges, e) => hovered.push([edges, e]) },
+        }) as any;
+
+        await flush();
+        view.getElement(true);
+
+        // Route for 'e' is (70,35)->(100,215); no pan/zoom applied (identity).
+        const hitHandle: Handle = view._edgeLayer._drawn[0].hit;
+        const event = makeEvent(hitHandle, 'mousemove', { clientX: 85, clientY: 125 });
+
+        view._handleEdgeMouseMove(event);
+
+        expect(hovered).toHaveLength(1);
+        expect((hovered[0][0] as any[]).map((e) => e.id)).toEqual(['e']);
+        expect((hovered[0][0] as any[])[0].data).toEqual({ note: 'fk' });
+        expect(hovered[0][1]).toBe(event);
+    });
+
+    it('a second move at a different point still inside the same edge set emits nothing further', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const hovered: unknown[] = [];
+        const view = new StubDiagramView({
+            data: edgeHoverGraph(),
+            listeners: { edgehover: () => hovered.push(1) },
+        }) as any;
+
+        await flush();
+        // Forces the whole subtree (including the edge layer's <svg>) to
+        // render, so `_drawn` is populated — nothing renders eagerly in this
+        // offline harness (see Component.insertComponent: a child's element
+        // is only forced when its parent's own element already exists).
+        view.getElement(true);
+
+        const hitHandle: Handle = view._edgeLayer._drawn[0].hit;
+
+        view._handleEdgeMouseMove(makeEvent(hitHandle, 'mousemove', { clientX: 85, clientY: 125 }));
+        view._handleEdgeMouseMove(makeEvent(hitHandle, 'mousemove', { clientX: 86, clientY: 126 }));
+
+        expect(hovered).toHaveLength(1);
+    });
+
+    it('a move that leaves the edge emits "edgeleave" once; a further such move emits nothing', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const left: unknown[] = [];
+        const view = new StubDiagramView({
+            data: edgeHoverGraph(),
+            listeners: { edgeleave: () => left.push(1) },
+        }) as any;
+
+        await flush();
+        // Forces the whole subtree (including the edge layer's <svg>) to
+        // render, so `_drawn` is populated — nothing renders eagerly in this
+        // offline harness (see Component.insertComponent: a child's element
+        // is only forced when its parent's own element already exists).
+        view.getElement(true);
+
+        const hitHandle: Handle = view._edgeLayer._drawn[0].hit;
+        const rootHandle: Handle = view.getElement(true);
+
+        view._handleEdgeMouseMove(makeEvent(hitHandle, 'mousemove', { clientX: 85, clientY: 125 }));
+        view._handleEdgeMouseMove(makeEvent(rootHandle, 'mousemove', { clientX: 0, clientY: 0 }));
+        view._handleEdgeMouseMove(makeEvent(rootHandle, 'mousemove', { clientX: 1, clientY: 1 }));
+
+        expect(left).toHaveLength(1);
+    });
+
+    it('_handleEdgeMouseOut on the edge\'s hit path emits "edgeleave"; on a non-edge target it emits nothing', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const left: unknown[] = [];
+        const view = new StubDiagramView({
+            data: edgeHoverGraph(),
+            listeners: { edgeleave: () => left.push(1) },
+        }) as any;
+
+        await flush();
+        // Forces the whole subtree (including the edge layer's <svg>) to
+        // render, so `_drawn` is populated — nothing renders eagerly in this
+        // offline harness (see Component.insertComponent: a child's element
+        // is only forced when its parent's own element already exists).
+        view.getElement(true);
+
+        const hitHandle: Handle = view._edgeLayer._drawn[0].hit;
+        const rootHandle: Handle = view.getElement(true);
+
+        view._handleEdgeMouseMove(makeEvent(hitHandle, 'mousemove', { clientX: 85, clientY: 125 }));
+        view._handleEdgeMouseOut(makeEvent(rootHandle, 'mouseout'));
+
+        expect(left).toHaveLength(0);
+
+        view._handleEdgeMouseOut(makeEvent(hitHandle, 'mouseout'));
+
+        expect(left).toHaveLength(1);
+    });
+
+    it('emits nothing while panning', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const hovered: unknown[] = [];
+        const view = new StubDiagramView({
+            data: edgeHoverGraph(),
+            listeners: { edgehover: () => hovered.push(1) },
+        }) as any;
+
+        await flush();
+        view.getElement(true);
+
+        view._panning = true;
+
+        const hitHandle: Handle = view._edgeLayer._drawn[0].hit;
+        view._handleEdgeMouseMove(makeEvent(hitHandle, 'mousemove', { clientX: 85, clientY: 125 }));
+
+        expect(hovered).toHaveLength(0);
+    });
+
+    it('applies the pan/zoom inverse before hit-testing: a mapped point off the route emits nothing, one on the route emits "edgehover"', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const hovered: unknown[] = [];
+        const view = new StubDiagramView({
+            data: edgeHoverGraph(),
+            listeners: { edgehover: () => hovered.push(1) },
+        }) as any;
+
+        await flush();
+        view.getElement(true);
+
+        view._panX = 100;
+        view._panY = 50;
+        view.setZoom(2);
+
+        const hitHandle: Handle = view._edgeLayer._drawn[0].hit;
+
+        // Client (100, 50) maps to graph (0, 0) with this pan/zoom — far from
+        // the route (70,35)-(100,215).
+        view._handleEdgeMouseMove(makeEvent(hitHandle, 'mousemove', { clientX: 100, clientY: 50 }));
+        expect(hovered).toHaveLength(0);
+
+        // Client (270, 300) maps to graph (85, 125) — the route's midpoint.
+        view._handleEdgeMouseMove(makeEvent(hitHandle, 'mousemove', { clientX: 270, clientY: 300 }));
+        expect(hovered).toHaveLength(1);
     });
 });
 
@@ -1443,6 +2300,39 @@ describe('DiagramView — compound container nodes (U11)', () => {
         expect(sizes.has('public.users')).toBe(true);
         expect(sizes.has('public.orders')).toBe(true);
     });
+
+    it('does not forward badge to the default group renderer', async () => {
+        stubEngine = new StubEngine(compoundResult());
+
+        const graph = compoundGraph();
+
+        graph.nodes[0].badge = '+1→'; // a container carrying a badge
+
+        const view = new StubDiagramView({ data: graph }) as any;
+
+        await flush();
+
+        const container = view._nodeComponents.get('schema:public');
+
+        expect(container.getBadge).toBeUndefined();
+    });
+});
+
+describe('DiagramView — badge passthrough (default node renderer)', () => {
+    it('renders a node\'s badge into a DiagramNode whose getBadge() returns it', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const graph = simpleGraph();
+
+        graph.nodes[0].badge = '+3→';
+
+        const view = new StubDiagramView({ data: graph }) as any;
+
+        await flush();
+
+        expect(view._nodeComponents.get('a').getBadge()).toBe('+3→');
+        expect(view._nodeComponents.get('b').getBadge()).toBeNull();
+    });
 });
 
 // Disposal. The view owns its engine's lifetime: tearing the view down must
@@ -1492,20 +2382,466 @@ describe('DiagramView — disposal', () => {
     it('D4: a layout rejecting after disposal does not strip the view\'s nodes', async () => {
         stubEngine = new StubEngine(fixedResult(), 'defer');
 
+        // No `await flush()` here: the first layout must still be genuinely
+        // in flight (its deferred unresolved) when dispose() below runs.
         const view = new StubDiagramView({ data: simpleGraph() }) as any;
-        await flush();
 
-        expect(view._nodeComponents.size).toBe(2);
+        expect(view._incomingComponents.size).toBe(2);
 
         view.dispose();
         stubEngine.rejectDeferred(0, new Error('elkjs unavailable'));
 
         await flush();
 
-        // `handleLayoutFailure` tears every node off the view when it runs, so
-        // an untouched node map is what proves its generation guard dropped
-        // this stale failure. Asserting only "no unhandled rejection" would
-        // pass for any implementation — `relayout` always attaches a `.catch`.
-        expect(view._nodeComponents.size).toBe(2);
+        // `handleLayoutFailure` discards the incoming nodes when it runs, so
+        // an untouched incoming map is what proves its generation guard
+        // dropped this stale failure. Asserting only "no unhandled
+        // rejection" would pass for any implementation — `relayout` always
+        // attaches a `.catch`.
+        expect(view._incomingComponents.size).toBe(2);
+    });
+});
+
+describe('DiagramView — resetView targets the focus node', () => {
+    it('re-centres on the focus node rather than the graph bounds', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        // Stand in for a pan the user has dragged to since the initial centring.
+        view._panX = 99;
+        view._panY = 77;
+        view.applyTransformToHost();
+
+        view.resetView();
+
+        // Node 'a' is at (10, 20, 60, 30) → centre (40, 35).
+        expect(view._contentHost.getTransform()).toBe('translate(600px, 365px) scale(1)');
+    });
+
+    it('recovers the root after a live re-layout, leaving the one-shot rule intact', async () => {
+        let call = 0;
+
+        // A custom stub (mirroring the failed-re-layout test above) since a
+        // single StubEngine instance can only return one fixed result — this
+        // needs the first layout to settle on fixedResult() and a later
+        // setData (standing in for a Depth-control change) to relayout onto
+        // movedRootResult(), which keeps node 'a' but moves it far from where
+        // the first layout put it.
+        stubEngine = {
+            layout: (): Promise<DiagramLayoutResult> => {
+                call += 1;
+
+                return call === 1 ? Promise.resolve(fixedResult()) : Promise.resolve(movedRootResult());
+            },
+            dispose: () => {},
+        } as unknown as StubEngine;
+
+        const view = new StubDiagramView({ data: simpleGraph(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(600px, 365px) scale(1)');
+
+        view.setData(simpleGraph());
+        await flush();
+
+        // One-shot: the re-layout alone must not re-arm the centring.
+        expect(view._contentHost.getTransform()).toBe('translate(600px, 365px) scale(1)');
+
+        view.resetView();
+
+        // Node 'a' is now at (500, 400, 60, 30) → centre (530, 415).
+        expect(view._contentHost.getTransform()).toBe('translate(110px, -15px) scale(1)');
+    });
+
+    it('falls back to the graph bounds when the focus node is gone from the new graph', async () => {
+        let call = 0;
+
+        stubEngine = {
+            layout: (): Promise<DiagramLayoutResult> => {
+                call += 1;
+
+                return call === 1
+                    ? Promise.resolve(fixedResult())
+                    : Promise.resolve({ nodes: [{ id: 'z', x: 0, y: 0, width: 20, height: 20 }], edges: [], width: 400, height: 300 });
+            },
+            dispose: () => {},
+        } as unknown as StubEngine;
+
+        const view = new StubDiagramView({ data: simpleGraph(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        // The second setData's own graph must also drop node 'a' — a node
+        // component only exists when the DiagramData passed to setData names
+        // it; the stub's ELK result merely supplies its position.
+        view.setData({ nodes: [{ id: 'z', label: 'Z' }], edges: [] });
+        await flush();
+
+        view.resetView();
+
+        expect(view._contentHost.getTransform()).toBe('translate(440px, 250px) scale(1)');
+    });
+
+    it('re-arms the retry when resetView runs before the view is sized', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        view.resetView();
+
+        expect(view._contentHost.getTransform()).toBe('translate(0px, 0px) scale(1)');
+        expect(view._needsInitialCentre).toBe(true);
+
+        vi.spyOn(DOM.source, 'isConnected').mockReturnValue(true);
+        view.getElement(true);
+        view.setSize({ width: 1280, height: 800 });
+        view.doLayout();
+
+        expect(view._contentHost.getTransform()).toBe('translate(560px, 285px) scale(1)');
+
+        vi.restoreAllMocks();
+    });
+
+    it('is a no-op when sized but no data has ever been laid out', () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView() as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        view.resetView();
+
+        expect(view._contentHost.getTransform()).toBe('translate(0px, 0px) scale(1)');
+    });
+});
+
+describe('DiagramView — centring a node fits it in the viewport', () => {
+    it('lowers the zoom on the initial centring so an oversized root fits whole', async () => {
+        stubEngine = new StubEngine(oversizedNodeResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        // Node 'a' is at (100, 50, 2000, 1000); fit zoom min(0.64, 0.8) = 0.64.
+        expect(view._contentHost.getTransform()).toBe('translate(-64px, 48px) scale(0.64)');
+    });
+
+    it('revealNode lowers the zoom so an oversized node fits whole', async () => {
+        stubEngine = new StubEngine(oversizedNodeResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+        view.setSize({ width: 1280, height: 800 });
+
+        // Commits each node's real preferred size before revealNode reads it
+        // (see the analogous comment on the revealNode test above).
+        view._contentHost.doLayout();
+
+        view.revealNode('a');
+
+        expect(view._contentHost.getTransform()).toBe('translate(-64px, 48px) scale(0.64)');
+    });
+
+    it('never raises the zoom above the configured value when the node already fits', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), initialFocusNode: 'a', zoom: 0.5 }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._contentHost.getTransform()).toBe('translate(620px, 382.5px) scale(0.5)');
+    });
+
+    it('lets the node fit override a configured minZoom that would otherwise block it', async () => {
+        stubEngine = new StubEngine({
+            nodes: [{ id: 'a', x: 0, y: 0, width: 2000, height: 1000 }],
+            edges: [],
+            width:  2000,
+            height: 1000,
+        });
+
+        const view = new StubDiagramView({ data: simpleGraph(), initialFocusNode: 'a', minZoom: 1 }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        // effectiveMinZoom drops the floor to the graph's own fit zoom (0.64),
+        // which here equals the node's — the configured minZoom: 1 never binds.
+        expect(view._contentHost.getTransform()).toBe('translate(0px, 80px) scale(0.64)');
+    });
+
+    it('resetView shrinks the zoom to fit the focus node even after a manual zoom-in', async () => {
+        stubEngine = new StubEngine(oversizedNodeResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        view.setZoom(2);
+        view.resetView();
+
+        // The default zoom is restored first, then lowered to fit.
+        expect(view._contentHost.getTransform()).toBe('translate(-64px, 48px) scale(0.64)');
+    });
+
+    it('revealNode on an unsized view writes neither pan nor zoom', async () => {
+        stubEngine = new StubEngine(oversizedNodeResult());
+
+        const view = new StubDiagramView({ data: simpleGraph(), zoom: 2 }) as any;
+
+        await flush();
+
+        view.revealNode('a');
+
+        expect(view.getZoom()).toBe(2);
+        expect(view._contentHost.getTransform()).toBe('translate(0px, 0px) scale(2)');
+    });
+});
+
+describe('DiagramView — busy indicator during a layout pass', () => {
+    it('shows the overlay for the duration of a deferred layout pass, hides it once it resolves', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView() as any;
+        view.setSize({ width: 1280, height: 800 });
+
+        view.setData(simpleGraph());
+
+        expect(view._busySpinner.isOverlay()).toBe(true);
+
+        stubEngine.resolveDeferred(0, fixedResult());
+        await flush();
+
+        expect(view._busySpinner.isOverlay()).toBe(false);
+    });
+
+    it('shows the overlay for the duration of a rejecting layout pass (ELK absent)', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'reject');
+
+        const view = new StubDiagramView() as any;
+        view.setSize({ width: 1280, height: 800 });
+
+        view.setData(simpleGraph());
+
+        expect(view._busySpinner.isOverlay()).toBe(true);
+
+        await flush();
+
+        expect(view._busySpinner.isOverlay()).toBe(false);
+    });
+
+    it('never builds the spinner for an unsized view', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView() as any;
+
+        view.setData(simpleGraph());
+
+        expect(view._busySpinner).toBeNull();
+
+        stubEngine.resolveDeferred(0, fixedResult());
+        await flush();
+
+        expect(view._busySpinner).toBeNull();
+    });
+
+    it('keeps the overlay shown across two rapid setData calls sharing one busy span', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView() as any;
+        view.setSize({ width: 1280, height: 800 });
+
+        view.setData({ nodes: [{ id: 'a' }], edges: [] }); // generation 1 → deferred[0]
+        expect(view._busySpinner.isOverlay()).toBe(true);
+
+        view.setData({ nodes: [{ id: 'b' }], edges: [] }); // generation 2 → deferred[1]
+        expect(view._busySpinner.isOverlay()).toBe(true);
+
+        // The stale first deferred settling nothing — resolving it is a no-op
+        // because its generation no longer matches.
+        stubEngine.resolveDeferred(0, { nodes: [{ id: 'a', x: 0, y: 0, width: 10, height: 10 }], edges: [], width: 10, height: 10 });
+        await flush();
+
+        expect(view._busySpinner.isOverlay()).toBe(true);
+
+        stubEngine.resolveDeferred(1, { nodes: [{ id: 'b', x: 0, y: 0, width: 10, height: 10 }], edges: [], width: 10, height: 10 });
+        await flush();
+
+        expect(view._busySpinner.isOverlay()).toBe(false);
+    });
+
+    it('picks up the overlay once a previously unsized view is given a size mid-pass', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView() as any;
+
+        view.setData(simpleGraph());
+
+        expect(view._busySpinner).toBeNull();
+
+        view.setSize({ width: 1280, height: 800 });
+        view.doLayout();
+
+        expect(view._busySpinner.isOverlay()).toBe(true);
+
+        stubEngine.resolveDeferred(0, fixedResult());
+        await flush();
+
+        expect(view._busySpinner.isOverlay()).toBe(false);
+    });
+
+    it('disposal hides the overlay and drops the spinner', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView() as any;
+        view.setSize({ width: 1280, height: 800 });
+
+        view.setData(simpleGraph());
+
+        const spinner = view._busySpinner;
+        expect(spinner.isOverlay()).toBe(true);
+
+        view.dispose();
+
+        expect(spinner.isOverlay()).toBe(false);
+        expect(view._busySpinner).toBeNull();
+    });
+
+    it('leaves the spinner built but hidden after a same-tick-resolving pass on a sized view', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView() as any;
+        view.setSize({ width: 1280, height: 800 });
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(view._busySpinner).not.toBeNull();
+        expect(view._busySpinner.isOverlay()).toBe(false);
+
+        view.doLayout();
+
+        expect(view._busySpinner.isOverlay()).toBe(false);
+    });
+});
+
+describe('DiagramView — incoming nodes mount only once placed', () => {
+    it('keeps incoming components off the content host, hidden, until the layout lands', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        const hostComponents = view._contentHost.getComponents();
+
+        expect(view._incomingComponents.size).toBe(2);
+
+        for (const component of view._incomingComponents.values()) {
+            expect(hostComponents).not.toContain(component);
+            expect(component.isVisible()).toBe(false);
+        }
+
+        stubEngine.resolveDeferred(0, fixedResult());
+        await flush();
+    });
+
+    it('mounts and reveals every node component together once ELK has placed them', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        stubEngine.resolveDeferred(0, fixedResult());
+        await flush();
+
+        const hostComponents = view._contentHost.getComponents();
+
+        for (const component of view._nodeComponents.values()) {
+            expect(hostComponents).toContain(component);
+            expect(component.isVisible()).toBe(true);
+        }
+
+        expect(view._nodeComponents.get('a').getX()).toBe(10);
+        expect(view._nodeComponents.get('a').getY()).toBe(20);
+    });
+
+    it('leaves the shown graph mounted while a re-layout is pending, mounting only once it lands', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'defer');
+
+        const view = new StubDiagramView() as any;
+
+        view.setData({ nodes: [{ id: 'a' }], edges: [] }); // generation 1 → deferred[0]
+        stubEngine.resolveDeferred(0, { nodes: [{ id: 'a', x: 1, y: 1, width: 10, height: 10 }], edges: [], width: 10, height: 10 });
+        await flush();
+
+        const shown = view._nodeComponents.get('a');
+        expect(view._contentHost.getComponents()).toContain(shown);
+
+        view.setData({ nodes: [{ id: 'z' }], edges: [] }); // generation 2 → deferred[1]
+
+        const incoming = view._incomingComponents.get('z');
+        expect(view._contentHost.getComponents()).toContain(shown);
+        expect(shown.isVisible()).toBe(true);
+        expect(view._contentHost.getComponents()).not.toContain(incoming);
+        expect(incoming.isVisible()).toBe(false);
+
+        stubEngine.resolveDeferred(1, { nodes: [{ id: 'z', x: 9, y: 9, width: 20, height: 20 }], edges: [], width: 20, height: 20 });
+        await flush();
+
+        expect(view._contentHost.getComponents()).toContain(incoming);
+        expect(view._contentHost.getComponents()).not.toContain(shown);
+    });
+
+    it('mounts nothing when the first layout fails', async () => {
+        stubEngine = new StubEngine(fixedResult(), 'reject');
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        await flush();
+
+        expect(view._nodeComponents.size).toBe(0);
+        expect(view._incomingComponents.size).toBe(0);
+        expect(view._contentHost.getComponents()).toEqual([view._edgeLayer]);
+    });
+
+    it('leaves the first graph mounted when a re-layout fails', async () => {
+        let call = 0;
+
+        stubEngine = {
+            layout: (): Promise<DiagramLayoutResult> => {
+                call += 1;
+
+                return call === 1 ? Promise.resolve(fixedResult()) : Promise.reject(new Error('elkjs unavailable'));
+            },
+            dispose: () => {},
+        } as unknown as StubEngine;
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        await flush();
+
+        const shown = [...view._nodeComponents.values()];
+        expect(shown.length).toBe(2);
+
+        for (const component of shown) {
+            expect(view._contentHost.getComponents()).toContain(component);
+        }
+
+        view.setData(simpleGraph());
+        await flush();
+
+        for (const component of shown) {
+            expect(view._contentHost.getComponents()).toContain(component);
+        }
     });
 });

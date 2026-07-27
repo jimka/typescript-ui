@@ -43,6 +43,13 @@ export interface DiagramNodeData {
     /** Optional registered glyph name shown alongside the label. */
     glyph?: string;
     /**
+     * Optional short marker drawn after the label by the default node renderer —
+     * e.g. `"+3→"` for neighbours a consumer's own depth filter left out. A
+     * custom `nodeRenderer` receives it like any other field and must draw it
+     * itself. Container nodes (non-empty `children`) ignore it.
+     */
+    badge?: string;
+    /**
      * Explicit width fed to ELK. When absent the node component's preferred
      * width is used instead.
      */
