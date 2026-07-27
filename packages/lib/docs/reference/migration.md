@@ -248,6 +248,123 @@ No `layoutOptions` key changed — ELK 0.12 only added layout options. Laid-out
 coordinates can still differ slightly, so give any diagram whose spacing you
 tuned by eye a visual check.
 
+### Rewriting an element's `class` attribute drops its positioning
+
+Every rendered element now carries a `ts-ui-component` class, because the
+declarations that are byte-identical across all components — `position:
+absolute`, `box-sizing`, and four others — moved out of each instance's
+per-id `#uuid` rule onto a single zero-specificity `:where(.ts-ui-component)`
+rule. That rule is what positions the element.
+
+So any code that writes the **whole** `class` attribute, rather than adding
+or removing one token, must re-state it. A component that loses the class
+falls back to `position: static` and collapses into document flow, typically
+stacking on top of its siblings:
+
+```typescript
+// Before — fine when #uuid carried position: absolute.
+row.setElementAttribute('class', selected ? 'row selected' : 'row');
+
+// After — keep the framework class in the written token list.
+row.setElementAttribute('class', ['ts-ui-component', 'row', selected && 'selected']
+    .filter(Boolean)
+    .join(' '));
+```
+
+The class name is not exported as a constant, so spell it out; it is stable
+and will not change without a migration note of its own. The framework also
+adds a class named after the component's own class (`Button`, `Panel`, …) on
+the same element — a full-attribute write drops that too, so anything you
+style by class name needs re-stating as well.
+
+Prefer an additive write, which has neither problem:
+
+```typescript
+DOM.sink.apply(element, {
+    removeClass: ['selected'],
+    addClass:    selected ? ['selected'] : [],
+});
+```
+
+The compiler cannot find these. Grep for writes of the `class` attribute.
+
+### `Component._defaultOptions` is frozen and shared per class
+
+`_defaultOptions` used to be a fresh object literal built on every
+construction. It is now resolved once per concrete class, cached on the class
+constructor, and `Object.freeze`d, so ~1,400 identical bags in a wide table
+window become one. Two consequences for a `Component` subclass:
+
+- **Writing into it after `super(...)` now throws** in strict mode (and every
+  module here is strict), where it previously mutated only that instance's
+  copy. Pass the defaults through the `subclassDefaults` constructor
+  parameter instead — the documented mechanism, and the only one that keeps
+  the per-class cache correct.
+
+- **`layoutManager` is no longer a member of the bag.** A layout manager
+  holds per-instance container state and must never be shared, so it moved to
+  a private per-instance slot; `this._defaultOptions.layoutManager` now reads
+  `undefined`. Keep supplying it via `subclassDefaults` exactly as before —
+  only reading it back off `_defaultOptions` broke.
+
+```typescript
+// Before
+class Card extends Component<CardOptions> {
+    constructor(options?: CardOptions) {
+        super(options);
+        this._defaultOptions.insets = new Insets(8, 8, 8, 8);  // now throws
+    }
+}
+
+// After
+class Card extends Component<CardOptions> {
+    constructor(options?: CardOptions, subclassDefaults?: Partial<CardOptions>) {
+        super(options, { insets: new Insets(8, 8, 8, 8), ...(subclassDefaults ?? {}) });
+    }
+}
+```
+
+A class whose defaults genuinely vary per instance (they derive from a
+constructor argument, as `Panel`'s do) still works: the resolver detects the
+mismatch against the cached bag and hands that instance its own private
+frozen bag, without disturbing the cache.
+
+### `DOMSink.setRuleStyle` became `setRuleStyles`
+
+Affects only a consumer that implements its own `DOMSink` — the method is
+part of the DOM write seam, not something application code calls. It now
+takes a whole declaration bag so a render's dirty keys reach the stylesheet
+in one mutation instead of one per key:
+
+```typescript
+// Before
+setRuleStyle(rule: CSSStyleRule, key: string, value: string | null): void
+
+// After
+setRuleStyles(rule: CSSStyleRule, styles: Record<string, string | null>): void
+```
+
+`npm run typecheck` flags the missing member on any custom sink.
+
+### Behaviour changes worth a check
+
+Neither of these is a compile error, and neither needs a code change in most
+apps — but both change when a callback runs.
+
+- **A `"selection"` event no longer fires for an unchanged selection.**
+  `Tree`, the table body, and `Table`'s rotated mode now stay silent when the
+  resolved selection matches the one already held, so a store reload that
+  re-resolves to the same records, or a click on an already-selected row, no
+  longer re-fires. A listener using the redundant emit as a general
+  "something happened" signal — refreshing a detail pane on every reload, say
+  — needs a different trigger, such as the store's own change event.
+
+- **`DOMSource.onFontsReady` may now fire more than once, or not at all.** It
+  is driven by the font set's `loadingdone` event rather than a one-shot
+  `document.fonts.ready`, so it fires per swap-in batch and never fires on a
+  document that loads no web fonts. A callback registered through it must be
+  idempotent and must not be relied on as a one-time "startup finished" hook.
+
 ## Versioning policy
 
 The package follows [Semantic Versioning](https://semver.org), with the standard pre-1.0 caveat:

@@ -18,10 +18,73 @@ alongside the library. No `layoutOptions` key changed — ELK 0.12 only added
 layout options — but laid-out coordinates can shift, so re-check any diagram
 whose spacing was tuned by eye.
 
+**Breaking:** `DOMSink.setRuleStyle(rule, key, value)` is replaced by
+`setRuleStyles(rule, styles)`, which takes a whole declaration bag so a
+component's dirty rule keys reach the sheet in one mutation instead of one
+per key. Only a consumer implementing its own `DOMSink` is affected; the
+method is not something application code calls.
+
+**Breaking:** `Component._defaultOptions` is now a `Readonly<TOptions>` bag
+that is **frozen and shared by every instance of the class**, rather than a
+fresh object literal per construction. A subclass that wrote into it after
+`super(...)` returned now throws in strict mode, and one that read
+`this._defaultOptions.layoutManager` now reads `undefined` — a layout
+manager holds per-instance container state, so it moved out of the shared
+bag into a private per-instance slot. Passing defaults through the
+`subclassDefaults` constructor parameter, the documented mechanism, is
+unaffected.
+
+**Breaking:** every rendered element now carries a `ts-ui-component` CSS
+class, and the declarations that are identical across all components —
+`position: absolute` among them — moved out of each instance's `#uuid` rule
+onto a zero-specificity `:where(.ts-ui-component)` rule. Any code that
+rewrites an element's whole `class` attribute must re-state that class, or
+the element loses its positioning and collapses into document flow.
+
 See [Migration](/reference/migration#upgrading-from-0-2-x-to-0-3-0) for the
 full upgrade note.
 
 ### Changed
+
+- **A `"selection"` event is no longer emitted for an unchanged selection.**
+  `Tree`, the table body, and `Table`'s rotated mode now compare the
+  resolved selection against the one already held — by membership for a set,
+  by identity for the rotated view's single record — and stay silent when
+  nothing moved. A store reload that re-resolves to the same records, or a
+  click on an already-selected row, therefore no longer re-fires; a listener
+  that was relying on the redundant emit as a general "something happened"
+  signal needs a different trigger.
+
+- **A `Border` fixed region is now reserved at its component's own minimum**
+  when the consumer pinned a sub-minimum `preferredSize`, instead of at the
+  under-sized preferred value the region would then be clip-framed to —
+  which is what let a north region's buttons get clipped. The middle row's
+  contribution to the container's preferred height is also now the tallest
+  of west/center/east rather than a running sum of `Math.max` against
+  itself, so a `Border` with side regions no longer over-reports its height.
+
+- **`DOMSource.onFontsReady` now fires on each `loadingdone` batch** rather
+  than once on `document.fonts.ready`. `ready` is a snapshot of a font set
+  that is still idle at the moment the framework subscribes, so it resolved
+  on the next microtask — long before the real face arrived — and text was
+  re-measured against the very fallback the callback exists to replace. The
+  callback may now be invoked more than once (each reflow is idempotent
+  under that) and is never invoked at all on a document that loads no web
+  fonts.
+
+- **Style and default-option work moved off the per-instance path.**
+  `Component._defaultOptions` resolves once per class instead of allocating
+  a fresh bag (and a throwaway layout manager) per construction; a render's
+  dirty style-rule keys flush as one sheet mutation instead of one per key;
+  `ProductionDOMSink` looks its rules up through a lazily built index rather
+  than scanning the sheet; and `Text` reads its bound font size and line
+  height from `Util`'s theme-invalidated metrics cache instead of taking a
+  `ThemeManager` subscription per instance. A wide table window previously
+  paid all four costs per cell.
+
+- **The documentation site is now built with the framework itself** and
+  served from the site root in the router's History mode, replacing the
+  VitePress site. Content is unchanged; only the URLs lose their `#`.
 
 - `CodeEditor` now scrolls through the framework's eased wheel scroller
   instead of CodeMirror's raw native scroll, so a wheel gesture inside the
@@ -49,6 +112,77 @@ full upgrade note.
   from a 1.5px hairline. There is no option to restore the old strength.
 
 ### Added
+
+- **`Table` rotated record view.** `setDisplayMode("rotated")` /
+  `getDisplayMode()` and the exported `TableDisplayMode` swap the table from
+  one row per record to a psql `\x`-style expanded view: one `field` /
+  `value` row per source column, for the record the table has selected. The
+  displayed record *is* the selection — `selectRecord` re-targets the view
+  and `getSelectedRecord()` keeps answering with the source record, never a
+  projection row. The projection is read-only, per-field cell variants come
+  from the existing `cellType` / `cellValues` mechanism, and the two columns
+  are width-bounded with a blank expanding filler absorbing the rest, so a
+  wide record keeps its labels and values grouped on the left. Export always
+  covers the source table regardless of mode. See
+  [Table](/components/Table#rotated-record-view).
+
+- **`Tab` `"select"` event.** Fires the moment a tab is picked — by a click
+  or `setActiveTabIndex` — carrying its index and label, *before* any
+  deferred content is built. That is selection **intent**, which is what a
+  router should write its URL from, so a deep link lands on the destination
+  while the spinner is still up rather than trailing a slow factory;
+  `"activate"` remains the completion half, carrying the live content, and
+  for a lazy tab's first selection now fires once its factory has run rather
+  than being skipped entirely. Neither fires on the silent post-close
+  re-selection of a surviving sibling.
+
+- **`Router` History mode.** `RouterOptions.mode` (`"hash"` — the default —
+  or `"history"`, typed by the newly exported `RouterMode`) and
+  `RouterOptions.base` let the router read and write `location.pathname` via
+  `pushState` / `replaceState`, so URLs are ordinary paths. This needs the
+  host to serve the app for every path or a deep link 404s. A new
+  `getHref(path)` builds the href an `<a>` should carry in whichever mode
+  the router is in, so a mode change never needs a second place fixed, and
+  `getPath` gained an optional `href` argument as its inverse. See
+  [Routing](/concepts/routing#routing-modes).
+
+- **`Router` fragment support.** In History mode `location.hash` is free to
+  carry a real fragment alongside the path. A new `getFragment(href?)` reads
+  it, `getHref` / `getPath` split and re-append it, `navigate("/a#b")`
+  treats a fragment-only change as a real navigation, and every
+  `RouteHandler` now receives the fragment as a third argument alongside
+  `params` and `path`. Hash mode is unchanged — its `#` is already spent on
+  the route, so `getFragment()` there always returns `""`.
+
+- **`DiagramView` viewport navigation.** The view is now an infinite canvas:
+  dragging the empty canvas pans freely in any direction with no clamping
+  and no scrollbars, the cursor says what a drag will do (`grab` over
+  pannable canvas, `pointer` over a node), and a viewport resize keeps
+  whatever was centred centred instead of letting the graph drift into a
+  corner. New `zoomIn()` / `zoomOut()` step the zoom about the viewport
+  centre, `resetView()` returns to the initial view — the graph's centre, or
+  the `initialFocusNode` when one is configured — and a built-in
+  zoom / fit / reset control cluster is pinned to the bottom-right — hide it
+  with `controls: false` or `setControlsVisible(false)` / `isControlsVisible()`
+  when driving the view from your own toolbar. A new `"contextmenu"` event
+  fires with the node data and the originating `MouseEvent` when a node is
+  right-clicked, suppressing the browser's own menu; a right-click on empty
+  canvas is left to the browser. The first render centres the graph at the
+  configured `zoom` rather than auto-fitting; call `zoomToFit()` from a
+  `"layout"` listener for the old behaviour.
+
+- **ELK layout in a Web Worker.** `DiagramViewOptions.elkWorkerFactory` — a
+  `() => Worker` the consumer supplies, since bundling a worker is the
+  application's job, not the library's — moves the ELK layout pass off the
+  main thread, so a large graph no longer freezes the UI while it is being
+  placed. The same factory is reachable through the newly exported
+  `ElkLayoutEngineOptions`. `ElkLayoutEngine.dispose()` terminates the
+  worker it owns, and `DiagramView.dispose()` calls it, so a view torn down
+  with a layout still in flight does not strand a live worker — including
+  when disposal lands mid-`import()`, before there is an instance to
+  terminate. An `ElkLayoutEngine.layout` call outstanding at disposal
+  rejects rather than hanging; `DiagramView.whenLaidOut()` still settles. See
+  [DiagramView](/components/DiagramView#running-elk-layout-in-a-web-worker).
 
 - **`EDGE_MARKER_EXTENT`.** Exported from
   `@jimka/typescript-ui/component/diagram`: how far, in unscaled graph units,
@@ -123,6 +257,28 @@ full upgrade note.
   shows one.
 
 ### Fixed
+
+- **List rows no longer stack on top of each other after a selection
+  change.** `AbstractSelectableList` rewrites a row's whole `class`
+  attribute from its selected/focused state and omitted the framework's own
+  `ts-ui-component` class — harmless until this release moved
+  `position: absolute` onto the class-wide rule, after which every row lost
+  its positioning the first time the selection moved.
+
+- **Text is no longer measured against the fallback font.** The web-font
+  callback resolved on the next microtask — measured roughly half a second
+  before the real face arrived — so every `Text` kept a fallback-derived
+  preferred size that no later layout could clear, since re-measurement
+  gates on the metrics generation. The framework now subscribes to the
+  font set's `loadingdone` event, which catches the swap-in itself.
+
+- **Disposing a component with a layout pending no longer aborts the whole
+  flush.** `scheduleLayout()` parks a component in a queue that drains on
+  the next animation frame, and teardown released the component's DOM
+  handles without removing it from that queue; the flush then laid out a
+  disposed component, wrote through a released handle, threw, and left every
+  component queued behind it unlaid. Teardown now drops the component from
+  the queue, matching the sibling visibility queue.
 
 - **Dimmed diagram edges no longer stack where they overlap.** The emphasis
   dimming moved from each dimmed edge onto a group holding all of them, so an
