@@ -234,6 +234,20 @@ component.getAria().applyToElement(element);
 component.getAria().setRole("grid");
 ```
 
+### The optional `elkjs` peer moved to `^0.12.0`
+
+Affects only consumers of `@jimka/typescript-ui/component/diagram`. Install the
+new elkjs together with the library, or npm rejects the install with an
+`ERESOLVE` peer conflict:
+
+```bash
+npm install @jimka/typescript-ui@<version> elkjs@^0.12.0
+```
+
+No `layoutOptions` key changed — ELK 0.12 only added layout options. Laid-out
+coordinates can still differ slightly, so give any diagram whose spacing you
+tuned by eye a visual check.
+
 ## Versioning policy
 
 The package follows [Semantic Versioning](https://semver.org), with the standard pre-1.0 caveat:
