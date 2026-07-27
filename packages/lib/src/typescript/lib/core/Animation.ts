@@ -5,6 +5,7 @@ import type { ComponentFactory } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle, TimerId } from "~/core/DOM.js";
 import { InlineStyle } from "~/core/StyleTarget.js";
+import { registerTransition, unregisterTransition } from "~/core/PendingTransitions.js";
 
 /**
  * Small helpers for playing CSS transitions on raw DOM elements.
@@ -93,7 +94,12 @@ export namespace Animation {
      *
      * @returns A handle whose `cancel()` abandons the animation and suppresses
      * `onComplete`. Cancelling touches no DOM, so it stays safe once the
-     * element's handle has been released.
+     * element's handle has been released. The transition also registers
+     * itself, for the `el` it targets, with a framework-internal pending-
+     * transition registry that a component's teardown consults to cancel any
+     * transition still running against a handle it is about to release —
+     * so a caller never needs to track this handle purely to avoid a stray
+     * deferred write into a torn-down element.
      */
     export function play(el: Handle, config: PlayConfig): CancelHandle {
         const easing   = config.easing ?? "ease-out";
@@ -118,11 +124,37 @@ export namespace Animation {
         let frameId: number  | null = null;
         let timerId: TimerId | null = null;
 
+        // Declared before `finish` so both it and the two-frame yield below
+        // can register/unregister the same reference with the pending-
+        // transition registry — the mechanism `Component.destructor()` uses
+        // to abandon a still-running transition before releasing `el`.
+        const cancel = (): void => {
+            if (done || cancelled) {
+                return;
+            }
+
+            cancelled = true;
+
+            if (frameId !== null) {
+                DOM.sink.cancelAnimationFrame(frameId);
+                frameId = null;
+            }
+
+            if (timerId !== null) {
+                DOM.sink.clearTimeout(timerId);
+                timerId = null;
+            }
+
+            unregisterTransition(el, cancel);
+        };
+
         const finish = (): void => {
             if (done || cancelled) {
                 return;
             }
             done = true;
+
+            unregisterTransition(el, cancel);
 
             // transitionend won the race: disarm the fallback so it can never
             // run against an element that may be torn down by then.
@@ -162,6 +194,8 @@ export namespace Animation {
             timerId = DOM.sink.setTimeout(finish, config.durationMs + fallback);
         };
 
+        registerTransition(el, cancel);
+
         if (config.from) {
             buf.setMany(config.from as Record<string, string | null>);
             frameId = DOM.sink.requestAnimationFrame(() => {
@@ -171,25 +205,7 @@ export namespace Animation {
             applyTransitionAndTo();
         }
 
-        return {
-            cancel: (): void => {
-                if (done || cancelled) {
-                    return;
-                }
-
-                cancelled = true;
-
-                if (frameId !== null) {
-                    DOM.sink.cancelAnimationFrame(frameId);
-                    frameId = null;
-                }
-
-                if (timerId !== null) {
-                    DOM.sink.clearTimeout(timerId);
-                    timerId = null;
-                }
-            },
-        };
+        return { cancel };
     }
 
     /**

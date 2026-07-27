@@ -5,10 +5,12 @@
 // the view feeds to ELK when a node carries no explicit width/height.
 
 import { Panel, PanelOptions } from "~/core/Panel.js";
+import { Component } from "~/core/Component.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Fit } from "~/layout/Fit.js";
+import { HBox } from "~/layout/HBox.js";
 import { Insets } from "~/primitive/Insets.js";
 import { IconText } from "~/component/display/IconText.js";
 import { Text } from "~/component/input/Text.js";
@@ -24,6 +26,8 @@ export interface DiagramNodeOptions extends PanelOptions {
     label?: string;
     /** Optional registered glyph name shown before the label. */
     glyph?: string;
+    /** Short marker text drawn after the label, in the same row. */
+    badge?: string;
     /** Whether the node starts selected. */
     selected?: boolean;
 }
@@ -41,6 +45,12 @@ const _defaultDiagramNodeOptions: Partial<DiagramNodeOptions> = {
 /** Corner radius in pixels for the node's rounded box. */
 const NODE_BORDER_RADIUS = "4px";
 
+// The badge's opacity: present but secondary to the label it trails. Matches
+// the "dim the supporting value" weight the framework already uses for a
+// receded label, so the badge reads as an annotation rather than a second
+// name.
+const BADGE_OPACITY = 0.6;
+
 /**
  * The default themed node renderer for a
  * [`DiagramView`](/api/component/diagram/classes/DiagramView). Composes a glyph
@@ -51,8 +61,14 @@ const NODE_BORDER_RADIUS = "4px";
  */
 class DiagramNode extends Panel<DiagramNodeOptions> {
 
-    /** The inner glyph+label (or bare label) component. */
-    private _content!: IconText | Text;
+    /** The glyph+label (or bare label) component. */
+    private _label!: IconText | Text;
+
+    /** The child added to the node: `_label` alone, or a row of `_label` + `_badge`. */
+    private _content!: Component;
+
+    /** The trailing badge chip, when the node carries one. */
+    private _badge?: Text;
 
     // Lazy `.selected` state rule. The slot caches the wrapper returned by
     // Component's `createStyleRule` builder, which dedupes by selector suffix.
@@ -73,9 +89,9 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
         this.selectedStyleRule.set("backgroundColor", "var(--ts-ui-diagram-node-selected-bg, var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15)))");
 
         // Content children are built here (not during super's cascade), so the
-        // label/glyph/selected values cached pure in `applyOptions` are
+        // label/glyph/badge/selected values cached pure in `applyOptions` are
         // dispatched now that the row exists.
-        this.buildContent(this._options.glyph, this._options.label ?? "");
+        this.buildContent(this._options.glyph, this._options.label ?? "", this._options.badge);
 
         if (this._options.selected !== undefined) {
             this.setSelected(this._options.selected);
@@ -83,7 +99,7 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
     }
 
     /**
-     * Caches the label/glyph/selected fields pure to `_options`; they are
+     * Caches the label/glyph/badge/selected fields pure to `_options`; they are
      * dispatched from the constructor body once the content child exists.
      *
      * @param options - The options bag carrying the values to apply.
@@ -93,33 +109,46 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
 
         if (options.label    !== undefined) this._options.label    = options.label;
         if (options.glyph    !== undefined) this._options.glyph    = options.glyph;
+        if (options.badge    !== undefined) this._options.badge    = options.badge;
         if (options.selected !== undefined) this._options.selected = options.selected;
 
         return this;
     }
 
     /**
-     * Builds (or rebuilds) the inner content child — an `IconText` when a glyph
-     * is present, else a bare `Text`.
+     * Builds (or rebuilds) the inner content child: `_label` alone (an
+     * `IconText` when a glyph is present, else a bare `Text`), or — when a
+     * badge is given — a row of `_label` followed by the badge `Text`.
      *
      * @param glyph - Optional glyph name.
      * @param label - The label text.
+     * @param badge - Optional trailing badge text.
      */
-    private buildContent(glyph: string | undefined, label: string): void {
+    private buildContent(glyph: string | undefined, label: string, badge: string | undefined): void {
         if (this._content) {
             this.removeComponent(this._content);
         }
 
-        this._content = glyph !== undefined ? new IconText(glyph, label) : new Text(label);
+        this._label = glyph !== undefined ? new IconText(glyph, label) : new Text(label);
+
+        if (badge === undefined) {
+            this._badge = undefined;
+            this._content = this._label;
+        } else {
+            this._badge = new Text(badge);
+            this._badge.setOpacity(BADGE_OPACITY);
+            this._content = new Component({ layoutManager: new HBox(), components: [this._label, this._badge] });
+        }
 
         // Every Component stamps its own `cursor` (defaulting to `default`) onto
-        // its CSS rule, so the label/glyph would override the node's `pointer`
-        // wherever they sit under the cursor — the hover cursor would flicker
-        // between pointer (over padding) and arrow (over the text). Make the
-        // content transparent to pointer events so hover + clicks land on the
-        // node itself; `pointer-events: none` inherits, so this one call also
-        // covers the glyph and text nested inside an `IconText`. Mirrors how
-        // `Button` frees its label row so the button's cursor governs.
+        // its CSS rule, so the label/glyph/badge would override the node's
+        // `pointer` wherever they sit under the cursor — the hover cursor would
+        // flicker between pointer (over padding) and arrow (over the text).
+        // Make the content transparent to pointer events so hover + clicks land
+        // on the node itself; `pointer-events: none` inherits, so this one call
+        // also covers everything nested inside (the glyph and text inside an
+        // `IconText`, or the label + badge inside the row). Mirrors how `Button`
+        // frees its label row so the button's cursor governs.
         this._content.setPointerEvents("none");
 
         this.addComponent(this._content);
@@ -134,7 +163,7 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
      */
     setLabel(value: string): this {
         this._options.label = value;
-        this._content.setText(value);
+        this._label.setText(value);
 
         return this;
     }
@@ -146,6 +175,15 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
      */
     getLabel(): string | null {
         return this._options.label ?? null;
+    }
+
+    /**
+     * Returns the node's badge text, or `null` when none was set.
+     *
+     * @returns The badge text, or `null`.
+     */
+    getBadge(): string | null {
+        return this._options.badge ?? null;
     }
 
     /**

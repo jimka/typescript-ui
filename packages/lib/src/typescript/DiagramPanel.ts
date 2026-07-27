@@ -66,7 +66,11 @@ const SAMPLE: DiagramData = {
  * the diagram in the centre; the view's own built-in zoom / fit / reset cluster
  * also shows in its bottom-right corner (the two are independent — either
  * drives the same `DiagramView`). A status line reflects the selected node
- * emitted by `"selection"` and the node right-clicked via `"contextmenu"`.
+ * emitted by `"selection"`, the node right-clicked via `"contextmenu"`, and
+ * the edge(s) hovered via `"edgehover"` / `"edgeleave"` — hovering "e2" (the
+ * two "one and only one" markers) emphasises it and dims every other edge, via
+ * `setEdgeEmphasis`, showcasing the dim-the-others treatment alongside the
+ * hover event itself.
  */
 class DiagramPanel extends Panel {
 
@@ -74,7 +78,8 @@ class DiagramPanel extends Panel {
         super({ layoutManager: new Border() });
 
         const view   = new DiagramView({ data: SAMPLE });
-        const status = new Text('Click a node to select it. Drag to pan, wheel to zoom, right-click for a context menu.');
+        const status = new Text('Click a node to select it. Drag to pan, wheel to zoom, right-click for a ' +
+            'context menu, hover an edge for its ids.');
 
         view.on('selection', (nodes: DiagramNodeData[]) => {
             status.setText(nodes.length > 0 ? `Selected: ${nodes[0].label ?? nodes[0].id}` : 'Selection cleared.');
@@ -82,6 +87,16 @@ class DiagramPanel extends Panel {
 
         view.on('contextmenu', (node: DiagramNodeData) => {
             status.setText(`Right-clicked: ${node.label ?? node.id}`);
+        });
+
+        view.on('edgehover', (edges) => {
+            status.setText(`Hovering: ${edges.map(e => e.id).join(', ')}`);
+            view.setEdgeEmphasis(edges.map(e => e.id));
+        });
+
+        view.on('edgeleave', () => {
+            status.setText('Hover cleared.');
+            view.setEdgeEmphasis(null);
         });
 
         const zoomIn  = new Button('Zoom In');
