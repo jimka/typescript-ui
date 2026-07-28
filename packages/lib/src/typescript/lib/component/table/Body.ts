@@ -142,12 +142,17 @@ class Body extends VirtualRowView<Row> {
 
         this._rowHeight = this.computeRowHeight();
 
-        this.subscribeTheme(() => {
-            this._rowHeight = this.computeRowHeight();
-            this._boundIndices.fill(-1);
-            this.invalidateGeom();
-            this.renderWindow();
-        });
+        this.subscribeTheme(() => this.onThemeReflow());
+    }
+
+    /**
+     * Refreshes the derived row height before the shared re-bind pass, so the
+     * rows this reflow re-renders are positioned against the new line box.
+     */
+    protected onThemeReflow(): void {
+        this._rowHeight = this.computeRowHeight();
+
+        super.onThemeReflow();
     }
 
     /**

@@ -315,6 +315,26 @@ abstract class VirtualRowView<
     }
 
     /**
+     * Re-binds and re-renders every pooled row after a text-metrics reflow —
+     * a theme change, or the web font swapping in over the fallback face.
+     *
+     * @remarks Pooled rows do not ride `ThemeManager`'s reflow for free. Both
+     * subclasses render through renderers whose `Text` runs with
+     * `setAutoMeasure(false)`, so a bound row only re-measures inside the
+     * renderer's `update()` — which {@link renderWindow} skips for a slot that
+     * is already bound to its data index. Without the `_boundIndices` reset a
+     * visible row therefore keeps the width it measured against whichever font
+     * was active when it was bound, clipping the wider glyphs of the real face
+     * once it arrives. Subclasses that cache metrics-derived state of their own
+     * (row height, content width) override this to refresh it, then chain up.
+     */
+    protected onThemeReflow(): void {
+        this._boundIndices.fill(-1);
+        this.invalidateGeom();
+        this.renderWindow();
+    }
+
+    /**
      * Scrolls the view so the row at `index` is fully visible, without moving
      * the viewport unless necessary. Delegates through {@link VirtualScroller}
      * so the header translate + scrollbar thumb stay in sync.

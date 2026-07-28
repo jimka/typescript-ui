@@ -120,6 +120,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this.getAria().setTabIndex(0);
         this.getAria().setMultiselectable(true);
 
+        this.subscribeTheme(() => this.onThemeReflow());
+
         this.applyListeners(options?.listeners);
     }
 
@@ -1017,6 +1019,22 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         }
 
         this.getAria().setActiveDescendant("");
+    }
+
+    /**
+     * Drops the running content-width maximum before the shared re-bind pass.
+     *
+     * @remarks The maximum is deliberately monotonic within a flattened set so
+     * the horizontal scrollbar does not jitter as rows scroll in and out (it is
+     * otherwise reset only in `_flatten`). A metrics reflow invalidates the
+     * measurements it was accumulated from, so keeping it would pin the content
+     * width to the old font — leaving a phantom scroll range when the new face
+     * is narrower, and never widening past the stale value.
+     */
+    protected onThemeReflow(): void {
+        this._maxContentWidth = 0;
+
+        super.onThemeReflow();
     }
 
     /**
