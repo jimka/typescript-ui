@@ -1494,6 +1494,14 @@ class Accordion extends LayoutManager {
             return;
         }
 
+        // Nothing to build until the container has an element: `createSection`
+        // below appends each header and wrapper straight onto it, so a premature
+        // pass would dereference a null element. Such a pass is normal — see
+        // `HBox.doLayout` — so return and let the next pass build the sections.
+        if (!container.getElement()) {
+            return;
+        }
+
         const components = container.getComponents();
 
         for (let i = this._headers.length; i < components.length; i++) {
