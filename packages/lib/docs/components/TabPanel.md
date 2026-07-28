@@ -59,6 +59,12 @@ tabs.getTab().on("exception", (error, label) => console.warn(`${label} failed`, 
 
 [`addLazyTab`](/api/component/container/classes/TabPanel#addlazytab) remains as an alias for `addTab` with a factory.
 
+<!-- demo: tabpanel-lazy -->
+> **Live demo** — three tabs added with `addLazyTab`, each factory logging
+> to a build log the first time its tab is selected, and never again.
+> [Open the TabPanel page](https://jimka.github.io/typescript-ui/components/TabPanel)
+<!-- /demo -->
+
 ## Close hooks
 
 Pass the construction-time `onTabClose` option, or wire a listener on the wrapped manager via [`getTab`](/api/component/container/classes/TabPanel#gettab), to react to closeable tabs:

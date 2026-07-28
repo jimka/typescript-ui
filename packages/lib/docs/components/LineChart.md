@@ -33,6 +33,12 @@ LineChart({
 });
 ```
 
+<!-- demo: linechart-store -->
+> **Live demo** — a store-bound `LineChart` over two regional sales series,
+> with legend entries that toggle each series.
+> [Open the LineChart page](https://jimka.github.io/typescript-ui/components/LineChart)
+<!-- /demo -->
+
 ## Construction
 
 `LineChart(options?)` — `new LineChart({ … })` and the callable form are interchangeable.

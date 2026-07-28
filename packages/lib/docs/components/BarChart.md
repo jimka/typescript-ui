@@ -20,6 +20,12 @@ panel.addComponent(BarChart({
 
 Each point's `x` is the category it belongs to; the distinct `x` values across the visible series become the axis categories (ascending). A `BarChart` binds to a [`Store`](/api/data/classes/Store) exactly like [`LineChart`](/components/LineChart) — see [Data binding](/concepts/data-binding#charts).
 
+<!-- demo: barchart-grouped -->
+> **Live demo** — an in-memory, grouped `BarChart` over two product series,
+> with a hover tooltip.
+> [Open the BarChart page](https://jimka.github.io/typescript-ui/components/BarChart)
+<!-- /demo -->
+
 ## Construction
 
 `BarChart(options?)` — `new BarChart({ … })` and the callable form are interchangeable.

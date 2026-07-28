@@ -39,6 +39,12 @@ form.addField('City',  cityField);     // wraps to a new row
 form.addFullWidthRow(noteField);       // spans both columns
 ```
 
+<!-- demo: labeledfieldset-form -->
+> **Live demo** — a two-column `rows` bag: three labelled fields plus a
+> full-width `Button` row.
+> [Open the LabeledFieldSet page](https://jimka.github.io/typescript-ui/components/LabeledFieldSet)
+<!-- /demo -->
+
 ## Common methods
 
 | Method | Purpose |
