@@ -2,7 +2,13 @@ import type { Component } from '@jimka/typescript-ui/core';
 
 /** The shape every module in `src/demos/` must export. */
 export interface DemoModule {
-    /** Pixel height of the demo's live area. */
+    /**
+     * Pixel height of the framed live area the demo is rendered into on its
+     * docs page — the height of the bordered stage embedded in the Markdown,
+     * applied by `DocsDemo` as both that stage's minimum and preferred height.
+     * A floor rather than a cap: a demo whose own content minimum is taller
+     * makes the stage grow.
+     */
     height: number;
     /** Builds the demo's component tree. Called once per page render. */
     create(): Component;
