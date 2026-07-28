@@ -988,6 +988,16 @@ export interface DOMSource {
     measureText(text: string, options?: TextMeasureOptions): TextMetrics;
 
     /**
+     * Measures many strings under one font in a single document reflow.
+     *
+     * @param texts - The strings to measure.
+     * @param options - Font properties; default to the active theme variables.
+     * @returns One width per input, in input order; an empty input list
+     * touches the DOM not at all and returns an empty array.
+     */
+    measureTextWidths(texts: string[], options?: TextMeasureOptions): number[];
+
+    /**
      * Resolves a CSS `font-size` value (possibly a `calc()`/`var()`) to a pixel
      * number by evaluating it on an off-screen probe.
      *
@@ -1939,6 +1949,50 @@ export class ProductionDOMSource implements DOMSource {
             height:   Math.ceil(probeRect.height),
             baseline: Math.round(refRect.top - probeRect.top),
         };
+    }
+
+    /** @inheritDoc */
+    measureTextWidths(texts: string[], options: TextMeasureOptions = {}): number[] {
+        if (texts.length === 0) {
+            return [];
+        }
+
+        const {
+            fontFamily  = "var(--ts-ui-font-family, system-ui, sans-serif)",
+            fontSize    = "var(--ts-ui-font-size, 14px)",
+            fontWeight  = "normal",
+            fontStyle   = "normal",
+            fontVariant = "normal",
+            fontStretch = "normal",
+        } = options;
+
+        const wrapper = document.createElement("div");
+
+        _applyProbeStyles(wrapper, { position: "fixed", visibility: "hidden", whiteSpace: "nowrap" });
+
+        const probes = texts.map(text => {
+            const probe = document.createElement("span");
+
+            _applyProbeStyles(probe, {
+                display: "inline-block", whiteSpace: "nowrap",
+                fontFamily, fontSize, fontWeight, fontStyle, fontVariant, fontStretch,
+            });
+
+            probe.textContent = text;
+            wrapper.appendChild(probe);
+
+            return probe;
+        });
+
+        document.body.appendChild(wrapper);
+
+        // One layout flush: the first read forces it, and nothing mutates the
+        // DOM between reads, so the rest are served from the same computed layout.
+        const widths = probes.map(p => Math.ceil(p.getBoundingClientRect().width));
+
+        document.body.removeChild(wrapper);
+
+        return widths;
     }
 
     /** @inheritDoc */

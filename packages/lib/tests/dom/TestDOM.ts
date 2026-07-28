@@ -936,6 +936,10 @@ export class ModelledDOMSource implements DOMSource {
         };
     }
 
+    measureTextWidths(texts: string[], options?: TextMeasureOptions): number[] {
+        return texts.map(t => this.measureText(t, options).width);
+    }
+
     /**
      * Resolves a CSS `line-height` value to a pixel number for the modelled
      * measurement path, falling back to the font box when the value is

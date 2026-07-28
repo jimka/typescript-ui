@@ -93,8 +93,10 @@ export class TableExporter {
      * @param value         - The raw value read from the record.
      * @param columnConfigs - Per-field config map; consulted for `showSeconds` on time/datetime.
      * @returns The formatted value, or the original value when no formatting applies.
+     *
+     * @internal
      */
-    private static formatValue(column: Column, value: any, columnConfigs: Map<string, ColumnConfig>): any {
+    static formatValue(column: Column, value: any, columnConfigs: Map<string, ColumnConfig>): any {
         if (value == null || !(value instanceof Date)) {
             return value;
         }

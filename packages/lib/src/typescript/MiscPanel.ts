@@ -368,7 +368,7 @@ class MiscPanel extends Panel {
 
                 const wideModel = new Model(fields);
                 const wideStore = new MemoryStore(wideModel);
-                const widePanel = new TablePanel(wideStore);
+                const widePanel = new TablePanel(wideStore, { columns: [], autoSizeColumns: true });
 
                 widePanel.setExportMenuEnabled(true);
 

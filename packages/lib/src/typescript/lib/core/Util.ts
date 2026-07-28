@@ -86,6 +86,18 @@ export namespace Util {
     }
 
     /**
+     * Measures many strings under one font in a single document reflow,
+     * instead of one reflow per string.
+     *
+     * @param texts - The strings to measure.
+     * @param options - Font properties to apply. Defaults to the active theme variables.
+     * @returns One width per input, in input order.
+     */
+    export function measureTextWidths(texts: string[], options?: TextMeasureOptions): number[] {
+        return DOM.source.measureTextWidths(texts, options);
+    }
+
+    /**
      * Returns the active theme's leading (`--ts-ui-line-padding`) in pixels.
      *
      * @returns The integer-pixel value of `--ts-ui-line-padding`, or `4` as a

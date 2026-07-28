@@ -67,6 +67,22 @@ export interface ColumnConfig {
     minWidth ?: number;
     /** Maximum width in pixels. The column cannot be dragged wider than this value. */
     maxWidth ?: number;
+    /**
+     * Explicit starting width in pixels. Takes precedence over the type
+     * policy and any sampled content, but is still clamped into the
+     * column's `[minWidth, maxWidth]` envelope — an explicit `width`
+     * narrower than the type's floor is raised to that floor.
+     */
+    width            ?: number;
+    /**
+     * Longest value this column can hold, in characters (e.g. a
+     * `varchar(60)` column passes `60`). For a `string`/`auto` column
+     * under {@link ColumnSpec.autoSizeColumns} this is used only when
+     * sampling the store yields no candidates; for a `number` column it
+     * outranks the sample, since a declared digit budget is a better
+     * answer than what fifty rows happen to hold.
+     */
+    maxContentLength ?: number;
     /** When `true` the column starts hidden; the user can still reveal it via the context menu. */
     hidden      ?: boolean;
     /**
@@ -294,4 +310,12 @@ export interface ColumnSpec {
      * to force a refresh — the predicate fires again on the next paint.
      */
     rowReadOnly    ?: (record: ModelRecord) => boolean;
+    /**
+     * When `true`, `string` and `auto` columns are sized from a bounded
+     * sample of the values the column holds, instead of staying flex
+     * columns that share the leftover space. `boolean`, `glyph`, `date`,
+     * `time`, `datetime`, and `number` columns are always sized from
+     * their type, whether or not this flag is set. Defaults to `false`.
+     */
+    autoSizeColumns ?: boolean;
 }

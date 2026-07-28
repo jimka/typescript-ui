@@ -16,7 +16,7 @@ import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { Column } from "~/component/table/Column.js";
 import type { CellType, ColumnConfig, ComboOption } from "~/component/table/ColumnConfig.js";
-import { ColumnSpec } from "~/component/table/ColumnConfig.js";
+import { ColumnSpec, normalizeComboOptions } from "~/component/table/ColumnConfig.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { TableExporter, ExportOptions } from "~/component/table/TableExporter.js";
@@ -40,6 +40,43 @@ const ROTATED_MODEL = new Model([
     { name: 'value',  type: 'auto',   order: 1 },
     { name: 'filler', type: 'string', order: 2 },   // blank spacer column; absorbs leftover width
 ]);
+
+// Column-width policy constants. See plans/implemented/table-generated-column-widths.md
+// for the derivation of each value.
+const MIN_COLUMN_WIDTH_PX   = 30;   // Absolute floor. No policy minimum ever falls below it.
+const CHECKBOX_WIDTH_PX     = 16;   // The checkbox box edge (Checkbox.ts).
+const GLYPH_WIDTH_PX        = 20;   // One icon-font glyph square at the default body font, plus slack.
+const MIN_NUMBER_DIGITS     = 4;    // Digits a number column must always fit.
+const DEFAULT_NUMBER_DIGITS = 8;    // Digits assumed for a number column with neither a sample nor a hint.
+const MIN_STRING_CHARS      = 8;    // Characters a string column must always fit.
+const STRING_WIDTH_PX       = 100;  // Starting width for a flex column that needs a concrete number.
+const HEADER_CHROME_PX      = 21;   // 4px cell padding + 5px resize-handle gutter + 12px sort indicator.
+const CELL_CHROME_PX        = 6;    // 4px cell padding + 2px so the last glyph isn't flush against the border.
+const AUTO_WIDTH_CAP_PX     = 400;  // Ceiling for a measured width when the column declares no maxWidth.
+const SAMPLE_ROWS           = 50;   // Records read per derivation.
+const WIDEST_CANDIDATES     = 3;    // Strings measured per sampled column (the longest by character count).
+const HINT_SAMPLE_MAX_CHARS = 60;   // Cap on the maxContentLength probe string.
+// Formatted to measure the width of a date/time/datetime column; a fixed
+// instant so the measurement is deterministic across runs.
+const REFERENCE_DATE = new Date(2000, 11, 31, 23, 59, 59);
+
+/**
+ * The floor and starting width a column's field type implies, before any
+ * declared `minWidth`/`maxWidth`/`width` override is applied.
+ */
+interface WidthPolicy {
+    min: number;
+    /** `null` = flex: no definite width, share the leftover space. */
+    preferred: number | null;
+}
+
+/** Cached reference measurements consulted by the cheap {@link Table.getColumnMinWidth} path. */
+interface WidthReferences {
+    /** Width of the widest digit glyph, "0" through "9". */
+    digitPx: number;
+    /** Width of `REFERENCE_DATE` formatted, keyed by `${type}:${showSeconds}`. */
+    datePx: Map<string, number>;
+}
 
 /**
  * Construction-time options for {@link Table}.
@@ -126,6 +163,14 @@ class Table extends Component<TableOptions> {
     private _rotatedFieldByName: Map<string, Field> = new Map();
     private _sourceRefresh    : (() => void) | null = null;
     private _suppressSelectionForward: boolean = false;
+    private _autoWidthsSampled: boolean = false;
+    private _widthRefs        : WidthReferences | null = null;
+    // Longest sampled candidate strings from the last content derivation,
+    // keyed by field name. Populated by `collectCandidates`; consulted by
+    // `sampledDigits` and `resolveContentCandidates`. A plain cache read —
+    // never re-scans the store — so `getColumnMinWidth` can consult it
+    // without violating its "never samples the store" contract.
+    private _sampledCandidates: Map<string, string[]> = new Map();
 
     /**
      * Constructs a Table bound to the given store, optionally constrained by a
@@ -390,6 +435,9 @@ class Table extends Component<TableOptions> {
         this._store = store;
         this._columnWidths = [];
         this._savedColumnWidths = new Map();
+        this._autoWidthsSampled = false;
+        this._widthRefs = null;
+        this._sampledCandidates = new Map();
         this._resolvedColumns = Column.resolve(store.model.getFields(), this._spec);
 
         this.bindSourceStore(store);
@@ -475,10 +523,25 @@ class Table extends Component<TableOptions> {
             this._hiddenColumns.add(fieldName);
         }
 
+        // The visible column set just changed; see the matching comment in
+        // `resetColumns` / `bindView` for why `_widthRefs` must be cleared
+        // whenever it does.
+        this._widthRefs = null;
+
         const newVisibleColumns = this.getColumns();
-        const rawWidths = newVisibleColumns.map(col =>
-            this._savedColumnWidths.get(col.getField().getName()) ?? this.defaultColumnWidth(col)
-        );
+        let intrinsic: Array<number | null> | null = null;
+
+        const rawWidths = newVisibleColumns.map((col, i) => {
+            const saved = this._savedColumnWidths.get(col.getField().getName());
+
+            if (saved !== undefined) {
+                return saved;
+            }
+
+            intrinsic ??= this.getIntrinsicColumnWidths();
+
+            return intrinsic[i] ?? this.flexColumnWidth(col);
+        });
         const savedTotal = this._columnWidths.reduce((s, w) => s + w, 0);
         const rawTotal   = rawWidths.reduce((s, w) => s + w, 0);
 
@@ -709,32 +772,6 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Returns a type-based default width for a column that has no saved width yet.
-     *
-     * @param col - The column to compute a default width for.
-     * @returns A positive pixel width appropriate for the column's field type.
-     */
-    private defaultColumnWidth(col: Column): number {
-        const f = col.getField();
-
-        // Measure under the same font properties HeaderCell actually renders with
-        // (bold + table-header font size). 4px cell padding + 5px resize-handle gutter
-        // + 12px breathing room for the optional sort indicator (▲/▼).
-        const textWidth = Util.measureTextWidth(f.getName(), {
-            fontSize  : "var(--ts-ui-table-header-font-size, var(--ts-ui-font-size))",
-            fontWeight: "bold",
-        });
-        const headerMin = textWidth + 21;
-
-        switch (f.getType()) {
-            case 'boolean': return Math.max(60,  headerMin);
-            case 'number':  return Math.max(90,  headerMin);
-            case 'date':    return Math.max(110, headerMin);
-            default:        return Math.max(100, headerMin);
-        }
-    }
-
-    /**
      * Proportionally reduces existing saved columns to bring the total down to `targetTotal`,
      * leaving `exemptField` and any unsaved columns at their assigned widths.
      *
@@ -768,7 +805,7 @@ class Table extends Component<TableOptions> {
             const toRemove = Math.min(deficit, totalRoom);
 
             for (const { i, room } of pool) {
-                result[i] = Math.max(result[i] - (room / totalRoom) * toRemove, columns[i].getMinWidth() ?? 30);
+                result[i] = Math.max(result[i] - (room / totalRoom) * toRemove, this.getColumnMinWidth(columns[i]));
             }
 
             return deficit - toRemove;
@@ -780,7 +817,7 @@ class Table extends Component<TableOptions> {
                 room: (isFixedType(col) === fixedType
                     && col.getField().getName() !== exemptField
                     && this._savedColumnWidths.has(col.getField().getName()))
-                    ? result[i] - (col.getMinWidth() ?? 30)
+                    ? result[i] - this.getColumnMinWidth(col)
                     : 0
             }))
             .filter(c => c.room > 0.5);
@@ -871,13 +908,18 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Keeps the rotated projection in sync with the source store. A no-op
-     * outside rotated mode. Re-targets `_rotatedRecord` to the store's first
-     * record (firing `"selection"`) when the displayed record no longer
-     * exists in the store — e.g. it was removed, or the store was reloaded —
-     * then rebuilds the projection against the (possibly new) record.
+     * Keeps the rotated projection in sync with the source store. Also the
+     * hook for the one-shot auto-size re-derive (see
+     * {@link maybeResampleColumnWidths}), which runs regardless of display
+     * mode. Outside rotated mode this is otherwise a no-op. Re-targets
+     * `_rotatedRecord` to the store's first record (firing `"selection"`)
+     * when the displayed record no longer exists in the store — e.g. it was
+     * removed, or the store was reloaded — then rebuilds the projection
+     * against the (possibly new) record.
      */
     private onSourceStoreChange(): void {
+        this.maybeResampleColumnWidths();
+
         if (this._displayMode !== "rotated") {
             return;
         }
@@ -1053,6 +1095,13 @@ class Table extends Component<TableOptions> {
 
         this._columnWidths      = [];
         this._savedColumnWidths = new Map();
+        // The visible column set just changed shape (source columns <->
+        // rotated field/value/filler), and `_widthRefs`'s date/time/datetime
+        // reference entries are derived from that set (`dateReferenceKeys`
+        // walks `getColumns()`), so a cache built under the old mode would
+        // answer for temporal types the new mode doesn't have — or miss ones
+        // it does.
+        this._widthRefs         = null;
 
         this.getAria().setColCount(this.getColumns().length);
         this.doLayout();
@@ -1240,10 +1289,12 @@ class Table extends Component<TableOptions> {
         }
 
         const columns = this.getColumns();
-        const min0 = columns[colIndex]?.getMinWidth()     ?? 30;
-        const max0 = columns[colIndex]?.getMaxWidth()     ?? Infinity;
-        const min1 = columns[colIndex + 1]?.getMinWidth() ?? 30;
-        const max1 = columns[colIndex + 1]?.getMaxWidth() ?? Infinity;
+        const c0   = columns[colIndex];
+        const c1   = columns[colIndex + 1];
+        const min0 = c0 ? this.getColumnMinWidth(c0) : MIN_COLUMN_WIDTH_PX;
+        const max0 = c0?.getMaxWidth() ?? Infinity;
+        const min1 = c1 ? this.getColumnMinWidth(c1) : MIN_COLUMN_WIDTH_PX;
+        const max1 = c1?.getMaxWidth() ?? Infinity;
 
         const delta = clientX - this._resizeOriginClientX;
 
@@ -1280,12 +1331,427 @@ class Table extends Component<TableOptions> {
         this._hiddenColumns = new Set();
         this.initHiddenFromSpec();
         this._savedColumnWidths = new Map();
-        this._columnWidths = this.getColumns().map(col => this.defaultColumnWidth(col));
+        // The visible column set may change shape (a spec-hidden temporal
+        // column reappears, or vice versa), and `_widthRefs`'s date/time/
+        // datetime entries are derived from `dateReferenceKeys`' walk of the
+        // visible columns — see the same clear in `bindView`.
+        this._widthRefs = null;
+
+        const columns   = this.getColumns();
+        const intrinsic = this.getIntrinsicColumnWidths();
+
+        this._columnWidths = columns.map((col, i) => intrinsic[i] ?? this.flexColumnWidth(col));
 
         const effectiveHidden = this.getEffectiveHiddenSet();
 
         this._header.setHiddenColumns(effectiveHidden);
         this._body.setHiddenColumns(effectiveHidden);
+        this.doLayout();
+    }
+
+    /**
+     * Returns whether `string`/`auto` columns are sized from sampled cell
+     * values. Always `false` in rotated mode — the projection's `field` /
+     * `value` / `filler` columns carry hand-tuned min/max widths already,
+     * and auto-sizing them is out of scope (see the plan's Non-Goals).
+     *
+     * @returns `true` when the spec declares `autoSizeColumns: true` AND
+     *   the table is in normal (non-rotated) display mode.
+     */
+    isAutoSizeColumns(): boolean {
+        return (this._spec?.autoSizeColumns ?? false) && this._displayMode !== "rotated";
+    }
+
+    /**
+     * Returns the column's declared `minWidth`, or the floor its field type
+     * implies. Cheap enough for the drag path — reads cached reference
+     * measurements and a cached sample-candidate map, never the store or
+     * the DOM.
+     *
+     * @param column - The column to compute a minimum width for.
+     * @returns The minimum width in pixels.
+     */
+    getColumnMinWidth(column: Column): number {
+        return column.getMinWidth() ?? this.columnWidthPolicy(column, 0, null).min;
+    }
+
+    /**
+     * Computes one starting width per visible column, in display order,
+     * from each column's field-type policy, any declared `width` /
+     * `minWidth` / `maxWidth`, and — for `string`/`auto` columns under
+     * {@link isAutoSizeColumns} — a bounded sample of the store.
+     *
+     * @returns One entry per visible column. A number is a definite
+     *   starting width; `null` means "no definite width — share the
+     *   remaining space", which only happens for a `string`/`auto` column
+     *   with no auto-sized content to measure.
+     */
+    getIntrinsicColumnWidths(): Array<number | null> {
+        const columns   = this.getColumns();
+        const headerPx  = this.measureHeaders(columns);
+        const contentPx = this.measureContent(columns);
+
+        return columns.map((col, i) => {
+            const policy = this.columnWidthPolicy(col, headerPx[i], contentPx[i]);
+            const raw    = col.getWidth() ?? policy.preferred;
+
+            if (raw === null) {
+                return null;
+            }
+
+            return this.clampColumnWidth(raw, col, policy);
+        });
+    }
+
+    /**
+     * Clamps a raw width into a column's `[minWidth, maxWidth]` envelope,
+     * falling back to the policy floor and {@link AUTO_WIDTH_CAP_PX} when
+     * the column declares no explicit bound.
+     */
+    private clampColumnWidth(w: number, col: Column, policy: WidthPolicy): number {
+        return Util.clamp(w, col.getMinWidth() ?? policy.min, col.getMaxWidth() ?? AUTO_WIDTH_CAP_PX);
+    }
+
+    /**
+     * Returns the width, in pixels, one column should start at when it
+     * cannot share leftover space with its siblings — the fallback used by
+     * {@link setColumnVisible} and {@link resetColumns} for a flex column
+     * whose `getIntrinsicColumnWidths` entry is `null`. Measures only this
+     * one column's header, so it is the one exception to the
+     * three-batched-calls derivation budget; it runs only on that fallback
+     * path.
+     *
+     * @param col - The flex column to compute a standalone width for.
+     */
+    private flexColumnWidth(col: Column): number {
+        const headerPx = this.measureHeaders([col])[0];
+        const policy   = this.columnWidthPolicy(col, headerPx, null);
+
+        return this.clampColumnWidth(Math.max(STRING_WIDTH_PX, headerPx), col, policy);
+    }
+
+    /**
+     * Returns the header text width in pixels, plus {@link HEADER_CHROME_PX},
+     * for each column — one batched measurement under the header font.
+     */
+    private measureHeaders(columns: Column[]): number[] {
+        const texts = columns.map(col => col.getHeaderText() ?? col.getField().getName());
+        const widths = Util.measureTextWidths(texts, {
+            fontSize  : "var(--ts-ui-table-header-font-size, var(--ts-ui-font-size))",
+            fontWeight: "bold",
+        });
+
+        return widths.map(w => w + HEADER_CHROME_PX);
+    }
+
+    /**
+     * Returns the sampled content width in pixels for each column — `null`
+     * for every column the policy does not need content for. The only part
+     * of the derivation that reads the store (via {@link collectCandidates}).
+     * A single batched measurement covers every `string`/`auto` column with
+     * something to measure.
+     */
+    private measureContent(columns: Column[]): Array<number | null> {
+        this.collectCandidates(columns);
+
+        const measurable = columns.map(col => this.resolveContentCandidates(col));
+
+        const toMeasure: string[] = [];
+        const owner: number[] = [];
+
+        measurable.forEach((candidates, i) => {
+            candidates?.forEach(text => {
+                owner.push(i);
+                toMeasure.push(text);
+            });
+        });
+
+        const widths = Util.measureTextWidths(toMeasure);
+        const contentPx: Array<number | null> = columns.map(() => null);
+
+        widths.forEach((w, k) => {
+            const i = owner[k];
+
+            contentPx[i] = Math.max(contentPx[i] ?? 0, w);
+        });
+
+        return contentPx;
+    }
+
+    /**
+     * Resolves the strings to measure for one `string`/`auto` column,
+     * falling back from sampled candidates to `values` option labels, to a
+     * `maxContentLength` probe string, in that order. Returns `null` for
+     * every other field type, for every `string`/`auto` column when
+     * {@link isAutoSizeColumns} is `false` (the whole chain is gated by the
+     * flag, not just the store sample), and for a `string`/`auto` column
+     * under auto-size with nothing to measure (the column stays flex).
+     */
+    private resolveContentCandidates(col: Column): string[] | null {
+        const type = col.getField().getType();
+
+        if (type !== "string" && type !== "auto") {
+            return null;
+        }
+
+        // autoSizeColumns gates the whole fallback chain below, not just the
+        // store sample: with the flag off a string/auto column stays flex,
+        // exactly as before this feature, even when it declares `values` or
+        // `maxContentLength`.
+        if (!this.isAutoSizeColumns()) {
+            return null;
+        }
+
+        const sampled = this._sampledCandidates.get(col.getField().getName());
+
+        if (sampled && sampled.length > 0) {
+            return sampled;
+        }
+
+        const config = this._columnConfigs.get(col.getField().getName());
+
+        if (config?.values && config.values.length > 0) {
+            return normalizeComboOptions(config.values)
+                .map(o => o.label)
+                .sort((a, b) => b.length - a.length)
+                .slice(0, WIDEST_CANDIDATES);
+        }
+
+        const maxLen = col.getMaxContentLength();
+
+        if (maxLen !== undefined) {
+            return ["0".repeat(Math.min(maxLen, HINT_SAMPLE_MAX_CHARS))];
+        }
+
+        return null;
+    }
+
+    /**
+     * Reads at most {@link SAMPLE_ROWS} records by index and keeps, per
+     * column that needs content (see {@link samplesRecordText}), the
+     * {@link WIDEST_CANDIDATES} longest distinct formatted values. Stores
+     * the result in `_sampledCandidates`, keyed by field name, for
+     * {@link resolveContentCandidates} and {@link sampledDigits} to consult.
+     * Reads by `store.getAt` rather than `store.getRecords()`, which
+     * copies the entire filtered view.
+     */
+    private collectCandidates(columns: Column[]): void {
+        const wanted = columns.map(col => this.samplesRecordText(col));
+        const rows   = Math.min(SAMPLE_ROWS, this._store.getCount());
+        const best   = new Map<string, string[]>();
+
+        for (let r = 0; r < rows; r++) {
+            const record = this._store.getAt(r)!;
+
+            columns.forEach((col, i) => {
+                if (!wanted[i]) {
+                    return;
+                }
+
+                const name = col.getField().getName();
+                const raw  = record.get(name);
+                const text = String(TableExporter.formatValue(col, raw, this._columnConfigs) ?? "");
+                const list = best.get(name) ?? [];
+
+                this.keepLongest(list, text);
+                best.set(name, list);
+            });
+        }
+
+        if (rows > 0) {
+            this._autoWidthsSampled = true;
+        }
+
+        this._sampledCandidates = best;
+    }
+
+    /**
+     * Keeps `list` to at most {@link WIDEST_CANDIDATES} entries, longest
+     * first, dropping an exact duplicate of a string already held.
+     */
+    private keepLongest(list: string[], text: string): void {
+        if (list.includes(text)) {
+            return;
+        }
+
+        list.push(text);
+        list.sort((a, b) => b.length - a.length);
+
+        if (list.length > WIDEST_CANDIDATES) {
+            list.length = WIDEST_CANDIDATES;
+        }
+    }
+
+    /**
+     * Returns whether `collectCandidates` should read this column's values:
+     * always for `number` (its sample feeds a digit count, not a
+     * measurement), and for `string`/`auto` only under
+     * {@link isAutoSizeColumns}. A column with a `renderer` is never
+     * sampled — its rendered text is not derived from the raw value. Nor is
+     * a column that declares `values`: it uses its option labels instead of
+     * the store, never as well as it.
+     */
+    private samplesRecordText(col: Column): boolean {
+        const config = this._columnConfigs.get(col.getField().getName());
+
+        if (config?.renderer) {
+            return false;
+        }
+
+        if (config?.values && config.values.length > 0) {
+            return false;
+        }
+
+        const type = col.getField().getType();
+
+        if (type === "number") {
+            return true;
+        }
+
+        return (type === "string" || type === "auto") && this.isAutoSizeColumns();
+    }
+
+    /**
+     * Returns the longest `String(value).length` seen for `col` during the
+     * last {@link collectCandidates} pass, or `null` when the column was
+     * not sampled. A length scan over the cached candidates, never a
+     * measurement and never a store read.
+     */
+    private sampledDigits(col: Column): number | null {
+        const candidates = this._sampledCandidates.get(col.getField().getName());
+
+        if (!candidates || candidates.length === 0) {
+            return null;
+        }
+
+        return Math.max(...candidates.map(s => s.length));
+    }
+
+    /** Reads `showSeconds` from this column's config, defaulting to `false`. */
+    private showsSeconds(col: Column): boolean {
+        return this._columnConfigs.get(col.getField().getName())?.showSeconds ?? false;
+    }
+
+    /**
+     * Returns the per-type width policy for `col`: a `{min, preferred}`
+     * pair derived from its field type, cached reference measurements, and
+     * — for `number`/`string`/`auto` — sampled content. `headerPx` and
+     * `contentPx` may be passed as `0`/`null` (as {@link getColumnMinWidth}
+     * does) because no branch's `min` depends on either.
+     */
+    private columnWidthPolicy(col: Column, headerPx: number, contentPx: number | null): WidthPolicy {
+        const refs = this.ensureWidthReferences();
+        const type = col.getField().getType();
+
+        switch (type) {
+            case "boolean": {
+                const min = CHECKBOX_WIDTH_PX + CELL_CHROME_PX;
+
+                return { min, preferred: Math.max(min, headerPx) };
+            }
+
+            case "glyph": {
+                const min = GLYPH_WIDTH_PX + CELL_CHROME_PX;
+
+                return { min, preferred: Math.max(min, headerPx) };
+            }
+
+            case "date":
+            case "time":
+            case "datetime": {
+                const key = `${type}:${this.showsSeconds(col)}`;
+                const min = (refs.datePx.get(key) ?? 0) + CELL_CHROME_PX;
+
+                return { min, preferred: Math.max(min, headerPx) };
+            }
+
+            case "number": {
+                const min    = refs.digitPx * MIN_NUMBER_DIGITS + CELL_CHROME_PX;
+                const digits = col.getMaxContentLength() ?? this.sampledDigits(col) ?? DEFAULT_NUMBER_DIGITS;
+
+                return { min, preferred: Math.max(min, refs.digitPx * digits + CELL_CHROME_PX, headerPx) };
+            }
+
+            default: {   // "string" and "auto"
+                const min = Math.max(MIN_COLUMN_WIDTH_PX, refs.digitPx * MIN_STRING_CHARS + CELL_CHROME_PX);
+
+                if (contentPx === null) {
+                    return { min, preferred: null };       // auto-size off, or nothing to measure — flex column
+                }
+
+                return { min, preferred: Math.max(min, contentPx, headerPx) };
+            }
+        }
+    }
+
+    /**
+     * Returns the cached width-reference bundle, measuring it once (in one
+     * batched call) the first time anything asks. `dateReferenceKeys` scans
+     * only the currently visible columns, so this is cleared everywhere
+     * that set can change: `setStore`, `maybeResampleColumnWidths`,
+     * `bindView` (a display-mode switch), `setColumnVisible`, and
+     * `resetColumns`.
+     */
+    private ensureWidthReferences(): WidthReferences {
+        if (this._widthRefs) {
+            return this._widthRefs;
+        }
+
+        const digits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+        const keys   = this.dateReferenceKeys();
+        const widths = Util.measureTextWidths([...digits, ...keys.map(k => k.text)]);
+
+        this._widthRefs = {
+            digitPx: Math.max(...widths.slice(0, digits.length)),
+            datePx : new Map(keys.map((k, i) => [k.key, widths[digits.length + i]])),
+        };
+
+        return this._widthRefs;
+    }
+
+    /**
+     * Walks the visible columns and builds one `{key, text}` reference pair
+     * per distinct `(temporal type, showSeconds)` combination in use,
+     * formatting {@link REFERENCE_DATE} the same way the matching cell
+     * renderer would (via `TableExporter.formatValue`).
+     */
+    private dateReferenceKeys(): Array<{ key: string; text: string }> {
+        const seen = new Map<string, string>();
+
+        for (const col of this.getColumns()) {
+            const type = col.getField().getType();
+
+            if (type !== "date" && type !== "time" && type !== "datetime") {
+                continue;
+            }
+
+            const key = `${type}:${this.showsSeconds(col)}`;
+
+            if (!seen.has(key)) {
+                seen.set(key, String(TableExporter.formatValue(col, REFERENCE_DATE, this._columnConfigs) ?? ""));
+            }
+        }
+
+        return Array.from(seen, ([key, text]) => ({ key, text }));
+    }
+
+    /**
+     * Re-derives column widths once, the first time the source store's
+     * `'load'` / `'add'` / `'remove'` / `'datachange'` events find records —
+     * so a table built before its data arrives sizes itself against the
+     * data once it shows up. A no-op when auto-size is off, when the store
+     * is still empty, or after the first successful derivation for this
+     * store (see {@link Table.setStore}, which resets the guard).
+     */
+    private maybeResampleColumnWidths(): void {
+        if (!this.isAutoSizeColumns() || this._autoWidthsSampled || this._store.getCount() === 0) {
+            return;
+        }
+
+        this._columnWidths      = [];
+        this._savedColumnWidths = new Map();
+        this._widthRefs         = null;
+
         this.doLayout();
     }
 }

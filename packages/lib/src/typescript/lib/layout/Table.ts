@@ -18,24 +18,24 @@ import { callable } from "~/core/Callable.js";
 interface TableLayoutOptions extends LayoutManagerOptions {
 }
 
-const BOOLEAN_WIDTH = 60;
-const NUMBER_WIDTH  = 90;
-const DATE_WIDTH    = 110;
-const CHAR_WIDTH    = 8;
-const HEADER_PAD    = 16;
-
 /**
  * A layout manager dedicated to the [`Table`](/api/component/table/classes/Table) component.
  * Positions the header, body, and footer sections within the container and
  * triggers virtual-scroll rendering on the body after each layout pass.
  *
  * Per-column widths are stored on the [`Table`](/api/component/table/classes/Table) component. On first render (or after
- * a model swap) widths are initialized based on field type and any `minWidth` /
- * `maxWidth` declared in the column spec: compact types (`boolean`, `number`, `date`)
- * receive a fixed base width floored at the header text width; string and auto columns
- * share the remaining space equally, clamped to their constraints. On container resize
- * compact-type columns keep their width unchanged; only flexible columns scale
- * proportionally, again clamped to their per-column constraints.
+ * a model swap) widths are initialized from the container's
+ * [`getIntrinsicColumnWidths`](/api/component/table/classes/Table#getIntrinsicColumnWidths) —
+ * a per-type width policy, refined by any `minWidth` / `maxWidth` / `width` declared in the
+ * column spec: compact types (`boolean`, `glyph`, `date`, `time`, `datetime`, `number`)
+ * receive a type-derived width floored at the header text width; string and auto columns
+ * either share the remaining space equally or, under `autoSizeColumns`, size to their
+ * sampled content, clamped to their constraints either way. On container resize
+ * `boolean` / `number` / `date` columns keep their width unchanged; every other column
+ * (including `glyph`, `time`, and `datetime`) scales proportionally like a flexible
+ * column, again clamped to their per-column constraints. Every per-column minimum
+ * is read through [`getColumnMinWidth`](/api/component/table/classes/Table#getColumnMinWidth),
+ * so a column never squeezes below the floor its type or spec implies.
  */
 class Table extends LayoutManager {
 
@@ -94,7 +94,17 @@ class Table extends LayoutManager {
 
         const containerSize = container.getInnerSize();
 
-        if (!containerSize) {
+        // A table whose size has not been resolved yet reports NaN dimensions
+        // rather than `null` — `getInnerSize` subtracts the perimeter from an
+        // unset `_width`/`_height`. That happens whenever a layout is driven by
+        // something other than the parent's sizing pass: a store load that
+        // re-derives column widths fires one from the store event, which for a
+        // generated table typically lands before the table has ever been sized.
+        // Laying out against NaN would poison the width array — `availableWidth`
+        // is NaN, and the slack arithmetic downstream compares NaN (every
+        // comparison is false, so no early return catches it) — so the widths
+        // are left alone and the next properly-sized pass derives them.
+        if (!containerSize || !Number.isFinite(containerSize.width) || !Number.isFinite(containerSize.height)) {
             return;
         }
 
@@ -106,10 +116,10 @@ class Table extends LayoutManager {
         let columnWidths = container.getColumnWidths();
 
         if (columnWidths.length !== columnCount) {
-            columnWidths = this.initializeWidths(columns, availableWidth);
+            columnWidths = this.initializeWidths(container, columns, availableWidth);
             container.setColumnWidths(columnWidths);
         } else {
-            columnWidths = this.rescaleWidths(columns, columnWidths, availableWidth);
+            columnWidths = this.rescaleWidths(container, columns, columnWidths, availableWidth);
             container.setColumnWidths(columnWidths);
         }
 
@@ -296,28 +306,23 @@ class Table extends LayoutManager {
     }
 
     /**
-     * Computes initial column widths from field types and column constraints.
+     * Computes initial column widths from the container's per-type width
+     * policy and column constraints.
      *
-     * Fixed-type columns (boolean, number, date) get a type-based base width floored
-     * at their header text width and clamped to any declared min/max. Flexible columns
-     * (string, auto) share the remaining space equally, each clamped to its own min/max.
+     * Fixed-shape columns (boolean, glyph, date, time, datetime, number) get a
+     * type-derived width clamped to any declared min/max. Flexible columns
+     * (string, auto) with no definite width share the remaining space equally,
+     * each clamped to its own min/max; a `string`/`auto` column with a definite
+     * width — either declared or, under `autoSizeColumns`, sampled from content —
+     * uses that width like a fixed-shape column instead of sharing space.
      *
+     * @param container      - The Table component whose columns are being sized.
      * @param columns        - The visible resolved columns.
      * @param availableWidth - Total available pixel width for columns.
      * @returns The computed width for each column.
      */
-    private initializeWidths(columns: Column[], availableWidth: number): number[] {
-        const intrinsic: (number | null)[] = columns.map(col => {
-            const f         = col.getField();
-            const headerMin = f.getDescription().length * CHAR_WIDTH + HEADER_PAD;
-
-            switch (f.getType()) {
-                case 'boolean': return this.clamp(Math.max(BOOLEAN_WIDTH, headerMin), col);
-                case 'number':  return this.clamp(Math.max(NUMBER_WIDTH,  headerMin), col);
-                case 'date':    return this.clamp(Math.max(DATE_WIDTH,    headerMin), col);
-                default:        return null;
-            }
-        });
+    private initializeWidths(container: TableComponent, columns: Column[], availableWidth: number): number[] {
+        const intrinsic = container.getIntrinsicColumnWidths();
 
         const fixedTotal = intrinsic.reduce((s: number, w) => s + (w ?? 0), 0);
         const flexCount  = intrinsic.filter(w => w === null).length;
@@ -331,7 +336,7 @@ class Table extends LayoutManager {
             }
 
             const col = columns[i];
-            const min = col.getMinWidth() ?? 30;
+            const min = container.getColumnMinWidth(col);
             const max = col.getMaxWidth() ?? UNBOUNDED;
 
             return Util.clamp(rawFlex, min, max);
@@ -345,12 +350,13 @@ class Table extends LayoutManager {
      * keeping fixed-type columns at their current size and clamping all columns
      * to their per-column constraints.
      *
+     * @param container      - The Table component whose columns are being sized.
      * @param columns        - The visible resolved columns.
      * @param columnWidths   - The existing width array from the previous layout.
      * @param availableWidth - Total available pixel width for columns.
      * @returns The updated width array, or the original if no rescaling was needed.
      */
-    private rescaleWidths(columns: Column[], columnWidths: number[], availableWidth: number): number[] {
+    private rescaleWidths(container: TableComponent, columns: Column[], columnWidths: number[], availableWidth: number): number[] {
         const isFixed = columns.map(col => {
             const t = col.getField().getType();
 
@@ -361,7 +367,14 @@ class Table extends LayoutManager {
         const prevFlexTotal = columnWidths.reduce((s: number, w, i) => s + (isFixed[i] ? 0 : w), 0);
         const newFlexTotal  = availableWidth - fixedTotal;
 
-        if (prevFlexTotal <= 0 || Math.abs(prevFlexTotal - newFlexTotal) <= 0.5) {
+        // On a table with more columns than fit — the generated-table case this
+        // sizing exists for — the fixed-shape columns alone can already exceed
+        // the viewport, leaving `newFlexTotal` negative. There is no space for
+        // the flex columns to share, and rescaling by a negative ratio would
+        // collapse every one of them to its floor on the first re-layout, with
+        // no resize involved. Keep the derived widths and let the table scroll
+        // horizontally, which is what a column too wide for the viewport means.
+        if (prevFlexTotal <= 0 || newFlexTotal <= 0 || Math.abs(prevFlexTotal - newFlexTotal) <= 0.5) {
             return columnWidths;
         }
 
@@ -372,7 +385,7 @@ class Table extends LayoutManager {
                 return w;
             }
 
-            return this.clamp(w * ratio, columns[i]);
+            return this.clamp(w * ratio, columns[i], container);
         });
 
         return this.absorbSlackIntoGreedy(columns, rescaled, availableWidth);
@@ -425,14 +438,16 @@ class Table extends LayoutManager {
 
     /**
      * Clamps a width value to the `[minWidth, maxWidth]` range declared on a column,
-     * using 30 px as the default minimum and no upper bound when unconstrained.
+     * using the container's type-derived floor as the default minimum and no upper
+     * bound when unconstrained.
      *
-     * @param width  - The raw width to clamp.
-     * @param column - The column whose constraints apply.
+     * @param width     - The raw width to clamp.
+     * @param column    - The column whose constraints apply.
+     * @param container - The Table component whose columns are being sized.
      * @returns The clamped width.
      */
-    private clamp(width: number, column: Column): number {
-        const min = column.getMinWidth() ?? 30;
+    private clamp(width: number, column: Column, container: TableComponent): number {
+        const min = container.getColumnMinWidth(column);
         const max = column.getMaxWidth() ?? UNBOUNDED;
 
         return Util.clamp(width, min, max);
