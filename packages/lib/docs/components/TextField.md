@@ -37,6 +37,12 @@ const binding = new Binding().bind('name', nameField);
 binding.setRecord(store.getAt(0));
 ```
 
+<!-- demo: textfield-binding -->
+> **Live demo** — two `TextField`s bound to one `ModelRecord` via `Binding`,
+> with a `Text` below echoing the record's current values as you type.
+> [Open the TextField page](https://jimka.github.io/typescript-ui/components/TextField)
+<!-- /demo -->
+
 ## Theming
 
 The thin gray border shared with every other text input is driven by the `input.border` token — see [Theming › Theme keys](/concepts/theming#theme-keys).

@@ -34,6 +34,12 @@ The `change` event fires whenever the selection state flips.
 
 Wrap multiple `ToggleButton`s in a [`ButtonGroup`](/components/ButtonGroup) to enforce single-selection semantics across the group. The group will deselect siblings whenever one button becomes selected.
 
+<!-- demo: togglebutton-group -->
+> **Live demo** — three `ToggleButton`s in a `ButtonGroup`; clicking one
+> releases the others.
+> [Open the ToggleButton page](https://jimka.github.io/typescript-ui/components/ToggleButton)
+<!-- /demo -->
+
 ## Theming
 
 Selected-state appearance comes from the `toggle.selected.*` token group — see [Theming › Theme keys](/concepts/theming#theme-keys).

@@ -33,6 +33,12 @@ panel.addComponent(subscribe);
 
 Setting `setIndeterminate(true)` shows a horizontal bar in place of the check and emits `aria-checked="mixed"`. A user click from the mixed state first clears the indeterminate flag and selects the checkbox (matching the WAI-ARIA Authoring Practices recommendation).
 
+<!-- demo: checkbox-states -->
+> **Live demo** — an unchecked, a checked, and a cycling `Checkbox`, plus a
+> button that steps the third through all three states.
+> [Open the Checkbox page](https://jimka.github.io/typescript-ui/components/Checkbox)
+<!-- /demo -->
+
 ## Notes
 
 - Themed through the shared `--ts-ui-form-*` family plus checkbox-specific tokens (`--ts-ui-checkbox-bg`, `--ts-ui-checkbox-bg-selected`, `--ts-ui-checkbox-check-color`, `--ts-ui-checkbox-size`, `--ts-ui-checkbox-radius`).

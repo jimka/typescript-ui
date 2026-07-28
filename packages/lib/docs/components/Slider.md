@@ -41,6 +41,12 @@ panel.addComponent(volume);
 | Home | `min` |
 | End | `max` |
 
+<!-- demo: slider-range -->
+> **Live demo** — a `Slider` over 0-100 with a `Text` beside it that updates
+> live from the slider's `action` event.
+> [Open the Slider page](https://jimka.github.io/typescript-ui/components/Slider)
+<!-- /demo -->
+
 ## Notes
 
 - Drag is handled via `pointerdown` + `setPointerCapture`, so the cursor can leave the track mid-drag without losing the input stream.

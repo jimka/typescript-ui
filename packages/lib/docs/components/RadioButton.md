@@ -51,6 +51,12 @@ const groupRow = Component();
 group.setContainer(groupRow); // arrow keys now move focus within the group
 ```
 
+<!-- demo: radiobutton-group -->
+> **Live demo** — three `RadioButton`s stacked in a `ButtonGroup`; arrow keys
+> move the selection.
+> [Open the RadioButton page](https://jimka.github.io/typescript-ui/components/RadioButton)
+<!-- /demo -->
+
 ## Notes
 
 - Themed through the shared `--ts-ui-form-*` family plus radio-specific tokens (`--ts-ui-radio-bg`, `--ts-ui-radio-bg-selected`, `--ts-ui-radio-dot-color`, `--ts-ui-radio-size`).

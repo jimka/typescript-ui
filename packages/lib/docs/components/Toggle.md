@@ -29,6 +29,12 @@ panel.addComponent(wifi);
 | `on("change", fn)` / `off("change", fn)` | Subscribe to value changes. |
 | `on("binding", fn)` | Used by [`Binding`](/data/binding). |
 
+<!-- demo: toggle-switch -->
+> **Live demo** — a Wi-Fi `Toggle` starting on and a Bluetooth `Toggle`
+> starting off, so a click shows the slide animation running both ways.
+> [Open the Toggle page](https://jimka.github.io/typescript-ui/components/Toggle)
+<!-- /demo -->
+
 ## Notes
 
 - Themed through the shared `--ts-ui-form-*` family plus toggle-specific tokens (`--ts-ui-toggle-track-bg-off`, `--ts-ui-toggle-track-bg-on`, `--ts-ui-toggle-thumb-bg`, `--ts-ui-toggle-width`, `--ts-ui-toggle-height`).
