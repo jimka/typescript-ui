@@ -19,6 +19,15 @@ The toolbar exposes four actions out of the box:
 - **Sync** — calls `store.sync()` to push pending changes to the proxy.
 - **Reject** — calls `store.reject()` to revert dirty rows, drop new ones, and restore pending removals.
 
+## Column configuration
+
+`TablePanel` forwards an optional [`ColumnSpec`](/api/component/table/interfaces/ColumnSpec) to the underlying `Table` unchanged, so a panel can use every column option `Table` supports — see [Table › Constraining columns](/components/Table#constraining-columns):
+
+```typescript
+import { TablePanel } from '@jimka/typescript-ui/component/table';
+const panel = TablePanel(store, { columns: [], autoSizeColumns: true });
+```
+
 ## Customising the toolbar
 
 For fine-grained control over the toolbar buttons, build a layout yourself with a north-region [`HBox`](/api/layout/classes/HBox) of `Button`s and a centre-region [`Table`](/components/Table). `TablePanel` is intended for the common case where you just want CRUD wired up.
