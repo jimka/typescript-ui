@@ -107,6 +107,25 @@ abstract class VirtualRowView<
     }
 
     /**
+     * Destroys the pooled rows before the inherited teardown runs.
+     *
+     * {@link growRowPool} appends each row's element straight to the rows
+     * container and keeps the row only in `_rowPool`, so a pooled row is never
+     * registered as a child component and the base destructor's recursion over
+     * `_components` cannot reach it. Without this override neither the rows nor
+     * their cells (which *are* registered on their row) release their
+     * per-instance stylesheet rules, so the shared sheet grows by roughly the
+     * view's whole cell count on every teardown.
+     */
+    protected destructor(): void {
+        for (const row of this._rowPool) {
+            row.dispose();
+        }
+
+        super.destructor();
+    }
+
+    /**
      * Sets the JS-controlled horizontal scroll position. Delegates to the
      * underlying {@link VirtualScroller}.
      *
