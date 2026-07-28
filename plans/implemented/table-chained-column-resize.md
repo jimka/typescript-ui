@@ -42,6 +42,8 @@ The table's total column width is the sum of the visible column widths. It is al
 
 So the total never falls below the available width, and any growth is undoable at the same handle.[^ratchet]
 
+**Amendment (post-implementation).** The right chain participates *only while the columns fit the container*. Once the total exceeds the available width — a horizontal scrollbar is showing — the drag stops scavenging altogether: the edge resizes the columns to its left and the total moves with it, in both directions, and the columns to the right are never touched. Without this, a table that reached its overflowing state some other way (the last column's own handle, or a column set whose `minWidth` sum already exceeds the container) would still steal width from the right of the edge while a scrollbar was showing, which is the wrong trade — space is not scarce once the table can scroll. Concretely this is one term in `onColumnResize`: the rightward branch's `absorbed` is `0` when `growth > WIDTH_TARGET_EPSILON_PX`. The leftward branch is unchanged and already had the right shape — `delta − min(delta, growth)` is `0` for as long as growth remains, so scavenging resumes exactly at the point the table fits again, mid-frame if need be. `Accordion` is unaffected: only the arithmetic primitives are shared, never this policy.
+
 ### "The table's maximum width" is the columns' own `maxWidth` constraints
 
 Growth stops when every column in the left chain has reached its `Column.getMaxWidth()`. No table-level ceiling, option, or ceiling constant is introduced — the cap falls out of the chain arithmetic, which cannot push a column past its declared maximum. With no `maxWidth` declared (the default) the total is unbounded, and the practical limit is that the pointer cannot travel past the window edge.[^ceiling]
@@ -385,6 +387,16 @@ Pointer coordinates are absolute: `onColumnResizeStart(0, 1000)` then `onColumnR
 18. After over-dragging past the limit, reversing moves the handle only after the cursor has come back to where the handle actually is — the handle never jumps to meet a far-off cursor.
 19. The last column's right-edge handle widens and narrows the table without touching any other column.
 20. `AccordionPanel` gutter drags behave exactly as before (Misc panel's accordion demo).
+
+**Unit-testable — no scavenging while the table overflows** (added with the amendment in `## Architecture Decisions`; numbered after the original 1–20 rather than renumbering them). The fixture reaches an overflowing state with the right chain *still un-exhausted* by dragging the **last** column's handle +100, giving `[200, 150, 100, 150]` — total 600 against the available 500, with B/C/D all still above their minimums.
+
+21. *Growing an edge widens the table instead of scavenging.* Drag A's right edge +50: `[250, 150, 100, 150]`, total and target 650 — B keeps its 150 even though it has 50 px of shrink room to give.
+22. *Shrinking an edge narrows the table instead of feeding the right chain.* Drag A's right edge −50: `[150, 150, 100, 150]`, total and target 550.
+23. *Scavenging resumes once the table fits again.* From case 21's state, drag −200: 150 of it gives the growth back (total down to the available 500), the remaining 40 of A's shrink room is scavenged by B, and the last 10 is dead zone — `[60, 190, 100, 150]`, total 500, target 0.
+
+**Manual verification — the amendment**
+
+24. With the wide table scrolled horizontally, dragging any column edge moves only that column and the table's width; every column to its right keeps the width it had.
 
 ---
 
