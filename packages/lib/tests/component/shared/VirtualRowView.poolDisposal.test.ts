@@ -52,8 +52,8 @@ function destroy(component: object): void {
 /**
  * Rules materialised since `before` that name one of `owners` and survived a
  * teardown. Scoped to the given components on purpose: a destroyed view still
- * leaves unrelated per-instance rules behind (its header cells, the scrollbar
- * overlays), which this fix does not address — see the residual-leak note in
+ * leaves unrelated per-instance rules behind (its header cells), which this
+ * fix does not address — see the residual-leak note in
  * plans/table-performance.md. Asserting the total would fail for reasons that
  * have nothing to do with the row pool.
  */

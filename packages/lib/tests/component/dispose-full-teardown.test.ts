@@ -70,23 +70,25 @@ const REGISTRY: Array<{
     make?: () => Component;
     reason?: string;
     // Narrows the leak check to keys belonging to this component's own known
-    // subtree, for the two rows affected by a separate, pre-existing,
-    // out-of-scope leak class: some framework internals raw-append a piece
-    // outside `_components` (`Panel`'s `_scrollbarV` / `_scrollbarH`
-    // overlay-scrollbar visuals, `Border`'s resize gutters) the same way the
-    // sixteen classes this plan's dispose() contract covers historically did
-    // — but `Panel` and `Border` are not among those sixteen, so fixing them
-    // is out of scope here. Without narrowing, that gap intermittently
-    // (geometry-dependent) fails these rows for a reason this plan does not
-    // fix. TabBar's own raw-appended overlays (`_tabClip` etc.) ARE in scope
-    // and are covered here via `extraSubtrees`.
+    // subtree. `Panel`'s `_scrollbarV` / `_scrollbarH` overlay-scrollbar
+    // visuals and `Border`'s resize gutters used to be a separate,
+    // out-of-scope leak here — both are now fixed by
+    // plans/implemented/scrollbar-leak-and-layout-guards.md, which disposes
+    // each on teardown. VideoPlayer's row keeps its narrowing regardless: its
+    // residual two rules come from neither source (its `Border` manager
+    // creates no gutters at all), so removing the narrowing would fail this
+    // row for a reason that plan does not address. TabBar's own raw-appended
+    // overlays (`_tabClip` etc.) ARE in scope and are covered here via
+    // `extraSubtrees`.
     ownIds?: (c: Component) => string[];
 }> = [
     { name: 'Markdown',      make: () => new Markdown('# A') },
     { name: 'Video',         make: () => new Video() },
-    // VideoPlayer uses a `Border` layout manager, whose resize gutters are a
-    // separate, pre-existing, out-of-scope leak (see the block comment
-    // above) — scope the check to VideoPlayer's own registered subtree.
+    // VideoPlayer keeps its narrowing for a reason unrelated to the gutters
+    // fixed above: its `Border` manager creates none, and its residual two
+    // rules come from neither that source nor `Panel`'s overlay scrollbars
+    // (see the block comment above) — scope the check to VideoPlayer's own
+    // registered subtree.
     { name: 'VideoPlayer',   make: () => new VideoPlayer(), ownIds: (c) => collectIds(c) },
     { name: 'MenuItem',      make: () => new MenuItem({ text: 'A' }, () => {}, () => {}) },
     { name: 'AbstractChart (via LineChart)', make: () => new LineChart({}) },
