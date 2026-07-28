@@ -2,6 +2,11 @@
 
 [`Button`](/api/component/button/classes/Button) is a push button with a text label and configurable pressed- and hover-state appearance. Maintains separate CSS rules for the normal, `:hover:not(:active)`, and `:active` states so border, shadow, background, and foreground colour are independently controllable when the pointer is over the button and when it is pressed.
 
+<!-- demo: button-basic -->
+> **Live demo** — two `Button`s side by side, interactive in the documentation app.
+> [Open the Button page](https://jimka.github.io/typescript-ui/components/Button)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
