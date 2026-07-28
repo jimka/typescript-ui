@@ -60,6 +60,12 @@ role.setDisplayField('name');
 
 The combo refreshes automatically on store `datachange` events.
 
+<!-- demo: combobox-store -->
+> **Live demo** — a `ComboBox` backed by a store of people, its
+> `displayField` set to `name`.
+> [Open the ComboBox page](https://jimka.github.io/typescript-ui/components/ComboBox)
+<!-- /demo -->
+
 ## Item renderers
 
 The dropdown rows — and the collapsed control itself — render through a [`ListItemRenderer`](/api/component/list/classes/ListItemRenderer) supplied via the `rendererFactory` option (or `setRendererFactory` at runtime). The default renders the label as plain text; [`GlyphListItemRenderer`](/api/component/list/classes/GlyphListItemRenderer) shows each option's `glyph` beside its label — in the open dropdown **and** on the closed combo box, so the selected entry's icon stays visible after the dropdown closes:

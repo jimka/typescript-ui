@@ -38,6 +38,12 @@ const tree = new TreeTable(store, {
 panel.addComponent(tree);
 ```
 
+<!-- demo: treetable-hierarchy -->
+> **Live demo** — a store-bound `TreeTable` over a file/folder hierarchy;
+> rows expand and collapse.
+> [Open the TreeTable page](https://jimka.github.io/typescript-ui/components/TreeTable)
+<!-- /demo -->
+
 ## TreeTableSpec
 
 [`TreeTableSpec`](/api/component/table/interfaces/TreeTableSpec) extends [`ColumnSpec`](/api/component/table/interfaces/ColumnSpec) with three required fields and one optional field:

@@ -18,6 +18,12 @@ tree.setNodes([
 container.addComponent(tree);
 ```
 
+<!-- demo: tree-nodes -->
+> **Live demo** — the same folders as node literals, with expand /
+> collapse and selection.
+> [Open the Tree page](https://jimka.github.io/typescript-ui/components/Tree)
+<!-- /demo -->
+
 ## TreeNode
 
 Each node follows [`TreeNode`](/api/component/tree/interfaces/TreeNode):
