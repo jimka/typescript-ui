@@ -24,6 +24,14 @@ component's dirty rule keys reach the sheet in one mutation instead of one
 per key. Only a consumer implementing its own `DOMSink` is affected; the
 method is not something application code calls.
 
+**Breaking:** `DOMSource` gains a required `startFontLoad(family)` member,
+returning whether it started an asynchronous font load. Only a consumer
+implementing its own `DOMSource` is affected, and a source that cannot load
+fonts asynchronously implements it as `return false` — the framework treats
+`false` as "no activation callback will follow" and skips the startup layout
+hold described under *Changed*, so returning `true` from a source that never
+reports back would delay the first layout by the full 50 ms bound.
+
 **Breaking:** `Component._defaultOptions` is now a `Readonly<TOptions>` bag
 that is **frozen and shared by every instance of the class**, rather than a
 fresh object literal per construction. A subclass that wrote into it after
@@ -45,6 +53,30 @@ See [Migration](/reference/migration#upgrading-from-0-2-x-to-0-3-0) for the
 full upgrade note.
 
 ### Changed
+
+- **The first layout pass now waits for the web font to activate.** Text
+  measured before the bundled Manrope face activates is measured against the
+  browser's fallback font, so the first layout used to commit fallback-derived
+  sizes and then move every text box at once when the real face arrived. The
+  coalesced layout queue now holds its first flush until the font set reports
+  the load settled, so the first geometry committed is already correct. The
+  hold is bounded at 50 ms of idle time and is skipped entirely where no
+  asynchronous font load started, so a page that loads no web font is
+  unaffected. `Tree` and the table body additionally defer their own render
+  passes while the hold is in force — both render from several synchronous
+  entry points (including element creation) rather than from the layout queue,
+  so holding the queue alone would not have covered them. Three consequences are
+  worth knowing: `flushLayout()` and `resumeLayout()` lay out synchronously and
+  deliberately bypass the hold — except on `Tree` and the
+  table body, which check it inside their own render pass, so flushing one
+  during startup leaves its rows unrendered until the hold ends rather than
+  rendering them at fallback sizes; a programmatic scroll on either — including
+  a reveal such as `Table.selectRecord` — is likewise held and applied when the
+  hold ends, since the offset would otherwise clamp against a content extent
+  the deferred render had not published yet; and
+  the post-layout callbacks queued during startup — `Component.afterNextLayout`
+  and `Component.onFirstLayout` alike — run after the release rather than on the
+  first frame.
 
 - **A `"selection"` event is no longer emitted for an unchanged selection.**
   `Tree`, the table body, and `Table`'s rotated mode now compare the

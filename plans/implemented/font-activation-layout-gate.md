@@ -404,3 +404,133 @@ The docs app resolves `@jimka/typescript-ui` to `packages/lib/dist`, so **`npm r
 [^reflow-order]: `reflowText` calls `Util.invalidateTextMetricsCache()`, which bumps the generation counter that `Text.needsMeasure()` ([packages/lib/src/typescript/lib/component/input/Text.ts:388](packages/lib/src/typescript/lib/component/input/Text.ts#L388)) compares against. This matters because a `Text` can measure itself during construction, long before activation — the gate delays the *layout*, not the measurement. Bumping the generation first marks every one of those cached sizes stale, so the released flush re-measures against the activated face. `reflowText` also notifies theme listeners, which is what puts `Body` back on the queue via its `_onThemeReflow` handler ([packages/lib/src/typescript/lib/core/Body.ts:114](packages/lib/src/typescript/lib/core/Body.ts#L114)) — that too must happen before the release, or the released flush would have nothing queued.
 
 [^no-paint-suppression]: The window in which an unlaid-out tree can be painted is not created by this change: it already exists today between the end of synchronous construction and the first animation frame. The gate can only extend it, and on the normal path it does not extend it at all — `loadingdone` fires as a task in the same drain in which the thread first goes idle, so the gate typically opens before the first frame ever runs. Suppressing paint would guard a case that the 50 ms bound already keeps to about three frames, at the cost of a blank page whenever the gate times out.
+
+---
+
+## Implementation Notes
+
+**The gate needed a second half the plan did not anticipate: the virtual row
+views.** The plan assumes the first geometry a page commits flows through the
+coalesced layout queue, so holding that queue holds everything. It does not.
+`Tree.init` ends with `renderWindow()`, so a mounted tree binds and positions
+its rows the moment its element exists — synchronously, never entering the
+queue — and both `Tree` and the table body call `renderWindow` from roughly
+eight synchronous entry points each (data changes, selection moves, scroller
+ticks). The first live check confirmed the miss: the first `.TreeRow` rendered
+at 486 ms against a `loadingdone` at 508 ms, with sidebar labels committed 2–4
+px short of their real widths.
+
+The fix keeps the gate itself unchanged and adds one choke point on the shared
+base. `VirtualRowView.deferRenderWhileFirstLayoutHeld()` returns `true` while
+the gate is held, recording that a pass was skipped and scheduling a layout;
+each subclass's `renderWindow` returns early on it, which covers every entry
+point at once rather than guarding each caller. `VirtualRowView` also gains a
+`renderWindowIfDeferred()` that runs the deferred pass, which each subclass
+calls from its own `doLayout`: `Tree` uses it in place of the unconditional
+render it already ran, so the frame the gate opens renders once rather than
+twice, and `Body` gains a `doLayout` purely to call it, as a safety net for a
+body whose table is already clean when the gate opens — the usual resumption
+for a table comes from its parent layout instead. The re-run live check
+passes: first `.TreeRow` at 524 ms against a `loadingdone` at 502 ms, and all
+eight sidebar labels committed at exactly their natural widths.
+
+One constraint the deferral carries is worth knowing before touching it. The
+replay re-enters `renderWindow()` with no arguments, so a subclass whose render
+takes arguments must cache them *before* the deferral check — `Body` seeds
+`updateColumnWidthCache` first, because the widths reach it from its parent
+layout and from nowhere else, and a replay that lost them would commit every
+row at the zero-width cache the view starts with.
+
+A deferred pass also skips whatever its caller did *after* `renderWindow`. Both
+views refresh `aria-activedescendant` there, against rows the deferred pass had
+not created yet, so each redoes that refresh when the pass finally runs —
+otherwise a view selected during startup would keep an empty
+`aria-activedescendant` until the next selection change.
+
+That redo hangs off the end of `renderWindow`, via `finishResumedRender()`,
+rather than off the `doLayout` that releases the gate. A pass resumes from
+whichever entry point reaches `renderWindow` first, and for the table body that
+is the parent table layout calling `renderWindow(width, columnWidths)` directly
+— it never goes through the body's `doLayout`, and the flush prunes a body whose
+table is dirty, which at startup it always is. Hanging the redo off `doLayout`
+therefore looked right and never ran on the real path.
+
+**Deferring a render also defers what the pass was going to make effective.**
+A reveal issued during the hold computes a scroll target that the scroller
+clamps against a content extent only the render publishes — so with the pass
+deferred it clamped to 0, leaving a row selected during startup correctly named
+in `aria-activedescendant` but off-screen. This is the mirror of the post-render
+case above: state established *before* the render that the render was meant to
+act on.
+
+The hold sits on `setScrollX` / `setScrollY`, because the reveals do not share
+one entry point: the table's `scrollToRecord` sets the offset directly, and a
+consumer restoring a saved offset calls the setters itself. All of them bottom
+out in those two setters, so guarding there closes the class rather than one
+member of it.
+
+The two vertical requests resolve to whichever came last: a raw offset set
+during the hold clears any held reveal, and a reveal is replayed after the raw
+offsets so it wins over one held before it.
+
+`scrollRowIntoView` is held one level higher, by row index rather than by
+offset, and recomputed on replay. Its target depends on the view's own height —
+which at startup arrives from the very layout the gate is holding — so an offset
+computed at request time reads either an unset height, revealing nothing, or a
+zero height, landing the viewport on the row's bottom edge. Holding the index
+and recomputing once the resumed pass has a real height is what actually reveals
+the row. The test for it therefore takes its size from a parent layout, the way
+startup does, and asserts the row ends up inside the viewport rather than merely
+that something scrolled.
+`finishResumedRender` applies the held offsets unconditionally — any render past
+the gate has published the extent, whether or not it is the resumed pass. It
+reads its own resumed flag *before* applying them, because applying a scroll
+re-enters `renderWindow` through the scroller's onScroll hook and that nested
+pass resets the flag; reading it afterwards silently dropped the
+active-descendant redo on exactly the passes carrying both. A scroll that goes
+through for real also clears anything held for the same axis, so a held offset
+cannot come back a frame later and revert it.
+
+**The plan's bypass table narrowed once the row views joined the gate.** The
+plan records `flushLayout()` and `resumeLayout()` as bypassing the hold
+outright, which was true while the gate lived only in the layout queue. Now
+that `Tree` and the table body check the hold inside their own render pass, a
+synchronous flush during startup lays out the view's frame but leaves its rows
+unrendered until the hold ends — it does not render them at fallback sizes.
+That is a different failure for a caller to code against, so the JSDoc on both
+methods, the changelog, and the migration guide all state the exception.
+
+**`startFirstLayoutDeadline` dropped one half of the guard the plan specified.**
+The plan writes it as `if (!_held || _deadline !== null) return;` and documents
+it as a no-op while the gate is open. The `!_held` half is unreachable: the only
+caller sits inside the flush's `isFirstLayoutHeld()` branch, so it is the
+"error handling for impossible scenarios" CLAUDE.md rules out, and it was
+dropped during review. The remaining `_deadline !== null` half is what makes the
+deadline start once rather than on every held frame, which is the behaviour the
+plan's Expected Behaviour row 4 pins.
+
+**Only `Tree` redoes the active-descendant refresh; the table body does not.**
+Both views refresh it after `renderWindow`, but every caller that does so on the
+body is a user gesture — focus, click, key — and none can land inside the
+startup hold, before a row exists. `Tree.selectNode` is public API that startup
+code does call, so the redo is kept there and left out of the body rather than
+mirrored for symmetry.
+
+**The plan's file table predates the branch's final shape.** Beyond the three
+component files the notes above cover, the branch also edits
+`packages/lib/docs/reference/changelog.md` and
+`packages/lib/docs/reference/migration.md`, which the table does not list: a
+required member on a hand-implemented seam interface is a breaking change, and
+this repo documents those in both places.
+
+**Three of the plan's verification expectations do not hold literally, all
+benign.**
+`grep "'Manrope Variable'"` in `Theme.ts` returns two matches rather than one:
+the `MANROPE_FAMILY` constant, plus a prose mention inside `ensureFontLoaded`'s
+JSDoc. Only one code literal exists, which is what the check was guarding.
+`npm run docs:api` finishes with one warning rather than zero — a pre-existing
+one about `DiagramEdgeLayer.setEdges` linking to `Component.onFirstLayout`,
+untouched by this branch and present on `master`. No warning mentions
+`startFontLoad`. And the expected suite size (3259 tests across 242 files) was
+already stale when the branch started; the branch's own tests land on top of
+whatever `master` carries.

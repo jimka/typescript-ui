@@ -633,6 +633,13 @@ class Body extends VirtualRowView<Row> {
     protected onScrollerTick(): void {
         this.renderWindow();
 
+        // A pass the startup font gate deferred rendered no rows, so the
+        // mirrors these events drive — the header translate and the pinned-side
+        // body — would be moved to an offset nothing was laid out at.
+        if (this.wasRenderDeferred()) {
+            return;
+        }
+
         if (this._scroller) {
             this.emit("verticalscroll",   this._scroller.getScrollY());
             this.emit("horizontalscroll", this._scroller.getScrollX());
@@ -658,14 +665,46 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
+     * Runs a render pass the startup font gate deferred, once a layout reaches
+     * this body again.
+     *
+     * @returns This body, for method chaining.
+     *
+     * @remarks Unlike `Tree`, this body does not render its window on every
+     * layout — its passes come from the parent table layout and from store
+     * events. The parent layout usually gets there first, calling
+     * `renderWindow` directly with the column widths, which resumes the pass on
+     * its own; this override covers the case where it does not, so a body whose
+     * table is already clean still picks its deferred pass back up.
+     */
+    doLayout(): this {
+        super.doLayout();
+        this.renderWindowIfDeferred();
+
+        return this;
+    }
+
+    /**
      * Recomputes the visible row window, rebinds changed rows from the pool, and hides excess rows.
      *
      * @param bodyWidth - Optional. The total body width in pixels; cached and reused on scroll updates.
      * @param columnWidths - Optional. The per-column widths in pixels; derived from bodyWidth when omitted.
      */
     renderWindow(bodyWidth?: number, columnWidths?: number[]) {
+        // Cache the caller's widths before anything can return early. They come
+        // from the parent layout and from nowhere else, so a pass the startup
+        // font gate defers below would otherwise replay against the zero-width
+        // cache this view starts with. This also means an unmounted body now
+        // records widths (and may invalidate its row geometry) where it used to
+        // return untouched — harmless, since its pool is empty.
+        this.updateColumnWidthCache(bodyWidth, columnWidths);
+
         const element = this.getElement();
         if (!element || !this._scroller) {
+            return;
+        }
+
+        if (this.deferRenderWhileFirstLayoutHeld()) {
             return;
         }
 
@@ -681,8 +720,6 @@ class Body extends VirtualRowView<Row> {
         // a widen-to-fit layout drops scrollX back toward 0.
         const prevScrollX = scroller.getScrollX();
         const prevScrollY = scroller.getScrollY();
-
-        this.updateColumnWidthCache(bodyWidth, columnWidths);
 
         // Loose-clamp scroll positions against the new content sizes before
         // reading them for the window calc.
@@ -724,6 +761,13 @@ class Body extends VirtualRowView<Row> {
         }
 
         this._updateFocusStyle();
+
+        // Applies any scroll offset the startup font gate held back. Unlike
+        // `Tree` there is no post-render work to redo alongside it: every caller
+        // that refreshes this body's active descendant is a user gesture —
+        // focus, click, key — and none of those can land inside the startup
+        // hold, before a single row exists.
+        this.finishResumedRender();
     }
 
     /**

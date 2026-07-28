@@ -19,6 +19,7 @@ import manropeLatinUrl    from '@fontsource-variable/manrope/files/manrope-latin
 import { InlineStyle } from '~/core/StyleTarget.js';
 import { Util } from '~/core/Util.js';
 import { DOM } from '~/core/DOM.js';
+import { holdFirstLayout, releaseFirstLayout } from '~/core/FirstLayoutGate.js';
 // The three built-in theme literals live in their own files under
 // `core/themes/`; they are imported here so `ThemeManager` can default to
 // `ModernTheme`, and re-exported below so existing
@@ -1198,6 +1199,10 @@ const MANROPE_SUBSETS: ReadonlyArray<{ url: string; unicodeRange: string }> = [
     { url: manropeLatinUrl,    unicodeRange: 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD' },
 ];
 
+// The family every bundled subset is registered under. Shared by the injected
+// rules and the load kick-off, which have to name the same family to match.
+const MANROPE_FAMILY = 'Manrope Variable';
+
 // Module-level guard so the @font-face block is injected exactly once, no matter
 // how many times setTheme runs. Mirrors Glyph.ts's _keyframesInjected pattern.
 let _fontInjected = false;
@@ -1212,17 +1217,22 @@ let _fontInjected = false;
  * package's `@font-face`), and uses `font-display: swap` so text stays visible
  * during the load. Each subset's `.woff2` is a Vite-bundled asset, so the font
  * self-hosts from the consumer's origin with no external request.
+ *
+ * @returns `true` when this call started an asynchronous font load, so the
+ *   caller can expect the font set to report back once it settles. `false` on
+ *   every later call (the rules are already installed) and wherever the active
+ *   `DOMSource` cannot load fonts asynchronously.
  */
-function ensureFontLoaded(): void {
+function ensureFontLoaded(): boolean {
     if (_fontInjected) {
-        return;
+        return false;
     }
 
     _fontInjected = true;
 
     const rules = MANROPE_SUBSETS.map(subset =>
         `@font-face{`
-        + `font-family:'Manrope Variable';`
+        + `font-family:'${MANROPE_FAMILY}';`
         + `font-style:normal;`
         + `font-display:swap;`
         + `font-weight:200 800;`
@@ -1234,6 +1244,12 @@ function ensureFontLoaded(): void {
     const style = DOM.sink.createElement('style');
     DOM.sink.apply(style, { text: rules });
     DOM.sink.appendChild(DOM.source.getHead(), style);
+
+    // The rules are live in the CSSOM now, but installing them fetches nothing:
+    // a face is only downloaded and activated once rendered content uses it,
+    // which would put that work after the entire first layout. Start it here
+    // instead, so it runs while the component tree is still being built.
+    return DOM.source.startFontLoad(MANROPE_FAMILY);
 }
 
 /**
@@ -1286,8 +1302,16 @@ export class ThemeManager {
      * from `<html>`.
      */
     static setTheme(theme: Theme): void {
-        ensureFontLoaded();
+        const fontLoadStarted = ensureFontLoaded();
+
         ThemeManager.scheduleFontReflow();
+
+        // Only a load that actually started will report back, so only that case
+        // may hold the first layout — arming otherwise would leave the gate
+        // shut until its deadline with nothing on the way to open it.
+        if (fontLoadStarted) {
+            holdFirstLayout();
+        }
 
         ThemeManager.current = theme;
         ThemeManager.resolvedScale = resolveScale(theme);
@@ -1334,7 +1358,22 @@ export class ThemeManager {
         }
 
         ThemeManager.fontReflowScheduled = true;
-        DOM.source.onFontsReady(() => ThemeManager.reflowText());
+        DOM.source.onFontsReady(ThemeManager.onFontsSettled);
+    }
+
+    /**
+     * Runs when a batch of web-font loading settles: refreshes the text metrics,
+     * then opens the startup layout gate so the first flush measures against the
+     * face that just activated.
+     *
+     * @remarks The order is load-bearing. `reflowText` marks every cached text
+     * size stale and re-queues the subscribed components; releasing first would
+     * let the freed flush run against the sizes measured before activation, and
+     * with nothing queued to lay out.
+     */
+    private static onFontsSettled(): void {
+        ThemeManager.reflowText();
+        releaseFirstLayout();
     }
 
     /**

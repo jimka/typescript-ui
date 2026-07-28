@@ -346,6 +346,36 @@ setRuleStyles(rule: CSSStyleRule, styles: Record<string, string | null>): void
 
 `npm run typecheck` flags the missing member on any custom sink.
 
+### `DOMSource` gained `startFontLoad`
+
+Affects only a consumer that implements its own `DOMSource` — like the sink
+change above, this is part of the DOM seam, not something application code
+calls. An `@font-face` rule downloads nothing until rendered content uses it,
+so the framework now asks for the font explicitly as soon as it installs the
+rules, and the return value tells it whether an activation callback will
+follow:
+
+```typescript
+startFontLoad(family: string): boolean
+```
+
+Return `true` only if the call really started an asynchronous load. A source
+that cannot load fonts asynchronously — no CSS Font Loading API, or one
+measuring against baked fonts — returns `false`:
+
+```typescript
+startFontLoad(_family: string): boolean {
+    return false;
+}
+```
+
+The distinction matters beyond bookkeeping. The framework holds its first
+layout pass until the font reports back (see below), and only `true` arms that
+hold. A source that returns `true` without ever settling a load delays the
+first layout by the full 50 ms bound.
+
+`npm run typecheck` flags the missing member on any custom source.
+
 ### Behaviour changes worth a check
 
 Neither of these is a compile error, and neither needs a code change in most
@@ -364,6 +394,27 @@ apps — but both change when a callback runs.
   `document.fonts.ready`, so it fires per swap-in batch and never fires on a
   document that loads no web fonts. A callback registered through it must be
   idempotent and must not be relied on as a one-time "startup finished" hook.
+
+- **The first layout pass now waits for the web font to activate.** Text
+  measured before the bundled face activates is measured against the browser's
+  fallback font, so the first layout used to commit sizes that were wrong the
+  moment the real face arrived. The coalesced layout queue now holds its first
+  flush until the font settles, bounded at 50 ms, and `Tree` and the table body
+  defer their own render passes for the same window. Two timing consequences
+  follow: a post-layout callback registered during startup — through either
+  `Component.afterNextLayout` or `Component.onFirstLayout` — runs after the
+  release rather than on the first frame, so anything measuring geometry from
+  one now sees the post-activation sizes; and `flushLayout()` /
+  `resumeLayout()` still lay out synchronously and deliberately bypass the
+  hold, so a caller using either during startup can still read
+  fallback-measured geometry. `Tree` and the table body are the exception to
+  that second point: they check the hold inside their own render pass, so
+  flushing one during startup lays out its frame but leaves its rows
+  unrendered until the hold ends. Read row geometry after the release — from
+  `Component.afterNextLayout`, say — rather than from a synchronous flush. A
+  programmatic scroll on either view during that window is held and applied on
+  release rather than taking effect immediately, so a scroll offset read back
+  inside the window can still be the pre-scroll one.
 
 ## Versioning policy
 

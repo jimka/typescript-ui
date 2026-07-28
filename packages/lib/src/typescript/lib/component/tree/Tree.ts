@@ -1045,6 +1045,11 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         if (!element || !this._scroller) {
             return;
         }
+
+        if (this.deferRenderWhileFirstLayoutHeld()) {
+            return;
+        }
+
         const scroller = this._scroller;
 
         const totalRows   = this._flatRows.length;
@@ -1091,6 +1096,13 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this._updateSelectionStyle();
 
         scroller.layoutScrollbars(rowWidth, totalHeight);
+
+        // A pass the startup font gate deferred skipped whatever its caller did
+        // after asking for it — including the active-descendant refresh, which
+        // could not name a row that did not exist yet. Redo it now the rows do.
+        if (this.finishResumedRender()) {
+            this._updateActiveDescendant();
+        }
     }
 
     /**
@@ -1197,7 +1209,13 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         }
 
         super.doLayout();
-        this.renderWindow();
+
+        // A pass the startup font gate deferred already renders the window, so
+        // running the unconditional one as well would render twice on the frame
+        // the gate opens.
+        if (!this.renderWindowIfDeferred()) {
+            this.renderWindow();
+        }
 
         return this;
     }

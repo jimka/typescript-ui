@@ -1149,6 +1149,16 @@ export class ModelledDOMSource implements DOMSource {
         // Intentionally inert offline.
     }
 
+    /**
+     * Offline measurement uses baked fonts that are always present, so there is
+     * nothing to fetch and no activation to wait for. Reporting `false` is what
+     * keeps the startup layout gate from ever being armed offline: nothing here
+     * would release it, and every test that drives frames by hand would stall.
+     */
+    startFontLoad(_family: string): boolean {
+        return false;
+    }
+
     getInlineStyle(_handle: Handle, _key: string): string {
         return '';
     }
