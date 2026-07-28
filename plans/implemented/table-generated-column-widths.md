@@ -709,3 +709,49 @@ Three assertion targets, and picking the wrong one produces a flaky test. Cases 
 [^candidates]: Character count is only a proxy for rendered width in a proportional font — `"WWWW"` is wider than `"iiiiiii"`. Measuring the three longest distinct candidates rather than only the longest makes that mismatch harmless in practice. Dropping to a single candidate would save nothing now that measurement is batched: three strings and one string ride the same layout flush.
 
 [^tablepanel]: `TablePanel` is the store-bound table wrapper a database-browser consumer reaches for, and its constructor currently accepts only a store — so `autoSizeColumns`, and in fact every existing `ColumnConfig` option, is unreachable through it. Adding an optional second parameter is additive, keeps every existing `new TablePanel(store)` call working, and is what makes this feature drivable from ordinary consumer code rather than only from a hand-built `Table`.
+
+---
+
+## Implementation Notes
+
+The `[^sibling-scope]` footnote states this plan "adds two new private fields, `_autoWidthsSampled` and `_widthRefs`." The implementation adds a third, `_sampledCandidates: Map<string, string[]>`, holding the longest sampled candidate strings per field name from the last `collectCandidates` pass — consulted by `sampledDigits` (a `number` column's digit count) and `resolveContentCandidates` (a `string`/`auto` column's fallback chain). It exists because `getColumnMinWidth` must stay DOM- and store-free (per `[^min-accessor]`), so a `number` column's digit count can't be recomputed on demand from within `columnWidthPolicy` — it has to read a value already cached by a prior `collectCandidates` pass. This does not endanger the sibling `table-chained-column-resize` plan's rebase: the field is never written by `onColumnResize` or `trimToTarget`, and it does not touch `_columnWidths` / `_savedColumnWidths` — the same seam the footnote describes for the other two fields. It is cleared in `setStore` alongside `_autoWidthsSampled` and `_widthRefs`, for the same reason those are: a new store's candidates must not leak into the next one's derivation.
+
+### Two layout-manager fixes made after the plan was implemented
+
+Both were found by driving the 45-column MiscPanel demo (manual cases 28-33)
+in a real browser, which is where they surface — the offline harness models a
+laid-out component and so reproduces neither by default.
+
+**1. A layout pass against an unresolved size poisoned the width array.**
+`maybeResampleColumnWidths` fires `doLayout()` from the store's change event,
+which for a generated table lands before the table has ever been sized. A
+never-sized component returns `getInnerSize()` as `NaN x NaN` — a non-null
+object, so `doLayout`'s existing `!containerSize` guard passed it through and
+`availableWidth` became `NaN`. `absorbSlackIntoGreedy`'s `slack <= 0.5`
+early-return does not catch `NaN` (every comparison against `NaN` is false),
+so the `NaN` was added to exactly the greedy `string`/`auto` columns and
+stored; later passes took the `rescaleWidths` branch and preserved it. In the
+app, `x += columnWidths[i]` then went `NaN` at the first string column, every
+subsequent `setX` wrote `"NaNpx"` (which the browser drops), and all 45 header
+cells stacked at x=0. Fixed by extending that guard to reject a non-finite
+size — the widths are left alone and the next properly-sized pass derives
+them. Covered by cases R1-R3.
+
+**2. `rescaleWidths` collapsed every flex column when the fixed columns
+alone overflowed the viewport.** This is a deliberate, user-approved
+overrun of this plan's `## Non-Goals` ("`rescaleWidths` ... keeps its current
+behaviour"), which assigns that method to `plans/table-chained-column-resize.md`.
+It was made here because without it the feature is visibly broken in exactly
+the case it exists for. On the 45-column demo the `boolean`/`number`/`date`
+columns alone total ~3770px against an 873px viewport, so
+`newFlexTotal = availableWidth - fixedTotal` is negative and
+`ratio = newFlexTotal / prevFlexTotal` is about `-1.28`. Every flex column
+therefore clamped to its floor on the *first* re-layout — same
+`availableWidth`, no resize involved — so the table rendered correctly for one
+pass and then collapsed its string columns from their derived 188px to the
+78px floor. The guard returns the widths unchanged when `newFlexTotal <= 0`:
+there is no space to share, so the flex columns keep their derived widths and
+the table scrolls horizontally, which is what this plan's `## Overview`
+promises. The edit is one condition in the existing early-return and leaves
+the surrounding arithmetic untouched, so the seam the `[^sibling-scope]`
+footnote describes still holds. Covered by cases R4-R5.

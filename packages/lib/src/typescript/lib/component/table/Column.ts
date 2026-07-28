@@ -19,6 +19,8 @@ export class Column {
     private _field       : Field;
     private _minWidth    : number | undefined;
     private _maxWidth    : number | undefined;
+    private _width       : number | undefined;
+    private _maxContentLength: number | undefined;
     private _hidden      : boolean;
     private _unhideable  : boolean;
     private _readOnly    : boolean;
@@ -38,6 +40,8 @@ export class Column {
         this._field       = field;
         this._minWidth    = config?.minWidth;
         this._maxWidth    = config?.maxWidth;
+        this._width       = config?.width;
+        this._maxContentLength = config?.maxContentLength;
         this._hidden      = config?.hidden ?? false;
         this._unhideable  = config?.unhideable ?? false;
         this._readOnly    = config?.readOnly ?? false;
@@ -73,6 +77,25 @@ export class Column {
      */
     getMaxWidth(): number | undefined {
         return this._maxWidth;
+    }
+
+    /**
+     * Returns the explicit starting width in pixels declared in the spec.
+     *
+     * @returns The declared width, or `undefined` if unset.
+     */
+    getWidth(): number | undefined {
+        return this._width;
+    }
+
+    /**
+     * Returns the longest value this column can hold, in characters, as
+     * declared in the spec.
+     *
+     * @returns The declared character budget, or `undefined` if unset.
+     */
+    getMaxContentLength(): number | undefined {
+        return this._maxContentLength;
     }
 
     /**

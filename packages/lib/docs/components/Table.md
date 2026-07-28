@@ -44,6 +44,8 @@ const table = Table(store, {
 | --- | --- |
 | `field` | Model field name presented in this column. |
 | `minWidth` / `maxWidth` | Width constraints in pixels. |
+| `width` | Explicit starting width in pixels. Wins over the type policy and any sampled content, but is still clamped into `[minWidth, maxWidth]`. |
+| `maxContentLength` | Longest value this column can hold, in characters (e.g. a `varchar(60)` column passes `60`). For a `string`/`auto` column under `autoSizeColumns` this is used only when sampling the store yields no candidates; for a `number` column it outranks the sample. |
 | `hidden` | Initial hidden state. |
 | `unhideable` | When `true`, the user cannot hide this column from the context menu. Takes precedence over `hidden`. |
 | `readOnly` | When `true`, every cell in this column is display-only — double-click does not start an editor, and the cell renders with a subtle grey tint sourced from `--ts-ui-table-cell-readonly-bg`. Selection, keyboard navigation, sort, resize, and export still work. |
@@ -59,6 +61,30 @@ const table = Table(store, {
 | `groupColor` | Optional background color for the parent-header cell. |
 
 `appendUnlisted` (default `true`) controls whether fields not in the `columns` array are auto-generated after the listed ones.
+
+Every column gets a width floor and a starting width derived from its field
+type, whether or not a spec is supplied: a `boolean` column is sized for its
+checkbox, a `glyph` column for one icon, a `date` / `time` / `datetime`
+column for one formatted value, and a `number` column for its digit count.
+None of these read the store. `string` and `auto` columns are the only
+genuinely open-ended ones — by default they stay flex columns that share
+whatever space is left. Setting `autoSizeColumns: true` on the spec turns
+them into sized columns instead, measured from a bounded sample (at most 50
+records) of the values each column actually holds:
+
+```typescript
+import { TablePanel } from '@jimka/typescript-ui/component/table';
+// An empty `columns` array plus the default `appendUnlisted: true`
+// auto-generates one column per model field, each sized to its content.
+const panel = TablePanel(store, { columns: [], autoSizeColumns: true });
+```
+
+For one column, the first rule that applies wins: an explicit `width` beats
+the type policy's derived width (sampled content, for an auto-sized
+`string`/`auto` column), which beats staying flex (`string`/`auto` with
+`autoSizeColumns` unset). A declared `minWidth` replaces the type's floor
+rather than competing with it, and the result is always clamped to
+`[minWidth, maxWidth]`.
 
 `ColumnSpec.rowReadOnly` is an optional predicate `(record) => boolean`. When it returns `true` for a record, every cell in that record's row renders read-only with the grey tint, regardless of the column's own `readOnly` flag. The predicate runs on every row rebind; it must be O(1) and pure. Mutating a store-owned record auto-refreshes the table; call [`store.notifyRecordChanged(record)`](/api/data/classes/AbstractStore#notifyRecordChanged) only for an unowned record or to force a refresh.
 
@@ -255,6 +281,16 @@ the column spec.
 The body uses **virtual scrolling**: only rows visible in the viewport plus a small buffer are in the DOM at any time. A pool of reusable row components is rebound (not recreated) as the user scrolls. Scrolling itself is JS-owned via a [`VirtualScroller`](/components/VirtualScroller) — `translate3d` transform plus two custom [`Scrollbar`](/components/Scrollbar) overlays — with wheel, touch (fling momentum), and keyboard navigation funnelled through the same `setScrollY` / `setScrollX` entry points. See [`Body`](/api/component/table/classes/Body) for the implementation.
 
 Horizontal scrolling kicks in automatically when the combined column width exceeds the table's width.
+
+Deriving column widths costs at most three batched text measurements in
+total, regardless of column count — one for the shared reference strings
+(digit width, formatted reference date), one for the header labels, one for
+the sampled body text — because every string measured in a pass is batched
+into a single document reflow. The derivation runs on first layout, a store
+swap, a reset, and once more after data first arrives (see `autoSizeColumns`
+above) — never per row and never on scroll. When `autoSizeColumns` is on, at
+most 50 records are read to size `string`/`auto` columns; `number` columns
+read the same sample for their digit count.
 
 For large datasets, [`AbstractStore`](/api/data/classes/AbstractStore) automatically offloads sort and filter operations to a Web Worker once the dataset exceeds 1,000 rows.
 

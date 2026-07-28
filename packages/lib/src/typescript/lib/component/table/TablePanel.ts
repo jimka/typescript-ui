@@ -10,6 +10,7 @@ import { Button } from "~/component/button/Button.js";
 import { PaginationBar } from "~/component/display/PaginationBar.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { Table } from "~/component/table/Table.js";
+import type { ColumnSpec } from "~/component/table/ColumnConfig.js";
 import { ExportOptions } from "~/component/table/TableExporter.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { callable } from "~/core/Callable.js";
@@ -37,7 +38,14 @@ class TablePanel extends Container {
     private _spinner: ProgressSpinner | null = null;
     private _paginationBar: PaginationBar | undefined = undefined;
 
-    constructor(store: AbstractStore) {
+    /**
+     * Constructs a TablePanel bound to the given store.
+     *
+     * @param store - The data store to bind to the managed table.
+     * @param spec  - Optional column spec, forwarded to the underlying
+     *   {@link Table} unchanged; omit to auto-generate all columns.
+     */
+    constructor(store: AbstractStore, spec?: ColumnSpec) {
         super();
 
         this.setLayoutManager(new Border());
@@ -69,7 +77,7 @@ class TablePanel extends Container {
         Tooltip.attach(this._rejectBtn, "Reject pending changes");
         this._toolbar.addComponent(this._rejectBtn);
 
-        this._table = new Table(store);
+        this._table = new Table(store, spec);
 
         super.addComponent(this._toolbar, { placement: Placement.NORTH });
         super.addComponent(this._table,   { placement: Placement.CENTER });
