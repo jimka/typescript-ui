@@ -22,6 +22,8 @@ import { Util } from "~/core/Util.js";
 import { TableExporter, ExportOptions } from "~/component/table/TableExporter.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
+import { DOM } from "~/core/DOM.js";
+import { chainRoom, distributeDragChain, DRAG_DISTRIBUTION_EPSILON } from "~/core/DragChain.js";
 
 /** Events emitted by {@link Table}. */
 export type TableEvent = "selection" | "cellclick";
@@ -59,6 +61,12 @@ const HINT_SAMPLE_MAX_CHARS = 60;   // Cap on the maxContentLength probe string.
 // Formatted to measure the width of a date/time/datetime column; a fixed
 // instant so the measurement is deterministic across runs.
 const REFERENCE_DATE = new Date(2000, 11, 31, 23, 59, 59);
+
+// Sub-pixel tolerance below which a resize-drag-grown column total is treated
+// as equal to the available width (`_columnWidthTarget` collapses to 0
+// instead of recording a target the layout would treat as already-grown).
+// The same 0.5 the file's existing width comparisons use (see setColumnVisible).
+const WIDTH_TARGET_EPSILON_PX = 0.5;
 
 /**
  * The floor and starting width a column's field type implies, before any
@@ -148,9 +156,15 @@ class Table extends Component<TableOptions> {
     private _footer           : FooterRow;
     private _footerVisible    : boolean;
     private _columnWidths     : number[] = [];
-    private _resizeOriginClientX: number = 0;
-    private _resizeOriginW0    : number = 0;
-    private _resizeOriginW1    : number = 0;
+    // Index of the column whose right edge is being dragged; `null` when no
+    // drag is live.
+    private _dragEdgeIndex    : number | null = null;
+    // Pointer x consumed so far — advanced only by applied travel (see
+    // `onColumnResize`), never the raw `clientX`.
+    private _dragLastClientX  : number = 0;
+    // The total column width a resize drag grew the table to, or `0` when the
+    // table sits at its available width. Backing field for `getColumnWidthTarget`.
+    private _columnWidthTarget: number = 0;
     private _savedColumnWidths: Map<string, number> = new Map();
     private _columnConfigs    : Map<string, ColumnConfig> = new Map();
     private _exportMenuEnabled: boolean = false;
@@ -435,6 +449,7 @@ class Table extends Component<TableOptions> {
         this._store = store;
         this._columnWidths = [];
         this._savedColumnWidths = new Map();
+        this._columnWidthTarget = 0;
         this._autoWidthsSampled = false;
         this._widthRefs = null;
         this._sampledCandidates = new Map();
@@ -482,6 +497,32 @@ class Table extends Component<TableOptions> {
         });
 
         return this;
+    }
+
+    /**
+     * The pixel width the columns are laid out against: the table's inner
+     * width less the reserved vertical-scrollbar track. Shared by the
+     * column-resize drag handler and the layout manager so both derive the
+     * same number.
+     *
+     * @returns The available column width in pixels, or `0` before first render.
+     */
+    getAvailableColumnWidth(): number {
+        const innerSize = this.getInnerSize();
+
+        return innerSize ? innerSize.width - DOM.source.getScrollBarWidth() : 0;
+    }
+
+    /**
+     * The total column width a resize drag grew the table to, or `0` when the
+     * table sits at its available width. Called by the layout manager so a
+     * drag-widened total survives the next layout pass instead of being
+     * rescaled back to the container's width.
+     *
+     * @returns The drag-grown column width target in pixels, or `0`.
+     */
+    getColumnWidthTarget(): number {
+        return this._columnWidthTarget;
     }
 
     /**
@@ -548,6 +589,12 @@ class Table extends Component<TableOptions> {
         this._columnWidths = (rawTotal > savedTotal + 0.5 && savedTotal > 0)
             ? this.trimToTarget(newVisibleColumns, rawWidths, savedTotal, fieldName)
             : rawWidths;
+
+        // Keep a grown table's target in step with the new column set: showing a
+        // column trims the others back to the same total, hiding one frees its width.
+        if (this._columnWidthTarget > 0) {
+            this._columnWidthTarget = this._columnWidths.reduce((s, w) => s + w, 0);
+        }
 
         const effectiveHidden = this.getEffectiveHiddenSet();
 
@@ -1095,6 +1142,7 @@ class Table extends Component<TableOptions> {
 
         this._columnWidths      = [];
         this._savedColumnWidths = new Map();
+        this._columnWidthTarget = 0;
         // The visible column set just changed shape (source columns <->
         // rotated field/value/filler), and `_widthRefs`'s date/time/datetime
         // reference entries are derived from that set (`dateReferenceKeys`
@@ -1245,78 +1293,111 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Captures the resize origin when a column-resize drag begins: the absolute
-     * pointer `clientX` and the current widths of the adjacent column pair.
-     * {@link onColumnResize} derives the new widths from these origins so
-     * over-travel past a column's `minWidth`/`maxWidth` is absorbed without the
-     * edge decoupling from the cursor on reversal.
+     * Captures the dragged edge when a column-resize drag begins: the index of
+     * the column whose right edge is being dragged and the pointer's starting
+     * `clientX`. {@link onColumnResize} distributes each subsequent frame's
+     * travel from this state, nearest-first, across the columns fanning
+     * outward from the edge.
      *
      * @param colIndex - Zero-based index of the column whose right edge is being dragged.
      * @param clientX  - The absolute pointer `clientX` at the moment the drag began.
      */
     private onColumnResizeStart(colIndex: number, clientX: number): void {
-        const n = this._columnWidths.length;
-
-        if (n === 0 || colIndex >= n - 1) {
+        if (colIndex < 0 || colIndex >= this._columnWidths.length) {
             return;
         }
 
-        this._resizeOriginClientX = clientX;
-        this._resizeOriginW0      = this._columnWidths[colIndex];
-        this._resizeOriginW1      = this._columnWidths[colIndex + 1];
+        this._dragEdgeIndex   = colIndex;
+        this._dragLastClientX = clientX;
     }
 
     /**
-     * Handles a column resize drag, clamping the adjacent column pair to their
-     * per-column `minWidth` and `maxWidth` constraints.
+     * Handles a column resize drag: the dragged edge splits the visible
+     * columns into a left chain `[colIndex, colIndex - 1, …, 0]` and a right
+     * chain `[colIndex + 1, …, n - 1]`, each ordered nearest-first. This
+     * frame's pointer travel is applied on top of the live widths — the
+     * nearest column in the direction of travel absorbs it first, spilling to
+     * the next only once it hits its `minWidth`/`maxWidth`.
+     *
+     * Scavenging from the right chain only happens while the columns still fit
+     * the viewport. Moving right, the right chain gives up width first; once it
+     * is exhausted, further travel grows the table's total column width instead
+     * of stalling, and the table starts to scroll horizontally. From that point
+     * on the right chain is left alone entirely — a table already wider than its
+     * viewport grows and shrinks as a whole, so the dragged edge only moves the
+     * columns left of it. Moving left, that accrued growth is given back first
+     * — the total never falls below {@link getAvailableColumnWidth} — and only
+     * travel past it, once the table fits again, regrows the right chain. The
+     * grown-or-not total is recorded via `_columnWidthTarget` so the layout
+     * manager preserves it instead of rescaling it away.
+     *
+     * The tracked pointer position advances only by the travel actually
+     * applied, not the raw `clientX`. When every chain is exhausted the
+     * applied travel is zero, so travel past the limit accrues a dead zone the
+     * pointer must retrace before the edge moves again — keeping the cursor
+     * glued to the handle on reversal instead of the handle jumping to meet a
+     * far-off cursor.
      *
      * @param colIndex - Zero-based index of the column whose right edge is being dragged.
      * @param clientX  - The absolute pointer `clientX` for this move.
-     *
-     * @remarks The new widths are derived from the origin captured in
-     * {@link onColumnResizeStart} as `originWidth ± (clientX − originClientX)`,
-     * then clamped/redistributed against the pair's `minWidth`/`maxWidth`.
-     * Clamping the absolute result (rather than accumulating per-move deltas)
-     * makes dragging past a column's minimum idempotent: the edge stays at the
-     * boundary until the pointer returns past the coordinate where the clamp
-     * was hit.
      */
     private onColumnResize(colIndex: number, clientX: number): void {
-        const n = this._columnWidths.length;
-
-        if (n === 0 || colIndex >= n - 1) {
+        if (this._dragEdgeIndex === null || colIndex !== this._dragEdgeIndex) {
             return;
         }
 
+        const widths  = this._columnWidths;
         const columns = this.getColumns();
-        const c0   = columns[colIndex];
-        const c1   = columns[colIndex + 1];
-        const min0 = c0 ? this.getColumnMinWidth(c0) : MIN_COLUMN_WIDTH_PX;
-        const max0 = c0?.getMaxWidth() ?? Infinity;
-        const min1 = c1 ? this.getColumnMinWidth(c1) : MIN_COLUMN_WIDTH_PX;
-        const max1 = c1?.getMaxWidth() ?? Infinity;
+        const mins    = columns.map(col => col.getMinWidth() ?? MIN_COLUMN_WIDTH_PX);
+        const maxs    = columns.map(col => col.getMaxWidth() ?? Number.POSITIVE_INFINITY);
 
-        const delta = clientX - this._resizeOriginClientX;
+        // Nearest-first chains fanning out from the dragged edge.
+        const left : number[] = [];
+        const right: number[] = [];
 
-        let w0 = this._resizeOriginW0 + delta;
-        let w1 = this._resizeOriginW1 - delta;
-
-        if (w0 < min0) {
-            w1 += w0 - min0;
-            w0 = min0;
+        for (let i = colIndex; i >= 0; i--) {
+            left.push(i);
         }
 
-        if (w1 < min1) {
-            w0 += w1 - min1;
-            w1 = min1;
+        for (let i = colIndex + 1; i < widths.length; i++) {
+            right.push(i);
         }
 
-        if (w0 < min0 || w1 < min1 || w0 > max0 || w1 > max1) {
-            return;
+        const frameDelta = clientX - this._dragLastClientX;
+        const sign       = frameDelta >= 0 ? 1 : -1;
+        const available  = this.getAvailableColumnWidth();
+        const total      = widths.reduce((s, w) => s + w, 0);
+        // Growth already accrued, which a leftward drag gives back before the right
+        // chain grows. Never negative: the total is floored at `available`.
+        const growth     = Math.max(0, total - available);
+
+        const delta = sign > 0
+            ? Math.min(frameDelta, chainRoom(left, widths, 1, mins, maxs))
+            : Math.min(-frameDelta, chainRoom(left, widths, -1, mins, maxs), chainRoom(right, widths, 1, mins, maxs) + growth);
+
+        if (delta <= DRAG_DISTRIBUTION_EPSILON) {
+            return;   // dead zone — the tracked pointer deliberately stays put
         }
 
-        this._columnWidths[colIndex]     = w0;
-        this._columnWidths[colIndex + 1] = w1;
+        // Rightward: the right chain absorbs everything it can, the rest grows the
+        // total — unless the table already overflows, in which case nothing is
+        // scavenged and the whole travel grows the total. Leftward: the accrued
+        // growth is given back first, and only travel past it (the table fits
+        // again) is absorbed by the right chain.
+        const absorbed = sign > 0
+            ? (growth > WIDTH_TARGET_EPSILON_PX ? 0 : delta)
+            : delta - Math.min(delta, growth);
+        const out      = widths.slice();
+
+        distributeDragChain(left,  widths, delta,    sign, mins, maxs, out);
+        distributeDragChain(right, widths, absorbed, -sign, mins, maxs, out);
+
+        this._dragLastClientX += sign * delta;
+        this._columnWidths     = out;
+
+        const newTotal = out.reduce((s, w) => s + w, 0);
+
+        this._columnWidthTarget = newTotal > available + WIDTH_TARGET_EPSILON_PX ? newTotal : 0;
 
         this.doLayout();
     }
@@ -1331,6 +1412,7 @@ class Table extends Component<TableOptions> {
         this._hiddenColumns = new Set();
         this.initHiddenFromSpec();
         this._savedColumnWidths = new Map();
+        this._columnWidthTarget = 0;
         // The visible column set may change shape (a spec-hidden temporal
         // column reappears, or vice versa), and `_widthRefs`'s date/time/
         // datetime entries are derived from `dateReferenceKeys`' walk of the
@@ -1750,6 +1832,7 @@ class Table extends Component<TableOptions> {
 
         this._columnWidths      = [];
         this._savedColumnWidths = new Map();
+        this._columnWidthTarget = 0;
         this._widthRefs         = null;
 
         this.doLayout();

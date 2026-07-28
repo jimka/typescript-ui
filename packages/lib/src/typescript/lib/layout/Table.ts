@@ -83,7 +83,9 @@ class Table extends LayoutManager {
      * @remarks Per-column widths are read from the Table component. If the stored widths do not
      * match the current column count (first render or model swap) they are re-initialized using
      * type-aware sizing clamped to each column's `minWidth` / `maxWidth`. On a container resize
-     * the existing widths are scaled proportionally, again clamped to per-column constraints.
+     * the existing widths are scaled proportionally, again clamped to per-column constraints —
+     * toward the container's available width, or toward a wider total a resize drag grew the
+     * table to, whichever is larger, so a drag-widened table is not rescaled back down.
      */
     doLayout() {
         const container = <TableComponent>this.getContainer();
@@ -111,7 +113,12 @@ class Table extends LayoutManager {
         const containerInsets = container.getContentInsets();
         const columns         = container.getColumns();
         const columnCount     = container.getHeader().getColumns().length;
-        const availableWidth  = containerSize.width - DOM.source.getScrollBarWidth();
+        const availableWidth  = container.getAvailableColumnWidth();
+        // A resize drag may have grown the table's total column width past
+        // `availableWidth`; rescaling toward the target instead of the raw
+        // available width is what keeps `rescaleWidths` from squeezing a
+        // drag-widened table back to the container's width on the next pass.
+        const targetWidth     = Math.max(availableWidth, container.getColumnWidthTarget());
 
         let columnWidths = container.getColumnWidths();
 
@@ -119,7 +126,7 @@ class Table extends LayoutManager {
             columnWidths = this.initializeWidths(container, columns, availableWidth);
             container.setColumnWidths(columnWidths);
         } else {
-            columnWidths = this.rescaleWidths(container, columns, columnWidths, availableWidth);
+            columnWidths = this.rescaleWidths(container, columns, columnWidths, targetWidth);
             container.setColumnWidths(columnWidths);
         }
 
