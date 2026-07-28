@@ -1,6 +1,6 @@
 import { callable, Component, DOM, Event, Panel } from '@jimka/typescript-ui/core';
 import type { Handle, PanelOptions } from '@jimka/typescript-ui/core';
-import { Fit } from '@jimka/typescript-ui/layout';
+import { VBox } from '@jimka/typescript-ui/layout';
 import { Markdown } from '@jimka/typescript-ui/component/display';
 import type { MarkdownLinkResolution } from '@jimka/typescript-ui/component/display';
 import { Router } from '@jimka/typescript-ui/router';
@@ -8,6 +8,10 @@ import { getPage } from '../content/pages.js';
 import { resolveDocLink, resolveApiLink } from '../content/links.js';
 import { apiFileFor, apiDirOf, fetchApiPage } from '../content/api.js';
 import { notFoundSource, fetchErrorSource } from '../content/notFound.js';
+import { splitBlocks } from '../content/blocks.js';
+import type { DocBlock } from '../content/blocks.js';
+import { getDemo, missingDemoSource } from '../content/demos.js';
+import { DocsDemo } from './DocsDemo.js';
 
 // The path prefix the site is served under — matches the base the app's
 // Router is constructed with (see main.ts), so a clicked href counts as a
@@ -15,14 +19,17 @@ import { notFoundSource, fetchErrorSource } from '../content/notFound.js';
 const BASE_URL = import.meta.env.BASE_URL;
 
 /**
- * The centre content pane: a scrolling `Markdown` viewer showing the page for
- * the current route, with in-app link interception — see "The app intercepts
- * link clicks on its own subtree" in plans/implemented/packages-docs.md.
+ * The centre content pane: a scrolling, stacked column of blocks — prose
+ * `Markdown` segments and live `DocsDemo` demos — showing the page for the
+ * current route, with in-app link interception — see "The app intercepts
+ * link clicks on its own subtree" in plans/implemented/packages-docs.md and
+ * "A page is an ordered list of blocks, split at render time" in
+ * plans/implemented/docs-inline-demos.md.
  */
 class DocsContent extends Panel {
 
-    private readonly _router:   Router;
-    private readonly _markdown: Markdown;
+    private readonly _router: Router;
+    private readonly _blocks: Component[] = [];
 
     // The path currently rendered, or null before the first showPath call —
     // showPath skips re-rendering when the incoming path is unchanged, so a
@@ -76,12 +83,9 @@ class DocsContent extends Panel {
         (this._linkBaseDir === null ? resolveDocLink(href, this._router) : resolveApiLink(href, this._linkBaseDir, this._router));
 
     constructor(router: Router, options?: PanelOptions) {
-        super(options, { layoutManager: Fit(), autoScroll: 'y' });
+        super(options, { layoutManager: VBox({ stretching: true, spacing: 0 }), autoScroll: 'y' });
 
         this._router = router;
-
-        this._markdown = new Markdown(undefined, { linkResolver: this.resolveLink });
-        this.addComponent(this._markdown);
 
         Event.addSubtreeListener(this, 'click', this.handleLinkClick);
     }
@@ -162,8 +166,56 @@ class DocsContent extends Panel {
      * @param source - The Markdown source to render.
      */
     private showSource(source: string): void {
-        this._markdown.setMarkdown(source);
+        this.showBlocks(splitBlocks(source));
         this.applyFragment(this._targetFragment);
+    }
+
+    /**
+     * Replaces the pane's blocks with `blocks`: disposes every outgoing
+     * block, empties the component tree, then builds and adds the incoming
+     * ones — the dispose-then-empty-then-rebuild order `MenuBar.setMenus`
+     * uses, load-bearing because `removeAllComponents` does not dispose and
+     * `dispose()` does not unparent.
+     *
+     * @param blocks - The page's blocks, in document order.
+     */
+    private showBlocks(blocks: DocBlock[]): void {
+        for (const block of this._blocks) {
+            block.dispose();
+        }
+
+        this._blocks.length = 0;
+        this.removeAllComponents();
+
+        for (const block of blocks) {
+            this._blocks.push(this.buildBlock(block));
+        }
+
+        for (const component of this._blocks) {
+            this.addComponent(component);
+        }
+
+        this.scheduleLayout();
+    }
+
+    /**
+     * Builds the component for one block: a prose segment renders through
+     * the shared link resolver; a demo resolves its id through the demo
+     * registry, falling back to {@link missingDemoSource} when the id has
+     * no registered module — a mismatch between two independently edited
+     * artefacts, not a code bug.
+     *
+     * @param block - The block to build.
+     * @returns The component to add to the pane.
+     */
+    private buildBlock(block: DocBlock): Component {
+        if (block.kind === 'markdown') {
+            return new Markdown(block.source, { linkResolver: this.resolveLink });
+        }
+
+        const entry = getDemo(block.id);
+
+        return entry !== null ? new DocsDemo(entry) : new Markdown(missingDemoSource(block.id));
     }
 
     /**
@@ -273,15 +325,23 @@ class DocsContent extends Panel {
     /**
      * Walks up from `node` to the nearest ancestor `<a>`, so a click on an
      * inline element inside a link (e.g. `<strong>`) still resolves to the
-     * link.
+     * link. The walk stops the moment it crosses a `DocsDemo`'s own element
+     * (marked `data-docs-demo`), so a link inside a live demo's own content
+     * — a `Link` component, a nested `Markdown` — is left to the demo rather
+     * than driving the docs router.
      *
      * @param node - The event target's element handle.
-     * @returns The `<a>` handle, or `null` if `node` has no anchor ancestor.
+     * @returns The `<a>` handle, or `null` if `node` has no anchor ancestor
+     *   before reaching a demo boundary.
      */
     private closestAnchor(node: Handle | null): Handle | null {
         let current = node;
 
         while (current) {
+            if (DOM.source.getAttribute(current, 'data-docs-demo') !== null) {
+                return null;
+            }
+
             if (DOM.source.getTagName(current) === 'A') {
                 return current;
             }
