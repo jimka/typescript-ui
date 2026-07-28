@@ -49,6 +49,11 @@ onto a zero-specificity `:where(.ts-ui-component)` rule. Any code that
 rewrites an element's whole `class` attribute must re-state that class, or
 the element loses its positioning and collapses into document flow.
 
+**Breaking:** `SplitGutter.destroy()` and `CollapseButton.destroy()` are
+removed. Both only unhooked listeners and left the component's per-instance
+stylesheet rules on the shared sheet. Call the inherited `dispose()`
+instead, which does the listener cleanup *and* the full teardown.
+
 See [Migration](/reference/migration#upgrading-from-0-2-x-to-0-3-0) for the
 full upgrade note.
 
@@ -288,6 +293,10 @@ full upgrade note.
   itself; the default `groupRenderer` ignores it, so a container node never
   shows one.
 
+- **`VirtualScroller.dispose()`** — disposes the scroller's two overlay
+  `Scrollbar`s. `VirtualRowView` calls it on teardown, so an owner of a
+  `Table`, `TreeTable` or `Tree` needs no change.
+
 ### Fixed
 
 - **List rows no longer stack on top of each other after a selection
@@ -359,6 +368,28 @@ full upgrade note.
   release) is ignored instead of clearing the node selection — this used to
   happen for any pan, including one starting on empty canvas or ending there
   after beginning on a node.
+
+- **Overlay scrollbars, split/border/accordion gutters, accordion section
+  headers and wrappers, a `Rail`'s collapse chevron, and a dock region's
+  drop-zone overlay no longer leak their stylesheet rules on teardown.** Each
+  is appended straight onto its owner's element rather than registered as a
+  child component, so the owner's `destructor()` recursion never reached it
+  and its per-instance rule survived on the shared sheet. Each of the owners
+  listed here now disposes what it raw-appended.
+
+- **A completed drag no longer leaks its chrome's stylesheet rules.**
+  `DragManager` builds a `DragGhost`, a `DragFeedback` and a
+  `ReorderIndicator` for every committed gesture and previously only detached
+  them at the end, so the shared sheet grew by one rule per drag and never
+  shrank — across tab, split and dock drags alike. A ghost returned by a
+  caller's `ghostFactory` is still only detached, since that component
+  belongs to the caller.
+
+- **`Border.doLayout()` and `Accordion.doLayout()` no longer fail when they
+  run before the container has a DOM element.** Both now defer to the next
+  pass instead, matching `HBox`, `VBox`, `Grid`, `Split` and `Tab`. An
+  `autoScroll` host's synchronous layout pass during its own construction is
+  what used to trigger this against a not-yet-rendered child.
 
 ## 0.2.0
 

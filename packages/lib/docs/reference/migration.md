@@ -376,6 +376,25 @@ first layout by the full 50 ms bound.
 
 `npm run typecheck` flags the missing member on any custom source.
 
+### `SplitGutter.destroy()` and `CollapseButton.destroy()` were removed
+
+Both only unhooked listeners and left the component's per-instance stylesheet
+rule on the shared sheet — call the inherited `dispose()` instead, which does
+the listener cleanup *and* the full teardown:
+
+```typescript
+// Before
+gutter.destroy();
+collapseButton.destroy();
+
+// After
+gutter.dispose();
+collapseButton.dispose();
+```
+
+`npm run typecheck` flags any remaining call site — neither method exists
+anymore.
+
 ### Behaviour changes worth a check
 
 Neither of these is a compile error, and neither needs a code change in most
