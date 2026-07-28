@@ -3,7 +3,23 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
+import { Favicon, DEFAULT_FAVICON } from "~/core/Favicon.js";
 import { ThemeManager, ModernTheme } from "~/core/Theme.js";
+
+/**
+ * Options for the singleton {@link Body}.
+ *
+ * @category Core
+ */
+export interface BodyOptions extends ComponentOptions {
+    /**
+     * Browser-tab icon. A URL or `data:` URI installs that icon; `false`
+     * suppresses injection entirely. Omitted, the library's built-in mark is
+     * used. In every case a `<link rel="icon">` already present in the page's
+     * HTML wins and nothing is injected.
+     */
+    favicon?: string | false;
+}
 
 /**
  * A {@link Component} that wraps the page's `<body>` element.
@@ -18,7 +34,7 @@ import { ThemeManager, ModernTheme } from "~/core/Theme.js";
  *
  * @category Core
  */
-export class Body extends Component {
+export class Body extends Component<BodyOptions> {
 
     private static readonly INSTANCE: Body = new Body();
 
@@ -42,6 +58,9 @@ export class Body extends Component {
      * `Component.applyOptions`), so the body's viewport-size tracking and
      * theme set up at construction are preserved.
      *
+     * Also installs the browser-tab icon, unless the page already declares a
+     * `<link rel="icon">` of its own or `options.favicon` is `false`.
+     *
      * @param options - Component options to apply (layout manager, children, …).
      *
      * @returns The singleton Body instance, for chaining.
@@ -53,11 +72,59 @@ export class Body extends Component {
      * swapped since construction (a test harness); it is a no-op rebind
      * otherwise.
      */
-    static init(options: ComponentOptions = {}): Body {
+    static init(options: BodyOptions = {}): Body {
         this.INSTANCE.reattachElementBuffers();
         this.INSTANCE.applyOptions(options);
 
+        // The built-in default is dispatched here rather than from
+        // applyOptions, which also runs during the singleton's construction at
+        // module import — too early for a caller to have opted out, and before
+        // a test harness has swapped the DOM seams.
+        if (options.favicon === undefined) {
+            this.INSTANCE.setFavicon(DEFAULT_FAVICON);
+        }
+
         return this.INSTANCE;
+    }
+
+    /** @inheritDoc */
+    protected applyOptions(options: BodyOptions): this {
+        super.applyOptions(options);
+
+        if (options.favicon !== undefined) this.setFavicon(options.favicon);
+
+        return this;
+    }
+
+    /**
+     * Installs the browser-tab icon, or suppresses it.
+     *
+     * A `<link rel="icon">` the page's own HTML declares always wins, so this
+     * writes nothing when one is present. `false` suppresses injection; it does
+     * not remove an icon already installed.
+     *
+     * @param favicon - The icon URL or `data:` URI, or `false` for none.
+     *
+     * @returns This component, for method chaining.
+     */
+    setFavicon(favicon: string | false): this {
+        this._options.favicon = favicon;
+
+        if (favicon !== false) {
+            Favicon.install(favicon);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the browser-tab icon this body was configured with.
+     *
+     * @returns The configured URL or `data:` URI, `false` when injection is
+     *   suppressed, or the library's built-in mark when nothing was configured.
+     */
+    getFavicon(): string | false {
+        return this._options.favicon ?? DEFAULT_FAVICON;
     }
 
     private constructor() {

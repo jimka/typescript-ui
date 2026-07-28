@@ -26,6 +26,8 @@ export { Aria } from '~/core/Aria.js';
 export type { AriaRole, AriaSort, AriaLive, AriaOrientation } from '~/core/Aria.js';
 export { RovingTabIndex } from '~/core/RovingTabIndex.js';
 export { Body } from '~/core/Body.js';
+export type { BodyOptions } from '~/core/Body.js';
+export { Favicon, DEFAULT_FAVICON } from '~/core/Favicon.js';
 export { AnimatedDropdown, fadeShow, fadeHideAndDetach } from '~/core/AnimatedDropdown.js';
 export type { AnimatedDropdownOptions, FadeOptions } from '~/core/AnimatedDropdown.js';
 export { LayerManager } from '~/core/LayerManager.js';
