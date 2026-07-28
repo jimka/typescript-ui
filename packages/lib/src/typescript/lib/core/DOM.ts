@@ -1281,6 +1281,32 @@ export interface DOMSource {
     onFontsReady(callback: () => void): void;
 
     /**
+     * Starts downloading and activating `family` now, rather than leaving the
+     * fetch to be triggered by the first text that renders in it.
+     *
+     * An `@font-face` rule on its own downloads nothing: the browser fetches
+     * and activates a face only once rendered content actually uses it, which
+     * puts that work *after* the whole first layout instead of alongside it.
+     * Starting it as soon as the rules are installed lets the face arrive while
+     * the component tree is still being built.
+     *
+     * @param family - The `font-family` name to start loading, as it appears in
+     *   the `@font-face` rule.
+     *
+     * @returns `true` when an asynchronous load was actually started, so the
+     *   caller can expect {@link onFontsReady} to follow; `false` when this
+     *   source cannot load fonts asynchronously at all — an engine with no CSS
+     *   Font Loading API, or an offline source measuring against baked fonts.
+     *   A caller that defers work until the font settles must not defer on
+     *   `false`, or it would be waiting for a callback that never comes.
+     *
+     * @remarks Best-effort and fire-and-forget: a failed load is not an error
+     *   (the `font-display: swap` fallback stands, and {@link onFontsReady}
+     *   still settles the measurements).
+     */
+    startFontLoad(family: string): boolean;
+
+    /**
      * Looks up an element by its `id`.
      *
      * @param id - The element id (no `#` prefix).
@@ -2296,6 +2322,31 @@ export class ProductionDOMSource implements DOMSource {
         // settles (loaded or errored), so it catches the swap-in itself — and
         // any later batch, such as a second subset or a lazily used family.
         fonts.addEventListener('loadingdone', () => callback());
+    }
+
+    /** @inheritDoc */
+    startFontLoad(family: string): boolean {
+        const fonts = document.fonts;
+
+        if (!fonts) {
+            return false;
+        }
+
+        // `load` matches faces by the CSS font shorthand and by the characters
+        // its second argument needs; the default (a single space) selects the
+        // subset covering the Basic Latin range, which is the one virtually all
+        // UI text renders from. Any further subset stays lazy and is picked up
+        // by the `loadingdone` batch it settles in.
+        //
+        // The size in the shorthand is required syntax, not a constraint: one
+        // variable face covers every size and the 200-800 weight range, so this
+        // activates the same file the first laid-out text would have. A
+        // rejection means the face is unavailable, which the `swap` fallback
+        // already covers — swallow it rather than surfacing an unhandled
+        // rejection for a purely opportunistic fetch.
+        fonts.load(`14px "${family}"`).catch(() => {});
+
+        return true;
     }
 
     /** @inheritDoc */

@@ -4,6 +4,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
+import { isFirstLayoutHeld } from "~/core/FirstLayoutGate.js";
 
 /** Number of off-screen rows to render above and below the visible viewport. */
 const SCROLL_BUFFER = 2;
@@ -48,6 +49,16 @@ abstract class VirtualRowView<
     protected _rowGeom      : Array<{ ty: number, w: number, h: number } | null> = [];
     protected _rowDisplayed : boolean[]                                          = [];
     protected _scroller     : VirtualScroller | null                             = null;
+
+    /** Whether the startup font gate skipped a render pass that still owes a run. */
+    private _renderDeferred: boolean = false;
+    /** Whether the render now in flight is the one a skipped pass left pending. */
+    private _renderResumed : boolean = false;
+    /** Scroll offsets the gate held back, applied once a render pass has run. */
+    private _pendingScrollX: number | null = null;
+    private _pendingScrollY: number | null = null;
+    /** A row reveal the gate held back, recomputed once a render pass has run. */
+    private _pendingScrollRow: number | null = null;
 
     /**
      * Returns the height in pixels of a single row. Read on every window /
@@ -132,7 +143,14 @@ abstract class VirtualRowView<
      * @param x - The new scroll position in pixels.
      */
     setScrollX(x: number): this {
+        // Ahead of the hold: a programmatic scroll cancels an in-flight wheel
+        // ease whether or not the offset itself has to wait.
         this._scroller?.resetWheelEase();
+
+        if (this.holdScrollWhileFirstLayoutHeld("x", x)) {
+            return this;
+        }
+
         this._scroller?.setScrollX(x);
 
         return this;
@@ -145,10 +163,95 @@ abstract class VirtualRowView<
      * @param y - The new scroll position in pixels.
      */
     setScrollY(y: number): this {
+        // Ahead of the hold: a programmatic scroll cancels an in-flight wheel
+        // ease whether or not the offset itself has to wait.
         this._scroller?.resetWheelEase();
+
+        if (this.holdScrollWhileFirstLayoutHeld("y", y)) {
+            return this;
+        }
+
         this._scroller?.setScrollY(y);
 
         return this;
+    }
+
+    /**
+     * Holds a scroll offset set while the startup font gate is holding this
+     * view's render pass, for {@link applyPendingScroll} to apply once the pass
+     * has run.
+     *
+     * @param axis - Which offset is being set.
+     * @param offset - The requested offset in pixels.
+     *
+     * @returns `true` when the caller must return without scrolling.
+     *
+     * @remarks The scroller clamps every offset against a content extent that
+     * only the render pass publishes, so an offset set while that pass is
+     * deferred clamps to 0 and the request is lost — a row revealed during
+     * startup would end up selected but off-screen. This guards the offsets
+     * that are viewport-independent and so can be replayed verbatim: the
+     * table's `scrollToRecord`, and a consumer restoring a saved offset.
+     * `scrollRowIntoView` is held one level higher instead, by row index, since
+     * its target depends on a height the gate is also holding. The table's
+     * `scrollColumnIntoView` has that same width dependence but fires only from
+     * a pooled cell's editor, which cannot exist while the pass is deferred.
+     */
+    private holdScrollWhileFirstLayoutHeld(axis: "x" | "y", offset: number): boolean {
+        if (!isFirstLayoutHeld()) {
+            // This offset is being applied for real, so it supersedes anything
+            // held for the same axis — otherwise the held one would replay on
+            // the next render and revert it. A held row reveal is a vertical
+            // request too, so it goes with the Y offset.
+            if (axis === "x") {
+                this._pendingScrollX = null;
+            } else {
+                this._pendingScrollY   = null;
+                this._pendingScrollRow = null;
+            }
+
+            return false;
+        }
+
+        if (axis === "x") {
+            this._pendingScrollX = offset;
+        } else {
+            this._pendingScrollY   = offset;
+            this._pendingScrollRow = null;
+        }
+
+        return true;
+    }
+
+    /**
+     * Applies the scroll offsets {@link holdScrollWhileFirstLayoutHeld} held
+     * back, now that a render pass has published the content extent they clamp
+     * against. A no-op once they are applied.
+     */
+    private applyPendingScroll(): void {
+        const x   = this._pendingScrollX;
+        const y   = this._pendingScrollY;
+        const row = this._pendingScrollRow;
+
+        this._pendingScrollX   = null;
+        this._pendingScrollY   = null;
+        this._pendingScrollRow = null;
+
+        if (x !== null) {
+            this.setScrollX(x);
+        }
+
+        if (y !== null) {
+            this.setScrollY(y);
+        }
+
+        // Applied after the offsets, which is what makes a reveal win over a
+        // raw offset held before it. The reverse order is handled the other
+        // way: a raw offset set later clears the reveal outright, so the two
+        // vertical requests always resolve to whichever came last.
+        if (row !== null) {
+            this.scrollRowIntoView(row);
+        }
     }
 
     /**
@@ -315,6 +418,105 @@ abstract class VirtualRowView<
     }
 
     /**
+     * Skips a render pass while the startup font gate is held, arranging for it
+     * to run once the gate opens.
+     *
+     * @returns `true` when the caller must return without rendering.
+     *
+     * @remarks Both subclasses call {@link renderWindow} from many synchronous
+     * entry points — `init`, a data change, a selection move — so a row's
+     * geometry is routinely committed outside the coalesced layout queue, and
+     * `init` in particular commits it the moment the element exists. Holding the
+     * queue therefore does not hold these views; they have to check the gate
+     * themselves. Deferring at this one choke point covers every entry point at
+     * once, rather than guarding each caller.
+     */
+    protected deferRenderWhileFirstLayoutHeld(): boolean {
+        if (!isFirstLayoutHeld()) {
+            // This render is going ahead, which satisfies anything a held pass
+            // left pending — clearing it keeps a later layout from replaying a
+            // startup-era pass over the fresher state this one just committed.
+            // Note that it also took over that pass's unfinished business, so
+            // flag it for `finishResumedRender` to pick up once it has rendered.
+            this._renderResumed  = this._renderDeferred;
+            this._renderDeferred = false;
+
+            return false;
+        }
+
+        this._renderDeferred = true;
+        this.scheduleLayout();
+
+        return true;
+    }
+
+    /**
+     * Whether the last render pass on this view was skipped by the startup font
+     * gate and is still waiting to run.
+     *
+     * @returns `true` while a pass is pending.
+     */
+    protected wasRenderDeferred(): boolean {
+        return this._renderDeferred;
+    }
+
+    /**
+     * Reports, once, that the render now finishing is the one a held pass left
+     * pending — so the caller can redo the post-render work that pass skipped.
+     *
+     * @returns `true` exactly once per resumed pass, at the end of the render
+     *   that resumed it.
+     *
+     * @remarks Called at the tail of {@link renderWindow} rather than from a
+     * layout hook because a render resumes from whichever entry point reaches
+     * it first, and for the table body that is the parent table layout calling
+     * `renderWindow` directly rather than anything going through `doLayout`.
+     */
+    protected finishResumedRender(): boolean {
+        // Read and clear before applying the scroll: applying it re-enters
+        // `renderWindow` through the scroller's onScroll hook, and that nested
+        // pass resets this flag. Reading it afterwards would lose the caller's
+        // post-render work on exactly the passes that carry both.
+        const resumed = this._renderResumed;
+
+        this._renderResumed = false;
+
+        // This pass has published the content extent, so any held offset can be
+        // applied now — whether or not the pass is itself the deferred one.
+        this.applyPendingScroll();
+
+        return resumed;
+    }
+
+    /**
+     * Runs the render pass the startup font gate deferred, if one is pending.
+     * Each subclass calls this from its own `doLayout`, which is what picks the
+     * pass back up once the gate opens.
+     *
+     * @returns `true` when a deferred pass ran, so the caller can skip a render
+     *   of its own and refresh whatever it keeps in step with the rendered rows.
+     *
+     * @remarks A paused view keeps its pass pending rather than running it: a
+     * parent's layout recursion reaches `Body.doLayout` regardless of the
+     * child's pause state, so rendering here would defeat a `pauseLayout` the
+     * caller asked for. (`Tree.doLayout` already returns early when paused, so
+     * the guard only binds for the body.) `resumeLayout` runs a layout of its
+     * own, which picks the pass up.
+     */
+    protected renderWindowIfDeferred(): boolean {
+        if (!this._renderDeferred || this.isLayoutPaused()) {
+            return false;
+        }
+
+        // The pending flag is left for `renderWindow`'s own gate check to
+        // consume: that is what marks this render as the resumed one, which
+        // `finishResumedRender` reads at the end of the pass.
+        this.renderWindow();
+
+        return true;
+    }
+
+    /**
      * Re-binds and re-renders every pooled row after a text-metrics reflow —
      * a theme change, or the web font swapping in over the fallback face.
      *
@@ -344,6 +546,16 @@ abstract class VirtualRowView<
      */
     protected scrollRowIntoView(index: number): void {
         if (index < 0 || !this._scroller) {
+            return;
+        }
+
+        // Hold the row, not a target. The target depends on this view's height,
+        // and at startup that height arrives from the very layout the gate is
+        // holding — so computing it now would either read an unset height and
+        // reveal nothing, or read 0 and scroll the row just out of view.
+        if (isFirstLayoutHeld()) {
+            this._pendingScrollRow = index;
+
             return;
         }
 
