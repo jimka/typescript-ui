@@ -1062,7 +1062,7 @@ class Split extends LayoutManager {
         for (const gutter of this._gutters) {
             let gutterElement = gutter.getElement()!;
             DOM.sink.removeChild(DOM.source.getParentNode(gutterElement)!, gutterElement);
-            gutter.destroy();
+            gutter.dispose();
         }
 
         this._gutters = [];

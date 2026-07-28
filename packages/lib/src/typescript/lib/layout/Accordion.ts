@@ -1116,8 +1116,10 @@ class Accordion extends LayoutManager {
     }
 
     /**
-     * Detaches from the container, removing all header and panel wrapper elements
-     * from the DOM and moving content elements back to the container.
+     * Detaches from the container, moving each section's content element back
+     * to the container and disposing every header and panel wrapper — they
+     * are raw-appended to the container's element rather than registered as
+     * children, so nothing else reaches their teardown.
      */
     detach(): this {
         const container = this.getContainer();
@@ -1159,8 +1161,25 @@ class Accordion extends LayoutManager {
                 DOM.sink.appendChild(container.getElement()!, component.getElement()!);
             }
 
-            DOM.sink.removeElement(this._headers[i].getElement()!);
-            DOM.sink.removeElement(this._panelWrappers[i].getElement()!);
+            // Tools belong to the caller, not to this manager, and reach a
+            // header from two places: `addTool` registers a global tool on
+            // every header it is revealed on, and `createSection` registers
+            // each `AccordionConstraints.tools` entry on its own header. Both
+            // become children of the header's tool group, so both must be
+            // released before the header is disposed — otherwise its dispose
+            // recursion destroys a component the caller still holds and may
+            // re-add elsewhere. This is the same protection the content
+            // children get by being reparented above.
+            const sectionTools = component
+                ? ((this.getLayoutConstraints(component) as AccordionConstraints | undefined)?.tools ?? [])
+                : [];
+
+            for (const tool of [...this._tools, ...sectionTools]) {
+                this._headers[i].removeTool(tool);
+            }
+
+            this._headers[i].dispose();
+            this._panelWrappers[i].dispose();
         }
 
         this._headers = [];
@@ -1169,7 +1188,7 @@ class Accordion extends LayoutManager {
 
         for (const gutter of this._resizeGutters) {
             DOM.sink.removeElement(gutter.getElement()!);
-            gutter.destroy();
+            gutter.dispose();
         }
 
         this._resizeGutters = [];

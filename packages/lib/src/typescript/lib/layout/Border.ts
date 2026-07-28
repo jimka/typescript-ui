@@ -1184,7 +1184,7 @@ class Border extends LayoutManager {
                 DOM.sink.removeChild(parent, element);
             }
 
-            gutter.destroy();
+            gutter.dispose();
         }
 
         this._gutters.clear();
