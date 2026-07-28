@@ -37,6 +37,13 @@ app.addComponent(Table(store),                { placement: Placement.CENTER });
 
 [`BorderOptions`](/api/layout/interfaces/BorderOptions) accepts `spacing` declaratively (the inter-region pixel spacing); the `setComponentSpacing` setter still works for runtime updates.
 
+<!-- demo: border-regions -->
+> **Live demo** — all five regions filled with labelled panels; north,
+> south, and west are `collapsible: true`, so double-clicking a gutter
+> collapses them.
+> [Open the Border page](https://jimka.github.io/typescript-ui/layouts/Border)
+<!-- /demo -->
+
 ## Per-child constraints
 
 The constraint is `{ placement: Placement }` — see [`Placement`](/api/primitive/enumerations/Placement). Each region holds at most one child:

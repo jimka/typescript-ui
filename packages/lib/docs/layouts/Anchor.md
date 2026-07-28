@@ -73,6 +73,13 @@ Notes:
 - An over-constrained stretch (`left` + `right` exceeding the inner extent) clamps the derived extent to `0` rather than going negative.
 - Percentages resolve against the container's **inner** size (post-insets), the same coordinate space the committed rect lives in — not its border box.
 
+<!-- demo: anchor-positions -->
+> **Live demo** — a full-width header band, a bottom-right pinned button,
+> and a percentage-anchored centre panel, all moving live as the pane
+> resizes.
+> [Open the Anchor page](https://jimka.github.io/typescript-ui/layouts/Anchor)
+<!-- /demo -->
+
 ## When to use it
 
 - Edge-pinned toolbars, status bars, or header bands that must span the full width however the container resizes.

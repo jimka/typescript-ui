@@ -27,6 +27,11 @@ workspace.addComponent(detailTable); // right
 
 [`SplitOptions`](/api/layout/interfaces/SplitOptions) accepts `orientation` declaratively, typed as the [`AxisOrientation`](/api/primitive/type-aliases/AxisOrientation) union (`'horizontal' | 'vertical'`); the `setOrientation` setter still works for runtime updates.
 
+<!-- demo: split-panes -->
+> **Live demo** — two panes divided by a draggable gutter.
+> [Open the Split page](https://jimka.github.io/typescript-ui/layouts/Split)
+<!-- /demo -->
+
 ## Three+ panes
 
 Add more components to get more panes; `Split` inserts a gutter between each pair:

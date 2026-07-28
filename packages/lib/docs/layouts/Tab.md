@@ -39,6 +39,12 @@ tabbed.addComponent(advancedPanel,  { name: 'Advanced' });
 
 [`TabOptions`](/api/layout/interfaces/TabOptions) accepts a `listeners` bag declaratively; call `on(event, fn)` for runtime wiring.
 
+<!-- demo: tab-strip -->
+> **Live demo** — three tabs over labelled panels, selected by clicking the
+> strip.
+> [Open the Tab page](https://jimka.github.io/typescript-ui/layouts/Tab)
+<!-- /demo -->
+
 ## Events
 
 | Event | Payload | Fires when |

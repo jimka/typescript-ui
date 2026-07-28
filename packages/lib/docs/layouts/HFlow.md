@@ -32,6 +32,12 @@ Children are placed at their preferred size (clamped to their own min / max) fro
 
 `HFlow` never shrinks, stretches, or weights its children — wrapping *is* its overflow relief. There is no `mode`, `stretching`, or `weight` knob; for an equal-width single row, use [`HBox`](/layouts/HBox) with `mode: "equal"` instead.
 
+<!-- demo: hflow-wrap -->
+> **Live demo** — a dozen buttons that reflow into more or fewer rows as
+> the pane narrows.
+> [Open the HFlow page](https://jimka.github.io/typescript-ui/layouts/HFlow)
+<!-- /demo -->
+
 ## Spacing
 
 Two independent gaps control the layout:

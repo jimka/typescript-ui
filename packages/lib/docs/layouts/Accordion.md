@@ -54,6 +54,12 @@ sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 
 > **The header is no longer a `Button`.** [`AccordionHeader`](/api/component/container/classes/AccordionHeader) is a styled [`Component`](/api/core/classes/Component) hosting an [`HBox`](/api/layout/classes/HBox) row — an optional leading glyph + a `chromeless` title button (the clickable toggle and focus target), the tool group, and the chevron cell. Because tools are *siblings* of the title button rather than descendants, a tool click is structurally not a header toggle — there is nothing to stop from propagating.
 
+<!-- demo: accordion-sections -->
+> **Live demo** — three collapsible sections; clicking a header animates it
+> open or shut.
+> [Open the Accordion page](https://jimka.github.io/typescript-ui/layouts/Accordion)
+<!-- /demo -->
+
 ## Themed appearance
 
 With `themed` on (the **default**), each header paints the accordion theme tokens and the container draws an all-around border, so a stack reads as a flat boxed list whose section dividers never double. Turn it off (`themed: false`) for a chromeless accordion that inherits its surroundings.
