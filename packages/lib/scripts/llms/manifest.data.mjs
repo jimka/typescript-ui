@@ -123,6 +123,7 @@ export const groups = [
 
     { name: "App shell", entries: [
         { task: "Map the URL to a top-level app section", symbol: "Router", doc: "docs/concepts/routing.md" },
+        { task: "Give the app a browser-tab icon", symbol: "Favicon", doc: "docs/components/Body.md" },
     ] },
 ];
 
