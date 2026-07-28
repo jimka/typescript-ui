@@ -1133,10 +1133,15 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
     /**
      * Tears the overlay scrollbar down: unwires the native scroll listener,
-     * detaches and discards both bars, removes the sticky host, un-hides the
-     * native bar, and clears any reserved gutter. Each step is guarded so
-     * this is safe to call before the overlay was ever created (e.g. during
-     * the construction cascade).
+     * disposes both bars, removes the sticky host, un-hides the native bar,
+     * and clears any reserved gutter. Each step is guarded so this is safe to
+     * call before the overlay was ever created (e.g. during the construction
+     * cascade). Disposing (rather than only detaching) is required because
+     * each bar is appended straight onto the panel element with a raw
+     * `DOM.sink.appendChild` and held only in `_scrollbarV` / `_scrollbarH` —
+     * never registered via `addComponent` — so `Component.destructor()`'s
+     * child recursion can never reach it to reclaim its per-instance
+     * stylesheet rule.
      */
     private removeOverlayScrollbars(): void {
         if (this._overlayScrollHandler) {
@@ -1146,13 +1151,13 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
         if (this._scrollbarV) {
             this._scrollbarV.off("scroll", this._onOverlayScrollV);
-            this._scrollbarV.removeElement();
+            this._scrollbarV.dispose();
             this._scrollbarV = null;
         }
 
         if (this._scrollbarH) {
             this._scrollbarH.off("scroll", this._onOverlayScrollH);
-            this._scrollbarH.removeElement();
+            this._scrollbarH.dispose();
             this._scrollbarH = null;
         }
 
