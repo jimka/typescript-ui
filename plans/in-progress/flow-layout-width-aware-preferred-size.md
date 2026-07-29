@@ -314,3 +314,243 @@ Manual: `npm run dev` and exercise cases 17–18 above.
 [^offline-numbers]: Every "before" figure in `## Expected Behaviour` was produced by running the scenario against `installTestDOM` on `master` and printing `getPreferredSize()`, the distinct child tops/lefts, and the content bottom/right. Each "after" figure equals the content extent that same run committed — e.g. case 1's children land at tops 0 / 28 / 56 with a content bottom of 76, and case 3's at tops 10 / 48 with a bottom of 88 (the 10 is the default centre anchor placing a 20-high child in a 40-high uniform cell). The harness models geometry fully, so these are exact, not approximate; browser checks are a sanity pass, not the verification.
 
 [^blast-radius]: `grep -rln 'HFlow\|VFlow' --include='*.ts' packages/lib/src/typescript` returns exactly seven files: the three layout sources, the `layout/index.ts` barrel, and the three demo files (`FlowDemoPanel.ts`, `HFlowPanel.ts`, `VFlowPanel.ts`) plus their `main.ts` registration. Nothing under `lib/component/**` uses either flow, and `LayoutSerialization.ts` has no flow-specific branch, so no serialised layout round-trip is affected. On `feature/marker-lists` there is one more consumer, `MarkerListPanel.ts`; that branch changes no file under `packages/lib/src/typescript/lib/layout/`, so the two branches do not conflict.
+
+---
+
+## Implementation Notes
+
+Every ordered step landed and every file in the table changed, but the plan was
+**not** followed as written: four audit rounds forced three departures, each
+recorded below. `getMaxSize` changed where the plan said it would not; the
+`detach()` override the plan specified was replaced by an `attach()` one; and row
+*placement* changed, which the plan never contemplated. The plan's factual
+groundwork all held up — the line references, the `HFlowRow.rowHeight` /
+`VFlowColumn.columnWidth` field names, the `Number.isFinite` precedent in
+`Table.doLayout`, and the `expectNoSelfReschedule` helper.
+
+Four things are worth recording.
+
+**The red phase was lost to a tooling outage, and recovered afterwards.** The
+permission classifier that gates command execution went down between writing the
+`HFlow` tests and running them, so the source was written without ever watching
+the tests fail. Green-after-the-fact is weaker evidence than red-then-green,
+because it cannot distinguish a correct implementation from a test that would
+have passed either way. The gap was closed by mutation testing every load-bearing
+guarantee once the tooling returned — and that pass immediately found a real
+defect, below.
+
+**One test was vacuous and is now fixed.** `publishes no measurement from a
+layout at a non-finite width` asserted only that `getPreferredSize()` still
+reported `190 x 20` after a `doLayout` at an unset width. Removing the
+`Number.isFinite` guard did not break it. The reason is a coincidence: at a `NaN`
+width every wrap comparison is false, so the children collapse into one bogus row
+whose height is 20 — the same number the single-line fallback returns. The
+assertion could not separate the wrong answer from the right one.
+
+The damage a missing guard actually does is not the value but the *latch*:
+publishing sets `_wrappedLineExtent` non-null, which disables the single-line
+fallback permanently. So the case now adds a taller child after the `NaN`-width
+layout and asserts the reported height follows the new estimate. A stale
+published `20` fails that. The mutation is caught.
+
+**The `VFlow` twin had the same defect and was fixed by symmetry.** Its
+`publishes no measurement from a layout at a non-finite height` case carried the
+identical coincidence on the width axis, and got the identical fix — a wider
+child added after the layout. Unlike the `HFlow` case it was not independently
+mutation-proven at the time, because that script only exercised `HFlow.doLayout`'s
+guard. A later round ran the `VFlow` mutant as well, and it is killed.
+
+**Manual case 18 stopped being contingent.** The plan marked the `MarkerListPanel`
+check as dependent on `feature/marker-lists` merging first. That branch was merged
+into `master` during this run, so the panel was available and the case was run for
+real rather than deferred. Measured in a browser at 1145x424, on the fixed source:
+the numbered row grew from 285 to 871, all three wrapped lines visible,
+`clippedPx` from 586 to 0, with `overflow: hidden` and no pinned `preferredSize` —
+so the fix carries it with no scroll host, which is what the plan asked for. The
+row held 871x1125 across a quiet two seconds with no console output.
+
+**Manual case 17 was re-run after the placement change**, which invalidated the
+first result. The `HFlow` demo's geometry is byte-identical to `master` — all
+fifteen sample widgets at the same position and size, content bottom 819 on both.
+A caution for future runs: a dev server left up across many source edits drifts
+under HMR, and a first comparison showed spurious 1px height deltas on `Button`
+and `ToggleButton` that vanished after a hard reload.
+
+### Deviations found by the audit
+
+Two of the plan's decisions did not survive review, and both changed.
+
+**`getMaxSize` is no longer untouched.** The plan's `## Architecture Decisions`
+left both `getMinSize` and `getMaxSize` alone, justifying it by reasoning about
+the *minimum* only — a layout-derived minimum would not make a flow host inflate
+itself. The maximum was never reasoned about, and it is the one that mattered:
+`getMaxSize` reported the single-row extent while `getPreferredSize` now reports
+the wrapped one, so `preferred > max` on the cross axis. That breaks the
+`min <= preferred <= max` rule ARCHITECTURE binds, and on a host whose
+`clampsToContentSize()` is true — a plain `Component`, unlike a `Container` — the
+committed height clamps back to one row and the content clips again, which is the
+defect this plan exists to remove. Both flows now floor the cross-axis maximum at
+the measured extent.
+
+`getMinSize` changed too, in a later round and for the same ordering rule — a
+second departure from the same Non-Goal. `HFlow.getMinSize` was unconditionally
+baseline-aware while the new measurement is alignment-gated, so a `start`-aligned
+row of baseline-bearing children reported a minimum *above* its own preferred
+height. Both now run through one private `lineExtent(heights, baselines)`: the
+tallest entry under every alignment that places a cell inside its row, and
+`computeRowHeight` under `"baseline"`. The minimum, the pre-layout estimate and
+the measured row extent therefore share a formula — except under a `uniform`
+height mode, where the estimate and the row extent take the uniform cell height
+and the minimum does not. That leaves a pre-layout `min > preferred` inversion for
+a baseline-aligned uniform row with pinned minimums; it predates this branch, the
+first layout resolves it, and `lineExtent`'s docblock records it.
+`VFlow.getMinSize` needed nothing — its cross axis is the widest child either
+way.
+
+**The measurement is cleared in `attach`, not `detach`.** Ordered Step 2 and the
+`## Public API` table specified a `detach()` override. That override guards a path
+that was already safe: after `detach()` the manager has no container, and all four
+flow size methods early-return `null`, so the stale value is unreadable. The
+reachable path is the opposite one — `Component.setLayoutManager` detaches the
+*container's* outgoing manager, never the *manager's* previous container, so a
+manager moved to a new container arrives still holding the old measurement and
+reports it for children it no longer has. The clear moved to an `attach()`
+override, and the `detach()` override was deleted rather than kept as defensive
+code: with `attach()` clearing, nothing can observe whether `detach()` also does,
+so it was untestable by construction.
+
+Both fixes are mutation-proven: removing the `attach()` clear, or either flow's
+maximum floor, turns the new `FlowLayout.test.ts` cases red.
+
+### A regression found by the second audit round
+
+**The measurement was not baseline-aware, and under-reported.** `groupIntoRows`
+sets each row's `rowHeight` to a plain `Math.max` over the cell heights. The
+expression it replaced in `getPreferredSize` was `computeRowHeight(heights,
+baselines)`, which returns `rowAscent + rowDescent` and can *exceed* that max: a
+baseline-aligned row pushes a low-baseline child's descender below the bottom of a
+taller high-baseline one. So under `itemAlign: "baseline"` the branch reported a
+height *shorter* than the estimate it replaced — the opposite of its purpose, and
+enough to re-clip the row it was meant to reveal. It also inverted
+`min <= preferred`, because `getMinSize` is baseline-aware and the measurement was
+not.
+
+The first attempt at a fix summed `computeRowHeight` per row inside
+`rowsCrossExtent`. A third audit round showed that over-corrected: `computeRowHeight`
+is driven by whether children *report* baselines, not by the alignment mode, so a
+`start`-aligned row of baseline-bearing children reported taller than it is. Worse,
+it left placement untouched — rows still advanced by the plain-max `rowHeight`, so
+under baseline alignment wrapped rows overlapped and the reported total exceeded
+the committed content.
+
+The fix went to the source instead. `groupIntoRows` now sets each row's
+`rowHeight` through a new `rowExtent` helper: the plain max under every alignment
+that places a cell *inside* its row, and `computeRowHeight` under `"baseline"`,
+which offsets a cell by `rowAscent - baseline` and can push a descender below the
+tallest cell. One number now drives the row's height, its cell clamping, its
+advance, and the published measurement, so the report equals the committed extent
+in all four `itemAlign` modes. `rowsCrossExtent` went back to the plan's original
+plain sum.
+
+In a cross-axis `uniform` mode the report is an upper bound rather than an
+equality, and the plan's `## Potential Challenges` phrasing — "row heights must
+equal the committed child extents" — is too strong there. A uniform cell is by
+definition at least as tall as the item inside it, and a short child is anchored
+within its cell rather than stretched, so the reserved row genuinely exceeds the
+content bottom. That is grid-cell semantics and predates the branch; the report
+is never *below* the content, which is the property that matters for clipping.
+
+This also fixes a defect that predates the branch: with the row advance and the
+baseline offset disagreeing, wrapped baseline-aligned rows overlapped. Repairing
+it was in scope because the plan's own `## Potential Challenges` assumes the thing
+that was untrue — "row heights must equal the committed child extents". Changing
+placement is a wider blast radius than the plan anticipated, so it was confirmed
+before being made.
+
+`VFlow` needed no equivalent fix: its baseline arm always degrades to `"start"`,
+so a column's width really is the plain max over its cells. That is now pinned by
+a mixed-width case rather than left to inspection — every earlier VFlow case used
+identical 20-wide boxes, so "widest", "first" and "last" column cell were the same
+number and several wrong formulas passed.
+
+Two things let this through. Every offline case used the default `itemAlign`, and
+`Component.getBaseline` is derived rather than settable, so exercising a baseline
+row needs a test-local subclass that claims one — there was no precedent for that
+in any flow test. Manual case 17 missed it because the demo's alignment is not
+`"baseline"`; its widgets do report baselines (Button 20, Checkbox 13, ComboBox
+16, TextArea 16, and so on — only `Toggle` is null), so an earlier draft of this
+note blamed the wrong cause.
+
+The cases are mutation-proven: forcing `rowExtent` to `computeRowHeight` or to
+the plain max unconditionally, replacing its max-reduce with a first- or
+last-cell read, or breaking the `rowHeight` assignment in `groupIntoRows`, all
+turn them red. Forcing the *literal* baseline arm is instead an equivalent
+mutant, because that arm delegates to `lineExtent`, which re-gates on
+`itemAlign`; the mutation has to bypass the gate to mean anything.
+
+### The advisory pass after the audit cap
+
+The audit ran its full five rounds. Afterwards the accumulated ADVISORY findings
+were cleared in one pass, which changed behaviour in two places and so is
+recorded here.
+
+**A non-finite extent is now dropped instead of stored.** The loop guard in
+`publishWrappedLineExtent` compares the new extent against the stored one, and
+`NaN !== NaN`. One child with a `NaN` preferred height — a text whose font has not
+resolved — poisons the sum, and every pass would then look like a change and relay
+one, which is the relayout loop the guard exists to prevent. The guard now rejects
+a non-finite extent outright, which also keeps the single-line fallback reachable:
+nothing usable was measured, so nothing should replace the estimate. The
+`Number.isFinite(innerSize.width)` check in `doLayout` is a separate concern and
+stays — a wrap run at an unset width is meaningless even when its sum happens to
+be finite.
+
+**`rowExtent` folds instead of re-scanning.** It took a whole row and rebuilt two
+arrays on every cell push, making a row of *n* cells cost O(n²) where the code it
+replaced was O(1). It now takes the pushed cell's height and folds a running
+maximum, dropping to the full recomputation only under `"baseline"`, where
+`rowAscent + rowDescent` genuinely depends on every cell at once. The folded
+maximum agrees with `lineExtent` over the whole row because a maximum is
+associative and both start from `0`.
+
+Two smaller items: `getPreferredSize` no longer gathers the single-line estimate's
+inputs — a `getBaseline()` call per child — when a measurement or a uniform cell
+height has already answered the height; and the changelog's claim about the
+minimum was reworded, because "follows the same rule" read as though the minimum
+were floored at the measurement, when what it actually shares is the row-height
+formula.
+
+Four coverage gaps were closed at the same time, each mutation-proven: the
+empty-flow early return in `rowsCrossExtent` / `columnsCrossExtent`, the perimeter
+re-add on the measured path, the non-finite guard above, and `itemAlign`
+`"center"` / `"end"` placement, which had no offline coverage anywhere in the repo
+despite the row extent now feeding it. The empty-flow cases have to ask the
+*manager* for its preferred size rather than the host: `Container` floors a
+negative preferred size at zero, so through the host a measured `-8` and a
+measured `0` are the same observation, and the assertion could not tell them
+apart.
+
+A sixth audit round, run after those fixes, returned no blocking findings. Its
+advisories closed three more gaps. The two maximum-floor cases asserted
+`toBeGreaterThanOrEqual`, and in both the single-line maximum sat *below* the
+measurement, so overwriting the maximum instead of flooring it passed — only a
+single-line maximum above the measurement separates the two, and each flow now
+has that case. `uniform` height crossed with `"baseline"` had no coverage at all,
+though it is genuinely new behaviour: the cells carry the uniform height but the
+row is still measured by `rowAscent + rowDescent` over them, which exceeds it. And
+three pieces of prose were wrong — `lineExtent`'s docblock claimed the row extent
+opts out under a uniform height (it does not), `HFlow.md`'s row-height table said
+"the tallest item in the row" where a uniform mode makes it the tallest in the
+flow, and the claim above about mutation-proving `rowExtent` named a mutation that
+is actually equivalent.
+
+**One finding turned out to be unprovable, and the branch is honest about it.**
+The round flagged `VFlow.getPreferredSize`'s `uniformWidth ? extents.width :
+maxWidth` as unpinned. It cannot be pinned: `extents.width` is the widest
+`clampedPreferredSize` and `maxWidth` the widest `getPreferredSize`, and
+`Component.getPreferredSize` already applies the child's own min and max, so
+re-clamping is idempotent and the two arms always return the same number. The
+mutant is equivalent, not surviving. The branch is pre-existing and was left
+alone rather than simplified. Its `HFlow` counterpart is *not* redundant — there
+the uniform mode switches a per-child sum for `count × cell`, which is a real
+difference, and the mutation does go red.
