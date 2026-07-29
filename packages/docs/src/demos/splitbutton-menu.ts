@@ -1,4 +1,6 @@
+import { Panel } from '@jimka/typescript-ui/core';
 import type { Component } from '@jimka/typescript-ui/core';
+import { HBox } from '@jimka/typescript-ui/layout';
 import { SplitButton } from '@jimka/typescript-ui/component/button';
 
 /**
@@ -16,6 +18,10 @@ export const height: number = 64;
 /**
  * A `SplitButton` whose face fires the primary action and whose chevron opens
  * a three-item dropdown menu; each destination relabels the button.
+ *
+ * The button rides a non-stretching row, the same composition `button-basic`
+ * uses: returned bare, it would be the live area's only child and stretch to
+ * fill it, which is not what a button looks like anywhere it is really used.
  *
  * @returns The demo's component tree.
  */
@@ -46,5 +52,8 @@ export function create(): Component {
         saveButton.setText('Exported PDF');
     }
 
-    return saveButton;
+    return Panel({
+        layoutManager: HBox(),
+        components:    [saveButton],
+    });
 }

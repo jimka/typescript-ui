@@ -1,4 +1,6 @@
+import { Panel } from '@jimka/typescript-ui/core';
 import type { Component } from '@jimka/typescript-ui/core';
+import { HBox } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { ComboBox } from '@jimka/typescript-ui/component/input';
 
@@ -16,6 +18,10 @@ export const height: number = 120;
 /**
  * A `ComboBox` backed by a store of people, its `displayField` set to
  * `name`; open it to see every row.
+ *
+ * A selector is as wide as the values it shows, not as wide as the page, so
+ * the combo carries its own width and rides a non-stretching row that leaves
+ * it there rather than pulling it across the live area.
  *
  * @returns The demo's component tree.
  */
@@ -39,5 +45,8 @@ export function create(): Component {
 
     void store.load();
 
-    return combo;
+    return Panel({
+        layoutManager: HBox(),
+        components:    [combo],
+    });
 }
