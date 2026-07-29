@@ -218,6 +218,35 @@ concise arrow fails here for the same reasons described above.
 
 ## Upgrading from 0.2.x to 0.3.0
 
+### Marker lists paint their own bullets and numbers
+
+`BulletedList` and `NumberedList` no longer rely on the browser's `::marker`;
+each item renders its marker as a real child component, which the framework can
+measure and position like any other content.
+
+Nothing to change to keep compiling — no enum member was removed, and
+`getStyle()` still returns exactly what you set. Every numbering and bullet
+style renders, and nothing warns. What changes is what you see:
+
+- The bullet characters are the framework's own and differ slightly from each
+  browser's.
+- `UPPER_GREEK` renders uppercase Greek. No browser ever did, because
+  `upper-greek` is not a predefined CSS counter style, so it used to fall back
+  to decimal.
+- `LOWER_ALPHA` and `LOWER_LATIN` render identically, as do `UPPER_ALPHA` and
+  `UPPER_LATIN`. CSS defines each pair as aliases of one counter style.
+- Roman numbering covers items 1–3999 and renders decimal above that, matching
+  the range CSS gives its predefined roman counter styles.
+
+Every item in one list also shares a marker column as wide as that list's widest
+marker, with the marker right-aligned inside it. Markers share a right edge and
+labels share a left edge, so a label may sit a few pixels further right than it
+did when each item sized its own marker slot.
+
+If you subclass `AbstractMarkerList` directly, implement its new protected
+abstract `markerText(index)` — return the marker string for that position, or
+`""` for none.
+
 ### `Aria.applyToElement` was removed
 
 Every `Aria` mutator (`setRole`, `setSelected`, `setSort`, …) already writes

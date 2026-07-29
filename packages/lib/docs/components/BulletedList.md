@@ -1,16 +1,18 @@
 # BulletedList
 
-[`BulletedList`](/api/component/list/classes/BulletedList) is an unordered list rendered as a `<ul>` element. Defaults to the [`DISC`](/api/component/list/enumerations/BulletedListItemStyle) bullet style.
+[`BulletedList`](/api/component/list/classes/BulletedList) is an unordered list rendered as a `<ul>` element. Defaults to the [`DISC`](/api/component/list/enumerations/BulletedListItemStyle) bullet style. Items are stacked vertically by a [`VBox`](/layouts/VBox), and the list sizes itself to them. All four bullet styles render; `NONE` collapses the marker slot away, so the item costs no marker width and no gap.
+
+Every item shares one marker column, which for a bulleted list is just the width of the single bullet glyph — one style per list means every marker is the same character.
 
 ## Usage
 
 ```typescript
 import { BulletedList, ListItem, BulletedListItemStyle } from '@jimka/typescript-ui/component/list';
 const list = BulletedList();
-list.setItemStyle(BulletedListItemStyle.SQUARE);
-list.addItem(ListItem('apple',  'Apple'));
-list.addItem(ListItem('banana', 'Banana'));
-list.addItem(ListItem('cherry', 'Cherry'));
+list.setStyle(BulletedListItemStyle.SQUARE);
+list.addComponent(ListItem('apple',  'Apple'));
+list.addComponent(ListItem('banana', 'Banana'));
+list.addComponent(ListItem('cherry', 'Cherry'));
 
 panel.addComponent(list);
 ```
@@ -23,7 +25,7 @@ panel.addComponent(list);
 | --- | --- |
 | `NONE` | (no bullet) |
 | `DISC` | • |
-| `CIRCLE` | ○ |
+| `CIRCLE` | ◦ |
 | `SQUARE` | ▪ |
 
 ## See also

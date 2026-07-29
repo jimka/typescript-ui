@@ -44,6 +44,7 @@ The framework sets WAI-ARIA roles automatically for its components. Some highlig
 | [`Menu`](/components/Menu) | `menu` / `menuitem` / `separator` |
 | [`Button`](/components/Button) | inherits the native `<button>` semantics |
 | [`ComboBox`](/components/ComboBox) | `combobox` (with the underlying `<select>` providing the listbox) |
+| [`BulletedList`](/components/BulletedList) / [`NumberedList`](/components/NumberedList) | `list` with `listitem` rows (each row's bullet or number is `aria-hidden`, since position is already announced) |
 
 You don't need to set these on built-in components; they're applied at construction time.
 
