@@ -88,3 +88,34 @@ describe('HFlow wrapping geometry', () => {
         expect(b.getX()).toBe(50 + flow.getComponentSpacing());
     });
 });
+
+describe('FlowLayout.clampedPreferredSize clamp ordering', () => {
+    afterEach(() => DOM.reset());
+
+    it('honours the minimum over a smaller maximum, so a later sibling does not overlap (degenerate min > max)', () => {
+        installTestDOM(CONFIG);
+
+        const flow = new HFlow();
+        const host = hostHFlow(400, 300, flow);
+        const stage = new Component({ preferredSize: { width: 50, height: 50 } });
+        stage.setMinSize({ width: 120, height: 120 });
+        stage.setMaxSize({ width: 47, height: 47 });
+        const toggle = new Component({ preferredSize: { width: 30, height: 20 } });
+
+        host.addComponent(stage);
+        host.addComponent(toggle);
+        host.doLayout();
+
+        // The stage's own committed size always lands on its min (120x120)
+        // once Component.setWidth/setHeight's own clamp reasserts it — that
+        // step alone doesn't distinguish the bug from the fix.
+        expect(stage.getWidth()).toBe(120);
+        expect(stage.getHeight()).toBe(120);
+
+        // What DOES distinguish them: the row must reserve the stage's full
+        // min width (the cell FlowLayout.clampedPreferredSize computes) before
+        // advancing to the next child, not the smaller (wrong) max. Before the
+        // fix, the toggle lands at 47 + spacing, overlapping the stage.
+        expect(toggle.getX()).toBe(120 + flow.getComponentSpacing());
+    });
+});

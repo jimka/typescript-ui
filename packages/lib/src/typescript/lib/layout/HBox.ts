@@ -597,9 +597,10 @@ class HBox extends BoxLayout {
     }
 
     /**
-     * Resolves a child's final width within the row, clamped to its min/max.
-     * Weight cells take a share of `remainingWidth`; non-weighted children take
-     * their preferred width reduced by the shrink ratio toward their min width.
+     * Resolves a child's final width within the row, clamped to its min/max —
+     * the minimum wins when the two conflict. Weight cells take a share of
+     * `remainingWidth`; non-weighted children take their preferred width
+     * reduced by the shrink ratio toward their min width.
      *
      * @param size - The child's preferred size, or `null`.
      * @param minSize - The child's minimum size, or `null`.
@@ -622,12 +623,12 @@ class HBox extends BoxLayout {
             width = pref - shrinkRatio * (pref - min);
         }
 
-        if (minSize) {
-            width = Math.max(width, minSize.width);
-        }
-
         if (maxSize) {
             width = Math.min(width, maxSize.width);
+        }
+
+        if (minSize) {
+            width = Math.max(width, minSize.width);
         }
 
         return width;

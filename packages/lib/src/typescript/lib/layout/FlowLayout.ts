@@ -329,7 +329,7 @@ export abstract class FlowLayout extends LayoutManager {
 
     /**
      * Resolves a child's placed size: its preferred size clamped to its own
-     * min and max sizes.
+     * min and max sizes — the minimum wins when the two conflict.
      *
      * @param component - The child to measure.
      * @returns The clamped `{width, height}`.
@@ -342,14 +342,14 @@ export abstract class FlowLayout extends LayoutManager {
         let width  = pref ? pref.width : 0;
         let height = pref ? pref.height : 0;
 
-        if (min) {
-            width  = Math.max(width,  min.width);
-            height = Math.max(height, min.height);
-        }
-
         if (max) {
             width  = Math.min(width,  max.width);
             height = Math.min(height, max.height);
+        }
+
+        if (min) {
+            width  = Math.max(width,  min.width);
+            height = Math.max(height, min.height);
         }
 
         return {
