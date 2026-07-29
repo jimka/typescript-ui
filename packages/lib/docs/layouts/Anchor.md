@@ -15,6 +15,13 @@
    re-anchors on every resize
 ```
 
+<!-- demo: anchor-positions -->
+> **Live demo** — a full-width header band, a bottom-right pinned button,
+> and a percentage-anchored centre panel, all moving live as the pane
+> resizes.
+> [Open the Anchor page](https://jimka.github.io/typescript-ui/layouts/Anchor)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

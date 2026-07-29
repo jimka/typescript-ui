@@ -3,10 +3,29 @@ import type { PanelOptions } from '@jimka/typescript-ui/core';
 import { Fit, VBox, AnchorType } from '@jimka/typescript-ui/layout';
 import { ToggleButton } from '@jimka/typescript-ui/component/button';
 import { Markdown } from '@jimka/typescript-ui/component/display';
+import { UNBOUNDED } from '@jimka/typescript-ui/primitive';
 import type { DemoEntry } from '../content/demos.js';
 
 const SHOW_SOURCE_LABEL = "Show source";
 const HIDE_SOURCE_LABEL = "Hide source";
+
+/**
+ * Widest a demo block is allowed to get, whatever the window.
+ *
+ * The pane the docs content scrolls in is full-bleed, so an uncapped block
+ * stretches its demo across the whole monitor: a table's four columns spread
+ * to a couple of hundred pixels each, a chart's bars grow to the width of a
+ * hand, and a form's inputs run the length of the page. The cap is the width
+ * axis' counterpart to a module's `height` — the module fixes how tall its
+ * live area is, this fixes how wide it may become.
+ *
+ * It sits on the block rather than on the stage so the "Show source" toggle,
+ * anchored to the block's east edge, stays against the stage's right edge
+ * instead of drifting off to the far side of the pane. The block is left
+ * narrower than the pane rather than centred, so demos line up on the prose's
+ * left edge.
+ */
+const BLOCK_MAX_WIDTH = 900;
 
 /**
  * An inline live demo block: a bordered, scrollable stage holding the
@@ -43,7 +62,10 @@ class DocsDemo extends Panel {
     };
 
     constructor(entry: DemoEntry, options?: PanelOptions) {
-        super(options, { layoutManager: VBox({ stretching: true }) });
+        super(options, {
+            layoutManager: VBox({ stretching: true }),
+            maxSize:       { width: BLOCK_MAX_WIDTH, height: UNBOUNDED },
+        });
 
         this.setDataAttribute('docs-demo', 'true');
 

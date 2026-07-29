@@ -10,6 +10,12 @@
    items wrap into lines; spacing + lineSpacing configurable
 ```
 
+<!-- demo: hflow-wrap -->
+> **Live demo** — a dozen buttons that reflow into more or fewer rows as
+> the pane narrows.
+> [Open the HFlow page](https://jimka.github.io/typescript-ui/layouts/HFlow)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

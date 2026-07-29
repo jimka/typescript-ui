@@ -6,6 +6,12 @@
 - **Indeterminate** — a sliding fill segment animates continuously, suitable for
   unknown-duration work.
 
+<!-- demo: progressbar-modes -->
+> **Live demo** — a determinate `ProgressBar` at 60% beside an
+> indeterminate one, with buttons stepping the determinate value.
+> [Open the ProgressBar page](https://jimka.github.io/typescript-ui/components/ProgressBar)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

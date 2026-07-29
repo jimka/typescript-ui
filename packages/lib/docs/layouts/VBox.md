@@ -13,6 +13,12 @@
    children stacked vertically
 ```
 
+<!-- demo: vbox-stack -->
+> **Live demo** — four labelled panels stacked with `spacing: 8` and
+> `stretching: true`.
+> [Open the VBox page](https://jimka.github.io/typescript-ui/layouts/VBox)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
@@ -64,6 +70,12 @@ sidebar.addComponent(Button('Section 3'));
 ```
 
 Despite the visual, equal-mode `VBox` is the vertical-equal-share form: every child occupies the same height regardless of its preferred size.
+
+<!-- demo: vbox-sizing-modes -->
+> **Live demo** — two columns over the same four children: `mode:
+> "preferred"` and `mode: "equal"`.
+> [Open the VBox page](https://jimka.github.io/typescript-ui/layouts/VBox)
+<!-- /demo -->
 
 ## Overflow sizing (equal mode)
 

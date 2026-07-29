@@ -2,6 +2,12 @@
 
 [`List`](/api/component/list/classes/List) is a single-selection scrollable list box rendered as a `<div role="listbox">` populated with `<div role="option">` rows. It implements [`Bindable<string>`](/api/core/interfaces/Bindable) so it can be plugged into a [`Binding`](/api/core/classes/Binding) directly.
 
+<!-- demo: list-selection -->
+> **Live demo** — a store-bound `List` of people's names, with a `Text`
+> below showing the current selection.
+> [Open the List page](https://jimka.github.io/typescript-ui/components/List)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

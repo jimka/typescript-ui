@@ -4,6 +4,12 @@
 
 `Toggle` is not the same widget as [`ToggleButton`](/components/ToggleButton). `ToggleButton` is a push-button that stays pressed; `Toggle` is the iOS-style sliding switch with `role="switch"`.
 
+<!-- demo: toggle-switch -->
+> **Live demo** — a Wi-Fi `Toggle` starting on and a Bluetooth `Toggle`
+> starting off, so a click shows the slide animation running both ways.
+> [Open the Toggle page](https://jimka.github.io/typescript-ui/components/Toggle)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

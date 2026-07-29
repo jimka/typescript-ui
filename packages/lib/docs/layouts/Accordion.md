@@ -11,6 +11,12 @@
 ▸ Section 3
 ```
 
+<!-- demo: accordion-sections -->
+> **Live demo** — three collapsible sections; clicking a header animates it
+> open or shut.
+> [Open the Accordion page](https://jimka.github.io/typescript-ui/layouts/Accordion)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

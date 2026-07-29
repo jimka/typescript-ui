@@ -2,6 +2,12 @@
 
 [`Checkbox`](/api/component/input/classes/Checkbox) is a boolean toggle rendered as a focusable `<div>` with `role="checkbox"` plus a custom-drawn box and check glyph — no native `<input>`. Carries an `indeterminate` (mixed) state for tri-state forms, and implements [`Bindable<boolean>`](/api/core/interfaces/Bindable).
 
+<!-- demo: checkbox-states -->
+> **Live demo** — an unchecked, a checked, and a cycling `Checkbox`, plus a
+> button that steps the third through all three states.
+> [Open the Checkbox page](https://jimka.github.io/typescript-ui/components/Checkbox)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

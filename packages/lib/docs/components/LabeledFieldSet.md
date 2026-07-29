@@ -4,6 +4,12 @@
 
 Internally it composes a [`LabeledGrid`](/components/LabeledGrid) — a single baseline-aligned [`Grid`](/api/layout/classes/Grid) with `2 × columns` grid-columns, a content-sized title track and a weight-sized input track per logical column — inside its `<fieldset>` chrome, so you never hand-maintain track configuration or row counts.
 
+<!-- demo: labeledfieldset-form -->
+> **Live demo** — a two-column `rows` bag: three labelled fields plus a
+> full-width `Button` row.
+> [Open the LabeledFieldSet page](https://jimka.github.io/typescript-ui/components/LabeledFieldSet)
+<!-- /demo -->
+
 ## Usage
 
 Declarative — pass the whole form as a `rows` bag. Each inner array is one row of pairs (one per column, left-to-right); a `{ component, fullWidth: true }` row spans every column:

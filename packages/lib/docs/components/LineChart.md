@@ -4,6 +4,12 @@
 
 Like every chart in the family it is a [`Panel`](/api/component/container/classes/Panel) whose root `<div>` hosts a single `<svg>` drawing surface built entirely through the framework DOM sink — axes, gridlines, and marks are SVG elements, never `innerHTML`. The computational layer (scales, nice-number ticks, tick formatting, and the path `d` string) delegates to the pure `d3-scale` / `d3-shape` / `d3-array` submodules; all rendering, layout, interaction, and theming stay native.
 
+<!-- demo: linechart-store -->
+> **Live demo** — a store-bound `LineChart` over two regional sales series,
+> with legend entries that toggle each series.
+> [Open the LineChart page](https://jimka.github.io/typescript-ui/components/LineChart)
+<!-- /demo -->
+
 ## Usage
 
 ### In-memory series

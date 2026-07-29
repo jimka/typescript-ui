@@ -2,6 +2,12 @@
 
 [`Slider`](/api/component/input/classes/Slider) is a continuous-value range input rendered as a focusable `<div>` with `role="slider"`. Track and thumb are drawn with framework Components, so the visual is fully themable. Implements [`Bindable<number>`](/api/core/interfaces/Bindable).
 
+<!-- demo: slider-range -->
+> **Live demo** — a `Slider` over 0-100 with a `Text` beside it that updates
+> live from the slider's `action` event.
+> [Open the Slider page](https://jimka.github.io/typescript-ui/components/Slider)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

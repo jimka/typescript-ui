@@ -9,6 +9,12 @@
    children in a row, configurable spacing
 ```
 
+<!-- demo: hbox-justify -->
+> **Live demo** — three buttons in an `HBox`, with a row of `ToggleButton`s
+> above switching `justify` between its values at runtime.
+> [Open the HBox page](https://jimka.github.io/typescript-ui/layouts/HBox)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

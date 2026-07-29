@@ -4,6 +4,12 @@
 
 It implements [`Bindable<string>`](/api/core/interfaces/Bindable), so it can participate in a [`Binding`](/data/binding) directly.
 
+<!-- demo: combobox-store -->
+> **Live demo** — a `ComboBox` backed by a store of people, its
+> `displayField` set to `name`.
+> [Open the ComboBox page](https://jimka.github.io/typescript-ui/components/ComboBox)
+<!-- /demo -->
+
 ## Static items
 
 Pass plain strings via the `items` option (or `addItem` / `setItems`):

@@ -75,6 +75,13 @@ Setting a title and/or description also auto-attaches a hover [`Tooltip`](/compo
 
 The subtitle's size, colour, and weight come from the `button.description.*` theme tokens — see [Theming](#theming). A leading glyph is auto-sized so its box height matches the title's line height; override it by sizing the glyph explicitly via `getGlyph().setPreferredSize(...)`.
 
+<!-- demo: button-glyph-description -->
+> **Live demo** — three buttons: glyph plus title, glyph plus title plus
+> description, and a `showText: false` icon-only button whose title survives
+> in the hover tooltip.
+> [Open the Button page](https://jimka.github.io/typescript-ui/components/Button)
+<!-- /demo -->
+
 ## Theming
 
 Buttons are themed via the `button.*` token group — see [Theming › Theme keys](/concepts/theming#theme-keys). Pressed state is controlled by `button.pressed.*` tokens; hover state by `button.hover.*` tokens; the optional subtitle by `button.description.*` tokens (`fontSize`, `foreground`, `weight`).

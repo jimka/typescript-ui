@@ -2,6 +2,12 @@
 
 [`SplitButton`](/api/component/button/classes/SplitButton) is a [`Button`](/components/Button) with a trailing dropdown chevron. The main button face fires the primary `"action"` event exactly like a plain `Button`; clicking the chevron zone instead opens a dropdown [`Menu`](/components/Menu) built from the button's `menuItems`.
 
+<!-- demo: splitbutton-menu -->
+> **Live demo** — a `SplitButton` whose face fires the primary action and
+> whose chevron opens a three-item dropdown menu.
+> [Open the SplitButton page](https://jimka.github.io/typescript-ui/components/SplitButton)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

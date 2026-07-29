@@ -4,6 +4,11 @@
 
 When no [`ColumnSpec`](/api/component/table/interfaces/ColumnSpec) is supplied, the table auto-generates one column per model field with default sizing.
 
+<!-- demo: table-store -->
+> **Live demo** — a store-bound `Table`: sortable, selectable, editable.
+> [Open the Table page](https://jimka.github.io/typescript-ui/components/Table)
+<!-- /demo -->
+
 ## Quickest example
 
 ```typescript
@@ -144,6 +149,12 @@ const table = Table(store, {
 - A column whose rows commit different native types (boolean in one row, number in another) **must** declare the field `'auto'` (the default `Field` type) — a `boolean`/`number`/`string` field type coerces every commit to that one type, corrupting the other rows' values.
 - `readOnly` / `cellReadOnly` / `rowReadOnly` compose with a `cellType` column exactly as with any other cell.
 - The boolean variant has no separate edit cycle — clicking the checkbox commits immediately, mirroring plain boolean columns.
+
+<!-- demo: table-cell-types -->
+> **Live demo** — the same store with a per-column `ColumnSpec`: `role` as
+> a combo cell, `age` as a number cell.
+> [Open the Table page](https://jimka.github.io/typescript-ui/components/Table)
+<!-- /demo -->
 
 ## Rotated record view
 

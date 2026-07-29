@@ -16,6 +16,13 @@
 +----------------------------------+
 ```
 
+<!-- demo: border-regions -->
+> **Live demo** — all five regions filled with labelled panels; north,
+> south, and west are `collapsible: true`, so double-clicking a gutter
+> collapses them.
+> [Open the Border page](https://jimka.github.io/typescript-ui/layouts/Border)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

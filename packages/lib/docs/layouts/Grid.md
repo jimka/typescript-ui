@@ -11,6 +11,12 @@
    uniform M × N grid
 ```
 
+<!-- demo: grid-tracks -->
+> **Live demo** — a 3-column grid with fixed, weight, and content column
+> tracks; resizing the pane moves only the weighted column.
+> [Open the Grid page](https://jimka.github.io/typescript-ui/layouts/Grid)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

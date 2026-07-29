@@ -2,6 +2,12 @@
 
 [`TextField`](/api/component/input/classes/TextField) is a single-line text input backed by an `<input type="text">` element. It implements [`Bindable<string>`](/api/core/interfaces/Bindable), so it can participate in a [`Binding`](/data/binding) directly.
 
+<!-- demo: textfield-binding -->
+> **Live demo** — two `TextField`s bound to one `ModelRecord` via `Binding`,
+> with a `Text` below echoing the record's current values as you type.
+> [Open the TextField page](https://jimka.github.io/typescript-ui/components/TextField)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

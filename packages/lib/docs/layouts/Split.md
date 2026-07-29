@@ -11,6 +11,11 @@
          draggable gutter
 ```
 
+<!-- demo: split-panes -->
+> **Live demo** — two panes divided by a draggable gutter.
+> [Open the Split page](https://jimka.github.io/typescript-ui/layouts/Split)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
