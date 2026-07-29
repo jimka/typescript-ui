@@ -14,6 +14,7 @@ import type { AxisEnd } from "~/primitive/Axis.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import { Util } from "~/core/Util.js";
+import { chainRoom, distributeDragChain } from "~/core/DragChain.js";
 
 /**
  * String-literal union of the events emitted by {@link Accordion}.
@@ -57,15 +58,6 @@ const COMPACT_HEADER_HEIGHT: number = 22;
  * `computeResizableHeights`) is unaffected by whether gutters are shown.
  */
 const RESIZE_GUTTER_SIZE: number = 6;
-
-/**
- * Sub-pixel threshold below which a drag's remaining height to distribute is
- * treated as fully placed, ending the chain loop. Guards against a residual
- * float epsilon (e.g. `1e-13` left by repeated subtraction) spinning the loop
- * over already-satisfied sections; well under one device pixel, so it never
- * drops visible height.
- */
-const DRAG_DISTRIBUTION_EPSILON: number = 1e-6;
 
 /**
  * Themed-mode CSS values for the accordion theme tokens, with fallbacks
@@ -1867,19 +1859,8 @@ class Accordion extends LayoutManager {
         const growGroup   = frameDelta >= 0 ? upperGroup : lowerGroup;
         const shrinkGroup = frameDelta >= 0 ? lowerGroup : upperGroup;
 
-        let growRoom = 0;
-        let shrinkRoom = 0;
-
-        // Per-section room, floored at 0 to match distributeDragChain's `room()`,
-        // so a section momentarily out of bounds can't contribute negative room
-        // and under-report what the chain can actually absorb.
-        for (const pos of growGroup) {
-            growRoom += Math.max(0, maxs[pos] - current[pos]);
-        }
-
-        for (const pos of shrinkGroup) {
-            shrinkRoom += Math.max(0, current[pos] - mins[pos]);
-        }
+        const growRoom = chainRoom(growGroup, current, 1, mins, maxs);
+        const shrinkRoom = chainRoom(shrinkGroup, current, -1, mins, maxs);
 
         // This frame's boundary travel, capped by how much the growth chain can
         // still absorb and the shrink chain can still give up.
@@ -1895,8 +1876,8 @@ class Accordion extends LayoutManager {
 
         const newHeights = current.slice();
 
-        this.distributeDragChain(growGroup, current, delta, +1, mins, maxs, newHeights);
-        this.distributeDragChain(shrinkGroup, current, delta, -1, mins, maxs, newHeights);
+        distributeDragChain(growGroup, current, delta, +1, mins, maxs, newHeights);
+        distributeDragChain(shrinkGroup, current, delta, -1, mins, maxs, newHeights);
 
         const openHeightByIndex = new Map<number, number>();
 
@@ -1924,44 +1905,6 @@ class Accordion extends LayoutManager {
             false,
             false,
         );
-    }
-
-    /**
-     * Distributes `delta` px across `group` (nearest-first), growing
-     * (`sign +1`) or shrinking (`sign -1`) each section within its `[min, max]`.
-     * The nearest section to the gutter absorbs the travel first, spilling to
-     * the next only once it hits its bound. This is purely a function of the
-     * live heights — the drag keeps no memory of where each section started, so
-     * reversing the pointer simply moves the boundary the other way and the
-     * closest section grows/shrinks first in that new direction too (never a
-     * "rewind" that returns a far section toward its start height before the
-     * near one has finished moving).
-     *
-     * @param group - Open positions to distribute across, nearest-to-gutter first.
-     * @param current - Each open position's current height.
-     * @param delta - Total height to distribute across the group.
-     * @param sign - `+1` to grow the sections, `-1` to shrink them.
-     * @param mins - Each open position's minimum height.
-     * @param maxs - Each open position's maximum height.
-     * @param out - Result heights (seeded to `current`), indexed by open position;
-     *   mutated in place.
-     */
-    private distributeDragChain(group: number[], current: number[], delta: number, sign: number, mins: number[], maxs: number[], out: number[]): void {
-        // Room left to grow toward max (sign +1) or shrink toward min (sign -1).
-        const room = (pos: number): number =>
-            sign > 0 ? Math.max(0, maxs[pos] - current[pos]) : Math.max(0, current[pos] - mins[pos]);
-
-        let remaining = delta;
-
-        for (const pos of group) {
-            if (remaining <= DRAG_DISTRIBUTION_EPSILON) {
-                return;
-            }
-
-            const take = Math.min(remaining, room(pos));
-            out[pos] += sign * take;
-            remaining -= take;
-        }
     }
 
     /**

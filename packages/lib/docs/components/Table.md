@@ -206,9 +206,33 @@ const table = Table(store, {
 
 - Click a column header to cycle through sort directions: ascending → descending → no sort.
 - **Shift-click** a column header to compose a multi-column sort: each shift-click appends or toggles that column inside the current sort list (asc → desc → removed). When more than one column is active, a small priority badge (`2`, `3`, …) is shown on each non-primary column header.
-- Drag a column header's right edge to resize.
 - Right-click a column header to toggle column visibility via a context menu.
 - `table.getSelectedRecord()` / `getSelectedRecords()` return the user's selection.
+
+### Resizing columns
+
+Drag a column header's right edge to resize. The edge splits the visible
+columns into two chains fanning outward from it, nearest-first: dragging
+right grows the dragged column and shrinks the columns to its right, one at a
+time — the nearest column absorbs the travel until it reaches its `minWidth`,
+then the next one out takes over. Dragging left reverses the direction.
+
+This chaining only applies while the columns fit the container. Once every
+column to the right of a rightward drag has reached its `minWidth`, further
+travel widens the table's total column width instead of stalling — the table
+scrolls horizontally, and the header scrolls in step with the body. From
+there on the columns to the right are left alone entirely: while a horizontal
+scrollbar is showing, dragging an edge resizes the column to its left and the
+table's total width along with it, and nothing is scavenged. Reversing the
+drag narrows the table back down to the container's width first, and only
+then — with the columns fitting again — does a column to the right regrow.
+The last column's right edge has no columns to its right at all, so dragging
+it only changes the table's width, never any other column.
+
+For example, with available width 500 and four columns at `[200, 150, 100,
+50]` (`minWidth` 60/100/40/30), dragging the first column's right edge +200
+gives up 130px from its neighbours before they bottom out, and the remaining
+70px widens the table to 570.
 
 ## Events
 
