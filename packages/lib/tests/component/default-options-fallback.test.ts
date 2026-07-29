@@ -9,6 +9,8 @@ import { IconText } from '~/component/display/IconText';
 import { ToolBar } from '~/component/menubar/ToolBar';
 import { SplitGutter } from '~/component/container/SplitGutter';
 import { HBox } from '~/layout/HBox';
+import { VBox } from '~/layout/VBox';
+import { ListItem } from '~/component/list/ListItem';
 import { TextField } from '~/component/input/TextField';
 import { Link } from '~/component/input/Link';
 import { NumberedList } from '~/component/list/NumberedList';
@@ -181,6 +183,9 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'SplitGutter collapsible',      resolve: () => new SplitGutter('horizontal').isCollapsible(),              expected: true },
     { label: 'SplitGutter movable',          resolve: () => new SplitGutter('horizontal').isMovable(),                  expected: true },
     { label: 'BulletedList itemStyle',       resolve: () => new BulletedList().getStyle(),                              expected: BulletedListItemStyle.DISC },
+    { label: 'BulletedList layout spacing',  resolve: () => (new BulletedList().getLayoutManager() as VBox).getComponentSpacing(), expected: 0 },
+    { label: 'ListItem tag',                 resolve: () => new ListItem('k', 'v').getTag(),                            expected: 'li' },
+    { label: 'ListItem marker gap',          resolve: () => (new ListItem('k', 'v').getLayoutManager() as HBox).getComponentSpacing(), expected: 4 },
     { label: 'NumberedList itemStyle',       resolve: () => new NumberedList().getStyle(),                              expected: NumberedListItemStyle.DECIMAL },
     { label: 'IconText gap',                 resolve: () => (new IconText('unicode-arrow-up', 'x').getLayoutManager() as HBox).getComponentSpacing(), expected: 2 },
     { label: 'Popover placement',            resolve: () => new Popover().getPlacement(),                               expected: 'auto' },

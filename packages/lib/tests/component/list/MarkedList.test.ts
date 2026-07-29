@@ -63,10 +63,10 @@ describe('NumberedList — defaults and style', () => {
     });
 });
 
-describe('List-style enums map to their exact CSS list-style-type tokens', () => {
-    // The style value getStyle() returns IS the CSS list-style-type token passed
-    // to setElementCSSRule — assert each enum member equals its documented
-    // CSS keyword so a rename can't silently drift the rendered marker.
+describe('List-style enums keep their CSS keyword values', () => {
+    // The enum values are no longer written to `list-style-type` — each list
+    // paints its own marker now, and every member renders. The members must
+    // still not drift: the keywords are the documented public surface.
     it('BulletedListItemStyle members equal their CSS keywords', () => {
         expect(BulletedListItemStyle.NONE).toBe('none');
         expect(BulletedListItemStyle.DISC).toBe('disc');
@@ -100,17 +100,11 @@ describe('ListItem — key / value contract', () => {
         expect(item.getKey()).toBe('k1');
     });
 
-    it('applyStyle is a no-op returning this', () => {
-        const item = new _ListItem('k', 'v');
-
-        expect(item.applyStyle()).toBe(item);
-    });
-
     it('renders the positional value as the item text', () => {
         // The positional `value` is a per-instance value, not a class default —
         // `new ListItem(key, value)` must render `value` as the <li> text even
-        // when no `text` option is supplied. render() writes
-        // `text: this._value` through the sink; assert the positional reaches it.
+        // when no `text` option is supplied. The label `Text` child writes it
+        // through the sink; assert the positional value reaches it.
         const sink = installTestDOM(CONFIG);
         const item = new _ListItem('k', 'Positional');
 
@@ -126,9 +120,9 @@ describe('ListItem — key / value contract', () => {
 
     it('the text option overrides the positional value', () => {
         // The positional value seeds the defaults bag's `text`; an explicit
-        // `text` option wins the options-over-defaults merge (ListItem.ts:44).
-        // render() writes `text: this._value` through the sink — assert the
-        // recorded text write carries the override, not the positional.
+        // `text` option wins, dispatched from the constructor body once the
+        // label child exists — assert the recorded text write carries the
+        // override, not the positional.
         const sink = installTestDOM(CONFIG);
         const item = new _ListItem('k', 'positional', { text: 'override' });
 
