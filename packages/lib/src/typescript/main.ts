@@ -35,6 +35,7 @@ import { CodeEditorPanel } from "./CodeEditorPanel.js";
 import { ChartDemoPanel } from "./ChartDemoPanel.js";
 import { DiagramPanel } from "./DiagramPanel.js";
 import { MarkdownEditorPanel } from "./MarkdownEditorPanel.js";
+import { MarkerListPanel } from "./MarkerListPanel.js";
 
 DOM.source.getScrollBarWidth();
 (window as any).bench = Benchmark;
@@ -81,6 +82,7 @@ addSection(() => new TabDemoPanel(),         "Tab"        );
 addSection(() => new MenuBarPanel(),         "MenuBar"    );
 addSection(() => new ToolBarPanel(),         "ToolBar"    );
 addSection(() => new MultiSelectListPanel(), "MultiSelect");
+addSection(() => new MarkerListPanel(),      "Marker Lists");
 addSection(() => new BaselinePanel(),        "Baseline"   );
 addSection(() => new LayoutSerializationPanel(), "Layout I/O" );
 addSection(() => new MarkdownPanel(),        "Markdown"   );
