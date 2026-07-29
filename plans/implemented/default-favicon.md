@@ -400,6 +400,18 @@ Written out as the tests to build:
 
 ---
 
+## Implementation Notes
+
+Three things differ from the plan as written. None changes the design.
+
+**`MARK_SVG` is exported.** The plan's *Public API* listed only `DEFAULT_FAVICON` and `Favicon`, but *Expected Behaviour* case 6 asserts that the decoded data URI round-trips to `MARK_SVG`, which needs the test to reach it. It is exported from `core/Favicon.ts` and tagged `@internal`, and the `core` barrel does **not** re-export it — so it stays out of the public API and out of the generated docs, exactly as the plan intended.
+
+**Test 1 identifies `<head>` by tag, not by handle.** The plan implied comparing the `appendChild` parent against `DOM.source.getHead()`. That cannot work: the offline source mints a *fresh* handle on every `getHead()` call — as it does for `getBody` and `getDocumentElement` — so the handle a test fetches is never the one the code under test used. The test reads `DOM.source.getTagName(parent)` and asserts `'HEAD'` instead. The harness was left alone; minting fresh handles is its deliberate, consistent design.
+
+**The gap-legibility fallback was not needed.** *Verification* said to widen the 2-unit gaps to 3 units if they smear shut at 16px. Rasterising the mark at 16px and inspecting it magnified shows the gutters render as clean, fully white one-pixel lines, and the three regions stay separate. Widening the gaps to 3, 4 or 5 units changes the 16px result barely at all. The geometry ships as specified.
+
+---
+
 ## Notes
 
 [^no-static-assets]: A data URI rather than a shipped `favicon.svg`. `build:lib` emits ES modules only, and `packages/lib/package.json`'s `files` array is `dist/lib` plus `llms.txt` and two licence files — an asset would need a copy step in the library build, an export map entry, and a documented path for consumers to reference. A data URI needs none of that and works identically for a plain npm consumer with no bundler asset handling. Shipping static `favicon.svg` files in the three `index.html` templates was considered and rejected: it would put three copies of the mark in the repo, would not help npm consumers at all, and gives no opt-out mechanism beyond editing the file.

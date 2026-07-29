@@ -101,6 +101,7 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 
 ### App shell
 - Map the URL to a top-level app section → **Router** · `@jimka/typescript-ui/router` · Maps the URL hash or path to a single top-level app section. Patterns are registered with register (e.g. `"/data/rows/:sel"`); on a navigat… · docs/concepts/routing.md
+- Give the app a browser-tab icon → **Favicon** · `@jimka/typescript-ui/core` · Installs the browser-tab icon by appending a `<link rel="icon">` to `<head>`. · docs/components/Body.md
 
 ## Conventions (hard rules)
 1. Never use CSS flex/grid or `position: relative` — arrange children with a LayoutManager (HBox/VBox/Border/Grid/Split/…). → docs/concepts/layout-system.md

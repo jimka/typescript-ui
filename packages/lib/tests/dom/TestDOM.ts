@@ -99,6 +99,8 @@ class TestHandleTable {
     private readonly _stubs = new Map<Handle, HandleStub>();
     private readonly _parents = new Map<Handle, Handle>();
     private readonly _byId = new Map<string, Handle>();
+    /** Selector → handle, seeded by {@link setQuerySelectorResult}. There is no selector engine offline. */
+    private readonly _bySelector = new Map<string, Handle>();
     private readonly _connected = new Set<Handle>();
     private _focus: Handle | null = null;
     private _next = 1;
@@ -255,6 +257,29 @@ class TestHandleTable {
      */
     isConnected(handle: Handle): boolean {
         return this._connected.has(handle);
+    }
+
+    /**
+     * Seeds the handle a selector resolves to, read back by
+     * {@link ModelledDOMSource.querySelector}.
+     *
+     * @param selector - The exact selector string the code under test passes.
+     * @param handle - The handle that selector should find.
+     */
+    setSelectorResult(selector: string, handle: Handle): void {
+        this._bySelector.set(selector, handle);
+    }
+
+    /**
+     * Reads the handle seeded for a selector. Default `null` — an unseeded
+     * selector matches nothing, which is what every test written before
+     * seeding existed relies on.
+     *
+     * @param selector - The selector to resolve.
+     * @returns The seeded handle, or `null`.
+     */
+    selectorResult(selector: string): Handle | null {
+        return this._bySelector.get(selector) ?? null;
     }
 
     /**
@@ -1085,9 +1110,14 @@ export class ModelledDOMSource implements DOMSource {
         return false;
     }
 
-    /** No DOM tree offline; selector queries find nothing. */
-    querySelector(_root: Handle, _selector: string): Handle | null {
-        return null;
+    /**
+     * No selector engine offline: a selector resolves only to the handle a
+     * test seeded for it with {@link setQuerySelectorResult}, and `null`
+     * otherwise. `root` is ignored — the seeding is global, not scoped to a
+     * subtree.
+     */
+    querySelector(_root: Handle, selector: string): Handle | null {
+        return _table.selectorResult(selector);
     }
 
     /** No DOM tree offline; selector queries find nothing. */
@@ -1434,6 +1464,19 @@ export function setNaturalSize(handle: Handle, width: number, height: number): v
  */
 export function setConnected(handle: Handle, connected: boolean): void {
     _table.setConnected(handle, connected);
+}
+
+/**
+ * Seeds the handle a selector resolves to, read back by
+ * {@link ModelledDOMSource.querySelector}. Offline there is no selector
+ * engine, so a lookup finds an element only when a test has declared the
+ * match; an unseeded selector still returns `null`.
+ *
+ * @param selector - The exact selector string the code under test passes.
+ * @param handle - The handle that selector should find.
+ */
+export function setQuerySelectorResult(selector: string, handle: Handle): void {
+    _table.setSelectorResult(selector, handle);
 }
 
 /**
