@@ -495,3 +495,48 @@ Read before implementing:
 [^roman-range]: CSS Counter Styles gives the predefined `lower-roman` / `upper-roman` styles `range: 1 3999`, and a counter style falls back to `decimal` outside its range. Above 3999 the classical additive symbol set has no notation left — the medieval overline and bracket forms are not something a list marker should introduce. Following the CSS range keeps the framework's output matching what a browser drew before the marker rewrite, for every value a real list is going to reach.
 
 [^count-all]: `syncMarkerColumn` walks `getComponents()` rather than `getLaidOutComponents()` for the same reason `renumber()` does. Nothing notifies a list when a child's displayed flag flips, so a column measured from displayed items only would go stale the moment a consumer hid an item — and worse, hiding the item carrying the widest marker would shift every remaining label sideways on the next unrelated layout. Counting all children keeps the column stable across a hide/show cycle, and a hidden item's marker still measures normally.
+
+---
+
+## Implementation Notes
+
+The plan was followed as written. Every ordered step landed, all nineteen
+offline cases and the three manual ones pass, and no plan claim needed
+correcting — the line references, the `setMinSize` trap, and the
+`getPreferredSizeConstraint` read-back all held up against the code.
+
+Four things are worth recording.
+
+**One documentation commit, not one per functionality.** The `commit` skill asks
+for a docs commit per functionality. Here the two functionalities share
+paragraphs: the 0.3.0 changelog and migration entries had to be rewritten in
+place as single coherent entries, and `NumberedList.md` carries the numbering
+table and the shared-column sentence in the same page. Splitting would have meant
+two commits editing the same three files at overlapping line ranges. The skill's
+own test — "would each piece make sense on its own branch?" — says no, because
+the plan's premise is that the column is what makes the numbering styles look
+right. The code stayed in two commits for reviewability.
+
+**A `markerFor` test helper was added beside `ProbeNumberedList`.** The plan
+specified the probe subclass and said every case indexes it zero-based. Ten cases
+doing `new ProbeNumberedList({ itemStyle: style }).marker(n - 1)` inline would
+have repeated that off-by-one at every call site, so the helper does the
+conversion once and the cases read in one-based item numbers, as the plan's
+tables are written.
+
+**Case 1 asserts on a composed string** (`"lower-roman n=9 -> ix."`) rather than
+on the bare marker. The case walks ten styles across six positions in one block,
+and a bare `expect(marker).toBe('ix.')` failure names neither the style nor the
+position. The composed form makes the failure message self-locating.
+
+**No demo change.** Step 8 of the `implement` skill asks for a demo of the new
+feature. The `Border` tab already hosts both list types, and the plan's file
+table deliberately excludes `BorderPanel.ts`, so the demo was used for manual
+verification (temporarily grown to twelve items and cycled through
+`UPPER_ROMAN`, `LOWER_GREEK`, `LOWER_ALPHA` and `DECIMAL_LEADING_ZERO`) and then
+reverted. Measured in the browser: the twelve-item decimal list holds one marker
+width of 18px and one label x of 22px across all twelve items, including at item
+10 where the digit count grows; the column re-sizes per style (22px roman, 13px
+greek, 12px alpha, 21px leading-zero); Greek and roman render as real glyphs, not
+tofu; and the list logs zero layout passes over a quiet 1.5 seconds after
+settling, which is the spin the plan's second Potential Challenge warns about.
