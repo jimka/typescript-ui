@@ -569,9 +569,9 @@ class VBox extends BoxLayout {
 
     /**
      * Resolves a child's final height within the column, clamped to its
-     * min/max. Weight cells take a share of `remainingHeight`; non-weighted
-     * children take their preferred height reduced by the shrink ratio toward
-     * their min height.
+     * min/max — the minimum wins when the two conflict. Weight cells take a
+     * share of `remainingHeight`; non-weighted children take their preferred
+     * height reduced by the shrink ratio toward their min height.
      *
      * @param size - The child's preferred size, or `null`.
      * @param minSize - The child's minimum size, or `null`.
@@ -594,12 +594,12 @@ class VBox extends BoxLayout {
             height = pref - shrinkRatio * (pref - min);
         }
 
-        if (minSize) {
-            height = Math.max(height, minSize.height);
-        }
-
         if (maxSize) {
             height = Math.min(height, maxSize.height);
+        }
+
+        if (minSize) {
+            height = Math.max(height, minSize.height);
         }
 
         return height;

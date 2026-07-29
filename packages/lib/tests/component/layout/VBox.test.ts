@@ -159,6 +159,78 @@ describe('VBox doLayout geometry', () => {
     });
 });
 
+describe('VBox resolveChildHeight clamp ordering', () => {
+    afterEach(() => DOM.reset());
+
+    it('places a min <= max child at its preferred height (unchanged case)', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(200, 400, new VBox());
+        const child = new Component({ preferredSize: { width: 50, height: 120 } });
+        child.setMinSize({ width: 50, height: 40 });
+        child.setMaxSize({ width: 50, height: 200 });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getHeight()).toBe(120);
+    });
+
+    it('floors a min <= max child below its minimum to the minimum (unchanged case)', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(200, 400, new VBox());
+        const child = new Component({ preferredSize: { width: 50, height: 10 } });
+        child.setMinSize({ width: 50, height: 40 });
+        child.setMaxSize({ width: 50, height: 200 });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getHeight()).toBe(40);
+    });
+
+    it('caps a min <= max child above its maximum to the maximum (unchanged case)', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(200, 400, new VBox());
+        const child = new Component({ preferredSize: { width: 50, height: 900 } });
+        child.setMinSize({ width: 50, height: 40 });
+        child.setMaxSize({ width: 50, height: 200 });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getHeight()).toBe(200);
+    });
+
+    it('honours the minimum over a smaller maximum, so a later sibling does not overlap (degenerate min > max)', () => {
+        installTestDOM(CONFIG);
+
+        const vbox = new VBox();
+        const host = hostVBox(200, 400, vbox);
+        const stage = new Component({ preferredSize: { width: 50, height: 120 } });
+        stage.setMinSize({ width: 50, height: 120 });
+        stage.setMaxSize({ width: 50, height: 47 });
+        const toggle = new Component({ preferredSize: { width: 50, height: 30 } });
+
+        host.addComponent(stage);
+        host.addComponent(toggle);
+        host.doLayout();
+
+        // The stage's own committed height always lands on its min (120) once
+        // Component.setHeight's clampHeight reasserts it — that step alone
+        // doesn't distinguish the bug from the fix.
+        expect(stage.getHeight()).toBe(120);
+
+        // What DOES distinguish them: the column must reserve the stage's full
+        // min height before advancing to the next child, not the smaller
+        // (wrong) max it clamps to internally. Before the fix, the toggle
+        // lands at 47 + spacing, overlapping the stage's last 73px.
+        expect(toggle.getY()).toBe(120 + vbox.getComponentSpacing());
+    });
+});
+
 /**
  * Builds a non-stretching HBox host (a Container so doLayout runs), sized and
  * inset-cleared so child origins start at (0,0). Mirrors the Anchor.test.ts
