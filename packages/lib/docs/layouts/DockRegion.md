@@ -31,7 +31,7 @@ const dock = new DockRegion(region);
 dock.destroy();
 ```
 
-The dragged source must be a tab carrying the framework's tab-drag payload — any tab from a `reorderable` [`Tab`](/layouts/Tab) strip qualifies, so a tab dragged from one strip can be docked onto any `DockRegion` with no extra wiring. `destroy()` unregisters the drop target and detaches the overlay.
+The dragged source must be a tab carrying the framework's tab-drag payload — any tab from a `reorderable` [`Tab`](/layouts/Tab) strip qualifies, so a tab dragged from one strip can be docked onto any `DockRegion` with no extra wiring. `destroy()` unregisters the drop target and disposes the overlay, releasing its stylesheet rules along with its element.
 
 ## Where a drop lands
 

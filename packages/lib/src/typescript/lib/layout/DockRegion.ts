@@ -121,12 +121,16 @@ export class DockRegion {
     }
 
     /**
-     * Unregisters the drop target, detaches the overlay, and cancels any pending
-     * spring-loaded raise.
+     * Unregisters the drop target, disposes the overlay, and cancels any
+     * pending spring-loaded raise. Disposes rather than detaches: this is the
+     * region's permanent teardown, and `_overlay` is never reused after it, so
+     * its own and its highlight's stylesheet rules must be reclaimed too — the
+     * `onDragLeave` / `onDrop` calls to `_overlay.detach()` above are mid-drag
+     * hides of a still-live overlay and stay as they are.
      */
     destroy(): void {
         this._teardown();
-        this._overlay.detach();
+        this._overlay.dispose();
         this.clearSpringRaise();
     }
 

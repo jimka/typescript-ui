@@ -305,11 +305,14 @@ class CollapseButton extends Component<CollapseButtonOptions> {
     }
 
     /**
-     * Removes the double-click and mousedown listeners.
+     * Removes the double-click and mousedown listeners, then runs the
+     * inherited teardown.
      */
-    destroy(): void {
+    protected destructor(): void {
         Event.removeListener(this, "dblclick", this.onDoubleClick);
         Event.removeListener(this, "mousedown", this.onMouseDown);
+
+        super.destructor();
     }
 }
 

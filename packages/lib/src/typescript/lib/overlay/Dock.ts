@@ -2005,6 +2005,29 @@ class Dock extends Container<DockOptions> {
     protected emit(event: DockEvent, payload: DockPanelEvent | DockEmptyEvent | DockExceptionEvent | null): void {
         this._listeners.fire(event, payload);
     }
+
+    /**
+     * Disposes the empty-state drop overlay before the base destructor runs.
+     * `attachTo` raw-appends the overlay onto this dock's element rather than
+     * registering it as a child, so the inherited child recursion never
+     * reaches it; the `detach()` calls in the drop-target callbacks are
+     * mid-drag hides of a still-live overlay, not teardown.
+     */
+    protected destructor(): void {
+        this._emptyDropOverlay.dispose();
+
+        // Each wired region owns a DockRegion holding its own drop-zone
+        // overlay. `destroy()` is otherwise reached only by the
+        // unreachable-region sweep, so without this every region a drag ever
+        // hovered would keep its overlay's rules when the dock goes away.
+        for (const wiring of this._wiring.values()) {
+            wiring.dockRegion.destroy();
+        }
+
+        this._wiring.clear();
+
+        super.destructor();
+    }
 }
 
 const DockCallable = callable(Dock);

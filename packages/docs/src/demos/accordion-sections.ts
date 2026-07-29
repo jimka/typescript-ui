@@ -1,6 +1,6 @@
 import type { Component } from '@jimka/typescript-ui/core';
 import { Panel } from '@jimka/typescript-ui/core';
-import { Accordion, AccordionConstraints, Grid } from '@jimka/typescript-ui/layout';
+import { Accordion, AccordionConstraints } from '@jimka/typescript-ui/layout';
 import { Text } from '@jimka/typescript-ui/component/input';
 
 /**
@@ -34,5 +34,5 @@ export function create(): Component {
     accordion.addComponent(secondSection, new AccordionConstraints('Section 2'));
     accordion.addComponent(thirdSection,  new AccordionConstraints('Section 3'));
 
-    return Panel({ layoutManager: Grid({ columns: 1, rows: 1 }), components: [accordion] });
+    return accordion;
 }

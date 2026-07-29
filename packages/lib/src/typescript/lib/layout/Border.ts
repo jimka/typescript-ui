@@ -875,15 +875,17 @@ class Border extends LayoutManager {
             return;
         }
 
+        // The container has no element yet (e.g. laid out before it is
+        // rendered, as an autoScroll host's synchronous setOverflowing pass
+        // can do to a not-yet-mounted child); defer to the next pass, which
+        // every other layout manager (HBox, VBox, Grid, Split, Tab) already
+        // does in this situation.
         let containerSize = container.getInnerSize();
         if (!containerSize) {
-            throw new Error("Unable to determine component size.");
+            return;
         }
 
         let containerInsets = container.getContentInsets();
-        if (!containerInsets) {
-            throw new Error("Unable to determine component insets.");
-        }
 
         // Universal scroll: see HBox.doLayout for the rationale. Inflates the
         // working size to the children's combined minSize on the axes the
@@ -1182,7 +1184,7 @@ class Border extends LayoutManager {
                 DOM.sink.removeChild(parent, element);
             }
 
-            gutter.destroy();
+            gutter.dispose();
         }
 
         this._gutters.clear();

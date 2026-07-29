@@ -154,6 +154,18 @@ export class VirtualScroller {
     }
 
     /**
+     * Disposes the two `Scrollbar` overlays this scroller owns. They are
+     * appended straight onto the owner's element rather than registered as its
+     * children, so the owner's `destructor()` recursion cannot reach them and
+     * their per-instance stylesheet rules would otherwise survive teardown.
+     * Called from `VirtualRowView.destructor()`.
+     */
+    dispose(): void {
+        this._scrollbarV.dispose();
+        this._scrollbarH.dispose();
+    }
+
+    /**
      * Returns the two created container handles (clip box and rows container).
      * The owning component tracks these via `trackHandle` so they are released
      * with the owner — on its destructor or, for a discarded owner, on GC — and

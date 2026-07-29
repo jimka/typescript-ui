@@ -1353,9 +1353,13 @@ class Rail extends Component<RailOptions> {
     }
 
     /**
-     * Cancels any in-flight collapse / slide animation, then defers to the base
-     * class. Cancelling first keeps their fallback timers from firing after
-     * `super.destructor()` has released this rail's element handle.
+     * Cancels any in-flight collapse / slide animation and disposes the
+     * collapse chevron, then defers to the base class. Cancelling the
+     * animations first keeps their fallback timers from firing after
+     * `super.destructor()` has released this rail's element handle. The
+     * chevron needs its own disposal because `mount()` appends it straight to
+     * this rail's element rather than registering it as a child, so
+     * `super.destructor()`'s recursion cannot reach it.
      */
     protected destructor(): void {
         this._collapseAnimation?.cancel();
@@ -1364,6 +1368,8 @@ class Rail extends Component<RailOptions> {
         this._slideOutAnimation = null;
         this._slideInAnimation?.cancel();
         this._slideInAnimation = null;
+
+        this._collapseButton.dispose();
 
         super.destructor();
     }

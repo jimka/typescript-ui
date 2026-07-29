@@ -1,6 +1,6 @@
 import type { Component } from '@jimka/typescript-ui/core';
 import { Panel } from '@jimka/typescript-ui/core';
-import { Border, Grid } from '@jimka/typescript-ui/layout';
+import { Border } from '@jimka/typescript-ui/layout';
 import { Placement } from '@jimka/typescript-ui/primitive';
 import { Header } from '@jimka/typescript-ui/component/display';
 
@@ -41,5 +41,5 @@ export function create(): Component {
     region.addComponent(eastPanel,   { placement: Placement.EAST });
     region.addComponent(centerPanel, { placement: Placement.CENTER });
 
-    return Panel({ layoutManager: Grid({ columns: 1, rows: 1 }), components: [region] });
+    return region;
 }

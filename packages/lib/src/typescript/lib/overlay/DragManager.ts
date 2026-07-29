@@ -630,21 +630,35 @@ function endSession(dropped: boolean, clientX: number, clientY: number): void {
     Event.removeViewportListener(session.source, "mousemove", onMouseMove);
     Event.removeViewportListener(session.source, "mouseup",   onMouseUp);
 
+    // The drag chrome is built fresh for every committed gesture in
+    // `commitSession` and held only on the session record — none of it is
+    // registered through `addComponent`, so `Component.destructor()`'s child
+    // recursion can never reach it. Disposing, rather than only detaching,
+    // is what reclaims each one's per-instance stylesheet rule before the
+    // session reference is dropped; detaching alone grew the shared sheet by
+    // one rule per drag, without bound.
     if (session.feedback) {
-        session.feedback.detach();
+        session.feedback.dispose();
     }
 
     if (session.indicator) {
-        session.indicator.detach();
+        session.indicator.dispose();
     }
 
     if (session.ghost) {
-        const dragGhost = session.ghost as unknown as { hide?: () => void };
+        if (session.sourceOptions.ghostFactory) {
+            // A ghost from the caller's factory belongs to the caller, which
+            // may hand back the same component on every gesture — so it is
+            // detached, never disposed.
+            const dragGhost = session.ghost as unknown as { hide?: () => void };
 
-        if (typeof dragGhost.hide === "function") {
-            dragGhost.hide();
+            if (typeof dragGhost.hide === "function") {
+                dragGhost.hide();
+            } else {
+                session.ghost.removeElement();
+            }
         } else {
-            session.ghost.removeElement();
+            session.ghost.dispose();
         }
     }
 

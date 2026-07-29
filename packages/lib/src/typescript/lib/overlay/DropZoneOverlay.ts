@@ -241,6 +241,18 @@ class DropZoneOverlay extends Component {
         this._valid = true;
         this.removeElement();
     }
+
+    /**
+     * Disposes the highlight rect before deferring to the base class. `attachTo`
+     * appends `_highlight` straight onto this overlay's own element rather than
+     * registering it as a child, so `super.destructor()`'s recursion cannot
+     * reach it.
+     */
+    protected destructor(): void {
+        this._highlight.dispose();
+
+        super.destructor();
+    }
 }
 
 const DropZoneOverlayCallable = callable(DropZoneOverlay);

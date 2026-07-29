@@ -472,12 +472,18 @@ class SplitGutter extends Component<SplitGutterOptions> {
     }
 
     /**
-     * Removes the mousedown listener and tears down the collapse button.
+     * Removes the mousedown listener, disposes the collapse button, and runs
+     * the inherited teardown. The explicit `_collapseButton` disposal is
+     * required, not redundant: the button is raw-appended to this gutter's
+     * element rather than registered as a child, so `super.destructor()`'s
+     * child recursion cannot reach it.
      */
-    destroy() {
+    protected destructor(): void {
         Event.removeListener(this, 'mousedown', this.onDragStart);
 
-        this._collapseButton?.destroy();
+        this._collapseButton?.dispose();
+
+        super.destructor();
     }
 
     /**

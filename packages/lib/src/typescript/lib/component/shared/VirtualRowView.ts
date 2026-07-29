@@ -118,7 +118,8 @@ abstract class VirtualRowView<
     }
 
     /**
-     * Destroys the pooled rows before the inherited teardown runs.
+     * Destroys the pooled rows and the scroller's overlay scrollbars before the
+     * inherited teardown runs.
      *
      * {@link growRowPool} appends each row's element straight to the rows
      * container and keeps the row only in `_rowPool`, so a pooled row is never
@@ -126,12 +127,16 @@ abstract class VirtualRowView<
      * `_components` cannot reach it. Without this override neither the rows nor
      * their cells (which *are* registered on their row) release their
      * per-instance stylesheet rules, so the shared sheet grows by roughly the
-     * view's whole cell count on every teardown.
+     * view's whole cell count on every teardown. The scroller's two
+     * `Scrollbar` overlays are raw-appended the same way, so they need the
+     * same explicit disposal.
      */
     protected destructor(): void {
         for (const row of this._rowPool) {
             row.dispose();
         }
+
+        this._scroller?.dispose();
 
         super.destructor();
     }
