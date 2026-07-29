@@ -391,6 +391,18 @@ full upgrade note.
   `autoScroll` host's synchronous layout pass during its own construction is
   what used to trigger this against a not-yet-rendered child.
 
+- **`VBox`, `HBox`, and the flow layouts no longer let a child's smaller
+  maximum win over its explicit larger minimum.** `resolveChildHeight`,
+  `resolveChildWidth`, and `clampedPreferredSize` capped to the maximum and
+  then floored to the minimum — the reverse of the order every other clamp
+  in the framework uses — so a component that set a hard maximum on itself
+  (`ComboBox` capping its own height, for instance) could shrink an
+  ancestor's reserved cell below the minimum that ancestor explicitly
+  demanded, and the next sibling in the column, row, or flow advanced into
+  the space the shrunk cell never gave back. All three sites now cap to the
+  maximum first and floor to the minimum last, matching
+  `clampPreferredToConstraints` and `clampWidth`.
+
 ## 0.2.0
 
 ### Breaking changes
