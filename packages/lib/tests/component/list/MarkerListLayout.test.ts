@@ -470,6 +470,168 @@ describe('ListItem — geometry', () => {
     });
 });
 
+describe('AbstractMarkerList — shared marker column', () => {
+    afterEach(() => DOM.reset());
+
+    /** The twelve labels that make markers `1.` through `12.` — two marker widths. */
+    const TWELVE = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+
+    /** An item's marker and label children, in that order. */
+    function slots(item: _ListItem): [_Text, _Text] {
+        return item.getComponents() as [_Text, _Text];
+    }
+
+    /** The width a bare Text of `text` measures to. */
+    function textWidth(text: string): number {
+        return new _Text(text).getPreferredSize()!.width;
+    }
+
+    // Case 11.
+    it('gives every item one marker width and one label x', () => {
+        installTestDOM(CONFIG);
+
+        const list = hostList(new _NumberedList(), 300, 400, TWELVE);
+        list.doLayout();
+
+        const items      = list.getComponents() as _ListItem[];
+        const markerWidths = items.map(i => slots(i)[0].getWidth());
+        const labelXs      = items.map(i => slots(i)[1].getX());
+
+        // Before the shared column, `1.` measured 8 and `10.` measured 12, so
+        // the label x jumped from 12 to 16 at item 10.
+        expect(new Set(markerWidths).size).toBe(1);
+        expect(new Set(labelXs).size).toBe(1);
+        expect(labelXs[0]).toBe(markerWidths[0] + MARKER_GAP);
+    });
+
+    // Case 12.
+    it('sizes the column to the widest marker', () => {
+        installTestDOM(CONFIG);
+
+        const list = hostList(new _NumberedList(), 300, 400, TWELVE);
+        list.doLayout();
+
+        const widest = textWidth('12.');
+
+        expect(list.getMarkerColumnWidth()).toBe(widest);
+        for (const item of list.getComponents() as _ListItem[]) {
+            expect(slots(item)[0].getWidth()).toBe(widest);
+        }
+    });
+
+    // Case 13. The case that catches a ratcheting column.
+    it('shrinks the column when the widest marker goes away', () => {
+        installTestDOM(CONFIG);
+
+        const list = hostList(new _NumberedList(), 300, 400, TWELVE);
+        list.doLayout();
+
+        const wide = list.getMarkerColumnWidth();
+        expect(wide).toBe(textWidth('12.'));
+
+        const items = list.getComponents() as _ListItem[];
+        for (const item of items.slice(5)) {
+            list.removeComponent(item);
+        }
+
+        list.doLayout();
+
+        expect(list.getMarkerColumnWidth()).toBe(textWidth('5.'));
+        expect(list.getMarkerColumnWidth()).toBeLessThan(wide);
+    });
+
+    // Case 14. The column must not feed back into the measurement it is derived from.
+    it('measures a marker independently of the column pushed onto it', () => {
+        installTestDOM(CONFIG);
+
+        const item = new _ListItem('a', 'Alpha');
+        item.getElement(true);
+        item.setMarker('1.');
+
+        const natural = textWidth('1.');
+        expect(item.getMarkerWidth()).toBe(natural);
+
+        item.setMarkerColumnWidth(200);
+
+        expect(item.getMarkerWidth()).toBe(natural);
+    });
+
+    // Case 15. Read off an item whose own marker is narrower than the column,
+    // so the assertion fails if only the marker's own width were counted.
+    it('reports an item width built from the column, not the item its own marker', () => {
+        installTestDOM(CONFIG);
+
+        const list = hostList(new _NumberedList(), 300, 400, TWELVE);
+        list.doLayout();
+
+        const first = (list.getComponents() as _ListItem[])[0];
+        expect(first.getMarker()).toBe('1.');
+        expect(textWidth('1.')).toBeLessThan(textWidth('12.'));
+
+        expect(first.getPreferredSize()!.width)
+            .toBe(textWidth('12.') + MARKER_GAP + textWidth('A'));
+    });
+
+    // Case 16.
+    it('right-aligns the marker inside its slot', () => {
+        installTestDOM(CONFIG);
+
+        const numbered = hostList(new _NumberedList(), 300, 400, ['A', 'B']);
+        const bulleted = hostList(new _BulletedList(), 300, 400, ['A', 'B']);
+
+        for (const list of [numbered, bulleted]) {
+            for (const item of list.getComponents() as _ListItem[]) {
+                expect(slots(item)[0].getTextAlign()).toBe('right');
+            }
+        }
+
+        expect(slots(new _ListItem('a', 'Alpha'))[0].getTextAlign()).toBe('right');
+    });
+
+    // Case 17. Every bullet is the same glyph, so the column is that glyph's width.
+    it('leaves a bulleted list at its single bullet width', () => {
+        installTestDOM(CONFIG);
+
+        const list = hostList(new _BulletedList(), 300, 400, ['Alpha', 'Beta', 'Gamma']);
+        list.doLayout();
+
+        const bullet = textWidth('•');
+
+        expect(list.getMarkerColumnWidth()).toBe(bullet);
+        for (const item of list.getComponents() as _ListItem[]) {
+            expect(slots(item)[1].getX()).toBe(bullet + MARKER_GAP);
+        }
+    });
+
+    // Case 18.
+    it('collapses the column to zero under the NONE style', () => {
+        installTestDOM(CONFIG);
+
+        const numbered = hostList(new _NumberedList({ itemStyle: NumberedListItemStyle.NONE }), 300, 400, ['A', 'B']);
+        const bulleted = hostList(new _BulletedList({ itemStyle: BulletedListItemStyle.NONE }), 300, 400, ['A', 'B']);
+
+        for (const list of [numbered, bulleted]) {
+            list.doLayout();
+
+            expect(list.getMarkerColumnWidth()).toBe(0);
+            for (const item of list.getComponents() as _ListItem[]) {
+                expect(slots(item)[0].isDisplayed()).toBe(false);
+            }
+        }
+    });
+
+    // Case 19.
+    it('survives a layout with no items', () => {
+        installTestDOM(CONFIG);
+
+        const list = new _NumberedList();
+        list.getElement(true);
+
+        expect(() => list.doLayout()).not.toThrow();
+        expect(list.getMarkerColumnWidth()).toBe(0);
+    });
+});
+
 describe('AbstractMarkerList — item placement', () => {
     afterEach(() => DOM.reset());
 

@@ -26,6 +26,10 @@ export interface AbstractMarkerListOptions<U extends BulletedListItemStyle | Num
  * stacked vertically by a [`VBox`](/api/layout/classes/VBox), and the list sizes
  * itself to them. Concrete subclasses supply the HTML tag, the default style,
  * and the marker string for a given position.
+ *
+ * Also owns the shared marker column: each layout pass measures every item's
+ * marker and widens all of them to the widest, so markers share a right edge
+ * and labels share a left one however much their widths differ.
  */
 export abstract class AbstractMarkerList<U extends BulletedListItemStyle | NumberedListItemStyle> extends Component<AbstractMarkerListOptions<U>> {
 
@@ -35,6 +39,11 @@ export abstract class AbstractMarkerList<U extends BulletedListItemStyle | Numbe
     // The cascade always dispatches setStyle because the constructor seeds
     // `itemStyle: style` into the defaults bag below.
     declare private _style: U | undefined;
+
+    // Framework-managed derived state: recomputed from the items on every
+    // layout pass, so it gets no setter and no options field. A plain
+    // initializer is safe because no cascade-dispatched setter writes it.
+    private _markerColumnWidth: number = 0;
 
     constructor(
         tag:              string,
@@ -95,6 +104,58 @@ export abstract class AbstractMarkerList<U extends BulletedListItemStyle | Numbe
         this.renumber();
 
         return this;
+    }
+
+    /**
+     * Returns the width every item's marker slot is currently widened to.
+     *
+     * @returns The shared marker column width in pixels; 0 before the first
+     * layout, and 0 for a list whose style shows no marker.
+     */
+    getMarkerColumnWidth(): number {
+        return this._markerColumnWidth;
+    }
+
+    /**
+     * Recomputes the shared marker column, then lays the items out.
+     *
+     * @returns This component, for method chaining.
+     */
+    doLayout(): this {
+        // The pause check is duplicated from Component.doLayout on purpose:
+        // without it a paused list would still measure and write minimum sizes,
+        // and each write would schedule a layout on its parent.
+        if (this.isLayoutPaused()) {
+            return this;
+        }
+
+        this.syncMarkerColumn();
+
+        return super.doLayout();
+    }
+
+    /**
+     * Measures every item's marker and pushes the widest width onto all of them,
+     * so each item's label starts at the same offset.
+     *
+     * @remarks Walks every child rather than only the displayed ones, for the
+     * same reason the renumbering pass does — hiding the item that carries the
+     * widest marker would otherwise shift every remaining label sideways on the
+     * next unrelated layout.
+     */
+    protected syncMarkerColumn(): void {
+        const items = this.getComponents() as ListItem[];
+        let   width = 0;
+
+        for (const item of items) {
+            width = Math.max(width, item.getMarkerWidth());
+        }
+
+        this._markerColumnWidth = width;
+
+        for (const item of items) {
+            item.setMarkerColumnWidth(width);
+        }
     }
 
     /**

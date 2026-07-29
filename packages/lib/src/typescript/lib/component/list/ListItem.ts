@@ -60,7 +60,10 @@ class ListItem extends Component<ListItemOptions> {
 
         this._key = key;
 
-        this._marker = new Text();
+        // The marker sits in a slot shared with every other item in the list,
+        // widened to the widest marker among them, so it hugs the slot's right
+        // edge and the trailing full stops line up down the list.
+        this._marker = new Text(undefined, { textAlign: "right" });
         this._text   = new Text();
 
         this.addComponent(this._marker);
@@ -148,6 +151,39 @@ class ListItem extends Component<ListItemOptions> {
         // Box layouts iterate the displayed children, so hiding the slot drops
         // both its width and the gap that would follow it.
         this._marker.setDisplayed(text.length > 0);
+
+        return this;
+    }
+
+    /**
+     * Returns the marker's own measured width, before any shared column widens it.
+     *
+     * @returns The measured width in pixels, or 0 when nothing has been measured.
+     *
+     * @remarks Called by the owning list to size its shared marker column.
+     */
+    getMarkerWidth(): number {
+        // Force the lazy measurement, then read the raw measured width back off
+        // the preferred-size constraint. getPreferredSize() would floor the
+        // width at the shared column this item already carries, which would
+        // ratchet the column wider on every pass and never let it shrink.
+        this._marker.getPreferredSize();
+
+        return this._marker.getPreferredSizeConstraint()?.width ?? 0;
+    }
+
+    /**
+     * Widens the marker slot to the owning list's shared column width.
+     *
+     * @param width - The shared column width in pixels.
+     *
+     * @returns This component, for method chaining.
+     */
+    setMarkerColumnWidth(width: number): this {
+        // A minimum, not a preferred size: Text republishes its own measurement
+        // through setPreferredSize, and pinning one would freeze the measurement
+        // this list has to read back.
+        this._marker.setMinSize({ width: width, height: 0 });
 
         return this;
     }
