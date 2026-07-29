@@ -57,18 +57,22 @@ interface VFlowColumn {
 class VFlow extends FlowLayout {
 
     /**
-     * Returns the preferred size: the single-column shape of the children — the
-     * sum of their preferred heights plus item spacing, and the widest child's
-     * width. In a `uniform` height mode the height is instead `count * rowHeight`;
-     * in a `uniform` width mode the width is the widest cell.
+     * Returns the preferred size. The height is the single-column shape of the
+     * children — the sum of their preferred heights plus item spacing, or
+     * `count * rowHeight` in a `uniform` height mode. The width is the cross
+     * extent the children wrapped into at the last layout: the summed column
+     * widths plus the gaps between them.
      *
      * @returns The preferred `{width, height}`, or `null` if no container is attached.
      *
-     * @remarks This is an approximation. The real width depends on how many
-     * columns the children wrap into, which is only known once the parent
-     * assigns a height — unavailable when the hint is queried. A scroll-enabled
-     * host scrolls horizontally when the real wrapped width exceeds this
-     * single-column estimate.
+     * @remarks The two axes answer different questions. The height is an
+     * aspiration — "give me this much and I will not wrap at all" — so it stays
+     * the unwrapped sum however the children are actually laid out. The width is
+     * a consequence of the height the flow was really given, so it reports the
+     * measurement rather than an estimate. Before the first layout at a usable
+     * height there is nothing measured yet, and the width falls back to the
+     * widest child; a parent that honours preferred sizes corrects that on the
+     * pass after the first.
      */
     getPreferredSize(): Size | null {
         const container = this.getContainer();
@@ -103,7 +107,14 @@ class VFlow extends FlowLayout {
 
         height += this._spacing * Math.max(0, components.length - 1);
 
-        let width = uniformWidth ? extents.width : maxWidth;
+        // The measured extent covers every wrapped column; the single-column
+        // estimate below it is only reachable before the first layout at a real
+        // height.
+        const measured = this.getWrappedLineExtent();
+
+        let width = measured !== null
+            ? measured
+            : (uniformWidth ? extents.width : maxWidth);
 
         width += perimeterSize.left + perimeterSize.right;
 
@@ -159,6 +170,12 @@ class VFlow extends FlowLayout {
      * axis unbounded.
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
+     *
+     * @remarks Once a layout has measured a wrapped width, that measurement
+     * floors the width reported here. A single column's maximum can otherwise
+     * sit below the wrapped width the preferred size reports, and a host that
+     * sizes itself to its content would clamp the flow back to one column and
+     * clip the rest.
      */
     getMaxSize(): Size | null {
         const container = this.getContainer();
@@ -207,6 +224,18 @@ class VFlow extends FlowLayout {
         }
 
         height += this._spacing * Math.max(0, components.length - 1);
+
+        // The single-column maximum above can sit below the wrapped extent
+        // getPreferredSize now reports. ARCHITECTURE binds min <= preferred <=
+        // max, and a host that clamps to its content would otherwise clamp the
+        // flow back to one column's width — re-clipping the very overflow the
+        // measurement exists to expose. Floor the maximum at the measurement.
+        const measured = this.getWrappedLineExtent();
+
+        if (measured !== null && !widthUnbounded) {
+            width = Math.max(width, measured);
+        }
+
         width += perimeterSize.left + perimeterSize.right;
 
         return {
@@ -247,6 +276,14 @@ class VFlow extends FlowLayout {
         const columns = this.groupIntoColumns(components, innerSize.height, insets.getLeft(), spacing, lineSpacing, uniformWidth, uniformHeight, extents);
 
         this.placeColumns(columns, insets.getTop(), innerSize.height, spacing);
+
+        // Only a wrap run against a real height says anything. Before the first
+        // sizing pass getInnerSize() is NaN-tall, every `> NaN` comparison is
+        // false, and the children collapse into one bogus column — the same
+        // reason Table.doLayout guards its own arithmetic.
+        if (Number.isFinite(innerSize.height)) {
+            this.publishWrappedLineExtent(this.columnsCrossExtent(columns, lineSpacing));
+        }
 
         this.reserveContentFrame();
     }
@@ -350,6 +387,29 @@ class VFlow extends FlowLayout {
      */
     private cellsMainExtent(column: VFlowColumn): number {
         return column.cells.reduce((sum, cell) => sum + cell.height, 0);
+    }
+
+    /**
+     * Sums the columns' widths plus the gaps between them — the cross extent the
+     * children actually occupy once wrapped.
+     *
+     * @param columns - The columns produced by {@link VFlow.groupIntoColumns}.
+     * @param lineSpacing - The gap between wrapped columns in pixels.
+     *
+     * @returns The total column extent in pixels, excluding the container perimeter.
+     */
+    private columnsCrossExtent(columns: VFlowColumn[], lineSpacing: number): number {
+        if (columns.length === 0) {
+            return 0;
+        }
+
+        let extent = lineSpacing * (columns.length - 1);
+
+        for (const column of columns) {
+            extent += column.columnWidth;
+        }
+
+        return extent;
     }
 }
 

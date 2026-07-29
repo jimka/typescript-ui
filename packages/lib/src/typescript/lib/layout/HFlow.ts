@@ -20,8 +20,10 @@ export interface HFlowOptions extends FlowLayoutOptions {}
 /**
  * One wrapped row of an {@link HFlow}: its ordered cells (each with the width it
  * was placed at, its own cell height, and its baseline for `"baseline"`
- * item-alignment), the row's total content width, the row height (tallest cell),
- * and the row's top in the container's coordinate space.
+ * item-alignment), the row's total content width, the row height, and the row's
+ * top in the container's coordinate space. The row height is its tallest cell,
+ * except under `"baseline"` item-alignment where it is `rowAscent + rowDescent`,
+ * which can exceed the tallest cell.
  */
 interface HFlowRow {
     cells: Array<{ component: Component; width: number; height: number; baseline: number | null }>;
@@ -54,19 +56,22 @@ interface HFlowRow {
 class HFlow extends FlowLayout {
 
     /**
-     * Returns the preferred size: the single-line shape of the children — the
-     * sum of their preferred widths plus item spacing, and the baseline-aware
-     * row height of the tallest child. In a `uniform` width mode the width is
-     * instead `count * columnWidth`; in a `uniform` height mode the height is
-     * the tallest cell.
+     * Returns the preferred size. The width is the single-line shape of the
+     * children — the sum of their preferred widths plus item spacing, or
+     * `count * columnWidth` in a `uniform` width mode. The height is the cross
+     * extent the children wrapped into at the last layout: the summed row
+     * heights plus the gaps between them.
      *
      * @returns The preferred `{width, height}`, or `null` if no container is attached.
      *
-     * @remarks This is an approximation. The real height depends on how many
-     * lines the children wrap into, which is only known once the parent assigns
-     * a width — unavailable when the hint is queried. The parent absorbs the
-     * difference: a scroll-enabled host scrolls vertically when the real wrapped
-     * height exceeds this single-line estimate.
+     * @remarks The two axes answer different questions. The width is an
+     * aspiration — "give me this much and I will not wrap at all" — so it stays
+     * the unwrapped sum however the children are actually laid out. The height
+     * is a consequence of the width the flow was really given, so it reports the
+     * measurement rather than an estimate. Before the first layout at a usable
+     * width there is nothing measured yet, and the height falls back to the
+     * height of one row; a parent that honours preferred sizes corrects that on
+     * the pass after the first.
      */
     getPreferredSize(): Size | null {
         const container = this.getContainer();
@@ -80,6 +85,13 @@ class HFlow extends FlowLayout {
         const uniformHeight = this.isUniformHeight();
         const extents = (uniformWidth || uniformHeight) ? this.computeUniformExtents(components) : { width: 0, height: 0 };
 
+        // The measured extent covers every wrapped row; the single-line estimate
+        // is only reachable before the first layout at a real width. Gathering
+        // its inputs costs a getBaseline() per child, so skip them once either a
+        // measurement or the uniform cell height has already answered the height.
+        const measured = this.getWrappedLineExtent();
+        const needsEstimate = measured === null && !uniformHeight;
+
         let width = perimeterSize.left + perimeterSize.right;
         const heights: number[] = [];
         const baselines: Array<number | null> = [];
@@ -92,8 +104,10 @@ class HFlow extends FlowLayout {
                     width += size.width;
                 }
 
-                heights.push(size.height);
-                baselines.push(component.getBaseline());
+                if (needsEstimate) {
+                    heights.push(size.height);
+                    baselines.push(component.getBaseline());
+                }
             }
         }
 
@@ -103,7 +117,9 @@ class HFlow extends FlowLayout {
 
         width += this._spacing * Math.max(0, components.length - 1);
 
-        let height = uniformHeight ? extents.height : this.computeRowHeight(heights, baselines);
+        let height = measured !== null
+            ? measured
+            : (uniformHeight ? extents.height : this.lineExtent(heights, baselines));
 
         height += perimeterSize.top + perimeterSize.bottom;
 
@@ -115,10 +131,16 @@ class HFlow extends FlowLayout {
 
     /**
      * Returns the minimum size: the widest child's min width (the floor below
-     * which not even one child per line fits) and the baseline-aware row height
-     * of the children's min heights.
+     * which not even one child per line fits) and one row's height taken over
+     * the children's min heights.
      *
      * @returns The minimum `{width, height}`, or `null` if no container is attached.
+     *
+     * @remarks The row height follows the current `itemAlign` — the tallest min
+     * under every alignment that places a cell inside its row, and
+     * `rowAscent + rowDescent` under `"baseline"`. It has to use the same rule
+     * the preferred size does, or a `start`-aligned row of baseline-bearing
+     * children reports a minimum above its own preferred height.
      */
     getMinSize(): Size | null {
         const container = this.getContainer();
@@ -145,7 +167,7 @@ class HFlow extends FlowLayout {
 
         const width = perimeterSize.left + perimeterSize.right + maxChildMinWidth;
 
-        let height = this.computeRowHeight(heights, baselines);
+        let height = this.lineExtent(heights, baselines);
 
         height += perimeterSize.top + perimeterSize.bottom;
 
@@ -164,6 +186,12 @@ class HFlow extends FlowLayout {
      * axis unbounded.
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
+     *
+     * @remarks Once a layout has measured a wrapped height, that measurement
+     * floors the height reported here. A single row's maximum can otherwise sit
+     * below the wrapped height the preferred size reports, and a host that sizes
+     * itself to its content would clamp the flow back to one row and clip the
+     * rest.
      */
     getMaxSize(): Size | null {
         const container = this.getContainer();
@@ -212,6 +240,18 @@ class HFlow extends FlowLayout {
         }
 
         width += this._spacing * Math.max(0, components.length - 1);
+
+        // The single-row maximum above can sit below the wrapped extent
+        // getPreferredSize now reports. ARCHITECTURE binds min <= preferred <=
+        // max, and a host that clamps to its content would otherwise clamp the
+        // flow back to one row's height — re-clipping the very overflow the
+        // measurement exists to expose. Floor the maximum at the measurement.
+        const measured = this.getWrappedLineExtent();
+
+        if (measured !== null && !heightUnbounded) {
+            height = Math.max(height, measured);
+        }
+
         height += perimeterSize.top + perimeterSize.bottom;
 
         return {
@@ -252,6 +292,14 @@ class HFlow extends FlowLayout {
         const rows = this.groupIntoRows(components, innerSize.width, insets.getTop(), spacing, lineSpacing, uniformWidth, uniformHeight, extents);
 
         this.placeRows(rows, insets.getLeft(), innerSize.width, spacing);
+
+        // Only a wrap run against a real width says anything. Before the first
+        // sizing pass getInnerSize() is NaN-wide, every `> NaN` comparison is
+        // false, and the children collapse into one bogus row — the same reason
+        // Table.doLayout guards its width arithmetic.
+        if (Number.isFinite(innerSize.width)) {
+            this.publishWrappedLineExtent(this.rowsCrossExtent(rows, lineSpacing));
+        }
 
         this.reserveContentFrame();
     }
@@ -303,7 +351,7 @@ class HFlow extends FlowLayout {
 
             current.contentWidth += (current.cells.length === 0) ? placedWidth : spacing + placedWidth;
             current.cells.push({ component: component, width: placedWidth, height: cellHeight, baseline: component.getBaseline() });
-            current.rowHeight = Math.max(current.rowHeight, cellHeight);
+            current.rowHeight = this.rowExtent(current, cellHeight);
         }
 
         return rows;
@@ -358,6 +406,92 @@ class HFlow extends FlowLayout {
      */
     private cellsMainExtent(row: HFlowRow): number {
         return row.cells.reduce((sum, cell) => sum + cell.width, 0);
+    }
+
+    /**
+     * Sums the rows' heights plus the gaps between them — the cross extent the
+     * children actually occupy once wrapped.
+     *
+     * @param rows - The rows produced by {@link HFlow.groupIntoRows}.
+     * @param lineSpacing - The gap between wrapped rows in pixels.
+     *
+     * @returns The total row extent in pixels, excluding the container perimeter.
+     */
+    private rowsCrossExtent(rows: HFlowRow[], lineSpacing: number): number {
+        if (rows.length === 0) {
+            return 0;
+        }
+
+        let extent = lineSpacing * (rows.length - 1);
+
+        for (const row of rows) {
+            extent += row.rowHeight;
+        }
+
+        return extent;
+    }
+
+    /**
+     * Returns how tall a row has to be to hold the cells placed in it so far,
+     * having just taken one more.
+     *
+     * @param row - The row being filled, including the cell just pushed.
+     * @param addedHeight - The height of the cell just pushed.
+     *
+     * @returns The row's cross extent in pixels.
+     *
+     * @remarks Under every alignment but `"baseline"` a cell is placed inside
+     * the row, so the row is exactly its tallest cell — folded in one cell at a
+     * time. That agrees with {@link HFlow.lineExtent} over the whole row because
+     * a maximum is associative and both start from `0`. Baseline alignment
+     * cannot be folded: it offsets each cell by `rowAscent - baseline`, which can
+     * push a low-baseline child's descender below the bottom of a taller one, so
+     * the row is `rowAscent + rowDescent` — a function of every cell at once,
+     * recomputed over the row so far. Using one number for both the row's height
+     * and its advance is what keeps wrapped baseline rows from overlapping.
+     */
+    private rowExtent(row: HFlowRow, addedHeight: number): number {
+        if (this._itemAlign !== "baseline") {
+            return Math.max(row.rowHeight, addedHeight);
+        }
+
+        return this.lineExtent(
+            row.cells.map(cell => cell.height),
+            row.cells.map(cell => cell.baseline),
+        );
+    }
+
+    /**
+     * Returns how tall one line of children has to be under the current
+     * `itemAlign`.
+     *
+     * @param heights - The children's heights, in line order.
+     * @param baselines - Each child's baseline, or null where it reports none.
+     *
+     * @returns The line's cross extent in pixels.
+     *
+     * @remarks The shared formula behind the minimum, the pre-layout estimate,
+     * and the measured row extent — {@link HFlow.rowExtent} calls it directly
+     * for a baseline row and folds the same maximum cell-by-cell otherwise.
+     * Before it, the minimum was baseline-aware unconditionally while the
+     * measurement was not, which inverted `min <= preferred` for a
+     * `start`-aligned row whose children happened to report baselines.
+     *
+     * One caller opts out: under a `uniform` height mode the preferred size
+     * takes the uniform cell height instead of asking here. (The row extent does
+     * not opt out — its cells carry the uniform height, but a baseline row is
+     * still measured by `rowAscent + rowDescent` over them, which can exceed
+     * that height.) A pre-layout `min > preferred` inversion survives for a
+     * baseline-aligned uniform row of children with pinned minimums, because the
+     * minimum has no uniform cell to take. That inversion predates this method
+     * and is not introduced by it; the first layout resolves it.
+     */
+    private lineExtent(heights: number[], baselines: Array<number | null>): number {
+        if (this._itemAlign !== "baseline") {
+            return heights.reduce((tallest, height) => Math.max(tallest, height), 0);
+        }
+
+        return this.computeRowHeight(heights, baselines);
     }
 }
 
