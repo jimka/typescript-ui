@@ -320,6 +320,30 @@ full upgrade note.
 
 ### Fixed
 
+- **A wrapped `HFlow` or `VFlow` no longer under-reports its size.** Both
+  reported their single-line shape — an `HFlow` said it needed one row's
+  height however many rows its children actually wrapped into — so a parent
+  sized the host for one line and the rest was clipped. Each flow now reports
+  the cross extent it measured at its last layout, so a parent that honours
+  preferred sizes grows the host to fit every line. The main axis is unchanged:
+  an `HFlow` still reports the full unwrapped width it would like. The
+  cross-axis maximum is floored at the same measurement, so a host that clamps
+  to its content cannot clamp the flow back to one line. The cross-axis minimum
+  is not floored — it stays one line's worth — but it now measures that line
+  with the same `itemAlign` rule the preferred size uses, so the two can no
+  longer disagree about how tall a line is. A layout that measures nothing
+  usable (a child with no resolved size, or a host with no width yet) publishes
+  nothing and the flow keeps reporting its single-line estimate.
+
+- **Wrapped `HFlow` rows no longer overlap under `itemAlign: "baseline"`.**
+  A row advanced by its tallest cell, but baseline alignment offsets a cell by
+  `rowAscent - baseline`, which can push a low-baseline child's descender below
+  that. The next row started underneath it. A baseline-aligned row is now as
+  tall as `rowAscent + rowDescent`, so it clears its own descenders. This
+  changes rendered output for wrapping flows that set `itemAlign: "baseline"`;
+  every other alignment is unaffected, as is `VFlow`, whose baseline arm has
+  always degraded to `"start"`.
+
 - **List rows no longer stack on top of each other after a selection
   change.** `AbstractSelectableList` rewrites a row's whole `class`
   attribute from its selected/focused state and omitted the framework's own
