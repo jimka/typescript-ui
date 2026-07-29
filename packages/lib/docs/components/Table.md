@@ -4,6 +4,11 @@
 
 When no [`ColumnSpec`](/api/component/table/interfaces/ColumnSpec) is supplied, the table auto-generates one column per model field with default sizing.
 
+<!-- demo: table-store -->
+> **Live demo** — a store-bound `Table`: sortable, selectable, editable.
+> [Open the Table page](https://jimka.github.io/typescript-ui/components/Table)
+<!-- /demo -->
+
 ## Quickest example
 
 ```typescript
@@ -24,11 +29,6 @@ await store.load();
 const table = Table(store);
 panel.addComponent(table);
 ```
-
-<!-- demo: table-store -->
-> **Live demo** — a store-bound `Table`: sortable, selectable, editable.
-> [Open the Table page](https://jimka.github.io/typescript-ui/components/Table)
-<!-- /demo -->
 
 ## Constraining columns
 

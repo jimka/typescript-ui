@@ -2,6 +2,12 @@
 
 [`ToggleButton`](/api/component/button/classes/ToggleButton) is a [`Button`](/components/Button) that switches between selected and unselected states on each click. Maintains a separate CSS rule for the `.selected` class so the active state can be styled independently.
 
+<!-- demo: togglebutton-group -->
+> **Live demo** — three `ToggleButton`s in a `ButtonGroup`; clicking one
+> releases the others.
+> [Open the ToggleButton page](https://jimka.github.io/typescript-ui/components/ToggleButton)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
@@ -33,12 +39,6 @@ The `change` event fires whenever the selection state flips.
 ## Mutual exclusivity
 
 Wrap multiple `ToggleButton`s in a [`ButtonGroup`](/components/ButtonGroup) to enforce single-selection semantics across the group. The group will deselect siblings whenever one button becomes selected.
-
-<!-- demo: togglebutton-group -->
-> **Live demo** — three `ToggleButton`s in a `ButtonGroup`; clicking one
-> releases the others.
-> [Open the ToggleButton page](https://jimka.github.io/typescript-ui/components/ToggleButton)
-<!-- /demo -->
 
 ## Theming
 

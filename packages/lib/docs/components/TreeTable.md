@@ -4,6 +4,12 @@
 
 `TreeTable` extends [`Table`](/components/Table), so its public surface — CRUD, sync, column visibility + resize, sort cycling, context menu, exporter — is identical. The only structural difference is the body: a [`TreeBody`](/api/component/table/classes/TreeBody) that walks the visible subtree on every render instead of binding directly to the store's view.
 
+<!-- demo: treetable-hierarchy -->
+> **Live demo** — a store-bound `TreeTable` over a file/folder hierarchy;
+> rows expand and collapse.
+> [Open the TreeTable page](https://jimka.github.io/typescript-ui/components/TreeTable)
+<!-- /demo -->
+
 ## Hierarchy via `parentField`
 
 Each record names the id of its parent via a model field — usually called `parentId`. Roots have a `null` (or absent) value. The `TreeTableSpec` names the id field, the parent field, and the column that carries the toggle.
@@ -37,12 +43,6 @@ const tree = new TreeTable(store, {
 
 panel.addComponent(tree);
 ```
-
-<!-- demo: treetable-hierarchy -->
-> **Live demo** — a store-bound `TreeTable` over a file/folder hierarchy;
-> rows expand and collapse.
-> [Open the TreeTable page](https://jimka.github.io/typescript-ui/components/TreeTable)
-<!-- /demo -->
 
 ## TreeTableSpec
 

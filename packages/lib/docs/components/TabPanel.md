@@ -4,6 +4,12 @@
 
 The bare `new Panel({ layoutManager: new Tab() })` form still works — `TabPanel` is the convenience entry point. Strip-level configuration and events are reached through the wrapped manager via [`getTab`](/api/component/container/classes/TabPanel#gettab) rather than a mirrored forwarder per setter.
 
+<!-- demo: tabpanel-lazy -->
+> **Live demo** — three tabs added with `addLazyTab`, each factory logging
+> to a build log the first time its tab is selected, and never again.
+> [Open the TabPanel page](https://jimka.github.io/typescript-ui/components/TabPanel)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
@@ -58,12 +64,6 @@ tabs.getTab().on("exception", (error, label) => console.warn(`${label} failed`, 
 ```
 
 [`addLazyTab`](/api/component/container/classes/TabPanel#addlazytab) remains as an alias for `addTab` with a factory.
-
-<!-- demo: tabpanel-lazy -->
-> **Live demo** — three tabs added with `addLazyTab`, each factory logging
-> to a build log the first time its tab is selected, and never again.
-> [Open the TabPanel page](https://jimka.github.io/typescript-ui/components/TabPanel)
-<!-- /demo -->
 
 ## Close hooks
 

@@ -11,6 +11,12 @@
 ▸ Section 3
 ```
 
+<!-- demo: accordion-sections -->
+> **Live demo** — three collapsible sections; clicking a header animates it
+> open or shut.
+> [Open the Accordion page](https://jimka.github.io/typescript-ui/layouts/Accordion)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
@@ -53,12 +59,6 @@ sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 | `listeners` | `on("sectiontoggle", fn)` / `on("sectionresize", fn)` | — | `{ sectiontoggle, sectionresize }` callback bag (see [Toggle callback](#toggle-callback) / [Saving and restoring section sizes](#saving-and-restoring-section-sizes)). |
 
 > **The header is no longer a `Button`.** [`AccordionHeader`](/api/component/container/classes/AccordionHeader) is a styled [`Component`](/api/core/classes/Component) hosting an [`HBox`](/api/layout/classes/HBox) row — an optional leading glyph + a `chromeless` title button (the clickable toggle and focus target), the tool group, and the chevron cell. Because tools are *siblings* of the title button rather than descendants, a tool click is structurally not a header toggle — there is nothing to stop from propagating.
-
-<!-- demo: accordion-sections -->
-> **Live demo** — three collapsible sections; clicking a header animates it
-> open or shut.
-> [Open the Accordion page](https://jimka.github.io/typescript-ui/layouts/Accordion)
-<!-- /demo -->
 
 ## Themed appearance
 

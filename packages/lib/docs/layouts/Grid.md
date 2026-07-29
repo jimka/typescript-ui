@@ -11,6 +11,12 @@
    uniform M × N grid
 ```
 
+<!-- demo: grid-tracks -->
+> **Live demo** — a 3-column grid with fixed, weight, and content column
+> tracks; resizing the pane moves only the weighted column.
+> [Open the Grid page](https://jimka.github.io/typescript-ui/layouts/Grid)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
@@ -51,12 +57,6 @@ panel.setLayoutManager(Grid({
 ```
 
 `setRowTracks` works the same way for rows. When fewer tracks are supplied than the grid has columns/rows, the missing tracks default to `{ mode: "weight", value: 1 }`. If no track carries weight, leftover space is left unused (cells pack to the top-left).
-
-<!-- demo: grid-tracks -->
-> **Live demo** — a 3-column grid with fixed, weight, and content column
-> tracks; resizing the pane moves only the weighted column.
-> [Open the Grid page](https://jimka.github.io/typescript-ui/layouts/Grid)
-<!-- /demo -->
 
 ## Cell spanning and explicit placement
 

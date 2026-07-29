@@ -10,6 +10,12 @@
    items wrap into lines; spacing + lineSpacing configurable
 ```
 
+<!-- demo: hflow-wrap -->
+> **Live demo** — a dozen buttons that reflow into more or fewer rows as
+> the pane narrows.
+> [Open the HFlow page](https://jimka.github.io/typescript-ui/layouts/HFlow)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
@@ -31,12 +37,6 @@ The same options ([`HFlowOptions`](/api/layout/interfaces/HFlowOptions)) can be 
 Children are placed at their preferred size (clamped to their own min / max) from the start of the current line. Before each child, `HFlow` checks whether its right edge would pass the container's inner width; if so — and the child is not the first item on the line — the line wraps and the child starts a fresh line below. A child wider than the inner width takes its own line, clamped to the inner width so its right edge stays inside the container.
 
 `HFlow` never shrinks, stretches, or weights its children — wrapping *is* its overflow relief. There is no `mode`, `stretching`, or `weight` knob; for an equal-width single row, use [`HBox`](/layouts/HBox) with `mode: "equal"` instead.
-
-<!-- demo: hflow-wrap -->
-> **Live demo** — a dozen buttons that reflow into more or fewer rows as
-> the pane narrows.
-> [Open the HFlow page](https://jimka.github.io/typescript-ui/layouts/HFlow)
-<!-- /demo -->
 
 ## Spacing
 

@@ -2,6 +2,12 @@
 
 [`Tree`](/api/component/tree/classes/Tree) is a hierarchical data view with collapsible nodes and virtual scrolling. Pass root nodes via `setNodes(nodes[])` — the tree flattens the visible subtree into a single scrollable list and recycles internal row components, rebinding rows only when their data index changes.
 
+<!-- demo: tree-nodes -->
+> **Live demo** — a small file/folder hierarchy as node literals, with
+> expand / collapse and selection.
+> [Open the Tree page](https://jimka.github.io/typescript-ui/components/Tree)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
@@ -17,12 +23,6 @@ tree.setNodes([
 
 container.addComponent(tree);
 ```
-
-<!-- demo: tree-nodes -->
-> **Live demo** — the same folders as node literals, with expand /
-> collapse and selection.
-> [Open the Tree page](https://jimka.github.io/typescript-ui/components/Tree)
-<!-- /demo -->
 
 ## TreeNode
 

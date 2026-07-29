@@ -9,6 +9,12 @@
    children in a row, configurable spacing
 ```
 
+<!-- demo: hbox-justify -->
+> **Live demo** — three buttons in an `HBox`, with a row of `ToggleButton`s
+> above switching `justify` between its values at runtime.
+> [Open the HBox page](https://jimka.github.io/typescript-ui/layouts/HBox)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
@@ -94,12 +100,6 @@ bar.addComponent(Button('Next'));
 ```
 
 `justify` is silently ignored when a `weight` cell is present (the weight cell already eats the slack) and when the row fills or overflows the inner width (it clamps to `"start"` so the leading child is never pushed out of view). It has no effect in `"equal"` mode, where the cells always tile the full width, and it acts only on the horizontal (main) axis — positioning a child within its row height stays the domain of `fill` / `anchor` constraints.
-
-<!-- demo: hbox-justify -->
-> **Live demo** — three buttons in an `HBox`, with a row of `ToggleButton`s
-> above switching `justify` between its values at runtime.
-> [Open the HBox page](https://jimka.github.io/typescript-ui/layouts/HBox)
-<!-- /demo -->
 
 ## Per-child constraints
 

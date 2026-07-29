@@ -4,6 +4,12 @@
 
 Like every chart in the family it is a [`Panel`](/api/component/container/classes/Panel) hosting a single `<svg>` surface built through the framework DOM sink. The band/linear scales come from the pure `d3-scale` submodule; the bar rectangles are hand-computed from the band scale (d3-shape adds nothing to axis-aligned rectangles). All rendering, layout, interaction, and theming stay native.
 
+<!-- demo: barchart-grouped -->
+> **Live demo** — an in-memory, grouped `BarChart` over two product series,
+> with a hover tooltip.
+> [Open the BarChart page](https://jimka.github.io/typescript-ui/components/BarChart)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
@@ -19,12 +25,6 @@ panel.addComponent(BarChart({
 ```
 
 Each point's `x` is the category it belongs to; the distinct `x` values across the visible series become the axis categories (ascending). A `BarChart` binds to a [`Store`](/api/data/classes/Store) exactly like [`LineChart`](/components/LineChart) — see [Data binding](/concepts/data-binding#charts).
-
-<!-- demo: barchart-grouped -->
-> **Live demo** — an in-memory, grouped `BarChart` over two product series,
-> with a hover tooltip.
-> [Open the BarChart page](https://jimka.github.io/typescript-ui/components/BarChart)
-<!-- /demo -->
 
 ## Construction
 

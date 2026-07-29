@@ -2,6 +2,12 @@
 
 [`RadioButton`](/api/component/input/classes/RadioButton) is a single-selection input rendered as a focusable `<div>` with `role="radio"` plus a custom-drawn ring and dot — no native `<input>`. It implements [`Bindable<boolean>`](/api/core/interfaces/Bindable) and is normally used inside a [`ButtonGroup`](/components/ButtonGroup) to enforce mutual exclusivity.
 
+<!-- demo: radiobutton-group -->
+> **Live demo** — three `RadioButton`s stacked in a `ButtonGroup`; arrow keys
+> move the selection.
+> [Open the RadioButton page](https://jimka.github.io/typescript-ui/components/RadioButton)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
@@ -50,12 +56,6 @@ Now that radios are no longer native `<input type="radio">`, the browser does no
 const groupRow = Component();
 group.setContainer(groupRow); // arrow keys now move focus within the group
 ```
-
-<!-- demo: radiobutton-group -->
-> **Live demo** — three `RadioButton`s stacked in a `ButtonGroup`; arrow keys
-> move the selection.
-> [Open the RadioButton page](https://jimka.github.io/typescript-ui/components/RadioButton)
-<!-- /demo -->
 
 ## Notes
 

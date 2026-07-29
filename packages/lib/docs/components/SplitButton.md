@@ -2,6 +2,12 @@
 
 [`SplitButton`](/api/component/button/classes/SplitButton) is a [`Button`](/components/Button) with a trailing dropdown chevron. The main button face fires the primary `"action"` event exactly like a plain `Button`; clicking the chevron zone instead opens a dropdown [`Menu`](/components/Menu) built from the button's `menuItems`.
 
+<!-- demo: splitbutton-menu -->
+> **Live demo** — a `SplitButton` whose face fires the primary action and
+> whose chevron opens a three-item dropdown menu.
+> [Open the SplitButton page](https://jimka.github.io/typescript-ui/components/SplitButton)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
@@ -33,12 +39,6 @@ save.setMenuItems([
 ```
 
 The dropdown is a rebuild-mode [`Menu`](/components/Menu): it is created lazily on the first chevron click, reused across opens, anchored under the button's bottom-left corner, clamped to the viewport, and dismissed on outside click. Pressing the chevron a second time while the dropdown is open toggles it shut — the chevron is excluded from the menu's outside-click dismissal, so its click is the sole close path while open rather than triggering a close-then-reopen. The chevron rotates 180° to point up while the dropdown is open and animates back to point down when it closes.
-
-<!-- demo: splitbutton-menu -->
-> **Live demo** — a `SplitButton` whose face fires the primary action and
-> whose chevron opens a three-item dropdown menu.
-> [Open the SplitButton page](https://jimka.github.io/typescript-ui/components/SplitButton)
-<!-- /demo -->
 
 ## How the chevron click is distinguished
 

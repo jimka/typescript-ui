@@ -13,6 +13,12 @@
    children stacked vertically
 ```
 
+<!-- demo: vbox-stack -->
+> **Live demo** — four labelled panels stacked with `spacing: 8` and
+> `stretching: true`.
+> [Open the VBox page](https://jimka.github.io/typescript-ui/layouts/VBox)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
@@ -32,12 +38,6 @@ form.addComponent(emailField);
 ```
 
 [`VBoxOptions`](/api/layout/interfaces/VBoxOptions) accepts `mode`, `spacing`, `stretching`, `overflowSizing`, and `justify` declaratively. The `setMode` / `setComponentSpacing` / `setStretching` / `setOverflowSizing` / `setJustify` setters work for runtime updates.
-
-<!-- demo: vbox-stack -->
-> **Live demo** — four labelled panels stacked with `spacing: 8` and
-> `stretching: true`.
-> [Open the VBox page](https://jimka.github.io/typescript-ui/layouts/VBox)
-<!-- /demo -->
 
 ## Sizing modes
 
