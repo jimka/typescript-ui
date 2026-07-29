@@ -6,6 +6,27 @@ Release history for `@jimka/typescript-ui`.
 
 ### Breaking changes
 
+**Breaking:** `BulletedList` and `NumberedList` paint their own markers instead
+of the browser's. Every `NumberedListItemStyle` and `BulletedListItemStyle`
+member renders, and nothing warns. No enum member is removed and `getStyle()`
+still returns exactly what you set, so code keeps compiling; only the rendered
+marker changes. The bullet characters are the framework's own and differ
+slightly from what each browser drew. `UPPER_GREEK` now renders uppercase
+Greek, which no browser did — it is not a predefined CSS counter style, so it
+used to fall back to decimal. `LOWER_ALPHA`/`LOWER_LATIN` and
+`UPPER_ALPHA`/`UPPER_LATIN` render identically, as CSS defines them, and roman
+numbering falls back to decimal above item 3999.
+
+**Breaking:** every item in a marker list now shares one marker column, as wide
+as that list's widest marker, with the marker right-aligned inside it. Markers
+share a right edge and labels share a left edge, so an item's label may sit a
+few pixels further right than it did when each item sized its own marker slot.
+
+**Breaking:** `AbstractMarkerList` declares a protected abstract
+`markerText(index)`. A consumer subclassing it directly must implement that
+method, returning the marker string for a given position; `BulletedList` and
+`NumberedList` are unaffected.
+
 **Breaking:** `Aria.applyToElement` is removed. Every `Aria` mutator already
 writes through the component's attribute channel, so ARIA state reaches the
 element without a second flush; no consumer replacement is needed, since no

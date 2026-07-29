@@ -39,7 +39,9 @@ export type AriaRole =
     | 'checkbox'
     | 'radio'
     | 'slider'
-    | 'switch';
+    | 'switch'
+    | 'list'
+    | 'listitem';
 
 /**
  * Valid values for the `aria-sort` attribute.

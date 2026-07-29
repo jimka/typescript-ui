@@ -336,3 +336,43 @@ Read before implementing:
 [^selectable-relation]: `AbstractSelectableList` is the nearest in-repo relative: a list component that owns its children's placement rather than delegating to the browser. Its rows are stacked by `ListRowColumn` — a `VBox` subclass configured `{ spacing: 0, stretching: true }` — and it documents, at `applyRowClass`, that a full `class`-attribute rewrite must re-state `COMPONENT_CLASS` or the rows lose the framework rule's `position: absolute` and pile up at `top: auto`. That is the same failure mode this plan fixes, arrived at from the other direction. The difference in scope is deliberate: `AbstractSelectableList` also owns a scroll `Panel`, a renderer pool, row virtualisation, and selection state, and subclasses `VBox` purely to separate the horizontal-overflow inflation target from the reported minimum width. A marker list has none of those needs, so it takes a plain `VBox` and no subclass.
 
 [^rejected-seam]: Two framework changes were considered and rejected. Adding a `display` field to `ComponentOptions` would give `ensureClassStyleRule` a third value to hoist, but it collides conceptually with the existing boolean `displayed` and would need a typed setter, a getter fold, an options-bag entry, and a default-resolution registry row — a large surface for one component. Adding a `protected displayValue(): string` hook to `Component` (overridden to `"list-item"` in `ListItem`) is much smaller and would make both the `applyStyle` path and the `setDisplayed` path correct in one place; it was still rejected because a per-component `#id` rule already expresses the deviation with no framework edit, and the codebase has an existing precedent for that route in `Text.setLineClamp`.
+
+---
+
+## Implementation Notes
+
+Three deviations, all forced by one discovery the plan anticipated but could not resolve offline.
+
+### The marker had to move inside the item box
+
+The plan's `## Potential Challenges` flagged that the framework's `overflow: hidden` might clip the `::marker`, and instructed the implementer to report it rather than relax `overflow`. It does clip it: with `display: list-item` restored, the items stacked correctly but **no bullet or number painted at all**. Setting `overflow: visible` on a single `<li>` in the live page made that one item's bullet appear, confirming the item's own overflow is the clipper — an `outside` marker is painted beyond the item's box, so the item clips its own marker.
+
+Relaxing `overflow` was rejected for the reason the plan gives, and additionally because `Text`'s ellipsis truncation depends on `overflow: hidden`. The fix is `list-style-position: inside`, written alongside `display` into the same `#id` rule: the marker becomes inline content of the item, so `overflow: hidden` no longer has anything to clip. Verified in the browser — bullets and correctly incrementing numbers both paint. The user chose this over the two alternatives.
+
+This makes the plan's `## Non-Goals` entry "changing the 25px gutter" partly moot in spirit: the padding is kept exactly as the plan requires, but it now reads as a plain indent rather than the marker's column, because the marker no longer paints there.
+
+### `ListItem` overrides `getPreferredSize` to reserve marker width
+
+An `inside` marker is content the browser prepends to the item, but text measurement only ever sees the string — so every item under-reported its width and the marker pushed the text out of the box. This was visible on the `NumberedList`, where items were handed 38px boxes for 42–53px of content and truncated.
+
+`ListItem.getPreferredSize()` therefore widens the measured width by a marker allowance. The plan did not call for this override; it follows from the `inside` decision above, and without it the fix is visibly broken for any item whose text nearly fills its column.
+
+The allowance is **font-relative**, not a fixed pixel count. Measured across 10–40px font sizes the marker holds steady at ~1.4x the font size for `disc` and ~1.07x for a single-digit `decimal`, so the constant is `1.6` em-equivalents and is re-derived from the resolved font size on every call. A fixed pixel constant was written first and rejected: the marker is a glyph drawn at the item's font size, so a theme that enlarges the font would have made the marker outgrow a fixed reserve and truncate the text again.
+
+**Known limitation:** the allowance is an estimate, not a measurement — the browser generates the marker and never exposes its width. A marker wider than 1.6em still crowds its text: a three-digit number, or `UPPER_ROMAN` past `VIII.`. This is recorded on the `ListItem` doc page. Removing the estimate means not using the browser's marker at all — rendering the marker as a real child component so the framework measures it — which is a different design and a separate plan.
+
+### `ListItem` also overrides `setPreferredSize`
+
+The plan's `## Public API` lists only `getKey` and `setDisplayed` as `ListItem`'s own members. A third was needed. The marker allowance must not widen a size the consumer pinned, and the usual guard — `getPreferredSizeConstraint() !== null`, as `Markdown.getPreferredSize` uses — does not discriminate here: `Text.setCalculatedSize` publishes its own *measurement* through `super.setPreferredSize`, so the constraint is non-null for every measured item and the guard would have disabled the allowance entirely. `Text` records the distinction in a private `_hasExplicitPreferredSize`, which a subclass cannot read.
+
+`ListItem` therefore tracks the pin itself, mirroring `Button._consumerSetPreferredSize` (`component/button/Button.ts:357`, guard at `:1891`) — but it keeps the pinned **size**, not just a flag, and returns that copy directly.
+
+A flag alone was written first and is not enough. A `preferredSize` supplied through the options bag reaches the same setter during the construction cascade, so the flag is set correctly — but `Text._hasExplicitPreferredSize` (`component/input/Text.ts:96`) is a real field initializer, so it resets to `false` after `super()` returns, and `Text.setCalculatedSize` then overwrites the pin with its own measurement. Reading the pin back through `super.getPreferredSize()` therefore returns the measurement, and a flag-guarded override would hand back a size that is neither pinned nor widened. Returning the stored copy makes the options bag — this project's preferred construction style — behave identically to the setter.
+
+The underlying reset is a pre-existing `Text` defect, not something this branch introduced; it is worked around here rather than fixed, because changing `Text`'s explicit-size bookkeeping affects every text-bearing component in the framework.
+
+### Test host ordering, and one plan check that no longer greps clean
+
+`## Ordered Implementation Steps` step 4 says to model the test host on `tests/component/layout/VBox.test.ts`, which sizes the host before adding children. That recipe assumes a `Container` host, whose `clampsToContentSize()` is `false`. A marker list is a plain `Component`, so its committed size is clamped against what its children imply, and sizing an empty list clamps it to its 25px padding. The suite therefore adds items **before** calling `setWidth` / `setHeight`.
+
+`## Verification` lists `grep -rn 'applyStyle' ListItem.ts — expect zero matches`. The override is gone as intended, but the file still mentions `applyStyle` in a comment explaining why the `#id` rule survives re-styling, so the literal grep returns one hit. Check for the method instead: `grep -nE '^\s+(protected |public )?applyStyle\s*\(' ListItem.ts`.

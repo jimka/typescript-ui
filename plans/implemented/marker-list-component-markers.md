@@ -393,3 +393,38 @@ Read before implementing:
 [^aria]: The `<li>` no longer renders as `display: list-item`, and the list carries `list-style-type: none`. Safari drops list semantics from a `<ul>` styled that way, so a screen reader would stop announcing "list, 3 items". Explicit `role="list"` / `role="listitem"` restores it and is inert where semantics already survive. Separately, the marker is now real text inside the item, so an unguarded screen reader would read "2. Main argument" on a list whose position it already announces — `aria-hidden="true"` on the marker slot suppresses that duplicate. `AriaRole` currently lists 32 roles without `list` or `listitem` ([Aria.ts:10](packages/lib/src/typescript/lib/core/Aria.ts#L10)); ARCHITECTURE.md's typed-setter table directs exactly this case to "extend `Aria.ts` if missing".
 
 [^gap]: `MARKER_GAP_PX = 4` is roughly one space width at the framework's 14px default font, which is what makes the marker and the label read as two runs rather than one word. It is structural separation between two content slots — the same role `IconText`'s `gap` plays ([IconText.ts:30](packages/lib/src/typescript/lib/component/display/IconText.ts#L30)) — not a cosmetic nudge, so it does not fall under ARCHITECTURE.md's *No cosmetic insets* rule.
+
+---
+
+## Implementation Notes
+
+The plan was followed as written. Three things are worth recording.
+
+### Bullet glyphs are our characters now, so one doc table was wrong
+
+`## Internal Structure` specifies `◦` (WHITE BULLET) for `CIRCLE`, and the code uses it. The `BulletedList` doc page's style table still showed `○` (WHITE CIRCLE), which is roughly what the browser's `list-style-type: circle` painted. Now that the character is ours, the table was showing something the component no longer renders, so it was corrected to `◦` alongside the prose the plan asked for. The same applies in principle to `DISC` and `SQUARE`; their table entries already matched the characters the plan chose.
+
+This is a small visible change the plan's "all four members render" phrasing does not convey: the glyphs are close to, but not identical to, what each browser drew for the corresponding `list-style-type`.
+
+### `renumber()` has no explicit empty-list branch
+
+`## Architecture Decisions` says "`renumber()` returns immediately when the list has no children". The implementation matches the plan's own `## Internal Structure` snippet — a `for` loop over `getComponents()` — which is already a no-op on an empty list, so no separate guard was added. The construction-time `setStyle` dispatch it protects is covered either way.
+
+### The change needed changelog and migration entries the plan did not list
+
+`## Documentation Impact` names four pages and `llms.txt`, none of them the changelog or the migration guide. Two breaks relative to `master` need one:
+
+- Nine `NumberedListItemStyle` members stop rendering what the browser drew and render decimal with a warning. Nothing stops compiling, but the output changes.
+- `AbstractMarkerList` gains a protected **abstract** `markerText(index)`, which a consumer subclassing it directly must now implement.
+
+Both are recorded under the existing unreleased `0.3.0` *Breaking changes* heading and the matching *Upgrading from 0.2.x to 0.3.0* section, following the one-entry-per-feature-branch practice the recent history shows.
+
+Two further changes an audit flagged as breaks are **not** breaks against `master`, and are deliberately absent from the changelog: `ListItemOptions` extending `ComponentOptions` rather than `TextOptions`, and `ListItem` extending `Component` rather than `Text`. Both match `master` exactly — the `Text` inheritance existed only on the unmerged parent branch, so this branch restores the released surface rather than changing it.
+
+### Manual verification was run and passed
+
+`## Expected Behaviour` cases 26-27 were checked in the demo app's Border tab (`npm run dev` in `packages/lib`, east region of `/#/border`, no build step needed because that app aliases straight at `src/`). The bulleted list paints one `•` per row and the numbered list `1.` through `5.`, each marker left of its label; no item's content overflows its box; the computed `list-style-type` is `none` and every `<li>` computes to `display: block`, so the browser draws no second marker beside ours; `role="list"` / `role="listitem"` / `aria-hidden="true"` are all present; and the console carries no warning, since both demo lists use supported styles.
+
+### The test host helper takes the list instance
+
+`MarkerListLayout.test.ts`'s `hostList` previously constructed a `BulletedList` itself. The new cases need `NumberedList` hosts too, so the helper now takes the list as its first argument and is generic over the two. The add-items-then-size ordering the parent branch established is unchanged, and still load-bearing for the same reason.
