@@ -9,9 +9,10 @@ import { TreeTable } from '@jimka/typescript-ui/component/table';
  * tall the frame in the Markdown page is — it is not a maximum, and content
  * whose own minimum is taller will still push the frame open.
  *
- * 320 is a header row, six body rows, and the surrounding frame.
+ * 200 is a header row, the six body rows the hierarchy reaches when fully
+ * expanded, and the surrounding frame.
  */
-export const height: number = 320;
+export const height: number = 200;
 
 /**
  * A store-bound `TreeTable` over a file/folder hierarchy; click a row's

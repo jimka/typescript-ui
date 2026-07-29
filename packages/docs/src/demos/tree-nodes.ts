@@ -8,10 +8,10 @@ import { Tree } from '@jimka/typescript-ui/component/tree';
  * tall the frame in the Markdown page is — it is not a maximum, and content
  * whose own minimum is taller will still push the frame open.
  *
- * 320 is the same file/folder hierarchy `treetable-hierarchy` shows, plus
- * the surrounding frame.
+ * 200 is the same file/folder hierarchy `treetable-hierarchy` shows, fully
+ * expanded, plus the surrounding frame.
  */
-export const height: number = 320;
+export const height: number = 200;
 
 /**
  * A `Tree` over folder/file node literals; click the caret to expand or

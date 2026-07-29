@@ -9,9 +9,10 @@ import { Table } from '@jimka/typescript-ui/component/table';
  * tall the frame in the Markdown page is — it is not a maximum, and content
  * whose own minimum is taller will still push the frame open.
  *
- * 320 is a header row, five body rows, and the surrounding frame.
+ * 200 is a header row, the five body rows, and the surrounding frame; the
+ * store never grows past those five, so a taller frame is empty space.
  */
-export const height: number = 320;
+export const height: number = 200;
 
 /**
  * The same store as `table-store`, with a per-column `ColumnSpec`: `role`
