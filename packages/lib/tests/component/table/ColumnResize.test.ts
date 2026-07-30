@@ -12,7 +12,7 @@
 // driven through the private `onColumnResizeStart` / `onColumnResize`
 // handlers, mirroring the pattern at
 // packages/lib/tests/component/layout/Accordion.resizable.test.ts:186.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -29,8 +29,31 @@ const CONFIG = {
     themeVars:       {},
 };
 
-beforeEach(() => installTestDOM(CONFIG));
-afterEach(() => DOM.reset());
+let frames: Array<FrameRequestCallback>;
+
+beforeEach(() => {
+    installTestDOM(CONFIG);
+    frames = [];
+    vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+        frames.push(cb);
+
+        return frames.length;
+    });
+});
+
+// Drain any frame a test left pending so the module-level rafHandle resets to
+// null (flushPendingLayouts clears it) — otherwise a test that schedules but
+// never flushes would block the next test's frame from being captured.
+afterEach(() => { flushFrame(); vi.restoreAllMocks(); DOM.reset(); });
+
+/** Invokes every animation-frame callback captured since the last flush (the layout pass). */
+function flushFrame(): void {
+    const pending = frames;
+    frames = [];
+    for (const cb of pending) {
+        cb(0);
+    }
+}
 
 const MODEL = new Model([
     { name: 'a', type: 'string', order: 0 },
@@ -357,5 +380,76 @@ describe('Table column resize — the widened total survives', () => {
         table.setStore(otherStore);
 
         expect(table.getColumnWidthTarget()).toBe(0);
+    });
+});
+
+describe('Table column resize — layout coalescing', () => {
+    it('30. no layout runs during the moves', () => {
+        const table = makeTable();
+        const priv  = drag(table);
+
+        flushFrame(); // drain the frames the fixture itself queued
+
+        const doLayoutSpy = vi.spyOn(table, 'doLayout');
+
+        priv.onColumnResizeStart(0, 1000);
+        for (let i = 1; i <= 50; i++) {
+            priv.onColumnResize(0, 1000 + i);
+        }
+
+        expect(doLayoutSpy).not.toHaveBeenCalled();
+    });
+
+    it('31. one layout runs for the whole burst', () => {
+        const table = makeTable();
+        const priv  = drag(table);
+
+        flushFrame();
+
+        const doLayoutSpy = vi.spyOn(table, 'doLayout');
+
+        priv.onColumnResizeStart(0, 1000);
+        for (let i = 1; i <= 50; i++) {
+            priv.onColumnResize(0, 1000 + i);
+        }
+        flushFrame();
+
+        expect(doLayoutSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('32. a dead-zone move schedules nothing', () => {
+        const table = makeTable(specWithAMax(250));
+        const priv  = drag(table);
+
+        priv.onColumnResizeStart(0, 1000);
+        priv.onColumnResize(0, 1200); // A hits its 250 maxWidth; B absorbs the rest — case 10's setup
+        flushFrame();
+
+        const scheduleLayoutSpy = vi.spyOn(table, 'scheduleLayout');
+
+        priv.onColumnResize(0, 1100); // still inside the dead zone
+
+        expect(scheduleLayoutSpy).not.toHaveBeenCalled();
+        expect(table.getColumnWidths()).toEqual([250, 100, 100, 50]);
+    });
+
+    it('33. a coalesced burst still invalidates the body\'s geometry cache', () => {
+        const table = makeTable();
+        const priv  = drag(table);
+
+        flushFrame();
+
+        const before = (table.getBody() as any)._lastColumnWidths;
+
+        priv.onColumnResizeStart(0, 1000);
+        priv.onColumnResize(0, 1100);
+        priv.onColumnResize(0, 1150);
+        priv.onColumnResize(0, 1200);
+        flushFrame();
+
+        const after = (table.getBody() as any)._lastColumnWidths;
+
+        expect(after).not.toBe(before);
+        expect(after).toEqual(table.getColumnWidths());
     });
 });

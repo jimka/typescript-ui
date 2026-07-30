@@ -191,6 +191,74 @@ None. `onColumnResize` is private, no exported signature changes, and `grep -rn 
 
 ---
 
+## Implementation Notes
+
+**Manual verification (all three `## Verification` bullets) was performed**,
+in a worktree-local dev server (`vite --port 8025` run from
+`packages/lib`, with `node_modules/@jimka/typescript-ui` re-pointed at this
+worktree's own `packages/lib` rather than the main tree's — see
+[[feedback_worktree_browser_checks_load_main_tree_lib]]) driven via the
+chrome-devtools MCP. Real `MouseEvent`s (`mousedown` on the handle,
+`mousemove`/`mouseup` on `window`, matching the framework's own listener
+wiring in `cell/Header.ts` and `ResizeHandle.ts`) drove:
+
+- **Bullet 1** ("Show window with wide table (45 columns)!"): 40 moves over a
+  middle column's handle. One `requestAnimationFrame` scheduled; after it
+  flushed, the edge had moved by exactly the cumulative pointer travel (80px).
+- **Bullet 2**, both directions: 30 moves growing the last column's right edge
+  by 200px (one `rAF`, edge moved exactly 200px — the table-growth path),
+  then 25 moves shrinking it back by 200px (one `rAF`, edge returned to
+  exactly its starting position) — the give-back path round-trips cleanly
+  across two independent coalesced flushes. (The horizontal scrollbar itself
+  was not separately inspected; on this 45-column table at the demo's window
+  width it is already present at rest, so the edge round-trip is the more
+  informative check of the two.)
+- **Bullet 3** ("Show window with table (column spec)!"): dragged a column
+  edge by 60px (edge moved exactly 60px), clicked the header to sort by
+  `Name` — every handle's position was pixel-identical before and after the
+  sort — then used the header's right-click column-visibility menu to hide
+  `Score` (a 58px-wide fixed `number` column). After the toggle, the two
+  handles left of `Score` (including the dragged one) kept their exact
+  pre-toggle x-coordinates; every handle right of `Score`'s former position
+  shifted left by exactly 58px, and the gap between every pair of surviving
+  handles — i.e. each remaining column's own width — was unchanged (e.g. the
+  column immediately right of `Score` measured 140px both before and after).
+  That is `setColumnVisible`'s expected effect (a removed column's width
+  leaves the total, shifting everything after it left) and is exactly what
+  "the widths survive" means for bullet 3: no console errors, no corruption,
+  and none of the four other columns' individual widths changed.
+
+What this establishes: final-position correctness (the queued pass applies
+the full pointer travel, not a partial or stale amount) and single-flush
+coalescing (one `rAF` per burst, matching case 31's offline assertion) — both
+confirmed pixel-for-pixel. It does **not** establish case 34 (no perceptible
+lag) or case 35 (not slower than before): a burst dispatched synthetically
+from one JS task is exactly the case the plan's own table
+(`## Architecture Decisions`, "The cursor keeps up...") and footnote
+`[^same-frame]` says will *not* reproduce real Chrome's frame-aligned
+`mousemove` dispatch, and neither case was assessed by wall-clock timing —
+this environment's DevTools timings are known to be ~60× inflated, so no
+absolute figure was taken as evidence for either. Only a real pointer drag
+can confirm cases 34 and 35. A screenshot after the bullet-1/2 drags showed
+no visual corruption.
+
+**Two gates fail on `master`, unrelated to this change; both were re-run on
+this branch to confirm.** `npm run lint` fails on
+`component/table/cell/renderer/Link.ts:57` (`super() drops the constructor's
+"options" parameter`, rule `local/forward-super-options`) — confirmed present
+on `master` at `efbc7281` before this branch existed; `Link.ts` is untouched
+here per the "surgical changes" guideline. `npx eslint
+src/typescript/lib/component/table/Table.ts` alone is clean (the tests
+directory has no matching ESLint config, so `ColumnResize.test.ts` is not
+linted at all rather than passing). `npm run docs:api` reports the same
+pre-existing single warning as `master`
+(`component/diagram.DiagramEdgeLayer.setEdges` links to
+`Component.onFirstLayout`, which resolves but isn't exported) — unrelated to
+the three files this branch touches, and the change's only source edit is
+JSDoc on a private method, which TypeDoc excludes from output.
+
+---
+
 ## Notes
 
 [^drag-precedent]: Two other framework drags were checked first and neither is the right model. [`Split.onDrag`](packages/lib/src/typescript/lib/layout/Split.ts#L974) sets the two panes' sizes and calls `lhs.doLayout()` / `rhs.doLayout()`; [`Accordion.onGutterDrag`](packages/lib/src/typescript/lib/layout/Accordion.ts#L1840) writes the section heights and calls its own `layoutSections`. Both do a *scoped* synchronous pass over exactly the components that moved, which is cheap and needs no queue. `Table.onColumnResize` is the outlier: it runs the whole container pass. Hand-writing a scoped equivalent for the table is the header/footer geometry-diff work the virtualization plan owns, so the remaining option is the queue — and `Slider` establishes that a pointer drag repainted only by the queue is an accepted framework shape. The queue is also what `Split` and `Accordion` themselves use for every non-drag state change (`Split.ts:791`, `Accordion.ts:492`).

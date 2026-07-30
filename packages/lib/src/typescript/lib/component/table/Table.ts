@@ -1338,6 +1338,11 @@ class Table extends Component<TableOptions> {
      * glued to the handle on reversal instead of the handle jumping to meet a
      * far-off cursor.
      *
+     * The pass is queued onto the animation-frame layout queue rather than run
+     * synchronously, so every move dispatched within one frame collapses into a
+     * single pass. No pass is needed between moves — the drag arithmetic reads
+     * only state a layout pass does not produce.
+     *
      * @param colIndex - Zero-based index of the column whose right edge is being dragged.
      * @param clientX  - The absolute pointer `clientX` for this move.
      */
@@ -1399,7 +1404,7 @@ class Table extends Component<TableOptions> {
 
         this._columnWidthTarget = newTotal > available + WIDTH_TARGET_EPSILON_PX ? newTotal : 0;
 
-        this.doLayout();
+        this.scheduleLayout();
     }
 
     /**
