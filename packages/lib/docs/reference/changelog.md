@@ -2,7 +2,7 @@
 
 Release history for `@jimka/typescript-ui`.
 
-## 0.3.0
+## 0.4.0
 
 ### Breaking changes
 
@@ -27,24 +27,6 @@ few pixels further right than it did when each item sized its own marker slot.
 method, returning the marker string for a given position; `BulletedList` and
 `NumberedList` are unaffected.
 
-**Breaking:** `Aria.applyToElement` is removed. Every `Aria` mutator already
-writes through the component's attribute channel, so ARIA state reaches the
-element without a second flush; no consumer replacement is needed, since no
-consumer had a reason to call it directly.
-
-**Breaking:** the optional `elkjs` peer dependency moved from `^0.10.0` to
-`^0.12.0`. A consumer of `@jimka/typescript-ui/component/diagram` that stays on
-elkjs 0.10.x now fails to install with an `ERESOLVE` peer conflict; bump elkjs
-alongside the library. No `layoutOptions` key changed — ELK 0.12 only added
-layout options — but laid-out coordinates can shift, so re-check any diagram
-whose spacing was tuned by eye.
-
-**Breaking:** `DOMSink.setRuleStyle(rule, key, value)` is replaced by
-`setRuleStyles(rule, styles)`, which takes a whole declaration bag so a
-component's dirty rule keys reach the sheet in one mutation instead of one
-per key. Only a consumer implementing its own `DOMSink` is affected; the
-method is not something application code calls.
-
 **Breaking:** `DOMSource` gains a required `startFontLoad(family)` member,
 returning whether it started an asynchronous font load. Only a consumer
 implementing its own `DOMSource` is affected, and a source that cannot load
@@ -53,30 +35,17 @@ fonts asynchronously implements it as `return false` — the framework treats
 hold described under *Changed*, so returning `true` from a source that never
 reports back would delay the first layout by the full 50 ms bound.
 
-**Breaking:** `Component._defaultOptions` is now a `Readonly<TOptions>` bag
-that is **frozen and shared by every instance of the class**, rather than a
-fresh object literal per construction. A subclass that wrote into it after
-`super(...)` returned now throws in strict mode, and one that read
-`this._defaultOptions.layoutManager` now reads `undefined` — a layout
-manager holds per-instance container state, so it moved out of the shared
-bag into a private per-instance slot. Passing defaults through the
-`subclassDefaults` constructor parameter, the documented mechanism, is
-unaffected.
-
-**Breaking:** every rendered element now carries a `ts-ui-component` CSS
-class, and the declarations that are identical across all components —
-`position: absolute` among them — moved out of each instance's `#uuid` rule
-onto a zero-specificity `:where(.ts-ui-component)` rule. Any code that
-rewrites an element's whole `class` attribute must re-state that class, or
-the element loses its positioning and collapses into document flow.
+**Breaking:** `DOMSource` also gains a required
+`measureTextWidths(texts, options?)` member, returning one width per input
+string. Again only a consumer implementing its own `DOMSource` is affected; the
+straightforward implementation maps the existing single-string measurement over
+the array, and the batched form exists so a whole column-width derivation costs
+a fixed number of reflows rather than one per string.
 
 **Breaking:** `SplitGutter.destroy()` and `CollapseButton.destroy()` are
 removed. Both only unhooked listeners and left the component's per-instance
 stylesheet rules on the shared sheet. Call the inherited `dispose()`
 instead, which does the listener cleanup *and* the full teardown.
-
-See [Migration](/reference/migration#upgrading-from-0-2-x-to-0-3-0) for the
-full upgrade note.
 
 ### Changed
 
@@ -103,6 +72,181 @@ full upgrade note.
   the post-layout callbacks queued during startup — `Component.afterNextLayout`
   and `Component.onFirstLayout` alike — run after the release rather than on the
   first frame.
+
+- **Table columns derive their starting width from one per-type policy.** The
+  table previously ran two disagreeing width models — one seeding the first
+  layout, another applied when a column was hidden and shown again — so a
+  column could change width the first time it was toggled. Both are replaced by
+  `Table.getColumnMinWidth` and `Table.getIntrinsicColumnWidths`, read by the
+  table layout and by every site that used to substitute its own fallback. A
+  generated table (one built from a schema, with no hand-authored widths) is
+  the case this most affects: columns now start at a width derived from their
+  type and header rather than an equal share of the viewport.
+
+- **Dragging a column edge now takes width from more than one neighbour.** The
+  drag used to be strictly zero-sum between the dragged column and the one
+  beside it, and stalled outright once that single neighbour reached its
+  minimum. Width is now taken nearest-first along the row: the closest column
+  gives up space until it reaches its minimum, then the next one out takes
+  over. When nothing is left to take, the table itself widens and scrolls
+  horizontally instead of stalling, bounded by the columns' own maximum widths;
+  a leftward drag narrows the table back before it regrows any column. The last
+  column's right edge is now a working handle that changes the table's width
+  only — it did nothing before.
+
+### Added
+
+- **`Favicon`, `DEFAULT_FAVICON` and `BodyOptions.favicon`** — `Body.init`
+  installs a built-in mark by default. Pass `favicon: '/brand.svg'` for your
+  own, or `favicon: false` to install none. A `<link rel="icon">` already
+  present in the page's HTML always wins.
+
+- **Automatic column sizing from content** — `ColumnSpec.autoSizeColumns` opts
+  a table into sizing its `string` and `auto` columns from the data as well as
+  the header. `boolean`, `glyph`, `date`, `time`, `datetime` and `number`
+  columns are sized from their type with or without the flag. At most 50
+  records are read, and a whole derivation costs at most three batched text
+  measurements regardless of column count — derivations run on first layout,
+  store swap, reset, and the single post-load re-derive, never per row and
+  never on scroll.
+
+- **`ColumnConfig.width` and `ColumnConfig.maxContentLength`** — an explicit
+  starting width for a column, and a cap on how much sampled content counts
+  toward an automatic one. An explicit `width` outranks every derived value.
+  Read them back with `Column.getWidth()` and `Column.getMaxContentLength()`.
+
+- **`Table.isAutoSizeColumns()`, `Table.getColumnMinWidth(column)` and
+  `Table.getIntrinsicColumnWidths()`** — the public seam a custom layout can
+  read to size columns the way the built-in table layout does.
+
+- **`Table.getAvailableColumnWidth()` and `Table.getColumnWidthTarget()`** —
+  the width the columns have to fill, and the total a resize drag has grown
+  them to (`0` when the columns still fit without growth).
+
+- **`TablePanel(store, spec?)`** — an optional column spec, so a panel-hosted
+  table can be configured the same way a bare `Table` can. `TablePanel`
+  previously accepted no spec at all, leaving its columns unconfigurable.
+
+- **`Util.measureTextWidths(texts, options?)`** — measures many strings in one
+  batch, returning one width per input.
+
+- **`VirtualScroller.dispose()`** — disposes the scroller's two overlay
+  `Scrollbar`s. `VirtualRowView` calls it on teardown, so an owner of a
+  `Table`, `TreeTable` or `Tree` needs no change.
+
+### Fixed
+
+- **A wrapped `HFlow` or `VFlow` no longer under-reports its size.** Both
+  reported their single-line shape — an `HFlow` said it needed one row's
+  height however many rows its children actually wrapped into — so a parent
+  sized the host for one line and the rest was clipped. Each flow now reports
+  the cross extent it measured at its last layout, so a parent that honours
+  preferred sizes grows the host to fit every line. The main axis is unchanged:
+  an `HFlow` still reports the full unwrapped width it would like. The
+  cross-axis maximum is floored at the same measurement, so a host that clamps
+  to its content cannot clamp the flow back to one line. The cross-axis minimum
+  is not floored — it stays one line's worth — but it now measures that line
+  with the same `itemAlign` rule the preferred size uses, so the two can no
+  longer disagree about how tall a line is. A layout that measures nothing
+  usable (a child with no resolved size, or a host with no width yet) publishes
+  nothing and the flow keeps reporting its single-line estimate.
+
+- **Wrapped `HFlow` rows no longer overlap under `itemAlign: "baseline"`.**
+  A row advanced by its tallest cell, but baseline alignment offsets a cell by
+  `rowAscent - baseline`, which can push a low-baseline child's descender below
+  that. The next row started underneath it. A baseline-aligned row is now as
+  tall as `rowAscent + rowDescent`, so it clears its own descenders. This
+  changes rendered output for wrapping flows that set `itemAlign: "baseline"`;
+  every other alignment is unaffected, as is `VFlow`, whose baseline arm has
+  always degraded to `"start"`.
+
+- **A table, tree table or tree no longer leaks its rows' stylesheet rules on
+  teardown.** The virtual row pool appended each pooled row straight onto the
+  rows container rather than registering it as a child component, so the
+  owner's `destructor()` recursion never reached the rows — and, through them,
+  their cells. The shared stylesheet grew by roughly the view's whole cell
+  count every time such a view was destroyed, which is what made repeatedly
+  opening and closing a window holding a wide table progressively slower.
+  Measured on a 45-column table, one open-and-close cycle now retains 104 rules
+  where it used to retain 5512.
+
+- **Overlay scrollbars, split/border/accordion gutters, accordion section
+  headers and wrappers, a `Rail`'s collapse chevron, and a dock region's
+  drop-zone overlay no longer leak their stylesheet rules on teardown.** Each
+  is appended straight onto its owner's element rather than registered as a
+  child component, so the owner's `destructor()` recursion never reached it
+  and its per-instance rule survived on the shared sheet. Each of the owners
+  listed here now disposes what it raw-appended.
+
+- **A completed drag no longer leaks its chrome's stylesheet rules.**
+  `DragManager` builds a `DragGhost`, a `DragFeedback` and a
+  `ReorderIndicator` for every committed gesture and previously only detached
+  them at the end, so the shared sheet grew by one rule per drag and never
+  shrank — across tab, split and dock drags alike. A ghost returned by a
+  caller's `ghostFactory` is still only detached, since that component
+  belongs to the caller.
+
+- **`Border.doLayout()` and `Accordion.doLayout()` no longer fail when they
+  run before the container has a DOM element.** Both now defer to the next
+  pass instead, matching `HBox`, `VBox`, `Grid`, `Split` and `Tab`. An
+  `autoScroll` host's synchronous layout pass during its own construction is
+  what used to trigger this against a not-yet-rendered child.
+
+- **`VBox`, `HBox`, and the flow layouts no longer let a child's smaller
+  maximum win over its explicit larger minimum.** `resolveChildHeight`,
+  `resolveChildWidth`, and `clampedPreferredSize` capped to the maximum and
+  then floored to the minimum — the reverse of the order every other clamp
+  in the framework uses — so a component that set a hard maximum on itself
+  (`ComboBox` capping its own height, for instance) could shrink an
+  ancestor's reserved cell below the minimum that ancestor explicitly
+  demanded, and the next sibling in the column, row, or flow advanced into
+  the space the shrunk cell never gave back. All three sites now cap to the
+  maximum first and floor to the minimum last, matching
+  `clampPreferredToConstraints` and `clampWidth`.
+
+## 0.3.0
+
+### Breaking changes
+
+**Breaking:** `Aria.applyToElement` is removed. Every `Aria` mutator already
+writes through the component's attribute channel, so ARIA state reaches the
+element without a second flush; no consumer replacement is needed, since no
+consumer had a reason to call it directly.
+
+**Breaking:** the optional `elkjs` peer dependency moved from `^0.10.0` to
+`^0.12.0`. A consumer of `@jimka/typescript-ui/component/diagram` that stays on
+elkjs 0.10.x now fails to install with an `ERESOLVE` peer conflict; bump elkjs
+alongside the library. No `layoutOptions` key changed — ELK 0.12 only added
+layout options — but laid-out coordinates can shift, so re-check any diagram
+whose spacing was tuned by eye.
+
+**Breaking:** `DOMSink.setRuleStyle(rule, key, value)` is replaced by
+`setRuleStyles(rule, styles)`, which takes a whole declaration bag so a
+component's dirty rule keys reach the sheet in one mutation instead of one
+per key. Only a consumer implementing its own `DOMSink` is affected; the
+method is not something application code calls.
+
+**Breaking:** `Component._defaultOptions` is now a `Readonly<TOptions>` bag
+that is **frozen and shared by every instance of the class**, rather than a
+fresh object literal per construction. A subclass that wrote into it after
+`super(...)` returned now throws in strict mode, and one that read
+`this._defaultOptions.layoutManager` now reads `undefined` — a layout
+manager holds per-instance container state, so it moved out of the shared
+bag into a private per-instance slot. Passing defaults through the
+`subclassDefaults` constructor parameter, the documented mechanism, is
+unaffected.
+
+**Breaking:** every rendered element now carries a `ts-ui-component` CSS
+class, and the declarations that are identical across all components —
+`position: absolute` among them — moved out of each instance's `#uuid` rule
+onto a zero-specificity `:where(.ts-ui-component)` rule. Any code that
+rewrites an element's whole `class` attribute must re-state that class, or
+the element loses its positioning and collapses into document flow.
+
+See [Migration](/reference/migration#upgrading-from-0-2-x-to-0-3-0) for the
+full upgrade note.
+
+### Changed
 
 - **A `"selection"` event is no longer emitted for an unchanged selection.**
   `Tree`, the table body, and `Table`'s rotated mode now compare the
@@ -314,35 +458,7 @@ full upgrade note.
   itself; the default `groupRenderer` ignores it, so a container node never
   shows one.
 
-- **`VirtualScroller.dispose()`** — disposes the scroller's two overlay
-  `Scrollbar`s. `VirtualRowView` calls it on teardown, so an owner of a
-  `Table`, `TreeTable` or `Tree` needs no change.
-
 ### Fixed
-
-- **A wrapped `HFlow` or `VFlow` no longer under-reports its size.** Both
-  reported their single-line shape — an `HFlow` said it needed one row's
-  height however many rows its children actually wrapped into — so a parent
-  sized the host for one line and the rest was clipped. Each flow now reports
-  the cross extent it measured at its last layout, so a parent that honours
-  preferred sizes grows the host to fit every line. The main axis is unchanged:
-  an `HFlow` still reports the full unwrapped width it would like. The
-  cross-axis maximum is floored at the same measurement, so a host that clamps
-  to its content cannot clamp the flow back to one line. The cross-axis minimum
-  is not floored — it stays one line's worth — but it now measures that line
-  with the same `itemAlign` rule the preferred size uses, so the two can no
-  longer disagree about how tall a line is. A layout that measures nothing
-  usable (a child with no resolved size, or a host with no width yet) publishes
-  nothing and the flow keeps reporting its single-line estimate.
-
-- **Wrapped `HFlow` rows no longer overlap under `itemAlign: "baseline"`.**
-  A row advanced by its tallest cell, but baseline alignment offsets a cell by
-  `rowAscent - baseline`, which can push a low-baseline child's descender below
-  that. The next row started underneath it. A baseline-aligned row is now as
-  tall as `rowAscent + rowDescent`, so it clears its own descenders. This
-  changes rendered output for wrapping flows that set `itemAlign: "baseline"`;
-  every other alignment is unaffected, as is `VFlow`, whose baseline arm has
-  always degraded to `"start"`.
 
 - **List rows no longer stack on top of each other after a selection
   change.** `AbstractSelectableList` rewrites a row's whole `class`
@@ -413,40 +529,6 @@ full upgrade note.
   release) is ignored instead of clearing the node selection — this used to
   happen for any pan, including one starting on empty canvas or ending there
   after beginning on a node.
-
-- **Overlay scrollbars, split/border/accordion gutters, accordion section
-  headers and wrappers, a `Rail`'s collapse chevron, and a dock region's
-  drop-zone overlay no longer leak their stylesheet rules on teardown.** Each
-  is appended straight onto its owner's element rather than registered as a
-  child component, so the owner's `destructor()` recursion never reached it
-  and its per-instance rule survived on the shared sheet. Each of the owners
-  listed here now disposes what it raw-appended.
-
-- **A completed drag no longer leaks its chrome's stylesheet rules.**
-  `DragManager` builds a `DragGhost`, a `DragFeedback` and a
-  `ReorderIndicator` for every committed gesture and previously only detached
-  them at the end, so the shared sheet grew by one rule per drag and never
-  shrank — across tab, split and dock drags alike. A ghost returned by a
-  caller's `ghostFactory` is still only detached, since that component
-  belongs to the caller.
-
-- **`Border.doLayout()` and `Accordion.doLayout()` no longer fail when they
-  run before the container has a DOM element.** Both now defer to the next
-  pass instead, matching `HBox`, `VBox`, `Grid`, `Split` and `Tab`. An
-  `autoScroll` host's synchronous layout pass during its own construction is
-  what used to trigger this against a not-yet-rendered child.
-
-- **`VBox`, `HBox`, and the flow layouts no longer let a child's smaller
-  maximum win over its explicit larger minimum.** `resolveChildHeight`,
-  `resolveChildWidth`, and `clampedPreferredSize` capped to the maximum and
-  then floored to the minimum — the reverse of the order every other clamp
-  in the framework uses — so a component that set a hard maximum on itself
-  (`ComboBox` capping its own height, for instance) could shrink an
-  ancestor's reserved cell below the minimum that ancestor explicitly
-  demanded, and the next sibling in the column, row, or flow advanced into
-  the space the shrunk cell never gave back. All three sites now cap to the
-  maximum first and floor to the minimum last, matching
-  `clampPreferredToConstraints` and `clampWidth`.
 
 ## 0.2.0
 
