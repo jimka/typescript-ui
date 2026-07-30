@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WebGLCanvas } from '~/component/display/WebGLCanvas';
 import type { WebGLContextInitCallback, WebGLFrameCallback } from '~/component/display/WebGLCanvas';
 import { Component } from '~/core/Component';
@@ -363,5 +363,91 @@ describe('WebGLCanvas context id (U7)', () => {
 
         expect(recorded).toBeDefined();
         expect(recorded!.args[0]).toBe('webgl2');
+    });
+});
+
+// The rAF timestamp reaching onFrame, and the optional frame cap. Mirrors
+// tests/component/display/Canvas.test.ts: TestDOM's requestAnimationFrame
+// swallows its callback, so these capture it off the sink and drive it with
+// chosen timestamps, and getContext is stubbed because renderFrame bails on a
+// null context before it can reach onFrame.
+describe('WebGLCanvas frame timing and frame cap', () => {
+    let frames: Map<number, FrameRequestCallback>;
+    let nextHandle: number;
+
+    function captureFrames(): void {
+        frames = new Map();
+        nextHandle = 1;
+        vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+            const handle = nextHandle++;
+            frames.set(handle, cb);
+
+            return handle;
+        });
+        vi.spyOn(DOM.sink, 'cancelAnimationFrame').mockImplementation((handle: number) => {
+            frames.delete(handle);
+        });
+    }
+
+    function runFrame(timestamp: number): void {
+        const pending = [...frames.values()];
+        frames.clear();
+        for (const cb of pending) {
+            cb(timestamp);
+        }
+    }
+
+    function withStubContext(canvas: WebGLCanvas): void {
+        vi.spyOn(canvas, 'getContext')
+            .mockReturnValue({ viewport() {}, clear() {}, clearColor() {} } as unknown as WebGL2RenderingContext);
+    }
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('passes elapsed milliseconds since the animation started to onFrame', () => {
+        const seen: number[] = [];
+        const canvas = new WebGLCanvas({ onFrame: (_gl, _w, _h, elapsedMs) => { seen.push(elapsedMs); } });
+
+        canvas.getElement(true);
+        withStubContext(canvas);
+        captureFrames();
+        canvas.startAnimation();
+
+        runFrame(2000);
+        runFrame(2016);
+        runFrame(2050);
+
+        expect(seen).toEqual([0, 16, 50]);
+    });
+
+    it('skips frames that arrive faster than the cap allows', () => {
+        const seen: number[] = [];
+        const canvas = new WebGLCanvas({
+            maxFps:  30,
+            onFrame: (_gl, _w, _h, elapsedMs) => { seen.push(elapsedMs); },
+        });
+
+        canvas.getElement(true);
+        withStubContext(canvas);
+        captureFrames();
+        canvas.startAnimation();
+
+        runFrame(0);    // draws
+        runFrame(16);   // skipped
+        runFrame(34);   // draws
+        runFrame(50);   // skipped
+        runFrame(68);   // draws
+
+        expect(seen).toEqual([0, 34, 68]);
+    });
+
+    it('reads maxFps back and treats 0 as uncapped', () => {
+        const canvas = new WebGLCanvas({ maxFps: 24 });
+
+        expect(canvas.getMaxFps()).toBe(24);
+
+        canvas.setMaxFps(0);
+
+        expect(canvas.getMaxFps()).toBe(0);
     });
 });

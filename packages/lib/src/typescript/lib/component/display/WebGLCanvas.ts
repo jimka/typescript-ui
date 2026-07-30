@@ -32,6 +32,7 @@ export type WebGLFrameCallback = (
     gl: WebGL2RenderingContext,
     width: number,
     height: number,
+    elapsedMs: number,
 ) => void;
 
 /**
@@ -44,7 +45,13 @@ export interface WebGLCanvasOptions extends ComponentOptions {
     /** GL-resource (re)build hook; runs on init and after each context restore. */
     onContextInit?: WebGLContextInitCallback;
 
-    /** Per-frame draw hook. */
+    /**
+     * Per-frame draw hook. Its fourth argument is the milliseconds elapsed
+     * since the current animation run started — derive motion from that rather
+     * than advancing a counter once per call, since frames arrive at the
+     * display's refresh rate and a per-call increment runs three times faster
+     * on a 180Hz monitor than on a 60Hz one.
+     */
     onFrame?: WebGLFrameCallback;
 
     /**
@@ -53,6 +60,15 @@ export interface WebGLCanvasOptions extends ComponentOptions {
      * pauses automatically when hidden and resumes when shown again.
      */
     animateWhenHidden?: boolean;
+
+    /**
+     * Upper bound, in frames per second, on how often the animation loop
+     * renders. Default `0`: uncapped, rendering on every animation frame the
+     * browser delivers. A positive value skips frames that arrive sooner than
+     * `1000 / maxFps` after the last render; the loop itself keeps running, so
+     * the cap trades smoothness for CPU rather than pausing anything.
+     */
+    maxFps?: number;
 }
 
 /**
@@ -104,6 +120,15 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
 
     /** Active animation-frame handle; `null` when the loop is idle. */
     private _rafId: number | null = null;
+
+    // Frame clock for the animation loop. `_animationStartMs` is null until the
+    // first frame of a run anchors it, so elapsed time starts at 0 for that
+    // frame however long the run waited to be scheduled. `_lastDrawMs` gates
+    // the maxFps cap and `_elapsedMs` is what the frame hook is handed, kept as
+    // a field so renders from outside the loop repeat the last frame's value.
+    private _animationStartMs: number | null = null;
+    private _lastDrawMs      : number | null = null;
+    private _elapsedMs                       = 0;
 
     /** Consumer/auto intent to animate; the loop actually runs only while also
      *  effectively visible (or animateWhenHidden is set). Plain initializer:
@@ -167,6 +192,10 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
 
         if (options.animateWhenHidden !== undefined) {
             this.setAnimateWhenHidden(options.animateWhenHidden);
+        }
+
+        if (options.maxFps !== undefined) {
+            this.setMaxFps(options.maxFps);
         }
 
         return this;
@@ -248,6 +277,9 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
      */
     startAnimation(): this {
         this._animationRequested = true;
+        this._animationStartMs   = null;
+        this._lastDrawMs         = null;
+        this._elapsedMs          = 0;
         this.reconcileAnimation();
 
         return this;
@@ -298,6 +330,42 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
      */
     getAnimateWhenHidden(): boolean {
         return this._options.animateWhenHidden ?? false;
+    }
+
+    /**
+     * Caps how often the animation loop renders, in frames per second. Takes
+     * effect on the next frame; the loop keeps running either way, so this
+     * thins renders rather than pausing anything. Because frames are delivered
+     * at the display's refresh rate, an uncapped loop costs proportionally more
+     * on a high-refresh monitor — a cap makes that cost predictable.
+     *
+     * @param fps - Maximum renders per second, or `0` to remove the cap.
+     *   Negative values are treated as `0`.
+     * @returns This component, for method chaining.
+     */
+    setMaxFps(fps: number): this {
+        // On the options bag rather than a private field, matching
+        // `animateWhenHidden`: `applyOptions` runs inside the `super()`
+        // cascade, before this class's field initializers, so a plain
+        // `_maxFps = 0` initializer would overwrite a construction-time value.
+        this._options.maxFps = Math.max(0, fps);
+
+        return this;
+    }
+
+    /**
+     * Returns the current render cap in frames per second.
+     *
+     * @returns The cap, or `0` when the loop is uncapped.
+     */
+    getMaxFps(): number {
+        // Consults `_defaultOptions` as well as `_options`, matching the
+        // framework's getter convention (`getZIndex` is
+        // `_options.zIndex ?? _defaultOptions.zIndex ?? 0`). A class-level
+        // default bag lands in `_defaultOptions`, never in `_options`, so
+        // reading only the latter would silently ignore a default-supplied cap
+        // and leave the loop uncapped from the first frame.
+        return this._options.maxFps ?? this._defaultOptions.maxFps ?? 0;
     }
 
     /**
@@ -429,13 +497,29 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
      * loop on the change event, not by this step re-checking visibility every
      * frame. Arrow field so the rAF callback keeps a stable bound ref.
      */
-    private readonly animationStep = (): void => {
+    private readonly animationStep = (timestamp: number): void => {
         if (!this._animationRequested) {
             this._rafId = null;
             return;
         }
 
-        this.renderFrame();
+        if (this._animationStartMs === null) {
+            this._animationStartMs = timestamp;
+        }
+
+        // A skipped frame still reschedules: the cap thins out renders, it does
+        // not stop the loop, so raising maxFps again takes effect immediately.
+        const maxFps        = this.getMaxFps();
+        const minIntervalMs = maxFps > 0 ? 1000 / maxFps : 0;
+        const dueForRender  = this._lastDrawMs === null
+            || timestamp - this._lastDrawMs >= minIntervalMs;
+
+        if (dueForRender) {
+            this._lastDrawMs = timestamp;
+            this._elapsedMs  = timestamp - this._animationStartMs;
+            this.renderFrame();
+        }
+
         this._rafId = DOM.sink.requestAnimationFrame(this.animationStep);
     };
 
@@ -467,7 +551,7 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
             this._contextInitialised = true;
         }
 
-        this._options.onFrame?.(gl, this.getWidth(), this.getHeight());
+        this._options.onFrame?.(gl, this.getWidth(), this.getHeight(), this._elapsedMs);
     }
 
     /**

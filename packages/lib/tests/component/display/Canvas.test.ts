@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Canvas } from '~/component/display/Canvas';
 import type { CanvasDrawCallback } from '~/component/display/Canvas';
 import { Component } from '~/core/Component';
@@ -344,5 +344,215 @@ describe('Canvas seam signatures (U7)', () => {
 
     it('ModelledDOMSource.getDevicePixelRatio returns 1', () => {
         expect(DOM.source.getDevicePixelRatio()).toBe(1);
+    });
+});
+
+// The rAF timestamp reaching onDraw, and the optional frame cap. TestDOM's
+// requestAnimationFrame swallows its callback, so these capture it off the sink
+// the way tests/core/AfterNextLayout.test.ts does and invoke it with chosen
+// timestamps. getContext is stubbed because the offline sink returns null and
+// redraw() would otherwise bail before reaching onDraw.
+describe('Canvas frame timing and frame cap', () => {
+    // Keyed by handle, and cancelAnimationFrame really removes: stopAnimation
+    // cancels its pending frame, and a fake that ignored that would let the
+    // dead callback fire alongside the next run's and double-count a draw.
+    let frames: Map<number, FrameRequestCallback>;
+    let nextHandle: number;
+
+    function captureFrames(): void {
+        frames = new Map();
+        nextHandle = 1;
+        vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+            const handle = nextHandle++;
+            frames.set(handle, cb);
+
+            return handle;
+        });
+        vi.spyOn(DOM.sink, 'cancelAnimationFrame').mockImplementation((handle: number) => {
+            frames.delete(handle);
+        });
+    }
+
+    /** Invokes every still-live scheduled frame callback with `timestamp`. */
+    function runFrame(timestamp: number): void {
+        const pending = [...frames.values()];
+        frames.clear();
+        for (const cb of pending) {
+            cb(timestamp);
+        }
+    }
+
+    /** Gives the canvas a context so redraw() reaches onDraw offline. */
+    function withStubContext(canvas: Canvas): void {
+        vi.spyOn(canvas, 'getContext')
+            .mockReturnValue({ clearRect() {}, save() {}, restore() {}, setTransform() {} } as unknown as CanvasRenderingContext2D);
+    }
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('passes elapsed milliseconds since the animation started to onDraw', () => {
+        const seen: number[] = [];
+        const canvas = new Canvas({ onDraw: (_ctx, _w, _h, elapsedMs) => { seen.push(elapsedMs); } });
+
+        canvas.getElement(true);
+        withStubContext(canvas);
+        captureFrames();
+        canvas.startAnimation();
+
+        runFrame(1000);   // first frame anchors the clock — elapsed 0
+        runFrame(1016);
+        runFrame(1033);
+
+        expect(seen).toEqual([0, 16, 33]);
+    });
+
+    it('draws every frame when no cap is set', () => {
+        const canvas = new Canvas();
+
+        canvas.getElement(true);
+        const redraw = vi.spyOn(canvas, 'redraw');
+
+        captureFrames();
+        canvas.startAnimation();
+
+        runFrame(0);
+        runFrame(16);
+        runFrame(32);
+
+        expect(redraw).toHaveBeenCalledTimes(3);
+    });
+
+    it('skips frames that arrive faster than the cap allows', () => {
+        const canvas = new Canvas({ maxFps: 30 });   // one draw per 33.3ms
+
+        canvas.getElement(true);
+        const redraw = vi.spyOn(canvas, 'redraw');
+
+        captureFrames();
+        canvas.startAnimation();
+
+        runFrame(0);    // draws — anchors
+        runFrame(16);   // 16ms < 33.3 — skipped
+        runFrame(34);   // 34ms >= 33.3 — draws
+        runFrame(50);   // 16ms since last draw — skipped
+        runFrame(68);   // draws
+
+        expect(redraw).toHaveBeenCalledTimes(3);
+    });
+
+    it('keeps the loop alive across a skipped frame', () => {
+        const canvas = new Canvas({ maxFps: 30 });
+
+        canvas.getElement(true);
+        captureFrames();
+        canvas.startAnimation();
+
+        runFrame(0);
+        runFrame(16);   // skipped — must still reschedule
+
+        expect(frames.size).toBe(1);
+    });
+
+    it('reads maxFps back and treats 0 as uncapped', () => {
+        const canvas = new Canvas({ maxFps: 24 });
+
+        expect(canvas.getMaxFps()).toBe(24);
+
+        canvas.setMaxFps(0);
+
+        expect(canvas.getMaxFps()).toBe(0);
+    });
+
+    it('restarts the elapsed clock on a fresh startAnimation', () => {
+        const seen: number[] = [];
+        const canvas = new Canvas({ onDraw: (_ctx, _w, _h, elapsedMs) => { seen.push(elapsedMs); } });
+
+        canvas.getElement(true);
+        withStubContext(canvas);
+        captureFrames();
+
+        canvas.startAnimation();
+        runFrame(500);
+        runFrame(600);
+        canvas.stopAnimation();
+
+        canvas.startAnimation();
+        runFrame(5000);   // clock re-anchors here, not at 500
+
+        expect(seen).toEqual([0, 100, 0]);
+    });
+});
+
+// A class-level default (what `_defaultCanvasOptions` supplies, or a subclass
+// default bag) lands in `_defaultOptions`, not `_options`. Framework getters
+// consult both — `getZIndex` is `_options.zIndex ?? _defaultOptions.zIndex ?? 0`
+// — and the frame cap must do the same, or a default-supplied cap silently
+// never applies and the loop runs uncapped from the first frame.
+describe('Canvas maxFps as a class default', () => {
+    type WithDefaults = { _defaultOptions: Record<string, unknown> };
+
+    /** Plants `maxFps` where a class-level default bag would put it. */
+    function withDefaultMaxFps(canvas: Canvas, maxFps: number): void {
+        const priv = canvas as unknown as WithDefaults;
+        priv._defaultOptions = { ...priv._defaultOptions, maxFps };
+    }
+
+    it('reads a class-default maxFps back', () => {
+        const canvas = new Canvas();
+
+        withDefaultMaxFps(canvas, 30);
+
+        expect(canvas.getMaxFps()).toBe(30);
+    });
+
+    it('lets an explicit option win over the class default', () => {
+        const canvas = new Canvas({ maxFps: 12 });
+
+        withDefaultMaxFps(canvas, 30);
+
+        expect(canvas.getMaxFps()).toBe(12);
+    });
+
+    it('still reports 0 when neither supplies one', () => {
+        expect(new Canvas().getMaxFps()).toBe(0);
+    });
+
+    it('applies a class-default cap from the very first frame', () => {
+        const frames = new Map<number, FrameRequestCallback>();
+        let nextHandle = 1;
+
+        vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+            const handle = nextHandle++;
+            frames.set(handle, cb);
+
+            return handle;
+        });
+        vi.spyOn(DOM.sink, 'cancelAnimationFrame').mockImplementation((handle: number) => {
+            frames.delete(handle);
+        });
+
+        const runFrame = (timestamp: number): void => {
+            const pending = [...frames.values()];
+            frames.clear();
+            for (const cb of pending) {
+                cb(timestamp);
+            }
+        };
+
+        const canvas = new Canvas();
+
+        canvas.getElement(true);
+        withDefaultMaxFps(canvas, 30);   // one draw per 33.3ms
+
+        const redraw = vi.spyOn(canvas, 'redraw');
+
+        canvas.startAnimation();
+        runFrame(0);    // draws
+        runFrame(16);   // skipped by the default cap
+        runFrame(34);   // draws
+
+        expect(redraw).toHaveBeenCalledTimes(2);
+
+        vi.restoreAllMocks();
     });
 });

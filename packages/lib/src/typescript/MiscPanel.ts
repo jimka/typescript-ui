@@ -1607,6 +1607,10 @@ class MiscPanel extends Panel {
         // resize. A phase field animated by the loop makes the pulse visible.
         rightColumn.addComponent(new Text("Canvas (onDraw + animation):"));
 
+        // Matches the rate the old per-frame `+= 0.1` produced at 60fps, now
+        // expressed per second so it is refresh-rate independent.
+        const CANVAS_PULSE_RADIANS_PER_SECOND = 6;
+
         let canvasPhase = 0;
 
         const demoCanvas = new Canvas({
@@ -1641,12 +1645,11 @@ class MiscPanel extends Panel {
                 return;
             }
 
-            canvasPhase = 0;
-
-            demoCanvas.setOnDraw((ctx, width, height) => {
-                // Advance the pulse a tenth of a radian per frame (~6 rad/s at
-                // 60fps) so the circle breathes at a readable rate.
-                canvasPhase += 0.1;
+            demoCanvas.setOnDraw((ctx, width, height, elapsedMs) => {
+                // Breathe at a fixed ~6 rad/s, derived from elapsed time rather
+                // than incremented per frame, so the rate does not scale with
+                // the display's refresh rate.
+                canvasPhase = elapsedMs / 1000 * CANVAS_PULSE_RADIANS_PER_SECOND;
 
                 ctx.fillStyle = "rgb(30, 30, 30)";
                 ctx.fillRect(0, 0, width, height);
@@ -1690,14 +1693,18 @@ class MiscPanel extends Panel {
         // visibly running. The viewport is already set in device pixels.
         rightColumn.addComponent(new Text("WebGLCanvas (animated clear colour):"));
 
-        let glPhase = 0;
+        // Matches the rate the old per-frame `+= 0.02` produced at 60fps.
+        const GL_SWEEP_RADIANS_PER_SECOND = 1.2;
 
         const demoWebGL = new WebGLCanvas({
             preferredSize: { width: 240, height: 120 },
-            onFrame: (gl) => {
+            onFrame: (gl, _width, _height, elapsedMs) => {
                 // Sweep the clear colour through a slow hue-ish pulse so the
-                // continuously-running loop is obviously alive.
-                glPhase += 0.02;
+                // continuously-running loop is obviously alive. Derived from
+                // elapsed time, not incremented per frame, so the sweep runs at
+                // the same speed on a 60Hz and a 180Hz display.
+                const glPhase = elapsedMs / 1000 * GL_SWEEP_RADIANS_PER_SECOND;
+
                 gl.clearColor(
                     0.5 + 0.5 * Math.sin(glPhase),
                     0.5 + 0.5 * Math.sin(glPhase + 2),
