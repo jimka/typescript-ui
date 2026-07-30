@@ -136,7 +136,19 @@ instead, which does the listener cleanup *and* the full teardown.
 
 ### Fixed
 
-- **A wrapped `HFlow` or `VFlow` no longer under-reports its size.** Both
+- **An animated `Glyph` now pauses while it is off-screen.** A glyph animated
+  via `setAnimated` (or the `animation` option) kept running for the lifetime of
+  the page even once it was no longer effectively visible — on a hidden tab, in
+  a collapsed section, or under any hidden ancestor — consuming a compositor
+  frame on every display refresh and holding its `will-change: transform` layer
+  hint live. `ProgressSpinner` and `ProgressBar` were unaffected: they register
+  their animation through `Component.setAnimation`, which the framework's
+  effective-visibility pass already paused. `Glyph` drives its animation from a
+  shared `ts-ui-glyph-<kind>` class rule instead, which that pass could not see.
+  Glyphs now pause and resume with their effective visibility like every other
+  animated component. The cost this removes scales with the display's refresh
+  rate and with how much is on the page, so it is most noticeable on
+  high-refresh monitors and pages with large component trees.
   reported their single-line shape — an `HFlow` said it needed one row's
   height however many rows its children actually wrapped into — so a parent
   sized the host for one line and the rest was clipped. Each flow now reports
