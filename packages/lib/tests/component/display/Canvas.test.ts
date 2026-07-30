@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Canvas } from '~/component/display/Canvas';
-import type { CanvasDrawCallback } from '~/component/display/Canvas';
+import type { CanvasDrawCallback, CanvasOptions } from '~/component/display/Canvas';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
@@ -392,7 +392,9 @@ describe('Canvas frame timing and frame cap', () => {
 
     it('passes elapsed milliseconds since the animation started to onDraw', () => {
         const seen: number[] = [];
-        const canvas = new Canvas({ onDraw: (_ctx, _w, _h, elapsedMs) => { seen.push(elapsedMs); } });
+        // maxFps: 0 opts out of the class default cap, which would otherwise
+        // skip these deliberately close-together frames.
+        const canvas = new Canvas({ maxFps: 0, onDraw: (_ctx, _w, _h, elapsedMs) => { seen.push(elapsedMs); } });
 
         canvas.getElement(true);
         withStubContext(canvas);
@@ -406,8 +408,8 @@ describe('Canvas frame timing and frame cap', () => {
         expect(seen).toEqual([0, 16, 33]);
     });
 
-    it('draws every frame when no cap is set', () => {
-        const canvas = new Canvas();
+    it('draws every frame when the cap is explicitly removed', () => {
+        const canvas = new Canvas({ maxFps: 0 });
 
         canvas.getElement(true);
         const redraw = vi.spyOn(canvas, 'redraw');
@@ -483,41 +485,74 @@ describe('Canvas frame timing and frame cap', () => {
     });
 });
 
-// A class-level default (what `_defaultCanvasOptions` supplies, or a subclass
-// default bag) lands in `_defaultOptions`, not `_options`. Framework getters
-// consult both — `getZIndex` is `_options.zIndex ?? _defaultOptions.zIndex ?? 0`
-// — and the frame cap must do the same, or a default-supplied cap silently
-// never applies and the loop runs uncapped from the first frame.
-describe('Canvas maxFps as a class default', () => {
-    type WithDefaults = { _defaultOptions: Record<string, unknown> };
-
-    /** Plants `maxFps` where a class-level default bag would put it. */
-    function withDefaultMaxFps(canvas: Canvas, maxFps: number): void {
-        const priv = canvas as unknown as WithDefaults;
-        priv._defaultOptions = { ...priv._defaultOptions, maxFps };
+// Class-level defaults reach every consumer of the option. A default bag lands
+// in `_defaultOptions`, never `_options`, so each getter has to fold it in per
+// ARCHITECTURE.md "Class-level defaults must survive the getter" — and the draw
+// path has to read through those getters, not `_options` directly.
+class DefaultedCanvas extends Canvas {
+    constructor(options?: CanvasOptions) {
+        super(options, {
+            maxFps:            15,   // deliberately not the class default of 30
+            animateWhenHidden: true,
+            onDraw:            () => { defaultedDraws++; },
+        } as Partial<CanvasOptions>);
     }
+}
 
-    it('reads a class-default maxFps back', () => {
-        const canvas = new Canvas();
+let defaultedDraws = 0;
 
-        withDefaultMaxFps(canvas, 30);
+describe('Canvas class-level defaults', () => {
+    beforeEach(() => { defaultedDraws = 0; });
+    afterEach(() => vi.restoreAllMocks());
 
-        expect(canvas.getMaxFps()).toBe(30);
+    it('resolves each defaulted field through its getter', () => {
+        const canvas = new DefaultedCanvas();
+
+        expect(canvas.getMaxFps()).toBe(15);
+        expect(canvas.getAnimateWhenHidden()).toBe(true);
+        expect(canvas.getOnDraw()).not.toBeNull();
     });
 
-    it('lets an explicit option win over the class default', () => {
-        const canvas = new Canvas({ maxFps: 12 });
+    it('keeps the defaults out of the _options bag', () => {
+        const canvas = new DefaultedCanvas() as unknown as { _options: Record<string, unknown> };
 
-        withDefaultMaxFps(canvas, 30);
+        expect(canvas._options.maxFps).toBeUndefined();
+        expect(canvas._options.animateWhenHidden).toBeUndefined();
+        expect(canvas._options.onDraw).toBeUndefined();
+    });
+
+    it('lets an explicit option win over each default', () => {
+        const canvas = new DefaultedCanvas({ maxFps: 12, animateWhenHidden: false });
 
         expect(canvas.getMaxFps()).toBe(12);
+        expect(canvas.getAnimateWhenHidden()).toBe(false);
     });
 
-    it('still reports 0 when neither supplies one', () => {
-        expect(new Canvas().getMaxFps()).toBe(0);
+    it('falls back to the class defaults with no subclass default and no option', () => {
+        const canvas = new Canvas();
+
+        expect(canvas.getMaxFps()).toBe(30);              // Canvas's own class default
+        expect(canvas.getAnimateWhenHidden()).toBe(false); // no class default — plain fallback
+        expect(canvas.getOnDraw()).toBeNull();
     });
 
-    it('applies a class-default cap from the very first frame', () => {
+    it('lets an explicit 0 opt out of the class default cap', () => {
+        expect(new Canvas({ maxFps: 0 }).getMaxFps()).toBe(0);
+    });
+
+    it('actually draws with a defaulted onDraw', () => {
+        const canvas = new DefaultedCanvas();
+
+        canvas.getElement(true);
+        vi.spyOn(canvas, 'getContext')
+            .mockReturnValue({ clearRect() {} } as unknown as CanvasRenderingContext2D);
+
+        canvas.redraw();
+
+        expect(defaultedDraws).toBe(1);
+    });
+
+    it('applies a defaulted cap from the very first frame', () => {
         const frames = new Map<number, FrameRequestCallback>();
         let nextHandle = 1;
 
@@ -539,20 +574,17 @@ describe('Canvas maxFps as a class default', () => {
             }
         };
 
-        const canvas = new Canvas();
+        const canvas = new DefaultedCanvas();
 
         canvas.getElement(true);
-        withDefaultMaxFps(canvas, 30);   // one draw per 33.3ms
 
         const redraw = vi.spyOn(canvas, 'redraw');
 
         canvas.startAnimation();
         runFrame(0);    // draws
-        runFrame(16);   // skipped by the default cap
-        runFrame(34);   // draws
+        runFrame(34);   // skipped — under the subclass's 15fps (66.6ms) cap
+        runFrame(70);   // draws
 
         expect(redraw).toHaveBeenCalledTimes(2);
-
-        vi.restoreAllMocks();
     });
 });

@@ -63,10 +63,13 @@ export interface WebGLCanvasOptions extends ComponentOptions {
 
     /**
      * Upper bound, in frames per second, on how often the animation loop
-     * renders. Default `0`: uncapped, rendering on every animation frame the
-     * browser delivers. A positive value skips frames that arrive sooner than
-     * `1000 / maxFps` after the last render; the loop itself keeps running, so
-     * the cap trades smoothness for CPU rather than pausing anything.
+     * renders. Defaults to 30 — enough for smooth motion at a predictable cost,
+     * and independent of the display's refresh rate, so the same animation
+     * costs the same on a 60Hz and a 180Hz monitor. Pass `0` to opt out and
+     * render on every animation frame the browser delivers. A positive value
+     * skips frames that arrive sooner than `1000 / maxFps` after the last
+     * one; the loop itself keeps running, so the cap trades smoothness for
+     * CPU rather than pausing anything.
      */
     maxFps?: number;
 }
@@ -77,6 +80,7 @@ export interface WebGLCanvasOptions extends ComponentOptions {
  */
 const _defaultWebGLCanvasOptions: Partial<WebGLCanvasOptions> = {
     tag: "canvas",
+    maxFps: 30,
 };
 
 // Sentinel for the last-synced width/height/dpr guard. A real size is always
@@ -164,9 +168,12 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
      * Constructs a WebGL2 canvas.
      *
      * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: WebGLCanvasOptions) {
-        super(options, _defaultWebGLCanvasOptions);
+    constructor(options?: WebGLCanvasOptions, subclassDefaults?: Partial<WebGLCanvasOptions>) {
+        super(options, { ..._defaultWebGLCanvasOptions, ...(subclassDefaults ?? {}) });
 
         this._contextInitialised = false;
 
@@ -243,7 +250,7 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
      * @returns The context-init callback, or `null` when none is set.
      */
     getOnContextInit(): WebGLContextInitCallback | null {
-        return this._options.onContextInit ?? null;
+        return this._options.onContextInit ?? this._defaultOptions.onContextInit ?? null;
     }
 
     /**
@@ -264,7 +271,7 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
      * @returns The frame callback, or `null` when none is set.
      */
     getOnFrame(): WebGLFrameCallback | null {
-        return this._options.onFrame ?? null;
+        return this._options.onFrame ?? this._defaultOptions.onFrame ?? null;
     }
 
     /**
@@ -329,7 +336,7 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
      * @returns `true` if the loop ignores effective visibility.
      */
     getAnimateWhenHidden(): boolean {
-        return this._options.animateWhenHidden ?? false;
+        return this._options.animateWhenHidden ?? this._defaultOptions.animateWhenHidden ?? false;
     }
 
     /**
@@ -339,8 +346,8 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
      * at the display's refresh rate, an uncapped loop costs proportionally more
      * on a high-refresh monitor — a cap makes that cost predictable.
      *
-     * @param fps - Maximum renders per second, or `0` to remove the cap.
-     *   Negative values are treated as `0`.
+     * @param fps - Maximum renders per second, or `0` to remove the cap entirely.
+     *   Negative values are treated as `0`. The class default is 30.
      * @returns This component, for method chaining.
      */
     setMaxFps(fps: number): this {
@@ -356,7 +363,8 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
     /**
      * Returns the current render cap in frames per second.
      *
-     * @returns The cap, or `0` when the loop is uncapped.
+     * @returns The cap, or `0` when the loop is uncapped. Resolves the class
+     *   default (30) when no explicit value was set.
      */
     getMaxFps(): number {
         // Consults `_defaultOptions` as well as `_options`, matching the
@@ -547,11 +555,11 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
         }
 
         if (!this._contextInitialised) {
-            this._options.onContextInit?.(gl);
+            this.getOnContextInit()?.(gl);
             this._contextInitialised = true;
         }
 
-        this._options.onFrame?.(gl, this.getWidth(), this.getHeight(), this._elapsedMs);
+        this.getOnFrame()?.(gl, this.getWidth(), this.getHeight(), this._elapsedMs);
     }
 
     /**

@@ -48,10 +48,13 @@ export interface CanvasOptions extends ComponentOptions {
 
     /**
      * Upper bound, in frames per second, on how often the animation loop
-     * redraws. Default `0`: uncapped, redrawing on every animation frame the
-     * browser delivers. A positive value skips frames that arrive sooner than
-     * `1000 / maxFps` after the last redraw; the loop itself keeps running, so
-     * the cap trades smoothness for CPU rather than pausing anything.
+     * redraws. Defaults to 30 — enough for smooth motion at a predictable cost,
+     * and independent of the display's refresh rate, so the same animation
+     * costs the same on a 60Hz and a 180Hz monitor. Pass `0` to opt out and
+     * redraw on every animation frame the browser delivers. A positive value
+     * skips frames that arrive sooner than `1000 / maxFps` after the last
+     * one; the loop itself keeps running, so the cap trades smoothness for
+     * CPU rather than pausing anything.
      */
     maxFps?: number;
 }
@@ -62,6 +65,7 @@ export interface CanvasOptions extends ComponentOptions {
  */
 const _defaultCanvasOptions: Partial<CanvasOptions> = {
     tag: "canvas",
+    maxFps: 30,
 };
 
 // Sentinel for the last-synced width/height/dpr guard. A real size is always
@@ -128,9 +132,12 @@ class Canvas extends Component<CanvasOptions> {
      * Constructs a raster canvas.
      *
      * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: CanvasOptions) {
-        super(options, _defaultCanvasOptions);
+    constructor(options?: CanvasOptions, subclassDefaults?: Partial<CanvasOptions>) {
+        super(options, { ..._defaultCanvasOptions, ...(subclassDefaults ?? {}) });
 
         this.clearInsets();
     }
@@ -199,7 +206,7 @@ class Canvas extends Component<CanvasOptions> {
      * @returns The draw callback, or `null` when none is set.
      */
     getOnDraw(): CanvasDrawCallback | null {
-        return this._options.onDraw ?? null;
+        return this._options.onDraw ?? this._defaultOptions.onDraw ?? null;
     }
 
     /**
@@ -219,7 +226,7 @@ class Canvas extends Component<CanvasOptions> {
         const height = this.getHeight();
 
         ctx.clearRect(0, 0, width, height);
-        this._options.onDraw?.(ctx, width, height, this._elapsedMs);
+        this.getOnDraw()?.(ctx, width, height, this._elapsedMs);
 
         return this;
     }
@@ -287,8 +294,8 @@ class Canvas extends Component<CanvasOptions> {
      * at the display's refresh rate, an uncapped loop costs proportionally more
      * on a high-refresh monitor — a cap makes that cost predictable.
      *
-     * @param fps - Maximum redraws per second, or `0` to remove the cap.
-     *   Negative values are treated as `0`.
+     * @param fps - Maximum redraws per second, or `0` to remove the cap entirely.
+     *   Negative values are treated as `0`. The class default is 30.
      * @returns This component, for method chaining.
      */
     setMaxFps(fps: number): this {
@@ -304,7 +311,8 @@ class Canvas extends Component<CanvasOptions> {
     /**
      * Returns the current redraw cap in frames per second.
      *
-     * @returns The cap, or `0` when the loop is uncapped.
+     * @returns The cap, or `0` when the loop is uncapped. Resolves the class
+     *   default (30) when no explicit value was set.
      */
     getMaxFps(): number {
         // Consults `_defaultOptions` as well as `_options`, matching the
@@ -322,7 +330,7 @@ class Canvas extends Component<CanvasOptions> {
      * @returns `true` if the loop ignores effective visibility.
      */
     getAnimateWhenHidden(): boolean {
-        return this._options.animateWhenHidden ?? false;
+        return this._options.animateWhenHidden ?? this._defaultOptions.animateWhenHidden ?? false;
     }
 
     /**
