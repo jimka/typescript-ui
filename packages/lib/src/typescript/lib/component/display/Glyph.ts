@@ -517,6 +517,36 @@ class Glyph extends Component<GlyphOptions> {
     }
 
     /**
+     * Pauses this glyph's animation while it is not effectively visible, and
+     * resumes it when it is shown again.
+     *
+     * The inherited implementation pauses only when
+     * {@link Component.getAnimation} is non-null — that is, when the animation
+     * was written into the component's own `#uuid` rule by
+     * `Component.setAnimation`. A Glyph instead animates from a shared
+     * `ts-ui-glyph-<kind>` class rule (one rule for every glyph of that kind,
+     * rather than one per instance), so `getAnimation()` is always null here and
+     * the base check cannot see the animation. Without this override an animated
+     * glyph keeps consuming a compositor frame on every display refresh for as
+     * long as the page lives, even on a hidden tab — and `setAnimated` also
+     * parks a `will-change: transform` layer hint on the element, which stays
+     * live with it.
+     *
+     * @param effective - The component's new effective-visibility state.
+     */
+    protected onEffectiveVisibilityChange(effective: boolean): void {
+        super.onEffectiveVisibilityChange(effective);
+
+        // Loose comparison: `_glyphAnimation` is a `declare` field, so it has no
+        // runtime initializer and reads as `undefined` — not its declared `null`
+        // — on a glyph that was never animated. A strict `!== null` would treat
+        // that as "animated" and park a play-state on every unanimated glyph.
+        if (this._glyphAnimation != null) {
+            this.setAnimationPlayState(effective ? null : "paused");
+        }
+    }
+
+    /**
      * Returns the override duration (ms) set via {@link setAnimationDuration},
      * or `0` when no override is active. Read the active CSS custom property
      * (`--ts-ui-glyph-<kind>-duration`) for the live value when no override
