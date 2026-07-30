@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Glyph } from '~/component/display/Glyph';
+import { Component } from '~/core/Component';
 import { lookupGlyph } from '~/component/display/Glyphs';
 import { xmark } from '~/glyphs/solid/xmark';
 import { DOM } from '~/core/DOM';
@@ -152,5 +153,61 @@ describe('Glyph baseline', () => {
         glyph.setPreferredSize({ width: 30, height: 30 });
 
         expect(glyph.getBaseline()).toBe(27);
+    });
+});
+
+// An animated Glyph must stop consuming frames once it is no longer effectively
+// visible, exactly as ProgressSpinner's arc does
+// (tests/component/display/ProgressSpinner.test.ts:65-74). Glyph drives its
+// animation from a shared CSS class rather than Component.setAnimation, so the
+// base onEffectiveVisibilityChange — which only pauses when getAnimation() is
+// non-null — cannot see it; these pin that the pause happens anyway.
+describe('Glyph animation pauses while hidden', () => {
+    it('pauses its animation when it stops being effectively visible', () => {
+        const glyph = new Glyph('unicode-arrow-up', { animation: 'spin' });
+
+        glyph.getElement(true);
+
+        expect(glyph.getAnimationPlayState()).toBeNull();
+
+        glyph.setVisible(false);
+        Component.flushEffectiveVisibility();
+
+        expect(glyph.getAnimationPlayState()).toBe('paused');
+    });
+
+    it('resumes the animation when it becomes effectively visible again', () => {
+        const glyph = new Glyph('unicode-arrow-up', { animation: 'spin' });
+
+        glyph.getElement(true);
+        glyph.setVisible(false);
+        Component.flushEffectiveVisibility();
+        glyph.setVisible(true);
+        Component.flushEffectiveVisibility();
+
+        expect(glyph.getAnimationPlayState()).toBeNull();
+    });
+
+    it('pauses when an ancestor is hidden, not just the glyph itself', () => {
+        const parent = new Component();
+        const glyph  = new Glyph('unicode-arrow-up', { animation: 'spin' });
+
+        parent.addComponent(glyph);
+        parent.getElement(true);
+
+        parent.setVisible(false);
+        Component.flushEffectiveVisibility();
+
+        expect(glyph.getAnimationPlayState()).toBe('paused');
+    });
+
+    it('leaves an unanimated glyph alone', () => {
+        const glyph = new Glyph('unicode-arrow-up');
+
+        glyph.getElement(true);
+        glyph.setVisible(false);
+        Component.flushEffectiveVisibility();
+
+        expect(glyph.getAnimationPlayState()).toBeNull();
     });
 });
