@@ -121,7 +121,20 @@ panel.setLayoutManager(HFlow({ itemAlign: "center", spacing: 8, lineSpacing: 8 }
 +----------------------------+
 ```
 
-`itemAlign` positions the *cell* within the row; the per-child [`AnchorType`](/api/layout/enumerations/AnchorType) still positions the *child* within its cell. In a `uniform` height (or `"both"`) mode every cell already equals the row height, so `itemAlign` is a visual no-op there.
+`itemAlign` positions the *cell* within the row; the per-child [`AnchorType`](/api/layout/enumerations/AnchorType) still positions the *child* within its cell. In a `uniform` height (or `"both"`) mode every cell already equals the uniform cell height, so `"start"`, `"center"` and `"end"` are visual no-ops there — `"baseline"` is not, because it offsets each item by its own baseline rather than by the cell.
+
+### How tall a row is
+
+`itemAlign` also decides the row's height, which is what the next row is placed below.
+
+| `itemAlign` | Row height |
+| --- | --- |
+| `"start"`, `"center"`, `"end"` | the tallest cell in the row |
+| `"baseline"` | enough to hold the shared baseline plus the deepest descender below it |
+
+The distinction matters only for `"baseline"`, where aligning a high-baseline item with a low-baseline one can push the latter's bottom past the tallest item. The row grows to cover it, so wrapped rows never overlap.
+
+The table says *cell*, not *item*, because a `uniform` height (or `"both"`) mode makes every cell the tallest item in the whole flow rather than the tallest in its own row — so every row is that tall. `"baseline"` can still exceed it, since it offsets each item by its own baseline inside the uniform cell.
 
 ## Distribution
 
@@ -157,7 +170,9 @@ const gallery = Panel({ autoScroll: 'auto' });
 gallery.setLayoutManager(HFlow({ spacing: 8, lineSpacing: 8 }));
 ```
 
-When the host does not scroll, lines past the inner height are clipped by the host's `overflow: hidden`, exactly as a non-scrolling [`HBox`](/layouts/HBox) clips its overflow.
+Scrolling is not the only way the lines fit. `HFlow` reports the wrapped height it measured at its last layout as its preferred height, so a parent that honours preferred sizes — a [`VBox`](/layouts/VBox) sizing a child to its content, say — grows the host tall enough for every line and no scrollbar is needed. Scrolling matters when the parent cannot grow, because it is itself constrained.
+
+When the host neither scrolls nor is allowed to grow, lines past the inner height are clipped by the host's `overflow: hidden`, exactly as a non-scrolling [`HBox`](/layouts/HBox) clips its overflow.
 
 ## Per-child constraints
 

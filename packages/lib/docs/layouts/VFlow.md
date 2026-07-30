@@ -127,7 +127,9 @@ const gallery = Panel({ autoScroll: 'auto' });
 gallery.setLayoutManager(VFlow({ spacing: 8, lineSpacing: 8 }));
 ```
 
-When the host does not scroll, columns past the inner width are clipped by the host's `overflow: hidden`, exactly as a non-scrolling [`VBox`](/layouts/VBox) clips its overflow.
+Scrolling is not the only way the columns fit. `VFlow` reports the wrapped width it measured at its last layout as its preferred width, so a parent that honours preferred sizes — an [`HBox`](/layouts/HBox) sizing a child to its content, say — grows the host wide enough for every column and no scrollbar is needed. Scrolling matters when the parent cannot grow, because it is itself constrained.
+
+When the host neither scrolls nor is allowed to grow, columns past the inner width are clipped by the host's `overflow: hidden`, exactly as a non-scrolling [`VBox`](/layouts/VBox) clips its overflow.
 
 ## Per-child constraints
 

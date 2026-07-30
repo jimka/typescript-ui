@@ -83,6 +83,12 @@ export abstract class FlowLayout extends LayoutManager {
     protected _itemAlign: FlowItemAlign = "start";
     protected _justify: AxisSpread = "start";
 
+    // The cross-axis extent the children last wrapped into, measured by doLayout
+    // at the container's real inner extent. `null` until a layout has run at a
+    // usable extent, which is what makes the single-line fallback in each
+    // subclass's getPreferredSize reachable on the first pass.
+    private _wrappedLineExtent: number | null = null;
+
     /**
      * Constructs the layout manager, applying any supplied options.
      *
@@ -173,6 +179,69 @@ export abstract class FlowLayout extends LayoutManager {
      */
     setLineSpacing(lineSpacing: number): this {
         this._lineSpacing = lineSpacing || 0;
+
+        return this;
+    }
+
+    /**
+     * Returns the cross-axis extent the children wrapped into at the last
+     * layout, or null if no layout has run at a usable extent yet.
+     *
+     * @returns The measured line extent in pixels, or null.
+     *
+     * @remarks The number covers the lines only — summed row heights (or column
+     * widths) plus the gaps between them. It carries no insets, padding, or
+     * border, so a caller adds the perimeter back itself.
+     */
+    protected getWrappedLineExtent(): number | null {
+        return this._wrappedLineExtent;
+    }
+
+    /**
+     * Records the cross-axis extent the children wrapped into, and tells the
+     * container when that measurement has changed.
+     *
+     * @param extent - The measured line extent in pixels.
+     *
+     * @remarks The equality check is the loop guard. A settled layout publishes
+     * the same extent on every pass and therefore notifies nothing; without the
+     * check each pass would relay a size change that schedules the next one.
+     *
+     * A non-finite extent is dropped rather than stored, because it would defeat
+     * that guard: `NaN !== NaN`, so every pass would look like a change and relay
+     * one. One child with a `NaN` preferred height — a text whose font has not
+     * resolved, say — is enough to poison the sum. Dropping it also keeps the
+     * single-line fallback reachable, which is the right answer when nothing
+     * usable was measured.
+     */
+    protected publishWrappedLineExtent(extent: number): void {
+        if (!Number.isFinite(extent) || this._wrappedLineExtent === extent) {
+            return;
+        }
+
+        this._wrappedLineExtent = extent;
+
+        this.getContainer()?.notifyIntrinsicSizeChanged();
+    }
+
+    /**
+     * Attaches to a container, dropping any measurement taken against a previous
+     * one.
+     *
+     * @param container - The container component to attach to.
+     *
+     * @returns This layout manager, for method chaining.
+     *
+     * @remarks Clearing here rather than only in {@link FlowLayout.detach} is
+     * what covers a manager moved between containers. `Component.setLayoutManager`
+     * detaches the *container's* outgoing manager, never the *manager's* previous
+     * container, so a reused manager arrives still holding the old measurement
+     * and would report it for children it no longer has.
+     */
+    attach(container: Component): this {
+        super.attach(container);
+
+        this._wrappedLineExtent = null;
 
         return this;
     }
