@@ -134,6 +134,38 @@ instead, which does the listener cleanup *and* the full teardown.
   `Scrollbar`s. `VirtualRowView` calls it on teardown, so an owner of a
   `Table`, `TreeTable` or `Tree` needs no change.
 
+### Added
+
+- **`Canvas` and `WebGLCanvas` hand their draw hook the elapsed animation
+  time.** `onDraw` and `onFrame` receive a fourth argument, `elapsedMs`: the
+  milliseconds since the current animation run started, or `0` when the
+  component is not animating. Frames arrive at the display's refresh rate, so
+  advancing a counter once per call runs three times faster on a 180Hz monitor
+  than on a 60Hz one; deriving motion from `elapsedMs` instead is refresh-rate
+  independent. Existing callbacks are unaffected — the argument is additive and
+  ignoring it compiles and behaves exactly as before. Outside the animation loop
+  (a resize, a DPR change, an explicit `redraw()`) the value repeats the most
+  recent frame's, so a redraw re-renders the same moment rather than jumping.
+
+- **`Canvas` and `WebGLCanvas` accept a `maxFps` cap.** New `maxFps` option plus
+  `setMaxFps` / `getMaxFps`, bounding how often the animation loop draws. A
+  frame arriving sooner than `1000 / maxFps` after the last draw is skipped; the
+  loop keeps running, so the cap trades smoothness for CPU rather than pausing
+  anything, and changing it takes effect on the next frame. Pass `0` to opt out
+  and draw on every frame the browser delivers.
+
+### Changed
+
+- **An animating `Canvas` or `WebGLCanvas` now redraws at up to 30fps by
+  default, rather than on every animation frame.** Previously the loop drew once
+  per frame the browser delivered, so an animation's cost scaled with the
+  display's refresh rate — the same canvas cost three times as much on a 180Hz
+  monitor as on a 60Hz one. The cap makes that cost predictable and independent
+  of the display. Motion driven from the new `elapsedMs` argument is unaffected
+  and runs at the same speed; motion that advances a fixed amount per draw call
+  will run slower than before, and should be converted to `elapsedMs`. Restore
+  the old behaviour per instance with `maxFps: 0` (or `setMaxFps(0)`).
+
 ### Fixed
 
 - **An animated `Glyph` now pauses while it is off-screen.** A glyph animated

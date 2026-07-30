@@ -211,6 +211,20 @@ A `clearX()` over a *folding* getter must suppress the default, not re-resolve i
 
 This trap is invisible to the offline test harness (the missing default shows only in rendered CSS), so it is guarded mechanically: every class that defaults a field has a row in the default-resolution registry in [`tests/component/default-options-fallback.test.ts`](tests/component/default-options-fallback.test.ts). Add a row with the field.
 
+**Read the folding getter internally too.** Folding the default into `getFoo()` fixes only the consumer's view. Any framework-internal use of the same field — a render path, an animation loop, a layout pass — must call `this.getFoo()` rather than reaching for `this._options.foo` directly, or the default resolves for a caller asking politely and is silently ignored where it actually matters. Callback hooks are the easy ones to miss: `this._options.onDraw?.(…)` in a draw path skips a subclass-defaulted hook entirely, so the class advertises a default that never fires.
+
+### Constructors forward `subclassDefaults`
+
+Every component constructor takes an optional second parameter and layers it over the class's own defaults, so a subclass can seed defaults without editing its parent:
+
+```typescript
+constructor(options?: FooOptions, subclassDefaults?: Partial<FooOptions>) {
+    super(options, { ..._defaultFooOptions, ...(subclassDefaults ?? {}) });
+}
+```
+
+Order matters: the class's own `_defaultFooOptions` first, the subclass bag second, so a subclass overrides rather than being overridden. A constructor that swallows the parameter — `super(options, _defaultFooOptions)` — is a dead end: nothing below it in the hierarchy can ever default a field, and the only remaining route is editing the parent's own constant. Forward it even when no subclass exists yet; the cost is one parameter and it cannot be added later without touching every subclass. This is also what the default-resolution registry above needs, since its rows seed defaults through exactly this parameter.
+
 ### `setElement*` is the low-level seam
 
 `setElementCSSRule(s)`, `setElementStyle(s)`, and `setElementAttribute` are the buffered writes that the three rules above sit on top of. Restrict the callers to:

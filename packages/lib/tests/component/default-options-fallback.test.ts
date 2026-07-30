@@ -25,6 +25,8 @@ import { LineChart } from '~/component/chart/LineChart';
 import { BarChart } from '~/component/chart/BarChart';
 import { DiagramView } from '~/component/diagram/DiagramView';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
+import { Canvas, CanvasOptions } from '~/component/display/Canvas';
+import { WebGLCanvas, WebGLCanvasOptions } from '~/component/display/WebGLCanvas';
 import { Insets } from '~/primitive/Insets';
 import { Size } from '~/primitive/Size';
 
@@ -57,7 +59,39 @@ class ScrollingPanel extends Panel {
     }
 }
 
+// Canvas / WebGLCanvas seed the animation-loop fields through subclassDefaults.
+// Their getters must fold `_defaultOptions`, and — unlike most rows here — the
+// draw path consumes the callbacks, so a defaulted hook has to actually fire.
+class DefaultedCanvas extends Canvas {
+    constructor(options?: CanvasOptions) {
+        super(options, { maxFps: 45, animateWhenHidden: true } as Partial<CanvasOptions>);
+    }
+}
+
+class DefaultedWebGLCanvas extends WebGLCanvas {
+    constructor(options?: WebGLCanvasOptions) {
+        super(options, { maxFps: 24, animateWhenHidden: true } as Partial<WebGLCanvasOptions>);
+    }
+}
+
 describe('default options as pure fallback', () => {
+    it('resolves Canvas / WebGLCanvas animation defaults through the getters', () => {
+        const canvas = new DefaultedCanvas();
+        const webgl  = new DefaultedWebGLCanvas();
+
+        expect(canvas.getMaxFps()).toBe(45);
+        expect(canvas.getAnimateWhenHidden()).toBe(true);
+        expect(webgl.getMaxFps()).toBe(24);
+        expect(webgl.getAnimateWhenHidden()).toBe(true);
+
+        // Pure fallbacks: never dispatched into the bag.
+        expect((canvas as any)._options.maxFps).toBeUndefined();
+        expect((webgl as any)._options.animateWhenHidden).toBeUndefined();
+
+        // And an explicit value still wins.
+        expect(new DefaultedCanvas({ maxFps: 5 }).getMaxFps()).toBe(5);
+    });
+
     it('does not dispatch class defaults into the _options bag', () => {
         const c = new Component({}) as any;
         for (const key of ['cursor', 'padding', 'insets', 'maxSize', 'minSize',

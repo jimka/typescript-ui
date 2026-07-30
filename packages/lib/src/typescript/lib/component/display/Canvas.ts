@@ -12,6 +12,13 @@ import { callable } from "~/core/Callable.js";
  *   CSS pixel (the device-pixel-ratio transform is already applied).
  * @param width - The drawing surface width in CSS pixels.
  * @param height - The drawing surface height in CSS pixels.
+ * @param elapsedMs - Milliseconds since the current animation run started, or
+ *   `0` when the canvas is not animating. Derive motion from this rather than
+ *   advancing a counter once per call: frames arrive at the display's refresh
+ *   rate, so a per-call increment runs three times faster on a 180Hz monitor
+ *   than on a 60Hz one. Outside the animation loop (a resize, a DPR change, an
+ *   explicit {@link Canvas.redraw}) this repeats the most recent frame's value,
+ *   so a redraw re-renders the same moment rather than jumping.
  *
  * @category Components
  */
@@ -19,6 +26,7 @@ export type CanvasDrawCallback = (
     ctx: CanvasRenderingContext2D,
     width: number,
     height: number,
+    elapsedMs: number,
 ) => void;
 
 /**
@@ -37,6 +45,18 @@ export interface CanvasOptions extends ComponentOptions {
      * pauses automatically when hidden and resumes when shown again.
      */
     animateWhenHidden?: boolean;
+
+    /**
+     * Upper bound, in frames per second, on how often the animation loop
+     * redraws. Defaults to 30 — enough for smooth motion at a predictable cost,
+     * and independent of the display's refresh rate, so the same animation
+     * costs the same on a 60Hz and a 180Hz monitor. Pass `0` to opt out and
+     * redraw on every animation frame the browser delivers. A positive value
+     * skips frames that arrive sooner than `1000 / maxFps` after the last
+     * one; the loop itself keeps running, so the cap trades smoothness for
+     * CPU rather than pausing anything.
+     */
+    maxFps?: number;
 }
 
 /**
@@ -45,6 +65,7 @@ export interface CanvasOptions extends ComponentOptions {
  */
 const _defaultCanvasOptions: Partial<CanvasOptions> = {
     tag: "canvas",
+    maxFps: 30,
 };
 
 // Sentinel for the last-synced width/height/dpr guard. A real size is always
@@ -79,6 +100,15 @@ class Canvas extends Component<CanvasOptions> {
     /** Active animation-frame handle; `null` when the loop is idle. */
     private _rafId: number | null = null;
 
+    // Frame clock for the animation loop. `_animationStartMs` is null until the
+    // first frame of a run anchors it, so elapsed time starts at 0 for that
+    // frame however long the run waited to be scheduled. `_lastDrawMs` gates
+    // the maxFps cap and `_elapsedMs` is what the draw hook is handed, kept as
+    // a field so redraws from outside the loop repeat the last frame's value.
+    private _animationStartMs: number | null = null;
+    private _lastDrawMs      : number | null = null;
+    private _elapsedMs                       = 0;
+
     /** Consumer/auto intent to animate; the loop actually runs only while also
      *  effectively visible (or animateWhenHidden is set). Plain initializer:
      *  never written during the super() cascade (only startAnimation /
@@ -102,9 +132,12 @@ class Canvas extends Component<CanvasOptions> {
      * Constructs a raster canvas.
      *
      * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: CanvasOptions) {
-        super(options, _defaultCanvasOptions);
+    constructor(options?: CanvasOptions, subclassDefaults?: Partial<CanvasOptions>) {
+        super(options, { ..._defaultCanvasOptions, ...(subclassDefaults ?? {}) });
 
         this.clearInsets();
     }
@@ -124,6 +157,10 @@ class Canvas extends Component<CanvasOptions> {
 
         if (options.animateWhenHidden !== undefined) {
             this.setAnimateWhenHidden(options.animateWhenHidden);
+        }
+
+        if (options.maxFps !== undefined) {
+            this.setMaxFps(options.maxFps);
         }
 
         return this;
@@ -169,7 +206,7 @@ class Canvas extends Component<CanvasOptions> {
      * @returns The draw callback, or `null` when none is set.
      */
     getOnDraw(): CanvasDrawCallback | null {
-        return this._options.onDraw ?? null;
+        return this._options.onDraw ?? this._defaultOptions.onDraw ?? null;
     }
 
     /**
@@ -189,7 +226,7 @@ class Canvas extends Component<CanvasOptions> {
         const height = this.getHeight();
 
         ctx.clearRect(0, 0, width, height);
-        this._options.onDraw?.(ctx, width, height);
+        this.getOnDraw()?.(ctx, width, height, this._elapsedMs);
 
         return this;
     }
@@ -204,6 +241,9 @@ class Canvas extends Component<CanvasOptions> {
      */
     startAnimation(): this {
         this._animationRequested = true;
+        this._animationStartMs   = null;
+        this._lastDrawMs         = null;
+        this._elapsedMs          = 0;
         this.reconcileAnimation();
 
         return this;
@@ -248,12 +288,49 @@ class Canvas extends Component<CanvasOptions> {
     }
 
     /**
+     * Caps how often the animation loop redraws, in frames per second. Takes
+     * effect on the next frame; the loop keeps running either way, so this
+     * thins redraws rather than pausing anything. Because frames are delivered
+     * at the display's refresh rate, an uncapped loop costs proportionally more
+     * on a high-refresh monitor — a cap makes that cost predictable.
+     *
+     * @param fps - Maximum redraws per second, or `0` to remove the cap entirely.
+     *   Negative values are treated as `0`. The class default is 30.
+     * @returns This component, for method chaining.
+     */
+    setMaxFps(fps: number): this {
+        // On the options bag rather than a private field, matching
+        // `animateWhenHidden` above: `applyOptions` runs inside the `super()`
+        // cascade, before this class's field initializers, so a plain
+        // `_maxFps = 0` initializer would overwrite a construction-time value.
+        this._options.maxFps = Math.max(0, fps);
+
+        return this;
+    }
+
+    /**
+     * Returns the current redraw cap in frames per second.
+     *
+     * @returns The cap, or `0` when the loop is uncapped. Resolves the class
+     *   default (30) when no explicit value was set.
+     */
+    getMaxFps(): number {
+        // Consults `_defaultOptions` as well as `_options`, matching the
+        // framework's getter convention (`getZIndex` is
+        // `_options.zIndex ?? _defaultOptions.zIndex ?? 0`). A class-level
+        // default bag lands in `_defaultOptions`, never in `_options`, so
+        // reading only the latter would silently ignore a default-supplied cap
+        // and leave the loop uncapped from the first frame.
+        return this._options.maxFps ?? this._defaultOptions.maxFps ?? 0;
+    }
+
+    /**
      * Returns whether the animation loop keeps running while hidden.
      *
      * @returns `true` if the loop ignores effective visibility.
      */
     getAnimateWhenHidden(): boolean {
-        return this._options.animateWhenHidden ?? false;
+        return this._options.animateWhenHidden ?? this._defaultOptions.animateWhenHidden ?? false;
     }
 
     /**
@@ -371,13 +448,29 @@ class Canvas extends Component<CanvasOptions> {
      * loop on the change event, not by this step re-checking visibility every
      * frame. Arrow field so the rAF callback keeps a stable bound ref.
      */
-    private readonly animationStep = (): void => {
+    private readonly animationStep = (timestamp: number): void => {
         if (!this._animationRequested) {
             this._rafId = null;
             return;
         }
 
-        this.redraw();
+        if (this._animationStartMs === null) {
+            this._animationStartMs = timestamp;
+        }
+
+        // A skipped frame still reschedules: the cap thins out redraws, it does
+        // not stop the loop, so raising maxFps again takes effect immediately.
+        const maxFps        = this.getMaxFps();
+        const minIntervalMs = maxFps > 0 ? 1000 / maxFps : 0;
+        const dueForRedraw  = this._lastDrawMs === null
+            || timestamp - this._lastDrawMs >= minIntervalMs;
+
+        if (dueForRedraw) {
+            this._lastDrawMs = timestamp;
+            this._elapsedMs  = timestamp - this._animationStartMs;
+            this.redraw();
+        }
+
         this._rafId = DOM.sink.requestAnimationFrame(this.animationStep);
     };
 

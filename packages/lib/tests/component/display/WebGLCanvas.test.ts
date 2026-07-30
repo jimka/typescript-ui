@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WebGLCanvas } from '~/component/display/WebGLCanvas';
-import type { WebGLContextInitCallback, WebGLFrameCallback } from '~/component/display/WebGLCanvas';
+import type { WebGLContextInitCallback, WebGLFrameCallback, WebGLCanvasOptions } from '~/component/display/WebGLCanvas';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
@@ -363,5 +363,166 @@ describe('WebGLCanvas context id (U7)', () => {
 
         expect(recorded).toBeDefined();
         expect(recorded!.args[0]).toBe('webgl2');
+    });
+});
+
+// The rAF timestamp reaching onFrame, and the optional frame cap. Mirrors
+// tests/component/display/Canvas.test.ts: TestDOM's requestAnimationFrame
+// swallows its callback, so these capture it off the sink and drive it with
+// chosen timestamps, and getContext is stubbed because renderFrame bails on a
+// null context before it can reach onFrame.
+describe('WebGLCanvas frame timing and frame cap', () => {
+    let frames: Map<number, FrameRequestCallback>;
+    let nextHandle: number;
+
+    function captureFrames(): void {
+        frames = new Map();
+        nextHandle = 1;
+        vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+            const handle = nextHandle++;
+            frames.set(handle, cb);
+
+            return handle;
+        });
+        vi.spyOn(DOM.sink, 'cancelAnimationFrame').mockImplementation((handle: number) => {
+            frames.delete(handle);
+        });
+    }
+
+    function runFrame(timestamp: number): void {
+        const pending = [...frames.values()];
+        frames.clear();
+        for (const cb of pending) {
+            cb(timestamp);
+        }
+    }
+
+    function withStubContext(canvas: WebGLCanvas): void {
+        vi.spyOn(canvas, 'getContext')
+            .mockReturnValue({ viewport() {}, clear() {}, clearColor() {} } as unknown as WebGL2RenderingContext);
+    }
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('passes elapsed milliseconds since the animation started to onFrame', () => {
+        const seen: number[] = [];
+        // maxFps: 0 opts out of the class default cap, which would otherwise
+        // skip these deliberately close-together frames.
+        const canvas = new WebGLCanvas({ maxFps: 0, onFrame: (_gl, _w, _h, elapsedMs) => { seen.push(elapsedMs); } });
+
+        canvas.getElement(true);
+        withStubContext(canvas);
+        captureFrames();
+        canvas.startAnimation();
+
+        runFrame(2000);
+        runFrame(2016);
+        runFrame(2050);
+
+        expect(seen).toEqual([0, 16, 50]);
+    });
+
+    it('skips frames that arrive faster than the cap allows', () => {
+        const seen: number[] = [];
+        const canvas = new WebGLCanvas({
+            maxFps:  30,
+            onFrame: (_gl, _w, _h, elapsedMs) => { seen.push(elapsedMs); },
+        });
+
+        canvas.getElement(true);
+        withStubContext(canvas);
+        captureFrames();
+        canvas.startAnimation();
+
+        runFrame(0);    // draws
+        runFrame(16);   // skipped
+        runFrame(34);   // draws
+        runFrame(50);   // skipped
+        runFrame(68);   // draws
+
+        expect(seen).toEqual([0, 34, 68]);
+    });
+
+    it('reads maxFps back and treats 0 as uncapped', () => {
+        const canvas = new WebGLCanvas({ maxFps: 24 });
+
+        expect(canvas.getMaxFps()).toBe(24);
+
+        canvas.setMaxFps(0);
+
+        expect(canvas.getMaxFps()).toBe(0);
+    });
+});
+
+// Mirror of the Canvas class-default coverage: a default bag lands in
+// `_defaultOptions`, so every getter folds it in and the render path reads
+// through those getters rather than `_options` directly.
+class DefaultedWebGL extends WebGLCanvas {
+    constructor(options?: WebGLCanvasOptions) {
+        super(options, {
+            maxFps:            15,   // deliberately not the class default of 30
+            animateWhenHidden: true,
+            onFrame:           () => { defaultedFrames++; },
+            onContextInit:     () => { defaultedInits++; },
+        } as Partial<WebGLCanvasOptions>);
+    }
+}
+
+let defaultedFrames = 0;
+let defaultedInits  = 0;
+
+describe('WebGLCanvas class-level defaults', () => {
+    beforeEach(() => { defaultedFrames = 0; defaultedInits = 0; });
+    afterEach(() => vi.restoreAllMocks());
+
+    it('resolves each defaulted field through its getter', () => {
+        const canvas = new DefaultedWebGL();
+
+        expect(canvas.getMaxFps()).toBe(15);
+        expect(canvas.getAnimateWhenHidden()).toBe(true);
+        expect(canvas.getOnFrame()).not.toBeNull();
+        expect(canvas.getOnContextInit()).not.toBeNull();
+    });
+
+    it('keeps the defaults out of the _options bag', () => {
+        const canvas = new DefaultedWebGL() as unknown as { _options: Record<string, unknown> };
+
+        expect(canvas._options.maxFps).toBeUndefined();
+        expect(canvas._options.animateWhenHidden).toBeUndefined();
+        expect(canvas._options.onFrame).toBeUndefined();
+        expect(canvas._options.onContextInit).toBeUndefined();
+    });
+
+    it('lets an explicit option win over each default', () => {
+        const canvas = new DefaultedWebGL({ maxFps: 12, animateWhenHidden: false });
+
+        expect(canvas.getMaxFps()).toBe(12);
+        expect(canvas.getAnimateWhenHidden()).toBe(false);
+    });
+
+    it('falls back to the class defaults with no subclass default and no option', () => {
+        const canvas = new WebGLCanvas();
+
+        expect(canvas.getMaxFps()).toBe(30);              // WebGLCanvas's own class default
+        expect(canvas.getAnimateWhenHidden()).toBe(false); // no class default — plain fallback
+        expect(canvas.getOnFrame()).toBeNull();
+        expect(canvas.getOnContextInit()).toBeNull();
+    });
+
+    it('lets an explicit 0 opt out of the class default cap', () => {
+        expect(new WebGLCanvas({ maxFps: 0 }).getMaxFps()).toBe(0);
+    });
+
+    it('actually runs a defaulted onFrame and onContextInit', () => {
+        const canvas = new DefaultedWebGL();
+
+        canvas.getElement(true);
+        vi.spyOn(canvas, 'getContext')
+            .mockReturnValue({ viewport() {}, clear() {}, clearColor() {} } as unknown as WebGL2RenderingContext);
+
+        (canvas as unknown as { renderFrame(): void }).renderFrame();
+
+        expect(defaultedInits).toBe(1);
+        expect(defaultedFrames).toBe(1);
     });
 });
