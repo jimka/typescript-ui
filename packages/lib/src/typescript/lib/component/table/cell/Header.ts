@@ -224,10 +224,11 @@ class HeaderCell extends DefaultCell {
      */
     private _mountHeaderGlyph(el: Handle | undefined): void {
         if (this._headerGlyphInstance) {
-            const glyphEl = this._headerGlyphInstance.getElement();
-            if (glyphEl) {
-                DOM.sink.removeElement(glyphEl);
-            }
+            // `dispose()` removes the element *and* deletes the glyph's
+            // per-instance rules. Unmounting alone stranded them on the shared
+            // sheet, so a header whose glyph tracks sort state leaked one set
+            // per change.
+            this._headerGlyphInstance.dispose();
             this._headerGlyphInstance = null;
         }
 
@@ -529,6 +530,30 @@ class HeaderCell extends DefaultCell {
      */
     isColumnFocused(): boolean {
         return this._columnFocused;
+    }
+
+    /**
+     * Destroys the side-loaded overlay children before the inherited teardown
+     * runs.
+     *
+     * The resize handle, the sort-priority badge and the header glyph are held
+     * in private fields and mounted with a raw `appendChild` rather than
+     * `addComponent` — deliberately, since registering them would let this
+     * cell's `Card` layout treat them as non-visible siblings of the renderer
+     * and hide them. The cost is that they never enter `_components`, so the
+     * base destructor's recursion cannot reach them and their per-instance
+     * rules would outlive the cell. The residue scales with column count, and
+     * a larger stylesheet makes every later style recalculation dearer.
+     */
+    protected destructor(): void {
+        // Loose checks: `_resizeHandle` and `_priorityBadge` are `declare`
+        // fields, so they read as `undefined` if teardown lands before this
+        // class's constructor body has run.
+        this._resizeHandle?.dispose();
+        this._priorityBadge?.dispose();
+        this._headerGlyphInstance?.dispose();
+
+        super.destructor();
     }
 }
 

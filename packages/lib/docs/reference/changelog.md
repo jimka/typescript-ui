@@ -168,6 +168,18 @@ instead, which does the listener cleanup *and* the full teardown.
 
 ### Fixed
 
+- **A table header no longer leaks stylesheet rules when it is torn down.**
+  Each `HeaderCell` mounts a resize handle, a sort-priority badge and an
+  optional header glyph as absolutely-positioned overlays, held in private
+  fields and attached directly rather than registered as child components, so
+  the recursive teardown never reached them and their per-instance rules
+  outlived the cell. The residue scaled with column count — roughly 102 rules
+  per open/close cycle of the 45-column demo table — and retained rules are not
+  inert, since style-recalc cost grows with the size of the sheet, so each cycle
+  made later frames dearer. Measured after the fix, three open/close cycles of
+  that table retain nothing at all. Swapping a header glyph also disposes the
+  outgoing one, which previously stranded a rule set per change.
+
 - **An animated `Glyph` now pauses while it is off-screen.** A glyph animated
   via `setAnimated` (or the `animation` option) kept running for the lifetime of
   the page even once it was no longer effectively visible — on a hidden tab, in
