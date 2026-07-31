@@ -30,9 +30,14 @@ class DialogBackdrop extends Component<DialogBackdropOptions> {
 
     /**
      * Creates the backdrop and applies viewport-filling fixed positioning.
+     *
+     * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: DialogBackdropOptions) {
-        super(options, _defaultDialogBackdropOptions);
+    constructor(options?: DialogBackdropOptions, subclassDefaults?: Partial<DialogBackdropOptions>) {
+        super(options, { ..._defaultDialogBackdropOptions, ...(subclassDefaults ?? {}) });
 
         const vp = DOM.source.getViewportSize();
 

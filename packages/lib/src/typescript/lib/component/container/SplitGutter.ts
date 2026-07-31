@@ -117,8 +117,19 @@ class SplitGutter extends Component<SplitGutterOptions> {
     private _tooltipText: string = "";
     private _listeners: ListenerBag<SplitGutterEvent> = new ListenerBag<SplitGutterEvent>();
 
-    constructor(direction: String, options?: SplitGutterOptions) {
-        super(options, _defaultSplitGutterOptions);
+    /**
+     * @param direction - Split orientation this gutter drags along.
+     * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(
+        direction:         String,
+        options?:          SplitGutterOptions,
+        subclassDefaults?: Partial<SplitGutterOptions>,
+    ) {
+        super(options, { ..._defaultSplitGutterOptions, ...(subclassDefaults ?? {}) });
 
         // Pre-migration the trailing applyOptions(options) ran *after* the
         // body's positional assignment, so a caller-supplied `orientation`

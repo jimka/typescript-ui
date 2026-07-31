@@ -111,9 +111,12 @@ class Video extends Component<VideoOptions> {
      * Constructs a video surface.
      *
      * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: VideoOptions) {
-        super(options, _defaultVideoOptions);
+    constructor(options?: VideoOptions, subclassDefaults?: Partial<VideoOptions>) {
+        super(options, { ..._defaultVideoOptions, ...(subclassDefaults ?? {}) });
 
         this.clearInsets();
         this.getAria().setLabel("Video");

@@ -55,9 +55,15 @@ class ToolBarSeparator extends Component<ToolBarSeparatorOptions> {
      *
      * @param options - Optional construction-time options. `options.orientation`
      *   selects the rule direction; defaults to `"vertical"`.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: ToolBarSeparatorOptions) {
-        super(options, _defaultToolBarSeparatorOptions);
+    constructor(
+        options?:          ToolBarSeparatorOptions,
+        subclassDefaults?: Partial<ToolBarSeparatorOptions>,
+    ) {
+        super(options, { ..._defaultToolBarSeparatorOptions, ...(subclassDefaults ?? {}) });
 
         this._orientation = options?.orientation ?? "vertical";
 

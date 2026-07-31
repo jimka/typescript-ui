@@ -34,8 +34,14 @@ const _defaultTextFieldOptions: Partial<TextFieldOptions> = {
  */
 class TextField extends TextInput<TextFieldOptions> {
 
-    constructor(options?: TextFieldOptions) {
-        super(options, _defaultTextFieldOptions);
+    /**
+     * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(options?: TextFieldOptions, subclassDefaults?: Partial<TextFieldOptions>) {
+        super(options, { ..._defaultTextFieldOptions, ...(subclassDefaults ?? {}) });
 
         this.updateHeight();
         this.subscribeTheme(() => this.updateHeight());

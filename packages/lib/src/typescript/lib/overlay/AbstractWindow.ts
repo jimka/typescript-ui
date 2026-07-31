@@ -278,9 +278,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * built its chrome — never here, where subclass chrome does not yet exist.
      *
      * @param options - The options bag carrying the window's configuration.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: WindowOptions) {
-        super(options, _defaultWindowOptions);
+    constructor(options?: WindowOptions, subclassDefaults?: Partial<WindowOptions>) {
+        super(options, { ..._defaultWindowOptions, ...(subclassDefaults ?? {}) });
 
         this.subscribeTheme(this._boundOnThemeReflow);
 

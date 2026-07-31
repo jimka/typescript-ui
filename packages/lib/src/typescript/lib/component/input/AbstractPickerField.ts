@@ -83,9 +83,16 @@ abstract class AbstractPickerField<
 
     /**
      * @param options - Caller-supplied options bag.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: TOptions) {
-        super(options, _defaultPickerFieldOptions as Partial<TOptions>);
+    constructor(options?: AbstractPickerFieldOptions, subclassDefaults?: Partial<AbstractPickerFieldOptions>);
+    constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        super(
+            options,
+            { ..._defaultPickerFieldOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
+        );
 
         this._input = new PickerInput();
         this._input.setType("text");

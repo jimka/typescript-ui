@@ -41,8 +41,15 @@ class Image extends Component<ImageOptions> {
 
     private _src: String;
 
-    constructor(src: String, options?: ImageOptions) {
-        super(options, _defaultImageOptions);
+    /**
+     * @param src - Image source URL.
+     * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(src: String, options?: ImageOptions, subclassDefaults?: Partial<ImageOptions>) {
+        super(options, { ..._defaultImageOptions, ...(subclassDefaults ?? {}) });
 
         this._src = src;
         this.clearInsets();

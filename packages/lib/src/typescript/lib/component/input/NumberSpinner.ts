@@ -83,9 +83,14 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
 
     /**
      * Constructs a new NumberSpinner with default value `0`, step `1`, and unbounded min/max.
+     *
+     * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: NumberSpinnerOptions) {
-        super(options, _defaultNumberSpinnerOptions);
+    constructor(options?: NumberSpinnerOptions, subclassDefaults?: Partial<NumberSpinnerOptions>) {
+        super(options, { ..._defaultNumberSpinnerOptions, ...(subclassDefaults ?? {}) });
 
         this._input = new TextField();
         this._input.setTextAlign("right");

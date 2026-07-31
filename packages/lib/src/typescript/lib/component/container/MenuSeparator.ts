@@ -36,9 +36,17 @@ class MenuSeparator extends Component<MenuSeparatorOptions> {
      * Constructs a MenuSeparator with a thin horizontal rule appearance.
      *
      * @param cssVarPrefix - Selects which CSS-variable family supplies the border colour. Defaults to `'menu-bar'`.
+     * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(cssVarPrefix: MenuItemCSSVarPrefix = "menu-bar", options?: MenuSeparatorOptions) {
-        super(options, _defaultMenuSeparatorOptions);
+    constructor(
+        cssVarPrefix:      MenuItemCSSVarPrefix = "menu-bar",
+        options?:          MenuSeparatorOptions,
+        subclassDefaults?: Partial<MenuSeparatorOptions>,
+    ) {
+        super(options, { ..._defaultMenuSeparatorOptions, ...(subclassDefaults ?? {}) });
 
         this.setHeight(MenuSeparator.HEIGHT);
         this.setPreferredSize({ width: 0, height: MenuSeparator.HEIGHT });

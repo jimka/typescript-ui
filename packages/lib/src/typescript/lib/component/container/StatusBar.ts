@@ -109,9 +109,12 @@ class StatusBar extends Container<StatusBarOptions> {
      *
      * @param options - Optional configuration bag. See {@link StatusBarOptions}
      *   for caller-overridable fields.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: StatusBarOptions) {
-        super(options, _defaultStatusBarOptions);
+    constructor(options?: StatusBarOptions, subclassDefaults?: Partial<StatusBarOptions>) {
+        super(options, { ..._defaultStatusBarOptions, ...(subclassDefaults ?? {}) });
 
         const row = new HBox();
         row.setComponentSpacing(STATUS_BAR_SPACING);   // 4 — the zones' former internal spacing
