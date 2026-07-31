@@ -259,3 +259,49 @@ For G8, find the index of the wipe (`w.op === 'apply' && w.args[0] === root && (
 [^changelog]: The changelog has no `Unreleased` section, so plan-driven entries land under the top version heading and the release split is done later from tags. Follow the existing convention rather than inventing a heading.
 
 [^local-chromium]: A locally-attached Chromium was measured running `Layerize` at 0.003 ms where the user's own Chrome ran it at 3.66 ms — roughly a thousandfold difference. GPU, vsync and compositing decisions differ between the two, so a clean trace from the automation browser proves nothing about the browser the problem was reported in. The trace has to come from the user's real Chrome.
+
+---
+
+## Implementation Notes
+
+No deviation from the plan's design. This section records the outcome of the
+verification steps the plan could not automate.
+
+**M1 — the live trace, confirmed by the user's CPU meter rather than a trace.**
+The plan asked for a DevTools trace showing `Layerize` no longer running once
+per frame. What was actually measured is the quantity that motivated the work:
+with the wide 45-column table open, idle CPU went from **25–28% to ~5%**,
+measured by the user in their own Chrome against a dev server running this
+branch. That is the same discriminator by a coarser instrument, and it settles
+the plan's stated risk that "the fix might not work".
+
+**The locally attached Chromium cannot verify this fix, in either direction.**
+It never reproduced the defect. On the pre-fix code, with the three SVG-rooted
+glyph animations running and the WebGL canvas rAF loop killed, it produced
+`Layerize` **1** event against 488 `DrawFrame`s — not one per frame. So that
+browser composites SVG transform animations perfectly well, and the per-frame
+`Layerize` visible in its traces comes from the canvas rAF loop, which is
+unrelated to this change. Any future check of this behaviour has to run in a
+browser that shows the defect first.
+
+**M2, M5 — pass. M4 — partial.** Visually checked on this branch: the three
+animated glyphs (still animating, unchanged size and position), `Button` leading
+glyphs, `IconText`, the ComboBox item-renderer glyphs, `ProgressSpinner`, and —
+with the wide table window open — the window header's close/maximize/minimize
+glyphs, the toolbar glyphs, and the table header cells.
+
+M4 lists ten consumers; the sweep above covers some of them. The remainder —
+`TreeRow` carets (TreeRow.ts:167,175), `Scrollbar` end-cap arrows
+(Scrollbar.ts:158,168), `MenuItem` (MenuItem.ts:217,225), `Checkbox`
+(Checkbox.ts:81,110), `RadioButton` (RadioButton.ts:83,98), the `ComboBox` caret
+(ComboBox.ts:518,537) and the `SplitButton` chevron (SplitButton.ts:133,146) —
+were cleared by reading the code rather than by looking at them: six mount the
+glyph through ordinary `addComponent` composition with tag-agnostic setters, and
+TreeRow's raw-appended caret never inspects the appended element's tag. That is
+weaker evidence than a visual check, and it is recorded as such.
+
+**M3 — not run.** The throwaway animated char-mode glyph diagnostic was skipped.
+Char glyphs were already `<span>`-rooted and this change does not touch that
+path, so the diagnostic would have confirmed an untouched code path. The
+assumption that char glyphs need no fix therefore remains an inference from the
+structure rather than a measurement.
