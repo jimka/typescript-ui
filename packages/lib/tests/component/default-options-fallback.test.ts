@@ -6,6 +6,9 @@ import { Absolute } from '~/layout/Absolute';
 import { BulletedList } from '~/component/list/BulletedList';
 import { BulletedListItemStyle } from '~/component/list/BulletedListItemStyle';
 import { IconText } from '~/component/display/IconText';
+import { Glyph } from '~/component/display/Glyph';
+import { xmark } from '~/glyphs/solid/xmark';
+import { lookupGlyph } from '~/component/display/Glyphs';
 import { ToolBar } from '~/component/menubar/ToolBar';
 import { SplitGutter } from '~/component/container/SplitGutter';
 import { HBox } from '~/layout/HBox';
@@ -205,6 +208,26 @@ describe('default options as pure fallback', () => {
 // dropped default fails here even though it is invisible to the offline harness.
 // Add a row when you add a defaulted field.
 const insetsTuple = (i: Insets | null) => i && [i.getTop(), i.getRight(), i.getBottom(), i.getLeft()];
+
+// Runs `read` with `xmark` registered. The registry is global and shared, and
+// TabCloseButton registers `xmark` for its own default glyph — so unregistering
+// unconditionally would pull it out from under the TabCloseButton rows below.
+// Only what this helper registered is removed again.
+const withXmark = (read: () => unknown): unknown => {
+    const preRegistered = lookupGlyph('xmark') !== undefined;
+
+    if (!preRegistered) {
+        Glyph.register(xmark);
+    }
+
+    try {
+        return read();
+    } finally {
+        if (!preRegistered) {
+            Glyph.unregister('xmark');
+        }
+    }
+};
 const sizeTuple   = (s: Size | null)   => s && [s.width, s.height];
 
 const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expected: unknown }> = [
@@ -222,6 +245,11 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'ListItem marker gap',          resolve: () => (new ListItem('k', 'v').getLayoutManager() as HBox).getComponentSpacing(), expected: 4 },
     { label: 'NumberedList itemStyle',       resolve: () => new NumberedList().getStyle(),                              expected: NumberedListItemStyle.DECIMAL },
     { label: 'IconText gap',                 resolve: () => (new IconText('unicode-arrow-up', 'x').getLayoutManager() as HBox).getComponentSpacing(), expected: 2 },
+    { label: 'Glyph tag (char entry)',       resolve: () => new Glyph('unicode-arrow-up').getTag(),                     expected: 'span' },
+    // The SVG kind is the one that used to override this default per-instance
+    // with `tag: "svg"`. It must resolve to the same `span` as a char glyph, so
+    // the animation class lands on a compositable HTML element.
+    { label: 'Glyph tag (svg entry)',        resolve: () => withXmark(() => new Glyph('xmark').getTag()),               expected: 'span' },
     { label: 'Popover placement',            resolve: () => new Popover().getPlacement(),                               expected: 'auto' },
     { label: 'Drawer edge',                  resolve: () => new Drawer().getEdge(),                                     expected: 'west' },
     { label: 'Button flat',                  resolve: () => new Button({ text: 'x' }).isFlat(),                         expected: false },
