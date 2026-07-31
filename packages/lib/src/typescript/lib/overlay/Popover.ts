@@ -174,9 +174,12 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * wired to the theme tokens.
      *
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: PopoverOptions) {
-        super(options as PopoverOptions, _defaultPopoverOptions);
+    constructor(options?: PopoverOptions, subclassDefaults?: Partial<PopoverOptions>) {
+        super(options as PopoverOptions, { ..._defaultPopoverOptions, ...(subclassDefaults ?? {}) });
 
         const vbox = new VBox();
 

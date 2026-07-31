@@ -236,8 +236,11 @@ class Glyph extends Component<GlyphOptions> {
      *
      * @param name - Registry key. Must have been registered via {@link Glyph.register}.
      * @param options - Optional component options bag.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(name: string, options?: GlyphOptions) {
+    constructor(name: string, options?: GlyphOptions, subclassDefaults?: Partial<GlyphOptions>) {
         const def = lookupGlyph(name);
         if (!def) {
             throw new Error("Unknown glyph: " + name);
@@ -251,6 +254,7 @@ class Glyph extends Component<GlyphOptions> {
         super(options, {
             ..._defaultGlyphOptions,
             tag: def.kind === "svg" ? "svg" : "span",
+            ...(subclassDefaults ?? {}),
         });
 
         this._name = name;
