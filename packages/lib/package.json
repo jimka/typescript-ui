@@ -140,7 +140,7 @@
     "lint:fix": "eslint src --fix",
     "lint:baseline": "node scripts/eslint/update-baseline.mjs",
     "lint:dom-audit": "node scripts/eslint/dom-audit.mjs",
-    "test:lint": "node scripts/eslint/forward-super-options.test.mjs && node scripts/eslint/no-element-style.test.mjs && node scripts/eslint/no-raw-dom.test.mjs",
+    "test:lint": "node scripts/eslint/forward-super-options.test.mjs && node scripts/eslint/no-element-style.test.mjs && node scripts/eslint/no-raw-dom.test.mjs && node scripts/eslint/require-subclass-defaults.test.mjs",
     "test": "npm run typecheck:test && vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
