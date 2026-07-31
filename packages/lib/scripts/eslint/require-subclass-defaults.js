@@ -83,6 +83,34 @@ function classDefaults(node) {
  * keys are skipped so a literal key colliding with a parameter name (`{ text:
  * "x" }` in a constructor taking `text`) does not read as a forward.
  */
+/**
+ * Whether `node` actually *forwards* a constructor parameter as defaults —
+ * either the parameter passed straight through, or spread into the bag
+ * (`{ ...defaults, ...(subclassDefaults ?? {}) }`). Deliberately narrower than
+ * {@link referencesParam}: a parameter used as a property *value*
+ * (`{ ...defaults, glyph: symbol === "\u25b2" ? "up" : "down" }`) configures the
+ * bag, it does not forward a subclass's defaults, and treating it as compliant
+ * would hide a real dead end.
+ */
+function forwardsParam(node, paramNames) {
+    if (!node || typeof node.type !== "string") {
+        return false;
+    }
+
+    if (node.type === "Identifier") {
+        return paramNames.has(node.name);
+    }
+
+    if (node.type === "ObjectExpression") {
+        return node.properties.some(
+            (prop) => prop.type === "SpreadElement"
+                && referencesParam(unwrap(prop.argument), paramNames),
+        );
+    }
+
+    return false;
+}
+
 function referencesParam(node, paramNames) {
     if (!node || typeof node.type !== "string") {
         return false;
@@ -167,28 +195,41 @@ export default {
 
                     // A one-argument super(options) forwards no defaults at all —
                     // that is `forward-super-options`' concern, not this rule's.
-                    if (call.arguments.length >= 2) {
-                        const defaults = classDefaults(call.arguments[1]);
+                    //
+                    // The defaults bag is not always argument two: a Button
+                    // subclass calls super(text, options, defaults), so every
+                    // argument past the first is searched for the constant
+                    // rather than only position one. The `_default<Name>Options`
+                    // naming convention is specific enough to keep that from
+                    // matching unrelated arguments.
+                    const paramNames = new Set(
+                        params.map(paramName).filter((n) => n !== null),
+                    );
+
+                    for (let i = 1; i < call.arguments.length; i++) {
+                        const arg      = call.arguments[i];
+                        const defaults = classDefaults(arg);
+
+                        if (!defaults) {
+                            continue;
+                        }
 
                         // A constructor parameter reaching super() is already the
                         // forwarding shape, whatever it is named; only a bag built
                         // purely from module-level constants is a dead end.
-                        const paramNames = new Set(
-                            params.map(paramName).filter((n) => n !== null),
-                        );
-                        const forwarded  = defaults
-                            && referencesParam(unwrap(call.arguments[1]), paramNames);
-
-                        if (defaults && !forwarded) {
-                            context.report({
-                                node:      call,
-                                messageId: defaults.spread ? "deadEndSpread" : "deadEnd",
-                                data:      {
-                                    name:   defaults.name,
-                                    spread: `{ ...${defaults.name}, ...(subclassDefaults ?? {}) }`,
-                                },
-                            });
+                        if (forwardsParam(unwrap(arg), paramNames)) {
+                            break;
                         }
+
+                        context.report({
+                            node:      call,
+                            messageId: defaults.spread ? "deadEndSpread" : "deadEnd",
+                            data:      {
+                                name:   defaults.name,
+                                spread: `{ ...${defaults.name}, ...(subclassDefaults ?? {}) }`,
+                            },
+                        });
+                        break;
                     }
 
                     return;

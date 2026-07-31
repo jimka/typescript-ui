@@ -32,8 +32,27 @@ tester.run("require-subclass-defaults", rule, {
         // An inline bag naming no class-defaults constant (DiagramView) carries
         // nothing to forward — out of scope.
         "class C extends B { constructor(options?: X) { super(options, { zIndex: 10050 }); } }",
+        // A Button subclass forwarding in the THIRD argument — the defaults bag
+        // is not always argument two.
+        'class C extends B { constructor(text?: string, options?: X, subclassDefaults?: Partial<X>) {'
+            + ' super(text, options, { ..._defaultCOptions, ...(subclassDefaults ?? {}) }); } }',
     ],
+
     invalid: [
+        {
+            // Defaults in the third argument, no subclassDefaults parameter —
+            // Button subclasses (TabCloseButton, MenuBarButton) look like this.
+            code:   'class C extends B { constructor(options?: X) { super(undefined, options, { ..._defaultCOptions, glyph: "x" }); } }',
+            errors: [{ messageId: "deadEndSpread" }],
+        },
+        {
+            // A parameter used as a property VALUE configures the bag; it does
+            // not forward a subclass's defaults, so this is still a dead end.
+            // SpinButton is the real instance of this shape.
+            code:   'class C extends B { constructor(symbol: string, options?: X) { super(undefined, options, { ..._defaultCOptions, glyph: symbol === "a" ? "up" : "down" }); } }',
+            errors: [{ messageId: "deadEndSpread" }],
+        },
+
         {
             code: "class C extends B { constructor(options?: X) { super(options, _defaultXOptions); } }",
             errors: [{ messageId: "deadEnd" }],
