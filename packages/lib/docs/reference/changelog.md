@@ -186,6 +186,14 @@ instead, which does the listener cleanup *and* the full teardown.
   before first paint, and passing `animationDuration` without `animation` wrote
   an orphan duration onto a glyph that was never animated.
 
+- **`setWillChange` survives the first render.** `applyStyle` clears the
+  element's inline style and then replays the component's cached style fields,
+  but no phase replayed the `will-change` hint. A hint set before the element
+  rendered was therefore dropped — which covered every hint supplied through
+  the options bag, since `applyOptions` runs during construction. `getWillChange()`
+  kept reporting the cached value throughout, so the loss was invisible except
+  in the browser. The hint now replays alongside `transition` and `opacity`.
+
 - **Component constructors accept a `subclassDefaults` bag.** Twenty-nine
   constructors passed their own `_defaultXxxOptions` constant straight to
   `super()`, which made them dead ends: nothing below them in the hierarchy
