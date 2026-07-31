@@ -25,11 +25,13 @@ tester.run("require-subclass-defaults", rule, {
         'class C extends B { constructor(tag: string) { const r = new R(); super(tag, r); } }',
         // Parameterless fixed-configuration leaf (PickerInput) — out of scope by design.
         "class C extends B { constructor() { super(undefined, _defaultXOptions); } }",
-        // Known false negative, asserted so the narrowing stays deliberate: the
-        // constant is spread into a literal that adds keys, which is an equal
-        // dead end but outside this rule's unambiguous shape.
-        'class C extends B { constructor(options?: X) {'
-            + ' super(options, { ..._defaultXOptions, tag: "span" }); } }',
+        // The compliant spread form: a literal adding keys is fine as long as
+        // the subclass bag still gets the last word.
+        'class C extends B { constructor(options?: X, subclassDefaults?: Partial<X>) {'
+            + ' super(options, { ..._defaultXOptions, tag: "span", ...(subclassDefaults ?? {}) }); } }',
+        // An inline bag naming no class-defaults constant (DiagramView) carries
+        // nothing to forward — out of scope.
+        "class C extends B { constructor(options?: X) { super(options, { zIndex: 10050 }); } }",
     ],
     invalid: [
         {
@@ -47,6 +49,25 @@ tester.run("require-subclass-defaults", rule, {
             code: "class C extends B { constructor(src: string, options?: X) {"
                 + " super(options, _defaultXOptions); } }",
             errors: [{ messageId: "deadEnd" }],
+        },
+        {
+            // The constant spread into a literal that adds keys (Glyph) — the
+            // spread leaves nowhere for a subclass bag to enter either.
+            code: 'class C extends B { constructor(options?: X) {'
+                + ' super(options, { ..._defaultXOptions, tag: "span" }); } }',
+            errors: [{ messageId: "deadEndSpread" }],
+        },
+        {
+            // Cast around the literal, and the constant spread second (ListItem).
+            code: "class C<T extends X = X> extends B<T> { constructor(options?: T) {"
+                + " super(options, { selectable: true, ..._defaultXOptions } as Partial<T>); } }",
+            errors: [{ messageId: "deadEndSpread" }],
+        },
+        {
+            // A literal key colliding with a parameter name is not a forward.
+            code: 'class C extends B { constructor(text: string, options?: X) {'
+                + ' super(options, { ..._defaultXOptions, text: "" }); } }',
+            errors: [{ messageId: "deadEndSpread" }],
         },
     ],
 });

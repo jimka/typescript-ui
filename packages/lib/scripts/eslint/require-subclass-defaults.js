@@ -7,12 +7,13 @@
 // sometimes a defaults bag: `super("td", renderer)` and `super("ul", style,
 // options)` are unrelated signatures, and an inline bag (`super(options, {
 // zIndex: 10050, … })`) carries no class-defaults constant to forward. The
-// rule therefore fires only on the unambiguous shape — the second argument
-// *is* a `_default<Name>Options` constant, optionally cast. Known false
-// negative, in exchange: a constant spread into a literal that adds keys
-// (`super(options, { ..._defaultGlyphOptions, tag: "span" })`) is an equal
-// dead end but is not reported. Widening means accepting a spread of the
-// constant here as well.
+// rule therefore fires on the two shapes that unambiguously name one: the
+// second argument *is* a `_default<Name>Options` constant, optionally cast,
+// or it is a literal spreading that constant to add keys (`super(options, {
+// ..._defaultGlyphOptions, tag: "span" })`) — an equal dead end, since the
+// spread still leaves nowhere for a subclass bag to enter. Either way a
+// second argument that references a constructor parameter is the compliant
+// forwarding shape and is never reported.
 const CLASS_DEFAULTS_RE = /^_default[A-Za-z0-9_]*Options$/;
 
 function paramName(p) {
@@ -50,6 +51,69 @@ function unwrap(node) {
     return node;
 }
 
+/**
+ * The `_default<Name>Options` constant a second super() argument names, either
+ * directly or through a spread inside a literal, plus which of the two shapes
+ * it was. Null when the argument names no such constant.
+ */
+function classDefaults(node) {
+    const arg = unwrap(node);
+
+    if (arg?.type === "Identifier" && CLASS_DEFAULTS_RE.test(arg.name)) {
+        return { name: arg.name, spread: false };
+    }
+
+    if (arg?.type === "ObjectExpression") {
+        for (const prop of arg.properties) {
+            const inner = prop.type === "SpreadElement" ? unwrap(prop.argument) : null;
+
+            if (inner?.type === "Identifier" && CLASS_DEFAULTS_RE.test(inner.name)) {
+                return { name: inner.name, spread: true };
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * True when any identifier inside `node` names one of the constructor's
+ * parameters — the signal that the argument already forwards something the
+ * caller supplied, whatever that parameter is named. Non-computed property
+ * keys are skipped so a literal key colliding with a parameter name (`{ text:
+ * "x" }` in a constructor taking `text`) does not read as a forward.
+ */
+function referencesParam(node, paramNames) {
+    if (!node || typeof node.type !== "string") {
+        return false;
+    }
+
+    if (node.type === "Identifier") {
+        return paramNames.has(node.name);
+    }
+
+    if (node.type === "Property" && !node.computed) {
+        return referencesParam(node.value, paramNames);
+    }
+
+    for (const key of Object.keys(node)) {
+        if (key === "parent") {
+            continue;
+        }
+
+        const child = node[key];
+        const hit   = Array.isArray(child)
+            ? child.some((c) => referencesParam(c, paramNames))
+            : referencesParam(child, paramNames);
+
+        if (hit) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 export default {
     meta: {
         type: "problem",
@@ -65,6 +129,10 @@ export default {
                 "super() passes the \"{{name}}\" constant straight through, so no subclass " +
                 "can seed a default — accept a \"subclassDefaults\" parameter and spread it: " +
                 "super(options, {{spread}}).",
+            deadEndSpread:
+                "super() spreads the \"{{name}}\" constant into a fixed literal, so no " +
+                "subclass can seed a default — accept a \"subclassDefaults\" parameter and " +
+                "spread it last, after the literal's own keys: \"...(subclassDefaults ?? {})\".",
         },
     },
     create(context) {
@@ -100,21 +168,24 @@ export default {
                     // A one-argument super(options) forwards no defaults at all —
                     // that is `forward-super-options`' concern, not this rule's.
                     if (call.arguments.length >= 2) {
-                        const defaults = unwrap(call.arguments[1]);
-                        const name     = defaults?.type === "Identifier" ? defaults.name : null;
+                        const defaults = classDefaults(call.arguments[1]);
 
                         // A constructor parameter reaching super() is already the
-                        // forwarding shape, whatever it is named; only a module-level
-                        // constant is a dead end.
-                        const forwarded = params.some((p) => paramName(p) === name);
+                        // forwarding shape, whatever it is named; only a bag built
+                        // purely from module-level constants is a dead end.
+                        const paramNames = new Set(
+                            params.map(paramName).filter((n) => n !== null),
+                        );
+                        const forwarded  = defaults
+                            && referencesParam(unwrap(call.arguments[1]), paramNames);
 
-                        if (name && CLASS_DEFAULTS_RE.test(name) && !forwarded) {
+                        if (defaults && !forwarded) {
                             context.report({
                                 node:      call,
-                                messageId: "deadEnd",
+                                messageId: defaults.spread ? "deadEndSpread" : "deadEnd",
                                 data:      {
-                                    name,
-                                    spread: `{ ...${name}, ...(subclassDefaults ?? {}) }`,
+                                    name:   defaults.name,
+                                    spread: `{ ...${defaults.name}, ...(subclassDefaults ?? {}) }`,
                                 },
                             });
                         }
