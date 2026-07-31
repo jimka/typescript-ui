@@ -38,8 +38,14 @@ const _defaultUsernameFieldOptions: Partial<UsernameFieldOptions> = {
  */
 class UsernameField extends TextInput<UsernameFieldOptions> {
 
-    constructor(options?: UsernameFieldOptions) {
-        super(options, _defaultUsernameFieldOptions);
+    /**
+     * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(options?: UsernameFieldOptions, subclassDefaults?: Partial<UsernameFieldOptions>) {
+        super(options, { ..._defaultUsernameFieldOptions, ...(subclassDefaults ?? {}) });
 
         this.updateHeight();
         this.subscribeTheme(() => this.updateHeight());

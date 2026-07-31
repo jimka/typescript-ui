@@ -71,9 +71,17 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
      * @param onSelect - Called with the selected suggestion string when the user picks an item.
      * @param onHide - Called whenever the dropdown hides, including via viewport click-outside.
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(onSelect: (value: string) => void, onHide: () => void, options?: AutoCompleteDropdownOptions) {
-        super(options, _defaultAutoCompleteDropdownOptions);
+    constructor(
+        onSelect:          (value: string) => void,
+        onHide:            () => void,
+        options?:          AutoCompleteDropdownOptions,
+        subclassDefaults?: Partial<AutoCompleteDropdownOptions>,
+    ) {
+        super(options, { ..._defaultAutoCompleteDropdownOptions, ...(subclassDefaults ?? {}) });
 
         this._onSelect = onSelect;
         this._onHide   = onHide;

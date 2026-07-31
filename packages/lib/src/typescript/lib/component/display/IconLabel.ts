@@ -67,9 +67,18 @@ class IconLabel extends Component<IconLabelOptions> {
      * @param forId - Element id of the form control this label is associated with.
      *                Must be non-empty; mirrors [`Label`](/api/component/input/classes/Label)'s constructor contract.
      * @param options - Optional configuration bag (gap override, common Component fields).
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(glyph: string, text: string, forId: string, options?: IconLabelOptions) {
-        super(options, _defaultIconLabelOptions);
+    constructor(
+        glyph:             string,
+        text:              string,
+        forId:             string,
+        options?:          IconLabelOptions,
+        subclassDefaults?: Partial<IconLabelOptions>,
+    ) {
+        super(options, { ..._defaultIconLabelOptions, ...(subclassDefaults ?? {}) });
 
         // Per-instance layout manager seeded with the effective gap (caller
         // override, else the class default) so it flows into the HBox spacing.

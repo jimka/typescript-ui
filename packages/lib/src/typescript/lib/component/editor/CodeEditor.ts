@@ -174,9 +174,12 @@ class CodeEditor extends Component<CodeEditorOptions> {
      *
      * @param value - Initial document text (optional; defaults to "").
      * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(value?: string, options?: CodeEditorOptions) {
-        super(options, _defaultCodeEditorOptions);
+    constructor(value?: string, options?: CodeEditorOptions, subclassDefaults?: Partial<CodeEditorOptions>) {
+        super(options, { ..._defaultCodeEditorOptions, ...(subclassDefaults ?? {}) });
 
         // Positional argument: cache it only when the caller didn't also pass
         // `options.value` (which the super-time cascade already stored).

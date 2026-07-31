@@ -39,8 +39,14 @@ const _defaultPasswordFieldOptions: Partial<PasswordFieldOptions> = {
  */
 class PasswordField extends TextInput<PasswordFieldOptions> {
 
-    constructor(options?: PasswordFieldOptions) {
-        super(options, _defaultPasswordFieldOptions);
+    /**
+     * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(options?: PasswordFieldOptions, subclassDefaults?: Partial<PasswordFieldOptions>) {
+        super(options, { ..._defaultPasswordFieldOptions, ...(subclassDefaults ?? {}) });
 
         this.updateHeight();
         this.subscribeTheme(() => this.updateHeight());

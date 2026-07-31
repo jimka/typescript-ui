@@ -91,8 +91,19 @@ class WindowBorder extends Component<WindowBorderOptions> {
         return this._snapTargetStyleRule ??= this.createStyleRule("." + SNAP_TARGET_CLASS);
     }
 
-    constructor(direction: Direction, options?: WindowBorderOptions) {
-        super(options, _defaultWindowBorderOptions);
+    /**
+     * @param direction - Which window edge (or corner) this border drives.
+     * @param options - Optional construction options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(
+        direction:         Direction,
+        options?:          WindowBorderOptions,
+        subclassDefaults?: Partial<WindowBorderOptions>,
+    ) {
+        super(options, { ..._defaultWindowBorderOptions, ...(subclassDefaults ?? {}) });
 
         if (direction) {
             this._direction = direction;
