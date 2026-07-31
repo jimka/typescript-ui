@@ -3,8 +3,8 @@ import { Glyph } from '~/component/display/Glyph';
 import { Component } from '~/core/Component';
 import { lookupGlyph } from '~/component/display/Glyphs';
 import { xmark } from '~/glyphs/solid/xmark';
-import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { DOM, type Handle } from '~/core/DOM';
+import { installTestDOM, ruleStyleWrites, type RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -19,7 +19,9 @@ const CONFIG = {
 // offline and any scheduled layout is inert. The four `unicode-arrow-*` char
 // glyphs are seeded unconditionally, so they are always present without
 // registration; SVG-kind cases register `xmark` inside the test and clean up.
-beforeEach(() => installTestDOM(CONFIG));
+let sink: RecordingDOMSink;
+
+beforeEach(() => { sink = installTestDOM(CONFIG); });
 afterEach(() => DOM.reset());
 
 describe('Glyph name resolution', () => {
@@ -209,5 +211,102 @@ describe('Glyph animation pauses while hidden', () => {
         Component.flushEffectiveVisibility();
 
         expect(glyph.getAnimationPlayState()).toBeNull();
+    });
+});
+
+// Blink refuses to run a transform animation on an SVG element on the compositor
+// thread, so an animation mounted on an `<svg>` root forces a full-document
+// Layerize pass every frame. These pin the structure that avoids it: the root is
+// always an animatable HTML element and the `<svg>` hangs inside it.
+describe('Glyph renders an HTML root so its animation can composite', () => {
+    afterEach(() => Glyph.unregister('xmark'));
+
+    /** The `<svg>` appended into `root`, or null when the glyph created none. */
+    const innerSvgOf = (root: Handle): Handle | null => {
+        const write = sink.writes.find(w =>
+            w.op === 'appendChild'
+            && w.args[0] === root
+            && DOM.source.getTagName(w.args[1] as Handle) === 'SVG');
+
+        return write ? write.args[1] as Handle : null;
+    };
+
+    it('gives an svg-kind glyph a SPAN root, not an SVG root', () => {
+        Glyph.register(xmark);
+
+        const root = new Glyph('xmark').getElement(true)!;
+
+        expect(DOM.source.getTagName(root)).toBe('SPAN');
+    });
+
+    it('hangs the <svg> inside the root as a tracked child', () => {
+        Glyph.register(xmark);
+
+        const root = new Glyph('xmark').getElement(true)!;
+        const svg  = innerSvgOf(root);
+
+        expect(svg).not.toBeNull();
+        expect(sink.writes.some(w =>
+            w.op === 'appendChild' && w.args[0] === root && w.args[1] === svg)).toBe(true);
+    });
+
+    it('leaves a char-kind glyph as a bare SPAN with no <svg>', () => {
+        const root = new Glyph('unicode-arrow-up').getElement(true)!;
+
+        expect(DOM.source.getTagName(root)).toBe('SPAN');
+        expect(innerSvgOf(root)).toBeNull();
+        expect(sink.writes.some(w =>
+            w.op === 'apply' && w.args[0] === root
+            && (w.args[1] as { text?: string }).text === '▲')).toBe(true);
+    });
+
+    it('puts the animation class on the root, not on the inner <svg>', () => {
+        Glyph.register(xmark);
+
+        const root = new Glyph('xmark', { animation: 'spin' }).getElement(true)!;
+        const svg  = innerSvgOf(root);
+
+        const animationClassWrites = sink.writes.filter(w =>
+            w.op === 'apply'
+            && (w.args[1] as { addClass?: string[] }).addClass?.includes('ts-ui-glyph-spin'));
+
+        expect(animationClassWrites.length).toBeGreaterThan(0);
+        expect(animationClassWrites.every(w => w.args[0] === root)).toBe(true);
+        expect(animationClassWrites.some(w => w.args[0] === svg)).toBe(false);
+    });
+
+    it('keeps a construction-time animationDuration through render', () => {
+        Glyph.register(xmark);
+
+        const glyph = new Glyph('xmark', { animation: 'spin', animationDuration: 500 });
+        glyph.getElement(true);
+
+        expect(ruleStyleWrites(sink)).toContainEqual({
+            selector: '#' + glyph.getId(),
+            key:      'animationDuration',
+            value:    '500ms',
+        });
+    });
+
+    it('writes no animation-duration for a duration without an animation', () => {
+        Glyph.register(xmark);
+
+        const glyph = new Glyph('xmark', { animationDuration: 500 });
+        glyph.getElement(true);
+
+        const durationRows = ruleStyleWrites(sink).filter(r =>
+            r.selector === '#' + glyph.getId() && r.key === 'animationDuration');
+
+        expect(durationRows).toEqual([]);
+        expect(glyph.getAnimationDuration()).toBe(500);
+    });
+
+    it('no longer parks a will-change hint on an animated glyph', () => {
+        Glyph.register(xmark);
+
+        const glyph = new Glyph('xmark', { animation: 'spin' });
+        glyph.getElement(true);
+
+        expect(glyph.getWillChange()).toBeNull();
     });
 });

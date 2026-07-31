@@ -451,3 +451,36 @@ describe('Component — theme listener teardown', () => {
         expect(ThemeManager._themeListenerCount()).toBe(base);
     });
 });
+
+// `applyStyle` wipes the inline style attribute and then replays cached fields.
+// A field with no replay branch is silently dropped, which hits any setter
+// called before the element rendered — including from `applyOptions` during the
+// super() construction cascade.
+describe('Component — will-change survives applyStyle', () => {
+    beforeEach(() => installTestDOM(DOM_CONFIG));
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    it('replays a construction-time will-change past the inline-style wipe', () => {
+        const sink      = DOM.sink as RecordingDOMSink;
+        const component = new Component({ willChange: 'transform' });
+        const root      = component.getElement(true)!;
+
+        const applies = sink.writes.filter(w => w.op === 'apply' && w.args[0] === root);
+        const wipeAt  = applies.findIndex(w =>
+            (w.args[1] as { removeAttr?: string[] }).removeAttr?.includes('style'));
+
+        expect(wipeAt).toBeGreaterThanOrEqual(0);
+
+        const replayed = applies.slice(wipeAt + 1).some(w =>
+            (w.args[1] as { style?: Record<string, string> }).style?.willChange === 'transform');
+
+        expect(replayed).toBe(true);
+    });
+
+    it('keeps reporting the cached hint through getWillChange', () => {
+        const component = new Component({ willChange: 'transform' });
+        component.getElement(true);
+
+        expect(component.getWillChange()).toBe('transform');
+    });
+});

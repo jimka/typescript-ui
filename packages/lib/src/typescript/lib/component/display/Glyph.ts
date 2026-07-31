@@ -170,21 +170,27 @@ export interface GlyphOptions extends ComponentOptions {
  */
 const _defaultGlyphOptions: Partial<GlyphOptions> = {
     preferredSize: { width: 16, height: 16 } as GlyphOptions["preferredSize"],
+
+    // Always an HTML element, both kinds. An SVG entry paints through an inner
+    // `<svg>` rather than being one: Blink refuses to run a transform animation
+    // on an SVG element on the compositor, so an `<svg>` root would force a
+    // full-document Layerize pass on every frame the glyph animates.
+    tag: "span",
 };
 
 /**
  * A small icon rendered from the internal `Glyphs` registry.
  *
  * @remarks
- * Each registry entry is either an SVG or a single Unicode character. SVG
- * entries are rendered as `<svg><use href="#…"/></svg>` against a hidden
- * sprite mounted once into `document.body`, so the path data lives in the
- * DOM exactly once regardless of how many Glyph instances reference it.
- * Unicode entries render as `<span>`. Both forms render with `currentColor`,
- * so a `Glyph` inherits the surrounding text colour for free. The underlying
- * root tag is decided once at construction from the entry's `kind` and
- * cannot be changed afterwards — to swap glyph, discard the instance and
- * create a new one.
+ * Each registry entry is either an SVG or a single Unicode character. The root
+ * element is a `<span>` either way. An SVG entry hangs an inner
+ * `<svg><use href="#…"/></svg>` inside that root, pointing at a hidden sprite
+ * mounted once into `document.body`, so the path data lives in the DOM exactly
+ * once regardless of how many Glyph instances reference it. A Unicode entry
+ * writes its character into the root directly. Both forms render with
+ * `currentColor`, so a `Glyph` inherits the surrounding text colour for free.
+ * The registry name is fixed at construction and cannot be changed afterwards —
+ * to swap glyph, discard the instance and create a new one.
  *
  * Pass any registry name to the constructor; unknown names throw at
  * construction. The default preferred size is 16×16.
@@ -246,14 +252,12 @@ class Glyph extends Component<GlyphOptions> {
             throw new Error("Unknown glyph: " + name);
         }
 
-        // Hand defaults plus the per-instance tag (chosen from the registry
-        // entry's `kind`) to Component via the subclass-defaults arg so they
-        // land in `_defaultOptions`. Component's super-time cascade applies
+        // Hand the class defaults to Component via the subclass-defaults arg so
+        // they land in `_defaultOptions`. Component's super-time cascade applies
         // them; user `options` win because `applyOptions` merges
         // `{...defaults, ...options}` at dispatch time.
         super(options, {
             ..._defaultGlyphOptions,
-            tag: def.kind === "svg" ? "svg" : "span",
             ...(subclassDefaults ?? {}),
         });
 
@@ -443,13 +447,19 @@ class Glyph extends Component<GlyphOptions> {
      * @returns This Glyph, for method chaining.
      *
      * @remarks
-     * Adds the corresponding `ts-ui-glyph-<kind>` class to the root element.
+     * Adds the corresponding `ts-ui-glyph-<kind>` class to the root element,
+     * which is an HTML `<span>` for every glyph kind so the browser can run the
+     * `transform` keyframes on its compositor thread.
      * Honours [`Animation.isReducedMotion`](/api/core/namespaces/Animation/functions/isReducedMotion):
      * when reduced-motion is on, the class is not mounted but the requested
      * kind is cached and a module-level listener re-applies it should the OS
-     * preference flip back. While motion is active, `will-change: transform`
-     * is set via [`Component.setWillChange`](/api/core/classes/Component#setwillchange);
-     * cleared when motion stops.
+     * preference flip back.
+     *
+     * No `will-change` hint is set. The hint exists to pre-create a compositor
+     * layer so the first frame of motion does not pay for the promotion, which
+     * an infinite animation amortises to nothing — and glyphs are numerous
+     * enough that hinting each one would push a page past the threshold where
+     * browsers start ignoring the hint outright.
      *
      * Differs from the inherited `Component.setAnimation(value: string)`:
      * this is a typed-enum surface that toggles a pre-registered class rule;
@@ -478,8 +488,7 @@ class Glyph extends Component<GlyphOptions> {
         }
 
         if (kind === null) {
-            this.setElementStyle("animationDuration", null);
-            this.setWillChange(null);
+            this.setElementCSSRule("animationDuration", null);
 
             if (this._animatedRef) {
                 _animatedRefs.delete(this._animatedRef);
@@ -496,16 +505,12 @@ class Glyph extends Component<GlyphOptions> {
             _animatedRefs.add(this._animatedRef);
         }
 
-        if (!Animation.isReducedMotion()) {
-            if (el) {
-                DOM.sink.apply(el, { addClass: [CLASS_PREFIX + kind] });
-            }
-
-            this.setWillChange("transform");
+        if (!Animation.isReducedMotion() && el) {
+            DOM.sink.apply(el, { addClass: [CLASS_PREFIX + kind] });
         }
 
         if (this._glyphAnimationDuration > 0) {
-            this.setElementStyle("animationDuration", this._glyphAnimationDuration + "ms");
+            this.setElementCSSRule("animationDuration", this._glyphAnimationDuration + "ms");
         }
 
         return this;
@@ -532,9 +537,7 @@ class Glyph extends Component<GlyphOptions> {
      * rather than one per instance), so `getAnimation()` is always null here and
      * the base check cannot see the animation. Without this override an animated
      * glyph keeps consuming a compositor frame on every display refresh for as
-     * long as the page lives, even on a hidden tab — and `setAnimated` also
-     * parks a `will-change: transform` layer hint on the element, which stays
-     * live with it.
+     * long as the page lives, even on a hidden tab.
      *
      * @param effective - The component's new effective-visibility state.
      */
@@ -574,8 +577,14 @@ class Glyph extends Component<GlyphOptions> {
     setAnimationDuration(ms: number): this {
         this._glyphAnimationDuration = ms;
 
-        if (this._glyphAnimation !== null && !Animation.isReducedMotion()) {
-            this.setElementStyle("animationDuration", ms > 0 ? ms + "ms" : null);
+        // Loose comparison: `_glyphAnimation` is a `declare` field with no
+        // runtime initializer, so it reads `undefined` — not its declared
+        // `null` — on a glyph that was never animated. A strict `!== null`
+        // treats that as "animated" and writes an orphan duration, which
+        // `applyOptions` triggers whenever `animationDuration` is supplied
+        // without `animation` (duration is dispatched first).
+        if (this._glyphAnimation != null && !Animation.isReducedMotion()) {
+            this.setElementCSSRule("animationDuration", ms > 0 ? ms + "ms" : null);
         }
 
         return this;
@@ -597,14 +606,12 @@ class Glyph extends Component<GlyphOptions> {
 
         if (Animation.isReducedMotion()) {
             DOM.sink.apply(element, { removeClass: [className] });
-            this.setWillChange(null);
-            this.setElementStyle("animationDuration", null);
+            this.setElementCSSRule("animationDuration", null);
         } else {
             DOM.sink.apply(element, { addClass: [className] });
-            this.setWillChange("transform");
 
             if (this._glyphAnimationDuration > 0) {
-                this.setElementStyle("animationDuration", this._glyphAnimationDuration + "ms");
+                this.setElementCSSRule("animationDuration", this._glyphAnimationDuration + "ms");
             }
         }
     }
@@ -659,33 +666,51 @@ class Glyph extends Component<GlyphOptions> {
     }
 
     /**
-     * Creates the root element, using the SVG namespace when the registry
-     * entry is an SVG definition. SVG instances reference a shared sprite
-     * symbol rather than inlining the path data.
+     * Creates the root element — always the inherited HTML `<span>`. An SVG
+     * registry entry hangs a tracked `<svg><use/></svg>` inside it, referencing
+     * a shared sprite symbol rather than inlining the path data.
      *
-     * @returns The root element for this Glyph (HTML `<span>` or SVG `<svg>`).
+     * The `<svg>` is a child rather than the root so the animation class lands
+     * on an HTML element: Blink will not run a transform animation on an SVG
+     * element on the compositor, and an uncomposited glyph animation re-runs a
+     * full-document `Layerize` pass every frame. Mirrors
+     * {@link AbstractChart.createRootElement}'s raw-SVG-through-the-sink shape.
+     *
+     * @returns The root `<span>` element for this Glyph.
      */
     protected createRootElement(): Handle {
-        if (this._def.kind === "svg") {
-            ensureGlyphSprite();
-            ensureGlyphSymbolMounted(this._name);
+        const root = super.createRootElement();
 
-            const svgNs = "http://www.w3.org/2000/svg";
-            const svg = DOM.sink.createElementNS(svgNs, "svg");
-            DOM.sink.apply(svg, { setAttr: { fill: "currentColor", "aria-hidden": "true", focusable: "false" } });
-
-            const use = DOM.sink.createElementNS(svgNs, "use");
-            DOM.sink.apply(use, { setAttr: { href: "#" + GLYPH_SYMBOL_ID_PREFIX + this._name } });
-            DOM.sink.appendChild(svg, use);
-
-            // Track the `<use>` child so it is released with the glyph (the root
-            // `svg` is tracked by Component.render). Released on destructor or GC.
-            this.trackHandle(use);
-
-            return svg;
+        if (this._def.kind !== "svg") {
+            return root;
         }
 
-        return super.createRootElement();
+        ensureGlyphSprite();
+        ensureGlyphSymbolMounted(this._name);
+
+        const svgNs = "http://www.w3.org/2000/svg";
+        const svg = DOM.sink.createElementNS(svgNs, "svg");
+
+        // Fill the root's box. A replaced `<svg>` with no intrinsic size falls
+        // back to the user agent's 300x150, which the root's `overflow: hidden`
+        // would then clip; the percentages resolve against the inline width and
+        // height `render` writes on the root.
+        DOM.sink.apply(svg, {
+            style:   { position: "absolute", left: "0", top: "0", width: "100%", height: "100%", display: "block" },
+            setAttr: { fill: "currentColor", "aria-hidden": "true", focusable: "false" },
+        });
+
+        const use = DOM.sink.createElementNS(svgNs, "use");
+        DOM.sink.apply(use, { setAttr: { href: "#" + GLYPH_SYMBOL_ID_PREFIX + this._name } });
+        DOM.sink.appendChild(svg, use);
+        DOM.sink.appendChild(root, svg);
+
+        // Track both raw children so they are released with the glyph (the root
+        // is tracked by Component.render). Released on destructor or GC.
+        this.trackHandle(svg);
+        this.trackHandle(use);
+
+        return root;
     }
 
     /**

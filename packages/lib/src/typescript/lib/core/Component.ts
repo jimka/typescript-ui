@@ -4632,8 +4632,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Writes the remaining inline and rule styles (white-space, pointer-events,
-     * writing-mode, z-index, transition, opacity, user-select, padding, insets,
-     * margin) — the sixth `applyStyle` phase.
+     * writing-mode, z-index, will-change, transition, opacity, user-select,
+     * padding, insets, margin) — the sixth `applyStyle` phase.
      */
     private applyMiscInlineStyles(): void {
         if (this._whiteSpace) {
@@ -4653,6 +4653,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const zIndex = this.getZIndex();
         if (zIndex) {
             this._inlineStyle.set("zIndex", String(zIndex));
+        }
+
+        // Replay the cached will-change hint for the same reason as the
+        // transition below: `setWillChange` writes inline, so a hint set before
+        // the element rendered — e.g. from `applyOptions` during the super()
+        // cascade — is otherwise lost to the wipe.
+        if (this._willChange !== null) {
+            this._inlineStyle.set("willChange", this._willChange);
         }
 
         // Replay the cached transition so setters that fired before init
