@@ -49,13 +49,27 @@ class ListItem extends Component<ListItemOptions> {
     private _marker!: Text;
     private _text!:   Text;
 
-    constructor(key: string, value: string, options?: ListItemOptions) {
+    /**
+     * @param key - The item's stable key.
+     * @param value - The item's label text.
+     * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(
+        key:               string,
+        value:             string,
+        options?:          ListItemOptions,
+        subclassDefaults?: Partial<ListItemOptions>,
+    ) {
         // The HBox sits in the defaults bag (under user options) so a caller
         // that wants a different layoutManager can still override it, and is
         // built per instance because a layout manager holds container state.
         super(options, {
             ..._defaultListItemOptions,
             layoutManager: new HBox({ spacing: MARKER_GAP_PX }),
+            ...(subclassDefaults ?? {}),
         });
 
         this._key = key;

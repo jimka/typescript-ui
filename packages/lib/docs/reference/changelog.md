@@ -168,6 +168,17 @@ instead, which does the listener cleanup *and* the full teardown.
 
 ### Fixed
 
+- **Component constructors accept a `subclassDefaults` bag.** Twenty-nine
+  constructors passed their own `_defaultXxxOptions` constant straight to
+  `super()`, which made them dead ends: nothing below them in the hierarchy
+  could seed a class default, and the only route left was editing the parent's
+  own constant. Each now takes an optional `subclassDefaults` parameter and
+  layers it over that constant, matching what `Component`, `ComboBox` and
+  `TextInput` already did. The parameter is optional and spread last, so
+  existing construction is unaffected and a subclass default still loses to a
+  caller-supplied option. A new `local/require-subclass-defaults` lint rule
+  keeps the pattern from regressing.
+
 - **A table header no longer leaks stylesheet rules when it is torn down.**
   Each `HeaderCell` mounts a resize handle, a sort-priority badge and an
   optional header glyph as absolutely-positioned overlays, held in private

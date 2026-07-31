@@ -2,6 +2,7 @@ import tseslint from "typescript-eslint";
 import forwardSuperOptions from "./scripts/eslint/forward-super-options.js";
 import noElementStyle from "./scripts/eslint/no-element-style.js";
 import noRawDom from "./scripts/eslint/no-raw-dom.js";
+import requireSubclassDefaults from "./scripts/eslint/require-subclass-defaults.js";
 
 // typescript-eslint's `recommended` config surfaces ~860 pre-existing
 // stylistic issues (prefer-const, no-explicit-any, …) across the 172-file
@@ -17,14 +18,16 @@ export default tseslint.config(
         plugins: {
             local: {
                 rules: {
-                    "forward-super-options": forwardSuperOptions,
-                    "no-element-style"     : noElementStyle,
-                    "no-raw-dom"           : noRawDom,
+                    "forward-super-options"    : forwardSuperOptions,
+                    "no-element-style"         : noElementStyle,
+                    "no-raw-dom"               : noRawDom,
+                    "require-subclass-defaults": requireSubclassDefaults,
                 },
             },
         },
         rules: {
-            "local/forward-super-options": "error",
+            "local/forward-super-options"    : "error",
+            "local/require-subclass-defaults": "error",
         },
     },
     {

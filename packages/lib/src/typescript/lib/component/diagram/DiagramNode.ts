@@ -77,8 +77,18 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
         return this._selectedStyleRule ??= this.createStyleRule(".selected");
     }
 
-    constructor(options?: DiagramNodeOptions) {
-        super(options, { ..._defaultDiagramNodeOptions, layoutManager: new Fit() });
+    /**
+     * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(options?: DiagramNodeOptions, subclassDefaults?: Partial<DiagramNodeOptions>) {
+        super(options, {
+            ..._defaultDiagramNodeOptions,
+            layoutManager: new Fit(),
+            ...(subclassDefaults ?? {}),
+        });
 
         this.setBackgroundColor("var(--ts-ui-diagram-node-bg, var(--ts-ui-button-bg, rgb(245, 245, 245)))");
         this.setBorder("1px solid var(--ts-ui-border-color, rgb(180, 180, 180))");

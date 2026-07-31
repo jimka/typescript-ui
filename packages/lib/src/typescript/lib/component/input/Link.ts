@@ -145,8 +145,8 @@ class Link extends Text<LinkOptions> {
     // initializer here would run after super() and clobber the value the
     // applyOptions cascade wrote.
 
-    constructor(text?: String, options?: LinkOptions) {
-        super(text, options, _defaultLinkOptions);
+    constructor(text?: String, options?: LinkOptions, subclassDefaults?: Partial<LinkOptions>) {
+        super(text, options, { ..._defaultLinkOptions, ...(subclassDefaults ?? {}) });
 
         // Wired once for the component's whole life, regardless of
         // `interactive`: handleKeyDown self-guards, so the flag needs no

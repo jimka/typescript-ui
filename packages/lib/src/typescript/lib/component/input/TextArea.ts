@@ -52,14 +52,21 @@ const _defaultTextAreaOptions: Partial<TextAreaOptions> = {
  */
 class TextArea extends TextInput<TextAreaOptions> {
 
-    constructor(text: string = "", options?: TextAreaOptions) {
+    /**
+     * @param text - Initial text content.
+     * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(text: string = "", options?: TextAreaOptions, subclassDefaults?: Partial<TextAreaOptions>) {
         // Positional `text` is per-instance state, so it goes in the options bag
         // (dispatched through `setText` into `_options`), NOT `_defaultOptions`,
         // which holds class-level defaults the value getters never consult. An
         // explicit `options.text` still wins (spread last).
         super(
             text ? { text, ...options } : options,
-            _defaultTextAreaOptions,
+            { ..._defaultTextAreaOptions, ...(subclassDefaults ?? {}) },
         );
 
         // The `<textarea>` corner grip is the only user-resize affordance on

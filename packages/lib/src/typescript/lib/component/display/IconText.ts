@@ -60,13 +60,22 @@ class IconText extends Component<IconTextOptions> {
      * @param glyph - Registry glyph name. Must be present in the internal `Glyphs` registry.
      * @param text - Label text shown to the right of the glyph.
      * @param options - Optional configuration bag (gap override, common Component fields).
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(glyph: string, text: string, options?: IconTextOptions) {
+    constructor(
+        glyph:             string,
+        text:              string,
+        options?:          IconTextOptions,
+        subclassDefaults?: Partial<IconTextOptions>,
+    ) {
         // The HBox sits in the defaults bag (under user options) so a caller
         // that wants a different layoutManager can still override it.
         super(options, {
             ..._defaultIconTextOptions,
             layoutManager: new HBox(),
+            ...(subclassDefaults ?? {}),
         });
 
         this._glyph = new Glyph(glyph);

@@ -46,10 +46,21 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Container<T
 
     private _text!: Text;
 
-    constructor(text: string, options?: TOptions) {
+    /**
+     * @param text - The header's label text.
+     * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
+     */
+    constructor(text: string, options?: TOptions, subclassDefaults?: Partial<TOptions>) {
         super(
             options,
-            { ..._defaultHeaderOptions, tag: "header" } as Partial<TOptions>,
+            {
+                ..._defaultHeaderOptions,
+                tag: "header",
+                ...(subclassDefaults ?? {}),
+            } as Partial<TOptions>,
         );
 
         this.setLayoutManager(new BorderLayout());

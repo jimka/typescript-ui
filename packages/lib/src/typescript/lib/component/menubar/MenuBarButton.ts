@@ -74,7 +74,8 @@ class MenuBarButton extends Button<MenuBarButtonOptions> {
         text:     string,
         onClick:  () => void,
         onHover:  () => void,
-        options?: MenuBarButtonOptions,
+        options?:          MenuBarButtonOptions,
+        subclassDefaults?: Partial<MenuBarButtonOptions>,
     ) {
         super(
             text,
@@ -98,7 +99,7 @@ class MenuBarButton extends Button<MenuBarButtonOptions> {
                     },
                 ],
             },
-            _defaultMenuBarButtonOptions,
+            { ..._defaultMenuBarButtonOptions, ...(subclassDefaults ?? {}) },
         );
 
         // Bump the HBox content-row spacing from Button's default (2) to the
