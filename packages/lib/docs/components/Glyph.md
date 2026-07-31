@@ -2,7 +2,7 @@
 
 [`Glyph`](/api/component/display/classes/Glyph) renders a small icon from the framework's curated registry. Each registry entry is either an SVG path or a single Unicode character; both forms follow `currentColor`, so a `Glyph` inherits the surrounding text colour for free.
 
-SVG path data is mounted **once** into a hidden `<svg>` sprite on `document.body`. Every Glyph instance referencing the same name emits `<svg><use href="#ts-glyph-…"/></svg>`, so two `Glyph('times')` calls don't duplicate the path string in the DOM.
+SVG path data is mounted **once** into a hidden `<svg>` sprite on `document.body`. Every Glyph instance referencing the same name emits `<span><svg><use href="#ts-glyph-…"/></svg></span>`, so two `Glyph('times')` calls don't duplicate the path string in the DOM.
 
 The framework is self-contained — the glyphs it needs ship with the library, and there is no peer dependency for icons.
 
@@ -11,7 +11,7 @@ The framework is self-contained — the glyphs it needs ship with the library, a
 ```typescript
 import { Glyph } from '@jimka/typescript-ui/component/display';
 
-// SVG entry — renders as <svg><use href="#ts-glyph-times"/></svg>
+// SVG entry — renders as <span><svg><use href="#ts-glyph-times"/></svg></span>
 const close = Glyph('times');
 
 // Unicode entry — renders as <span>▶</span>
@@ -68,13 +68,15 @@ The duration is theme-token-driven — set the CSS custom property to retune the
 
 Animation is presentation state, not registry state — the same `xmark` glyph can spin in one panel and stay static in another without two registry entries.
 
-Reduced-motion is honoured: when the OS reports `prefers-reduced-motion: reduce`, `setAnimated(kind)` caches the request but does not mount the class. A module-level listener re-applies (or removes) the class live should the OS preference flip. While motion is active, `will-change: transform` is set; it is cleared when motion stops.
+Reduced-motion is honoured: when the OS reports `prefers-reduced-motion: reduce`, `setAnimated(kind)` caches the request but does not mount the class. A module-level listener re-applies (or removes) the class live should the OS preference flip.
+
+The animation class lands on the glyph's HTML root, which is what lets the browser run the `transform` keyframes on its compositor thread. An animation mounted on an SVG element cannot composite, and the browser then rebuilds its layer assignment on every frame at a cost that scales with the whole page — so an animated glyph would get steadily more expensive as the rest of the screen filled up. No `will-change` hint is set: the hint cannot make an animation compositable, and glyphs are numerous enough that hinting each one would push a page past the count where browsers ignore the hint.
 
 `setAnimated` coexists with the inherited `Component.setAnimation(value: string)` raw shorthand setter; the two APIs are independent. Prefer `setAnimated` for the three named kinds.
 
 ## Notes
 
-- The underlying root tag (`<svg>` or `<span>`) is decided once at construction from the registry entry's `kind`. To swap glyph, discard the instance and create a new one.
+- The root element is a `<span>` for both registry kinds; an SVG entry paints through an inner `<svg>`. The registry name is fixed at construction — to swap glyph, discard the instance and create a new one.
 - Default preferred size is 16×16.
 - Passing an unknown name throws at construction: `Glyph('nope')` → `Error("Unknown glyph: nope")`.
 - Colour follows the cascade — set `setForegroundColor(...)` on the Glyph or any ancestor.

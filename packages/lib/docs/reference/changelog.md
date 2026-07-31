@@ -168,6 +168,24 @@ instead, which does the listener cleanup *and* the full teardown.
 
 ### Fixed
 
+- **Animated glyphs no longer cost main-thread work on every frame.** A
+  `Glyph`'s root element was an `<svg>`, and browsers will not run a
+  `transform` animation on an SVG element on the compositor thread. Every
+  animated glyph therefore forced the main thread to rebuild its layer
+  assignment once per frame, at a cost that scales with the whole page rather
+  than with the glyph — measured at 3.66 ms per frame, about 21% of a CPU core,
+  with a 45-column table open elsewhere on screen. An SVG glyph now renders as
+  `<span><svg><use/></svg></span>` and the animation class sits on the `<span>`,
+  which composites. Consumers that append `glyph.getElement()` directly now
+  receive that `<span>` instead of the `<svg>`; nothing in the library read the
+  tag. `setAnimated` also no longer sets `will-change: transform` — the hint
+  cannot make an animation compositable, and glyphs are numerous enough that
+  hinting each one would exceed the count where browsers ignore the hint.
+  Two defects in the per-instance duration override fall out of the same fix:
+  a duration passed at construction was written as an inline style and wiped
+  before first paint, and passing `animationDuration` without `animation` wrote
+  an orphan duration onto a glyph that was never animated.
+
 - **Component constructors accept a `subclassDefaults` bag.** Twenty-nine
   constructors passed their own `_defaultXxxOptions` constant straight to
   `super()`, which made them dead ends: nothing below them in the hierarchy
