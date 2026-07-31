@@ -70,7 +70,11 @@ class SpinButton extends Button<SpinButtonOptions> {
      *                 Mapped internally to the matching SVG glyph in the
      *                 framework's glyph registry.
      */
-    constructor(symbol: "▲" | "▼", options?: SpinButtonOptions) {
+    constructor(
+        symbol:            "▲" | "▼",
+        options?:          SpinButtonOptions,
+        subclassDefaults?: Partial<SpinButtonOptions>,
+    ) {
         // Hand defaults plus the symbol-derived glyph to Button via the
         // subclass-defaults arg so they land in `_defaultOptions`. User
         // options still win because Component merges `{...defaults, ...options}`
@@ -78,6 +82,7 @@ class SpinButton extends Button<SpinButtonOptions> {
         super(undefined, options, {
             ..._defaultSpinButtonOptions,
             glyph: symbol === "▲" ? "chevron-up" : "chevron-down",
+            ...(subclassDefaults ?? {}),
         });
 
         this.updateSize();

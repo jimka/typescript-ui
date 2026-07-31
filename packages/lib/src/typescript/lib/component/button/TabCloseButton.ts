@@ -38,13 +38,14 @@ class TabCloseButton extends Button<TabCloseButtonOptions> {
     /**
      * Creates a TabCloseButton seeded with the `xmark` glyph and sized for use in a tab toolbar.
      */
-    constructor(options?: TabCloseButtonOptions) {
+    constructor(options?: TabCloseButtonOptions, subclassDefaults?: Partial<TabCloseButtonOptions>) {
         // The seed `glyph` is in the defaults bag — a caller-supplied
         // `options.glyph` still wins because Button resolves the effective
         // glyph as `options.glyph ?? _defaultOptions.glyph` at construction.
         super(undefined, options, {
             ..._defaultTabCloseButtonOptions,
             glyph: "xmark",
+            ...(subclassDefaults ?? {}),
         });
     }
 }
