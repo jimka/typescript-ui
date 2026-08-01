@@ -19,7 +19,6 @@ import { Util } from "~/core/Util.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { Column } from "~/component/table/Column.js";
 import type { TableHeader } from "~/component/table/Header.js";
-import type { HeaderCell } from "~/component/table/cell/Header.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -1521,24 +1520,10 @@ class Body extends VirtualRowView<Row> {
             }
         }
 
-        const headerCells: HeaderCell[] | null = this._header !== null
-            ? this._header.getColumns() as HeaderCell[]
-            : null;
-
-        if (headerCells !== null) {
-            for (const cell of headerCells) {
-                cell.setColumnFocused(false);
-            }
-        }
+        this._header?.setFocusedColumn(this._anchorRecord ? this._focusedColIndex : null);
 
         if (!this._anchorRecord) {
             return;
-        }
-
-        if (headerCells !== null) {
-            for (let i = 0; i < headerCells.length; i++) {
-                headerCells[i].setColumnFocused(i === this._focusedColIndex);
-            }
         }
 
         const anchorIdx = this.getVisibleRecords().indexOf(this._anchorRecord);

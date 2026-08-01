@@ -185,6 +185,31 @@ class HeaderCell extends DefaultCell {
     }
 
     /**
+     * Re-targets this cell at another column's model field. Used by the
+     * header's column-window reconciler when recycling a cell whose
+     * column left the window for one entering it.
+     *
+     * @param name - The new field name this cell reports on sort and
+     *   context-menu events.
+     * @returns This cell, for method chaining.
+     */
+    setFieldName(name: string): this {
+        this._fieldName = name;
+
+        return this;
+    }
+
+    /**
+     * Returns the model field name this cell currently reports on sort
+     * and context-menu events.
+     *
+     * @returns The current field name.
+     */
+    getFieldName(): string {
+        return this._fieldName;
+    }
+
+    /**
      * Returns the currently mounted header glyph registry name, or `null` if none.
      *
      * @returns The glyph registry name, or `null`.

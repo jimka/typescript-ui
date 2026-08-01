@@ -112,7 +112,7 @@ class Table extends LayoutManager {
 
         const containerInsets = container.getContentInsets();
         const columns         = container.getColumns();
-        const columnCount     = container.getHeader().getColumns().length;
+        const columnCount     = container.getColumns().length;
         const availableWidth  = container.getAvailableColumnWidth();
         // A resize drag may have grown the table's total column width past
         // `availableWidth`; rescaling toward the target instead of the raw
@@ -180,10 +180,9 @@ class Table extends LayoutManager {
             // Parent row is sized + positioned first so its `spanFrom`
             // / `spanTo` constraints translate to x/width sums over the
             // column-width array beneath. When `hasParentRow` is false
-            // the parent row stays collapsed at zero height and we
-            // skip the per-cell layout pass entirely — no visible
-            // column declares a group, so the parent-cell pool is
-            // empty anyway.
+            // the parent row stays collapsed at zero height and its
+            // cell pool is empty anyway — `header.renderColumnWindow`
+            // below skips positioning it.
             const parentRow = header.getParentRow();
             parentRow.setAutoCommitStyle(false);
             parentRow.setX(0);
@@ -191,35 +190,6 @@ class Table extends LayoutManager {
             parentRow.setWidth(innerRowW);
             parentRow.setHeight(parentRowHeight);
             parentRow.setAutoCommitStyle(true);
-
-            if (hasParentRow) {
-                const parentCells = parentRow.getComponents();
-
-                parentCells.forEach(cell => {
-                    const lc       = parentRow.getLayoutConstraints(cell);
-                    const span     = lc?.data as { spanFrom: number, spanTo: number } | undefined;
-                    const spanFrom = span?.spanFrom ?? 0;
-                    const spanTo   = span?.spanTo ?? 0;
-
-                    let cellX = 0;
-                    for (let i = 0; i < spanFrom; i++) {
-                        cellX += columnWidths[i];
-                    }
-
-                    let cellW = 0;
-                    for (let i = spanFrom; i <= spanTo; i++) {
-                        cellW += columnWidths[i];
-                    }
-
-                    cell.setAutoCommitStyle(false);
-                    cell.setX(cellX);
-                    cell.setY(0);
-                    cell.setWidth(cellW);
-                    cell.setHeight(parentRowHeight);
-                    cell.setAutoCommitStyle(true);
-                    cell.doLayout();
-                });
-            }
 
             // Column row sits beneath the parent row. The cell y-coords
             // are relative to the column row's element, so they stay at
@@ -232,19 +202,15 @@ class Table extends LayoutManager {
             columnRow.setHeight(columnHeight);
             columnRow.setAutoCommitStyle(true);
 
-            const headerColumns = header.getColumns();
-            let x = 0;
-
-            headerColumns.forEach((col, i) => {
-                col.setAutoCommitStyle(false);
-                col.setX(x);
-                col.setY(0);
-                col.setWidth(columnWidths[i]);
-                col.setHeight(columnHeight);
-                col.setAutoCommitStyle(true);
-                col.doLayout();
-
-                x += columnWidths[i];
+            // Reconciles the header's rendered cells to the
+            // horizontally-visible column range and positions every
+            // rendered cell in both rows — the header-side counterpart
+            // of `body.renderWindow` below.
+            header.renderColumnWindow({
+                columnWidths,
+                viewportWidth: availableWidth,
+                columnHeight,
+                parentRowHeight,
             });
 
             // Cover the vertical-scrollbar reservation at the header's
