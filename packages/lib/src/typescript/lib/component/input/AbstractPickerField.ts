@@ -202,24 +202,31 @@ abstract class AbstractPickerField<
     }
 
     /**
-     * Lays out the input flush left and the button flush right at the
-     * fixed 24-px column width.
+     * Lays out the input against the content box's left edge and the button
+     * against its right edge at the fixed 24-px column width. Both edges are
+     * the content box's, not the field's outer box, so the button does not
+     * overhang the border.
      */
     doLayout(): this {
         super.doLayout();
 
-        const w = this.getWidth();
-        const h = this.getHeight();
+        const box = this.getContentBounds();
 
-        this._input.setX(0);
-        this._input.setY(0);
-        this._input.setWidth(Math.max(0, w - PICKER_BUTTON_WIDTH_PX));
-        this._input.setHeight(h);
+        if (!box) {
+            return this;
+        }
 
-        this._button.setX(w - PICKER_BUTTON_WIDTH_PX);
-        this._button.setY(0);
+        const inputWidth = Math.max(0, box.width - PICKER_BUTTON_WIDTH_PX);
+
+        this._input.setX(box.x);
+        this._input.setY(box.y);
+        this._input.setWidth(inputWidth);
+        this._input.setHeight(box.height);
+
+        this._button.setX(box.x + inputWidth);
+        this._button.setY(box.y);
         this._button.setWidth(PICKER_BUTTON_WIDTH_PX);
-        this._button.setHeight(h);
+        this._button.setHeight(box.height);
 
         // The button was already laid out by `super.doLayout()` against its
         // construction-time preferred size; the manual setWidth/setHeight

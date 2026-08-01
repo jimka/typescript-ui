@@ -93,16 +93,24 @@ class LabelListItemRenderer extends ListItemRenderer {
      * Sizes the label to fill the renderer's allocated box and centres its
      * line-box vertically by matching `line-height` to the row height.
      *
-     * @param width - The horizontal extent of the row in pixels.
-     * @param height - The vertical extent of the row in pixels.
+     * The label goes inside this renderer's content box, so a border or padding
+     * on the renderer shrinks it rather than being painted over.
+     *
+     * @param width - The horizontal extent of the row in pixels. Used only
+     *   while the renderer has no element yet and the content box is
+     *   unavailable.
+     * @param height - The vertical extent of the row in pixels, used under the
+     *   same condition as `width`.
      */
     layoutChildren(width: number, height: number): void {
+        const box = this.getContentBounds() ?? { x: 0, y: 0, width, height };
+
         this._label.setAutoCommitStyle(false);
-        this._label.setX(0);
-        this._label.setY(0);
-        this._label.setWidth(width);
-        this._label.setHeight(height);
-        this._label.setLineHeight(height);
+        this._label.setX(box.x);
+        this._label.setY(box.y);
+        this._label.setWidth(box.width);
+        this._label.setHeight(box.height);
+        this._label.setLineHeight(box.height);
         this._label.setAutoCommitStyle(true);
     }
 

@@ -483,25 +483,28 @@ class ComboBoxLabel extends Component {
     }
 
     /**
-     * Sizes the renderer to fill the label box, then lets it lay out its own
-     * children. Only writes setters (no geometry reads).
+     * Sizes the renderer to fill the label's content box, then lets it lay out
+     * its own children. Only writes setters (no geometry reads).
      *
      * @returns This component, for method chaining.
      */
     doLayout(): this {
         super.doLayout();
 
-        const width  = this.getWidth();
-        const height = this.getHeight();
+        const box = this.getContentBounds();
+
+        if (!box) {
+            return this;
+        }
 
         this._renderer.setAutoCommitStyle(false);
-        this._renderer.setX(0);
-        this._renderer.setY(0);
-        this._renderer.setWidth(width);
-        this._renderer.setHeight(height);
+        this._renderer.setX(box.x);
+        this._renderer.setY(box.y);
+        this._renderer.setWidth(box.width);
+        this._renderer.setHeight(box.height);
         this._renderer.setAutoCommitStyle(true);
 
-        this._renderer.layoutChildren(width, height);
+        this._renderer.layoutChildren(box.width, box.height);
 
         return this;
     }
@@ -741,16 +744,16 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Places the label flush left and the caret flush right, both vertically
-     * centered within the inner height. Replaces the prior `display: flex`
+     * Places the label against the content box's left edge and the caret
+     * against its right edge, both vertically centered within its height. Replaces the prior `display: flex`
      * arrangement on the surface element so every child position is committed
      * via framework setters.
      */
     doLayout(): this {
         super.doLayout();
 
-        const inner = this.getInnerSize();
-        if (!inner) {
+        const box = this.getContentBounds();
+        if (!box) {
             return this;
         }
 
@@ -760,21 +763,18 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         // The label fills the remaining width.
         const gap       = 6;
         const caretSize = this._caret.getCaretSize();
-        const insets    = this.getInsets();
 
-        const innerLeft = insets.getLeft();
-        const innerTop  = insets.getTop();
-        const labelW    = Math.max(0, inner.width - caretSize - gap);
-        const caretX    = innerLeft + labelW + gap;
-        const caretY    = innerTop + Math.max(0, (inner.height - caretSize) / 2);
+        const labelW    = Math.max(0, box.width - caretSize - gap);
+        const caretX    = box.x + labelW + gap;
+        const caretY    = box.y + Math.max(0, (box.height - caretSize) / 2);
 
-        this._label.setX(innerLeft);
-        this._label.setY(innerTop);
+        this._label.setX(box.x);
+        this._label.setY(box.y);
         this._label.setWidth(labelW);
-        this._label.setHeight(inner.height);
+        this._label.setHeight(box.height);
         // `lineHeight` equals the label's height so the single line of label
         // text vertically centers without `display: flex` on the parent.
-        this._label.setLineHeight(inner.height);
+        this._label.setLineHeight(box.height);
         // Position the label's hosted renderer now that its box is sized.
         this._label.doLayout();
 

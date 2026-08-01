@@ -462,7 +462,7 @@ class MenuItem extends Component {
     }
 
     /**
-     * Positions the four label zones within the item's bounds.
+     * Positions the four label zones within the item's content box.
      *
      * @returns This component, for method chaining.
      */
@@ -473,8 +473,21 @@ class MenuItem extends Component {
             return this;
         }
 
-        const H = MenuItem.HEIGHT;
-        const totalWidth = this.getWidth();
+        const box = this.getContentBounds();
+
+        if (!box) {
+            return this;
+        }
+
+        // Heights come from the content box, not MenuItem.HEIGHT: the constant
+        // is the item's outer height. With no border the two are the same
+        // number. Note this does not by itself make a bordered item fit — the
+        // texts' construction-time centerInHeight(MenuItem.HEIGHT) pins their
+        // minimum height to the outer height, so the clamp holds them at 24
+        // regardless; correcting that needs a border-change hook and is out of
+        // scope here.
+        const H = box.height;
+        const totalWidth = box.width;
         const hasShortcut = !!this._config.shortcut && this._shortcutText !== null;
         const hasSub = this.hasSubmenu();
 
@@ -487,37 +500,37 @@ class MenuItem extends Component {
             const size  = this._iconGlyph.getPreferredSize() ?? { width: 16, height: 16 };
             const iconY = Math.max(0, Math.floor((H - size.height) / 2));
 
-            this._iconGlyph.setX(4);
-            this._iconGlyph.setY(iconY);
+            this._iconGlyph.setX(box.x + 4);
+            this._iconGlyph.setY(box.y + iconY);
             this._iconGlyph.setWidth(size.width);
             this._iconGlyph.setHeight(size.height);
         } else if (this._iconText) {
-            this._iconText.setX(4);
-            this._iconText.setY(0);
+            this._iconText.setX(box.x + 4);
+            this._iconText.setY(box.y);
             this._iconText.setWidth(20);
             this._iconText.setHeight(H);
         }
 
         // Title fills the shared title column, left-aligned from the icon offset.
         if (this._titleText) {
-            this._titleText.setX(iconStart);
-            this._titleText.setY(0);
+            this._titleText.setX(box.x + iconStart);
+            this._titleText.setY(box.y);
             this._titleText.setWidth(titleColumn);
             this._titleText.setHeight(H);
         }
 
         // Chevron: right-justified at the panel's inner edge.
         if (hasSub && this._chevronText) {
-            this._chevronText.setX(totalWidth - MenuItem.RIGHT_PAD - MenuItem.CHEVRON_ZONE);
-            this._chevronText.setY(0);
+            this._chevronText.setX(box.x + totalWidth - MenuItem.RIGHT_PAD - MenuItem.CHEVRON_ZONE);
+            this._chevronText.setY(box.y);
             this._chevronText.setWidth(MenuItem.CHEVRON_ZONE);
             this._chevronText.setHeight(H);
         }
 
         // Shortcut: left-justified in the right zone, one gap past the title column.
         if (hasShortcut && this._shortcutText) {
-            this._shortcutText.setX(iconStart + titleColumn + MenuItem.TEXT_GAP);
-            this._shortcutText.setY(0);
+            this._shortcutText.setX(box.x + iconStart + titleColumn + MenuItem.TEXT_GAP);
+            this._shortcutText.setY(box.y);
             this._shortcutText.setWidth(this.shortcutTextWidth());
             this._shortcutText.setHeight(H);
         }

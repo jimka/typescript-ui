@@ -105,6 +105,8 @@ Layout managers operate on `getInnerSize()` of their container. Use this when yo
 
 Because every component is absolutely positioned, a child's containing block is its parent's *padding box* — a child at `left: 0` lands at the inner edge of the border, ignoring the padding. So a layout manager offsets each child's origin by [`getContentInsets()`](/api/core/classes/Component) (inset + padding, border excluded) rather than the bare insets, keeping padding symmetric on all sides.
 
+[`getContentBounds()`](/api/core/classes/Component) returns that pair as one rectangle — `getContentInsets()` for the origin, `getInnerSize()` for the extent. **A component that places its own children must place them inside it** — whether it does that from a `doLayout` override or from any other method, such as a row renderer's `layoutChildren`. Reading `getWidth()` / `getHeight()` instead lays children out against the border box, so the last child overflows by the border width and the component's `overflow: hidden` clips it. A border shrinks the rectangle; it never moves the origin. A component with no border, insets or padding therefore sees the same numbers either way.
+
 ## Baseline (for horizontal layouts)
 
 Every component also exposes `getBaseline()`: the offset, in pixels, from the top of the component to its visual baseline. [`HBox`](/layouts/HBox) and [`Grid`](/layouts/Grid) use this to align children of mixed heights so their text baselines coincide — much like CSS `vertical-align`.

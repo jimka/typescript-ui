@@ -463,3 +463,296 @@ Today the same field produces `PickerInput (0, 0, 176, 24)` and `PickerButton (1
 [^menuitem-center]: `centerInHeight` runs once at construction and writes a text line-height; making it border-aware needs the same `setBorder` hook `TextField` gets in this plan. Adding that hook to `MenuItem` would change the rendered line-height of every menu item in a themed build for a half-pixel optical gain, which is not worth bundling into a fix about clipped children.
 
 [^unmeasured]: "Latent" here means the pattern is present and no border resolves under this repo's current theme. For sites 8 – 10 that status comes from reading the code and from an offline instance, not from a live browser measurement of a rendered component — none of them was on screen during the sweep. Treat the classification as provisional; what is certain is that each one lays children out against its border box, which is a defect for any consumer who themes a border onto it.
+
+---
+
+## Implementation Notes
+
+The design was implemented as written: one `getContentBounds()` accessor, all
+eleven call sites routed through it, the row separator moved onto `setBorder`,
+and the three size-report fixes. The deviations are all in the **test design**,
+plus one factual slip in the roster.
+
+**`MenuItemConfig` has no `title` field.** The roster builds a `MenuItem` with
+`{ title: 'File', … }`; the config field is `text` ([MenuItem.ts:42](packages/lib/src/typescript/lib/component/container/MenuItem.ts#L42)).
+Built with `text` instead.
+
+**`expectBorderOnlyShrinks` is invalid for a component that clamps its own outer
+size.** The oracle assumes the component commits the size it is given. A picker
+field, `AutoCompleteField` and `ComboBox` all pin their height, so both arms
+commit the same height and their content boxes then differ *by the border* —
+the comparison fails for a reason that has nothing to do with the defect. The
+helper now asserts the committed size matches the requested size in both arms,
+so this fails loudly rather than looking like a real regression, and those three
+components use a different oracle:
+
+- picker fields and `AutoCompleteField` — containment under their real themed
+  border, red before the fix and green after;
+- `ComboBox` — that it honours its own padding when placing label and caret,
+  which is the observable half of `getInsets()` vs `getContentInsets()`.
+  Containment cannot catch `ComboBox`: offline its caret sits exactly on the
+  content-box edge, so the containment case passes either way. (The 2px residue
+  in the plan's `[^combobox-note]` is a live-browser observation that the
+  offline harness does not reproduce.)
+
+**The oracle was vacuous for `Tooltip` and `MenuItem` as specified.** Both
+passed on unfixed code:
+
+- `Tooltip.show` returns a **singleton**, so `make()` handed back the same
+  object twice and the case compared its rectangles to themselves. The helper
+  now captures the bordered rectangles before building the second instance.
+- `MenuItem` sizes children from the `MenuItem.HEIGHT` constant rather than its
+  own height, so both arms agree at 24 whatever the border — a constant-height
+  bug is structurally invisible to a shrink-equivalence check. **Containment is
+  equally blind to it**: its texts are placed from its own column constants
+  rather than from its width, so they sit inside the box whatever the border.
+  It uses the padding oracle instead — the origin must come from
+  `getContentInsets()`, so a padded item's title shifts with the padding
+  (x = 8 before, 12 after).
+
+**`MenuItem` ended up with a padding-origin case, not a containment case.** An
+intermediate version asserted horizontal containment; that was dropped because
+containment is blind to `MenuItem` on both axes (see above). The vertical axis
+is untestable here regardless: `centerInHeight(MenuItem.HEIGHT)` sets the texts'
+line height, pinning their *minimum* height to the item's outer height, so on a
+bordered item the clamp holds them taller than the content box — the border-blind
+centring the plan records as out of scope under `## Potential Challenges`.
+
+**The plan's `2px border` containment cases for the picker fields and
+`AutoCompleteField` were dropped.** Neither recomputes its size hints when the
+border changes at runtime, so both keep a max height derived from the border
+they had at construction and commit 24px however much room the test gives them —
+leaving a content box too short for the button's own 16px minimum. That is the
+same stale-hint defect the plan fixes for `TextField` via `setBorder`, and the
+plan deliberately scopes the fix to `TextField` alone. **A runtime border change
+on `AbstractPickerField` or `AutoCompleteField` is therefore still wrong, and is
+untested** — recorded here rather than silently widened. Their real themed
+border is covered.
+
+**Three existing `Tooltip` expectations were updated**, not worked around: the
+tooltip's outer box is intentionally 2px larger in each dimension now, which the
+plan predicts under `## Expected Behaviour` case 10.
+
+**`TextField.setBorder` rewrites only the preferred and minimum heights, not the
+body the plan prescribes.** The plan's version calls `updateHeight()`, which
+re-pins preferred, min *and* max to the one-line box and hard-writes a 200px
+preferred width. That regresses the two cell editors: `String.ts:40` and
+`Number.ts:42` deliberately unpin their inner field's max size so it can fill
+the cell and *then* set a border on it, so the prescribed override handed the
+max straight back — measured, the field collapsed from 24px to 16px inside a
+24px row, with its focus ring shrinking to match. Nothing in the suite covered
+it. The override now re-derives the height for preferred and min only, leaving
+max and both widths to whatever the caller last set, and
+`content-box-containment.test.ts` gains a case per editor asserting the field
+still fills a 24px row (red on the prescribed version: 16 against 24). The plan
+reached this by reasoning only about the `super()` cascade in
+`## Potential Challenges` and never enumerating `setBorder`'s other call sites.
+
+**`Component.getContentBounds()` gained direct tests.** Every containment case
+compares children against the accessor the layout code also calls, so a wrong
+accessor would agree with wrong layout and both would pass. The accessor is now
+pinned against literal numbers for the plan's three-row contract table plus the
+null case, and the `TimeField` case additionally asserts the plan's literal
+child rectangles — `(3, 3, 168, 16)` and `(171, 3, 24, 16)` — rather than only
+a containment relation.
+
+**`TextField.setBorder` also had to keep the size envelope consistent.** A first
+pass rewrote preferred and min but left max alone, which pushed min above max on
+a thicker border (`setBorder("3px solid red")` gave 28 / 28 / 24, and
+`clampHeight` then commits the min) — a violation of ARCHITECTURE.md's
+`min ≤ preferred ≤ max` rule. It now re-derives a *bounded* maximum in
+both directions and leaves an unbounded one unbounded.
+
+Reaching that took two wrong turns, both caught by review. Skipping the maximum
+entirely leaves `min > max` under a thicker border. Raising it but never
+lowering it leaves a stale maximum that `AutoCompleteField` then mirrors, so the
+composite reported 26 against a bare `TextField`'s 24 — the exact outcome
+`[^autocomplete-pair]` exists to prevent. Lowering it needed one prerequisite:
+`NumberEditor` unpinned the maximum on the *editor* rather than on its inner
+field, unlike `StringEditor` which unpins the field's, so the field alone was
+still pinned and collapsed to 16 in a 24px row. `NumberEditor` now unpins its
+field's maximum too, matching `StringEditor`. All three behaviours are asserted:
+the envelope under a thicker border, the unbounded max, and the composite's
+mirrored max.
+
+**A fourth `setBorder`-on-a-`TextField` call site exists that the notes above
+missed.** `NumberSpinner.ts:97` sets a border on its inner field. Its **minimum**
+height changes **26 → 24** on this branch; its preferred height is 24 on both
+sides and does not move. Since its maximum was already 24, master shipped a
+`min (26) > max (24)` envelope violation on this component, which the branch
+repairs as a side effect. The test asserts the minimum and the envelope — an
+earlier version asserted preferred-height parity instead and passed identically
+on master, pinning nothing.
+
+**The plan's blast-radius claim is wrong, and it propagated into the changelog
+before being caught.** `## Verification` says "only five components can move a
+pixel under the current theme", resting on `[^dialog-border]`'s assertion that
+no shipped theme defines `--ts-ui-dialog-border`. It does:
+`ModernTheme.ts:277` sets it to `rgb(220, 220, 220)`, and
+`--ts-ui-drag-ghost-border` at `ModernTheme.ts:313` likewise; `Tooltip`'s
+declaration carries a literal fallback and so resolves under any theme. The real
+set that can move is **eight**: the three picker fields, `AutoCompleteField`,
+`SelectableListRow`, both `Dialog` bars and `DragGhost`, plus `Tooltip` growing
+2px. Only `MenuItem` and `TreeCellRenderer` are genuinely unchanged. The
+changelog entry stated the plan's version and has been corrected.
+
+## Manual verification — performed
+
+Run against this branch on a local dev server, with the results recorded rather
+than assumed:
+
+- **Case 11 (the originating symptom).** On `#/binding`, a sweep of every
+  bordered component *rendered at that moment* found **zero** overflowing their
+  own content box. The same sweep on `master` flagged `DateField` and
+  `TimeField` — only two of the five the Overview names, because the sweep sees
+  whatever the panel has instantiated when it runs, so it is evidence that the
+  fix holds for what was on screen, not proof that every affected component was
+  exercised. The offline suite is what covers all eleven. Under emulated 125%
+  scaling (device pixel ratio 1.2) the picker button now sits 3px inside the
+  field's content box at 24×16, where it previously overhung it. **Still owed:
+  the same look at 125% in the user's real browser** — an emulated ratio
+  reproduces the geometry but not their display pipeline, and that is the
+  instrument that found the bug.
+- **Case 12 (overlays and menus).** Its stated oracle is wrong and could not
+  have been validly passed: it says `Dialog`'s bars, `DragGhost` and `Tooltip`
+  "carry no resolved border … any shift means the transform was applied
+  wrongly", but all three do carry one, so a small shift is the *expected*
+  result. Checked instead that each renders correctly, item by item:
+  - **Dialog** — a confirm dialog shows its title left-aligned, close button
+    right-aligned, separator borders intact and buttons in the footer row.
+  - **Tooltip** — shown by hovering its demo button: outer box 265x30 with a 1px
+    border on every side, label 247x16 sitting inside the content box and not
+    wrapped.
+  - **Menu** — the first menu of the MenuBar demo opened: four items at 180x24,
+    zero measured border, none overflowing. Unchanged, as expected.
+  - **`DragGhost` was NOT exercised live.** It only appears mid-drag and the
+    drag could not be synthesised reliably. Its 2px label change is covered
+    offline by the shrink-equivalence case and stated in the changelog, but no
+    one has looked at it on screen.
+  - The plan also names a **tree table**, which was not opened.
+- **Case 13 (the deliberate change).** Confirmed: the picker button is the
+  height of the content box (16px in a 24px field) and inset by the field's own
+  3px padding, matching how `ComboBox` insets its caret.
+
+**Preferred *width* stays mirrored, against the plan's prescribed body.** The
+plan's `syncSizeFromTextField` adds the horizontal perimeter to preferred width
+as well as the vertical one to height. That defeats the pairing's own purpose:
+the inner field's height is derived from its border and drops by it, so adding
+the perimeter back restores parity with a bare `TextField`, but its width is a
+flat 200 constant that does not move, so adding the perimeter there made the
+composite report 202 against a sibling field's 200 and misaligned
+preferred-width form columns. Width is now mirrored unchanged and parity is
+asserted on both axes. `[^autocomplete-pair]` only ever reasoned about height.
+
+**`NumberEditor` now unpins its inner field's maximum.** It unpinned the maximum
+on the *editor* while `StringEditor` unpins the *field's*; the inconsistency is
+what blocked `setBorder` from tracking a bounded maximum downward. Recorded as a
+change outside the plan's file table.
+
+**The sweep was widened past `doLayout`, adding five sites outside the plan's
+file table.** The plan found its eleven sites by looking for `doLayout`
+overrides. Re-running the search on the real criterion — *any* method that
+positions the component's own children — turned up five more, all placing
+children at `(0, 0)` against an extent that is their own border box:
+
+| Site | Public? |
+|---|---|
+| `TreeRow.layoutChildren` | no — not exported, no accessor reaches a row |
+| `LabelTreeNodeRenderer.layoutChildren` | yes, and subclassable |
+| `IconLabelTreeNodeRenderer.layoutChildren` | yes, and subclassable |
+| `LabelListItemRenderer.layoutChildren` | yes, and subclassable |
+| `GlyphListItemRenderer.layoutChildren` | yes, and subclassable |
+
+All five are fixed with the same `getContentBounds()` transform, each keeping
+its `width` / `height` arguments as the fallback for a renderer that has no
+element yet. The four renderers matter more than `TreeRow` despite being the
+later find: they are the documented extension points for custom tree and list
+rows, so a consumer who borders one hits this on a supported path. The rule as
+stated in `docs/concepts/sizing.md` and on `getContentBounds` itself was scoped
+to "a component that overrides `doLayout`", which is the framing that let these
+through; it now says any method that places its own children. The two abstract
+declarations a consumer actually implements — `TreeNodeRenderer.layoutChildren`
+and `ListItemRenderer.layoutChildren` — now spell the rule out on the method
+itself, since that is the doc a subclasser reads.
+
+**The sweep is not exhaustive and no list here should be read as the remainder.**
+Two rounds of review each turned up sites the previous round's hand-written
+enumeration had missed, which is the standing lesson about hand-counted
+inventories: they are stale the moment they are written. So the durable artefact
+is the derivation rule, not a table.
+
+**How to enumerate the rest.** Every offender has the same shape — a method that
+calls `setX` / `setY` / `setWidth` / `setHeight` on a field of `this`, deriving
+the numbers from `getWidth()` / `getHeight()` / `getInnerSize()` or from an
+extent argument, without going through `getContentBounds()`. Group
+`grep -rn '\.set[XY](\|\.set\(Width\|Height\)(' src/typescript/lib` by enclosing
+method and drop the ones already routed. Re-run it rather than trusting any
+count: the plan's `[^why-accessor]` footnote says "thirteen hand-written
+implementations", and that number was already wrong before this fold-in.
+
+**Sites surfaced so far and deliberately left.** Not the complete remainder —
+the ones that have actually been looked at:
+
+| Site | Bordered today? | Why it was left |
+|---|---|---|
+| `Notification.doLayout` | **yes**, `1px solid` | A `doLayout` override, so it belongs to the original eleven-site sweep's category rather than this fold-in's — and that sweep missed it. The only one seen so far with a real border: its children sit 1px off their intended padding, absorbed by the 4px right gap and 10px vertical padding, so nothing clips visibly. **The one to fix next.** |
+| `ScrollStrip.layoutContent` and `layoutArrows` | no | `TabBar.layoutChrome` sizes the tab widths against the same outer band it hands the strip, so shrinking the strip's box by its own perimeter here would desync the two. A caller-contract change, not this transform. |
+| `TabBar.positionClipFrame`, `positionToolGroup`, `positionLeadGroup`, `positionCloseButtons` | no | `crossLead` / `mainLead` come from the bar's own `getContentInsets()`, but `mainOuter` is still `width` / `height`, so the bar's *border* is unaccounted for whatever the caller does. Same caller-contract entanglement as `ScrollStrip`. |
+| `Cell.alignEditorWithContent` | no | The literal defect in a non-`doLayout` method; no reason beyond scope. |
+| `VirtualScroller.layoutScrollbars` | no | Places the bars off the owner's outer width; scroll chrome sits outside the content box by design, so this one needs a decision rather than a transform. |
+| `DiagramView.applyLayout` | no | Places diagram nodes in diagram coordinates; the plan's `## Non-Goals` already carves `AbstractChart` out for the same reason. |
+| `ProgressBar.doLayout`, `ProgressSpinner.doLayout` | no | The `(0, 0)`-origin category `## Non-Goals` carves out for `Slider` and `AbstractChart`; these belong with them. |
+
+`TreeRow` places its toggle, spinner and renderer from a method named
+`layoutChildren`, so it escaped the original sweep. It carried the same defect in a
+stronger form: besides reading `getWidth()` for the children's width, it sized
+them to the `rowHeight` argument the `Tree` passes, which is the row's *outer*
+height, so a bordered row overflowed on both axes. The children now come out of
+`getContentBounds()`, with `rowHeight` kept as the fallback for a row that has
+no element yet.
+
+`getContentWidth` is deliberately left alone, but it is not independent of this
+change. It reports the row's natural width without the row's own perimeter, and
+`Tree._bindAndMeasure` feeds that into the `rowWidth` every row is committed at,
+so on a bordered row the label box now comes out one perimeter narrower than the
+width the row asked for and the widest label still clips horizontally at full
+right-scroll. That is the same defect on the measure side, left for separate
+work rather than resolved here.
+
+Each of the four renderers gets two offline cases: containment under a real
+border, and a two-arm check pinning that a border may only shrink the content
+box. All of them fail against the pre-fix methods. Their borderless path was confirmed
+live for all four on the misc panel. The two icon variants put the icon at
+`(0, 4) 16×16` and the label at `(20, 0)` filling the rest of the row; the two
+label-only variants put the label at `(0, 0)` — sized to the row for the list
+renderer, to its natural content width for the tree one. All the pre-fix
+numbers.
+
+Each renderer's `getContentWidth` carries the same residual as `TreeRow`'s: it
+reports a natural width that omits the renderer's own perimeter, so on a
+bordered renderer the width it advertises is a perimeter wider than the label
+box `layoutChildren` then hands out. Left with the `TreeRow` half of the same
+residual.
+
+`TreeRow`'s offline cases live in the `TreeRow` block of
+`tests/component/content-box-containment.test.ts`; read the count from there
+rather than from a number written here. They cover containment for the toggle
+and renderer, containment for the loading-row spinner (the one child whose
+height is written straight from the box rather than clamped by a pinned glyph),
+the depth-3 indent (the only input that feeds the origin arithmetic), literal
+rectangles, and a two-arm equivalence check on both the parent and loading rows
+pinning that a border may only shrink the content box. Every one of them fails
+against the pre-fix method. The borderless path — the only one any shipped theme takes — was
+also confirmed live: rows still place the toggle at `(0, 4) 16×16` and the
+renderer at `(20, 0) 270×24`, the pre-fix numbers. **The bordered path was not
+looked at on screen.** An attempt to force a border with injected CSS proved
+nothing (`getBorderSize` reports zeros unless `setBorder` was called), and
+rather than reach a pool row from a console — which would have worked — the
+offline cases above were written instead.
+
+**Two shipped artefacts overstated the `MenuItem` fix and have been corrected.**
+The `H → box.height` substitution is inert on the vertical axis: the texts'
+construction-time `centerInHeight(MenuItem.HEIGHT)` pins their minimum to the
+outer height, so a bordered item's labels still commit 24 in a 20px content box.
+The code comment and the changelog now say so rather than implying the
+substitution is sufficient.

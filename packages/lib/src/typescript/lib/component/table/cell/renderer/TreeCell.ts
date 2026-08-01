@@ -227,17 +227,22 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
     }
 
     /**
-     * Positions the toggle (when present) at `depth * indentPx` and
-     * places the delegate immediately to its right, filling the
-     * remaining width. Runs the inherited `super.doLayout` so the
+     * Positions the toggle (when present) at `depth * indentPx` from the
+     * content box's origin and places the delegate immediately to its right,
+     * filling the remaining content width. Runs the inherited `super.doLayout` so the
      * Absolute layout manager commits the bounds we set on the
      * children.
      *
      * @returns This renderer, for method chaining.
      */
     doLayout(): this {
-        const width  = this.getWidth()  || 0;
-        const height = this.getHeight() || 0;
+        // No early return on a null box: `super.doLayout()` is the last
+        // statement here, and skipping it would leave the children's bounds
+        // uncommitted. The zero fallback preserves the previous
+        // `getWidth() || 0` behaviour before the element exists.
+        const box    = this.getContentBounds() ?? { x: 0, y: 0, width: 0, height: 0 };
+        const width  = box.width;
+        const height = box.height;
         const indent = this._depth * this._indentPx;
 
         if (this._toggle) {
@@ -246,8 +251,8 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
             // geometrically instead of relying on line-height (a no-op for SVG).
             const glyphHeight = this._toggle.getPreferredSize()?.height ?? height;
             this._toggle.setAutoCommitStyle(false);
-            this._toggle.setX(indent);
-            this._toggle.setY(Math.max(0, (height - glyphHeight) / 2));
+            this._toggle.setX(box.x + indent);
+            this._toggle.setY(box.y + Math.max(0, (height - glyphHeight) / 2));
             this._toggle.setWidth(TOGGLE_WIDTH);
             this._toggle.setHeight(glyphHeight);
             this._toggle.setAutoCommitStyle(true);
@@ -257,8 +262,8 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
         const delegateW = Math.max(0, width - delegateX);
 
         this._delegate.setAutoCommitStyle(false);
-        this._delegate.setX(delegateX);
-        this._delegate.setY(0);
+        this._delegate.setX(box.x + delegateX);
+        this._delegate.setY(box.y);
         this._delegate.setWidth(delegateW);
         this._delegate.setHeight(height);
         this._delegate.setAutoCommitStyle(true);

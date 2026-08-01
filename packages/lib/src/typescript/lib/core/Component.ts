@@ -2936,6 +2936,38 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns the rectangle this component's children are laid out into: the
+     * origin from {@link getContentInsets} and the size from
+     * {@link getInnerSize}. A component that places its own children places
+     * them inside this rectangle — from a `doLayout` override or from any other
+     * method that positions them, such as a row renderer's `layoutChildren`.
+     *
+     * A border shrinks the rectangle but never moves its origin. Because every
+     * component is absolutely positioned, a child's containing block is already
+     * this component's padding box — a child at `left: 0` lands at the inner
+     * edge of the border — so only the size has to account for it.
+     *
+     * @returns The content rectangle in pixels, or null if the element is not
+     *   yet in the DOM (mirroring {@link getInnerSize}).
+     */
+    getContentBounds(): { x: number; y: number; width: number; height: number } | null {
+        const inner = this.getInnerSize();
+
+        if (!inner) {
+            return null;
+        }
+
+        const contentInsets = this.getContentInsets();
+
+        return {
+            x:      contentInsets.getLeft(),
+            y:      contentInsets.getTop(),
+            width:  inner.width,
+            height: inner.height,
+        };
+    }
+
+    /**
      * Returns the per-side pixel widths of the component's border. Once the element
      * is connected to the document the widths are browser-measured (so `var()`,
      * `none`, and keywords all resolve) and cached until the next

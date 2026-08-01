@@ -166,8 +166,10 @@ const _defaultAbstractSelectableListOptions: Partial<AbstractSelectableListOptio
  * carries the focus ring (matched against the framework auto-added
  * `.List` / `.MultiSelectList` classes that `Component.init()` derives
  * from `constructor.name`); `.SelectableListRow` carries the row chrome
- * (single-line text with ellipsis truncation, optional theme-controlled
- * separator); the `.selected` / `.focused` modifier classes layer the
+ * (single-line text with ellipsis truncation); the row's theme-controlled
+ * separator is a real border set through `setBorder` in the row constructor,
+ * not a class rule, so the framework's box math can see it. The
+ * `.selected` / `.focused` modifier classes layer the
  * selection wash and keyboard-focus outline on top.
  *
  * The `:focus` ring is attached via a compound selector covering both
@@ -219,7 +221,6 @@ const _defaultAbstractSelectableListOptions: Partial<AbstractSelectableListOptio
             whiteSpace:   "nowrap",
             overflow:     "hidden",
             textOverflow: "ellipsis",
-            borderBottom: "1px solid var(--ts-ui-list-row-separator, transparent)",
             cursor:       "pointer",
         },
     });
@@ -259,9 +260,10 @@ const _defaultAbstractSelectableListOptions: Partial<AbstractSelectableListOptio
 /**
  * A single row inside an {@link AbstractSelectableList}. Holds the static
  * row styling via the `.SelectableListRow` / `.SelectableListRow:hover` /
- * `.SelectableListRow.selected` / `.SelectableListRow.focused` class rules and
- * exposes typed setters for the label, the pool index, the selected
- * flag, and the focused flag.
+ * `.SelectableListRow.selected` / `.SelectableListRow.focused` class rules —
+ * except the bottom separator, which is a real border set in the constructor so
+ * it is measurable — and exposes typed setters for the label, the pool index,
+ * the selected flag, and the focused flag.
  *
  * Internal — not re-exported from the per-subpath barrel; the public
  * surface lives on `List` / `MultiSelectList`.
@@ -310,6 +312,11 @@ class SelectableListRow extends Component {
         // ROW_HEIGHT_PX by its preferredSize above; leave its max unbounded (the
         // Component default).
         this.setPadding(new Insets(0, ROW_PADDING_X_PX, 0, ROW_PADDING_X_PX));
+        // Declared through the typed setter rather than the shared class rule so
+        // getBorderSize() sees the 1px the separator takes out of the row's
+        // content box; a class-rule border is invisible to the framework's box
+        // math, and the renderer would be sized a pixel too tall and clipped.
+        this.setBorder({ borderBottom: "1px solid var(--ts-ui-list-row-separator, transparent)" });
         // Component's framework default writes `cursor: default` as an
         // inline style, which would beat the `.SelectableListRow` class rule
         // — set the inline cursor explicitly so rows show the hand
@@ -519,7 +526,7 @@ class SelectableListRow extends Component {
     }
 
     /**
-     * Positions the renderer to fill the row's padding box, then lets it lay
+     * Positions the renderer to fill the row's content box, then lets it lay
      * out its own children. Only writes setters (no geometry reads), so it is
      * safe under the `commitBounds` auto-commit path that drives it.
      *
@@ -528,21 +535,19 @@ class SelectableListRow extends Component {
     doLayout(): this {
         super.doLayout();
 
-        const inner = this.getInnerSize();
-        if (!inner) {
+        const box = this.getContentBounds();
+        if (!box) {
             return this;
         }
 
-        const perim = this.getPerimeterSize();
-
         this._renderer.setAutoCommitStyle(false);
-        this._renderer.setX(perim.left);
-        this._renderer.setY(perim.top);
-        this._renderer.setWidth(inner.width);
-        this._renderer.setHeight(inner.height);
+        this._renderer.setX(box.x);
+        this._renderer.setY(box.y);
+        this._renderer.setWidth(box.width);
+        this._renderer.setHeight(box.height);
         this._renderer.setAutoCommitStyle(true);
 
-        this._renderer.layoutChildren(inner.width, inner.height);
+        this._renderer.layoutChildren(box.width, box.height);
 
         return this;
     }

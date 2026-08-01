@@ -327,15 +327,21 @@ class DialogTitleBar extends Component {
 
     /**
      * Positions the title label, optional leading glyph, and close button within
-     * the title bar bounds.
+     * the title bar's content box.
      *
      * @returns This component, for method chaining.
      */
     doLayout(): this {
         super.doLayout();
 
-        const w       = this.getWidth();
-        const h       = this.getHeight();
+        const box = this.getContentBounds();
+
+        if (!box) {
+            return this;
+        }
+
+        const w       = box.width;
+        const h       = box.height;
         const closeX  = w - CLOSE_SIZE - TITLE_RIGHT_GAP;
         const centerY = Math.floor((h - CLOSE_SIZE) / 2);
         const rightBound = this._closeButton
@@ -348,8 +354,8 @@ class DialogTitleBar extends Component {
             const glyphSize = this._titleGlyph.getPreferredSize() ?? { width: 16, height: 16 };
             const glyphY    = Math.max(0, Math.floor((h - glyphSize.height) / 2));
 
-            this._titleGlyph.setX(TITLE_H_PAD);
-            this._titleGlyph.setY(glyphY);
+            this._titleGlyph.setX(box.x + TITLE_H_PAD);
+            this._titleGlyph.setY(box.y + glyphY);
             this._titleGlyph.setWidth(glyphSize.width);
             this._titleGlyph.setHeight(glyphSize.height);
 
@@ -360,14 +366,14 @@ class DialogTitleBar extends Component {
         const labelWidth = Math.max(0, rightBound - labelX - TITLE_RIGHT_GAP);
         const labelH     = h - TITLE_V_PAD * 2;
 
-        this._titleText.setX(labelX);
-        this._titleText.setY(TITLE_V_PAD);
+        this._titleText.setX(box.x + labelX);
+        this._titleText.setY(box.y + TITLE_V_PAD);
         this._titleText.setWidth(labelWidth);
         this._titleText.setHeight(labelH);
 
         if (this._closeButton) {
-            this._closeButton.setX(closeX);
-            this._closeButton.setY(centerY);
+            this._closeButton.setX(box.x + closeX);
+            this._closeButton.setY(box.y + centerY);
             this._closeButton.setWidth(CLOSE_SIZE);
             this._closeButton.setHeight(CLOSE_SIZE);
             // setX/setY/setWidth/setHeight don't cascade — explicitly relayout the
@@ -429,22 +435,26 @@ class DialogButtonRow extends Component {
     }
 
     /**
-     * Positions buttons right-aligned within the footer row.
+     * Positions buttons right-aligned within the footer row's content box.
      *
      * @returns This component, for method chaining.
      */
     doLayout(): this {
         super.doLayout();
 
-        const w         = this.getWidth();
-        const h         = this.getHeight();
-        const btnH      = h - BUTTON_V_PAD * 2;
+        const box = this.getContentBounds();
+
+        if (!box) {
+            return this;
+        }
+
+        const btnH      = box.height - BUTTON_V_PAD * 2;
         const totalW    = this._buttons.length * BUTTON_WIDTH + (this._buttons.length - 1) * BUTTON_GAP;
-        let   x         = Math.round((w - totalW) / 2);
+        let   x         = Math.round((box.width - totalW) / 2);
 
         for (const btn of this._buttons) {
-            btn.setX(x);
-            btn.setY(BUTTON_V_PAD);
+            btn.setX(box.x + x);
+            btn.setY(box.y + BUTTON_V_PAD);
             btn.setWidth(BUTTON_WIDTH);
             btn.setHeight(btnH);
 

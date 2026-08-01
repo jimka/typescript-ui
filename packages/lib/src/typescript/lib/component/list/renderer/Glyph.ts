@@ -132,28 +132,36 @@ class GlyphListItemRenderer extends ListItemRenderer {
      * Positions the icon (vertically centred in the row) and the label. When no
      * icon is bound the label fills the full width from the left edge.
      *
-     * @param width - The horizontal extent of the row in pixels.
-     * @param height - The vertical extent of the row in pixels.
+     * Both go inside this renderer's content box, so a border or padding on the
+     * renderer shrinks them rather than being painted over.
+     *
+     * @param width - The horizontal extent of the row in pixels. Used only
+     *   while the renderer has no element yet and the content box is
+     *   unavailable.
+     * @param height - The vertical extent of the row in pixels, used under the
+     *   same condition as `width`.
      */
     layoutChildren(width: number, height: number): void {
+        const box = this.getContentBounds() ?? { x: 0, y: 0, width, height };
+
         if (this._icon) {
             this._icon.setAutoCommitStyle(false);
-            this._icon.setX(0);
-            this._icon.setY(Math.max(0, (height - ICON_SIZE) / 2));
+            this._icon.setX(box.x);
+            this._icon.setY(box.y + Math.max(0, (box.height - ICON_SIZE) / 2));
             this._icon.setWidth(ICON_SIZE);
             this._icon.setHeight(ICON_SIZE);
             this._icon.setAutoCommitStyle(true);
         }
 
-        const labelX     = this._icon ? ICON_WIDTH : 0;
-        const labelWidth = Math.max(0, width - labelX);
+        const labelX     = box.x + (this._icon ? ICON_WIDTH : 0);
+        const labelWidth = Math.max(0, box.x + box.width - labelX);
 
         this._label.setAutoCommitStyle(false);
         this._label.setX(labelX);
-        this._label.setY(0);
+        this._label.setY(box.y);
         this._label.setWidth(labelWidth);
-        this._label.setHeight(height);
-        this._label.setLineHeight(height);
+        this._label.setHeight(box.height);
+        this._label.setLineHeight(box.height);
         this._label.setAutoCommitStyle(true);
     }
 

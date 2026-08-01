@@ -3,6 +3,8 @@
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { Util } from "~/core/Util.js";
 import { Insets } from "~/primitive/Insets.js";
+import { BorderOptions } from "~/primitive/Border.js";
+import { isUnbounded } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -68,6 +70,47 @@ class TextField extends TextInput<TextFieldOptions> {
         // vertically compressed below one line; min-width 0 keeps it
         // horizontally flexible.
         this.setMinSize({ width: 0, height: h });
+    }
+
+    /**
+     * Re-derives the single-line box after a border change. The cached height
+     * includes the field's own border, so a field whose border is added or
+     * removed at runtime — as `AutoCompleteField` does to its inner field —
+     * would otherwise keep claiming a height for a border it no longer has.
+     *
+     * @remarks Rewrites heights only, never a width, and leaves an *unbounded*
+     * maximum unbounded. `updateHeight` re-pins all three to the one-line box,
+     * which is right at construction but wrong here: a caller that deliberately
+     * unpinned the field so it can fill a taller container — the string and
+     * number cell editors both do, then set a border — would have that undone by
+     * a later border change. A bounded maximum still tracks the line box in both
+     * directions, which keeps `min ≤ preferred ≤ max` consistent under a thicker
+     * border and stops a stale maximum leaking into a composite that mirrors it.
+     *
+     * @param options - The border spec, forwarded to the inherited setter.
+     * @returns This component, for method chaining.
+     */
+    setBorder(options: BorderOptions | string): this {
+        super.setBorder(options);
+
+        const h    = Util.singleLineBoxHeight(this.getInsets(), this.getPadding(), this.getBorderSize());
+        const pref = this.getPreferredSize();
+        const min  = this.getMinSize();
+        const max  = this.getMaxSize();
+
+        if (pref) {
+            this.setPreferredSize({ width: pref.width, height: h });
+        }
+
+        if (min) {
+            this.setMinSize({ width: min.width, height: h });
+        }
+
+        if (max && !isUnbounded(max.height)) {
+            this.setMaxSize({ width: max.width, height: h });
+        }
+
+        return this;
     }
 
 }
