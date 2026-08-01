@@ -57,6 +57,11 @@ tester.run("require-content-bounds", rule, {
         // arrow on the popover's OUTER edge and reads getBorderSize() to do it.
         "class C extends B { positionArrow() { const border = this.getBorderSize();"
             + " this._arrow.setX(this.getWidth() / 2 - border.left); } }",
+        // getPerimeterSize() is border-aware for the same reason getBorderSize()
+        // is: it is insets + border + padding, so it cannot be read without
+        // knowing the border. The real site is MenuItem.updateLabelHeights.
+        "class C extends B { pin() { const p = this.getPerimeterSize();"
+            + " this._label.centerInHeight(C.HEIGHT - p.top - p.bottom); } }",
         // Reading ANOTHER component's outer box to size THIS one is not a child
         // placement against this component's frame: ProgressSpinner covers an
         // overlay target by adopting its size, then places its arc separately.
@@ -136,7 +141,8 @@ tester.run("require-content-bounds", rule, {
         {
             // centerInHeight pins a child's height to the row height it is
             // handed, so passing the OUTER height is the same defect. This is
-            // MenuItem, and it happens in the constructor.
+            // the shape MenuItem's constructor had before it was fixed; the
+            // fixture keeps the shape rejected now that no site has it.
             code: "class C extends B { constructor() { super();"
                 + " this._title.centerInHeight(C.HEIGHT); } }",
             errors: [{ messageId: "outerBox" }],

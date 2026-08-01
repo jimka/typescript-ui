@@ -41,11 +41,11 @@ Glyph.register(file);
 const BORDER = "2px solid var(--ts-ui-border-color)";
 
 /**
- * The border on the bordered `MenuItem`, thicker than {@link BORDER} because
- * its defect is a *pinned minimum* rather than an overrun: its labels are 24px
- * whatever the item does, so the content box has to be well under 24 before
- * anything is cut. Two pixels leaves 20 and clips half a millimetre of
- * descender; four leaves 16 and takes a visible bite out of the text.
+ * The border on the demo `MenuItem`, thicker than {@link BORDER} because this
+ * is the thickness at which the item's now-fixed defect used to take a visible
+ * bite out of the label: at 4px the content box is 16px, and the label used to
+ * be pinned to 24px regardless. Kept at 4px so the fix stays visible here
+ * rather than only in the offline suite.
  */
 const MENU_ITEM_BORDER = "4px solid var(--ts-ui-border-color)";
 
@@ -119,8 +119,8 @@ class BorderedRowTree extends Tree {
  *
  * What to look for here: a caret, icon, spinner, picker button, or label that
  * is cut off on its right or bottom edge, or a label that starts flush against
- * the border instead of inside it. Everything in the first two rows should sit
- * fully inside its border with the frame unbroken all the way round.
+ * the border instead of inside it. Everything bordered here — all three rows —
+ * should sit fully inside its border with the frame unbroken all the way round.
  *
  * Covered: the single-line fields, the tree row, and the four public row
  * renderers. `Dialog`, `Tooltip` and `DragGhost` carry real theme borders and
@@ -129,12 +129,13 @@ class BorderedRowTree extends Tree {
  * runs anywhere in this app and a regression in it would go unseen — worth
  * adding here if it is ever touched again.
  *
- * The third row holds two components still on the lint rule's baseline. The
- * `MenuItem` misbehaves visibly: its labels are centred against its *outer*
- * height at construction, which pins their minimum, so a bordered one clips
- * their descenders. The notification is baselined for the same class of defect
- * but has gaps wide enough to absorb its 1px border, so nothing there clips —
- * it is on the panel to be measured, not looked at.
+ * The third row holds one fixed case and one still-baselined case. The
+ * `MenuItem` used to misbehave visibly — its labels were centred against its
+ * *outer* height at construction, pinning their minimum, so a bordered one
+ * clipped their descenders — and is now pinned to its content height instead,
+ * so the label and shortcut render whole. The notification is baselined for
+ * the same class of defect but has gaps wide enough to absorb its 1px border,
+ * so nothing there clips — it is on the panel to be measured, not looked at.
  *
  * The `local/require-content-bounds` ESLint rule guards the same rule
  * statically; this panel is the eye-check for the cases a lint rule cannot see,
@@ -157,31 +158,30 @@ class ContentBoxPanel extends Panel {
 
         this.addComponent(new Text(
             "Every component below carries a border. Look for a child clipped at the "
-            + "right or bottom edge, or sitting flush against the frame. The last row "
-            + "is still on the lint rule's baseline: the menu item's descenders are "
-            + "clipped on purpose.",
+            + "right or bottom edge, or sitting flush against the frame. The last row's "
+            + "second FieldSet is still on the lint rule's baseline.",
         ));
 
         this.addComponent(this.buildFieldRow());
         this.addComponent(this.buildRowRendererRow());
-        this.addComponent(this.buildBaselinedRow());
+        this.addComponent(this.buildMenuAndNotificationRow());
     }
 
     /**
-     * Builds the row of components still on the lint rule's baseline, so the
-     * open cases sit beside the fixed ones instead of being invisible.
+     * Builds the row holding the bordered `MenuItem` fixed case and the
+     * notification trigger still on the lint rule's baseline, so the open case
+     * sits beside the fixed one instead of being invisible.
      *
-     * @returns A row holding a bordered menu item and the toast trigger.
+     * @returns A row holding a bordered menu item FieldSet and a baselined
+     * notification-trigger FieldSet.
      */
-    private buildBaselinedRow(): Container {
+    private buildMenuAndNotificationRow(): Container {
         const row = Container({ layoutManager: HFlow({ spacing: 8, lineSpacing: 8 }) });
 
-        // A MenuItem centres its label and shortcut against its OUTER height at
-        // construction, which pins their minimum at 24px however little room
-        // the item has — so inside a bordered one they stand taller than the
-        // content box and their bottoms are cut. The label carries descenders
-        // so the bite is visible: the overrun lands in the line box's descender
-        // band, and a capitalised label would clip with nothing to show for it.
+        // A bordered MenuItem's content box is smaller than its 24px outer
+        // height; its labels are pinned to that content height, so a 4px
+        // border here leaves a 16px content box — exactly the natural line box
+        // at the default font — and the label and shortcut render whole.
         // Rendered standalone rather than inside a Menu, which builds its own
         // items and hands out no reference to them.
         const menuItem = MenuItem(
@@ -191,16 +191,24 @@ class ContentBoxPanel extends Panel {
             "menu-bar",
             // Sized explicitly: a MenuItem is normally stretched by the Menu
             // that owns it and collapses to nothing on its own. Wide enough for
-            // its own columns plus the border, so the only thing clipped is the
-            // height, and 24 is the MenuItem.HEIGHT the labels are pinned to.
+            // its own columns plus the border, so height was the only axis that
+            // ever clipped, and 24 is MenuItem.HEIGHT — the labels are now
+            // pinned to the 16 that leaves once the 4px border is taken off.
             { border: MENU_ITEM_BORDER, preferredSize: { width: 240, height: 24 } },
         );
 
-        row.addComponent(FieldSet("Still on the baseline", {
-            preferredSize: { width: 250, height: 120 },
+        row.addComponent(FieldSet("Bordered menu item", {
+            preferredSize: { width: 250, height: 60 },
             layoutManager: VBox(),
             components   : [
                 { component: menuItem },
+            ],
+        }));
+
+        row.addComponent(FieldSet("Still on the baseline", {
+            preferredSize: { width: 250, height: 60 },
+            layoutManager: VBox(),
+            components   : [
                 { component: Button({
                     text     : "Show a notification",
                     listeners: {

@@ -1,5 +1,4 @@
 [
-  "src/typescript/lib/component/container/MenuItem.ts:MenuItem.constructor",
   "src/typescript/lib/component/container/ScrollStrip.ts:ScrollStrip.layoutContent",
   "src/typescript/lib/component/container/Scrollbar.ts:Scrollbar.setMetrics",
   "src/typescript/lib/component/container/VirtualScroller.ts:VirtualScroller.layoutScrollbars",

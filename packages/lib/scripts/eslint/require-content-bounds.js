@@ -104,10 +104,12 @@ const OUTER_BOX_CONSTANTS = new Set(["WIDTH", "HEIGHT"]);
  * and `getBorderSize()` is the longhand — a method that subtracts the border by
  * hand (`Popover.positionArrow` centres its arrow on the popover's *outer* edge
  * and needs the border width to do it) is not blind to the border, whatever
- * else it may be. Matched per receiver: reading a *peer's* content box says
- * nothing about this component's own.
+ * else it may be. `getPerimeterSize()` joins them for the same reason: it is
+ * defined as insets plus border plus padding per side, so a method that reads
+ * it cannot be computed without the border either. Matched per receiver:
+ * reading a *peer's* content box says nothing about this component's own.
  */
-const BORDER_AWARE_READS = new Set(["getContentBounds", "getBorderSize"]);
+const BORDER_AWARE_READS = new Set(["getContentBounds", "getBorderSize", "getPerimeterSize"]);
 
 /**
  * Reads that fix only the ORIGIN. `getContentInsets()` deliberately excludes
