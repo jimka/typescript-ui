@@ -70,13 +70,23 @@ export abstract class ListItemRenderer extends Component {
     }
 
     /**
-     * Positions this renderer's internal children within the given box.
+     * Positions this renderer's internal children inside its content box.
      *
      * @param width - The horizontal extent of the renderer in pixels.
      * @param height - The vertical extent of the renderer in pixels.
      *
      * @remarks Called by the owning row after the renderer's own size has been
      * set via `setX` / `setY` / `setWidth` / `setHeight`.
+     *
+     * The `width` and `height` arguments are this renderer's **outer** box, so
+     * an implementation must not place children against them directly: take the
+     * rectangle from [`getContentBounds()`](/api/core/classes/Component), which
+     * subtracts any border and padding the renderer carries, and fall back to
+     * the arguments only when it returns `null` (no element yet). A child's
+     * containing block is already this renderer's padding box, so one placed
+     * at `(0, 0)` sized to `width` / `height` starts inside the border and
+     * overruns the opposite edge by its width, where the `overflow: hidden`
+     * every component carries clips it.
      */
     abstract layoutChildren(width: number, height: number): void;
 }

@@ -224,17 +224,25 @@ export class Tooltip extends Component {
 
         inst._perLine = inst._perLineHeight();
 
+        // The label is laid out inside the content box, so the tooltip's own
+        // border has to be added on top of the text box it needs — otherwise
+        // the border eats into the measured width and the last word wraps.
+        const perimeter = inst.getPerimeterSize();
+        const chromeW   = perimeter.left + perimeter.right;
+        const chromeH   = perimeter.top  + perimeter.bottom;
+
         // No minimum width — the tooltip hugs its content (widest line plus
         // horizontal padding), capped at MAX_WIDTH. A min-width floor would
-        // pad short labels out to a fixed box wider than their text.
-        const tooltipWidth  = Math.min(Tooltip.MAX_WIDTH, widestLine + Tooltip.H_PADDING);
+        // pad short labels out to a fixed box wider than their text. MAX_WIDTH
+        // stays an outer cap.
+        const tooltipWidth  = Math.min(Tooltip.MAX_WIDTH, widestLine + Tooltip.H_PADDING + chromeW);
 
         // When the widest line is wider than the cap, the label soft-wraps at the
         // available text width, so the visual line count exceeds the `\n`-split
         // count. Measure the wrapped height at that width and derive the real line
         // count; an uncapped tooltip never wraps, so the split count stands.
-        if (widestLine + Tooltip.H_PADDING > Tooltip.MAX_WIDTH) {
-            const availTextWidth = tooltipWidth - Tooltip.H_PADDING;
+        if (widestLine + Tooltip.H_PADDING + chromeW > Tooltip.MAX_WIDTH) {
+            const availTextWidth = tooltipWidth - Tooltip.H_PADDING - chromeW;
             const wrappedHeight  = DOM.source.measureText(text, { maxWidth: availTextWidth }).height;
             inst._lineCount      = Math.max(lines.length, Math.round(wrappedHeight / inst._perLine));
         } else {
@@ -249,6 +257,10 @@ export class Tooltip extends Component {
         if (inst._lineCount === 1) {
             tooltipHeight = Math.max(tooltipHeight, Tooltip.ITEM_HEIGHT + Tooltip.V_PADDING);
         }
+
+        // Added after the single-line floor so the floor keeps meaning "one
+        // line of text" rather than "one line of text minus the border".
+        tooltipHeight += chromeH;
 
         inst.setWidth(tooltipWidth);
         inst.setHeight(tooltipHeight);
@@ -612,16 +624,23 @@ export class Tooltip extends Component {
     }
 
     /**
-     * Positions the label to fill the tooltip body with uniform padding.
+     * Positions the label to fill the tooltip's content box with uniform
+     * padding, so the label does not overhang the tooltip's border.
      *
      * @returns This component, for method chaining.
      */
     doLayout(): this {
         super.doLayout();
 
-        this._text.setX(Tooltip.H_PADDING / 2);
-        this._text.setY(Tooltip.V_PADDING / 2);
-        this._text.setWidth(Math.max(0, this.getWidth() - Tooltip.H_PADDING));
+        const box = this.getContentBounds();
+
+        if (!box) {
+            return this;
+        }
+
+        this._text.setX(box.x + Tooltip.H_PADDING / 2);
+        this._text.setY(box.y + Tooltip.V_PADDING / 2);
+        this._text.setWidth(Math.max(0, box.width - Tooltip.H_PADDING));
         this._text.setHeight(this._lineCount * this._perLine);
 
         return this;

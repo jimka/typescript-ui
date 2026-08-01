@@ -8,6 +8,7 @@ import { TextField } from "~/component/input/TextField.js";
 import { AutoCompleteDropdown } from "~/component/input/AutoCompleteDropdown.js";
 import { registerFocusWithinRing } from "~/component/input/focusRing.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
+import { saturate } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 
 // Focus ring highlighting the composite root whenever the inner TextField is
@@ -188,25 +189,45 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
      * Mirrors the preferred, max, and min size from the inner [`TextField`](/api/component/input/classes/TextField) onto this component
      * so that parent layout managers can calculate the correct row height.
      *
+     * The inner field is sized to this component's *content* box, so each
+     * mirrored **height** gains this component's own perimeter; widths stay
+     * mirrored (see below). Reporting the bare
+     * inner size instead would let a parent squeeze the composite to it, and
+     * the clamp would hand the inner field back a box its own minimum overflows
+     * — re-creating through the size hints exactly the clipping `doLayout` now
+     * avoids.
+     *
      * Called at construction time and after each theme change.
      */
     private syncSizeFromTextField(): void {
+        const perimeter  = this.getPerimeterSize();
+        const horizontal = perimeter.left + perimeter.right;
+        const vertical   = perimeter.top  + perimeter.bottom;
+
         const pref = this._textField.getPreferredSize();
         const max  = this._textField.getMaxSize();
         const min  = this._textField.getMinSize();
 
         if (pref) {
-            this.setPreferredSize({ width: pref.width, height: pref.height });
+            // Height gains this component's perimeter, width does not. The
+            // inner field's height is derived from its own border and drops by
+            // it, so adding the perimeter back restores parity with a bare
+            // TextField; its width is a flat constant that does not move, so
+            // adding the perimeter there would make the composite 2px wider
+            // than a sibling field and break preferred-width column alignment.
+            this.setPreferredSize({ width: pref.width, height: pref.height + vertical });
         }
 
         if (max) {
-            this.setMaxSize({ width: max.width, height: max.height });
+            this.setMaxSize({ width: saturate(max.width + horizontal), height: saturate(max.height + vertical) });
         }
 
         // Mirrors the inner field's min so the composite is non-squishable
-        // like a bare TextField, not just visually preferred at one line.
+        // like a bare TextField, not just visually preferred at one line. Min
+        // width stays mirrored: the inner field pins min-width 0 on purpose so
+        // the composite stays horizontally flexible.
         if (min) {
-            this.setMinSize({ width: min.width, height: min.height });
+            this.setMinSize({ width: min.width, height: min.height + vertical });
         }
     }
 
@@ -215,26 +236,35 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
      *
      * @returns The baseline offset in pixels, or `null` when the text field has no baseline.
      *
-     * @remarks `doLayout` places the inner [`TextField`](/api/component/input/classes/TextField) at `(0, 0)` to fill this
-     * component, so this baseline excludes `insets` (which are not used to
-     * position the child) and only adds the component's own border.
+     * @remarks `doLayout` places the inner [`TextField`](/api/component/input/classes/TextField) at the content-box
+     * origin, so the child is already offset by this component's insets, border
+     * and padding — exactly the sum `wrapInnerBaseline` re-adds to the inner
+     * field's own baseline.
      */
     getBaseline(): number | null {
         return this.wrapInnerBaseline(this._textField.getBaseline());
     }
 
     /**
-     * Lays out the internal text field to fill the container exactly.
+     * Lays out the internal text field to fill this component's content box —
+     * the outer box less this component's own border — so the inner field does
+     * not overhang the border and get clipped.
      *
      * @returns This component, for method chaining.
      */
     doLayout(): this {
         super.doLayout();
 
-        this._textField.setX(0);
-        this._textField.setY(0);
-        this._textField.setWidth(this.getWidth());
-        this._textField.setHeight(this.getHeight());
+        const box = this.getContentBounds();
+
+        if (!box) {
+            return this;
+        }
+
+        this._textField.setX(box.x);
+        this._textField.setY(box.y);
+        this._textField.setWidth(box.width);
+        this._textField.setHeight(box.height);
 
         return this;
     }

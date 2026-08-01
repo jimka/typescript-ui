@@ -187,22 +187,32 @@ class TreeRow extends Component {
     }
 
     /**
-     * Positions the toggle and renderer sub-components within the row's bounds.
+     * Positions the toggle and renderer sub-components inside the row's content
+     * box — the rectangle {@link Component.getContentBounds} returns, which a
+     * border or padding on the row shrinks. Placing them against the row's outer
+     * box instead makes the renderer overflow on both axes, and the row's
+     * `overflow: hidden` clips it.
      *
-     * @param rowHeight - The current height of this row in pixels.
+     * @param rowHeight - The current height of this row in pixels. Used only
+     *   while the row has no element yet and the content box is unavailable;
+     *   otherwise the children's height comes from the content box, which is
+     *   this same height less the row's own border and padding.
      * @param indentPx - Pixels of indentation per depth level.
      */
     layoutChildren(rowHeight: number, indentPx: number): void {
-        const indent = this._depth * indentPx;
+        const box = this.getContentBounds()
+                 ?? { x: 0, y: 0, width: this.getWidth() || 0, height: rowHeight };
+
+        const indent = box.x + this._depth * indentPx;
 
         if (this._toggle) {
             // The caret is a rigid SVG Glyph (min/max pinned to its 16×16
             // preferredSize), so it cannot fill the taller row — centre it
             // geometrically instead of relying on line-height (a no-op for SVG).
-            const glyphHeight = this._toggle.getPreferredSize()?.height ?? rowHeight;
+            const glyphHeight = this._toggle.getPreferredSize()?.height ?? box.height;
             this._toggle.setAutoCommitStyle(false);
             this._toggle.setX(indent);
-            this._toggle.setY(Math.max(0, (rowHeight - glyphHeight) / 2));
+            this._toggle.setY(box.y + Math.max(0, (box.height - glyphHeight) / 2));
             this._toggle.setWidth(TOGGLE_WIDTH);
             this._toggle.setHeight(glyphHeight);
             this._toggle.setAutoCommitStyle(true);
@@ -211,9 +221,9 @@ class TreeRow extends Component {
         if (this._spinner) {
             this._spinner.setAutoCommitStyle(false);
             this._spinner.setX(indent);
-            this._spinner.setY(0);
+            this._spinner.setY(box.y);
             this._spinner.setWidth(TOGGLE_WIDTH);
-            this._spinner.setHeight(rowHeight);
+            this._spinner.setHeight(box.height);
             this._spinner.setAutoCommitStyle(true);
 
             // The spinner owns its inner arc, which only positions itself when
@@ -222,18 +232,17 @@ class TreeRow extends Component {
             this._spinner.doLayout();
         }
 
-        const labelX     = indent + TOGGLE_WIDTH;
-        const rowWidth   = this.getWidth() || 0;
-        const labelBoxW  = Math.max(0, rowWidth - labelX);
+        const labelX    = indent + TOGGLE_WIDTH;
+        const labelBoxW = Math.max(0, box.x + box.width - labelX);
 
         this._renderer.setAutoCommitStyle(false);
         this._renderer.setX(labelX);
-        this._renderer.setY(0);
+        this._renderer.setY(box.y);
         this._renderer.setWidth(labelBoxW);
-        this._renderer.setHeight(rowHeight);
+        this._renderer.setHeight(box.height);
         this._renderer.setAutoCommitStyle(true);
 
-        this._renderer.layoutChildren(labelBoxW, rowHeight);
+        this._renderer.layoutChildren(labelBoxW, box.height);
     }
 
     /**

@@ -112,21 +112,20 @@ class DragGhost extends Component {
     }
 
     /**
-     * Lays out the optional label inside the ghost body.
+     * Lays out the optional label inside the ghost's content box.
      *
      * @returns This component, for method chaining.
      */
     doLayout(): this {
         super.doLayout();
 
-        if (this._label) {
-            const w = this.getWidth();
-            const h = this.getHeight();
+        const box = this.getContentBounds();
 
-            this._label.setX(LABEL_INSET);
-            this._label.setY(LABEL_INSET);
-            this._label.setWidth(w - LABEL_INSET * 2);
-            this._label.setHeight(h - LABEL_INSET * 2);
+        if (this._label && box) {
+            this._label.setX(box.x + LABEL_INSET);
+            this._label.setY(box.y + LABEL_INSET);
+            this._label.setWidth(box.width - LABEL_INSET * 2);
+            this._label.setHeight(box.height - LABEL_INSET * 2);
         }
 
         return this;

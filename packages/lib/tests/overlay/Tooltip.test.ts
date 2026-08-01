@@ -21,6 +21,11 @@ const H_PADDING   = 16;
 const V_PADDING   = 8;
 const MAX_WIDTH   = 300;
 const ITEM_HEIGHT = 20;
+// The tooltip's own 1px border. Its label is laid out inside the content box,
+// so the outer box carries the text box plus this perimeter; MAX_WIDTH remains
+// an outer cap.
+const CHROME_W    = 2;
+const CHROME_H    = 2;
 
 // The cursor clearance box, mirrored from Tooltip's private statics. It is
 // anchored on the pointer hotspot and asymmetric about it, because the glyph
@@ -81,7 +86,7 @@ describe('Tooltip.show', () => {
 
         Tooltip.show(text, 100, 100);
 
-        expect(inst().getWidth()).toBe(Math.min(MAX_WIDTH, widestLine + H_PADDING));
+        expect(inst().getWidth()).toBe(Math.min(MAX_WIDTH, widestLine + H_PADDING + CHROME_W));
     });
 
     it('floors a single-line tooltip height to ITEM_HEIGHT + V_PADDING', () => {
@@ -92,7 +97,7 @@ describe('Tooltip.show', () => {
         // lineCount === 1, so height = max(1*perLine + V_PADDING,
         // ITEM_HEIGHT + V_PADDING). With perLine (16) < ITEM_HEIGHT (20) the
         // floor wins.
-        const expected = Math.max(perLine() + V_PADDING, ITEM_HEIGHT + V_PADDING);
+        const expected = Math.max(perLine() + V_PADDING, ITEM_HEIGHT + V_PADDING) + CHROME_H;
 
         expect(inst().getHeight()).toBe(expected);
     });
@@ -107,9 +112,9 @@ describe('Tooltip.show', () => {
 
         const widestLine = Util.measureTextWidth('Hello');
 
-        expect(inst().getWidth()).toBe(Math.min(MAX_WIDTH, widestLine + H_PADDING));
+        expect(inst().getWidth()).toBe(Math.min(MAX_WIDTH, widestLine + H_PADDING + CHROME_W));
         // Height tracks the 3 explicit lines (no floor — multi-line path).
-        expect(inst().getHeight()).toBe(3 * perLine() + V_PADDING);
+        expect(inst().getHeight()).toBe(3 * perLine() + V_PADDING + CHROME_H);
     });
 
     it('caps the width at MAX_WIDTH for over-wide text', () => {

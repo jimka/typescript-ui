@@ -74,18 +74,25 @@ export class LabelTreeNodeRenderer extends TreeNodeRenderer {
      * Sizes the label to fill the renderer's allocated box and centres its
      * line-box vertically by matching `line-height` to the row height.
      *
+     * The label goes inside this renderer's content box, so a border or padding
+     * on the renderer shrinks it rather than being painted over.
+     *
      * @param _width - Unused; the label sizes to its natural content width.
-     * @param height - The vertical extent of the row in pixels.
+     * @param height - The vertical extent of the row in pixels. Used only while
+     *   the renderer has no element yet and the content box is unavailable.
      */
     layoutChildren(_width: number, height: number): void {
+        // No `width` in the fallback: this renderer never reads the box's
+        // width, so the argument stays genuinely unused.
+        const box        = this.getContentBounds() ?? { x: 0, y: 0, height };
         const labelWidth = this.getContentWidth();
 
         this._label.setAutoCommitStyle(false);
-        this._label.setX(0);
-        this._label.setY(0);
+        this._label.setX(box.x);
+        this._label.setY(box.y);
         this._label.setWidth(labelWidth);
-        this._label.setHeight(height);
-        this._label.setLineHeight(height);
+        this._label.setHeight(box.height);
+        this._label.setLineHeight(box.height);
         this._label.setAutoCommitStyle(true);
     }
 

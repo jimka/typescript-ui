@@ -40,6 +40,10 @@ class NumberEditor extends CellEditor<Number | null> {
         Event.addListener(this._textField, "input", () => this.onInput());
 
         this.setMaxSize({ width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER });
+        // The inner field's max is unpinned too, matching StringEditor: the
+        // field has to fill the cell, and a TextField otherwise pins its max to
+        // its own one-line box.
+        this._textField.setMaxSize({ width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER });
         this._textField.clearPadding();
         this.setBorderRadius("0");
         this._textField.setBorder({ border: "0px solid transparent" });
