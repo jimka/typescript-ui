@@ -3,8 +3,8 @@
 // A column that supplies a `renderer` factory routes every cell to a
 // display-only Cell wrapping a fresh renderer from the factory, overriding both
 // the `values` (combo) routing and the field-type switch. Row builds one cell
-// per field in its constructor via the private createCellForField, so
-// constructing a Row exercises the routing end-to-end.
+// per column in its current column window via the private createCellForField,
+// so windowing a Row exercises the routing end-to-end.
 //
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
@@ -52,7 +52,9 @@ class CapturingRenderer extends CellRenderer<String | null> {
 }
 
 /** Maps the row's cells to their backing field name via layout constraints. */
-function cellsByField(row: Row): Map<string, Cell<any>> {
+function cellsByField(row: Row, columnCount: number): Map<string, Cell<any>> {
+    row.setColumnWindow(0, columnCount - 1);
+
     const map = new Map<string, Cell<any>>();
 
     for (const cell of row.getComponents() as Cell<any>[]) {
@@ -80,7 +82,7 @@ describe('ColumnConfig.renderer routing', () => {
             ['ref', { field: 'ref', renderer: () => { built++; return new CapturingRenderer(); } }],
         ]);
 
-        const cells = cellsByField(new Row(MODEL, undefined, new Set(), configs));
+        const cells = cellsByField(new Row(MODEL, undefined, new Set(), configs), 2);
 
         // The factory built the custom renderer for the `ref` cell; `note` keeps
         // its field-type StringCell.
@@ -94,7 +96,7 @@ describe('ColumnConfig.renderer routing', () => {
             ['ref', { field: 'ref', renderer: () => new CapturingRenderer() }],
         ]);
 
-        const cells = cellsByField(new Row(MODEL, recordFor('orders'), new Set(), configs));
+        const cells = cellsByField(new Row(MODEL, recordFor('orders'), new Set(), configs), 2);
 
         expect(cells.get('ref')!.getRenderer().getValue()).toBe('orders');
     });
@@ -104,7 +106,7 @@ describe('ColumnConfig.renderer routing', () => {
             ['ref', { field: 'ref', renderer: () => new CapturingRenderer() }],
         ]);
 
-        const cell = cellsByField(new Row(MODEL, undefined, new Set(), configs)).get('ref')!;
+        const cell = cellsByField(new Row(MODEL, undefined, new Set(), configs), 2).get('ref')!;
 
         // No pool key and no per-cell editor, so startEdit bails without opening.
         expect(cell.getEditorKey()).toBe(null);
@@ -117,7 +119,7 @@ describe('ColumnConfig.renderer routing', () => {
             ['ref', { field: 'ref', values: ['a', 'b'], renderer: () => new CapturingRenderer() }],
         ]);
 
-        const cell = cellsByField(new Row(MODEL, undefined, new Set(), configs)).get('ref')!;
+        const cell = cellsByField(new Row(MODEL, undefined, new Set(), configs), 2).get('ref')!;
 
         // Renderer wins over the combo routing.
         expect(cell.getRenderer()).toBeInstanceOf(CapturingRenderer);
@@ -165,7 +167,7 @@ describe('LinkCellRenderer', () => {
             ['ref', { field: 'ref', renderer: () => new LinkCellRenderer() }],
         ]);
 
-        const cell = cellsByField(new Row(MODEL, recordFor('orders'), new Set(), configs)).get('ref')!;
+        const cell = cellsByField(new Row(MODEL, recordFor('orders'), new Set(), configs), 2).get('ref')!;
 
         expect(cell.getRenderer()).toBeInstanceOf(LinkCellRenderer);
         expect(cell.getEditorKey()).toBe(null);

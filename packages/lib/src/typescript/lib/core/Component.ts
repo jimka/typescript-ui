@@ -210,7 +210,15 @@ function flushPendingLayouts() {
             p = p.getParentComponent();
         }
 
-        if (!hasDirtyAncestor) {
+        // An earlier entry's doLayout() can synchronously dispose a component
+        // still waiting later in this same snapshot — e.g. a table's real
+        // layout (Body.renderWindow) discarding a pooled cell whose renderer
+        // had already scheduled a layout during construction. `pendingLayouts.
+        // delete(this)` in destructor() only protects against the *next*
+        // flush; a disposal mid-flush leaves this snapshot stale. Skip a
+        // disposed (or never-rendered) component rather than laying out a
+        // corpse — mirrors flushPendingVisibility's same guard, above.
+        if (!hasDirtyAncestor && c.getElement()) {
             c.doLayout();
         }
     }

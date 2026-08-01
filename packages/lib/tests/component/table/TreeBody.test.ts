@@ -17,6 +17,7 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { TreeBody } from '~/component/table/TreeBody';
+import { TreeCellRenderer } from '~/component/table/cell/renderer/TreeCell';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ModelRecord } from '~/data/ModelRecord';
@@ -217,5 +218,70 @@ describe('TreeBody moveFocusTo — selection event fires only on a real change',
         (tb as any).moveFocusTo(rec(tb, 1));
 
         expect(emitted).toBe(1);
+    });
+});
+
+// Column virtualization (table-column-virtualization plan): unlike the flat
+// relation coverage above, this needs the heavy virtual-scroll / row-pool
+// render tier — the tree column is windowed like any other column, so its
+// cell must vanish and reappear as it scrolls out of and back into view.
+// See the plan's `## Expected Behaviour` (tree-column cases).
+describe('TreeBody column window — tree column scrolling', () => {
+    // `name` (the tree column) plus 19 filler string columns = 20 visible
+    // columns at 100px, mirroring Body.test.ts's wide-table windowing math
+    // (COLUMN_BUFFER = 2, viewport 250): scrollX 0 -> window [0,4]; the
+    // clamped max scrollX -> window [15,19]. `id` / `parent` are hidden so
+    // `name` lands at visible-column index 0.
+    const WIDE_FIELDS = [
+        { name: 'id',     type: 'number' as const, order: 0 },
+        { name: 'parent', type: 'number' as const, order: 1 },
+        { name: 'name',   type: 'string' as const, order: 2 },
+        ...Array.from({ length: 19 }, (_, i) => ({ name: `col${i}`, type: 'string' as const, order: i + 3 })),
+    ];
+    const WIDE_MODEL = new Model(WIDE_FIELDS, 'id');
+    const WIDE_SPEC  = { idField: 'id', parentField: 'parent', treeColumn: 'name', indentPx: 16 };
+
+    function wideTreeBody(): TreeBody {
+        const row: Record<string, any> = { id: 1, parent: null, name: 'root' };
+        for (let i = 0; i < 19; i++) {
+            row[`col${i}`] = `v${i}`;
+        }
+
+        const store = new MemoryStore(WIDE_MODEL, []);
+        store.loadData([row]);
+
+        const tb = new TreeBody(store, WIDE_SPEC);
+        tb.setHiddenColumns(new Set(['id', 'parent']));
+        tb.getElement(true);
+        tb.setWidth(250);
+        tb.setHeight(100);
+        tb.renderWindow(250, Array(20).fill(100));
+
+        return tb;
+    }
+
+    it('scrolling the tree column out of the window: getTreeCell() is null and the render completes', () => {
+        const tb  = wideTreeBody();
+        const row = (tb as any).getRowPool()[0];
+
+        expect(row.getTreeCell()).not.toBeNull();
+
+        expect(() => (tb as any)._scroller.setScrollX(1750)).not.toThrow();
+
+        expect(row.getTreeCell()).toBeNull();
+    });
+
+    it('scrolling the tree column back in restores a cell whose renderer is a TreeCellRenderer', () => {
+        const tb  = wideTreeBody();
+        const row = (tb as any).getRowPool()[0];
+
+        (tb as any)._scroller.setScrollX(1750);
+        expect(row.getTreeCell()).toBeNull();
+
+        (tb as any)._scroller.setScrollX(0);
+
+        const treeCell = row.getTreeCell();
+        expect(treeCell).not.toBeNull();
+        expect(treeCell!.getRenderer()).toBeInstanceOf(TreeCellRenderer);
     });
 });

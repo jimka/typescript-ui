@@ -18,7 +18,9 @@ import { Body, resolveClickedColumn } from '~/component/table/Body';
 import type { CellClickEvent } from '~/component/table/Body';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
-import type { Cell } from '~/component/table/cell/Cell';
+import { Cell } from '~/component/table/cell/Cell';
+import { ComboCell } from '~/component/table/cell/Combo';
+import { NumberCell } from '~/component/table/cell/Number';
 import type { ColumnConfig } from '~/component/table/ColumnConfig';
 
 const CONFIG = {
@@ -631,5 +633,311 @@ describe('Body required-empty cell outline resolution', () => {
 
         const cell = newRow[newFields.indexOf('plainField')];
         expect(cell.getShadow()).toBeNull();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Column virtualization (table-column-virtualization plan). Rendered-set,
+// sliding-window, per-cell-state-on-entry, column-set-change, editing, and
+// keyboard coverage — see the plan's `## Expected Behaviour`.
+// ---------------------------------------------------------------------------
+
+/** Builds a Model with `n` 100px-friendly string columns `c0`..`c{n-1}`, with per-index type overrides. */
+function wideModel(n: number, types: Record<number, string> = {}): Model {
+    const fields = [];
+
+    for (let i = 0; i < n; i++) {
+        fields.push({ name: `c${i}`, type: (types[i] ?? 'string') as any, order: i });
+    }
+
+    return new Model(fields, 'c0');
+}
+
+/**
+ * Builds a materialised Body over `columnCount` 100px-wide columns bound to
+ * one record, rendered at `viewportWidth`. `scrollX`, when non-zero, is
+ * applied through the real `VirtualScroller` after the initial render —
+ * mirroring a real horizontal scroll, so it drives the same re-render path
+ * a wheel gesture does.
+ */
+async function wideBody(
+    columnCount: number,
+    viewportWidth: number,
+    scrollX: number = 0,
+    opts?: { types?: Record<number, string>; configs?: Map<string, ColumnConfig>; blankFields?: number[] },
+): Promise<Body> {
+    const model = wideModel(columnCount, opts?.types ?? {});
+    const blank = new Set(opts?.blankFields ?? []);
+    const row: Record<string, any> = {};
+
+    for (let i = 0; i < columnCount; i++) {
+        row[`c${i}`] = blank.has(i) ? '' : `v${i}`;
+    }
+
+    const store = new MemoryStore(model, [row]);
+    await store.load();
+
+    const b = new Body(store);
+
+    if (opts?.configs) {
+        b.setColumnConfigs(opts.configs);
+    }
+
+    b.getElement(true);
+    b.setWidth(viewportWidth);
+    b.setHeight(100);
+    b.renderWindow(viewportWidth, Array(columnCount).fill(100));
+
+    if (scrollX !== 0) {
+        (b as any)._scroller.setScrollX(scrollX);
+    }
+
+    return b;
+}
+
+describe('Column window — rendered cell set', () => {
+    it('renders raw-visible columns plus COLUMN_BUFFER on each side, clamped at 0 — not every column', async () => {
+        const b   = await wideBody(20, 300, 0);
+        const row = (b as any).getRowPool()[0];
+
+        expect(row.getComponents().length).toBe(6);
+        expect(row.getColumnWindowStart()).toBe(0);
+    });
+
+    it('renders every column when the table fits the viewport; getColumnWindowStart is 0', async () => {
+        const b   = await wideBody(3, 300, 0);
+        const row = (b as any).getRowPool()[0];
+
+        expect(row.getComponents().length).toBe(3);
+        expect(row.getColumnWindowStart()).toBe(0);
+    });
+
+    it('getFieldNames() is index-aligned with getComponents(), naming column windowStart+s at slot s', async () => {
+        const b     = await wideBody(20, 300, 0);
+        const row   = (b as any).getRowPool()[0];
+        const start = row.getColumnWindowStart();
+
+        expect(row.getFieldNames().length).toBe(row.getComponents().length);
+        row.getFieldNames().forEach((name: string, s: number) => {
+            expect(name).toBe(`c${start + s}`);
+        });
+    });
+});
+
+describe('Column window — sliding', () => {
+    it('crossing a column boundary advances getColumnWindowStart and leaves the rendered cell count unchanged', async () => {
+        const b = await wideBody(20, 250, 300);
+        const row = (b as any).getRowPool()[0];
+        const beforeCount = row.getComponents().length;
+        const beforeStart = row.getColumnWindowStart();
+
+        (b as any)._scroller.setScrollX(400);
+
+        expect(row.getColumnWindowStart()).toBe(beforeStart + 1);
+        expect(row.getComponents().length).toBe(beforeCount);
+    });
+
+    it('a one-column slide over same-typed columns reuses the departing cell for the entering column', async () => {
+        const b = await wideBody(20, 250, 300);
+        const row = (b as any).getRowPool()[0];
+        const departingCell = row.getComponents()[0]; // slot 0 -> column 0, about to leave
+
+        (b as any)._scroller.setScrollX(400);
+
+        const enteringCell = row.getComponents()[row.getComponents().length - 1]; // new last slot -> column 8
+        expect(enteringCell).toBe(departingCell);
+    });
+
+    it('a one-column slide where the entering column is a different type builds a fresh cell and disposes the departing one', async () => {
+        const b = await wideBody(20, 250, 300, { types: { 8: 'number' } });
+        const row = (b as any).getRowPool()[0];
+        const departingCell = row.getComponents()[0]; // column 0 (string), about to leave
+
+        (b as any)._scroller.setScrollX(400);
+
+        const enteringCell = row.getComponents()[row.getComponents().length - 1]; // column 8 (number)
+        expect(enteringCell).toBeInstanceOf(NumberCell);
+        expect((enteringCell as NumberCell).getEditorKey()).toBe('number');
+        // Component.destructor clears the child array; a bare removeComponent leaves it attached.
+        expect(departingCell.getComponents().length).toBe(0);
+    });
+
+    it('after any slide, aria colIndex equals the column index + 1 for every rendered cell', async () => {
+        const b = await wideBody(20, 250, 300);
+        const row = (b as any).getRowPool()[0];
+
+        (b as any)._scroller.setScrollX(400);
+
+        const start = row.getColumnWindowStart();
+        row.getComponents().forEach((cell: Cell<any>, s: number) => {
+            expect(cell.getAria().getColIndex()).toBe(start + s + 1);
+        });
+    });
+});
+
+describe('Column window — per-cell state on entry', () => {
+    it('a readOnly column scrolling into the window is read-only immediately, without the row rebinding', async () => {
+        const configs = new Map<string, ColumnConfig>([['c10', { field: 'c10', readOnly: true }]]);
+        const b   = await wideBody(20, 250, 0, { configs });
+        const row = (b as any).getRowPool()[0];
+
+        expect(row.getFieldNames()).not.toContain('c10');
+
+        (b as any)._scroller.setScrollX(550); // window [3,10] — c10 scrolls in
+
+        const idx = row.getFieldNames().indexOf('c10');
+        expect(idx).toBeGreaterThanOrEqual(0);
+        expect((row.getComponents()[idx] as Cell<any>).isReadOnly()).toBe(true);
+    });
+
+    it('a required column with an empty bound value shows the required outline as soon as it scrolls into the window', async () => {
+        const REQUIRED_OUTLINE = 'inset 0 0 0 1px var(--ts-ui-table-cell-required-outline, rgba(220, 60, 60, 0.6))';
+        const configs = new Map<string, ColumnConfig>([['c10', { field: 'c10', required: true }]]);
+        const b   = await wideBody(20, 250, 0, { configs, blankFields: [10] });
+        const row = (b as any).getRowPool()[0];
+
+        (b as any)._scroller.setScrollX(550); // window [3,10] — c10 scrolls in
+
+        const idx  = row.getFieldNames().indexOf('c10');
+        const cell = row.getComponents()[idx] as Cell<any>;
+        expect(cell.getShadow()).toBe(REQUIRED_OUTLINE);
+    });
+
+    it('a recycled cell entering a column with no groupColor loses the previous column\'s group tint', async () => {
+        const configs = new Map<string, ColumnConfig>([['c0', { field: 'c0', groupColor: 'rgb(9,9,9)' }]]);
+        const b   = await wideBody(20, 250, 300, { configs }); // window [0,7]
+        const row = (b as any).getRowPool()[0];
+
+        expect((row.getComponents()[0] as Cell<any>).getBackgroundColor()).toBe('rgb(9,9,9)');
+
+        (b as any)._scroller.setScrollX(400); // c0 (groupColor) departs; c8 (no groupColor, same key) enters, recycled
+
+        const recycled = row.getComponents()[row.getComponents().length - 1] as Cell<any>;
+        expect(recycled.getBackgroundColor()).toBe('var(--ts-ui-table-cell-bg, transparent)');
+    });
+});
+
+describe('Column window — column-set changes', () => {
+    it('hiding a middle column leaves surviving cells\' instances unchanged and drops the hidden field from the rendered set', async () => {
+        const b   = await wideBody(4, 400, 0); // 4x100 fits the 400px viewport — every column renders
+        const row = (b as any).getRowPool()[0];
+        const before = new Map(row.getFieldNames().map((n: string, i: number) => [n, row.getComponents()[i]]));
+
+        b.setHiddenColumns(new Set(['c1']));
+
+        expect(row.getFieldNames()).not.toContain('c1');
+        for (const name of ['c0', 'c2', 'c3']) {
+            const idx = row.getFieldNames().indexOf(name);
+            expect(row.getComponents()[idx]).toBe(before.get(name));
+        }
+    });
+
+    it('setColumnConfigs adding `values` to a column replaces that column\'s cell with a ComboCell', async () => {
+        const b   = await wideBody(4, 400, 0);
+        const row = (b as any).getRowPool()[0];
+
+        b.setColumnConfigs(new Map<string, ColumnConfig>([['c1', { field: 'c1', values: ['a', 'b'] }]]));
+
+        const idx = row.getFieldNames().indexOf('c1');
+        expect(row.getComponents()[idx]).toBeInstanceOf(ComboCell);
+    });
+});
+
+describe('Column window — editing', () => {
+    it('a scroll that pushes an editing cell\'s column out of the window commits it and updates the record', async () => {
+        const b    = await wideBody(20, 250, 0); // window [0,4]
+        const row  = (b as any).getRowPool()[0];
+        const cell = row.getComponents()[0] as Cell<any>;
+
+        cell.startEdit();
+        (cell as any)._activeEditor.setValue('edited');
+
+        (b as any)._scroller.setScrollX(1750); // window [15,19] — c0 scrolls out
+
+        expect(cell.isEditing()).toBe(false);
+        expect(row.getData()?.get('c0')).toBe('edited');
+    });
+
+    it('the commit-on-scroll-out does not recurse — renderWindow completes and the pool stays intact', async () => {
+        const b    = await wideBody(20, 250, 0);
+        const row  = (b as any).getRowPool()[0];
+        const cell = row.getComponents()[0] as Cell<any>;
+        const poolSizeBefore = (b as any).getRowPool().length;
+
+        cell.startEdit();
+        (cell as any)._activeEditor.setValue('edited');
+
+        expect(() => (b as any)._scroller.setScrollX(1750)).not.toThrow();
+
+        expect((b as any).getRowPool().length).toBe(poolSizeBefore);
+        expect((b as any)._reconciling).toBe(false);
+    });
+});
+
+describe('Column window — keyboard column navigation', () => {
+    it('ArrowRight past the right edge scrolls the body and keeps the focused column inside the rendered set', async () => {
+        const b    = await wideBody(20, 250, 0);
+        const priv = b as any;
+
+        for (let i = 0; i < 6; i++) {
+            priv.onKeyDown({ key: 'ArrowRight', preventDefault: () => {} });
+        }
+
+        expect(priv._scroller.getScrollX()).toBeGreaterThan(0);
+
+        const row   = priv.getRowPool()[0];
+        const start = row.getColumnWindowStart();
+        expect(priv._focusedColIndex).toBeGreaterThanOrEqual(start);
+        expect(priv._focusedColIndex).toBeLessThan(start + row.getComponents().length);
+    });
+
+    it('ArrowLeft at column 0 clamps and does not scroll', async () => {
+        const b    = await wideBody(20, 250, 0);
+        const priv = b as any;
+
+        priv.onKeyDown({ key: 'ArrowLeft', preventDefault: () => {} });
+
+        expect(priv._focusedColIndex).toBe(0);
+        expect(priv._scroller.getScrollX()).toBe(0);
+    });
+});
+
+describe('Column window — slot order with tied field order', () => {
+    // `Row.setColumnWindow` assigns cells to slots itself; slot order must come
+    // from that assignment, not from re-sorting the child array on
+    // `Field.getOrder()`. A model declaring no `order` returns the -1 sentinel
+    // for every field, so the comparison ties throughout, the sort is a stable
+    // no-op, and a recycled cell keeps the index it already held — breaking the
+    // documented alignment between getFieldNames() and getComponents().
+    it('getFieldNames() stays index-aligned with getComponents() after a slide when no field declares an order', async () => {
+        const fields = Array.from({ length: 20 }, (_, i) => ({ name: `c${i}`, type: 'string' as any }));
+        const row: Record<string, any> = {};
+
+        for (let i = 0; i < 20; i++) {
+            row[`c${i}`] = `v${i}`;
+        }
+
+        const store = new MemoryStore(new Model(fields, 'c0'), [row]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(300);
+        b.setHeight(100);
+        b.renderWindow(300, Array(20).fill(100));
+        (b as any)._scroller.setScrollX(550);
+
+        const poolRow = (b as any).getRowPool()[0];
+        const start   = poolRow.getColumnWindowStart();
+
+        expect(poolRow.getFieldNames()).toEqual(
+            poolRow.getFieldNames().map((_: string, s: number) => `c${start + s}`));
+
+        // The cell at slot s must be the one bound to getFieldNames()[s].
+        poolRow.getComponents().forEach((cell: any, s: number) => {
+            const field = poolRow.getLayoutConstraints(cell)?.data;
+
+            expect(field.getName()).toBe(poolRow.getFieldNames()[s]);
+        });
     });
 });

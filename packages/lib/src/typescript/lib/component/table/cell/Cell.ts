@@ -212,12 +212,12 @@ export class Cell<T> extends Component {
      * Idempotent — passing the current value short-circuits before any
      * style writes.
      *
-     * Body rows call this from their cell-construction loop based on
-     * the column's `ColumnConfig.readOnly` flag, and the body's
-     * per-rebind read-only resolution forwards the OR of the static
-     * column flag, the spec-level row predicate, and the per-cell
-     * predicate. Application code should declare read-only through
-     * those config-level surfaces rather than calling this setter
+     * The body is the only writer: its read-only resolution forwards the
+     * OR of the static column flag, the spec-level row predicate, and the
+     * per-cell predicate, and re-runs whenever a row rebinds or its column
+     * window changes — so a read-only column scrolling into view arrives
+     * read-only without a rebind. Application code should declare read-only
+     * through those config-level surfaces rather than calling this setter
      * directly on a cell.
      *
      * Calling `setReadOnly(true)` while the cell is in edit mode
@@ -301,11 +301,13 @@ export class Cell<T> extends Component {
      * transparent (the required-empty outline is a separate overlay
      * and does not affect the background).
      *
-     * @param color - The CSS color string to use as the base background.
+     * @param color - The CSS color string to use as the base background, or
+     *   `null` to restore the theme default
+     *   (`var(--ts-ui-table-cell-bg, transparent)`).
      * @returns This cell, for method chaining.
      */
-    setBaseBackground(color: string): this {
-        this._baseBackground = color;
+    setBaseBackground(color: string | null): this {
+        this._baseBackground = color ?? 'var(--ts-ui-table-cell-bg, transparent)';
         this._applyStateTint();
 
         return this;

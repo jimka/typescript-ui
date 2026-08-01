@@ -40,7 +40,9 @@ afterEach(() => DOM.reset());
 const POOL_CELL = {} as Cell<any>;
 
 /** Maps a row's cells to their backing field name via layout constraints. */
-function cellsByField(row: Row): Map<string, Cell<any>> {
+function cellsByField(row: Row, columnCount: number): Map<string, Cell<any>> {
+    row.setColumnWindow(0, columnCount - 1);
+
     const map = new Map<string, Cell<any>>();
 
     for (const cell of row.getComponents() as Cell<any>[]) {
@@ -321,7 +323,7 @@ describe('DynamicCell backward compatibility', () => {
             ['b', { field: 'b', values: ['x', 'y'] }],
         ]);
 
-        const cells = cellsByField(new Row(model, undefined, new Set(), configs));
+        const cells = cellsByField(new Row(model, undefined, new Set(), configs), 2);
 
         expect(cells.get('a')).toBeInstanceOf(StringCell);
         expect(cells.get('b')).toBeInstanceOf(ComboCell);
@@ -338,13 +340,13 @@ describe('DynamicCell backward compatibility', () => {
             ['value', { field: 'value', cellType: (r) => r.get('kind') as CellType }],
         ]);
 
-        const cells = cellsByField(new Row(model, undefined, new Set(), configs));
+        const cells = cellsByField(new Row(model, undefined, new Set(), configs), 2);
 
         expect(cells.get('value')).toBeInstanceOf(DynamicCell);
     });
 });
 
-describe('Row.syncCells rebuilds a cell when cellType is toggled on/off', () => {
+describe('Row.setColumnFields rebuilds a cell when cellType is toggled on/off', () => {
     const model = new Model([
         { name: 'kind',  type: 'string', order: 0 },
         { name: 'value', type: 'auto',   order: 1 },
@@ -354,17 +356,17 @@ describe('Row.syncCells rebuilds a cell when cellType is toggled on/off', () => 
         const plainConfigs = new Map<string, ColumnConfig>([['value', { field: 'value' }]]);
         const row = new Row(model, undefined, new Set(), plainConfigs);
 
-        expect(cellsByField(row).get('value')).not.toBeInstanceOf(DynamicCell);
+        expect(cellsByField(row, 2).get('value')).not.toBeInstanceOf(DynamicCell);
 
         const dynamicConfigs = new Map<string, ColumnConfig>([
             ['value', { field: 'value', cellType: (r) => r.get('kind') as CellType }],
         ]);
-        row.syncCells(model, new Set(), dynamicConfigs);
+        row.setColumnFields(model, new Set(), dynamicConfigs);
 
-        expect(cellsByField(row).get('value')).toBeInstanceOf(DynamicCell);
+        expect(cellsByField(row, 2).get('value')).toBeInstanceOf(DynamicCell);
 
-        row.syncCells(model, new Set(), plainConfigs);
+        row.setColumnFields(model, new Set(), plainConfigs);
 
-        expect(cellsByField(row).get('value')).not.toBeInstanceOf(DynamicCell);
+        expect(cellsByField(row, 2).get('value')).not.toBeInstanceOf(DynamicCell);
     });
 });
