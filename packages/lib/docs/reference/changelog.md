@@ -222,6 +222,33 @@ instead, which does the listener cleanup *and* the full teardown.
   `(0, 0)` against the `width` / `height` you are handed, which are your own
   outer box.
 
+  A new `local/require-content-bounds` lint rule now enforces the same rule
+  across the library, because this defect has no symptom until someone themes a
+  border on and so cannot be found by looking. It reports any instance method
+  that places a child while naming a box it must not place against — this
+  component's outer extent through `getWidth()`/`getHeight()`/`getSize()` or a
+  fixed-size component's own `WIDTH`/`HEIGHT` constants, the inner extent
+  through `getInnerSize()` with an origin of its own, or the argument of a
+  `setWidth`/`setHeight`/`setSize`/`layoutChildren` override — unless the method
+  reads that box's border somewhere. It is a guard rather than a proof: the
+  rule's header lists the shapes it cannot see, and its baseline is what it
+  reports today rather than the whole remainder. Twelve sites are baselined.
+  Exactly one has a symptom under the shipped themes: the table's
+  `FooterRow.setHeight` hands its inner row the footer's full outer height,
+  overrunning the 1px top border the theme gives it. The other eleven are
+  latent — either the component is borderless today, or its border sits inside
+  gaps wide enough to absorb it, which is why none of this was found by looking.
+
+  A **Content Box** demo panel borders the single-line fields, all four public
+  row renderers, and the tree row (reached through `Tree`'s protected
+  `createPoolRow`, the only route to one), and sets a bordered `MenuItem` and a
+  notification trigger beside them so the open cases stay visible next to the
+  fixed ones. Between them the rule and the panel cover what each other cannot:
+  the rule sees every method, including the ones no demo renders, and the panel
+  catches what is not a placement error at all — a child positioned correctly
+  but sized from a stale measurement, which no AST check can distinguish from a
+  correct one.
+
 - **Size hints that depend on a border are re-derived when it changes.** A
   `TextField` cached its one-line box at construction, so a field whose border
   was added or removed at runtime kept claiming a height for a border it no
