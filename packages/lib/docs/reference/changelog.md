@@ -75,7 +75,34 @@ without a `treeFieldName`. A wide `TreeTable` scrolled to the right has no tree
 cell on its rows. Callers must null-check on every access rather than caching
 the result; the framework's own `TreeBody` call sites already did.
 
+**Breaking:** `TableHeader.getColumns()` returns only the header cells the
+header currently renders, not one per visible column. `getColumnWindowStart()`
+converts a position in that array back to a visible-column index by addition.
+Code that indexed the result with a column index — to reach the cell for column
+`n`, or to derive a column index with `indexOf` — must add that offset; code
+that only iterates it is unaffected. `Table.getColumns()` still enumerates every
+column and is the right source for a column count.
+
+**Breaking:** a `TableHeader` renders no cells until its first layout pass. The
+header builds its cells when it is given column geometry, so a header that has
+been constructed but never laid out reports zero columns, in the same way a
+table body holds no rows until its first render. Every framework path that
+changes the visible column set ends in a layout pass, so this is visible only to
+code that constructs a header directly and reads its cells without laying the
+table out first.
+
 ### Changed
+
+- **A table header renders only its horizontally-visible columns**, matching the
+  body beneath it. A header cell whose column scrolls out of view is recycled for
+  a column scrolling in, and the parent (group) row builds no cells at all when
+  no visible column declares a group — previously it built one blank spanning
+  cell per ungrouped column.
+
+- **`Table.setStore()` now ends in a layout pass**, as `setColumnVisible`,
+  `resetColumns` and `bindView` already did. Swapping a store rewrites the
+  header's model, columns and hidden set, which now needs a layout to render
+  the new column set.
 
 - **A table body renders only its horizontally-visible columns.** Each pooled
   row builds cells for the scrolled-in column range plus a small buffer on each
@@ -172,6 +199,24 @@ the result; the framework's own `TreeBody` call sites already did.
   `Row.getColumnWindowStart()`** — the two halves of what `syncCells` used to
   do, plus the offset that converts a position in `getComponents()` /
   `getFieldNames()` back to a visible-column index.
+
+- **`HeaderColumnGeometry`** — the geometry a table layout hands the header on
+  each pass: the per-column widths, the width they are windowed against, and
+  the two row heights. Exported from `@jimka/typescript-ui/component/table`.
+
+- **`TableHeader.renderColumnWindow(geometry?)`** — reconciles the rendered
+  header cells to the horizontally-visible column range and positions them.
+  Called with geometry from the table layout, and with none from the scroll
+  path, which reuses the cached value.
+
+- **`TableHeader.setScrollX()` / `getScrollX()`, `TableHeader.setFocusedColumn()`
+  and `TableHeader.getColumnWindowStart()`** — the header now owns mirroring the
+  body's horizontal scroll offset and painting the focused-column indicator,
+  both of which have to re-run whenever the column window slides.
+
+- **`HeaderCell.setFieldName()` / `getFieldName()`** — a header cell can be
+  re-targeted at another column's field, which is what lets a cell be recycled
+  across columns instead of rebuilt.
 
 - **`Table.getAvailableColumnWidth()` and `Table.getColumnWidthTarget()`** —
   the width the columns have to fill, and the total a resize drag has grown
