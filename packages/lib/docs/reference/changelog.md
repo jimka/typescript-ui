@@ -377,12 +377,8 @@ table out first.
   `setWidth`/`setHeight`/`setSize`/`layoutChildren` override — unless the method
   reads that box's border somewhere. It is a guard rather than a proof: the
   rule's header lists the shapes it cannot see, and its baseline is what it
-  reports today rather than the whole remainder. Twelve sites are baselined.
-  Exactly one has a symptom under the shipped themes: the table's
-  `FooterRow.setHeight` hands its inner row the footer's full outer height,
-  overrunning the 1px top border the theme gives it. The other eleven are
-  latent — either the component is borderless today, or its border sits inside
-  gaps wide enough to absorb it, which is why none of this was found by looking.
+  reports today rather than the whole remainder. It found twelve sites; six are
+  fixed below and six remain baselined.
 
   A **Content Box** demo panel borders the single-line fields, all four public
   row renderers, and the tree row (reached through `Tree`'s protected
@@ -393,6 +389,42 @@ table out first.
   catches what is not a placement error at all — a child positioned correctly
   but sized from a stale measurement, which no AST check can distinguish from a
   correct one.
+
+- **A table's footer and header size their inner row to their content box.**
+  Both handed that row their own full outer extent, though it is a child and so
+  already sits inside their border. `FooterRow`'s row is now a pixel shorter,
+  matching the 1px top border every shipped theme gives the footer; the header
+  is corrected the same way, and its border is on the bottom only, so its width
+  forwarding was already a no-op. Neither is visible today: a table's footer
+  cannot be switched on — `Table` has no footer-visibility setter, contrary to
+  what `docs/components/Table.md` says — and the header's row widths are
+  reassigned by the table layout manager immediately afterwards. Both are
+  corrected because the rule is uniform, not because anything moves.
+
+  A related defect in the *layout manager* is left open and is now tracked in
+  `plans/table-header-band-content-box.md`: `layout/Table` splits the header
+  band's full **outer** height between the parent and column rows and gives
+  each header cell that same height, so every table's header cells overrun the
+  header's content box by its 1px bottom border and are clipped — today, by
+  default. That one is reachable and visible, and the lint rule cannot see it
+  because it lives in a `LayoutManager`.
+
+- **`ProgressBar`, `ProgressSpinner` and `Slider` honour their own padding.**
+  All three sized their children from `getInnerSize()` — the correct extent —
+  and then placed them at an origin of `0`, which is the inner edge of the
+  border rather than the inside of the padding. The inner size has already had
+  the padding subtracted, so a padded one would have shifted its track, fill,
+  thumb or arc up and to the left by that much and overrun the far edge. All
+  three carry no padding by default and none of the demos gives them any, so
+  this changes nothing today; it only stops biting the first consumer to set
+  some. The origin now comes from `getContentBounds()`.
+
+  `Slider` needed its hit test moved to match: `valueAtPointer` mapped the
+  cursor over the slider's outer rect, so once the track was drawn in the
+  content box a padded slider would have had the thumb trail the cursor by the
+  padding on every drag. It now measures from the same box, offset by the
+  border because the viewport rect it starts from is the border box. Unpadded
+  and unbordered — every slider today — the arithmetic is unchanged.
 
 - **Size hints that depend on a border are re-derived when it changes.** A
   `TextField` cached its one-line box at construction, so a field whose border
