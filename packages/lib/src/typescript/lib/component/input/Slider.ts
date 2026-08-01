@@ -470,19 +470,24 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
      * @returns This component, for method chaining.
      */
     doLayout(): this {
-        const inner = this.getInnerSize();
-        if (!inner) {
+        // The content box, not the inner size: the inner size is the right
+        // extent but carries no origin, so a padded slider would lay its track
+        // out at the inner edge of its border and ignore the padding it just
+        // subtracted. `_activeTrack` keeps its own zero origin — it is a child
+        // of `_track`, so it is already inside the track's box.
+        const box = this.getContentBounds();
+        if (!box) {
             return this;
         }
 
         const horizontal = this.getOrientation() === "horizontal";
 
         // `Component.setWidth` / `setHeight` clamp to the component's own
-        // maxSize, so `inner` is already bounded by our `setMaxSize(_,
+        // maxSize, so `box` is already bounded by our `setMaxSize(_,
         // THUMB_SIZE)` (or `setMaxSize(THUMB_SIZE, _)` when vertical) — no
         // extra cross-axis clamp is needed here.
-        const innerWidth  = inner.width;
-        const innerHeight = inner.height;
+        const innerWidth  = box.width;
+        const innerHeight = box.height;
         const min        = this.getMin();
         const max        = this.getMax();
         const range      = max - min;
@@ -494,8 +499,8 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         // collapsing to its 2 × 2 border box.
         if (horizontal) {
             const trackTop = Math.round((innerHeight - TRACK_THICKNESS) / 2);
-            this._track.setX(0);
-            this._track.setY(trackTop);
+            this._track.setX(box.x);
+            this._track.setY(box.y + trackTop);
             this._track.setSize({ width: innerWidth, height: TRACK_THICKNESS });
 
             const activeWidth = Math.round(innerWidth * fraction);
@@ -506,12 +511,12 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             const thumbX = Math.round((innerWidth - THUMB_SIZE) * fraction);
             const thumbY = Math.round((innerHeight - THUMB_SIZE) / 2);
             this._thumb.setSize({ width: THUMB_SIZE, height: THUMB_SIZE });
-            this._thumb.setX(thumbX);
-            this._thumb.setY(thumbY);
+            this._thumb.setX(box.x + thumbX);
+            this._thumb.setY(box.y + thumbY);
         } else {
             const trackLeft = Math.round((innerWidth - TRACK_THICKNESS) / 2);
-            this._track.setX(trackLeft);
-            this._track.setY(0);
+            this._track.setX(box.x + trackLeft);
+            this._track.setY(box.y);
             this._track.setSize({ width: TRACK_THICKNESS, height: innerHeight });
 
             // Vertical slider: zero is at the bottom by convention.
@@ -523,8 +528,8 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             const thumbX = Math.round((innerWidth - THUMB_SIZE) / 2);
             const thumbY = Math.round((innerHeight - THUMB_SIZE) * (1 - fraction));
             this._thumb.setSize({ width: THUMB_SIZE, height: THUMB_SIZE });
-            this._thumb.setX(thumbX);
-            this._thumb.setY(thumbY);
+            this._thumb.setX(box.x + thumbX);
+            this._thumb.setY(box.y + thumbY);
         }
 
         return this;
@@ -632,11 +637,21 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             return this.getValue();
         }
 
+        // Measured against the same content box `doLayout` draws the track in,
+        // not the outer rect: with padding the two disagree by that padding on
+        // every pointer sample, and the thumb would trail the cursor. The
+        // viewport rect is the border box, so reaching the content origin from
+        // it costs the border as well as `getContentBounds`' own offset, which
+        // is measured from the padding box.
         const rect       = DOM.source.getViewportRect(this);
+        const box        = this.getContentBounds() ?? { x: 0, y: 0, width: rect.width, height: rect.height };
+        const border     = this.getBorderSize();
+        const left       = rect.left + border.left + box.x;
+        const top        = rect.top  + border.top  + box.y;
         const horizontal = this.getOrientation() === "horizontal";
         const fraction   = horizontal
-            ? (rect.width  > 0 ? (e.clientX - rect.left) / rect.width  : 0)
-            : (rect.height > 0 ? 1 - (e.clientY - rect.top) / rect.height : 0);
+            ? (box.width  > 0 ? (e.clientX - left) / box.width  : 0)
+            : (box.height > 0 ? 1 - (e.clientY - top) / box.height : 0);
 
         const clamped = Util.clamp(fraction, 0, 1);
         const min     = this.getMin();

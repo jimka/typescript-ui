@@ -176,26 +176,31 @@ class ProgressBar extends Component {
      * @returns This component, for method chaining.
      */
     doLayout(): this {
-        const inner = this.getInnerSize();
-        if (!inner) {
+        // The content box, not the inner size: the inner size is the right
+        // extent but carries no origin, so a padded bar would put the track at
+        // the inner edge of its border and ignore the padding it just
+        // subtracted. The fill's own origin stays at zero — it is a child of
+        // the track, so it is already inside the track's box.
+        const box = this.getContentBounds();
+        if (!box) {
             super.doLayout();
             return this;
         }
 
-        this._track.setX(0);
-        this._track.setY(0);
-        this._track.setSize({ width: inner.width, height: inner.height });
+        this._track.setX(box.x);
+        this._track.setY(box.y);
+        this._track.setSize({ width: box.width, height: box.height });
 
         if (this._indeterminate) {
-            const segment = Math.max(20, Math.round(inner.width * 0.25));
+            const segment = Math.max(20, Math.round(box.width * 0.25));
             this._fill.setX(0);
             this._fill.setY(0);
-            this._fill.setSize({ width: segment, height: inner.height });
+            this._fill.setSize({ width: segment, height: box.height });
         } else {
-            const fillWidth = Math.round(inner.width * this._value / 100);
+            const fillWidth = Math.round(box.width * this._value / 100);
             this._fill.setX(0);
             this._fill.setY(0);
-            this._fill.setSize({ width: fillWidth, height: inner.height });
+            this._fill.setSize({ width: fillWidth, height: box.height });
         }
 
         super.doLayout();

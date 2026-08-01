@@ -75,7 +75,11 @@ class FooterRow extends Component {
     setWidth(width: number): this {
         super.setWidth(width);
 
-        this.getComponents()[0].setWidth(width);
+        // The row is a child, so it already starts inside the footer's border;
+        // handing it the outer width would push it that far past the far edge.
+        // Before the element exists there is no border to subtract, so the
+        // argument is the whole box.
+        this.getComponents()[0].setWidth(this.getContentBounds()?.width ?? width);
 
         return this;
     }
@@ -90,7 +94,12 @@ class FooterRow extends Component {
     setHeight(height: number): this {
         super.setHeight(height);
 
-        this.getComponents()[0].setHeight(height);
+        // The footer gives itself a 1px top border in its constructor, so the
+        // row was a pixel taller than the band's content box and its bottom
+        // pixel fell under `overflow: hidden`. Nothing displays a footer today
+        // — there is no footer-visibility setter — so this corrects the
+        // arithmetic rather than any rendered pixel.
+        this.getComponents()[0].setHeight(this.getContentBounds()?.height ?? height);
 
         return this;
     }

@@ -11,6 +11,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Slider } from '~/component/input/Slider';
 import { Container } from '~/core/Container';
+import { Insets } from '~/primitive/Insets';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -181,5 +182,68 @@ describe('Slider setValue round-trip (mounted)', () => {
 
         expect(slider.getValue()).toBe(20);
         expect(changes).toBe(0);
+    });
+});
+
+// The track and thumb are drawn inside the content box, so the pointer must be
+// measured against the same rectangle. `getViewportRect` hands back the BORDER
+// box, and `getContentBounds().x` is measured from the padding box, so reaching
+// the content origin from the viewport rect costs the border as well. Get that
+// wrong and the thumb trails the cursor by the padding on every drag.
+describe('Slider valueAtPointer measures the content box', () => {
+    afterEach(() => DOM.reset());
+
+    /** Mounts a slider at (0,0) 200x16 and returns its private pointer mapper. */
+    const mapper = (configure: (s: any) => void) => {
+        installTestDOM(CONFIG);
+
+        const host             = new Container({});
+        const slider: Slider   = new Slider({ min: 0, max: 100 });
+
+        host.addComponent(slider);
+        host.getElement(true);
+        slider.getElement(true);
+        configure(slider as any);
+        // The offline viewport rect accumulates each ancestor's committed
+        // origin, so an unpositioned slider would map every pointer to NaN.
+        host.setX(0);
+        host.setY(0);
+        slider.setX(0);
+        slider.setY(0);
+        slider.setWidth(200);
+        slider.setHeight(16);
+        slider.doLayout();
+        quiesce(host, slider);
+
+        return (x: number): number => (slider as any).valueAtPointer({ clientX: x, clientY: 8 });
+    };
+
+    it('maps the outer box when there is no padding or border', () => {
+        const at = mapper(() => {});
+
+        expect(at(0)).toBe(0);
+        expect(at(100)).toBe(50);
+        expect(at(200)).toBe(100);
+    });
+
+    it('starts at the padding edge, not the outer edge', () => {
+        const at = mapper(s => {
+            s.clearInsets();
+            s.setPadding(new Insets(0, 4, 0, 4));
+        });
+
+        // The 192px content box runs from x=4 to x=196.
+        expect(at(4)).toBe(0);
+        expect(at(100)).toBe(50);
+        expect(at(196)).toBe(100);
+    });
+
+    it('starts inside the border', () => {
+        const at = mapper(s => s.setBorder('2px solid black'));
+
+        // The 196px content box runs from x=2 to x=198.
+        expect(at(2)).toBe(0);
+        expect(at(100)).toBe(50);
+        expect(at(198)).toBe(100);
     });
 });

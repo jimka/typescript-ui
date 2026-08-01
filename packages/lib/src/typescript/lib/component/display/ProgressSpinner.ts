@@ -259,16 +259,20 @@ class ProgressSpinner extends Component {
             this.setSize({ width: this._overlayTarget.getWidth(), height: this._overlayTarget.getHeight() });
         }
 
-        const inner = this.getInnerSize();
-        if (!inner) {
+        // The content box, not the inner size: the inner size gives the right
+        // extent to centre within but no origin, so a padded spinner would
+        // centre the arc in the padding box and ignore the padding it just
+        // subtracted.
+        const box = this.getContentBounds();
+        if (!box) {
             super.doLayout();
 
             return this;
         }
 
-        const diameter = Math.min(this._size, inner.width, inner.height);
-        const x        = Math.round((inner.width  - diameter) / 2);
-        const y        = Math.round((inner.height - diameter) / 2);
+        const diameter = Math.min(this._size, box.width, box.height);
+        const x        = box.x + Math.round((box.width  - diameter) / 2);
+        const y        = box.y + Math.round((box.height - diameter) / 2);
 
         this._arc.setX(x);
         this._arc.setY(y);
