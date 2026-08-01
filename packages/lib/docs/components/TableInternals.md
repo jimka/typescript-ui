@@ -26,6 +26,7 @@ import {
 - Only rows visible in the viewport plus a small buffer are in the DOM at any time.
 - Scrolling is delegated to a [`VirtualScroller`](/components/VirtualScroller) — a rows-container `<div>` whose `translate3d` transform exposes the requested viewport, two custom [`Scrollbar`](/components/Scrollbar) overlays, and wheel/touch handlers with fling momentum. `overflow:hidden` on the body suppresses the native scroll path, removing the compositor-vs-JS race that caused a one-frame flicker during fast scrolling.
 - Rebinds existing pool slots to new data via `setData()` only when their data index changes.
+- Columns are windowed the same way: only the horizontally-visible column range (plus a small buffer) is rendered per row, so a wide table with many columns keeps a bounded number of cells in the DOM regardless of column count.
 
 The full implementation lives in `src/typescript/lib/component/table/Body.ts` and is documented at the [API page](/api/component/table/classes/Body).
 
@@ -35,7 +36,7 @@ The full implementation lives in `src/typescript/lib/component/table/Body.ts` an
 
 ## Row
 
-[`Row`](/api/component/table/classes/Row) is a single data row rendered as a `<tr>`. It creates one typed cell per model field — picked from [`StringCell`](/api/component/table/classes/StringCell), [`NumberCell`](/api/component/table/classes/NumberCell), [`BooleanCell`](/api/component/table/classes/BooleanCell), [`DateCell`](/api/component/table/classes/DateCell), [`TimeCell`](/api/component/table/classes/TimeCell), [`DateTimeCell`](/api/component/table/classes/DateTimeCell), or [`DefaultCell`](/api/component/table/classes/DefaultCell) — and binds each cell's commit callback to the corresponding field on the bound [`ModelRecord`](/data/record).
+[`Row`](/api/component/table/classes/Row) is a single data row rendered as a `<tr>`. It creates one typed cell per column in the body's current column window — picked from [`StringCell`](/api/component/table/classes/StringCell), [`NumberCell`](/api/component/table/classes/NumberCell), [`BooleanCell`](/api/component/table/classes/BooleanCell), [`DateCell`](/api/component/table/classes/DateCell), [`TimeCell`](/api/component/table/classes/TimeCell), [`DateTimeCell`](/api/component/table/classes/DateTimeCell), or [`DefaultCell`](/api/component/table/classes/DefaultCell) — and binds each cell's commit callback to the corresponding field on the bound [`ModelRecord`](/data/record). As the window slides (e.g. on a horizontal scroll), a cell whose column leaves the window is recycled for an entering column when the two need the same kind of cell, rather than one cell per column being kept for the row's lifetime.
 
 ## Column
 
