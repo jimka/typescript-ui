@@ -96,6 +96,15 @@ instead, which does the listener cleanup *and* the full teardown.
 
 ### Added
 
+- **`Component.getContentBounds()`** — the rectangle a component's children are
+  laid out into, pairing the `getContentInsets()` origin with the
+  `getInnerSize()` extent. A component that places its own children should
+  place them inside it — from a `doLayout` override or from any other method
+  that positions them, such as a row renderer's `layoutChildren` — rather than
+  reading `getWidth()` / `getHeight()`, which are the outer box and so include
+  the border. Returns `null` before the element exists, matching
+  `getInnerSize()`.
+
 - **`Favicon`, `DEFAULT_FAVICON` and `BodyOptions.favicon`** — `Body.init`
   installs a built-in mark by default. Pass `favicon: '/brand.svg'` for your
   own, or `favicon: false` to install none. A `<link rel="icon">` already
@@ -167,6 +176,62 @@ instead, which does the listener cleanup *and* the full teardown.
   the old behaviour per instance with `maxFps: 0` (or `setMaxFps(0)`).
 
 ### Fixed
+
+- **Bordered components no longer clip their own children.** Eleven `doLayout`
+  overrides, plus the tree row's own child placement, placed children against
+  the component's border box instead of its content box, so the last child
+  overflowed by the border width and `overflow: hidden` clipped it. On a 125%
+  display the clipped sliver was
+  visible as a shaved edge on the calendar and clock glyphs of `DateField`,
+  `TimeField` and `DateTimeField`; `AutoCompleteField` and the rows of `List` /
+  `MultiSelectList` were affected the same way. `ComboBox` now also honours its
+  own padding when placing its label and caret, which it previously ignored.
+  `Dialog`'s title bar, `Tooltip` and `DragGhost` carry a border under the
+  shipped themes and so change: the dialog's close button moves up a pixel, a
+  drag ghost's label loses 2px in each dimension, and a tooltip's outer box
+  grows 2px in each dimension, absorbing its own border so its label keeps the
+  width it measures. `Dialog`'s button row is pixel-identical because its
+  buttons' own minimum height absorbs the border. `MenuItem` and the tree cell
+  renderer have no border today, so they are unchanged, but carried the same
+  defect and would have clipped for a consumer who themed one on. One caveat on
+  `MenuItem`: its labels are centred at construction against its outer height,
+  which pins their minimum, so a bordered menu item still needs that centring
+  made border-aware before its labels fit. `ComboBox`'s own layout was already
+  border-aware; only its origin ignored padding, which is what changed.
+
+  A tree row was fixed the same way and is likewise unchanged today. The row
+  class is not exported and no *public* accessor returns one, so this is only
+  reachable from a `Tree` subclass, which can get at a live row through the
+  protected row pool and border it; it is corrected so the rule holds
+  uniformly. Its residual: a row still reports
+  its natural width without its own perimeter, and that width is what every row
+  is committed at, so a bordered row's label box would come out a perimeter
+  narrower than asked for and the widest label would still clip at full
+  right-scroll.
+
+  The four **row renderers** — `LabelTreeNodeRenderer`,
+  `IconLabelTreeNodeRenderer`, `LabelListItemRenderer` and
+  `GlyphListItemRenderer` — carried the same defect in their `layoutChildren`
+  and are fixed too. These *are* public and meant to be subclassed, so a
+  consumer who gives one a border or padding is a supported case; previously
+  the renderer's label started inside that border and overran the far edge,
+  where the row clipped it. All four are
+  borderless under the shipped themes, so nothing changes today. If you have
+  written your own `TreeNodeRenderer` or `ListItemRenderer`, the same rule
+  applies to it: place your children inside `getContentBounds()` rather than at
+  `(0, 0)` against the `width` / `height` you are handed, which are your own
+  outer box.
+
+- **Size hints that depend on a border are re-derived when it changes.** A
+  `TextField` cached its one-line box at construction, so a field whose border
+  was added or removed at runtime kept claiming a height for a border it no
+  longer had. Consequences: a `NumberSpinner`'s minimum height drops 26 to 24 —
+  master shipped it with a minimum above its own maximum, so it committed 2px
+  taller than every other field in a form row — and the string and number cell
+  editors' inner fields report their true borderless one-line box. Setting a
+  border on a `TextField` now rewrites its preferred and minimum height, and a
+  *bounded* maximum, leaving an unbounded maximum alone so a caller who
+  deliberately unpinned the field to fill a taller container keeps that.
 
 - **Animated glyphs no longer cost main-thread work on every frame.** A
   `Glyph`'s root element was an `<svg>`, and browsers will not run a
