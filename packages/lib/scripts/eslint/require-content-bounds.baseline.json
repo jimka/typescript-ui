@@ -1,0 +1,14 @@
+[
+  "src/typescript/lib/component/container/MenuItem.ts:MenuItem.constructor",
+  "src/typescript/lib/component/container/ScrollStrip.ts:ScrollStrip.layoutContent",
+  "src/typescript/lib/component/container/Scrollbar.ts:Scrollbar.setMetrics",
+  "src/typescript/lib/component/container/VirtualScroller.ts:VirtualScroller.layoutScrollbars",
+  "src/typescript/lib/component/display/ProgressBar.ts:ProgressBar.doLayout",
+  "src/typescript/lib/component/display/ProgressSpinner.ts:ProgressSpinner.doLayout",
+  "src/typescript/lib/component/input/Slider.ts:Slider.doLayout",
+  "src/typescript/lib/component/table/Footer.ts:FooterRow.setHeight",
+  "src/typescript/lib/component/table/Footer.ts:FooterRow.setWidth",
+  "src/typescript/lib/component/table/Header.ts:TableHeader.setWidth",
+  "src/typescript/lib/component/table/cell/Cell.ts:Cell.alignEditorWithContent",
+  "src/typescript/lib/overlay/Notification.ts:Notification.doLayout"
+]

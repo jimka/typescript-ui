@@ -2,6 +2,7 @@ import tseslint from "typescript-eslint";
 import forwardSuperOptions from "./scripts/eslint/forward-super-options.js";
 import noElementStyle from "./scripts/eslint/no-element-style.js";
 import noRawDom from "./scripts/eslint/no-raw-dom.js";
+import requireContentBounds from "./scripts/eslint/require-content-bounds.js";
 import requireSubclassDefaults from "./scripts/eslint/require-subclass-defaults.js";
 
 // typescript-eslint's `recommended` config surfaces ~860 pre-existing
@@ -21,6 +22,7 @@ export default tseslint.config(
                     "forward-super-options"    : forwardSuperOptions,
                     "no-element-style"         : noElementStyle,
                     "no-raw-dom"               : noRawDom,
+                    "require-content-bounds"   : requireContentBounds,
                     "require-subclass-defaults": requireSubclassDefaults,
                 },
             },
@@ -39,6 +41,17 @@ export default tseslint.config(
         files: ["src/typescript/lib/component/**/*.ts"],
         rules: {
             "local/no-element-style": "warn",
+        },
+    },
+    {
+        // Content-box containment, scoped to the published library: a component
+        // that places its own children must take the rectangle from
+        // getContentBounds(). Demo panels under src/typescript/*.ts are excluded
+        // for the same reason the naming guard below excludes them — they are
+        // not shipped, and a consumer never subclasses one.
+        files: ["src/typescript/lib/**/*.ts"],
+        rules: {
+            "local/require-content-bounds": "error",
         },
     },
     {
