@@ -109,15 +109,6 @@ abstract class VirtualRowView<
     }
 
     /**
-     * Hook invoked once per pool slot added by {@link growRowPool}, after the
-     * base parallel arrays have been extended. Default is a no-op; `Body`
-     * overrides it to extend its own `_cellGeom` array in lockstep.
-     */
-    protected onPoolRowAdded(): void {
-        // Default no-op; subclasses that own extra parallel arrays override.
-    }
-
-    /**
      * Destroys the pooled rows and the scroller's overlay scrollbars before the
      * inherited teardown runs.
      *
@@ -352,7 +343,6 @@ abstract class VirtualRowView<
             this._boundIndices.push(-1);
             this._rowGeom.push(null);
             this._rowDisplayed.push(false);
-            this.onPoolRowAdded();
         }
 
         DOM.sink.appendChild(rowsContainer, growFragment);

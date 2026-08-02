@@ -196,13 +196,11 @@ describe('Body virtual-scroll — growRowPool', () => {
         expect(p._boundIndices.length).toBe(before + 5);
         expect(p._rowGeom.length).toBe(before + 5);
         expect(p._rowDisplayed.length).toBe(before + 5);
-        expect(p._cellGeom.length).toBe(before + 5);
 
         for (let i = before; i < before + 5; i++) {
             expect(p._boundIndices[i]).toBe(-1);
             expect(p._rowGeom[i]).toBeNull();
             expect(p._rowDisplayed[i]).toBe(false);
-            expect(p._cellGeom[i]).toEqual([]);
             // Body's freshly-pooled rows carry cells wired for the visible fields.
             expect(p._rowPool[i].getComponents().length).toBe(3);
         }
@@ -230,17 +228,39 @@ describe('Body virtual-scroll — hideExcessPoolRows', () => {
 });
 
 describe('Body virtual-scroll — invalidateGeom', () => {
-    it('clears both the row-geometry and the Body-only cell-geometry caches', async () => {
+    it('clears the row geometry, and the cell geometry with it', async () => {
         const { b } = await bodyWith(50, 240);
         const p = b as any;
 
+        // The row half keeps its direct assertion: `invalidateGeom` must clear
+        // the row records outright, checked before anything can repopulate them.
         p._rowGeom[0] = { ty: 5, w: 5, h: 5 };
-        p._cellGeom[0] = [{ x: 1, w: 1, h: 1 }];
 
         p.invalidateGeom();
 
         expect(p._rowGeom.every((g: unknown) => g === null)).toBe(true);
-        expect(p._cellGeom.every((c: unknown[]) => Array.isArray(c) && c.length === 0)).toBe(true);
+
+        // The cell half has no array to inspect — the records are keyed on the
+        // cell — so it is asserted through behaviour: after a settled pass that
+        // lays nothing out, invalidating makes the next pass lay every cell out
+        // again even though no geometry moved.
+        let layouts = 0;
+
+        b.renderWindow(300, [100, 100, 100]);
+
+        for (const row of p._rowPool as Array<{ getComponents(): Array<{ doLayout(): unknown }> }>) {
+            for (const cell of row.getComponents()) {
+                cell.doLayout = () => { layouts++; return cell; };
+            }
+        }
+
+        b.renderWindow(300, [100, 100, 100]);
+        expect(layouts).toBe(0);
+
+        p.invalidateGeom();
+        b.renderWindow(300, [100, 100, 100]);
+
+        expect(layouts).toBeGreaterThan(0);
     });
 });
 
@@ -939,5 +959,263 @@ describe('Column window — slot order with tied field order', () => {
 
             expect(field.getName()).toBe(poolRow.getFieldNames()[s]);
         });
+    });
+});
+
+describe('Column window — geometry diffing', () => {
+    // Body cells are positioned at a content-absolute x, so a cell that keeps
+    // its column keeps its geometry. The diff is keyed on the cell rather than
+    // on its slot precisely so a window slide — which renumbers the slots while
+    // the surviving cells stay on their own columns — does not re-lay-out the
+    // whole pool. That is the expensive case: the pool holds one cell per
+    // rendered column per pooled row, so re-laying-out all of them costs an
+    // order of magnitude more than the header's single row.
+
+    /**
+     * A body over `columnCount` 100px columns and enough records to fill a
+     * 400px viewport, so the row pool holds many rows rather than the single
+     * row `wideBody` seeds. The multi-row pool is the whole point: it is what
+     * makes re-laying-out the pool on every slide cost an order of magnitude
+     * more than the header's one row.
+     */
+    async function tallWideBody(columnCount: number): Promise<Body> {
+        const fields = Array.from({ length: columnCount }, (_, i) => ({
+            name: `c${i}`, type: 'string' as const, order: i,
+        }));
+        const records = Array.from({ length: 200 }, (_, r) => {
+            const record: Record<string, string> = {};
+
+            for (let i = 0; i < columnCount; i++) {
+                record[`c${i}`] = `v${r}-${i}`;
+            }
+
+            return record;
+        });
+        const store = new MemoryStore(new Model(fields, 'c0'), records);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(300);
+        b.setHeight(400);
+        b.renderWindow(300, Array(columnCount).fill(100));
+
+        return b;
+    }
+
+    /** Replaces `doLayout` on every rendered cell of every pooled row with a counter. */
+    function countCellLayouts(b: Body): { calls: () => number, cells: number } {
+        let calls = 0;
+        let cells = 0;
+
+        for (const row of (b as any).getRowPool() as Array<{ getComponents(): Array<{ doLayout(): unknown }> }>) {
+            for (const cell of row.getComponents()) {
+                cells++;
+                cell.doLayout = () => { calls++; return cell; };
+            }
+        }
+
+        return { calls: () => calls, cells };
+    }
+
+    it('lays out no cell when a scroll leaves the column window where it is', async () => {
+        const b       = await tallWideBody(20);
+        const counter = countCellLayouts(b);
+
+        expect(counter.cells).toBeGreaterThan(50); // a real pool, not one row
+
+        (b as any)._scroller.setScrollX(10);
+        b.renderWindow(300, Array(20).fill(100));
+
+        expect(counter.calls()).toBe(0);
+    });
+
+    it('lays out only the cells that changed column when the window slides', async () => {
+        const b = await tallWideBody(20);
+
+        type PoolRow = { getComponents(): Array<{ doLayout(): unknown }>, getFieldNames(): string[] };
+
+        const pool    = (b as any).getRowPool() as PoolRow[];
+        const laidOut = new Set<unknown>();
+        // Which field each cell object held before the slide.
+        const fieldBefore = new Map<unknown, string>();
+
+        for (const row of pool) {
+            const names = row.getFieldNames();
+
+            row.getComponents().forEach((cell, slot) => {
+                fieldBefore.set(cell, names[slot]);
+                cell.doLayout = () => { laidOut.add(cell); return cell; };
+            });
+        }
+
+        // 300px crosses three column boundaries, so the window slides and every
+        // surviving cell moves slot while keeping its column.
+        (b as any)._scroller.setScrollX(300);
+        b.renderWindow(300, Array(20).fill(100));
+
+        let survivors = 0;
+
+        for (const row of pool) {
+            const names = row.getFieldNames();
+
+            row.getComponents().forEach((cell, slot) => {
+                if (fieldBefore.get(cell) === names[slot]) {
+                    survivors++;
+
+                    // Kept its column, so it kept its geometry — the whole
+                    // point of keying the records on the cell.
+                    expect(laidOut.has(cell)).toBe(false);
+                }
+            });
+        }
+
+        // At pool scale, so the count reflects the case the diff exists for.
+        expect(survivors).toBeGreaterThan(50);
+    });
+
+    it('leaves every cell at its own column\'s geometry after a slide', async () => {
+        const b = await tallWideBody(20);
+
+        // Far enough right that the window's first column is no longer 0,
+        // asserted below so the case cannot silently stop being a slide.
+        (b as any)._scroller.setScrollX(800);
+        b.renderWindow(300, Array(20).fill(100));
+
+        // Only the rows the window currently shows: the pool keeps hidden
+        // excess rows that no pass has positioned.
+        const priv = b as any;
+        const pool = (priv.getRowPool() as Array<{ getComponents(): Array<any>, getFieldNames(): string[] }>)
+            .filter((_, i) => priv._rowDisplayed[i]);
+        const start = priv._colWindow.firstCol;
+
+        expect(pool.length).toBeGreaterThan(1);
+
+        // The positive half of the contract: skipping a cell is only correct
+        // if the cell it skipped is already where its column says it should
+        // be. Keyed on each cell's own field, so a cell parked at the wrong
+        // slot cannot pass.
+        for (const row of pool) {
+            const names = row.getFieldNames();
+
+            row.getComponents().forEach((cell, slot) => {
+                const column = Number(names[slot].slice(1));
+
+                expect(cell.getX()).toBe(column * 100);
+                expect(cell.getWidth()).toBe(100);
+            });
+        }
+
+        expect(start).toBeGreaterThan(0);
+    });
+
+    it('the per-column state a recycle re-applies needs no layout pass', async () => {
+        const b   = await tallWideBody(20);
+        const row = (b as any).getRowPool()[0] as { getComponents(): Array<any> };
+        const cell = row.getComponents()[0];
+
+        /** Every geometry the cell's subtree currently holds, as a comparable string. */
+        function snapshot(): string {
+            const parts: string[] = [];
+            const walk = (c: any): void => {
+                parts.push(`${c.getX()},${c.getY()},${c.getWidth()},${c.getHeight()}`);
+                c.getComponents().forEach(walk);
+            };
+
+            walk(cell);
+
+            return parts.join('|');
+        }
+
+        // The skip rests on these being layout-neutral. The writes that are not
+        // — a renderer swap, a tree-state change, a glyph renderer replacing
+        // its child — each lay the cell out themselves; everything the
+        // reconciler re-applies on a recycle is a value, attribute or style
+        // write. Asserted by forcing the
+        // layout the skip withholds and checking nothing moves.
+        cell.setValue('a considerably longer cell value than before');
+        cell.setBaseBackground('#123456');
+        cell.getAria().setColIndex(9);
+
+        const before = snapshot();
+
+        cell.doLayout();
+
+        expect(snapshot()).toBe(before);
+
+        // The snapshot has to be able to see a layout move at all, or the
+        // assertion above would hold no matter what those setters did.
+        cell.setWidth(cell.getWidth() + 120);
+        cell.doLayout();
+
+        expect(snapshot()).not.toBe(before);
+    });
+
+    it('a glyph cell rebound to a different glyph has its new glyph laid out', async () => {
+        const fields = [
+            { name: 'g', type: 'glyph' as const, order: 0 },
+            { name: 'b', type: 'string' as const, order: 1 },
+        ];
+        const records = Array.from({ length: 100 }, (_, r) => ({
+            g: r % 2 ? 'caret-down' : 'caret-right', b: `v${r}`,
+        }));
+        const store = new MemoryStore(new Model(fields, 'b'), records);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(400);
+        b.setHeight(200);
+        b.renderWindow(400, [100, 100]);
+
+        const row  = (b as any).getRowPool()[0] as { getComponents(): Array<any> };
+        const cell = row.getComponents()[0];
+        const glyph = () => cell.getRenderer().getComponents()[0];
+
+        expect(glyph().getWidth()).toBeGreaterThan(0);
+
+        // A vertical scroll rebinds this slot to a record whose glyph differs,
+        // so the renderer discards its child and builds a new one. Rebuilding a
+        // child is a layout input, and the cell's geometry has not moved — so
+        // nothing else will lay it out, and the renderer must do it itself.
+        (b as any)._scroller.setScrollY(24 * 23);
+        b.renderWindow(400, [100, 100]);
+
+        expect(cell.getRenderer().getValue()).toBe('caret-down');
+        expect(glyph().getWidth()).toBeGreaterThan(0);
+    });
+
+    it('a cell re-pointed at a different column at identical geometry is not left stale', async () => {
+        const fields = [
+            { name: 'c0', type: 'glyph' as const, order: 0 },
+            { name: 'c1', type: 'glyph' as const, order: 1 },
+            { name: 'c2', type: 'string' as const, order: 2 },
+        ];
+        const store = new MemoryStore(new Model(fields, 'c2'),
+                                      [{ c0: 'caret-right', c1: 'caret-down', c2: 'x' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(400);
+        b.setHeight(200);
+        b.setHiddenColumns(new Set(['c0']));
+        b.renderWindow(400, [100, 100]);
+
+        const row  = (b as any).getRowPool()[0] as { getComponents(): Array<any>, getFieldNames(): string[] };
+        const cell = row.getComponents()[0];
+
+        expect(row.getFieldNames()[0]).toBe('c1');
+
+        // Swapping which column is hidden re-points this cell at c0, which
+        // sits at the same x and width. A window slide can never produce that,
+        // so it is the one route where a recycled cell keeps its record.
+        b.setHiddenColumns(new Set(['c1']));
+        b.renderWindow(400, [100, 100]);
+
+        expect(row.getComponents()[0]).toBe(cell);
+        expect(row.getFieldNames()[0]).toBe('c0');
+        expect(cell.getRenderer().getValue()).toBe('caret-right');
+        expect(cell.getRenderer().getComponents()[0].getWidth()).toBeGreaterThan(0);
     });
 });

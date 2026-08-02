@@ -12,6 +12,7 @@ import { Column } from "~/component/table/Column.js";
 import { HeaderCell } from "~/component/table/cell/Header.js";
 import { ParentHeaderCell } from "~/component/table/cell/ParentHeader.js";
 import { computeColumnWindow } from "~/component/table/Body.js";
+import { CellGeometryCache } from "~/component/table/CellGeometry.js";
 import type { ColumnWindow } from "~/component/table/Body.js";
 import { callable } from "~/core/Callable.js";
 
@@ -49,16 +50,6 @@ export interface HeaderColumnGeometry {
     columnHeight   : number;
     /** Height of the parent-header row, in pixels; `0` when it is collapsed. */
     parentRowHeight: number;
-}
-
-/** Geometry last written to one header cell, cached so an identical rewrite can be skipped. */
-interface CellGeometry {
-    /** The cell's x offset within its row, in pixels. */
-    x: number;
-    /** The cell's width, in pixels. */
-    w: number;
-    /** The cell's height, in pixels. */
-    h: number;
 }
 
 /**
@@ -99,12 +90,9 @@ class TableHeader extends Component {
     // behind it need to change.
     private _columnsDirty : boolean = true;
     private _geometry      : HeaderColumnGeometry = { columnWidths: [], viewportWidth: 0, columnHeight: 0, parentRowHeight: 0 };
-    // Geometry last written to each header cell, so a pass that would rewrite
-    // identical values skips both the write and the `doLayout`. Keyed on the
-    // cell rather than on its slot, because a cell that survives a window slide
-    // keeps its column — and therefore its geometry — while its slot changes;
-    // see `applyCellGeometry`.
-    private _cellGeom     : WeakMap<Component, CellGeometry> = new WeakMap();
+    // Geometry last written to each header cell, shared with the body's rows;
+    // see `CellGeometryCache` for the invariant it rests on.
+    private _cellGeom     : CellGeometryCache = new CellGeometryCache();
 
     constructor(model: AbstractModel, store: AbstractStore) {
         super({ tag: "thead" });
@@ -134,7 +122,7 @@ class TableHeader extends Component {
         this.rebuildParentCells();
 
         // Drops the records so the next layout pass re-fits every cell against
-        // the new theme; see `applyCellGeometry` for why a theme change needs
+        // the new theme; see `CellGeometryCache` for why a theme change needs
         // that and geometry alone cannot detect it.
         //
         // Re-rendering from inside this callback, as
@@ -143,7 +131,7 @@ class TableHeader extends Component {
         // rewrites the insets the pass has to fit against, and those renderers
         // subscribe after this header does, so the re-render would fit against
         // the outgoing theme's padding.
-        this.subscribeTheme(() => this._cellGeom = new WeakMap());
+        this.subscribeTheme(() => this._cellGeom.clear());
     }
 
     /**
@@ -864,76 +852,7 @@ class TableHeader extends Component {
         for (let slot = 0; slot < cells.length; slot++) {
             const col = win.firstCol + slot;
 
-            this.applyCellGeometry(cells[slot], win.lefts[col] ?? 0, win.widths[col] ?? 0, columnHeight);
-        }
-    }
-
-    /**
-     * Writes `x` / `width` / `height` to `cell` and lays it out, unless the
-     * cell already holds those exact values.
-     *
-     * A header cell's geometry is content-absolute — {@link setScrollX}
-     * translates the two inner rows rather than moving the cells — so a
-     * horizontal scroll leaves the geometry of every cell that keeps its column
-     * untouched, whether or not the window slid underneath it. The setters
-     * themselves already ignore an unchanged value; what the gate saves is the
-     * `doLayout` recursion behind them, which each scroll event previously ran
-     * over every rendered cell in both rows to reproduce the layout it had.
-     *
-     * Keyed on the cell, not on its slot: a slide renumbers the slots while the
-     * surviving cells stay on their own columns, so a slot-keyed cache would
-     * miss on every one of them and lay out the whole row again.
-     *
-     * Geometry is the only layout input this method writes, so a cell whose
-     * layout depends on something else has to be laid out by whatever changes
-     * that. Two things can: the renderer's left inset, which
-     * {@link HeaderCell.setHeaderGlyph} rewrites and lays the cell out for
-     * itself, on every route rather than only the reconciler's; and the theme,
-     * which rewrites the cell padding behind every renderer's insets and the
-     * border behind the inner size the layout fits against, and which drops
-     * these records wholesale from the constructor's subscription. Every other
-     * property the reconciler re-applies is a text, attribute or style write
-     * that needs no layout.
-     *
-     * @param cell - The cell to position.
-     * @param x - The cell's x offset within its row, in pixels.
-     * @param w - The cell's width, in pixels.
-     * @param h - The cell's height, in pixels.
-     */
-    private applyCellGeometry(cell: Component, x: number, w: number, h: number): void {
-        const previous = this._cellGeom.get(cell);
-
-        if (previous && previous.x === x && previous.w === w && previous.h === h) {
-            return;
-        }
-
-        cell.setAutoCommitStyle(false);
-        cell.setX(x);
-        cell.setY(0);
-        cell.setWidth(w);
-        cell.setHeight(h);
-        cell.setAutoCommitStyle(true);
-
-        // A geometry change needs a full layout pass so the cell's renderer
-        // re-fits the new width.
-        cell.doLayout();
-
-        // Recorded only once the cell has an element. Without one the layout
-        // above could not do its job: the Card manager fits the renderer
-        // against `getInnerSize()`, which is element-gated, so an unrendered
-        // cell keeps a full-width `<th>` around an unsized label. Recording
-        // that would make every later pass at this same geometry skip the cell
-        // and leave it that way. The header renders no cells until its first
-        // layout, so this is reachable from a caller driving
-        // `renderColumnWindow` before the table is realized. Having an element
-        // is what makes the record trustworthy here; it is not a claim that
-        // every layout against one succeeds.
-        //
-        // What is recorded is what was requested rather than what the setters
-        // committed, which agree because a header cell carries no min/max and
-        // does not clamp to its content.
-        if (cell.getElement()) {
-            this._cellGeom.set(cell, { x: x, w: w, h: h });
+            this._cellGeom.apply(cells[slot], win.lefts[col] ?? 0, win.widths[col] ?? 0, columnHeight);
         }
     }
 
@@ -957,7 +876,7 @@ class TableHeader extends Component {
             const x    = win.lefts[from] ?? 0;
             const w    = (win.lefts[to] ?? 0) + (win.widths[to] ?? 0) - x;
 
-            this.applyCellGeometry(cell, x, w, parentRowHeight);
+            this._cellGeom.apply(cell, x, w, parentRowHeight);
         }
     }
 
