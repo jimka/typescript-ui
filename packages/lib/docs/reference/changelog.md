@@ -83,6 +83,13 @@ Code that indexed the result with a column index — to reach the cell for colum
 that only iterates it is unaffected. `Table.getColumns()` still enumerates every
 column and is the right source for a column count.
 
+**Breaking:** `VirtualRowView`'s protected `onPoolRowAdded()` hook is removed.
+It existed so `Body` could extend a per-pool-slot array alongside the base
+ones; the geometry it tracked is now keyed on the cell rather than the slot, so
+there is no parallel array left to extend and no caller. A consumer subclass of
+`Body`, `Tree` or `TreeBody` that overrode it must move that work into
+`createPoolRow`, which is still called once per slot added.
+
 **Breaking:** `TableHeader.sortColumns()` is removed. It reordered the rendered
 header cells by `Field.getOrder()`, which the header no longer derives its cell
 order from — the column-window reconciler places cells itself, in the order it
@@ -274,17 +281,26 @@ table out first.
 
 ### Fixed
 
-- **Horizontal table scrolling no longer lays out every header cell on every
-  scroll event.** A header cell's position is content-absolute — scrolling
-  translates the header's two inner rows rather than moving the cells — so a
-  cell that keeps its column keeps its geometry, and the layout pass was
-  reproducing the layout the cell already had. The header now skips a cell
-  whose geometry is unchanged. Cells are tracked individually rather than by
-  position, so the cells that survive a window slide are skipped too, even
-  though the slide renumbers them. A theme change drops the tracked geometry,
-  so the next layout pass re-fits every cell against the new padding and
-  border — the same recovery as before, when every pass laid every cell out
-  unconditionally.
+- **Horizontal table scrolling no longer lays out every cell it scrolls past.**
+  A table cell's position is content-absolute — scrolling translates the rows
+  rather than moving the cells — so a cell that keeps its column keeps its
+  geometry, and the layout pass was reproducing the layout it already had. Both
+  the body's pooled rows and the header now skip a cell whose geometry is
+  unchanged, from one shared mechanism keyed on the cell rather than on its
+  position. Position-keying was the expensive part: every column-window slide
+  renumbered the slots and so re-laid-out every cell in the pool, even though
+  the cells that survive a slide stay on their own columns. On a 45-column
+  table 12 columns wide, one column of horizontal scroll went from 363 cell
+  layouts to none beyond the cells actually entering the window. A theme change
+  drops the records, so the next layout pass re-fits every cell against the new
+  padding and border, as it did before.
+
+- **A glyph cell rebound to a different glyph no longer renders it unsized.**
+  A glyph renderer answers a value change by replacing its child component, and
+  the replacement had no bounds until something laid the renderer out — which a
+  scroll that rebinds a row to new data does not do, since the cell keeps its
+  geometry. The renderer now lays itself out when it swaps the child, as the
+  cell already did when swapping its active renderer.
 
 - **`HeaderCell.setHeaderGlyph()` now takes effect immediately.** Mounting or
   clearing a header glyph shifts the label's left inset to clear the glyph, and

@@ -50,6 +50,14 @@ Widen the generic to `number | null` and cache the value in a private
 field. Reading it back from the formatted DOM text would silently coerce
 an empty cell into `0` — caching keeps the round-trip honest.
 
+This renderer builds its `Text` once and only rewrites the text, which is why
+`setValue` needs nothing else. **If your `setValue` adds, removes or replaces a
+child component, end it with `this.doLayout()`.** A new child has no bounds
+until something lays the renderer out, and nothing else will: the table skips
+the layout for a cell whose geometry has not moved, and scrolling a row into
+view rebinds its value without moving it. The symptom is a child that renders at
+zero size after a scroll, but looks correct on first paint.
+
 ## Build the editor
 
 A [`CellEditor<T>`](/api/component/table/classes/CellEditor) takes over on double-click. Wrap a [`TextField`](/components/TextField) and parse the typed value back into a number:
