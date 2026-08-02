@@ -84,6 +84,29 @@ describe('pending layout queue — disposed components', () => {
         expect(survivorLayout).toHaveBeenCalledTimes(1);
     });
 
+    // The flush's other guard — skipping a component that an *earlier entry in
+    // the same flush* disposed — cannot be pinned here. It reads `getElement()`,
+    // and against the recording sink a disposed component still answers with a
+    // live handle: `release()` does not evict the stub, so `getElementById`
+    // keeps resolving the id. Offline the guard therefore never fires, and a
+    // test that made it fire would have to stub `getElement` itself — asserting
+    // the mock, not the behaviour. It is verified live instead; see
+    // `plans/implemented/table-column-virtualization.md`'s Implementation Notes.
+
+    it('skips a component that never rendered', () => {
+        // The same guard reads the element, so a component that scheduled a
+        // layout before its first render is skipped too — there is nothing to
+        // lay out against, and rendering schedules its own pass.
+        const component = new Component();
+        component.scheduleLayout();
+
+        const doLayout = vi.spyOn(component, 'doLayout');
+
+        flushFrame();
+
+        expect(doLayout).not.toHaveBeenCalled();
+    });
+
     it('skips a disposed child reached through its container', () => {
         const container = new Container();
         const child     = new Component();

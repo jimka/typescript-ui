@@ -292,16 +292,18 @@ describe('Body registers per-column ComboEditor factories', () => {
 describe('Row cell routing: a `values` config selects a ComboCell', () => {
     // Both columns are STRING fields; only `role` declares `values`. The combo
     // routing must override the field-type switch for `role` and fall through
-    // to the type-driven cell for `note`. Row builds one cell per field in its
-    // constructor via the private `createCellForField`, so constructing a Row
-    // exercises the routing end-to-end.
+    // to the type-driven cell for `note`. Row builds one cell per column in
+    // its current column window via the private `createCellForField`, so
+    // windowing a Row exercises the routing end-to-end.
     const MODEL = new Model([
         { name: 'role', type: 'string', order: 0 },
         { name: 'note', type: 'string', order: 1 },
     ]);
 
     /** Maps the row's cells to their backing field name via layout constraints. */
-    function cellsByField(row: Row): Map<string, Cell<any>> {
+    function cellsByField(row: Row, columnCount: number): Map<string, Cell<any>> {
+        row.setColumnWindow(0, columnCount - 1);
+
         const map = new Map<string, Cell<any>>();
 
         for (const cell of row.getComponents() as Cell<any>[]) {
@@ -318,7 +320,7 @@ describe('Row cell routing: a `values` config selects a ComboCell', () => {
             ['role', { field: 'role', values: ['dev', 'qa'] }],
         ]);
 
-        const cells = cellsByField(new Row(MODEL, undefined, new Set(), configs));
+        const cells = cellsByField(new Row(MODEL, undefined, new Set(), configs), 2);
 
         expect(cells.get('role')).toBeInstanceOf(ComboCell);
         expect(cells.get('note')).toBeInstanceOf(StringCell);
@@ -330,7 +332,7 @@ describe('Row cell routing: a `values` config selects a ComboCell', () => {
             ['role', { field: 'role', values: [] }],
         ]);
 
-        const cells = cellsByField(new Row(MODEL, undefined, new Set(), configs));
+        const cells = cellsByField(new Row(MODEL, undefined, new Set(), configs), 2);
 
         expect(cells.get('role')).toBeInstanceOf(StringCell);
     });

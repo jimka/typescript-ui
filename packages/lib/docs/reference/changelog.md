@@ -47,7 +47,47 @@ removed. Both only unhooked listeners and left the component's per-instance
 stylesheet rules on the shared sheet. Call the inherited `dispose()`
 instead, which does the listener cleanup *and* the full teardown.
 
+**Breaking:** `Row.syncCells()` is removed. A table row now reconciles its
+cells against the body's current column window rather than against the whole
+visible-field list, so the two jobs `syncCells` did are split: `setColumnFields`
+records the visible fields, per-field configs and tree column, and
+`setColumnWindow(firstCol, lastCol)` builds, recycles and discards the cells for
+one column range. A caller that drove `syncCells` directly calls the two in that
+order, passing `0` and `fields.length - 1` to render every column as before.
+
+**Breaking:** `Row.getComponents()` and `Row.getFieldNames()` describe only the
+columns the row currently renders, not every visible column. The two stay
+index-aligned with each other, and `getColumnWindowStart()` converts a position
+in either back to a visible-column index by addition. Code that indexed either
+array with a column index must add that offset; code that only iterates them is
+unaffected.
+
+**Breaking:** `Body.bindAndPositionRows()` changed signature. The `fallback`
+width parameter is dropped — the effective per-column widths now arrive folded
+into a new trailing `columns` argument describing the rendered column window —
+and `records` moves ahead of it. The method is `protected` and documented as a
+subclassing seam, so a consumer subclass overriding it (as `TreeBody` does)
+must adopt the new parameter list.
+
+**Breaking:** `Row.getTreeCell()` returns `null` whenever the tree column sits
+outside the row's current column window, not only when the row was built
+without a `treeFieldName`. A wide `TreeTable` scrolled to the right has no tree
+cell on its rows. Callers must null-check on every access rather than caching
+the result; the framework's own `TreeBody` call sites already did.
+
 ### Changed
+
+- **A table body renders only its horizontally-visible columns.** Each pooled
+  row builds cells for the scrolled-in column range plus a small buffer on each
+  side, recycling a departing column's cell for an entering column of the same
+  kind, so a wide table's cell count is bounded by the viewport rather than by
+  the column count. There is no option and no threshold: a table narrow enough
+  to fit renders every column, exactly as before.
+
+- **`Cell.setBaseBackground()` accepts `null`**, which restores the theme
+  default. A cell recycled into a column with no group colour needs to lose the
+  previous column's tint, which the previous string-only signature could not
+  express.
 
 - **The first layout pass now waits for the web font to activate.** Text
   measured before the bundled Manrope face activates is measured against the
@@ -128,6 +168,11 @@ instead, which does the listener cleanup *and* the full teardown.
   `Table.getIntrinsicColumnWidths()`** — the public seam a custom layout can
   read to size columns the way the built-in table layout does.
 
+- **`Row.setColumnFields()`, `Row.setColumnWindow(firstCol, lastCol)` and
+  `Row.getColumnWindowStart()`** — the two halves of what `syncCells` used to
+  do, plus the offset that converts a position in `getComponents()` /
+  `getFieldNames()` back to a visible-column index.
+
 - **`Table.getAvailableColumnWidth()` and `Table.getColumnWidthTarget()`** —
   the width the columns have to fill, and the total a resize drag has grown
   them to (`0` when the columns still fit without growth).
@@ -176,6 +221,17 @@ instead, which does the listener cleanup *and* the full teardown.
   the old behaviour per instance with `maxFps: 0` (or `setMaxFps(0)`).
 
 ### Fixed
+
+- **A component disposed part-way through a layout flush no longer aborts the
+  rest of it.** The flush snapshots its queue once, so a component that an
+  earlier entry in the same pass disposes was still laid out — writing through
+  handles the destructor had already released, which throws against the
+  production sink and leaves everything queued behind it unlaid. Disposal
+  *between* frames was already handled; this covers disposal *during* one,
+  which table column virtualization reaches on an ordinary path by discarding
+  cells as a side effect of the table's own layout. The same guard also skips a
+  component that called `scheduleLayout()` before its first render: there is
+  nothing to lay out against, and rendering schedules its own pass.
 
 - **Bordered components no longer clip their own children.** Eleven `doLayout`
   overrides, plus the tree row's own child placement, placed children against

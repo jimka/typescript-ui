@@ -141,6 +141,16 @@ describe('Cell background/cursor/outline state precedence', () => {
         expect(cell.getShadow()).toBeNull();
     });
 
+    it('setBaseBackground(null) restores the theme default', () => {
+        const cell = editableCell();
+
+        cell.setBaseBackground('rgb(1,2,3)');
+        expect(cell.getBackgroundColor()).toBe('rgb(1,2,3)');
+
+        cell.setBaseBackground(null);
+        expect(cell.getBackgroundColor()).toBe('var(--ts-ui-table-cell-bg, transparent)');
+    });
+
     it('setRequiredEmpty is idempotent: re-setting the current value does not re-write the shadow', () => {
         const cell = editableCell();
 

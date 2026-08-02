@@ -79,6 +79,94 @@ export function resolveClickedColumn(cells: Component[], target: Handle | null):
     return -1;
 }
 
+/** Number of off-screen columns to render to the left and right of the viewport. */
+const COLUMN_BUFFER = 2;
+
+/**
+ * The horizontally-visible column range plus the geometry every rendered
+ * cell is placed from. `firstCol` / `lastCol` are inclusive visible-column
+ * indices; `lastCol` is `-1` when there are no columns.
+ *
+ * @internal
+ */
+export interface ColumnWindow {
+    firstCol: number;
+    lastCol : number;
+    /** Effective width per visible column, index-aligned with visible-column order. */
+    widths  : number[];
+    /** Left offset per visible column — the running sum of `widths`. */
+    lefts   : number[];
+}
+
+/**
+ * Computes the column window for a horizontal scroll offset and viewport width.
+ *
+ * Walks `widths` left to right, accumulating each column's left offset. A
+ * column is raw-visible when its right edge is at or after `scrollX` AND its
+ * left edge is at or before `scrollX + viewportWidth` — an inclusive
+ * comparison, so a table with no known widths yet (`widths` full of zeros,
+ * e.g. before the layout manager has run) degrades to "every column
+ * renders" rather than "no column renders". The raw-visible run is widened
+ * by {@link COLUMN_BUFFER} on each side and clamped to `[0, n-1]`.
+ *
+ * @param widths - Effective width per visible column, in display order.
+ * @param scrollX - The current horizontal scroll offset in pixels.
+ * @param viewportWidth - The body's visible width in pixels.
+ *
+ * @returns The column window: the rendered range plus the widths/lefts it was derived from.
+ *
+ * @internal
+ */
+export function computeColumnWindow(
+    widths       : number[],
+    scrollX      : number,
+    viewportWidth: number,
+): ColumnWindow {
+    const n     = widths.length;
+    const lefts = new Array<number>(n);
+    let x = 0;
+
+    for (let i = 0; i < n; i++) {
+        lefts[i] = x;
+        x += widths[i];
+    }
+
+    if (n === 0) {
+        return { firstCol: 0, lastCol: -1, widths, lefts };
+    }
+
+    const viewportRight = scrollX + viewportWidth;
+
+    let firstRawVisible = -1;
+    let lastRawVisible   = -1;
+
+    for (let i = 0; i < n; i++) {
+        const left  = lefts[i];
+        const right = left + widths[i];
+
+        if (right >= scrollX && left <= viewportRight) {
+            if (firstRawVisible === -1) {
+                firstRawVisible = i;
+            }
+
+            lastRawVisible = i;
+        }
+    }
+
+    if (firstRawVisible === -1) {
+        // No column's span touches the viewport at all (e.g. scrolled past
+        // the content); fall back to rendering nothing beyond the buffer
+        // around the nearest edge so a window is still returned.
+        firstRawVisible = 0;
+        lastRawVisible  = 0;
+    }
+
+    const firstCol = Math.max(0, firstRawVisible - COLUMN_BUFFER);
+    const lastCol  = Math.min(n - 1, lastRawVisible + COLUMN_BUFFER);
+
+    return { firstCol, lastCol, widths, lefts };
+}
+
 function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
     if (!b) return a.length === 0;
     if (a.length !== b.length) return false;
@@ -121,6 +209,15 @@ class Body extends VirtualRowView<Row> {
     private _lastColumnWidths: number[]                  = [];
     private _lastAriaRowCount: number                    = -1;
     private _rowHeight       : number;
+    // Last column window `bindAndPositionRows` applied. Framework-managed
+    // bookkeeping (recomputed from `renderWindow` on every pass), so per
+    // ARCHITECTURE.md's DOM-write rule this gets no `BodyOptions` field or
+    // public setter.
+    private _colWindow       : ColumnWindow               = { firstCol: 0, lastCol: -1, widths: [], lefts: [] };
+    // Re-entrancy guard: a commit fired mid-render cascades back into
+    // `renderWindow` / `syncPoolCells` through `store.notifyRecordChanged`;
+    // this makes the nested call a no-op. See `commitEditsOutsideWindow`.
+    private _reconciling     : boolean                    = false;
     private _storeRefresh    : (() => void) | null       = null;
     private _selectedRecords : Set<ModelRecord>          = new Set();
     private _anchorRecord    : ModelRecord | null        = null;
@@ -183,21 +280,36 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
-     * Constructs one pool row and wires each of its cells to the shared editor
-     * pool + horizontal scroll-into-view handler. The base's `growRowPool` owns
-     * the append + parallel-array bookkeeping.
+     * Constructs one pool row, windows it to the current column window, and
+     * wires each of its cells to the shared editor pool + horizontal
+     * scroll-into-view handler. The base's `growRowPool` owns the append +
+     * parallel-array bookkeeping.
      *
      * @returns The wired, un-appended pool row.
      */
     protected createPoolRow(): Row {
         const row = this.createRow();
 
+        row.setColumnWindow(this._colWindow.firstCol, this._colWindow.lastCol);
+        this.wireRowCells(row);
+
+        return row;
+    }
+
+    /**
+     * Wires every one of `row`'s cells to the shared editor pool and the
+     * horizontal scroll-into-view handler. Called from {@link createPoolRow}
+     * for a freshly-pooled row and from {@link bindAndPositionRows} whenever
+     * a reconcile changes the rendered cell set — both `setEditorPool` and
+     * `setScrollIntoViewHandler` are idempotent for a surviving cell.
+     *
+     * @param row - The pool row whose cells to wire.
+     */
+    private wireRowCells(row: Row): void {
         for (const cell of row.getComponents() as Cell<any>[]) {
             cell.setEditorPool(this._editorPool);
             cell.setScrollIntoViewHandler(() => this.scrollColumnIntoView(this._focusedColIndex));
         }
-
-        return row;
     }
 
     /**
@@ -291,7 +403,7 @@ class Body extends VirtualRowView<Row> {
      *
      * @returns The tree column's field name, or `undefined`.
      *
-     * @remarks Subclassing seam — forwarded into {@link Row.syncCells}
+     * @remarks Subclassing seam — forwarded into {@link Row.setColumnFields}
      * from {@link setHiddenColumns} / {@link setColumnConfigs} so an
      * incremental column-toggle preserves the tree renderer on the
      * surviving cell. Not for consumer use.
@@ -417,9 +529,8 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
-     * Updates the set of hidden column field names, syncs each pooled
-     * row's cells in place to match the new visible-field list, and
-     * re-renders.
+     * Updates the set of hidden column field names, records the new
+     * visible-field list on every pooled row, and re-renders.
      *
      * Field names belonging to {@link Column.isUnhideable} columns are stripped
      * from the set so a direct caller cannot bypass the unhideable contract.
@@ -427,10 +538,11 @@ class Body extends VirtualRowView<Row> {
      * @param hidden - The new set of field names to hide.
      *
      * @remarks The previous implementation dropped the entire row pool
-     * and rebuilt it via `growRowPool`. The in-place sync preserves
-     * each row's existing cells (and their renderer / editor / theme
-     * listener / sort state / group tint), constructing or removing
-     * only the cells whose visibility actually changed.
+     * and rebuilt it via `growRowPool`. Recording the fields instead
+     * builds and removes nothing here: each row reconciles its own cell
+     * set on the following render, matching every column that survives
+     * by field name so its renderer, editor, theme listener, sort state
+     * and group tint are preserved.
      */
     setHiddenColumns(hidden: Set<string>): this {
         const filtered = new Set<string>();
@@ -530,36 +642,50 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
-     * Walks every pool row and asks it to reconcile its cell set
-     * against the current `_hiddenColumns` + `_columnConfigs`, then
-     * invalidates the per-slot geometry caches so the next
-     * `renderWindow` re-positions cells against the new column count.
+     * Commits every open edit (the whole rendered cell set is about to be
+     * discarded, so `keep` is `null`), then walks every pool row and records
+     * the new `_hiddenColumns` + `_columnConfigs` it should render from.
+     * Builds no cells itself — marking a row's column fields dirty makes its
+     * next {@link Row.setColumnWindow} (from {@link bindAndPositionRows}, on
+     * the next `renderWindow`) reconcile the cell set against the new column
+     * list, exactly as it does for a scroll-driven window slide. Also
+     * invalidates the per-slot geometry caches so that render re-positions
+     * cells against the new column count.
+     *
+     * Guarded by `_reconciling`, mirroring `renderWindow`: the commit pass
+     * can cascade back into this method through `store.notifyRecordChanged`.
      */
     private syncPoolCells(): void {
-        const treeFieldName = this.getTreeFieldName();
+        if (this._reconciling) {
+            return;
+        }
 
-        for (let i = 0; i < this._rowPool.length; i++) {
-            const row = this._rowPool[i];
+        this._reconciling = true;
 
-            row.syncCells(
-                this._store.model,
-                this._hiddenColumns,
-                this._columnConfigs,
-                treeFieldName,
-            );
+        try {
+            this.commitEditsOutsideWindow(null);
 
-            // Newly-shown cells need the editor pool wired so in-place
-            // editing keeps working. `setEditorPool` is idempotent for
-            // surviving cells.
-            for (const cell of row.getComponents() as Cell<any>[]) {
-                cell.setEditorPool(this._editorPool);
-                cell.setScrollIntoViewHandler(() => this.scrollColumnIntoView(this._focusedColIndex));
+            const treeFieldName = this.getTreeFieldName();
+
+            for (let i = 0; i < this._rowPool.length; i++) {
+                const row = this._rowPool[i];
+
+                row.setColumnFields(
+                    this._store.model,
+                    this._hiddenColumns,
+                    this._columnConfigs,
+                    treeFieldName,
+                );
+
+                this.wireRowCells(row);
+
+                // Per-slot geometry is keyed by cell position; both the
+                // column count and per-cell (x, w, h) have changed.
+                this._rowGeom[i]  = null;
+                this._cellGeom[i] = [];
             }
-
-            // Per-slot geometry is keyed by cell position; both the
-            // column count and per-cell (x, w, h) have changed.
-            this._rowGeom[i]  = null;
-            this._cellGeom[i] = [];
+        } finally {
+            this._reconciling = false;
         }
     }
 
@@ -699,6 +825,18 @@ class Body extends VirtualRowView<Row> {
         // return untouched — harmless, since its pool is empty.
         this.updateColumnWidthCache(bodyWidth, columnWidths);
 
+        // A commit fired mid-render (see `commitEditsOutsideWindow`) cascades
+        // back into this method through `store.notifyRecordChanged`; the
+        // nested call is dropped rather than queued, both guarded methods
+        // commit before they read the state they render from, so the next
+        // (outer) pass sees the up-to-date result. Above the two early
+        // returns below so a nested call still caches any widths it carries
+        // (`updateColumnWidthCache` already ran) — only the render itself is
+        // dropped.
+        if (this._reconciling) {
+            return;
+        }
+
         const element = this.getElement();
         if (!element || !this._scroller) {
             return;
@@ -708,9 +846,34 @@ class Body extends VirtualRowView<Row> {
             return;
         }
 
-        const scroller = this._scroller;
-        const records   = this.getVisibleRecords();
-        const totalRows = records.length;
+        this._reconciling = true;
+
+        try {
+            this.renderWindowPass();
+        } finally {
+            this._reconciling = false;
+        }
+
+        // Applies any scroll offset the startup font gate held back. Unlike
+        // `Tree` there is no post-render work to redo alongside it: every caller
+        // that refreshes this body's active descendant is a user gesture —
+        // focus, click, key — and none of those can land inside the startup
+        // hold, before a single row exists. Outside the guard above: applying a
+        // held offset re-enters `renderWindow` through the scroller's onScroll
+        // hook, and that nested pass has to run.
+        this.finishResumedRender();
+    }
+
+    /**
+     * The body of `renderWindow`, below its early returns — recomputes the
+     * row AND column windows, rebinds changed rows from the pool, and hides
+     * excess rows. Split out so the public `renderWindow` can wrap it in the
+     * `_reconciling` re-entrancy guard.
+     */
+    private renderWindowPass(): void {
+        const scroller = this._scroller!;
+        let records   = this.getVisibleRecords();
+        let totalRows = records.length;
 
         // Capture scroll positions before clampToContent / layoutScrollbars
         // (called below) potentially shrink them in place. Those calls don't
@@ -723,11 +886,31 @@ class Body extends VirtualRowView<Row> {
 
         // Loose-clamp scroll positions against the new content sizes before
         // reading them for the window calc.
-        const totalHeight       = totalRows * this._rowHeight;
+        let totalHeight         = totalRows * this._rowHeight;
         const totalColumnWidth  = this._lastColumnWidths.reduce((s, w) => s + w, 0);
         const totalContentWidth = Math.max(this._lastBodyWidth, totalColumnWidth);
 
         scroller.clampToContent(totalContentWidth, totalHeight);
+
+        const rowWidth   = Math.max(this._lastBodyWidth, totalColumnWidth);
+        const fieldCount = this._store.model.getFields()
+                               .filter(f => !this._hiddenColumns.has(f.getName()))
+                               .length;
+        const fallback   = fieldCount > 0 ? rowWidth / fieldCount : rowWidth;
+        const effectiveWidths = Array.from({ length: fieldCount }, (_, i) => this._lastColumnWidths[i] ?? fallback);
+
+        this._colWindow = computeColumnWindow(effectiveWidths, scroller.getScrollX(), this.getWidth() || 0);
+
+        // An edit whose column is about to leave the window is committed
+        // before any pool row is rebound — mirrors the precedent
+        // `Row.setColumnWindow` sets for a column-set change: commit before
+        // discarding the cell that holds it. A commit can change what a
+        // filtered/sorted store returns, so the row count is re-read.
+        if (this.commitEditsOutsideWindow(this._colWindow)) {
+            records   = this.getVisibleRecords();
+            totalRows = records.length;
+            totalHeight = totalRows * this._rowHeight;
+        }
 
         const visibleHeight = this.getHeight() || 0;
         const win = this.computeVisibleWindow(scroller.getScrollY(), visibleHeight, totalRows);
@@ -735,13 +918,7 @@ class Body extends VirtualRowView<Row> {
         const poolTarget = this.computePoolTarget(win.windowSize, visibleHeight, totalRows);
         this.growRowPool(poolTarget);
 
-        const rowWidth   = Math.max(this._lastBodyWidth, totalColumnWidth);
-        const fieldCount = this._store.model.getFields()
-                               .filter(f => !this._hiddenColumns.has(f.getName()))
-                               .length;
-        const fallback   = fieldCount > 0 ? rowWidth / fieldCount : rowWidth;
-
-        this.bindAndPositionRows(win.firstRow, win.windowSize, rowWidth, fallback, records);
+        this.bindAndPositionRows(win.firstRow, win.windowSize, rowWidth, records, this._colWindow);
         this.hideExcessPoolRows(win.windowSize);
 
         if (totalRows !== this._lastAriaRowCount) {
@@ -761,13 +938,6 @@ class Body extends VirtualRowView<Row> {
         }
 
         this._updateFocusStyle();
-
-        // Applies any scroll offset the startup font gate held back. Unlike
-        // `Tree` there is no post-render work to redo alongside it: every caller
-        // that refreshes this body's active descendant is a user gesture —
-        // focus, click, key — and none of those can land inside the startup
-        // hold, before a single row exists.
-        this.finishResumedRender();
     }
 
     /**
@@ -794,6 +964,43 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
+     * Commits every open edit whose rendered column falls outside `keep`,
+     * ahead of a column-window change that is about to discard the cell
+     * holding it — mirrors the precedent {@link Row.setColumnWindow} sets on
+     * a column-set change: commit before discarding. Guarded by the same
+     * `_reconciling` flag `renderWindow` sets: `Cell.commitEdit` emits
+     * `"commit"` while the cell still reports `isEditing()`, and that emit
+     * cascades through `store.notifyRecordChanged` back into `renderWindow`.
+     *
+     * @param keep - The column window to preserve; every rendered slot
+     *   outside it is a candidate. `null` treats every rendered slot as
+     *   outside — used by {@link syncPoolCells}, which is about to discard
+     *   the whole cell set for a hide/show or config swap.
+     *
+     * @returns `true` when at least one open edit was committed.
+     */
+    private commitEditsOutsideWindow(keep: ColumnWindow | null): boolean {
+        let committed = false;
+
+        for (const row of this._rowPool) {
+            const cells = row.getComponents() as Cell<any>[];
+            const start = row.getColumnWindowStart();
+
+            for (let slot = 0; slot < cells.length; slot++) {
+                const colIndex = start + slot;
+                const outside  = keep === null || colIndex < keep.firstCol || colIndex > keep.lastCol;
+
+                if (outside && cells[slot].isEditing()) {
+                    cells[slot].commitEdit();
+                    committed = true;
+                }
+            }
+        }
+
+        return committed;
+    }
+
+    /**
      * Binds visible pool slots to their data records and positions each row +
      * its cells. Skips data rebind when the slot's bound index hasn't changed;
      * skips geometry writes when the row geometry hasn't changed; skips cell
@@ -802,18 +1009,29 @@ class Body extends VirtualRowView<Row> {
      * @param firstRow - The first data index covered by the visible window.
      * @param windowSize - The number of rows in the window.
      * @param rowWidth - The horizontal extent of each row in pixels.
-     * @param fallback - Fallback column width for fields without an explicit width.
      * @param records - The current store records (passed in so this helper doesn't re-query).
+     * @param columns - The column window: the rendered `[firstCol, lastCol]`
+     *   range plus the widths/lefts every rendered cell is placed from.
      *
      * @remarks `protected` so subclasses (e.g. `TreeBody`) can wrap the
      * standard bind + position pass with their own post-bind work
      * (depth / toggle updates). Not for consumer use.
      */
-    protected bindAndPositionRows(firstRow: number, windowSize: number, rowWidth: number, fallback: number, records: ModelRecord[]): void {
+    protected bindAndPositionRows(firstRow: number, windowSize: number, rowWidth: number, records: ModelRecord[], columns: ColumnWindow): void {
         const rowHeight = this._rowHeight;
 
         for (let i = 0; i < windowSize; i++) {
             const row = this._rowPool[i];
+            const windowChanged = row.setColumnWindow(columns.firstCol, columns.lastCol);
+
+            if (windowChanged) {
+                // Slot → column mapping changed: newly-entered cells need the
+                // editor pool + scroll-into-view handler wired, and the cached
+                // per-slot geometry no longer matches which cell sits where.
+                this.wireRowCells(row);
+                this._cellGeom[i] = [];
+            }
+
             const dataIndex = firstRow + i;
             const wasRebound = this._boundIndices[i] !== dataIndex;
 
@@ -824,6 +1042,9 @@ class Body extends VirtualRowView<Row> {
                 row.setStripe(dataIndex % 2 === 1);   // odd logical rows carry the zebra stripe; set before the paint below
                 this.updateRowVisualState(i);
                 this.computeRowAria(row, dataIndex);
+            }
+
+            if (wasRebound || windowChanged) {
                 this.applyReadOnlyState(row, records[dataIndex]);
             }
 
@@ -835,12 +1056,12 @@ class Body extends VirtualRowView<Row> {
 
             const cells = row.getComponents();
             const cellRow = this._cellGeom[i];
-            let x = 0;
+            let x = columns.lefts[columns.firstCol] ?? 0;
 
-            for (let ci = 0; ci < cells.length; ci++) {
-                const cell = cells[ci];
-                const colW = this._lastColumnWidths[ci] ?? fallback;
-                const prevCell = cellRow[ci];
+            for (let slot = 0; slot < cells.length; slot++) {
+                const cell = cells[slot];
+                const colW = columns.widths[columns.firstCol + slot] ?? 0;
+                const prevCell = cellRow[slot];
                 const cellChanged = !prevCell || prevCell.x !== x || prevCell.w !== colW || prevCell.h !== rowHeight;
 
                 if (cellChanged) {
@@ -850,10 +1071,7 @@ class Body extends VirtualRowView<Row> {
                     cell.setWidth(colW);
                     cell.setHeight(rowHeight);
                     cell.setAutoCommitStyle(true);
-                    cellRow[ci] = { x: x, w: colW, h: rowHeight };
-                    if (!prevCell) {
-                        cell.getAria().setColIndex(ci + 1);
-                    }
+                    cellRow[slot] = { x: x, w: colW, h: rowHeight };
                     // Geometry change requires a full layout pass so the
                     // renderer/editor (Card-layout siblings) re-fit. Pure data
                     // rebinds don't need this because renderers with
@@ -932,10 +1150,15 @@ class Body extends VirtualRowView<Row> {
 
         this.notifySelectionChange(before);
 
-        // Determine which column was clicked and update focused cell
+        // Determine which column was clicked and update focused cell.
+        // `resolveClickedColumn` scans the rendered cells and so returns a
+        // slot, not a column index — convert by adding the window start so
+        // `_focusedColIndex` and the "cellclick" payload stay in
+        // visible-column order regardless of what the row currently renders.
         const targetHandle = e.target === null ? null : DOM.source.intern(e.target);
         const cells        = row.getComponents();
-        const columnIndex  = resolveClickedColumn(cells, targetHandle);
+        const slot         = resolveClickedColumn(cells, targetHandle);
+        const columnIndex  = slot >= 0 ? slot + row.getColumnWindowStart() : -1;
 
         if (columnIndex >= 0) {
             this._focusedColIndex = columnIndex;
@@ -955,7 +1178,7 @@ class Body extends VirtualRowView<Row> {
         // inside the row but outside any cell (should not happen for a <td>
         // grid, but keeps the emit total).
         if (columnIndex >= 0) {
-            const field = row.getFieldNames()[columnIndex];
+            const field = row.getFieldNames()[slot];
 
             this.emit("cellclick", {
                 record,
@@ -1132,8 +1355,10 @@ class Body extends VirtualRowView<Row> {
 
     /**
      * Computes the read-only union per cell and forwards it to
-     * {@link Cell.setReadOnly}. Runs inside the rebind block once per
-     * row.
+     * {@link Cell.setReadOnly}. Runs once per row whenever that row
+     * rebinds *or* its column window changes — the latter so a
+     * `readOnly` column scrolling into view arrives read-only without
+     * waiting for a rebind.
      *
      * The union is OR-composed from three sources:
      *
@@ -1186,7 +1411,7 @@ class Body extends VirtualRowView<Row> {
      * Computes the required union per cell and forwards it, AND-ed with
      * emptiness, to {@link Cell.setRequiredEmpty}. Unlike
      * {@link applyReadOnlyState}, this runs on every render (not gated
-     * on `wasRebound`) because the tint depends on the cell's current
+     * on a rebind or a window change) because the tint depends on the cell's current
      * value, which changes on in-place edits — a commit cascades
      * through `store.notifyRecordChanged` back into a `renderWindow`
      * pass, and this must re-run then to clear a filled cell's tint.
@@ -1323,8 +1548,10 @@ class Body extends VirtualRowView<Row> {
             return;
         }
 
-        const cells = this._rowPool[poolSlotIdx].getComponents();
-        const cell = cells[this._focusedColIndex];
+        const row   = this._rowPool[poolSlotIdx];
+        const cells = row.getComponents();
+        const slot  = this._focusedColIndex - row.getColumnWindowStart();
+        const cell  = (slot >= 0 && slot < cells.length) ? cells[slot] : undefined;
 
         if (cell) {
             const el = cell.getElement();
@@ -1363,8 +1590,10 @@ class Body extends VirtualRowView<Row> {
             return;
         }
 
-        const cells = this._rowPool[poolSlotIdx].getComponents();
-        const cell = cells[this._focusedColIndex];
+        const row   = this._rowPool[poolSlotIdx];
+        const cells = row.getComponents();
+        const slot  = this._focusedColIndex - row.getColumnWindowStart();
+        const cell  = (slot >= 0 && slot < cells.length) ? cells[slot] : undefined;
 
         if (cell) {
             this.getAria().setActiveDescendant(cell.getId());
@@ -1412,6 +1641,11 @@ class Body extends VirtualRowView<Row> {
                 this._focusedColIndex = Math.min(visibleColCount - 1, this._focusedColIndex + 1);
             }
 
+            // Bring the newly-focused column into the rendered window before
+            // refreshing the focus ring / active descendant against it.
+            this.scrollColumnIntoView(this._focusedColIndex);
+            this.renderWindow();
+
             this._updateActiveDescendant();
             this._updateFocusStyle();
 
@@ -1424,6 +1658,11 @@ class Body extends VirtualRowView<Row> {
                 return;
             }
 
+            // Same as the ArrowLeft/ArrowRight branch: make sure the focused
+            // column is in the rendered window before resolving its slot.
+            this.scrollColumnIntoView(this._focusedColIndex);
+            this.renderWindow();
+
             const anchorIdx = records.indexOf(this._anchorRecord);
             const poolSlotIdx = this._boundIndices.indexOf(anchorIdx);
 
@@ -1431,8 +1670,10 @@ class Body extends VirtualRowView<Row> {
                 return;
             }
 
-            const cells = this._rowPool[poolSlotIdx].getComponents();
-            const cell = cells[this._focusedColIndex];
+            const row   = this._rowPool[poolSlotIdx];
+            const cells = row.getComponents();
+            const slot  = this._focusedColIndex - row.getColumnWindowStart();
+            const cell  = (slot >= 0 && slot < cells.length) ? cells[slot] : undefined;
 
             if (cell instanceof Cell) {
                 const typedCell = cell as Cell<unknown>;

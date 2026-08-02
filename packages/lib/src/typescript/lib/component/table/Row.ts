@@ -26,8 +26,8 @@ import { callable } from "~/core/Callable.js";
  * A single data row in the table, rendered as a `<tr>` element.
  *
  * Creates one typed cell ({@link StringCell}, {@link NumberCell}, {@link BooleanCell},
- * or {@link DefaultCell}) per model field and binds each cell's commit callback to the
- * corresponding field on the bound {@link ModelRecord}.
+ * or {@link DefaultCell}) per column in the body's current column window and binds each
+ * cell's commit callback to the corresponding field on the bound {@link ModelRecord}.
  *
  * Re-exported as `TableRow` from the package barrel.
  *
@@ -38,9 +38,26 @@ class Row extends Component {
     private _model?: AbstractModel;
     private _data?: ModelRecord;
     private _onCellCommit?: (record: ModelRecord) => void;
-    private _fieldNames: string[] = [];
     private _treeCell: Cell<any> | null = null;
     private _stripe: boolean = false;
+
+    // All non-hidden fields, in display order — the full column list a
+    // window is carved out of. Populated by `setColumnFields`.
+    private _visibleFields: Field[] = [];
+    private _columnConfigs: Map<string, ColumnConfig> = new Map();
+    private _treeFieldName: string | undefined;
+    // Visible-column index of slot 0. The rendered columns are always a
+    // contiguous run, so slot `s` holds column `_windowFirst + s`.
+    private _windowFirst: number = 0;
+    // Cell key per rendered slot, index-aligned with `getComponents()`.
+    private _cellKeys: string[] = [];
+    // Field name per rendered slot, index-aligned with `getComponents()`.
+    private _fieldNames: string[] = [];
+    // Set by `setColumnFields` so the next `setColumnWindow` reconciles
+    // even when the requested range happens to match the current one —
+    // a column-set change (hide/show, config swap) can leave the range
+    // unchanged while the cells behind it need to change.
+    private _columnsDirty: boolean = false;
 
     constructor(
         model?: AbstractModel,
@@ -59,66 +76,20 @@ class Row extends Component {
         this._onCellCommit = onCellCommit;
 
         if (this._model) {
-            let fields = this._model.getFields()
-                                   .filter(f => !hiddenColumns.has(f.getName()))
-                                   .sort((f1, f2) => f1.getOrder() - f2.getOrder());
-
-            this._fieldNames = fields.map(f => f.getName());
-
-            for (let idx in fields) {
-                let field = fields[idx];
-                let cell  = Row.createCellForField(field, columnConfigs);
-
-                this.bindCell(cell, this._data, field.getName());
-                cell.on("commit", (newValue) => {
-                    if (this._data) {
-                        this._data.set(field.getName(), newValue);
-                        this._onCellCommit?.(this._data);
-                    }
-                    this.updateVisualState();
-                });
-
-                // Tint the cell with the column's `groupColor` so a body
-                // cell visually belongs to the same group as the parent
-                // header above it. `Cell` base only re-applies the
-                // border on theme change, so this background sticks.
-                const groupColor = columnConfigs.get(field.getName())?.groupColor;
-                if (groupColor) {
-                    cell.setBaseBackground(groupColor);
-                }
-
-                // Read-only wins over groupColor: this write lands
-                // after the groupColor block so the read-only tint
-                // overrides any group tint and the cell refuses inline
-                // editing.
-                const readOnly = columnConfigs.get(field.getName())?.readOnly;
-                if (readOnly) {
-                    cell.setReadOnly(true);
-                }
-
-                // For the tree column, wrap the typed renderer in a
-                // `TreeCellRenderer` so the cell draws an indent + an
-                // expand/collapse toggle to the left of the value. The
-                // host `TreeBody` keeps a reference via `getTreeCell()`
-                // and pushes per-row depth + expansion state through
-                // `setTreeState` on each bind.
-                if (treeFieldName !== undefined && field.getName() === treeFieldName) {
-                    cell.wrapRenderer((delegate: CellRenderer<any>) => new TreeCellRenderer(delegate));
-                    this._treeCell = cell;
-                }
-
-                this.addComponent(cell, {
-                    data: field
-                });
-            }
+            this.setColumnFields(this._model, hiddenColumns, columnConfigs, treeFieldName);
         }
     }
 
     /**
-     * Returns the cell on the row's tree column, or `null` when the row
-     * was constructed without a `treeFieldName`. The host `TreeBody`
-     * reads this to find each row's `TreeCellRenderer` for depth /
-     * toggle updates and toggle-click routing.
+     * Returns the cell on the row's tree column. The host `TreeBody` reads
+     * this to find each row's `TreeCellRenderer` for depth / toggle updates
+     * and toggle-click routing.
+     *
+     * Returns `null` when the row was constructed without a `treeFieldName`,
+     * and also whenever the tree column sits outside the row's current column
+     * window — a row renders only its horizontally-visible columns, so a wide
+     * table scrolled right has no tree cell to return. Callers must handle
+     * `null` on every access rather than caching the result.
      *
      * @returns The tree-column {@link Cell}, or `null`.
      */
@@ -127,10 +98,26 @@ class Row extends Component {
     }
 
     /**
-     * Returns the field names backing this row's cells, in the same
-     * order as `getComponents()`. Hidden columns are excluded.
+     * Returns the visible-column index of the first rendered cell —
+     * `getComponents()[s]` renders visible column `getColumnWindowStart() + s`.
      *
-     * @returns The field names, in cell order.
+     * @returns The visible-column index slot `0` currently renders.
+     */
+    getColumnWindowStart(): number {
+        return this._windowFirst;
+    }
+
+    /**
+     * Returns one field name per *rendered* slot, index-aligned with
+     * `getComponents()`. Hidden columns are excluded.
+     *
+     * A row renders only the columns in its current column window, so this
+     * describes that window rather than every visible column: slot `s` names
+     * visible column {@link getColumnWindowStart} + `s`. Code holding a column
+     * index must subtract that offset before indexing here, and code reading a
+     * slot must add it to recover the column index.
+     *
+     * @returns The field names, one per rendered slot.
      *
      * @remarks Used by the host `Body` to align cell index → field name
      * → {@link ColumnConfig} lookup when resolving per-cell read-only
@@ -236,17 +223,10 @@ class Row extends Component {
     }
 
     /**
-     * Rebuilds this row's cell set in place to match `model`'s currently-
-     * visible fields. Cells whose field is still visible are preserved
-     * (along with their renderer, editor, theme listener, sort state,
-     * group tint, etc.); cells whose field is now hidden are committed
-     * (if editing) and removed; cells for newly-visible fields are
-     * constructed via the same typed switch as the constructor.
-     *
-     * The child order is re-sorted to match the visible-field display
-     * order. The tree column's cell, if any, is wrapped in a
-     * {@link TreeCellRenderer} only on first creation — surviving tree
-     * cells keep the renderer they already have.
+     * Records the visible-field list, per-field configs and tree column
+     * this row renders from. Builds no cells — {@link setColumnWindow}
+     * owns cell construction, called separately once the host `Body`
+     * knows which column range to render.
      *
      * @param model - The model whose visible fields drive the cell list.
      * @param hiddenColumns - The set of field names to exclude.
@@ -258,7 +238,7 @@ class Row extends Component {
      *
      * @returns This row, for method chaining.
      */
-    syncCells(
+    setColumnFields(
         model: AbstractModel,
         hiddenColumns: Set<string>,
         columnConfigs: Map<string, ColumnConfig>,
@@ -266,117 +246,267 @@ class Row extends Component {
     ): this {
         this._model = model;
 
-        const targetFields = model.getFields()
-                                  .filter(f => !hiddenColumns.has(f.getName()))
-                                  .sort((f1, f2) => f1.getOrder() - f2.getOrder());
+        this._visibleFields = model.getFields()
+                                   .filter(f => !hiddenColumns.has(f.getName()))
+                                   .sort((f1, f2) => f1.getOrder() - f2.getOrder());
 
-        const existing = this.getComponents().slice() as Cell<any>[];
-        const byName   = new Map<string, Cell<any>>();
-
-        for (const cell of existing) {
-            const lc    = this.getLayoutConstraints(cell);
-            const field = lc?.data as Field | undefined;
-
-            if (field) {
-                byName.set(field.getName(), cell);
-            }
-        }
-
-        // Remove cells whose field is no longer visible. Commit any
-        // in-flight edit before discarding so user keystrokes land on
-        // the record (mirrors the blur-commits-edit contract).
-        const targetNames = new Set(targetFields.map(f => f.getName()));
-
-        for (const cell of existing) {
-            const lc    = this.getLayoutConstraints(cell);
-            const field = lc?.data as Field | undefined;
-
-            if (!field || !targetNames.has(field.getName())) {
-                if (cell.isEditing()) {
-                    cell.commitEdit();
-                }
-
-                this.removeComponent(cell);
-            }
-        }
-
-        // Walk target fields in display order. Build any missing cell;
-        // re-apply the commit wire and group tint on every (new and
-        // surviving) cell so a config swap that changed the tint also
-        // takes effect.
-        this._treeCell = null;
-
-        for (const field of targetFields) {
-            const fieldName = field.getName();
-            let cell        = byName.get(fieldName);
-
-            // A config change can flip a column between its combo cell and
-            // its field-type-driven cell. Discard a surviving cell whose
-            // kind no longer matches the current config so it rebuilds with
-            // the right renderer + editor; commit any in-flight edit first.
-            const wantsCombo   = (columnConfigs.get(fieldName)?.values?.length ?? 0) > 0;
-            const wantsDynamic = !!columnConfigs.get(fieldName)?.cellType;
-
-            if (cell && (wantsCombo !== (cell instanceof ComboCell) || wantsDynamic !== (cell instanceof DynamicCell))) {
-                if (cell.isEditing()) {
-                    cell.commitEdit();
-                }
-
-                this.removeComponent(cell);
-                cell = undefined;
-            }
-
-            const isNew = !cell;
-
-            if (!cell) {
-                cell = Row.createCellForField(field, columnConfigs);
-            }
-
-            cell.on("commit", (newValue) => {
-                if (this._data) {
-                    this._data.set(fieldName, newValue);
-                    this._onCellCommit?.(this._data);
-                }
-                this.updateVisualState();
-            });
-
-            const groupColor = columnConfigs.get(fieldName)?.groupColor;
-
-            if (groupColor) {
-                cell.setBaseBackground(groupColor);
-            }
-
-            // Wrap the tree-column cell only when it's newly created —
-            // a surviving tree cell already has its `TreeCellRenderer`,
-            // and re-wrapping would chain renderers and double-register
-            // a theme listener per toggle.
-            if (isNew && treeFieldName !== undefined && fieldName === treeFieldName) {
-                cell.wrapRenderer((delegate: CellRenderer<any>) => new TreeCellRenderer(delegate));
-            }
-
-            if (treeFieldName !== undefined && fieldName === treeFieldName) {
-                this._treeCell = cell;
-            }
-
-            if (isNew) {
-                this.addComponent(cell, { data: field });
-                this.bindCell(cell, this._data, fieldName);
-            }
-        }
-
-        // Re-order children to the new visible-field order. Mirrors
-        // `Header.sortColumns` — same `Field` payload from the layout
-        // constraints drives both.
-        this.sortComponents((c1, c2) => {
-            const f1 = (this.getLayoutConstraints(c1)?.data as Field).getOrder();
-            const f2 = (this.getLayoutConstraints(c2)?.data as Field).getOrder();
-
-            return f1 - f2;
-        });
-
-        this._fieldNames = targetFields.map(f => f.getName());
+        this._columnConfigs = columnConfigs;
+        this._treeFieldName = treeFieldName;
+        this._columnsDirty  = true;
 
         return this;
+    }
+
+    /**
+     * Reconciles the rendered cells to exactly the visible columns
+     * `[firstCol, lastCol]`. A column keeps its existing cell when that
+     * cell already presents the same field; otherwise it recycles a cell
+     * that just left the window and shares the same cell key, or
+     * builds a fresh one. Cells that end up unclaimed are committed (if
+     * editing), removed, and disposed.
+     *
+     * @param firstCol - The first visible-column index to render, inclusive.
+     * @param lastCol - The last visible-column index to render, inclusive.
+     *
+     * @returns `true` when the rendered cell set changed.
+     */
+    setColumnWindow(firstCol: number, lastCol: number): boolean {
+        // Clamp into this row's own visible-field range. A pooled row can be
+        // asked to window against a range sized for a store the host `Body`
+        // has already swapped to (`Table.bindView` calls `Body.setStore`,
+        // which renders synchronously, before `setColumns` / `setColumnConfigs`
+        // resync this row's `_visibleFields` to the new model) — the request
+        // is stale for one pass, not invalid, so it is clamped rather than
+        // trusted verbatim. The immediately-following `setColumns` /
+        // `setColumnConfigs` call marks the row dirty and re-renders against
+        // the caught-up field list.
+        const maxCol = this._visibleFields.length - 1;
+
+        lastCol = Math.min(lastCol, maxCol);
+
+        if (firstCol > lastCol) {
+            firstCol = lastCol + 1;
+        }
+
+        const currentLastCol = this._windowFirst + this.getComponents().length - 1;
+
+        if (!this._columnsDirty && firstCol === this._windowFirst && lastCol === currentLastCol) {
+            return false;
+        }
+
+        const cells  = this.getComponents() as Cell<any>[];
+        const byName = new Map<string, { cell: Cell<any>, key: string }>();
+
+        for (let s = 0; s < cells.length; s++) {
+            const fieldName = this._fieldNames[s];
+
+            if (fieldName !== undefined) {
+                byName.set(fieldName, { cell: cells[s], key: this._cellKeys[s] });
+            }
+        }
+
+        const slotCount  = lastCol - firstCol + 1;
+        const assigned: (Cell<any> | undefined)[] = new Array(slotCount).fill(undefined);
+        const retargeted = new Set<number>();
+
+        // Pass 1 — keep a cell for its own field, if its key still matches.
+        for (let col = firstCol; col <= lastCol; col++) {
+            const field = this._visibleFields[col];
+            const key   = this.cellKeyFor(field);
+            const entry = byName.get(field.getName());
+
+            if (entry && entry.key === key) {
+                assigned[col - firstCol] = entry.cell;
+                byName.delete(field.getName());
+            }
+        }
+
+        // Remaining leftovers, grouped by key, so pass 2 can recycle one.
+        const free = new Map<string, Cell<any>[]>();
+
+        for (const entry of byName.values()) {
+            const pool = free.get(entry.key);
+
+            if (pool) {
+                pool.push(entry.cell);
+            } else {
+                free.set(entry.key, [entry.cell]);
+            }
+        }
+
+        // Pass 2 — recycle a leftover with the same key, else build.
+        for (let col = firstCol; col <= lastCol; col++) {
+            const slot = col - firstCol;
+
+            if (assigned[slot] !== undefined) {
+                continue;
+            }
+
+            const field = this._visibleFields[col];
+            const key   = this.cellKeyFor(field);
+            const pool  = free.get(key);
+            let cell: Cell<any>;
+
+            if (pool && pool.length > 0) {
+                cell = pool.pop()!;
+
+                this.setLayoutConstraints(cell, { data: field });
+            } else {
+                cell = Row.createCellForField(field, this._columnConfigs);
+
+                if (this._treeFieldName !== undefined && field.getName() === this._treeFieldName) {
+                    cell.wrapRenderer((delegate: CellRenderer<any>) => new TreeCellRenderer(delegate));
+                }
+
+                const builtCell = cell;
+                cell.on("commit", (newValue) => this.commitCellValue(builtCell, newValue));
+
+                this.addComponent(cell, { data: field });
+            }
+
+            assigned[slot] = cell;
+            retargeted.add(col);
+        }
+
+        // Pass 3 — per-column state that a shift can invalidate even for a
+        // survivor: ARIA column index, group tint, and (for a retargeted
+        // cell only) the bound value.
+        for (let col = firstCol; col <= lastCol; col++) {
+            const cell  = assigned[col - firstCol]!;
+            const field = this._visibleFields[col];
+
+            cell.getAria().setColIndex(col + 1);
+            cell.setBaseBackground(this._columnConfigs.get(field.getName())?.groupColor ?? null);
+
+            if (retargeted.has(col)) {
+                this.bindCell(cell, this._data, field.getName());
+            }
+        }
+
+        // Discard whatever is still free. Commit an in-flight edit first so
+        // user keystrokes land on the record (mirrors the blur-commits-edit
+        // contract), then dispose so the cell's per-instance stylesheet rule
+        // doesn't survive the discard.
+        for (const pool of free.values()) {
+            for (const cell of pool) {
+                if (cell.isEditing()) {
+                    cell.commitEdit();
+                }
+
+                this.removeComponent(cell);
+                cell.dispose();
+            }
+        }
+
+        // Re-order children to the new visible-column order.
+        //
+        // The order comes from `assigned`, which this reconciler just built in
+        // slot order — not from re-sorting on `Field.getOrder()`. A model that
+        // declares no `order` returns the -1 sentinel for every field, so an
+        // order-based comparison ties throughout, the sort is a stable no-op,
+        // and a recycled cell keeps whatever index it already held. That
+        // desynchronises `getComponents()` from `_fieldNames`, which is built
+        // in column order below and documented to stay index-aligned with it.
+        const slotOf = new Map(assigned.map((cell, slot) => [cell, slot]));
+
+        this.sortComponents((c1, c2) =>
+            (slotOf.get(c1 as Cell<any>) ?? 0) - (slotOf.get(c2 as Cell<any>) ?? 0));
+
+        this._windowFirst = firstCol;
+        this._fieldNames  = [];
+        this._cellKeys    = [];
+        this._treeCell    = null;
+
+        for (let col = firstCol; col <= lastCol; col++) {
+            const field = this._visibleFields[col];
+            const cell  = assigned[col - firstCol]!;
+
+            this._fieldNames.push(field.getName());
+            this._cellKeys.push(this.cellKeyFor(field));
+
+            if (this._treeFieldName !== undefined && field.getName() === this._treeFieldName) {
+                this._treeCell = cell;
+            }
+        }
+
+        this._columnsDirty = false;
+
+        return true;
+    }
+
+    /**
+     * Commits a cell's newly-entered value onto the row's bound record.
+     * Wired once per cell, at construction, so a recycled cell resolves
+     * its *current* field from the row's layout constraints at emit time
+     * rather than closing over the field it was originally built for.
+     *
+     * @param cell - The cell that emitted `"commit"`.
+     * @param value - The committed value.
+     */
+    private commitCellValue(cell: Cell<any>, value: unknown): void {
+        const field = this.getLayoutConstraints(cell)?.data as Field | undefined;
+
+        if (!field) {
+            return;
+        }
+
+        if (this._data) {
+            this._data.set(field.getName(), value);
+            this._onCellCommit?.(this._data);
+        }
+
+        this.updateVisualState();
+    }
+
+    /**
+     * Computes the cell-reuse key for `field`, per the precedence table in
+     * the column-virtualization plan's Architecture Decisions: the tree
+     * column and any column with a custom renderer, `cellType`, or `values`
+     * config get a field-namespaced key (never shared); a `time`/`datetime`
+     * column shares a key with every other column of the same type and
+     * `showSeconds`; every other column shares a key with every other
+     * column of the same field type.
+     *
+     * @param field - The field whose column key to compute.
+     * @param config - The field's column config, if any.
+     * @param isTreeColumn - Whether this field is the row's tree column.
+     *
+     * @returns The reuse key. Two columns with the same key may share a cell.
+     */
+    private static cellKey(field: Field, config: ColumnConfig | undefined, isTreeColumn: boolean): string {
+        if (isTreeColumn) {
+            return `tree:${field.getName()}`;
+        }
+
+        if (config?.renderer) {
+            return `renderer:${field.getName()}`;
+        }
+
+        if (config?.cellType) {
+            return `dynamic:${field.getName()}`;
+        }
+
+        if (config?.values && config.values.length > 0) {
+            return `combo:${field.getName()}`;
+        }
+
+        const type = field.getType();
+
+        if (type === 'time' || type === 'datetime') {
+            return `${type}:${config?.showSeconds ?? false}`;
+        }
+
+        return type;
+    }
+
+    /**
+     * Resolves `field`'s config and tree-column status from this row's
+     * current state and forwards to `cellKey`.
+     */
+    private cellKeyFor(field: Field): string {
+        const isTreeColumn = this._treeFieldName !== undefined && field.getName() === this._treeFieldName;
+
+        return Row.cellKey(field, this._columnConfigs.get(field.getName()), isTreeColumn);
     }
 
     /**

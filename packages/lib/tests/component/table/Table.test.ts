@@ -1,12 +1,13 @@
 // Table surfaces the body's selection changes on its own "selection"
 // event so consumers (e.g. a delete action) can react without reaching into the
 // private body.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
 import type { CellClickEvent } from '~/component/table/Body';
+import { TableExporter } from '~/component/table/TableExporter';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ModelRecord } from '~/data/ModelRecord';
@@ -66,5 +67,59 @@ describe('Table cellclick event', () => {
         expect(seen).toHaveLength(1);
         expect(seen[0].field).toBe('a');
         expect(seen[0].record).toBe(store.getAll()[0]);
+    });
+});
+
+// Column virtualization (table-column-virtualization plan): export and
+// aria-colcount read the full resolved column list, never the body's
+// rendered column window — see the plan's `## Expected Behaviour`.
+describe('Column window — export and ARIA column count are scroll-independent', () => {
+    const WIDE_MODEL = new Model(
+        Array.from({ length: 20 }, (_, i) => ({ name: `c${i}`, type: 'string', order: i })),
+        'c0',
+    );
+
+    async function wideTable(): Promise<Table> {
+        const row: Record<string, string> = {};
+        for (let i = 0; i < 20; i++) {
+            row[`c${i}`] = `v${i}`;
+        }
+
+        const store = new MemoryStore(WIDE_MODEL, [row]);
+        await store.load();
+
+        const table = new Table(store);
+        table.getElement(true);
+        table.setWidth(300);
+        table.setHeight(200);
+        table.doLayout();
+
+        return table;
+    }
+
+    it('exportCSV on a wide table scrolled to the far right still emits every column, not just the windowed ones', async () => {
+        const table = await wideTable();
+        const body  = table.getBody();
+
+        (body as any)._scroller.setScrollX(100000); // clamps to the content's far right
+        expect((body as any)._scroller.getScrollX()).toBeGreaterThan(0);
+
+        const spy = vi.spyOn(TableExporter, 'exportCSV').mockImplementation(() => {});
+        table.exportCSV();
+
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy.mock.calls[0][0]).toHaveLength(20);
+    });
+
+    it('aria-colcount equals the full column count regardless of scroll position', async () => {
+        const table = await wideTable();
+        const body  = table.getBody();
+
+        expect(table.getAria().getColCount()).toBe(20);
+
+        (body as any)._scroller.setScrollX(100000);
+        expect((body as any)._scroller.getScrollX()).toBeGreaterThan(0);
+
+        expect(table.getAria().getColCount()).toBe(20);
     });
 });
