@@ -392,3 +392,103 @@ No exported signature changes: `layoutScrollbars`, `layoutContent` and `setMetri
 [^who-is-a-child]: Checked rather than assumed. `_thumb` is created in the constructor and added with `super.addComponent(this._thumb)` (L399); `_arrowStart` and `_arrowEnd` are created in `buildArrows` and added the same way (L432, L440). All three are therefore real registered children whose elements are appended into the `Scrollbar`'s own element, so their containing block is the `Scrollbar`'s padding box and all three need the origin offset. There is no `_track` field at all — the track is the `Scrollbar` element itself, painted by `setBackgroundColor("var(--ts-ui-scrollbar-track, …)")` in the constructor, so it needs nothing. The `Absolute` manager that lays these children out re-commits each at its own `getX()` / `getY()` (`layout/Absolute.ts`) and `LayoutManager.commitBounds` writes the coordinate through unchanged, so nothing offsets them a second time.
 
 [^no-growth]: `Tooltip` grew in the precedent commit because its outer box was derived from a text measurement that did not include the border, so the label lost width it had already measured. Nothing here is in that position: a `Scrollbar`'s cross-axis extent is the `TRACK_WIDTH` constant rather than a measurement, and a `Tree`'s and a `ScrollStrip`'s outer size is assigned by their parent's layout manager. Growing any of them would change what the parent reserved, which is a sizing decision with consequences in `Panel`'s gutter arithmetic and in `TabBar`'s band placement — out of proportion to a defect that has no symptom under any shipped theme.
+
+---
+
+## Implementation Notes
+
+- **Step 4 named only the thumb's cross-axis size, but the plan's own manual
+  acceptance case required the arrow caps too — both are now re-derived.** A
+  `ScrollArrowButton` is built as a rigid `TRACK_WIDTH` square in its
+  constructor ([Scrollbar.ts:136-137](packages/lib/src/typescript/lib/component/container/Scrollbar.ts#L136))
+  and nothing resized it afterwards, so moving only its *origin* into the
+  content box left a bordered bar's caps overrunning the cross axis by the two
+  border sides — 12px wide inside an 8px box. `## Expected Behaviour`'s
+  Scrollbar table pins the caps' position but not their extent, so the first
+  pass wrote `width: TRACK_WIDTH` into the test and locked the overrun in as
+  expected output. `setMetrics` now writes the caps' cross-axis extent
+  alongside the thumb's, and both bordered and padded cases assert the full
+  cap rectangle. Verified non-vacuous: deleting the two `setWidth` calls
+  reddens both. This closes a gap between two halves of the plan rather than
+  deviating from it: the manual case at `## Expected Behaviour` already
+  demanded the caps sit inside the frame.
+
+- **Residual, out of scope: the glyph inside each cap is still a rigid
+  `TRACK_WIDTH` square.** `ScrollArrowButton` gives its `Glyph` a
+  `preferredSize` of `TRACK_WIDTH × TRACK_WIDTH`
+  ([Scrollbar.ts:159](packages/lib/src/typescript/lib/component/container/Scrollbar.ts#L159)),
+  so on a bordered bar the triangle is now centred in an 8px-wide cap while
+  still asking for 12, and the cap's own `overflow: hidden` trims it. The cap
+  no longer escapes the bar, which is what this plan set out to fix; the
+  glyph-inside-cap case is the same defect one level down and is not
+  baselined, because the write is a constructor `setPreferredSize` the lint
+  rule does not treat as a placement.
+
+- **`_onTrackClick` was left untested by the first pass, in both branches.**
+  The border subtraction the plan specifies at `## Architecture Decisions` and
+  in step 4 was implemented, but nothing pinned it: reverting it, and reverting
+  `outer` to the outer-box read, both left the suite green. The hit test is
+  where three coordinate spaces meet — `getViewportRect` is the border box,
+  `offsetX`/`offsetY` is padding-box-relative, and `axisBox()` is content-box
+  relative — so it now has its own `describe` block, probed at the start
+  arrow's boundary where the 2px difference decides the outcome instead of
+  being absorbed into the same page direction. The same care applies to the
+  horizontal arm of `setMetrics`, which the first pass also left uncovered
+  even though it is the orientation `VirtualScroller` and `Panel`'s overlay
+  instantiate.
+
+- **The manual browser check ran, on a server serving this worktree.** A dev
+  server was started from the worktree with `node_modules` symlinked first, so
+  `@jimka/typescript-ui` resolved to this worktree's `packages/lib` rather than
+  the main tree's — verified by reading the symlink before trusting anything on
+  the page. On the Content Box tab, a walk of every bordered element in the
+  three new `FieldSet`s ("Tree (VirtualScroller)", "ScrollStrip", "Scrollbar"),
+  measuring each child against its owner's border-box-minus-borders, reported
+  **zero containment violations**. The bordered `Scrollbar` measured outer
+  12x200 with a 2px border, so a content box of 8x196, and committed: thumb at
+  `left 2, width 4`; both arrow caps at `left 0, width 8` — the cross-axis
+  extent, not the constructor's rigid 12 — with the end cap at `top 184`, not
+  the outer box's 188. Those are the offline literals, live. The `ScrollStrip`
+  chevrons page: `elementFromPoint` confirms the trailing arrow is the real hit
+  target, and a full pointer sequence moved the clip's `scrollLeft` 0 -> 80 and
+  the leading arrow returned it to 0.
+
+  All three of the `Scrollbar` manual checks the plan names — thumb drag,
+  track click, arrow-cap step — now run, after one addition the plan did not
+  specify. A standalone bar has no owner, so it emitted a scroll position that
+  nothing consumed and its thumb never moved, leaving all three unobservable.
+  The demo now feeds the position straight back
+  ([ContentBoxPanel.ts:467-471](packages/lib/src/typescript/ContentBoxPanel.ts#L467)),
+  which is what makes the row checkable rather than merely viewable. Measured
+  on the bordered bar: a track click below the thumb moved it 64 -> 98, the end
+  arrow cap stepped it 98 -> 105 with `elementFromPoint` confirming the cap is
+  the real hit target rather than a synthetic dispatch, and a drag tracked the
+  pointer 105 -> 150. Re-measuring every child after all three interactions
+  reported zero overruns, with both caps flush inside the content box's far
+  edge rather than past it.
+
+- **`BorderedStripHost` needed two additions the plan's step-6 snippet did not
+  have, and the plan's premise for omitting them was wrong.** The plan expected
+  a long enough `STRIP_ITEMS` to make the items overflow the band on its own,
+  so that `arrowReserve` returns a non-zero gutter and the arrows are drawn —
+  which is the whole point of the row. It does not: the strip's `BoxLayout`
+  defaults to `"equal"` mode, which divides the available width among the items
+  instead of letting them keep their preferred widths, so any number of items
+  fits and `arrowReserve` returns 0. The host therefore switches the strip's
+  box to `setMode("preferred")` with `setOverflowing(true, false)`
+  ([ContentBoxPanel.ts:157-159](packages/lib/src/typescript/ContentBoxPanel.ts#L157),
+  mirroring `TabBar.applyTabWidths`), which required importing `BoxLayout`, and
+  gives the host a `preferredSize` of `{ width: 0, height: STRIP_HEIGHT }`
+  ([ContentBoxPanel.ts:145](packages/lib/src/typescript/ContentBoxPanel.ts#L145))
+  so the row's layout does not stretch it vertically. Both are demo-only.
+
+- **Unrelated observation, deliberately not fixed here.** The same sweep found
+  the first row's bordered `AutoCompleteField` overrunning its own content box
+  by 2px: outer 24 with a 2px border gives a 20px content box, and the inner
+  `TextField` commits 22. The panel's header comment already describes the
+  cause — `syncSizeFromTextField` mirrors the inner field's height at
+  construction, before `applyOptions` applies the options-bag border — but
+  asserts it "produces no artefact" because the content-derived minimum floors
+  the committed height. The measurement contradicts that last clause. It is
+  not scroll chrome and not this plan's to fix; it is recorded so the claim is
+  not left standing unexamined.
