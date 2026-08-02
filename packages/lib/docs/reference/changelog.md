@@ -379,10 +379,12 @@ table out first.
   rule's header lists the shapes it cannot see, and its baseline is what it
   reports today rather than the whole remainder. It found twelve sites; the
   bordered `MenuItem`, `ProgressBar`, `ProgressSpinner`, `Slider`, and the
-  table's footer and header row-sizing are fixed below and five remain
-  baselined — latent, because each component is borderless today or its
-  border sits inside gaps wide enough to absorb it, which is why none of this
-  was found by looking.
+  table's footer and header row-sizing are fixed below,
+  `VirtualScroller.layoutScrollbars`, `ScrollStrip.layoutContent` and
+  `Scrollbar.setMetrics` are fixed in the scroll-chrome entry further down,
+  and two remain baselined — latent, because each component is borderless
+  today or its border sits inside gaps wide enough to absorb it, which is why
+  none of this was found by looking.
 
   A **Content Box** demo panel borders the single-line fields, all four public
   row renderers, and the tree row (reached through `Tree`'s protected
@@ -429,6 +431,28 @@ table out first.
   padding on every drag. It now measures from the same box, offset by the
   border because the viewport rect it starts from is the border box. Unpadded
   and unbordered — every slider today — the arithmetic is unchanged.
+
+- **A `Tree`'s scrollbars, a `ScrollStrip`'s clip and paging arrows, and a
+  `Scrollbar`'s thumb and arrow caps now stay inside their owner's content
+  box.** `VirtualScroller.layoutScrollbars` positioned both scrollbar overlays
+  and the scroll clip box against the owner's outer box, so a bordered `Tree`
+  or table body ran the far scrollbar edge a border-width past the frame,
+  into the `overflow: hidden` that clipped it. The effective viewport —
+  the size every scroll clamp, shadow ramp and `Tree` fill-width row uses —
+  moves with the fix, so a bordered owner can scroll a border-width further
+  because it can see a border-width less. `ScrollStrip.layoutContent` carried
+  the same defect, and its private `layoutArrows` inherited it silently: the
+  lint rule cannot see a method that places children from delegated
+  arguments, so the trailing paging arrow was never baselined even though it
+  clipped the same way. `Scrollbar.setMetrics` gained a private `axisBox()` —
+  the content box projected onto the scroll axis — that `getTrackLength`,
+  `getTrackOrigin` and the track-click hit test now share, so the thumb, both
+  arrow caps, and the click-to-page math all agree on where the track starts
+  and ends. None of the three carries a border under any shipped theme, so
+  every change here is pixel-identical today; a consumer who borders a
+  `Tree`, a `ScrollStrip` or a `Scrollbar` now gets chrome that stays inside
+  the frame instead of overrunning it. The Content Box demo panel gained a
+  fourth row bordering one of each. Two sites remain baselined.
 
 - **Size hints that depend on a border are re-derived when it changes.** A
   `TextField` cached its one-line box at construction, so a field whose border

@@ -20,8 +20,8 @@ strip.addItem(Button({ text: 'Two' }));
 strip.addItem(Button({ text: 'Three' }));
 
 // In the owner's layout pass: reserve a gutter when the items overflow the
-// region, size the band, then let the strip size its clip (band minus the
-// gutters) and place the arrows into them.
+// region, size the band, then let the strip size its clip (the band's content
+// box minus the gutters) and place the arrows into them.
 const reserve = strip.arrowReserve(predictedItemsExtent, regionExtent);
 strip.setX(x).setY(y).setWidth(width).setHeight(height);
 strip.layoutContent(reserve, 0); // (reserve, endGap)
@@ -54,7 +54,7 @@ if (el) {
 | --- | --- |
 | `addItem(c)` / `removeItem(c)` / `moveItem(c, i)` | Manage the scrolling row/column (box children). |
 | `arrowReserve(content, region)` | Per-end gutter (px): the arrow size when scrollable and the content overflows the region past a 1px slop, else 0. |
-| `layoutContent(reserve, endGap)` | Size the inner clip to the band minus the gutters, lay out the items, and place/enable the arrows in the gutters (or hide them when `reserve` is 0). |
+| `layoutContent(reserve, endGap)` | Size the inner clip to the band's content box minus the gutters, lay out the items, and place/enable the arrows in the gutters (or hide them when `reserve` is 0). |
 | `revealItem(el)` | Scroll the minimum amount to bring the item element fully into view. |
 | `mainScroll()` / `setMainScroll(px)` | Read / write the native main-axis scroll offset (single source of truth). |
 | `refreshArrows()` | Re-derive the arrows' enabled state from the live offset. |
