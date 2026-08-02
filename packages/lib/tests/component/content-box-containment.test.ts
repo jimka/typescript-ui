@@ -57,6 +57,8 @@ import { MemoryStore } from '~/data/MemoryStore';
 import { VirtualScroller } from '~/component/container/VirtualScroller';
 import { Scrollbar } from '~/component/container/Scrollbar';
 import { ScrollStrip } from '~/component/container/ScrollStrip';
+import { Table } from '~/component/table/Table';
+import type { ColumnSpec } from '~/component/table/ColumnConfig';
 
 // `--ts-ui-input-border` must resolve: with the empty `themeVars` every other
 // suite uses, the input border measures 0 and every picker case would pass
@@ -1433,5 +1435,206 @@ describe('Scrollbar track click measures the content box', () => {
 
         expect(trackClick(borderedHorizontalBar(), { touches: [{ clientX: 15 }], changedTouches: [] })).toBe(0);
         expect(trackClick(borderedHorizontalBar(), { offsetX: 13 })).toBe(0);
+    });
+});
+
+// The table's layout manager is the one place in this suite that reaches past
+// its own container into a CHILD's subtree — TableHeader's and FooterRow's
+// rows and cells — which is exactly what `local/require-content-bounds`
+// cannot see (it is scoped to a component placing ITS OWN children; see the
+// rule's own exemption comment). `layout/Table.doLayout` split the header
+// band's full outer height between the parent row and the column row and
+// gave every header cell that height, so the rows' containing block — the
+// header's own content box, one pixel shorter than the band because of its
+// shipped bottom border — was overrun by exactly the border width, and the
+// header's `overflow: hidden` took the pixel off every header cell. The fix
+// grows the band by the header's own perimeter instead, then places both rows
+// from `header.getContentBounds()`.
+describe('a table header band contains its rows and cells', () => {
+    const TABLE_MODEL = new Model([
+        { name: 'a', type: 'string', order: 0 },
+        { name: 'b', type: 'string', order: 1 },
+    ]);
+
+    /** A two-string-column table over an empty, unloaded store — no record data is needed to exercise the header/footer band geometry. */
+    function makeTable(spec?: ColumnSpec): InstanceType<typeof Table> {
+        return new Table(new MemoryStore(TABLE_MODEL, []), spec);
+    }
+
+    it('grows the band by its own border and keeps the column row and cells inside it', () => {
+        const table  = layOut(makeTable(), 400, 300);
+        const header = table.getHeader();
+
+        // Harness pin: a harness change must fail loudly here rather than
+        // shifting every literal below.
+        expect(table.getInnerSize()).toEqual({ width: 398, height: 298 });
+        expect(table.getBorderSize().top).toBe(1);
+
+        expect(header.getHeight()).toBe(21);
+        expect(header.getContentBounds()!.height).toBe(20);
+        expect(header.getParentRow().getHeight()).toBe(0);
+
+        const columnRow = header.getComponents()[1];
+        expect(columnRow.getY()).toBe(0);
+        expect(columnRow.getHeight()).toBe(20);
+        expect(header.getColumns()[0].getHeight()).toBe(20);
+
+        const body = table.getBody();
+        expect(body.getY()).toBe(21);
+        expect(body.getHeight()).toBe(277);
+    });
+
+    it('splits the grown band between the parent row and the column row when grouped', () => {
+        const spec: ColumnSpec = { columns: [
+            { field: 'a', group: 'G' },
+            { field: 'b', group: 'G' },
+        ] };
+        const table  = layOut(makeTable(spec), 400, 300);
+        const header = table.getHeader();
+
+        expect(header.hasParentRow()).toBe(true);
+        expect(header.getHeight()).toBe(41);
+        expect(header.getContentBounds()!.height).toBe(40);
+
+        const parentRow = header.getParentRow();
+        expect(parentRow.getY()).toBe(0);
+        expect(parentRow.getHeight()).toBe(20);
+
+        const columnRow = header.getComponents()[1];
+        expect(columnRow.getY()).toBe(20);
+        expect(columnRow.getHeight()).toBe(20);
+
+        const body = table.getBody();
+        expect(body.getY()).toBe(41);
+        expect(body.getHeight()).toBe(257);
+    });
+
+    // The no-op proof: a border may only shrink the content box, never expand
+    // the band. Every number here is identical before and after the fix.
+    it('is a no-op on a borderless header', () => {
+        const table = makeTable();
+
+        table.getHeader().clearBorder();
+
+        const header = layOut(table, 400, 300).getHeader();
+
+        expect(header.getBorderSize().bottom).toBe(0);
+        expect(header.getHeight()).toBe(20);
+        expect(header.getContentBounds()!.height).toBe(20);
+
+        const columnRow = header.getComponents()[1];
+        expect(columnRow.getY()).toBe(0);
+        expect(columnRow.getHeight()).toBe(20);
+
+        expect(table.getBody().getY()).toBe(20);
+    });
+
+    // A border never moves the content-box origin — the cases above all
+    // resolve to (0, 0) whether or not the fix reads `headerBox.x`/`.y` at
+    // all. Padding is the only lever that tells a real content-box read
+    // apart from a hardcoded 0: the header carries no left/right/top border
+    // by default, so padding alone drives this without a border in the mix.
+    it('offsets the rows from a padded header\'s content-box origin, with no border involved', () => {
+        const table  = makeTable();
+        const header = table.getHeader();
+
+        header.clearBorder();
+        header.setPadding(new Insets(4, 4, 4, 4));
+
+        layOut(table, 400, 300);
+
+        expect(header.getContentBounds()).toEqual({ x: 4, y: 4, width: 390, height: 20 });
+
+        const parentRow = header.getParentRow();
+        expect(parentRow.getX()).toBe(4);
+        expect(parentRow.getY()).toBe(4);
+
+        const columnRow = header.getComponents()[1];
+        expect(columnRow.getX()).toBe(4);
+        expect(columnRow.getY()).toBe(4);
+    });
+
+    // The case that fails loudest: a 6px border leaves only 8px of content box
+    // under the unfixed arithmetic, clipping 12 of a 16px text line. The fix
+    // must grow the band to 32, not shrink the cells.
+    it('grows the band to fit a thick border without shrinking the cells or the row width floor', () => {
+        const table = makeTable();
+
+        table.getHeader().setBorder('6px solid black');
+
+        const header = layOut(table, 400, 300).getHeader();
+
+        expect(header.getBorderSize().top).toBe(6);
+        expect(header.getHeight()).toBe(32);
+        expect(header.getContentBounds()).toMatchObject({ height: 20, width: 386 });
+
+        const columnRow = header.getComponents()[1];
+        expect(columnRow.getY()).toBe(0);
+        expect(columnRow.getHeight()).toBe(20);
+        // The row width floor is the header's CONTENT width, not the
+        // container's outer width — 386, not 398 — because a row wider than
+        // that would run past the header's own border into the clip.
+        expect(columnRow.getWidth()).toBe(386);
+        expect(header.getColumns()[0].getHeight()).toBe(20);
+
+        expect(table.getBody().getY()).toBe(32);
+    });
+
+    // The scrollbar cover is a raw <div> the manager writes through the sink,
+    // not a Component, so it is read back off the recorded writes. It shares
+    // the rows' containing block, so it needs the same content-box rectangle:
+    // against the outer box it would start a border-width too far right and
+    // stand a border-width too tall.
+    it('places the header scrollbar cover in the header content box', () => {
+        const sink  = installTestDOM(CONFIG);
+        const table = makeTable();
+
+        table.getHeader().setBorder('6px solid black');
+
+        const header = layOut(table, 400, 300).getHeader();
+        const trackW = DOM.source.getScrollBarWidth();
+
+        expect(header.getContentBounds()).toMatchObject({ x: 0, width: 386, height: 20 });
+
+        // 386 - trackW, not the container's 398 - trackW; 20, not the band's 32.
+        expect(styleOf(sink, header.getScrollbarCover())).toMatchObject({
+            left:   (386 - trackW) + 'px',
+            width:  trackW + 'px',
+            height: '20px',
+        });
+    });
+
+    // A border never moves the content-box origin, so it cannot tell a real
+    // `headerBox.y` read apart from a hardcoded top of 0 — the trap the cover
+    // write fell into: `left`/`width`/`height` were all re-derived but `top`
+    // was left at its construction-time value. Padding is what proves it.
+    it('offsets the header scrollbar cover from a padded header\'s content-box origin', () => {
+        const sink  = installTestDOM(CONFIG);
+        const table = makeTable();
+
+        table.getHeader().clearBorder();
+        table.getHeader().setPadding(new Insets(4, 4, 4, 4));
+
+        const header = layOut(table, 400, 300).getHeader();
+
+        expect(header.getContentBounds()).toMatchObject({ x: 4, y: 4 });
+
+        expect(styleOf(sink, header.getScrollbarCover())).toMatchObject({ top: '4px' });
+    });
+
+    // Reachable only by writing the private flag directly: `Table` exposes no
+    // footer-visibility setter. The footer's inner row is built with no
+    // model, so `getColumns()` is empty and only the band itself is testable.
+    it('sizes the footer band from its own content box', () => {
+        const table = makeTable();
+
+        (table as unknown as { _footerVisible: boolean })._footerVisible = true;
+
+        const footer = layOut(table, 400, 300).getFooter();
+
+        expect(footer.getBorderSize().top).toBe(1);
+        expect(footer.getHeight()).toBe(21);
+        expect(footer.getContentBounds()!.height).toBe(20);
+        expect(footer.getY()).toBe(277);
     });
 });

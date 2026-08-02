@@ -411,36 +411,11 @@ class TableHeader extends Component {
     }
 
     /**
-     * Sets the header width and propagates it to both the parent and
-     * column rows so the full header band shares the same width.
-     *
-     * @param width - The width in pixels.
-     *
-     * @returns This component, for method chaining.
-     */
-    setWidth(width: number): this {
-        super.setWidth(width);
-
-        // The rows are children, so they already start inside the header's
-        // border; handing them the outer width would push them that far past
-        // the far edge. The shipped border is on the bottom only, so this is
-        // no change today. Before the element exists there is no border to
-        // subtract, so the argument is the whole box.
-        const rowWidth = this.getContentBounds()?.width ?? width;
-        const rows     = this.getComponents();
-
-        rows[0].setWidth(rowWidth);
-        rows[1].setWidth(rowWidth);
-
-        return this;
-    }
-
-    /**
-     * Sets the header height. Row-level heights (parent row + column row)
+     * Sets the header height. Row-level widths, heights, and positions
      * are set independently by the table layout manager — `TableHeader` itself
-     * just stores the total band height. The per-row height assignments
+     * just stores the total band height. The per-row assignments
      * live in `layout/Table.doLayout` because the split depends on
-     * {@link hasParentRow}.
+     * {@link hasParentRow} and on the header's own content box.
      *
      * @param height - The total header band height in pixels.
      *

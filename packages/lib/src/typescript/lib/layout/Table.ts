@@ -157,18 +157,16 @@ class Table extends LayoutManager {
             // byte-identical at runtime.
             const hasParentRow    = header.hasParentRow();
             const parentRowHeight = hasParentRow ? columnHeight : 0;
-            const headerBandHeight = parentRowHeight + columnHeight;
 
-            // The header element stays pinned to the viewport width so the
-            // gradient (and the scrollbar-cover band) covers the full
-            // band, but the inner rows are sized to fit all cells —
-            // including ones that overflow the viewport horizontally —
-            // because `Row`'s default `overflow: hidden` would otherwise
-            // clip cells at the row's right edge and prevent them from
-            // coming into view when the inner rows translate left during
-            // a horizontal scroll.
-            const columnSum    = columnWidths.reduce((s, w) => s + w, 0);
-            const innerRowW    = Math.max(containerSize.width, columnSum);
+            // The band's bottom border is chrome outside the rows, so the
+            // outer height is what the rows need PLUS the header's own
+            // perimeter — the same "children plus the container perimeter"
+            // sum every other manager's size report uses. Taking it out of a
+            // row instead would make a header cell shorter than the body row
+            // it heads, by an amount the theme's border width decides.
+            const headerPerimeter  = header.getPerimeterSize();
+            const headerBandHeight = parentRowHeight + columnHeight
+                                   + headerPerimeter.top + headerPerimeter.bottom;
 
             header.setAutoCommitStyle(false);
             header.setX(containerInsets.getLeft());
@@ -176,6 +174,22 @@ class Table extends LayoutManager {
             header.setWidth(containerSize.width);
             header.setHeight(headerBandHeight);
             header.setAutoCommitStyle(true);
+
+            // The rows are the header's own children, so their frame is the
+            // header's content box, not the band: a row placed at the band's
+            // origin and sized to the band starts inside the border and
+            // overruns the far edge.
+            const headerBox = header.getContentBounds()
+                ?? { x: 0, y: 0, width: containerSize.width, height: headerBandHeight };
+
+            // Rows stay at least as wide as the visible content box, and
+            // wider when the columns overflow it, so cells off the right
+            // edge can translate into view — because `Row`'s default
+            // `overflow: hidden` would otherwise clip cells at the row's
+            // right edge and prevent them from coming into view when the
+            // inner rows translate left during a horizontal scroll.
+            const columnSum = columnWidths.reduce((s, w) => s + w, 0);
+            const innerRowW = Math.max(headerBox.width, columnSum);
 
             // Parent row is sized + positioned first so its `spanFrom`
             // / `spanTo` constraints translate to x/width sums over the
@@ -185,8 +199,8 @@ class Table extends LayoutManager {
             // below skips positioning it.
             const parentRow = header.getParentRow();
             parentRow.setAutoCommitStyle(false);
-            parentRow.setX(0);
-            parentRow.setY(0);
+            parentRow.setX(headerBox.x);
+            parentRow.setY(headerBox.y);
             parentRow.setWidth(innerRowW);
             parentRow.setHeight(parentRowHeight);
             parentRow.setAutoCommitStyle(true);
@@ -196,8 +210,8 @@ class Table extends LayoutManager {
             // y=0 — only the row itself shifts down by `parentRowHeight`.
             const columnRow     = header.getComponents()[1];
             columnRow.setAutoCommitStyle(false);
-            columnRow.setX(0);
-            columnRow.setY(parentRowHeight);
+            columnRow.setX(headerBox.x);
+            columnRow.setY(headerBox.y + parentRowHeight);
             columnRow.setWidth(innerRowW);
             columnRow.setHeight(columnHeight);
             columnRow.setAutoCommitStyle(true);
@@ -218,14 +232,17 @@ class Table extends LayoutManager {
             // the trackW boundary while the band stays continuous with the
             // rest of the header's gradient. Sits on top of the inner rows
             // by DOM order, beneath the scrollbar widget which lives in
-            // the body.
+            // the body. Placed from `headerBox`, the same rectangle as the
+            // rows above, since the cover is a raw `<div>` appended to the
+            // header's element and so shares their containing block.
             const trackW = DOM.source.getScrollBarWidth();
             const cover  = header.getScrollbarCover();
             DOM.sink.apply(cover, {
                 style: {
-                    left: (containerSize.width - trackW) + "px",
-                    width: trackW + "px",
-                    height: headerBandHeight + "px",
+                    left:   (headerBox.x + headerBox.width - trackW) + "px",
+                    top:    headerBox.y + "px",
+                    width:  trackW + "px",
+                    height: headerBox.height + "px",
                 },
             });
         }
@@ -241,12 +258,23 @@ class Table extends LayoutManager {
             const columnHeight  = lineHeight + 2 * padding;
             const footerColumns = footer.getColumns();
 
+            // Same "children plus perimeter" sum as the header band above:
+            // the footer's own top border is chrome outside the row, so the
+            // outer height grows by it instead of the row shrinking inside it.
+            const footerPerimeter  = footer.getPerimeterSize();
+            const footerBandHeight = columnHeight + footerPerimeter.top + footerPerimeter.bottom;
+
             footer.setAutoCommitStyle(false);
             footer.setX(containerInsets.getLeft());
-            footer.setY(containerInsets.getTop() + containerSize.height - columnHeight);
+            footer.setY(containerInsets.getTop() + containerSize.height - footerBandHeight);
             footer.setWidth(containerSize.width);
-            footer.setHeight(columnHeight);
+            footer.setHeight(footerBandHeight);
             footer.setAutoCommitStyle(true);
+
+            // The footer's inner row is the footer's own child, so its cells
+            // are sized from the footer's content box, not the band.
+            const footerBox = footer.getContentBounds()
+                ?? { x: 0, y: 0, width: containerSize.width, height: columnHeight };
 
             let x = 0;
 
@@ -255,7 +283,7 @@ class Table extends LayoutManager {
                 col.setX(x);
                 col.setY(0);
                 col.setWidth(columnWidths[i]);
-                col.setHeight(columnHeight);
+                col.setHeight(footerBox.height);
                 col.setAutoCommitStyle(true);
                 col.doLayout();
 
