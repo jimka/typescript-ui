@@ -383,20 +383,10 @@ describe('overlays and menus', () => {
         );
     });
 
-    // The shrink-equivalence oracle cannot catch this one: MenuItem sizes its
-    // children from the MenuItem.HEIGHT constant rather than from its own
-    // height, so both arms agree at 24 whatever the border. Assert containment
-    // against the real content box instead.
-    // Containment cannot catch MenuItem either: its texts are placed from its
+    // Containment cannot catch MenuItem: its texts are placed from its
     // own column constants, not from its width, so they sit inside the box
     // whatever the border. Padding is the observable difference — the origin
     // must come from `getContentInsets()`, which includes it.
-    //
-    // Vertical placement is deliberately not asserted: MenuItem centres its
-    // texts at construction with `centerInHeight(MenuItem.HEIGHT)`, pinning
-    // each text's minimum height to the item's *outer* height, so on a bordered
-    // item the clamp holds them taller than the content box. That border-blind
-    // centring is recorded as out of scope in the plan.
     it('MenuItem places its texts from the content-box origin', () => {
         const item = new MenuItem({ text: 'File', shortcut: 'Ctrl+F' }, () => {}, () => {});
 
@@ -410,6 +400,131 @@ describe('overlays and menus', () => {
         expect(box.x).toBe(4);
         // Reading the outer box instead puts the title 4px to the left.
         expect(title.getX()).toBe(box.x + MenuItem.TEXT_INSET);
+    });
+});
+
+describe('MenuItem labels track the border', () => {
+    const noop = () => {};
+
+    it('the borderless case is unchanged', () => {
+        const item = layOut(new MenuItem({ text: 'File', shortcut: 'Ctrl+F' }, noop, noop), 200, 24);
+        const [iconText, titleText, shortcutText] = item.getComponents();
+
+        for (const label of [iconText, titleText, shortcutText]) {
+            expect(label.getY()).toBe(0);
+            expect(label.getHeight()).toBe(24);
+            // The pin itself, not just the assigned height: doLayout writes the
+            // content box's height onto every label whatever the pin says, so
+            // getHeight() alone would read 24 even with no pin at all and the
+            // labels falling back to the 16px theme line box.
+            expect((label as any).getLineHeight()).toBe(24);
+        }
+    });
+
+    it('padding alone re-pins them, with no border involved', () => {
+        // The only case that reaches the pin through the constructor tail
+        // rather than through the setBorder override — chrome that is not a
+        // border still shrinks the content box.
+        const item = new MenuItem(
+            { text: 'File' }, noop, noop, 'menu-bar',
+            { padding: new Insets(3, 0, 3, 0) }
+        );
+
+        layOut(item, 200, 24);
+
+        expect(item.getContentBounds()!.height).toBe(18);
+        expect((item as any)._titleText.getLineHeight()).toBe(18);
+    });
+
+    it('a runtime border shrinks the labels', () => {
+        const item = new MenuItem({ text: 'File', shortcut: 'Ctrl+F' }, noop, noop);
+
+        item.setBorder('2px solid black');
+        layOut(item, 200, 24);
+
+        expect(item.getBorderSize().left).toBe(2);
+        expect(item.getContentBounds()).toEqual({ x: 0, y: 0, width: 196, height: 20 });
+
+        const [iconText, titleText, shortcutText] = item.getComponents();
+
+        for (const label of [iconText, titleText, shortcutText]) {
+            expect(label.getHeight()).toBe(20);
+        }
+
+        expectChildrenInsideContentBox(item, item.getComponents());
+    });
+
+    it('a border from the options bag shrinks them too', () => {
+        const item = new MenuItem({ text: 'File' }, noop, noop, 'menu-bar', { border: '2px solid black' });
+
+        layOut(item, 200, 24);
+
+        expect((item as any)._titleText.getLineHeight()).toBe(20);
+    });
+
+    it('the chevron is pinned like the rest', () => {
+        const item = new MenuItem(
+            { text: 'More', submenu: { label: 'More', items: [] } },
+            noop, noop
+        );
+
+        item.setBorder('2px solid black');
+        layOut(item, 200, 24);
+
+        // The chevron's own pin, so dropping its centerInHeight call is caught:
+        // getHeight() would read 20 either way, since doLayout assigns the
+        // content box's height and the pin only binds when it is larger.
+        expect((item as any)._chevronText.getLineHeight()).toBe(20);
+    });
+
+    it('clearing the border restores the full-height pin', () => {
+        const item = new MenuItem({ text: 'File' }, noop, noop);
+
+        item.setBorder('2px solid black');
+        item.clearBorder();
+        layOut(item, 200, 24);
+
+        // Assert the pinned line height, not getHeight(): doLayout assigns the
+        // label the content box's height either way, and a stale 20px pin is
+        // a *minimum*, so it never binds against 24 and getHeight() reads the
+        // same whether clearBorder re-derived the pin or not.
+        expect((item as any)._titleText.getLineHeight()).toBe(24);
+    });
+
+    it('padding counts as chrome', () => {
+        const item = new MenuItem(
+            { text: 'File' }, noop, noop, 'menu-bar',
+            { padding: new Insets(2, 4, 2, 4), border: '2px solid black' }
+        );
+
+        layOut(item, 200, 24);
+
+        expect(item.getContentBounds()!.height).toBe(16);
+        expect((item as any)._titleText.getLineHeight()).toBe(16);
+    });
+
+    it('a border thicker than the row floors the pin at 1', () => {
+        // 12px per side leaves nothing of the 24px row. The pin is clamped
+        // rather than allowed to reach 0, which centerInHeight would take as
+        // "no line box at all".
+        const item = new MenuItem(
+            { text: 'File' }, noop, noop, 'menu-bar',
+            { border: '12px solid black' }
+        );
+
+        layOut(item, 200, 24);
+
+        expect(item.getPerimeterSize().top).toBe(12);
+        expect((item as any)._titleText.getLineHeight()).toBe(1);
+    });
+
+    it('a bordered separator has nothing to pin', () => {
+        const item = new MenuItem(
+            { separator: true }, noop, noop, 'menu-bar',
+            { border: '2px solid black' }
+        );
+
+        expect(item.getComponents()).toEqual([]);
     });
 });
 

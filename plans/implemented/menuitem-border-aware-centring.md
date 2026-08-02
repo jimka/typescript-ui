@@ -542,3 +542,42 @@ entry changes. Two things still need updating:
     so the *placement* stays correct even when the pin does not move. A
     subscription per menu item, firing a no-op for every unbordered item in
     every menu, buys only the pin for a case no shipped theme produces.
+
+---
+
+## Implementation Notes
+
+- **The `grep -c 'centerInHeight'` verify criterion in step 5 and in
+  `## Verification` says "one." Implemented as designed instead, and the count
+  came out at five, not one.** The `## Internal Structure` code block itself —
+  the canonical implementation this plan hands down — writes four separate
+  optional-chained `centerInHeight` calls inside `updateLabelHeights` (one per
+  label field), plus its own JSDoc prose sentence that names `centerInHeight`
+  to explain why the re-pin is needed. That is 5 occurrences of the substring
+  by construction of the plan's own sample code, not 1 — the two verify
+  criteria were inconsistent with the code sample they were meant to check
+  against. `updateLabelHeights` was implemented verbatim from `## Internal
+  Structure` (four calls, matching the four independent nullable label fields
+  and the "Offline — the chevron is pinned like the rest" acceptance case,
+  which needs the chevron's own call). The `grep -c 'out of scope'` half of
+  step 5's verify — the only half load-bearing for the actual defect — passes
+  as specified (zero).
+
+- **Both manual checks in `## Expected Behaviour` were performed, three times
+  over.** The implementer ran them against a dev server started from this
+  worktree (`node_modules` symlinked first, spare port, so the package
+  self-reference resolves to this worktree's `packages/lib` rather than the
+  main tree's), and two independent reviewers re-ran them from their own
+  servers. *Content Box demo:* the bordered item measures 24px outer with 4px
+  borders; the title and shortcut sit in a 16px box with `line-height: 16px`,
+  fully inside the frame, descenders whole at 5x zoom. *No visible change where
+  a menu is unbordered:* every MenuBar item still reports child `y: 0`,
+  `height: 24`, `line-height: 24px`, with icons, shortcuts, submenu chevrons
+  and disabled items unchanged. No before/after image was captured; the
+  measurements above are the record.
+
+- **Step 8's verify criterion, "`npm run lint` in `packages/lib` is clean," was
+  never satisfiable.** A pre-existing `local/forward-super-options` error at
+  `component/table/cell/renderer/Link.ts:57` makes that script exit non-zero on
+  the base commit too. Checked instead that `npx eslint src` reports that one
+  error and nothing else.

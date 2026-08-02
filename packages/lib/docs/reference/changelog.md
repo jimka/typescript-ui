@@ -338,11 +338,11 @@ table out first.
   width it measures. `Dialog`'s button row is pixel-identical because its
   buttons' own minimum height absorbs the border. `MenuItem` and the tree cell
   renderer have no border today, so they are unchanged, but carried the same
-  defect and would have clipped for a consumer who themed one on. One caveat on
-  `MenuItem`: its labels are centred at construction against its outer height,
-  which pins their minimum, so a bordered menu item still needs that centring
-  made border-aware before its labels fit. `ComboBox`'s own layout was already
-  border-aware; only its origin ignored padding, which is what changed.
+  defect and would have clipped for a consumer who themed one on. `MenuItem`
+  needed a second change before its labels fit — its label centring pinned
+  their minimum against its outer height — which is the separate entry below.
+  `ComboBox`'s own layout was already border-aware; only its origin ignored
+  padding, which is what changed.
 
   A tree row was fixed the same way and is likewise unchanged today. The row
   class is not exported and no *public* accessor returns one, so this is only
@@ -377,18 +377,22 @@ table out first.
   `setWidth`/`setHeight`/`setSize`/`layoutChildren` override — unless the method
   reads that box's border somewhere. It is a guard rather than a proof: the
   rule's header lists the shapes it cannot see, and its baseline is what it
-  reports today rather than the whole remainder. It found twelve sites; six are
-  fixed below and six remain baselined.
+  reports today rather than the whole remainder. It found twelve sites; the
+  bordered `MenuItem`, `ProgressBar`, `ProgressSpinner`, `Slider`, and the
+  table's footer and header row-sizing are fixed below and five remain
+  baselined — latent, because each component is borderless today or its
+  border sits inside gaps wide enough to absorb it, which is why none of this
+  was found by looking.
 
   A **Content Box** demo panel borders the single-line fields, all four public
   row renderers, and the tree row (reached through `Tree`'s protected
-  `createPoolRow`, the only route to one), and sets a bordered `MenuItem` and a
-  notification trigger beside them so the open cases stay visible next to the
-  fixed ones. Between them the rule and the panel cover what each other cannot:
-  the rule sees every method, including the ones no demo renders, and the panel
-  catches what is not a placement error at all — a child positioned correctly
-  but sized from a stale measurement, which no AST check can distinguish from a
-  correct one.
+  `createPoolRow`, the only route to one), and sets the now-fixed bordered
+  `MenuItem` and a still-baselined notification trigger beside them so an open
+  case stays visible next to the fixed ones. Between them the rule and the
+  panel cover what each other cannot: the rule sees every method, including
+  the ones no demo renders, and the panel catches what is not a placement
+  error at all — a child positioned correctly but sized from a stale
+  measurement, which no AST check can distinguish from a correct one.
 
 - **A table's footer and header size their inner row to their content box.**
   Both handed that row their own full outer extent, though it is a child and so
@@ -436,6 +440,18 @@ table out first.
   border on a `TextField` now rewrites its preferred and minimum height, and a
   *bounded* maximum, leaving an unbounded maximum alone so a caller who
   deliberately unpinned the field to fill a taller container keeps that.
+
+- **A `MenuItem`'s labels are pinned to the item's content height, not its
+  outer height.** Each of the four labels (icon, title, shortcut, chevron) was
+  centred at construction against `MenuItem.HEIGHT` — the item's fixed 24px
+  *outer* height — which also pins the label's minimum height, so a bordered
+  item's smaller content box could not shrink them and they overran it. The
+  labels are now re-pinned to the content height (the outer height less the
+  item's own insets, border, and padding) at construction and again whenever
+  `setBorder`/`clearBorder` runs. No shipped theme borders a `MenuItem`, so
+  every menu the framework ships is unaffected; the fix is visible only in the
+  Content Box demo panel, which borders one standalone item to exercise it, and
+  for any consumer who borders a `MenuItem` of their own.
 
 - **Animated glyphs no longer cost main-thread work on every frame.** A
   `Glyph`'s root element was an `<svg>`, and browsers will not run a

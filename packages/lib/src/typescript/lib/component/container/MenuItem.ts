@@ -4,6 +4,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
 import { Glyph } from "~/component/display/Glyph.js";
+import { BorderOptions } from "~/primitive/Border.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -226,14 +227,12 @@ class MenuItem extends Component {
         } else {
             this._iconText = new Text(config.icon ?? "");
             this._iconText.setPointerEvents("none");
-            this._iconText.centerInHeight(MenuItem.HEIGHT);
             this._iconText.setVisible(!!config.icon);
             this.addComponent(this._iconText);
         }
 
         this._titleText = new Text(config.text ?? "");
         this._titleText.setPointerEvents("none");
-        this._titleText.centerInHeight(MenuItem.HEIGHT);
         this._titleText.setWhiteSpace("nowrap");
         this._titleText.setOverflow("hidden");
         this._titleText.setTextOverflow("ellipsis");
@@ -242,7 +241,6 @@ class MenuItem extends Component {
         if (config.shortcut) {
             this._shortcutText = new Text(config.shortcut);
             this._shortcutText.setPointerEvents("none");
-            this._shortcutText.centerInHeight(MenuItem.HEIGHT);
             this._shortcutText.setTextAlign("left");
             this._shortcutText.setForegroundColor(
                 `var(--ts-ui-${cssVarPrefix}-item-shortcut-color, rgb(140, 140, 140))`
@@ -253,7 +251,6 @@ class MenuItem extends Component {
         if (this.hasSubmenu()) {
             this._chevronText = new Text("▶");
             this._chevronText.setPointerEvents("none");
-            this._chevronText.centerInHeight(MenuItem.HEIGHT);
             this._chevronText.setTextAlign("center");
             this._chevronText.setForegroundColor(
                 `var(--ts-ui-${cssVarPrefix}-item-shortcut-color, rgb(140, 140, 140))`
@@ -300,6 +297,8 @@ class MenuItem extends Component {
         if (options) {
             this.applyOptions(options);
         }
+
+        this.updateLabelHeights();
     }
 
     /**
@@ -462,6 +461,58 @@ class MenuItem extends Component {
     }
 
     /**
+     * Re-pins the four labels' line boxes to the item's CONTENT height —
+     * `MenuItem.HEIGHT` less this item's own vertical chrome. `centerInHeight`
+     * pins a label's minimum height as well as its line box, so a label pinned to
+     * the outer height cannot shrink into a bordered item's content box and is
+     * clipped. Called from the constructor tail and whenever the border changes.
+     */
+    private updateLabelHeights(): void {
+        const perimeter = this.getPerimeterSize();
+        // Floor of 1: chrome at or past the row height leaves nothing to centre
+        // in, and a zero or negative line-height is not a value CSS should see.
+        // The label clips in that case either way — the floor only keeps the
+        // written value sane.
+        const height = Math.max(1, MenuItem.HEIGHT - perimeter.top - perimeter.bottom);
+
+        // Optional chaining, not null checks: a separator has none of these, and a
+        // border arriving through the options bag could in principle reach here
+        // before the field initializers have run.
+        this._iconText?.centerInHeight(height);
+        this._titleText?.centerInHeight(height);
+        this._shortcutText?.centerInHeight(height);
+        this._chevronText?.centerInHeight(height);
+    }
+
+    /**
+     * Applies a border, then re-pins the four labels' line boxes to the item's
+     * new content height so a bordered item's labels shrink to fit instead of
+     * overrunning the smaller content box.
+     *
+     * @param options - Border configuration, or a CSS `border` shorthand string.
+     * @returns This component, for method chaining.
+     */
+    setBorder(options: BorderOptions | string): this {
+        super.setBorder(options);
+        this.updateLabelHeights();
+
+        return this;
+    }
+
+    /**
+     * Clears the border, then re-pins the four labels' line boxes back to the
+     * item's now-larger content height.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearBorder(): this {
+        super.clearBorder();
+        this.updateLabelHeights();
+
+        return this;
+    }
+
+    /**
      * Positions the four label zones within the item's content box.
      *
      * @returns This component, for method chaining.
@@ -481,11 +532,8 @@ class MenuItem extends Component {
 
         // Heights come from the content box, not MenuItem.HEIGHT: the constant
         // is the item's outer height. With no border the two are the same
-        // number. Note this does not by itself make a bordered item fit — the
-        // texts' construction-time centerInHeight(MenuItem.HEIGHT) pins their
-        // minimum height to the outer height, so the clamp holds them at 24
-        // regardless; correcting that needs a border-change hook and is out of
-        // scope here.
+        // number. The texts' line boxes are pinned to match by
+        // updateLabelHeights, so they fit this box rather than overrunning it.
         const H = box.height;
         const totalWidth = box.width;
         const hasShortcut = !!this._config.shortcut && this._shortcutText !== null;
