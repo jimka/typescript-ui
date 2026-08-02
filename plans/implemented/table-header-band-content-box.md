@@ -302,3 +302,86 @@ Changelog, under `## 0.4.0` → `### Fixed`, alongside the existing content-box 
 [^no-visible-symptom]: Worth stating plainly, since it decides how much churn is justified. The clipped strip is `y ∈ [19, 20)` of the header's box, which is precisely where the header's bottom border paints. Children are clipped at the padding box, so nothing of the cell was going to be visible there anyway — and without `overflow: hidden` the cells' backgrounds would paint *over* the divider and break it. The column separators (a 1px stripe on each `ResizeHandle`, `height: 100%`) stop at the content box and the border continues the line, so they meet with no gap. So no user can see this today under any shipped theme, and the fix changes no pixel except the band's extra one. It is worth doing anyway because it is a dozen lines, it removes a silent overrun that only `overflow: hidden` is absorbing, it deletes a setter with no observable effect, and it stops a themed or thickened border from cutting into the header labels. It is not worth expanding beyond that — no restructuring of who lays out the header, and no attempt to make the band configurable.
 
 [^sweep-branch]: `feature/content-box-baseline-sweep` corrects `TableHeader.setWidth` and `FooterRow.setWidth` / `setHeight` to hand their rows `getContentBounds()`, removes six entries from the lint baseline, and adds a `table bands size their inner rows to the content box` block to `content-box-containment.test.ts`. Its changelog entry already names this plan by filename and records the manager-side defect as deliberately left open. Two of its edits are superseded here: the `TableHeader.setWidth` correction (the method goes) and the test case covering it. Its `FooterRow` half is not superseded — it is the component-side counterpart to this plan's footer band change, and the two only compose correctly together.
+
+---
+
+## Implementation Notes
+
+- **The plan's stated base had moved, but its premises still held.** The plan
+  says it is written against `master` (`e63e540c`) with
+  `feature/content-box-baseline-sweep` in flight. That branch is still
+  unmerged and is not in this branch's history, checked rather than assumed —
+  so `TableHeader.setWidth` was still present at `Header.ts:373-381` and every
+  step applied as written, with none of the plan's "if the sweep already did
+  X" alternatives needed. What had moved is the surrounding batch: three
+  sibling branches landed underneath first, so the lint baseline held 7
+  entries rather than the plan's 12, and the line numbers for the shared
+  files — the containment suite, the demo panel, the changelog — were all
+  stale. Each was re-derived from the file as it actually stood.
+
+- **One test was added that the plan's `## Expected Behaviour` matrix does not
+  contain: `offsets the rows from a padded header's content-box origin, with
+  no border involved`.** The plan's cases vary only border thickness, and a
+  border never moves the content-box origin — with insets and padding zero in
+  every fixture, `headerBox.x`/`.y` and a hard-coded `0` are indistinguishable.
+  Every case in the plan would therefore have passed against a fix that read
+  only the extent and left the origin at zero. Padding is the only lever that
+  separates them. Confirmed by mutation: reverting the origin reads reddens
+  this case and nothing else.
+
+- **Two older changelog entries' running baseline counts were updated, not
+  just this fix's own.** Removing `TableHeader.setWidth` takes the baseline
+  from 7 to 6, which falsifies "seven remain baselined" in both the founding
+  `require-content-bounds` entry and the scroll-chrome entry. A count stated
+  in three places is one fact, so all three move together or the section
+  contradicts itself.
+
+- **The manual checklist was walked, and the live defect measured on both
+  sides of the fix.** Two dev servers were run side by side, each confirmed to
+  be serving its own worktree: one on this branch, one on the branch
+  immediately beneath it in the stack, which has every other content-box fix
+  but not this one. The same shipped table — Misc tab, *Show window with table
+  (slow)!*, default theme, no borders added — measured:
+
+  | | band | content box | column row | overrun |
+  |---|---|---|---|---|
+  | before | 20 | 19 | 20 | **1px, clipped** |
+  | after | 21 | 20 | 20 | 0 |
+
+  The overrun is on the header cells as well as the row, and on the scrollbar
+  cover, which is the third child of the `thead` and was standing a pixel
+  proud of the content box for the same reason. This is the whole claim of the
+  branch, on a default table under a shipped theme, with nothing configured.
+
+  Also checked on this branch, all reporting zero overrun: the collapsed
+  parent row still has height 0 when a table has no grouped header; the
+  grouped-header, tree-table and paginated-table windows; and the same table
+  after switching to the Classic theme and re-measuring, which leaves band 21
+  and content 20 unchanged. The 4px-bordered demo row on the Content Box tab
+  goes from a 20px band with a 12px content box (both 4px border sides taken
+  off a 20px column height) to a 28px band with a 20px content box. The 16px
+  line box centres in the row with 2px above and below, so it occupies y 2–18
+  and the 12px content box (y 0–12) clips its bottom 6px — over a third of
+  the text, not most and not two thirds as an earlier pass of this note and
+  the demo panel's own comment both said before review caught it.
+
+- **The remaining three manual-checklist items were walked in a later pass, after
+  review found them missing: horizontal scroll, the Rotated tab, and Modern
+  and Dark themes.** *Horizontal scroll*, on the 45-column wide table (the one
+  configuration wide enough to scroll): band 21, content box 20, cover flush
+  at `top 0` with 0 overrun — this is the exact case the cover's missing `top`
+  write (fixed above) would have broken under a padded header, so it is the
+  one check that would have caught it, and it now passes. *Rotated tab*: band
+  21, content 20, 0 overrun. *Themes*: `BaseTheme.ts:49-57` sets
+  `table.cell.padding: 2` once, and `Header.ts:60`'s border is
+  `var(--ts-ui-table-header-border, black)`; `ModernTheme.ts:145-149`,
+  `ClassicTheme.ts:131-135` and `DarkTheme.ts:130-134` each override only the
+  header's background and border *color*, never the font size or cell
+  padding. `columnHeight` is `lineHeight + 2*padding`, so it is
+  byte-identical across all three themes, and Classic was already measured
+  live and clean (band 21, content 20). Modern and Dark were not re-measured
+  live in this pass: the demo app's three-way theme toggle did not advance
+  under a synthetic `dispatchEvent` sequence, a known harness limitation
+  (`feedback_synthetic_click_bypasses_hittest`) rather than a defect in this
+  branch, and the arithmetic argument above stands in for the two remaining
+  live checks.

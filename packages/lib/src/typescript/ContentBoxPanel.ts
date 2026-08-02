@@ -32,9 +32,11 @@ import {
     Cell,
     StringEditor,
     StringRenderer,
+    Table,
     TreeCellRenderer,
 } from '@jimka/typescript-ui/component/table';
 import type { CellRenderer } from '@jimka/typescript-ui/component/table';
+import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { Insets } from '@jimka/typescript-ui/primitive';
 import { folder } from '@jimka/typescript-ui/glyphs/solid/folder';
 import { file } from '@jimka/typescript-ui/glyphs/solid/file';
@@ -66,6 +68,9 @@ const TREE_CELL_DEPTH = 2;
 
 /** Outer box of one demo tree cell: room for a caret, an indent and a value. */
 const TREE_CELL_SIZE = { width: 230, height: 28 };
+
+/** Outer box for the demo table's FieldSet: wide enough for three text columns, tall enough to show the header band above a couple of body rows. */
+const TABLE_ROW_SIZE = { width: 420, height: 180 };
 
 /** Nodes shared by both trees, deep enough to show the caret at two indents. */
 const TREE_NODES: TreeNode[] = [
@@ -226,7 +231,7 @@ class BorderedStripHost extends Container {
  *
  * What to look for here: a caret, icon, spinner, picker button, or label that
  * is cut off on its right or bottom edge, or a label that starts flush against
- * the border instead of inside it. Everything bordered here — all five rows —
+ * the border instead of inside it. Everything bordered here — all six rows —
  * should sit fully inside its border with the frame unbroken all the way
  * round. On the table-cell row, double-click the first cell's text: the
  * opened editor's outline should start at the text, not at the cell's left
@@ -235,9 +240,9 @@ class BorderedStripHost extends Container {
  *
  * Covered: the single-line fields, the tree row, the four public row
  * renderers, the menu item, a table cell (bordered directly, and again
- * through its `TreeCellRenderer`), and the three pieces of scroll chrome (a
+ * through its `TreeCellRenderer`), the three pieces of scroll chrome (a
  * `Tree`'s `VirtualScroller` bars, a `ScrollStrip`'s clip and paging arrows,
- * and a `Scrollbar`'s thumb and arrow caps).
+ * and a `Scrollbar`'s thumb and arrow caps), and a table's header band.
  * `Dialog`, `Tooltip` and `DragGhost` carry real theme borders and
  * have their own demos.
  *
@@ -280,6 +285,15 @@ class BorderedStripHost extends Container {
  * outer box instead of its content box. None of the three carries a border
  * under any shipped theme, so this row is the only place their fix is visible
  * at all.
+ *
+ * The sixth row holds a `Table` whose header carries a border thick enough
+ * that the fix is unmistakable: `layout/Table.doLayout` used to split the
+ * header band's own outer height between its two rows and give every header
+ * cell that height, so the header's `overflow: hidden` took the border width
+ * off the bottom of every cell — invisible under the shipped 1px border, but
+ * at this thickness it used to cut over a third of the header text away.
+ * The band now grows by the header's own border instead, so the cells stay
+ * whole and the band is visibly taller than a body row.
  */
 class ContentBoxPanel extends Panel {
 
@@ -299,7 +313,9 @@ class ContentBoxPanel extends Panel {
         this.addComponent(new Text(
             "Every component below carries a border. Look for a child clipped at the "
             + "right or bottom edge, or sitting flush against the frame. The fourth row's "
-            + "second FieldSet is still on the lint rule's baseline.",
+            + "second FieldSet is still on the lint rule's baseline. The sixth row's table "
+            + "header carries a thick border to show the band growing to fit it instead of "
+            + "clipping the header cells.",
         ));
 
         this.addComponent(this.buildFieldRow());
@@ -307,6 +323,7 @@ class ContentBoxPanel extends Panel {
         this.addComponent(this.buildTableCellRow());
         this.addComponent(this.buildMenuAndNotificationRow());
         this.addComponent(this.buildScrollChromeRow());
+        this.addComponent(this.buildTableRow());
 
         // The panel subscribes after the cell does (Cell's own constructor
         // subscribes first), and theme listeners fire in registration order,
@@ -572,6 +589,52 @@ class ContentBoxPanel extends Panel {
             preferredSize: BOX,
             layoutManager: VBox(),
             components   : [{ component: scrollbar }],
+        }));
+
+        return row;
+    }
+
+    /**
+     * Builds the row holding a `Table` whose header carries a thick border.
+     * `layout/Table.doLayout` grows the header band by its own perimeter and
+     * places the rows from `header.getContentBounds()`; under the unfixed
+     * arithmetic the band stayed the rows' own height and the header's
+     * `overflow: hidden` clipped whatever the border took out of the content
+     * box — 6 of a 16px line box at this thickness, over a third of the text.
+     *
+     * @returns A wrapping row of one FieldSet holding the table.
+     */
+    private buildTableRow(): Container {
+        const row = Container({ layoutManager: HFlow({ spacing: 8, lineSpacing: 8 }) });
+
+        const tableModel = new Model([
+            { name: "street1",        type: "string", description: "Street1",       order: 1 },
+            { name: "city",           type: "string", description: "City",          order: 2 },
+            { name: "country_region", type: "string", description: "CountryRegion", order: 3 },
+        ]);
+
+        // A couple of seed rows so the header band renders above real body
+        // content rather than an empty table.
+        const store = new MemoryStore({
+            model: tableModel,
+            data : [
+                { street1: "1 Market St",   city: "San Francisco", country_region: "US" },
+                { street1: "10 Downing St", city: "London",        country_region: "UK" },
+            ],
+            autoLoad: true,
+        });
+
+        const table = Table(store);
+
+        // 4px, not BORDER: a 1px header border is invisible either way, so
+        // this reuses the panel's existing MENU_ITEM_BORDER constant rather
+        // than adding a new one at the same thickness.
+        table.getHeader().setBorder(MENU_ITEM_BORDER);
+
+        row.addComponent(FieldSet("Table header band", {
+            preferredSize: TABLE_ROW_SIZE,
+            layoutManager: VBox({ stretching: true }),
+            components   : [{ component: table }],
         }));
 
         return row;

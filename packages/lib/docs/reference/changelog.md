@@ -383,8 +383,11 @@ table out first.
   `VirtualScroller.layoutScrollbars`, `ScrollStrip.layoutContent` and
   `Scrollbar.setMetrics` are fixed in the scroll-chrome entry further down,
   `Cell.alignEditorWithContent` is fixed in the table-cell entry further down
-  still, and one remains baselined — latent, because it is borderless today,
-  which is why it was not found by looking.
+  still, `TableHeader.setWidth` is deleted outright in the header-band entry
+  below — its row-width propagation was already redundant with the table
+  layout manager's, which is what actually decides row width — and one
+  remains baselined, latent because it is borderless today, which is why it
+  was not found by looking.
 
   A **Content Box** demo panel borders the single-line fields, all four public
   row renderers, and the tree row (reached through `Tree`'s protected
@@ -396,24 +399,23 @@ table out first.
   error at all — a child positioned correctly but sized from a stale
   measurement, which no AST check can distinguish from a correct one.
 
-- **A table's footer and header size their inner row to their content box.**
-  Both handed that row their own full outer extent, though it is a child and so
-  already sits inside their border. `FooterRow`'s row is now a pixel shorter,
-  matching the 1px top border every shipped theme gives the footer; the header
-  is corrected the same way, and its border is on the bottom only, so its width
-  forwarding was already a no-op. Neither is visible today: a table's footer
-  cannot be switched on — `Table` has no footer-visibility setter, contrary to
-  what `docs/components/Table.md` says — and the header's row widths are
-  reassigned by the table layout manager immediately afterwards. Both are
-  corrected because the rule is uniform, not because anything moves.
+- **A table's footer sizes its inner row to its content box.** It handed that
+  row its own full outer extent, though the row is a child and so already
+  sits inside the footer's border. `FooterRow`'s row is now a pixel shorter,
+  matching the 1px top border every shipped theme gives the footer. Not
+  visible today: a table's footer cannot be switched on — `Table` has no
+  footer-visibility setter, contrary to what `docs/components/Table.md` says.
+  `TableHeader` had the same defect in its own `setWidth`, but its row widths
+  are reassigned by the table layout manager immediately afterwards, so
+  fixing the forwarding in place would have left dead code; it is deleted
+  outright instead, in the header-band entry below.
 
-  A related defect in the *layout manager* is left open and is now tracked in
-  `plans/table-header-band-content-box.md`: `layout/Table` splits the header
-  band's full **outer** height between the parent and column rows and gives
-  each header cell that same height, so every table's header cells overrun the
-  header's content box by its 1px bottom border and are clipped — today, by
-  default. That one is reachable and visible, and the lint rule cannot see it
-  because it lives in a `LayoutManager`.
+  A related defect in the *layout manager* — `layout/Table` split the header
+  band's full **outer** height between the parent and column rows and gave
+  each header cell that same height, so every table's header cells overran the
+  header's content box by its 1px bottom border and were clipped, today, by
+  default — is reachable and visible, and the lint rule cannot see it because
+  it lives in a `LayoutManager`. It is fixed in the header-band entry below.
 
 - **`ProgressBar`, `ProgressSpinner` and `Slider` honour their own padding.**
   All three sized their children from `getInnerSize()` — the correct extent —
@@ -469,6 +471,37 @@ table out first.
   correct since an earlier fix, but no existing test set a border and padding
   together, which is the only configuration whose result differs from the
   unfixed arithmetic.
+
+- **A table's header band is one pixel taller: it now adds its own bottom
+  border to the height its rows need, instead of splitting the band's outer
+  height between them and letting `overflow: hidden` take the last pixel off
+  every header cell.** `layout/Table.doLayout` gave the header band exactly
+  the height its two rows needed and then split that same height between
+  them, so the rows' containing block — the header's own content box, one
+  pixel shorter than the band because of its shipped bottom border — was
+  overrun by exactly the border width, and the header's own `overflow:
+  hidden` silently clipped the last pixel off every header cell. The band
+  now grows by the header's own perimeter instead of the rows shrinking
+  inside it, and both rows and the scrollbar cover are placed from
+  `header.getContentBounds()` rather than the band's outer box; the
+  row-width floor moves from the container's width to the header's content
+  width so a bordered header's rows no longer overrun the far edge either.
+  The per-cell loops are untouched: a cell is a child of its row, so it was
+  already inside the right box. A header cell's last pixel row is no longer
+  clipped — its height is unchanged, and matched the body row's before.
+  Nothing moves under the shipped themes except by the band's extra pixel:
+  the divider, the body's origin and every body row shift down one, and the
+  body loses one. A header given a thicker border no longer cuts into its
+  own labels. This is a manager reaching into a *child's*
+  subtree rather than a component placing its own children, so it sits
+  outside what `local/require-content-bounds` can see; the fix is guarded by
+  new offline tests instead. The footer band is corrected the same way; it
+  cannot be switched on today, since `Table` exposes no footer-visibility
+  setter. `TableHeader.setWidth` is gone: it forwarded a width the table's
+  layout manager overwrote immediately, and the rows' widths, positions and
+  heights all come from the manager now. The Content Box demo panel gained a
+  sixth row bordering a table's header thickly enough to make the fix
+  unmistakable.
 
 - **Size hints that depend on a border are re-derived when it changes.** A
   `TextField` cached its one-line box at construction, so a field whose border
