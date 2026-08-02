@@ -40,6 +40,13 @@ import { _GlyphListItemRenderer } from '~/component/list/renderer/Glyph';
 import { _StringEditor } from '~/component/table/cell/editor/String';
 import { _NumberEditor } from '~/component/table/cell/editor/Number';
 import { NumberSpinner } from '~/component/input/NumberSpinner';
+import { _ProgressBar } from '~/component/display/ProgressBar';
+import { _ProgressSpinner } from '~/component/display/ProgressSpinner';
+import { _Slider } from '~/component/input/Slider';
+import { _FooterRow } from '~/component/table/Footer';
+import { _TableHeader } from '~/component/table/Header';
+import { Model } from '~/data/Model';
+import { MemoryStore } from '~/data/MemoryStore';
 
 // `--ts-ui-input-border` must resolve: with the empty `themeVars` every other
 // suite uses, the input border measures 0 and every picker case would pass
@@ -666,4 +673,109 @@ describe('cell editors keep their field fillable after setting a border', () => 
             expect(field.getHeight()).toBe(24);
         });
     }
+});
+
+// These three place their children from `getInnerSize()`. That is the right
+// extent and the wrong origin: the inner size already has the padding taken
+// out of it, and putting a child at 0 then ignores that padding, starting the
+// child at the inner edge of the border instead of inside the padding. All
+// three carry no padding by default, so this is latent until a consumer sets
+// some — which is why the cases below set it rather than a border. The
+// expected rectangles come from the content box, not from what the code emits.
+describe('progress and slider chrome starts at the content origin', () => {
+    const PAD = 4;
+
+    /** Renders detached with uniform padding and lays out at the outer size. */
+    const withPadding = <T extends Component>(c: T, w: number, h: number, pad = PAD): T => {
+        c.getElement(true);
+        c.clearInsets();
+        c.setPadding(new Insets(pad, pad, pad, pad));
+
+        return layOut(c, w, h);
+    };
+
+    it('ProgressBar puts its track at the content origin', () => {
+        const bar = new _ProgressBar() as unknown as Component;
+
+        (bar as any).setValue(50);
+        withPadding(bar, 200, 24);
+
+        // 200x24 less 4px of padding all round.
+        expect(bar.getContentBounds()).toEqual({ x: 4, y: 4, width: 192, height: 16 });
+        expect(rect((bar as any)._track)).toEqual({ x: 4, y: 4, width: 192, height: 16 });
+        // The fill is a child of the track, so its own origin stays at zero.
+        expect(rect((bar as any)._fill)).toEqual({ x: 0, y: 0, width: 96, height: 16 });
+    });
+
+    it('ProgressSpinner centres its arc in the content box', () => {
+        const spinner = new _ProgressSpinner() as unknown as Component;
+
+        withPadding(spinner, 48, 48);
+
+        // A 48x48 box less 4px all round leaves 40x40. The arc takes the
+        // spinner's own diameter, which with no `--ts-ui-font-size` in the
+        // harness is the 14px fallback, centred in that 40: 4 + (40-14)/2 = 17.
+        // Literal on purpose — deriving the centre from the arc's own measured
+        // width would accept any diameter, including a collapsed one.
+        expect(spinner.getContentBounds()).toEqual({ x: 4, y: 4, width: 40, height: 40 });
+        expect(rect((spinner as any)._arc)).toEqual({ x: 17, y: 17, width: 14, height: 14 });
+    });
+
+    // Padding on the main axis only: a Slider pins its cross-axis maximum to
+    // the 16px thumb, so cross-axis padding would leave the thumb no room and
+    // the case would be testing the clamp rather than the origin.
+    it('a horizontal Slider starts its track and thumb at the content origin', () => {
+        const slider = new _Slider() as unknown as Component;
+
+        slider.getElement(true);
+        slider.clearInsets();
+        slider.setPadding(new Insets(0, PAD, 0, PAD));
+        (slider as any).setValue(50);
+        layOut(slider, 200, 16);
+
+        expect(slider.getContentBounds()).toEqual({ x: 4, y: 0, width: 192, height: 16 });
+        // Track spans the content width, centred on the 4px-thick track band.
+        expect(rect((slider as any)._track)).toEqual({ x: 4, y: 6, width: 192, height: 4 });
+        // Thumb is 16px, half way along the 192px content width.
+        expect(rect((slider as any)._thumb)).toEqual({ x: 4 + 88, y: 0, width: 16, height: 16 });
+    });
+
+    it('a vertical Slider starts its track and thumb at the content origin', () => {
+        const slider = new _Slider({ orientation: 'vertical' }) as unknown as Component;
+
+        slider.getElement(true);
+        slider.clearInsets();
+        slider.setPadding(new Insets(PAD, 0, PAD, 0));
+        (slider as any).setValue(50);
+        layOut(slider, 16, 200);
+
+        expect(slider.getContentBounds()).toEqual({ x: 0, y: 4, width: 16, height: 192 });
+        expect(rect((slider as any)._track)).toEqual({ x: 6, y: 4, width: 4, height: 192 });
+        expect(rect((slider as any)._thumb)).toEqual({ x: 0, y: 4 + 88, width: 16, height: 16 });
+    });
+});
+
+// A table's header and footer band forward their own outer width and height to
+// the inner row, which is a child and therefore already inside the band's
+// border. Neither is observable today — no footer is ever displayed, and the
+// table layout manager reassigns the header's row widths straight afterwards —
+// so these cases are the only thing holding the arithmetic honest.
+describe('table bands size their inner rows to the content box', () => {
+    const MODEL = new Model([{ name: 'a', type: 'string', order: 0 }], 'a');
+
+    it('FooterRow only shrinks its row when given a border', () => {
+        expectBorderOnlyShrinks(
+            () => new _FooterRow() as unknown as Component,
+            f => [f.getComponents()[0]],
+            300, 24, 2,
+        );
+    });
+
+    it('TableHeader only shrinks its rows when given a border', () => {
+        expectBorderOnlyShrinks(
+            () => new _TableHeader(MODEL, new MemoryStore(MODEL, [])) as unknown as Component,
+            h => h.getComponents(),
+            300, 24, 2,
+        );
+    });
 });

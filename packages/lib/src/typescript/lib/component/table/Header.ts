@@ -421,9 +421,16 @@ class TableHeader extends Component {
     setWidth(width: number): this {
         super.setWidth(width);
 
-        const rows = this.getComponents();
-        rows[0].setWidth(width);
-        rows[1].setWidth(width);
+        // The rows are children, so they already start inside the header's
+        // border; handing them the outer width would push them that far past
+        // the far edge. The shipped border is on the bottom only, so this is
+        // no change today. Before the element exists there is no border to
+        // subtract, so the argument is the whole box.
+        const rowWidth = this.getContentBounds()?.width ?? width;
+        const rows     = this.getComponents();
+
+        rows[0].setWidth(rowWidth);
+        rows[1].setWidth(rowWidth);
 
         return this;
     }
