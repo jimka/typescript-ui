@@ -3,7 +3,9 @@
  * box — the rectangle `getContentBounds()` returns — whether it does that from a
  * `doLayout` override or from another method, as the row renderers do.
  * Placing them against the border box instead makes the last child overflow by
- * the border width, and the component's `overflow: hidden` clips it.
+ * both border sides — the child's containing block is already the padding box,
+ * so it starts inside the near border and runs the far one past the edge — and
+ * the component's `overflow: hidden` clips it.
  *
  * Two oracles below. `expectChildrenInsideContentBox` catches a component that
  * overflows under its own real border. `expectBorderOnlyShrinks` is the guard
@@ -31,6 +33,8 @@ import { Dialog } from '~/overlay/Dialog';
 import { Tooltip } from '~/overlay/Tooltip';
 import { DragGhost } from '~/overlay/DragGhost';
 import { MenuItem } from '~/component/container/MenuItem';
+import { Cell } from '~/component/table/cell/Cell';
+import type { CellRenderer } from '~/component/table/cell/renderer/CellRenderer';
 import { TreeCellRenderer } from '~/component/table/cell/renderer/TreeCell';
 import { StringRenderer } from '~/component/table/cell/renderer/String';
 import { _List } from '~/component/list/List';
@@ -541,6 +545,129 @@ describe('TreeCellRenderer', () => {
             tc => [(tc as any)._delegate as Component],
             150, 22, 2,
         );
+    });
+
+    /**
+     * Lays out a `TreeCellRenderer` at `depth`, bordered and padded 3px on
+     * every side, sized to `w x h`, with a toggle showing. Padding — not the
+     * border alone — is what moves the content box's origin off zero, which
+     * is what the case above cannot tell apart from `depth * indentPx` on its
+     * own; see `## Architecture Decisions` in the plan.
+     */
+    const layOutPadded = (border: number, depth: number, w: number, h: number): TreeCellRenderer<String | null> => {
+        const tc = new TreeCellRenderer(new StringRenderer());
+
+        tc.getElement(true);
+        tc.setBorder(border === 0 ? 'none' : `${border}px solid black`);
+        tc.setPadding(new Insets(3, 3, 3, 3));
+        tc.setTreeState(depth, true, false);
+        tc.setWidth(w);
+        tc.setHeight(h);
+        tc.doLayout();
+
+        return tc;
+    };
+
+    it('places the toggle and delegate from the content-box origin, border included', () => {
+        const tc = layOutPadded(2, 2, 200, 40);
+
+        expect(tc.getContentBounds()).toEqual({ x: 3, y: 3, width: 190, height: 30 });
+        expect(rect(tc.getToggle()!)).toEqual({ x: 35, y: 10, width: 16, height: 16 });
+        expect(rect(tc.getDelegate())).toEqual({ x: 55, y: 3, width: 138, height: 30 });
+    });
+
+    // A border may only shrink the content box, never move its origin: this
+    // borderless renderer, sized down by exactly the border this plan's other
+    // case carries, must land on identical toggle and delegate rectangles.
+    it('produces identical rectangles borderless, sized down by the border', () => {
+        const tc = layOutPadded(0, 2, 196, 36);
+
+        expect(tc.getContentBounds()).toEqual({ x: 3, y: 3, width: 190, height: 30 });
+        expect(rect(tc.getToggle()!)).toEqual({ x: 35, y: 10, width: 16, height: 16 });
+        expect(rect(tc.getDelegate())).toEqual({ x: 55, y: 3, width: 138, height: 30 });
+    });
+
+    // Depth 0 contributes no indent, so an origin error in `box.x + …` cannot
+    // hide behind the indent term the way it could at depth 2 above.
+    it('pins the indent arithmetic at a depth that contributes nothing', () => {
+        const tc = layOutPadded(2, 0, 200, 40);
+
+        expect(rect(tc.getToggle()!)).toEqual({ x: 3, y: 10, width: 16, height: 16 });
+        expect(rect(tc.getDelegate())).toEqual({ x: 23, y: 3, width: 170, height: 30 });
+    });
+});
+
+describe('Cell aligns its editor with the content box', () => {
+    /**
+     * Builds a `Cell` wrapping a `StringRenderer`, optionally behind a
+     * `TreeCellRenderer` at `depth`, sizes it to `w x h`, and opens its
+     * per-cell editor. `depth === null` keeps the plain renderer, whose
+     * `getContentX()` of `0` takes `alignEditorWithContent`'s early-return
+     * path.
+     */
+    const makeCell = (border: number, pad: number, depth: number | null, w: number, h: number) => {
+        const cell = new Cell<String | null>('div', new StringRenderer(), new _StringEditor());
+
+        cell.getElement(true);
+        cell.setBorder(border === 0 ? 'none' : `${border}px solid black`);
+        cell.setPadding(new Insets(pad, pad, pad, pad));
+
+        if (depth !== null) {
+            cell.wrapRenderer((delegate: CellRenderer<String | null>) => new TreeCellRenderer(delegate));
+            (cell.getRenderer() as TreeCellRenderer<String | null>).setTreeState(depth, true, false);
+        }
+
+        cell.setValue('Component.ts');
+        cell.setWidth(w);
+        cell.setHeight(h);
+        cell.doLayout();
+        cell.startEdit();
+
+        return cell;
+    };
+
+    /** The delegate renderer's rectangle in the cell's own coordinate space. */
+    const delegateRect = (cell: Cell<String | null>) => {
+        const renderer = cell.getRenderer() as TreeCellRenderer<String | null>;
+        const delegate = renderer.getDelegate();
+
+        return {
+            x:      renderer.getX() + delegate.getX(),
+            y:      renderer.getY() + delegate.getY(),
+            width:  delegate.getWidth(),
+            height: delegate.getHeight(),
+        };
+    };
+
+    it('shrinks the editor to the bordered content box width', () => {
+        const cell   = makeCell(2, 0, 2, 200, 24);
+        const editor = cell.getEditor()!;
+
+        expect(rect(editor)).toEqual({ x: 52, y: 0, width: 144, height: 20 });
+        expect(rect(editor)).toEqual(delegateRect(cell));
+    });
+
+    it('offsets the editor origin by padding as well as the content indent', () => {
+        const cell   = makeCell(2, 3, 2, 200, 30);
+        const editor = cell.getEditor()!;
+
+        expect(rect(editor)).toEqual({ x: 55, y: 3, width: 138, height: 20 });
+        expect(rect(editor)).toEqual(delegateRect(cell));
+    });
+
+    it('is a no-op on a borderless, unpadded cell', () => {
+        const cell   = makeCell(0, 0, 2, 196, 20);
+        const editor = cell.getEditor()!;
+
+        expect(rect(editor)).toEqual({ x: 52, y: 0, width: 144, height: 20 });
+        expect(rect(editor)).toEqual(delegateRect(cell));
+    });
+
+    it('leaves a plain renderer\'s fill-the-cell placement untouched', () => {
+        const cell   = makeCell(2, 0, null, 200, 24);
+        const editor = cell.getEditor()!;
+
+        expect(rect(editor)).toEqual({ x: 0, y: 0, width: 196, height: 20 });
     });
 });
 

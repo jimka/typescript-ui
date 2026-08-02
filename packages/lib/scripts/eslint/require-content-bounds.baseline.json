@@ -1,4 +1,3 @@
 [
-  "src/typescript/lib/component/table/cell/Cell.ts:Cell.alignEditorWithContent",
   "src/typescript/lib/overlay/Notification.ts:Notification.doLayout"
 ]

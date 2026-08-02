@@ -406,8 +406,8 @@ export class VirtualScroller {
      *
      * Both bars and the clip box are placed in the owner's content box: a
      * child's containing block is already the owner's padding box, so
-     * placing them against the outer box would run the far edge a
-     * border-width past where `overflow: hidden` clips.
+     * placing them against the outer box would run the far edge past where
+     * `overflow: hidden` clips, by both border sides.
      *
      * @param contentWidth - The total scrollable content width in pixels.
      * @param contentHeight - The total scrollable content height in pixels.

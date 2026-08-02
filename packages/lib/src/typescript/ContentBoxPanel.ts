@@ -28,6 +28,14 @@ import {
     LabelListItemRenderer,
     List,
 } from '@jimka/typescript-ui/component/list';
+import {
+    Cell,
+    StringEditor,
+    StringRenderer,
+    TreeCellRenderer,
+} from '@jimka/typescript-ui/component/table';
+import type { CellRenderer } from '@jimka/typescript-ui/component/table';
+import { Insets } from '@jimka/typescript-ui/primitive';
 import { folder } from '@jimka/typescript-ui/glyphs/solid/folder';
 import { file } from '@jimka/typescript-ui/glyphs/solid/file';
 
@@ -52,6 +60,12 @@ const MENU_ITEM_BORDER = "4px solid var(--ts-ui-border-color)";
 
 /** Box for one demo FieldSet, wide enough for a picker field plus its legend. */
 const BOX = { width: 250, height: 250 };
+
+/** Depth the demo tree cells sit at, so the indent is wide enough to see. */
+const TREE_CELL_DEPTH = 2;
+
+/** Outer box of one demo tree cell: room for a caret, an indent and a value. */
+const TREE_CELL_SIZE = { width: 230, height: 28 };
 
 /** Nodes shared by both trees, deep enough to show the caret at two indents. */
 const TREE_NODES: TreeNode[] = [
@@ -212,20 +226,35 @@ class BorderedStripHost extends Container {
  *
  * What to look for here: a caret, icon, spinner, picker button, or label that
  * is cut off on its right or bottom edge, or a label that starts flush against
- * the border instead of inside it. Everything bordered here — all four rows —
- * should sit fully inside its border with the frame unbroken all the way round.
+ * the border instead of inside it. Everything bordered here — all five rows —
+ * should sit fully inside its border with the frame unbroken all the way
+ * round. On the table-cell row, double-click the first cell's text: the
+ * opened editor's outline should start at the text, not at the cell's left
+ * edge, and its right edge should stop inside the cell's border rather than
+ * under it (Escape closes it).
  *
  * Covered: the single-line fields, the tree row, the four public row
- * renderers, the menu item, and the three pieces of scroll chrome (a `Tree`'s
- * `VirtualScroller` bars, a `ScrollStrip`'s clip and paging arrows, and a
- * `Scrollbar`'s thumb and arrow caps).
+ * renderers, the menu item, a table cell (bordered directly, and again
+ * through its `TreeCellRenderer`), and the three pieces of scroll chrome (a
+ * `Tree`'s `VirtualScroller` bars, a `ScrollStrip`'s clip and paging arrows,
+ * and a `Scrollbar`'s thumb and arrow caps).
  * `Dialog`, `Tooltip` and `DragGhost` carry real theme borders and
- * have their own demos. `TreeCellRenderer` is covered by nothing: every shipped
- * theme sets `table.cell.border` to `none`, so its content-box arithmetic never
- * runs anywhere in this app and a regression in it would go unseen — worth
- * adding here if it is ever touched again.
+ * have their own demos.
  *
- * The third row holds one fixed case and one still-baselined case. The
+ * The third row holds two standalone tree-column table cells — a `Table`
+ * builds its own cells and hands out no writable reference to one, so both
+ * are built directly rather than inside a `TreeTable`. The first borders the
+ * `Cell` itself, exercising `Cell.alignEditorWithContent`: the `Card` layout
+ * already placed the editor inside the cell's content box, but the method
+ * used to re-measure it against the cell's *outer* width, running it past
+ * the frame by both border sides. The second borders and pads the cell's
+ * `TreeCellRenderer` instead, exercising the renderer's own `doLayout` —
+ * already content-box correct, but until this branch covered by no test that
+ * a border and padding together could tell apart from the unfixed
+ * arithmetic, since every shipped theme sets `table.cell.border` to `none`
+ * and the `box.x`/`box.y` term is zero everywhere in this app.
+ *
+ * The fourth row holds one fixed case and one still-baselined case. The
  * `MenuItem` used to misbehave visibly — its labels were centred against its
  * *outer* height at construction, pinning their minimum, so a bordered one
  * clipped their descenders — and is now pinned to its content height instead,
@@ -244,7 +273,7 @@ class BorderedStripHost extends Container {
  * height back to the right value — but the stale mirror is real, and a future
  * change to that clamp would surface here first.
  *
- * The fourth row exercises the three pieces of scroll chrome fixed alongside
+ * The fifth row exercises the three pieces of scroll chrome fixed alongside
  * this panel — `VirtualScroller` (the bordered `Tree`'s two scrollbars),
  * `ScrollStrip` (its inner clip and paging arrows), and `Scrollbar` (its
  * thumb and arrow caps) — all three previously placed against their owner's
@@ -254,6 +283,13 @@ class BorderedStripHost extends Container {
  */
 class ContentBoxPanel extends Panel {
 
+    // Assigned inside buildTableCellRow(), called from the constructor below.
+    // A Cell's border is theme-owned (see the constructor's setBorder call in
+    // Cell.ts) and every theme change re-applies `table.cell.border`, which
+    // would wipe this demo border the moment someone uses the theme switcher —
+    // the constructor's trailing subscribeTheme re-applies it last.
+    private _borderedCell!: Cell<String | null>;
+
     constructor() {
         super({
             layoutManager: new VBox({ stretching: true }),
@@ -262,14 +298,20 @@ class ContentBoxPanel extends Panel {
 
         this.addComponent(new Text(
             "Every component below carries a border. Look for a child clipped at the "
-            + "right or bottom edge, or sitting flush against the frame. The third row's "
+            + "right or bottom edge, or sitting flush against the frame. The fourth row's "
             + "second FieldSet is still on the lint rule's baseline.",
         ));
 
         this.addComponent(this.buildFieldRow());
         this.addComponent(this.buildRowRendererRow());
+        this.addComponent(this.buildTableCellRow());
         this.addComponent(this.buildMenuAndNotificationRow());
         this.addComponent(this.buildScrollChromeRow());
+
+        // The panel subscribes after the cell does (Cell's own constructor
+        // subscribes first), and theme listeners fire in registration order,
+        // so this write lands last and wins.
+        this.subscribeTheme(() => this._borderedCell.setBorder(BORDER));
     }
 
     /**
@@ -429,6 +471,62 @@ class ContentBoxPanel extends Panel {
                 components   : [{ component }],
             }));
         }
+
+        return row;
+    }
+
+    /**
+     * Builds a standalone tree-column cell: a `Cell` whose renderer is wrapped in
+     * a `TreeCellRenderer` showing an expand toggle at {@link TREE_CELL_DEPTH},
+     * carrying its own `StringEditor` so a double-click opens an editor without a
+     * table's `CellEditorPool`.
+     *
+     * @param text - The value the cell renders.
+     *
+     * @returns The configured cell.
+     */
+    private static buildTreeCell(text: string): Cell<String | null> {
+        const cell = new Cell<String | null>("div", new StringRenderer(), new StringEditor());
+
+        cell.wrapRenderer((delegate: CellRenderer<String | null>) => new TreeCellRenderer(delegate));
+        (cell.getRenderer() as TreeCellRenderer<String | null>)
+            .setTreeState(TREE_CELL_DEPTH, true, false);
+        cell.setValue(text);
+        cell.setPreferredSize(TREE_CELL_SIZE);
+
+        return cell;
+    }
+
+    /**
+     * Builds the row of two standalone tree-column table cells: one bordered
+     * directly to exercise {@link Cell.alignEditorWithContent}, and one whose
+     * `TreeCellRenderer` is bordered and padded instead, to exercise the
+     * renderer's own `doLayout`. A `Table` builds its own cells and hands out
+     * no writable reference to one, so both are built standalone rather than
+     * inside a `TreeTable`.
+     *
+     * @returns A wrapping row of one FieldSet holding both cells.
+     */
+    private buildTableCellRow(): Container {
+        const row = Container({ layoutManager: HFlow({ spacing: 8, lineSpacing: 8 }) });
+
+        this._borderedCell = ContentBoxPanel.buildTreeCell("Editor inside the border");
+        this._borderedCell.setBorder(BORDER);
+
+        const paddedRendererCell = ContentBoxPanel.buildTreeCell("Caret inside the frame");
+        const paddedRenderer = paddedRendererCell.getRenderer();
+
+        paddedRenderer.setBorder(BORDER);
+        paddedRenderer.setPadding(new Insets(3, 3, 3, 3));
+
+        row.addComponent(FieldSet("Table cell", {
+            preferredSize: BOX,
+            layoutManager: VBox(),
+            components   : [
+                { component: this._borderedCell },
+                { component: paddedRendererCell },
+            ],
+        }));
 
         return row;
     }

@@ -508,8 +508,8 @@ export class Cell<T> extends Component {
     /**
      * Runs the inherited (Card) layout, then re-indents the active
      * editor so it lines up with the renderer's content offset
-     * (`renderer.getContentX()`). For a plain renderer the offset is
-     * `0` and this is a no-op; for a
+     * (`renderer.getContentX()`), inside this cell's own content box.
+     * For a plain renderer the offset is `0` and this is a no-op; for a
      * [`TreeCellRenderer`](/api/component/table/classes/TreeCellRenderer)
      * the editor shifts right by `depth * indentPx + TOGGLE_WIDTH` so
      * it stays aligned with the value the user double-clicked instead
@@ -529,9 +529,9 @@ export class Cell<T> extends Component {
      * If an editor is currently active and the renderer reports a
      * non-zero content offset, override the Card layout's
      * fill-the-cell editor placement so the editor starts at that
-     * offset and shrinks its width accordingly. Idempotent — when no
-     * offset is reserved this is a single comparison and an early
-     * return.
+     * offset from this cell's content box origin and shrinks its
+     * width accordingly. Idempotent — when no offset is reserved this
+     * is a single comparison and an early return.
      */
     private alignEditorWithContent(): void {
         const editor = this._activeEditor;
@@ -546,11 +546,17 @@ export class Cell<T> extends Component {
             return;
         }
 
-        const cellWidth = this.getWidth() ?? 0;
-        const editorWidth = Math.max(0, cellWidth - contentX);
+        // The Card layout already placed the editor inside this cell's content
+        // box, so its y and height are right; only the left edge and the width
+        // move here. The outer-width fallback preserves the previous behaviour
+        // before the element exists.
+        const box = this.getContentBounds()
+                 ?? { x: 0, y: 0, width: this.getWidth() ?? 0, height: 0 };
+
+        const editorWidth = Math.max(0, box.width - contentX);
 
         editor.setAutoCommitStyle(false);
-        editor.setX(contentX);
+        editor.setX(box.x + contentX);
         editor.setWidth(editorWidth);
         editor.setAutoCommitStyle(true);
     }
