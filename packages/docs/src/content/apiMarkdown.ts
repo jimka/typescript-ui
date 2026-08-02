@@ -96,3 +96,60 @@ export function collapseModuleGroups(source: string, groups: string[]): string {
 
     return lines.join('\n');
 }
+
+const CRUMB_LINK = /^\[([^\]]+)\]\(([^)]+)\)$/;
+const ROOT_CRUMB = /^\[[^\]]+\]\(((?:\.\.\/)*)index\.md\)$/;
+
+/**
+ * Splits a compound module crumb like `[component/button](../index.md)` in a
+ * generated page's breadcrumb line into one crumb per directory segment —
+ * `[component](../../index.md) / [button](../index.md)` — so each ancestor
+ * directory becomes its own entry instead of one opaque link. TypeDoc names
+ * a module after its full relative directory path and links (or, on the
+ * module's own index page, states) that whole path as a single crumb; this
+ * expands it to match the app's own per-directory routing, under which every
+ * ancestor directory (e.g. `component`) is independently addressable — see
+ * `MODULE_INDEX_FILES` in `api.ts`. Each inserted ancestor link is computed
+ * from the root crumb's own `../` depth, so it works whether the compound
+ * crumb is itself a link (a symbol page) or plain text (the module's own,
+ * unlinked index-page crumb) — only its last segment keeps the original
+ * link/plain-text form. A crumb with no `/`, or a `source` with no
+ * recognizable breadcrumb line, is returned unchanged.
+ *
+ * @param source - A generated API page's Markdown source.
+ * @returns `source` with its breadcrumb line's compound crumb(s) expanded.
+ */
+export function expandModuleBreadcrumb(source: string): string {
+    const newline = source.indexOf('\n');
+    const line    = newline === -1 ? source : source.slice(0, newline);
+    const rest    = newline === -1 ? '' : source.slice(newline);
+
+    const crumbs    = line.split(' / ');
+    const rootMatch = crumbs[0]?.match(ROOT_CRUMB);
+
+    if (crumbs.length < 2 || !rootMatch) return source;
+
+    const fileDepth = rootMatch[1].length / '../'.length;
+
+    const expanded = crumbs.map((crumb, i) => {
+        if (i === 0) return crumb;
+
+        const linkMatch = crumb.match(CRUMB_LINK);
+        const text       = linkMatch ? linkMatch[1] : crumb;
+        const parts      = text.split('/');
+
+        if (parts.length < 2) return crumb;
+
+        const ancestorCrumbs = parts.slice(0, -1).map((part, depth) => {
+            const ups = fileDepth - depth - 1;
+            return `[${part}](${'../'.repeat(ups)}index.md)`;
+        });
+
+        const lastPart  = parts[parts.length - 1];
+        const lastCrumb = linkMatch ? `[${lastPart}](${linkMatch[2]})` : lastPart;
+
+        return [...ancestorCrumbs, lastCrumb].join(' / ');
+    });
+
+    return expanded.join(' / ') + rest;
+}

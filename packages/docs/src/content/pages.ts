@@ -26,7 +26,13 @@ export interface NavEntry {
 /** A sidebar section: a titled group of entries, optionally holding subgroups. */
 export interface NavGroup {
     title:   string;
-    /** The route of this section's own index page. Absent for a subgroup, which has no page of its own. */
+    /**
+     * The route of this group's own index page, which clicking the group's
+     * tree node navigates to. Usually absent for a subgroup — most are pure
+     * groupings with no page of their own — but a subgroup may carry one
+     * when it does have a genuine index page, as Reference's Changelog
+     * subgroup does.
+     */
     path?:   string;
     /** Pages sitting directly under this group's node, rendered first. */
     pages:   NavEntry[];
@@ -38,12 +44,17 @@ export interface NavGroup {
 // relative to this file (packages/docs/src/content/pages.ts), so
 // `../../../lib/docs/` resolves to packages/lib/docs/ — the VitePress source
 // this app reads unmodified. See "Markdown content migrates as-is" in
-// plans/implemented/packages-docs.md.
-const RAW_SOURCES = import.meta.glob('../../../lib/docs/{guide,concepts,components,layouts,data,recipes,reference}/*.md', {
-    query:  '?raw',
-    import: 'default',
-    eager:  true,
-}) as Record<string, string>;
+// plans/implemented/packages-docs.md. `reference/changelog` is listed
+// explicitly alongside the seven single-level groups because its per-version
+// pages sit one directory deeper (`reference/changelog/0.4.0.md`).
+const RAW_SOURCES = import.meta.glob(
+    '../../../lib/docs/{guide,concepts,components,layouts,data,recipes,reference,reference/changelog}/*.md',
+    {
+        query:  '?raw',
+        import: 'default',
+        eager:  true,
+    },
+) as Record<string, string>;
 
 /**
  * Maps a glob key to its route path: strips the `../../../lib/docs` prefix
@@ -121,8 +132,8 @@ function requirePage(path: string): DocPage {
  * config's `text`, not derived from the page's `# ` heading, so the tree
  * reads exactly as VitePress renders it.
  *
- * @returns The seven nav groups, covering 147 leaf entries plus their seven
- *   section paths — 154 pages total.
+ * @returns The seven nav groups, covering 151 leaf entries plus their seven
+ *   section paths and Reference's Changelog subgroup path — 159 pages total.
  */
 export function getNav(): NavGroup[] {
     const guide: NavEntry[] = [
@@ -327,7 +338,13 @@ export function getNav(): NavGroup[] {
         { path: '/reference/troubleshooting',     label: 'Troubleshooting' },
         { path: '/reference/browser-support',     label: 'Browser support' },
         { path: '/reference/migration',           label: 'Migration' },
-        { path: '/reference/changelog',           label: 'Changelog' },
+    ];
+    const changelogVersions: NavEntry[] = [
+        { path: '/reference/changelog/0.4.0', label: '0.4.0' },
+        { path: '/reference/changelog/0.3.0', label: '0.3.0' },
+        { path: '/reference/changelog/0.2.0', label: '0.2.0' },
+        { path: '/reference/changelog/0.1.1', label: '0.1.1' },
+        { path: '/reference/changelog/0.1.0', label: '0.1.0' },
     ];
 
     const nav: NavGroup[] = [
@@ -376,7 +393,14 @@ export function getNav(): NavGroup[] {
                 { title: 'Local development',     pages: recipesLocalDevelopment },
             ],
         },
-        { title: 'Reference', path: '/reference', pages: reference },
+        {
+            title: 'Reference',
+            path:   '/reference',
+            pages:  reference,
+            groups: [
+                { title: 'Changelog', path: '/reference/changelog', pages: changelogVersions },
+            ],
+        },
     ];
 
     // Fail loudly on a hand-authored path that doesn't resolve to a migrated

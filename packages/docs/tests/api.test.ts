@@ -320,6 +320,32 @@ describe('fetchApiPage', () => {
 
         expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
+
+    it("splits component/button's compound breadcrumb crumb into 'component' and 'button'", async () => {
+        vi.stubGlobal('fetch', vi.fn());
+
+        const lines = (await fetchApiPage('component/button/index.md')).split('\n');
+
+        expect(lines[0]).toBe(
+            '[@jimka/typescript-ui](../../index.md) / [component](../index.md) / button',
+        );
+    });
+
+    it("splits a fetched symbol page's compound breadcrumb crumb, keeping the module's own link href on the last segment", async () => {
+        const fetchSpy = vi.fn().mockResolvedValue({
+            ok:   true,
+            text: () => Promise.resolve(
+                '[@jimka/typescript-ui](../../../index.md) / [component/button](../index.md) / Button\n\n# Class: Button\n',
+            ),
+        });
+        vi.stubGlobal('fetch', fetchSpy);
+
+        const lines = (await fetchApiPage('component/button/classes/Button.md')).split('\n');
+
+        expect(lines[0]).toBe(
+            '[@jimka/typescript-ui](../../../index.md) / [component](../../index.md) / [button](../index.md) / Button',
+        );
+    });
 });
 
 describe('getApiNav ordering', () => {

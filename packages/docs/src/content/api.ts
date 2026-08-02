@@ -1,5 +1,5 @@
 import { apiFiles } from 'virtual:typedoc-api';
-import { normalizeApiMarkdown, moduleIndexSource, collapseModuleGroups } from './apiMarkdown.js';
+import { normalizeApiMarkdown, moduleIndexSource, collapseModuleGroups, expandModuleBreadcrumb } from './apiMarkdown.js';
 import type { IndexSection } from './apiMarkdown.js';
 import { compareLabels } from './labelOrder.js';
 
@@ -169,7 +169,10 @@ function moduleSections(node: ApiNavNode, dir: string): IndexSection[] {
  * Fetches an API page's Markdown, normalized for the library viewer. A
  * module index in {@link MODULE_INDEX_FILES} is synthesized from the nav
  * tree with no network request; the root index additionally has its
- * `component/*` run collapsed onto one line. Rejects on a non-OK response.
+ * `component/*` run collapsed onto one line. Every page's breadcrumb line
+ * has any compound module crumb (e.g. `component/button`) expanded into one
+ * crumb per directory segment, matching the app's per-directory routing.
+ * Rejects on a non-OK response.
  *
  * @param file - The file path relative to `packages/lib/docs/api`.
  * @returns The page's Markdown source, ready for `Markdown.setMarkdown`.
@@ -179,7 +182,7 @@ export async function fetchApiPage(file: string): Promise<string> {
         const dir  = apiDirOf(file);
         const node = NAV_BY_PATH.get(apiRouteFor(file))!;
 
-        return moduleIndexSource(dir, moduleSections(node, dir));
+        return expandModuleBreadcrumb(moduleIndexSource(dir, moduleSections(node, dir)));
     }
 
     const response = await fetch(`${import.meta.env.BASE_URL}api/${file}`);
@@ -189,8 +192,9 @@ export async function fetchApiPage(file: string): Promise<string> {
     }
 
     const source = normalizeApiMarkdown(await response.text());
+    const withGroupsCollapsed = file === 'index.md' ? collapseModuleGroups(source, MODULE_GROUPS) : source;
 
-    return file === 'index.md' ? collapseModuleGroups(source, MODULE_GROUPS) : source;
+    return expandModuleBreadcrumb(withGroupsCollapsed);
 }
 
 /** A node under construction: same shape as {@link ApiNavNode}, but with a `Map` of children for O(1) lookup by path segment while building. */

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeApiMarkdown, moduleIndexSource, collapseModuleGroups } from '../src/content/apiMarkdown.js';
+import {
+    normalizeApiMarkdown,
+    moduleIndexSource,
+    collapseModuleGroups,
+    expandModuleBreadcrumb,
+} from '../src/content/apiMarkdown.js';
 import type { IndexSection } from '../src/content/apiMarkdown.js';
 
 describe('normalizeApiMarkdown', () => {
@@ -104,5 +109,49 @@ describe('collapseModuleGroups', () => {
 
     it('returns the source byte-identical for an empty groups list', () => {
         expect(collapseModuleGroups(root, [])).toBe(root);
+    });
+});
+
+describe('expandModuleBreadcrumb', () => {
+    it('splits a linked two-segment module crumb into one crumb per directory, keeping the original href on the last', () => {
+        const source = [
+            '[@jimka/typescript-ui](../../../index.md) / [component/button](../index.md) / Button',
+            '',
+            '# Class: Button',
+        ].join('\n');
+
+        const lines = expandModuleBreadcrumb(source).split('\n');
+
+        expect(lines[0]).toBe(
+            '[@jimka/typescript-ui](../../../index.md) / [component](../../index.md) / [button](../index.md) / Button',
+        );
+        expect(lines[2]).toBe('# Class: Button');
+    });
+
+    it('splits a plain (unlinked) two-segment module crumb — the module\'s own index page — leaving the last segment unlinked', () => {
+        const source = '[@jimka/typescript-ui](../../index.md) / component/button\n\n# component/button\n';
+
+        const lines = expandModuleBreadcrumb(source).split('\n');
+
+        expect(lines[0]).toBe('[@jimka/typescript-ui](../../index.md) / [component](../index.md) / button');
+    });
+
+    it('leaves a single-segment module crumb unchanged', () => {
+        const source = '[@jimka/typescript-ui](../index.md) / [core](../index.md) / Component';
+
+        expect(expandModuleBreadcrumb(source)).toBe(source);
+    });
+
+    it('leaves a namespace symbol breadcrumb (four single-segment crumbs) unchanged', () => {
+        const source =
+            '[@jimka/typescript-ui](../../../../index.md) / [core](../../../index.md) / [Animation](../index.md) / play';
+
+        expect(expandModuleBreadcrumb(source)).toBe(source);
+    });
+
+    it('returns a source with no breadcrumb line byte-identical', () => {
+        const source = '# @jimka/typescript-ui\n\n## Modules\n';
+
+        expect(expandModuleBreadcrumb(source)).toBe(source);
     });
 });

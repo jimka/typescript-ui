@@ -6,8 +6,10 @@ import type { NavEntry, NavGroup } from '../src/content/pages.js';
 
 // Independent of pages.ts's own glob, so the bijection test below is a real
 // cross-check rather than comparing the implementation against itself.
+// `reference/changelog` is listed explicitly because its per-version pages
+// sit one directory deeper than the other six groups.
 const ALL_DOC_KEYS = Object.keys(
-    import.meta.glob('../../lib/docs/{guide,concepts,components,layouts,data,recipes,reference}/*.md'),
+    import.meta.glob('../../lib/docs/{guide,concepts,components,layouts,data,recipes,reference,reference/changelog}/*.md'),
 );
 
 function routePathForTest(globKey: string): string {
@@ -99,11 +101,15 @@ describe('getNav', () => {
         }
     });
 
-    it('every subgroup has an undefined path', () => {
+    it("every subgroup has an undefined path, except Reference's Changelog", () => {
         (function walk(groups: NavGroup[]): void {
             for (const group of groups) {
                 for (const subgroup of group.groups ?? []) {
-                    expect(subgroup.path).toBeUndefined();
+                    if (subgroup.title === 'Changelog') {
+                        expect(subgroup.path).toBe('/reference/changelog');
+                    } else {
+                        expect(subgroup.path).toBeUndefined();
+                    }
                     walk([subgroup]);
                 }
             }
@@ -145,18 +151,18 @@ describe('getNav', () => {
         expect(labels.every((label) => label !== 'Overview')).toBe(true);
     });
 
-    it('flattens to exactly 147 distinct leaf entries', () => {
+    it('flattens to exactly 151 distinct leaf entries', () => {
         const paths = flattenEntries(nav).map((entry) => entry.path);
 
-        expect(paths.length).toBe(147);
-        expect(new Set(paths).size).toBe(147);
+        expect(paths.length).toBe(151);
+        expect(new Set(paths).size).toBe(151);
     });
 
-    it('leaf entries plus section paths total 154 distinct paths', () => {
+    it('leaf entries plus section paths total 159 distinct paths', () => {
         const paths = flattenPaths(nav);
 
-        expect(paths.length).toBe(154);
-        expect(new Set(paths).size).toBe(154);
+        expect(paths.length).toBe(159);
+        expect(new Set(paths).size).toBe(159);
     });
 
     it('has the expected per-section leaf entry counts', () => {
@@ -171,11 +177,11 @@ describe('getNav', () => {
             Layouts:    16,
             Data:       6,
             Recipes:    14,
-            Reference:  6,
+            Reference:  10,
         });
     });
 
-    it('nests subgroups only under Components (13), Layouts (3), and Recipes (5)', () => {
+    it('nests subgroups only under Components (13), Layouts (3), Recipes (5), and Reference (1)', () => {
         const groupCounts = Object.fromEntries(
             nav.map((group) => [group.title, group.groups?.length ?? 0]),
         );
@@ -187,7 +193,7 @@ describe('getNav', () => {
             Layouts:    3,
             Data:       0,
             Recipes:    5,
-            Reference:  0,
+            Reference:  1,
         });
     });
 
@@ -201,7 +207,16 @@ describe('getNav', () => {
         const reference = nav.find((group) => group.title === 'Reference')!;
 
         expect(reference.pages.map((entry) => entry.label)).toEqual([
-            'Browser support', 'Changelog', 'FAQ', 'Glossary', 'Migration', 'Troubleshooting',
+            'Browser support', 'FAQ', 'Glossary', 'Migration', 'Troubleshooting',
+        ]);
+    });
+
+    it("Reference's Changelog subgroup pages are in compareLabels order", () => {
+        const reference = nav.find((group) => group.title === 'Reference')!;
+        const changelog = reference.groups!.find((group) => group.title === 'Changelog')!;
+
+        expect(changelog.pages.map((entry) => entry.label)).toEqual([
+            '0.1.0', '0.1.1', '0.2.0', '0.3.0', '0.4.0',
         ]);
     });
 
