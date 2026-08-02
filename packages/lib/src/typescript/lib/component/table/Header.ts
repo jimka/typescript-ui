@@ -399,28 +399,6 @@ class TableHeader extends Component {
     }
 
     /**
-     * Reorders header cells by field order using their layout constraints.
-     */
-    sortColumns() {
-        const row = this.getComponents()[1];
-
-        row.sortComponents((c1, c2) => {
-            const lc1 = row.getLayoutConstraints(c1);
-            const lc2 = row.getLayoutConstraints(c2);
-
-            if (!lc1) {
-                return -1;
-            }
-
-            if (!lc2) {
-                return 1;
-            }
-
-            return (lc1.data as Field).getOrder() - (lc2.data as Field).getOrder();
-        });
-    }
-
-    /**
      * Appends a row to the header.
      *
      * @param row - The row to append.
