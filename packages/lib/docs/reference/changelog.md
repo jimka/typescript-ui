@@ -267,6 +267,27 @@ table out first.
 
 ### Fixed
 
+- **Horizontal table scrolling no longer lays out every header cell on every
+  scroll event.** A header cell's position is content-absolute — scrolling
+  translates the header's two inner rows rather than moving the cells — so a
+  cell that keeps its column keeps its geometry, and the layout pass was
+  reproducing the layout the cell already had. The header now skips a cell
+  whose geometry is unchanged. Cells are tracked individually rather than by
+  position, so the cells that survive a window slide are skipped too, even
+  though the slide renumbers them. A theme change drops the tracked geometry,
+  so the next layout pass re-fits every cell against the new padding and
+  border — the same recovery as before, when every pass laid every cell out
+  unconditionally.
+
+- **`HeaderCell.setHeaderGlyph()` now takes effect immediately.** Mounting or
+  clearing a header glyph shifts the label's left inset to clear the glyph, and
+  the inset only reaches the label through a layout pass, which the setter did
+  not run — so the label kept its old indent until the next pass over the
+  header happened to re-fit it. That used to be every layout pass and every
+  horizontal scroll, which hid the gap; with the skip above it is only a pass
+  that also moves the cell, so the setter now lays itself out, as `Cell`
+  already did when swapping its active renderer.
+
 - **A component disposed part-way through a layout flush no longer aborts the
   rest of it.** The flush snapshots its queue once, so a component that an
   earlier entry in the same pass disposes was still laid out — writing through
