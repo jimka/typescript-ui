@@ -5,7 +5,7 @@
 - When implementing implementation plans, **ALWAYS** use the implement skill.
 - When documenting code, **ALWAYS** use the document skill.
 - When debugging code, **ALWAYS** use the debug skill.
-- When reviewing, auditing, or critiquing a plan, code change, or any other target, **ALWAYS** use the audit skill.
+- When reviewing, auditing, or critiquing a plan, code change, or any other target, use the audit skill — it defines its own threshold for when a small, low-risk change gets a lightweight self-review (§5) instead of its full loop. For anything else, or whenever the user explicitly asks for a review, **ALWAYS** run the full audit skill.
 - When committing changes, **ALWAYS** use the commit skill (it defines the message format — e.g. no `Co-Authored-By:` or "Generated with" trailers).
 - When writing code, editing code, or planning future code, **ALWAYS** follow the architectural guidelines defined in [ARCHITECTURE.md](ARCHITECTURE.md) and the code conventions defined in [CODE_CONVENTIONS.md](CODE_CONVENTIONS.md).
 
@@ -71,4 +71,4 @@ For multi-step tasks, state a brief plan:
 
 - When debugging, Perform a root-cause investigation (reading the actual call chain for example) before trying to fix problems.
 - Explicitly enumerate call sites and edge cases before editing, or verify with type-checks/tests after refactors, to prevent regressions.
-- Write a self-review checklist and walk through it, or perform an explicit testing step before declaring done. This would reduce incomplete first-pass implementations.
+- Before declaring a small change done without a full audit, re-read the diff once, end to end, adversarially — does it match the request, does anything obviously break, are edge cases handled — then run the project's typecheck/tests. This is the lightweight path the audit skill defers to for small, low-risk changes (see its own threshold); anything bigger still gets the full audit loop.
