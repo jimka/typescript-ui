@@ -413,12 +413,12 @@ class Scrollbar extends Component<ScrollbarOptions> {
     }
 
     /**
-     * Constructs and wires the two arrow buttons. Start arrow sits at the
-     * primary-axis origin; end arrow's primary-axis position is set lazily in
-     * `setMetrics` because the cross-axis extent changes with bar size.
-     * Disabled-state for the start arrow is pre-set since `_scrollPosition`
-     * defaults to 0 — without this the start arrow renders enabled for one
-     * frame before `setMetrics` corrects it.
+     * Constructs and wires the two arrow buttons. Both are seeded at `(0, 0)`;
+     * their real position and cross-axis extent are set in `setMetrics`, which
+     * is the first point the bar's content box is known. Disabled-state for the
+     * start arrow is pre-set since `_scrollPosition` defaults to 0 — without
+     * this the start arrow renders enabled for one frame before `setMetrics`
+     * corrects it.
      */
     private buildArrows(): void {
         const startDirection: ArrowDirection = this.isVertical() ? "up"   : "left";
@@ -432,8 +432,8 @@ class Scrollbar extends Component<ScrollbarOptions> {
         super.addComponent(this._arrowStart);
 
         this._arrowEnd = new ScrollArrowButton(endDirection);
-        // End arrow's primary-axis origin depends on the bar's outer size; we
-        // position it inside `setMetrics`. Cross-axis stays at 0.
+        // Both axes depend on the bar's content box, which is not resolved yet;
+        // `setMetrics` writes the origin and the cross-axis extent.
         this._arrowEnd.setX(0);
         this._arrowEnd.setY(0);
         this._arrowEnd.on("tick", this._onArrowEndTick);
@@ -557,10 +557,10 @@ class Scrollbar extends Component<ScrollbarOptions> {
 
     /**
      * Pushes viewport/content metrics and the current scroll position into the
-     * scrollbar. Recomputes the thumb size and position and hides the scrollbar
-     * if the content fits in the viewport. When arrows are enabled, repositions
-     * the end arrow against the current outer size and refreshes the
-     * disabled-at-edge state on both arrows.
+     * scrollbar. Recomputes the thumb's size, position, and cross-axis extent
+     * against the content box, and hides the scrollbar if the content fits in
+     * the viewport. When arrows are enabled, repositions both arrows against
+     * the content box and refreshes the disabled-at-edge state on both.
      *
      * @param viewportSize - The visible window size in pixels along the scroll axis.
      * @param contentSize - The total scrollable content size in pixels along the scroll axis.
@@ -598,15 +598,42 @@ class Scrollbar extends Component<ScrollbarOptions> {
             this.setThumbPos(newThumbPos);
         }
 
+        const axis = this.axisBox();
+
+        // The thumb's cross-axis extent narrows with a bordered/padded content
+        // box; re-derived every call, mirroring the end arrow's write below.
+        if (this.isVertical()) {
+            this._thumb.setX(axis.crossOrigin + THUMB_INSET);
+            this._thumb.setWidth(axis.crossExtent - 2 * THUMB_INSET);
+        } else {
+            this._thumb.setY(axis.crossOrigin + THUMB_INSET);
+            this._thumb.setHeight(axis.crossExtent - 2 * THUMB_INSET);
+        }
+
         if (this._arrowsEnabled && this._arrowStart && this._arrowEnd) {
-            // Position the end arrow against the current outer size — its
-            // primary-axis origin sits at (outer - TRACK_WIDTH).
-            const outer  = this.isVertical() ? this.getHeight() : this.getWidth();
-            const endPos = Math.max(0, outer - TRACK_WIDTH);
+            // Position both arrows against the content box — the start arrow
+            // at its origin, the end arrow at (origin + extent - TRACK_WIDTH).
+            const endPos = axis.origin + axis.extent - TRACK_WIDTH;
+
+            // The cross-axis extent too, not just the origin: the arrows are
+            // built as a rigid TRACK_WIDTH square, so a bordered bar would keep
+            // them at their full width inside a narrower box and overrun the
+            // side the border is on. The main axis stays TRACK_WIDTH — that is
+            // the gutter the track math reserves at each end.
             if (this.isVertical()) {
+                this._arrowStart.setX(axis.crossOrigin);
+                this._arrowStart.setY(axis.origin);
+                this._arrowStart.setWidth(axis.crossExtent);
+                this._arrowEnd.setX(axis.crossOrigin);
                 this._arrowEnd.setY(endPos);
+                this._arrowEnd.setWidth(axis.crossExtent);
             } else {
+                this._arrowStart.setY(axis.crossOrigin);
+                this._arrowStart.setX(axis.origin);
+                this._arrowStart.setHeight(axis.crossExtent);
+                this._arrowEnd.setY(axis.crossOrigin);
                 this._arrowEnd.setX(endPos);
+                this._arrowEnd.setHeight(axis.crossExtent);
             }
 
             this._arrowStart.setDisabledState(scrollPosition <= 0);
@@ -705,24 +732,40 @@ class Scrollbar extends Component<ScrollbarOptions> {
     }
 
     /**
-     * Returns the length of the track along the scroll axis available for the
-     * thumb to travel. Subtracts the two arrow regions when arrows are
-     * enabled so the thumb travel range stays inside the track between them.
+     * The content box projected onto the scroll axis: `origin` and `extent` run
+     * along it, `crossOrigin` and `crossExtent` across it. Falls back to the
+     * outer box while the element does not exist yet.
      */
-    private getTrackLength(): number {
-        const raw   = this.isVertical() ? this.getHeight() : this.getWidth();
-        const inset = this._arrowsEnabled ? 2 * TRACK_WIDTH : 0;
+    private axisBox(): { origin: number; extent: number; crossOrigin: number; crossExtent: number } {
+        const box = this.getContentBounds()
+                 ?? { x: 0, y: 0, width: this.getWidth() || 0, height: this.getHeight() || 0 };
 
-        return Math.max(0, raw - inset);
+        return this.isVertical()
+            ? { origin: box.y, extent: box.height, crossOrigin: box.x, crossExtent: box.width }
+            : { origin: box.x, extent: box.width,  crossOrigin: box.y, crossExtent: box.height };
     }
 
     /**
-     * Returns the primary-axis offset where the track region (thumb travel
-     * area) starts. `TRACK_WIDTH` when arrows are enabled (skipping the start
-     * arrow), `0` otherwise.
+     * Returns the length of the track along the scroll axis available for the
+     * thumb to travel, measured in the content box. Subtracts the two arrow
+     * regions when arrows are enabled so the thumb travel range stays inside
+     * the track between them.
+     */
+    private getTrackLength(): number {
+        const inset = this._arrowsEnabled ? 2 * TRACK_WIDTH : 0;
+
+        return Math.max(0, this.axisBox().extent - inset);
+    }
+
+    /**
+     * Returns the primary-axis offset, in the content box, where the track
+     * region (thumb travel area) starts. The content-box origin, plus
+     * `TRACK_WIDTH` when arrows are enabled (skipping the start arrow).
      */
     private getTrackOrigin(): number {
-        return this._arrowsEnabled ? TRACK_WIDTH : 0;
+        const axis = this.axisBox();
+
+        return axis.origin + (this._arrowsEnabled ? TRACK_WIDTH : 0);
     }
 
     /**
@@ -874,8 +917,15 @@ class Scrollbar extends Component<ScrollbarOptions> {
             if (!t || !el) {
                 return;
             }
-            const rect = DOM.source.getViewportRect(this);
-            click = vertical ? t.clientY - rect.top : t.clientX - rect.left;
+            // getViewportRect's top-left is the border box, while the mouse
+            // branch's offsetX/offsetY below is padding-box-relative; subtract
+            // the leading border side so both branches agree before being
+            // compared against the content-box-relative axisBox() values.
+            const rect   = DOM.source.getViewportRect(this);
+            const border = this.getBorderSize();
+            click = vertical
+                ? t.clientY - rect.top - border.top
+                : t.clientX - rect.left - border.left;
         } else {
             const mouse = e as MouseEvent;
             click = vertical ? mouse.offsetY : mouse.offsetX;
@@ -885,8 +935,9 @@ class Scrollbar extends Component<ScrollbarOptions> {
         // arrow region — those are handled by the arrow's own mousedown
         // listener (which also stops propagation, but the touchstart path
         // does not, so we double-check here).
+        const axis   = this.axisBox();
         const origin = this.getTrackOrigin();
-        const outer  = vertical ? this.getHeight() : this.getWidth();
+        const outer  = axis.origin + axis.extent;
         if (this._arrowsEnabled && (click < origin || click >= outer - TRACK_WIDTH)) {
             return;
         }
