@@ -233,6 +233,19 @@ class HeaderCell extends DefaultCell {
         this._headerGlyph = name;
         this._mountHeaderGlyph(this.getElement());
 
+        // Mounting or clearing the glyph rewrites the renderer's left inset,
+        // and an inset only reaches the label through a layout pass — nothing
+        // in `setInsets` schedules one. The cell lays itself out here rather
+        // than leaving that to its caller, mirroring `Cell.setActiveRenderer`,
+        // which re-fits itself for the same reason. The header's own scroll
+        // path skips a cell whose geometry has not moved, so a caller-owned
+        // relayout would leave the label sitting under the glyph on every
+        // route that does not also resize the cell. (Called before the cell has
+        // been sized — the reconciler mounts the glyph before the geometry pass
+        // — this fits the renderer against an unset size, which the header's
+        // geometry pass then overwrites.)
+        this.doLayout();
+
         return this;
     }
 

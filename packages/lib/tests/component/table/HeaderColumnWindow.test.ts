@@ -546,3 +546,317 @@ describe('Header column window — teardown', () => {
         expect(survivingAfter).toEqual([]);
     });
 });
+
+describe('Header column window — geometry diffing', () => {
+    // A header cell's x/width are content-absolute: `setScrollX` translates the
+    // two inner rows rather than moving the cells, so a scroll that leaves the
+    // window where it is leaves every rendered cell's geometry identical. The
+    // header must then skip the write and the `doLayout()` — mirroring the
+    // body's `_cellGeom` diff cache (`Body.ts`), whose per-slot entries gate
+    // the same writes for exactly the same reason.
+
+    /** Replaces `doLayout` on every component with a counting stub; returns the counter. */
+    function countLayouts(components: { doLayout(): void }[]): () => number {
+        let calls = 0;
+
+        for (const component of components) {
+            component.doLayout = () => { calls++; };
+        }
+
+        return () => calls;
+    }
+
+    it('28. a scroll that leaves the window unchanged lays out no column cell', async () => {
+        const table = await wideTable(20);
+        render20At100(table);
+
+        const before = cells(table).length;
+        const layouts = countLayouts(cells(table));
+
+        // 10px moves neither the first nor the last visible column, so the
+        // window is the same one — asserted below rather than assumed.
+        header(table).setScrollX(10);
+
+        expect(header(table).getColumnWindowStart()).toBe(0);
+        expect(cells(table).length).toBe(before);
+        expect(layouts()).toBe(0);
+    });
+
+    it('28b. a scroll that slides the window lays out only the cells that changed column', async () => {
+        const table = await wideTable(20);
+        render20At100(table, 550); // window 3..10
+
+        // Which field each cell held before the slide, and which cells the
+        // slide laid out.
+        const fieldBefore = new Map(cells(table).map(cell => [cell, cell.getFieldName()]));
+        const laidOut     = new Set<HeaderCell>();
+
+        for (const cell of cells(table)) {
+            cell.doLayout = () => { laidOut.add(cell); return cell; };
+        }
+
+        header(table).setScrollX(650); // window 4..11 — c3 departs, c11 enters
+
+        const survivors = cells(table).filter(
+            cell => fieldBefore.has(cell) && fieldBefore.get(cell) === cell.getFieldName());
+
+        // A cell that kept its column keeps its geometry, so it must not be
+        // laid out again — this is the whole point of the diff, and the reason
+        // it is keyed on the cell rather than on the slot.
+        expect(survivors.length).toBeGreaterThan(0);
+        survivors.forEach(cell => expect(laidOut.has(cell)).toBe(false));
+
+        // The cell recycled onto a new column must be laid out, even though it
+        // is one of the objects that existed before the slide.
+        const recycled = cells(table).filter(
+            cell => fieldBefore.has(cell) && fieldBefore.get(cell) !== cell.getFieldName());
+
+        expect(recycled.length).toBeGreaterThan(0);
+        recycled.forEach(cell => expect(laidOut.has(cell)).toBe(true));
+    });
+
+    it('29. a scroll that slides the window leaves every cell\'s geometry correct', async () => {
+        const table = await wideTable(20);
+        render20At100(table);
+        render20At100(table, 550);
+
+        // Keyed on the cell's own field rather than its slot, so a cell parked
+        // at the wrong slot cannot pass.
+        cells(table).forEach(cell => {
+            const col = Number(cell.getFieldName().slice(1));
+
+            expect(cell.getX()).toBe(col * 100);
+            expect(cell.getWidth()).toBe(100);
+        });
+    });
+
+    it('30. a width change lays out every cell it moves or resizes, not just some', async () => {
+        const table = await wideTable(20);
+        render20At100(table);
+
+        const before  = cells(table);
+        const layouts = countLayouts(before);
+
+        header(table).renderColumnWindow({
+            columnWidths:    Array(20).fill(140),
+            viewportWidth:   250,
+            columnHeight:    20,
+            parentRowHeight: 0,
+        });
+
+        // Widening every column moves or resizes every surviving cell, so every
+        // one of them must be laid out — asserting merely that some were would
+        // pass with the diff wrongly holding cells back. Counted over the
+        // survivors rather than over `before`, so a window that shrinks and
+        // disposes a cell fails this on its own merits rather than here.
+        const survivors = cells(table).filter(cell => before.includes(cell));
+
+        expect(survivors.length).toBeGreaterThan(0);
+        expect(layouts()).toBe(survivors.length);
+        expect(cells(table)[0].getWidth()).toBe(140);
+    });
+
+    it('31. a re-render at identical geometry lays out no parent cell', async () => {
+        const columns: ColumnConfig[] = [
+            { field: 'c0', group: 'G' },
+            { field: 'c1', group: 'G' },
+            { field: 'c2' },
+        ];
+        const table = await wideTable(3, { columns });
+
+        const geometry = {
+            columnWidths:    [100, 100, 100],
+            viewportWidth:   1000,
+            columnHeight:    20,
+            parentRowHeight: 20,
+        };
+
+        header(table).renderColumnWindow(geometry);
+
+        const layouts = countLayouts(header(table).getParentRow().getComponents());
+
+        header(table).renderColumnWindow(geometry);
+
+        expect(layouts()).toBe(0);
+    });
+
+    it('32. a parent-row height change lays the parent cells out again', async () => {
+        const columns: ColumnConfig[] = [{ field: 'c0', group: 'G' }, { field: 'c1', group: 'G' }];
+        const table = await wideTable(2, { columns });
+
+        header(table).renderColumnWindow({
+            columnWidths:    [100, 100],
+            viewportWidth:   1000,
+            columnHeight:    20,
+            parentRowHeight: 20,
+        });
+
+        const parentCells = header(table).getParentRow().getComponents();
+        const layouts     = countLayouts(parentCells);
+
+        header(table).renderColumnWindow({
+            columnWidths:    [100, 100],
+            viewportWidth:   1000,
+            columnHeight:    20,
+            parentRowHeight: 30,
+        });
+
+        // A height change moves every parent cell, so the count is exact.
+        expect(layouts()).toBe(parentCells.length);
+        expect(header(table).getParentRow().getComponents()[0].getHeight()).toBe(30);
+    });
+
+    // Mounting a header glyph shifts the label's left inset right to clear it,
+    // and an inset only reaches the label through a layout pass. It is the one
+    // per-column property the reconciler re-applies that needs one — the label,
+    // required marker, sort arrow, tooltip and group tint are all plain text,
+    // attribute or style writes. So the label's x is what proves a cell whose
+    // geometry did not change was still laid out when it had to be.
+    //
+    // `HeaderCell.setHeaderGlyph` owns that layout itself, as
+    // `Cell.setActiveRenderer` does for the same reason, so the cell is
+    // correct however the glyph is set — through the reconciler (cases 33 and
+    // 34) or by a caller holding the cell (case 35).
+    function labelX(cell: HeaderCell): number {
+        return (cell.getRenderer() as unknown as { getText(): { getX(): number } }).getText().getX();
+    }
+
+    it('33. a cell that keeps its column but gains a glyph is laid out despite matching geometry', async () => {
+        const table = await wideTable(20);
+        render20At100(table);
+
+        const cell = cells(table)[0];
+        const before = labelX(cell);
+
+        // Same fields at the same widths, so slot 0 keeps its cell and its
+        // geometry; only the glyph changes.
+        header(table).setColumns(table.getColumns().map((column, i) =>
+            i === 0 ? column.setHeaderGlyph('unicode-arrow-up') : column));
+        render20At100(table);
+
+        expect(cells(table)[0].getHeaderGlyph()).toBe('unicode-arrow-up');
+        expect(labelX(cells(table)[0])).toBeGreaterThan(before);
+    });
+
+    it('34. a cell recycled onto a different column at matching geometry is laid out', async () => {
+        const table = await wideTable(20, {
+            columns: [{ field: 'c4', headerGlyph: 'unicode-arrow-up' }],
+        });
+        render20At100(table); // window 0..4, so c4 is the last rendered column
+
+        const cell = cells(table)[4];
+        expect(cell.getFieldName()).toBe('c4');
+        expect(cell.getHeaderGlyph()).toBe('unicode-arrow-up');
+        const withGlyph = labelX(cell);
+
+        // Hiding c4 slides c5 into the last slot, so c4's cell is recycled onto
+        // a column sitting at the identical x and width — the one case the
+        // geometry diff alone cannot catch, and the glyph has to come off.
+        table.setColumnVisible('c4', false);
+        render20At100(table);
+
+        const recycled = cells(table)[4];
+
+        expect(recycled).toBe(cell);
+        expect(recycled.getFieldName()).toBe('c5');
+        expect(recycled.getX()).toBe(400);
+        expect(recycled.getHeaderGlyph()).toBeNull();
+        expect(labelX(recycled)).toBeLessThan(withGlyph);
+    });
+
+    it('35. setting a glyph straight on a rendered cell re-lays it out, with no reconcile', async () => {
+        const table = await wideTable(20);
+        render20At100(table);
+
+        // `TableHeader.getColumns()` is public, so a caller can reach a
+        // rendered cell and set its glyph without going near the reconciler.
+        // The cell's geometry never changes, so nothing else will lay it out.
+        const cell   = cells(table)[0];
+        const before = labelX(cell);
+
+        cell.setHeaderGlyph('unicode-arrow-up');
+
+        expect(labelX(cell)).toBeGreaterThan(before);
+
+        cell.setHeaderGlyph(null);
+
+        expect(labelX(cell)).toBe(before);
+    });
+
+    it('36. geometry applied before the header renders is re-applied once it has', async () => {
+        const store = new MemoryStore(wideModel(1), []);
+        await store.load();
+
+        const table = new Table(store);
+
+        const geometry = {
+            columnWidths:    [100],
+            viewportWidth:   250,
+            columnHeight:    20,
+            parentRowHeight: 0,
+        };
+
+        // Deliberately no `getElement(true)` first: a cell with no element has
+        // nothing to fit its renderer against, so the layout this pass runs
+        // cannot size it. Recording the geometry anyway would make every later
+        // pass at the same geometry skip the cell, leaving a full-width `<th>`
+        // around an unsized label for as long as the column stays put.
+        header(table).renderColumnWindow(geometry);
+        table.getElement(true);
+        header(table).renderColumnWindow(geometry);
+
+        const cell = cells(table)[0];
+
+        expect(cell.getWidth()).toBe(100);
+        expect(cell.getRenderer().getWidth()).toBe(100);
+    });
+
+    it('37. the per-column properties the reconciler re-applies need no layout pass', async () => {
+        const table = await wideTable(20);
+        render20At100(table);
+
+        const cell = cells(table)[0];
+
+        /** Every geometry the cell's subtree currently holds, as a comparable string. */
+        function snapshot(): string {
+            const parts: string[] = [];
+
+            const walk = (component: { getX(): number, getY(): number, getWidth(): number,
+                                       getHeight(): number, getComponents(): unknown[] }): void => {
+                parts.push(`${component.getX()},${component.getY()},${component.getWidth()},${component.getHeight()}`);
+                component.getComponents().forEach(child => walk(child as typeof component));
+            };
+
+            walk(cell as unknown as Parameters<typeof walk>[0]);
+
+            return parts.join('|');
+        }
+
+        // The skip rests on these being layout-neutral: the glyph is the one
+        // per-column property that moves anything, and it lays the cell out
+        // itself. If any of these grows a layout dependency the header goes
+        // stale on every route that does not also move the cell, and only this
+        // test would notice — so it asserts the negative directly, by forcing
+        // the layout the skip withholds and checking nothing moves.
+        cell.setHeaderText('a rather longer header label');
+        cell.setRequired(true);
+        cell.setSortState('desc', 2);
+        cell.setColumnFocused(true);
+        cell.setTooltip('some tooltip');
+        cell.setBaseBackground('#123456');
+        cell.getAria().setColIndex(7);
+
+        const before = snapshot();
+
+        cell.doLayout();
+
+        expect(snapshot()).toBe(before);
+
+        // The snapshot has to be able to see a layout move at all, or the
+        // assertion above would hold no matter what those setters did.
+        cell.setWidth(cell.getWidth() + 120);
+        cell.doLayout();
+
+        expect(snapshot()).not.toBe(before);
+    });
+});
