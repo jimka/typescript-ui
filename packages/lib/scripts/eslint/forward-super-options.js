@@ -1,5 +1,12 @@
 const OPTIONS_NAME_RE = /^(opts?|options)$/i;
 
+// Superclasses whose constructor is known, fixed, and takes no parameters —
+// `super(options)` there would not even typecheck, so there is nothing to
+// forward. Kept as a narrow, explicit allowlist (like the `extends Object`
+// case below) rather than resolved generically, since the rule is
+// deliberately syntactic and has no cross-file type information available.
+const NO_OPTIONS_SUPERCLASSES = new Set(["CellRenderer"]);
+
 function paramName(p) {
     if (!p) {
         return null;
@@ -47,6 +54,13 @@ export default {
                 // actually be incorrect (Object's constructor returns its argument,
                 // breaking `this`). Skip this single well-known case.
                 if (klass.superClass.type === "Identifier" && klass.superClass.name === "Object") {
+                    return;
+                }
+
+                if (
+                    klass.superClass.type === "Identifier"
+                    && NO_OPTIONS_SUPERCLASSES.has(klass.superClass.name)
+                ) {
                     return;
                 }
 

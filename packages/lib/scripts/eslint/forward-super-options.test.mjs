@@ -11,6 +11,7 @@ tester.run("forward-super-options", rule, {
         "class C { constructor(options?: X) { } }",
         'class C extends B { constructor(options?: X) { super({ ...options, tag: "div" }); } }',
         "class C extends Object { constructor(options?: X) { super(); } }",
+        "class C extends CellRenderer { constructor(options?: X) { super(); } }",
     ],
     invalid: [
         {
