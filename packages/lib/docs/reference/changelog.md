@@ -83,6 +83,13 @@ Code that indexed the result with a column index — to reach the cell for colum
 that only iterates it is unaffected. `Table.getColumns()` still enumerates every
 column and is the right source for a column count.
 
+**Breaking:** `TableHeader.sortColumns()` is removed. It reordered the rendered
+header cells by `Field.getOrder()`, which the header no longer derives its cell
+order from — the column-window reconciler places cells itself, in the order it
+assigned them. Against that order the method could only ever be a no-op, so
+nothing in the framework called it and removing it changes no behaviour. Order
+is already correct after every reconcile; there is no replacement to call.
+
 **Breaking:** a `TableHeader` renders no cells until its first layout pass. The
 header builds its cells when it is given column geometry, so a header that has
 been constructed but never laid out reports zero columns, in the same way a
