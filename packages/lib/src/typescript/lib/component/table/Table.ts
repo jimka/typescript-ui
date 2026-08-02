@@ -259,15 +259,9 @@ class Table extends Component<TableOptions> {
         // Sync header horizontal scroll with body. The body uses
         // transform-based virtual scroll (via `VirtualScroller`), so the
         // native DOM `scroll` event never fires; hook the body's
-        // `on("horizontalscroll")` listener instead. Translate the header's
-        // two inner rows (parent row + column row) rather than the header
-        // element itself — the header band stays pinned to the viewport
-        // width so its background covers the vertical-scrollbar reserve
-        // band on the right edge, and only the cells inside scroll with
-        // the body.
+        // `on("horizontalscroll")` listener instead.
         this._body.on("horizontalscroll", scrollLeft => {
-            this._header.getParentRow().setTranslate(-scrollLeft, 0);
-            this._header.getComponents()[1].setTranslate(-scrollLeft, 0);
+            this._header.setScrollX(scrollLeft);
         });
 
         // Surface the body's selection changes on the Table's own event so
@@ -436,7 +430,9 @@ class Table extends Component<TableOptions> {
      * Replaces the data store, re-resolves columns from the new model, and updates
      * the body and header to reflect the change. Leaves rotated mode first — the
      * projection is built from the outgoing store, and would sort/select the
-     * wrong store otherwise.
+     * wrong store otherwise. Ends with a layout pass, so the header's new
+     * columns render immediately — matching `setColumnVisible` / `resetColumns`
+     * / `bindView`, which each end in a layout too.
      *
      * @param store - The new store to bind to the table.
      */
@@ -463,6 +459,14 @@ class Table extends Component<TableOptions> {
         this._body.setColumns(this._resolvedColumns);
         this._header.setHiddenColumns(this.getEffectiveHiddenSet());
         this.getAria().setColCount(this.getColumns().length);
+
+        // Matches setColumnVisible / resetColumns / bindView, which each end
+        // in a layout too: the header now renders no cells until its first
+        // renderColumnWindow, so without this a store swap on an
+        // already-sized table would leave the header blank until something
+        // else happened to trigger a layout. A no-op on an unsized table —
+        // layout/Table.doLayout returns early when the container size isn't finite.
+        this.doLayout();
 
         return this;
     }

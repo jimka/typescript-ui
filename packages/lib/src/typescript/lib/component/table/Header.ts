@@ -11,6 +11,9 @@ import { Field } from "~/data/Field.js";
 import { Column } from "~/component/table/Column.js";
 import { HeaderCell } from "~/component/table/cell/Header.js";
 import { ParentHeaderCell } from "~/component/table/cell/ParentHeader.js";
+import { computeColumnWindow } from "~/component/table/Body.js";
+import { CellGeometryCache } from "~/component/table/CellGeometry.js";
+import type { ColumnWindow } from "~/component/table/Body.js";
 import { callable } from "~/core/Callable.js";
 
 // The header surface, themed via `--ts-ui-table-header-bg`. The value is
@@ -32,13 +35,33 @@ const TABLE_HEADER_BG = "var(--ts-ui-table-header-bg, var(--ts-ui-button-bg, lin
 export type TableHeaderEvent = "columnresizestart" | "columnresize" | "columncontextmenu";
 
 /**
+ * The geometry the table layout supplies to the header on each pass. Cached
+ * by {@link TableHeader.renderColumnWindow} so a scroll-driven pass can
+ * re-run with no argument.
+ *
+ * @category Components
+ */
+export interface HeaderColumnGeometry {
+    /** Width per visible column, in display order. May be shorter than the column list. */
+    columnWidths   : number[];
+    /** The width the columns are windowed against — the table's available column width. */
+    viewportWidth  : number;
+    /** Height of the column-header row, in pixels. */
+    columnHeight   : number;
+    /** Height of the parent-header row, in pixels; `0` when it is collapsed. */
+    parentRowHeight: number;
+}
+
+/**
  * The header section of a table, rendered as a `<thead>` element.
  *
- * Builds one {@link HeaderCell} per visible field from the supplied model. Each cell is
- * wired with a sort-click callback (cycles asc → desc → clear), a resize-drag
- * callback (forwarded to the owner via the `"columnresize"` event), and a
- * context-menu callback (forwarded via the `"columncontextmenu"` event); see
- * {@link TableHeader.on}.
+ * Builds one {@link HeaderCell} per column in its current column window —
+ * the horizontally-visible range plus a small buffer, mirroring the body's
+ * own column virtualization — rather than one per visible field up front.
+ * Each cell is wired with a sort-click callback (cycles asc → desc → clear), a
+ * resize-drag callback (forwarded to the owner via the `"columnresize"`
+ * event), and a context-menu callback (forwarded via the
+ * `"columncontextmenu"` event); see {@link TableHeader.on}.
  *
  * Re-exported as `TableHeader` from the package barrel.
  *
@@ -52,6 +75,24 @@ class TableHeader extends Component {
     private _columns: Column[] = [];
     private _listeners: ListenerBag<TableHeaderEvent> = new ListenerBag<TableHeaderEvent>();
     private _scrollbarCover: Handle | null = null;
+
+    // Non-hidden fields, in display order — the full column list the
+    // rendered window is carved out of. Populated by `rebuildCells`.
+    private _visibleFields: Field[] = [];
+    // Visible-column index of slot 0. The rendered columns are always a
+    // contiguous run, so slot `s` holds column `_windowFirst + s`.
+    private _windowFirst  : number = 0;
+    private _scrollX      : number = 0;
+    private _focusedCol   : number | null = null;
+    // Set by `rebuildCells` so the next `renderColumnWindow` reconciles even
+    // when the requested range happens to match the current one — a
+    // column-set change can leave the range unchanged while the cells
+    // behind it need to change.
+    private _columnsDirty : boolean = true;
+    private _geometry      : HeaderColumnGeometry = { columnWidths: [], viewportWidth: 0, columnHeight: 0, parentRowHeight: 0 };
+    // Geometry last written to each header cell, shared with the body's rows;
+    // see `CellGeometryCache` for the invariant it rests on.
+    private _cellGeom     : CellGeometryCache = new CellGeometryCache();
 
     constructor(model: AbstractModel, store: AbstractStore) {
         super({ tag: "thead" });
@@ -79,6 +120,18 @@ class TableHeader extends Component {
 
         this.rebuildCells();
         this.rebuildParentCells();
+
+        // Drops the records so the next layout pass re-fits every cell against
+        // the new theme; see `CellGeometryCache` for why a theme change needs
+        // that and geometry alone cannot detect it.
+        //
+        // Re-rendering from inside this callback, as
+        // `VirtualRowView.onThemeReflow` does for the body, would run too
+        // early: each cell renderer holds its own theme subscription that
+        // rewrites the insets the pass has to fit against, and those renderers
+        // subscribe after this header does, so the re-render would fit against
+        // the outgoing theme's padding.
+        this.subscribeTheme(() => this._cellGeom.clear());
     }
 
     /**
@@ -138,8 +191,11 @@ class TableHeader extends Component {
     }
 
     /**
-     * Updates the set of hidden column field names and rebuilds both header
-     * rows immediately.
+     * Updates the set of hidden column field names, rebuilding the parent row
+     * immediately and marking the column row's cells for reconciliation.
+     *
+     * The column row renders no cells until the next {@link renderColumnWindow},
+     * which every caller reaches through the table's own layout pass.
      *
      * Field names belonging to {@link Column.isUnhideable} columns are stripped
      * from the set so a direct caller cannot bypass the unhideable contract.
@@ -235,13 +291,27 @@ class TableHeader extends Component {
     }
 
     /**
-     * Returns the header cell components in column order. The column row
+     * Returns the rendered header cell components, in slot order. The column row
      * lives at child index 1 — the parent-header row sits at index 0.
      *
-     * @returns An array of cell components from the column-header row.
+     * A slot maps to a visible-column index by adding
+     * {@link getColumnWindowStart}: only the horizontally-visible column
+     * window (plus a small buffer) is rendered, so this is no longer every
+     * visible column.
+     *
+     * @returns An array of the rendered cell components from the column-header row.
      */
     getColumns() {
         return this.getComponents()[1].getComponents();
+    }
+
+    /**
+     * Returns the visible-column index of the first rendered header cell.
+     *
+     * @returns The visible-column index slot `0` currently renders.
+     */
+    getColumnWindowStart(): number {
+        return this._windowFirst;
     }
 
     /**
@@ -317,28 +387,6 @@ class TableHeader extends Component {
     }
 
     /**
-     * Reorders header cells by field order using their layout constraints.
-     */
-    sortColumns() {
-        const row = this.getComponents()[1];
-
-        row.sortComponents((c1, c2) => {
-            const lc1 = row.getLayoutConstraints(c1);
-            const lc2 = row.getLayoutConstraints(c2);
-
-            if (!lc1) {
-                return -1;
-            }
-
-            if (!lc2) {
-                return 1;
-            }
-
-            return (lc1.data as Field).getOrder() - (lc2.data as Field).getOrder();
-        });
-    }
-
-    /**
      * Appends a row to the header.
      *
      * @param row - The row to append.
@@ -398,23 +446,68 @@ class TableHeader extends Component {
     }
 
     /**
-     * Reconciles the column-row's header cells against the current
-     * model's visible fields. Surviving cells (whose field is still
-     * visible) keep their sort indicator, resize-handle wiring,
-     * tooltip, theme listener, and `setColumnFocused` state; cells for
-     * newly-visible fields are constructed and wired; cells for
-     * now-hidden fields are removed.
-     *
-     * Operates on the column row at child index 1; the parent row at
-     * index 0 is rebuilt separately in {@link rebuildParentCells}.
+     * Recomputes the visible-field list from the current model and hidden
+     * set, marks the rendered cell set dirty, and re-syncs the sort
+     * indicators. Builds no cells itself: the column row renders nothing
+     * until the next {@link renderColumnWindow}, which reconciles against
+     * the window the table layout hands it — mirroring `Body`, which
+     * renders no rows until its first `renderWindow`.
      */
     private rebuildCells(): void {
+        this._visibleFields = this.computeVisibleFields(this._model);
+        this._columnsDirty  = true;
+
+        this.syncSortIndicators();
+    }
+
+    /**
+     * Filters and orders `model`'s fields to the currently-visible set:
+     * every field not in `_hiddenColumns`, sorted by {@link Field.getOrder}.
+     * Called by {@link rebuildCells} to populate `_visibleFields`, the
+     * single derivation `syncSortIndicators` and {@link reconcileColumnCells}
+     * both read from instead of re-deriving it themselves.
+     *
+     * @param model - The model whose fields to filter and order.
+     * @returns The visible fields, in display order.
+     */
+    private computeVisibleFields(model: AbstractModel): Field[] {
+        return model.getFields()
+                    .slice()
+                    .filter(f => !this._hiddenColumns.has(f.getName()))
+                    .sort((f1, f2) => f1.getOrder() - f2.getOrder());
+    }
+
+    /**
+     * Reconciles the column-row's rendered header cells to the
+     * horizontally-visible column range `[firstCol, lastCol]`. A header
+     * cell carries no per-kind identity — unlike the body's cell
+     * reconciler — so any leftover cell can serve any entering column:
+     *
+     * 1. A column keeps the cell that already holds its field, matched by
+     *    field name.
+     * 2. Every other column in the range recycles a leftover cell, or
+     *    builds a fresh one when none remains.
+     * 3. Every per-column property (label, tooltip, glyph, group tint,
+     *    required marker, ARIA column index) is re-applied to every
+     *    rendered cell, whether or not it was re-targeted, so a recycled
+     *    cell never shows a trace of its previous column.
+     *
+     * Cells left over after the window is filled are removed and disposed.
+     * Called from {@link renderColumnWindow}, which positions the returned
+     * cells afterward.
+     *
+     * @param firstCol - The first visible-column index to render, inclusive.
+     * @param lastCol - The last visible-column index to render, inclusive.
+     * @returns `true` when the rendered cell set changed.
+     */
+    private reconcileColumnCells(firstCol: number, lastCol: number): boolean {
         const row = this.getComponents()[1] as Row;
 
-        const targetFields = this._model.getFields()
-                                       .slice()
-                                       .filter(f => !this._hiddenColumns.has(f.getName()))
-                                       .sort((a, b) => a.getOrder() - b.getOrder());
+        if (!this._columnsDirty
+            && firstCol === this._windowFirst
+            && lastCol === this._windowFirst + row.getComponents().length - 1) {
+            return false;
+        }
 
         const columnMap = new Map(this._columns.map(c => [c.getField().getName(), c]));
         const existing  = row.getComponents().slice() as HeaderCell[];
@@ -429,78 +522,107 @@ class TableHeader extends Component {
             }
         }
 
-        const targetNames = new Set(targetFields.map(f => f.getName()));
+        const slotCount = lastCol - firstCol + 1;
+        const assigned: (HeaderCell | undefined)[] = new Array(slotCount).fill(undefined);
 
-        for (const cell of existing) {
-            const lc    = row.getLayoutConstraints(cell);
-            const field = lc?.data as Field | undefined;
+        // Pass 1 — keep a cell for its own field.
+        for (let col = firstCol; col <= lastCol; col++) {
+            const name = this._visibleFields[col].getName();
+            const cell = byName.get(name);
 
-            if (!field || !targetNames.has(field.getName())) {
-                row.removeComponent(cell);
+            if (cell) {
+                assigned[col - firstCol] = cell;
+                byName.delete(name);
             }
         }
 
-        for (let i = 0; i < targetFields.length; i++) {
-            const field = targetFields[i];
-            const col   = columnMap.get(field.getName());
-            let   cell  = byName.get(field.getName());
+        const free = Array.from(byName.values());
 
-            if (!cell) {
-                const glyph = col?.getHeaderGlyph() ?? null;
+        // Pass 2 — recycle a leftover, else build.
+        for (let col = firstCol; col <= lastCol; col++) {
+            const slot = col - firstCol;
 
-                cell = new HeaderCell(col?.getHeaderText() ?? field.getName(), field.getName(), glyph);
-                cell.setTooltip(field.getDescription());
+            if (assigned[slot] !== undefined) {
+                continue;
+            }
+
+            const field = this._visibleFields[col];
+            let   cell  = free.pop();
+
+            if (cell) {
+                row.setLayoutConstraints(cell, { data: field });
+            } else {
+                cell = new HeaderCell(field.getName(), field.getName(), null);
 
                 row.addComponent(cell, { data: field });
 
                 // Wire exactly once, at creation. The resize/sort/context
                 // closures resolve the cell's visible-column index live (via
-                // getColumns) at emit time, so a later hide/show that shifts
-                // indices needs no re-wiring. Re-wiring a surviving cell would
-                // stack duplicate listeners on its ListenerBag — making a
-                // single drag emit `columnresize` several times with mismatched
-                // indices, and a single header click cycle the sort twice.
+                // columnIndexOf) at emit time, so a later hide/show/scroll
+                // that shifts indices needs no re-wiring. Re-wiring a
+                // surviving cell would stack duplicate listeners on its
+                // ListenerBag — making a single drag emit `columnresize`
+                // several times with mismatched indices, and a single header
+                // click cycle the sort twice.
                 this.wireCell(cell);
             }
 
-            // Re-applied on every sync (like the tint and required marker
-            // below) so the label is right on a surviving cell: the first
-            // rebuild that creates the cell can run before this column is
-            // resolved (e.g. `bindView` sets the model before the columns),
-            // leaving `col` null and the label defaulted to the field name.
-            cell.setHeaderText(col?.getHeaderText() ?? field.getName());
-
-            // Tint the column header with the group's `groupColor` so
-            // the header band reads as one visual group above the
-            // matching body-cell tint applied in Row.ts. `Cell`'s
-            // theme-change listener only re-applies the border, so
-            // this background survives a theme swap. Re-applied on
-            // every sync so a config swap that changed the tint also
-            // takes effect.
-            const groupColor = col?.getGroupColor();
-
-            if (groupColor) {
-                cell.setBackgroundColor(groupColor);
-            }
-
-            // Re-applied on every sync (unconditionally, not gated on
-            // an `isRequired()` truthy check) so a config swap that
-            // clears `required` also clears the asterisk on a
-            // surviving cell — mirrors the group-tint cadence above.
-            cell.setRequired(col?.isRequired() ?? false);
+            assigned[slot] = cell;
         }
 
-        // Re-order children to the new visible-field display order so
-        // sibling iteration (e.g. `syncSortIndicators`) matches the
-        // visible-field list index.
-        row.sortComponents((c1, c2) => {
-            const f1 = (row.getLayoutConstraints(c1)?.data as Field).getOrder();
-            const f2 = (row.getLayoutConstraints(c2)?.data as Field).getOrder();
+        // Pass 3 — per-column state, re-applied to every rendered cell so a
+        // recycled cell never shows a trace of its previous column.
+        for (let col = firstCol; col <= lastCol; col++) {
+            const cell   = assigned[col - firstCol]!;
+            const field  = this._visibleFields[col];
+            const column = columnMap.get(field.getName());
 
-            return f1 - f2;
-        });
+            cell.setFieldName(field.getName());
+            cell.setHeaderText(column?.getHeaderText() ?? field.getName());
 
-        this.syncSortIndicators();
+            const description = field.getDescription();
+
+            if (cell.getTooltip() !== description) {
+                cell.setTooltip(description);
+            }
+
+            const headerGlyph = column?.getHeaderGlyph() ?? null;
+
+            if (cell.getHeaderGlyph() !== headerGlyph) {
+                cell.setHeaderGlyph(headerGlyph);
+            }
+
+            cell.setBaseBackground(column?.getGroupColor() ?? null);
+            cell.setRequired(column?.isRequired() ?? false);
+            cell.getAria().setColIndex(col + 1);
+        }
+
+        // Discard what is left over.
+        for (const cell of free) {
+            row.removeComponent(cell);
+            cell.dispose();
+        }
+
+        // Re-order children to the window's display order so sibling
+        // iteration (e.g. `syncSortIndicators`) matches slot order.
+        //
+        // The order comes from `assigned`, which this reconciler just built in
+        // slot order — not from re-sorting on `Field.getOrder()`. A model that
+        // declares no `order` returns the -1 sentinel for every field, so an
+        // order-based comparison ties throughout, the sort is a stable no-op,
+        // and a recycled cell keeps whatever index it already held. That
+        // desynchronises slot from column: `getColumns()[s]` stops being the
+        // cell for column `_windowFirst + s`, which silently misplaces
+        // geometry, resize indices, sort arrows and the focus underline.
+        const slotOf = new Map(assigned.map((cell, slot) => [cell, slot]));
+
+        row.sortComponents((c1, c2) =>
+            (slotOf.get(c1 as HeaderCell) ?? 0) - (slotOf.get(c2 as HeaderCell) ?? 0));
+
+        this._windowFirst  = firstCol;
+        this._columnsDirty = false;
+
+        return true;
     }
 
     /**
@@ -520,6 +642,10 @@ class TableHeader extends Component {
         const row = this.getParentRow();
 
         row.removeAllComponents();
+
+        if (!this.hasParentRow()) {
+            return;
+        }
 
         const visibleCols = this._columns
             .filter(c => !this._hiddenColumns.has(c.getField().getName()))
@@ -586,17 +712,30 @@ class TableHeader extends Component {
      * @param cell - The header cell whose listeners are being attached.
      *
      * @remarks The resize callbacks report the cell's *current* visible-column
-     * index by looking it up live through {@link getColumns} when the event
+     * index by looking it up live through {@link columnIndexOf} when the event
      * fires, rather than capturing an index at wiring time. This keeps the
-     * index correct after a hide/show/reorder shuffles the columns without
-     * re-wiring — re-wiring would stack duplicate listeners on the surviving
-     * cell's `ListenerBag`.
+     * index correct after a hide/show/reorder/scroll shuffles the columns
+     * without re-wiring — re-wiring would stack duplicate listeners on the
+     * surviving cell's `ListenerBag`.
      */
     private wireCell(cell: HeaderCell): void {
         cell.on("sortclick",   (fieldName, shiftKey) => this.handleSortClick(fieldName, shiftKey));
-        cell.on("resizestart", (clientX) => this.emit("columnresizestart", this.getColumns().indexOf(cell), clientX));
-        cell.on("resizedrag",  (clientX) => this.emit("columnresize", this.getColumns().indexOf(cell), clientX));
+        cell.on("resizestart", (clientX) => this.emit("columnresizestart", this.columnIndexOf(cell), clientX));
+        cell.on("resizedrag",  (clientX) => this.emit("columnresize", this.columnIndexOf(cell), clientX));
         cell.on("contextmenu", (fieldName, x, y) => this.emit("columncontextmenu", fieldName, x, y));
+    }
+
+    /**
+     * Converts a rendered cell to its visible-column index — the slot it
+     * occupies in the column row plus the window's start offset.
+     *
+     * @param cell - The header cell to resolve.
+     * @returns The visible-column index, or `-1` when the cell is not currently rendered.
+     */
+    private columnIndexOf(cell: HeaderCell): number {
+        const slot = this.getColumns().indexOf(cell);
+
+        return slot === -1 ? -1 : this._windowFirst + slot;
     }
 
     /**
@@ -649,23 +788,18 @@ class TableHeader extends Component {
     }
 
     /**
-     * Refreshes every visible header cell's sort arrow and priority badge
+     * Refreshes every rendered header cell's sort arrow and priority badge
      * to match the store's current `activeSorters` list.
      */
     private syncSortIndicators(): void {
         const cells         = this.getColumns() as HeaderCell[];
-        const visibleFields = this._model.getFields()
-                                        .slice()
-                                        .filter(f => !this._hiddenColumns.has(f.getName()))
-                                        .sort((a, b) => a.getOrder() - b.getOrder());
-
         const sorters       = this._store.getActiveSorters();
         const fieldToSorter = new Map(sorters.map((s, i) => [s.field, { dir: s.dir, priority: i + 1 }]));
         const showPriority  = sorters.length > 1;
 
-        cells.forEach((cell, i) => {
-            const fieldName = visibleFields[i]?.getName();
-            const entry     = fieldName ? fieldToSorter.get(fieldName) : undefined;
+        cells.forEach((cell, slot) => {
+            const field = this._visibleFields[this._windowFirst + slot];
+            const entry = field ? fieldToSorter.get(field.getName()) : undefined;
 
             if (entry) {
                 cell.setSortState(entry.dir, showPriority ? entry.priority : null);
@@ -673,6 +807,143 @@ class TableHeader extends Component {
                 cell.clearSortState();
             }
         });
+    }
+
+    /**
+     * Reconciles the rendered header cells to the horizontally-visible column
+     * range and positions every rendered cell in both rows.
+     *
+     * @param geometry - Replaces the cached geometry when supplied; the cached
+     *   value is reused when omitted.
+     * @returns This header, for method chaining.
+     */
+    renderColumnWindow(geometry?: HeaderColumnGeometry): this {
+        if (geometry) {
+            this._geometry = geometry;
+        }
+
+        const g       = this._geometry;
+        const widths  = this._visibleFields.map((_, i) => g.columnWidths[i] ?? 0);
+        const win     = computeColumnWindow(widths, this._scrollX, g.viewportWidth);
+        const changed = this.reconcileColumnCells(win.firstCol, win.lastCol);
+
+        if (changed) {
+            this.syncSortIndicators();
+            this.applyFocusedColumn();
+        }
+
+        this.positionColumnCells(win, g.columnHeight);
+        this.positionParentCells(win, g.parentRowHeight);
+
+        return this;
+    }
+
+    /**
+     * Positions every rendered column-row cell from the window's `lefts`
+     * and `widths` arrays — the same geometry {@link reconcileColumnCells}
+     * just reconciled the cell set against.
+     *
+     * @param win - The column window computed by {@link renderColumnWindow}.
+     * @param columnHeight - The column row's height in pixels.
+     */
+    private positionColumnCells(win: ColumnWindow, columnHeight: number): void {
+        const cells = this.getColumns();
+
+        for (let slot = 0; slot < cells.length; slot++) {
+            const col = win.firstCol + slot;
+
+            this._cellGeom.apply(cells[slot], win.lefts[col] ?? 0, win.widths[col] ?? 0, columnHeight);
+        }
+    }
+
+    /**
+     * Positions every parent-row cell from the window's `lefts` / `widths`
+     * arrays in constant time: a cell's x is the left offset of its
+     * `spanFrom` column, and its width is the sum of every column across
+     * its span.
+     *
+     * @param win - The column window computed by {@link renderColumnWindow}.
+     * @param parentRowHeight - The parent row's height in pixels; `0` when collapsed.
+     */
+    private positionParentCells(win: ColumnWindow, parentRowHeight: number): void {
+        const row = this.getParentRow();
+
+        for (const cell of row.getComponents()) {
+            const lc   = row.getLayoutConstraints(cell);
+            const span = lc?.data as { spanFrom: number, spanTo: number } | undefined;
+            const from = span?.spanFrom ?? 0;
+            const to   = span?.spanTo   ?? 0;
+            const x    = win.lefts[from] ?? 0;
+            const w    = (win.lefts[to] ?? 0) + (win.widths[to] ?? 0) - x;
+
+            this._cellGeom.apply(cell, x, w, parentRowHeight);
+        }
+    }
+
+    /**
+     * Mirrors the body's horizontal scroll offset onto the header's two inner
+     * rows and re-renders the column window.
+     *
+     * Translates the two inner rows (parent row + column row) rather than the
+     * header element itself — the header band stays pinned to the viewport
+     * width so its background covers the vertical-scrollbar reserve band on
+     * the right edge, and only the cells inside scroll with the body.
+     *
+     * @param scrollLeft - The new horizontal scroll offset, in pixels.
+     * @returns This header, for method chaining.
+     */
+    setScrollX(scrollLeft: number): this {
+        if (scrollLeft === this._scrollX) {
+            return this;
+        }
+
+        this._scrollX = scrollLeft;
+
+        this.getParentRow().setTranslate(-scrollLeft, 0);
+        this.getComponents()[1].setTranslate(-scrollLeft, 0);
+
+        this.renderColumnWindow();
+
+        return this;
+    }
+
+    /**
+     * Returns the horizontal scroll offset last applied.
+     *
+     * @returns The scroll offset in pixels.
+     */
+    getScrollX(): number {
+        return this._scrollX;
+    }
+
+    /**
+     * Paints the column-focus underline on the rendered cell for `colIndex`
+     * and clears it everywhere else. `null` clears every cell.
+     *
+     * @param colIndex - The visible-column index to focus, or `null` to clear.
+     * @returns This header, for method chaining.
+     */
+    setFocusedColumn(colIndex: number | null): this {
+        this._focusedCol = colIndex;
+
+        this.applyFocusedColumn();
+
+        return this;
+    }
+
+    /**
+     * Re-applies `_focusedCol` to the currently-rendered cells. Called
+     * directly from {@link setFocusedColumn} and again at the end of every
+     * reconcile that changed the rendered set, so a cell recycled into the
+     * focused column picks up the underline without waiting for the next
+     * explicit `setFocusedColumn` call.
+     */
+    private applyFocusedColumn(): void {
+        const cells = this.getColumns() as HeaderCell[];
+
+        for (let slot = 0; slot < cells.length; slot++) {
+            cells[slot].setColumnFocused(this._windowFirst + slot === this._focusedCol);
+        }
     }
 }
 

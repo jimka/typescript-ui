@@ -59,6 +59,14 @@ class GlyphRenderer extends CellRenderer<String | null> {
             this.addComponent(this._glyph);
         }
 
+        // Unlike a text renderer, this one answers a value change by replacing
+        // a child component, and the replacement has no bounds until something
+        // lays this renderer out. Nothing else will: the owning cell keeps its
+        // geometry across a rebind, so the table's cell-geometry diff skips it.
+        // Mirrors `Cell.setActiveRenderer`, which lays itself out whenever it
+        // swaps the child the layout is fitted around.
+        this.doLayout();
+
         return this;
     }
 }

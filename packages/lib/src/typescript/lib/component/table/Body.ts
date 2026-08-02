@@ -7,6 +7,7 @@ import { ListenerBag } from "~/core/ListenerBag.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Row } from "~/component/table/Row.js";
+import { CellGeometryCache } from "~/component/table/CellGeometry.js";
 import { Cell } from "~/component/table/cell/Cell.js";
 import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
 import { ComboEditor } from "~/component/table/cell/editor/Combo.js";
@@ -19,7 +20,6 @@ import { Util } from "~/core/Util.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { Column } from "~/component/table/Column.js";
 import type { TableHeader } from "~/component/table/Header.js";
-import type { HeaderCell } from "~/component/table/cell/Header.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -204,7 +204,7 @@ class Body extends VirtualRowView<Row> {
     private _columns         : Column[]                  = [];
     private _columnConfigs   : Map<string, ColumnConfig> = new Map();
     private _rowReadOnly     : ((record: ModelRecord) => boolean) | null = null;
-    private _cellGeom        : Array<Array<{ x: number, w: number, h: number } | null>> = [];
+    private _cellGeom        : CellGeometryCache         = new CellGeometryCache();
     private _lastBodyWidth   : number                    = 0;
     private _lastColumnWidths: number[]                  = [];
     private _lastAriaRowCount: number                    = -1;
@@ -310,14 +310,6 @@ class Body extends VirtualRowView<Row> {
             cell.setEditorPool(this._editorPool);
             cell.setScrollIntoViewHandler(() => this.scrollColumnIntoView(this._focusedColIndex));
         }
-    }
-
-    /**
-     * Extends the Body-only `_cellGeom` cache in lockstep with the base pool
-     * arrays as each new slot is added.
-     */
-    protected onPoolRowAdded(): void {
-        this._cellGeom.push([]);
     }
 
     /**
@@ -516,16 +508,14 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
-     * Clears the cached row geometry (via the base) and additionally the
-     * Body-only per-cell geometry so the next renderWindow re-applies positions
-     * and sizes for every visible row.
+     * Clears the cached row geometry (via the base) and the per-cell geometry
+     * with it, so the next renderWindow re-applies positions and sizes for
+     * every visible row and every cell in it.
      */
     protected invalidateGeom(): void {
         super.invalidateGeom();
 
-        for (let i = 0; i < this._cellGeom.length; i++) {
-            this._cellGeom[i] = [];
-        }
+        this._cellGeom.clear();
     }
 
     /**
@@ -679,10 +669,14 @@ class Body extends VirtualRowView<Row> {
 
                 this.wireRowCells(row);
 
-                // Per-slot geometry is keyed by cell position; both the
-                // column count and per-cell (x, w, h) have changed.
-                this._rowGeom[i]  = null;
-                this._cellGeom[i] = [];
+                // The row's column count changed, so its own width may have.
+                // The cells' records are keyed on the cell, so they stay valid
+                // across the re-point `setColumnWindow` performs next — a cell
+                // moved onto a column at the same x and width genuinely needs
+                // no reposition. What it may need is a layout, when the new
+                // column changes something the layout fits around; the writes
+                // that do that lay the cell out themselves.
+                this._rowGeom[i] = null;
             }
         } finally {
             this._reconciling = false;
@@ -1025,11 +1019,12 @@ class Body extends VirtualRowView<Row> {
             const windowChanged = row.setColumnWindow(columns.firstCol, columns.lastCol);
 
             if (windowChanged) {
-                // Slot → column mapping changed: newly-entered cells need the
-                // editor pool + scroll-into-view handler wired, and the cached
-                // per-slot geometry no longer matches which cell sits where.
+                // Slot → column mapping changed, so newly-entered cells need
+                // the editor pool + scroll-into-view handler wired. The
+                // geometry records survive: they are keyed on the cell, so a
+                // cell that kept its column is still correctly recorded even
+                // though its slot moved.
                 this.wireRowCells(row);
-                this._cellGeom[i] = [];
             }
 
             const dataIndex = firstRow + i;
@@ -1055,29 +1050,12 @@ class Body extends VirtualRowView<Row> {
             this.positionRow(i, dataIndex * rowHeight, rowWidth);
 
             const cells = row.getComponents();
-            const cellRow = this._cellGeom[i];
-            let x = columns.lefts[columns.firstCol] ?? 0;
+            let   x     = columns.lefts[columns.firstCol] ?? 0;
 
             for (let slot = 0; slot < cells.length; slot++) {
-                const cell = cells[slot];
                 const colW = columns.widths[columns.firstCol + slot] ?? 0;
-                const prevCell = cellRow[slot];
-                const cellChanged = !prevCell || prevCell.x !== x || prevCell.w !== colW || prevCell.h !== rowHeight;
 
-                if (cellChanged) {
-                    cell.setAutoCommitStyle(false);
-                    cell.setX(x);
-                    cell.setY(0);
-                    cell.setWidth(colW);
-                    cell.setHeight(rowHeight);
-                    cell.setAutoCommitStyle(true);
-                    cellRow[slot] = { x: x, w: colW, h: rowHeight };
-                    // Geometry change requires a full layout pass so the
-                    // renderer/editor (Card-layout siblings) re-fit. Pure data
-                    // rebinds don't need this because renderers with
-                    // setAutoMeasure(false) don't resize on text changes.
-                    cell.doLayout();
-                }
+                this._cellGeom.apply(cells[slot], x, colW, rowHeight);
 
                 x += colW;
             }
@@ -1521,24 +1499,10 @@ class Body extends VirtualRowView<Row> {
             }
         }
 
-        const headerCells: HeaderCell[] | null = this._header !== null
-            ? this._header.getColumns() as HeaderCell[]
-            : null;
-
-        if (headerCells !== null) {
-            for (const cell of headerCells) {
-                cell.setColumnFocused(false);
-            }
-        }
+        this._header?.setFocusedColumn(this._anchorRecord ? this._focusedColIndex : null);
 
         if (!this._anchorRecord) {
             return;
-        }
-
-        if (headerCells !== null) {
-            for (let i = 0; i < headerCells.length; i++) {
-                headerCells[i].setColumnFocused(i === this._focusedColIndex);
-            }
         }
 
         const anchorIdx = this.getVisibleRecords().indexOf(this._anchorRecord);

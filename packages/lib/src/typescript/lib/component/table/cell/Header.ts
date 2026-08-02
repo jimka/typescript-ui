@@ -185,6 +185,31 @@ class HeaderCell extends DefaultCell {
     }
 
     /**
+     * Re-targets this cell at another column's model field. Used by the
+     * header's column-window reconciler when recycling a cell whose
+     * column left the window for one entering it.
+     *
+     * @param name - The new field name this cell reports on sort and
+     *   context-menu events.
+     * @returns This cell, for method chaining.
+     */
+    setFieldName(name: string): this {
+        this._fieldName = name;
+
+        return this;
+    }
+
+    /**
+     * Returns the model field name this cell currently reports on sort
+     * and context-menu events.
+     *
+     * @returns The current field name.
+     */
+    getFieldName(): string {
+        return this._fieldName;
+    }
+
+    /**
      * Returns the currently mounted header glyph registry name, or `null` if none.
      *
      * @returns The glyph registry name, or `null`.
@@ -207,6 +232,19 @@ class HeaderCell extends DefaultCell {
     setHeaderGlyph(name: string | null): this {
         this._headerGlyph = name;
         this._mountHeaderGlyph(this.getElement());
+
+        // Mounting or clearing the glyph rewrites the renderer's left inset,
+        // and an inset only reaches the label through a layout pass — nothing
+        // in `setInsets` schedules one. The cell lays itself out here rather
+        // than leaving that to its caller, mirroring `Cell.setActiveRenderer`,
+        // which re-fits itself for the same reason. The header's own scroll
+        // path skips a cell whose geometry has not moved, so a caller-owned
+        // relayout would leave the label sitting under the glyph on every
+        // route that does not also resize the cell. (Called before the cell has
+        // been sized — the reconciler mounts the glyph before the geometry pass
+        // — this fits the renderer against an unset size, which the header's
+        // geometry pass then overwrites.)
+        this.doLayout();
 
         return this;
     }

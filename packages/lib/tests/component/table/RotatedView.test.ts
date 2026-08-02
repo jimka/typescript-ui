@@ -105,6 +105,26 @@ describe('Table rotated mode', () => {
         expect(String(cellFor('value')._text)).toBe('value');
     });
 
+    // table-header-column-virtualization plan, `## Expected Behaviour` case
+    // 25: the projected field/value/filler column set always fits within any
+    // viewport, so the rotated header's window always covers all three — no
+    // rotation-specific handling is needed in the windowing math.
+    it('renders a header cell for every projected column, with windowStart 0', async () => {
+        const { store } = await makeStore();
+        const table = makeTable(store);
+
+        table.setWidth(600);
+        table.setHeight(400);
+        table.setDisplayMode('rotated');
+        table.doLayout();
+
+        const header = (table as any)._header;
+        const cells  = header.getComponents()[1].getComponents();
+
+        expect(cells.length).toBe(3);
+        expect(header.getColumnWindowStart()).toBe(0);
+    });
+
     it('produces one projection row per visible source column, in source order', async () => {
         const { store } = await makeStore();
         const table = makeTable(store);

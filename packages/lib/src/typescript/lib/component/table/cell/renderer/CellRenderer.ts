@@ -43,6 +43,15 @@ export abstract class CellRenderer<T> extends Component {
     /**
      * Updates the displayed value.
      *
+     * @remarks
+     * An implementation that adds, removes or replaces a child component must
+     * end by calling `this.doLayout()`, because the new child has no bounds
+     * until something lays this renderer out and nothing else will: the table
+     * skips the layout for a cell whose geometry has not moved, and rebinding a
+     * row to new data does not move it. `GlyphRenderer` is the framework's own
+     * example. An implementation that only writes text needs no layout — the
+     * text does not auto-measure — which is the common case.
+     *
      * @param t - The value to render.
      */
     abstract setValue(t: T): void;

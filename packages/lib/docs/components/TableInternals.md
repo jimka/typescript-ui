@@ -16,7 +16,7 @@ import {
 
 ## TableHeader
 
-[`TableHeader`](/api/component/table/classes/TableHeader) renders the column-header strip as a `<thead>` element. Internally it contains **two** `Row` children: a parent-header row at child index 0 and the column-header row at child index 1. It builds one [`HeaderCell`](/api/component/table/classes/HeaderCell) per visible field from the model, wired with sort-click, resize-drag, and context-menu callbacks, and one [`ParentHeaderCell`](/api/component/table/classes/ParentHeaderCell) per contiguous run of grouped columns. When no visible column declares a [`group`](/components/Table#parent-headers), the parent row collapses to zero height and the column row sits at `y = 0`.
+[`TableHeader`](/api/component/table/classes/TableHeader) renders the column-header strip as a `<thead>` element. Internally it contains **two** `Row` children: a parent-header row at child index 0 and the column-header row at child index 1. It builds one [`HeaderCell`](/api/component/table/classes/HeaderCell) per column in its current column window — the same horizontally-visible range (plus a small buffer) that [`Body`](/api/component/table/classes/Body) renders — wired with sort-click, resize-drag, and context-menu callbacks, and one [`ParentHeaderCell`](/api/component/table/classes/ParentHeaderCell) per contiguous run of grouped columns. When no visible column declares a [`group`](/components/Table#parent-headers), the parent row builds no cells and collapses to zero height, and the column row sits at `y = 0`.
 
 ## Body
 
@@ -58,7 +58,7 @@ For `DateCell`, `TimeCell`, and `DateTimeCell`, committing an empty editor write
 
 [`HeaderCell`](/api/component/table/classes/HeaderCell) extends `DefaultCell` with sort indicators, click-to-sort, and a resize drag handle.
 
-[`ParentHeaderCell`](/api/component/table/classes/ParentHeaderCell) also extends `DefaultCell` but strips the sort / resize machinery — parent cells are non-interactive labels for a contiguous run of columns. Each carries a `spanFrom` / `spanTo` index pair in its layout-constraints `data` slot; the table layout manager reads those indices to position the cell at the sum of underlying column widths.
+[`ParentHeaderCell`](/api/component/table/classes/ParentHeaderCell) also extends `DefaultCell` but strips the sort / resize machinery — parent cells are non-interactive labels for a contiguous run of columns. Each carries a `spanFrom` / `spanTo` index pair in its layout-constraints `data` slot; [`TableHeader`](/api/component/table/classes/TableHeader) reads those indices to position the cell at the sum of underlying column widths.
 
 ## Shared editor pool
 

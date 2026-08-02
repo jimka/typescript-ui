@@ -114,6 +114,24 @@ export class Field {
     /**
      * Returns the display order index; -1 means unspecified.
      *
+     * @remarks
+     * The value is a sort key over a field list that is already in declaration
+     * order, and nothing more. Two consequences are worth knowing:
+     *
+     * - **A field that declares no `order` sorts as though it declared -1**, so
+     *   it lands ahead of every field declaring 0 or more, and behind one
+     *   declaring a lower negative. Declaring `order` on some fields and not
+     *   others therefore moves the undeclared ones to the front rather than
+     *   leaving them where they were. Declare it on all of them or none.
+     * - **When no field declares an `order` every comparison ties.** `Array`
+     *   sorts are stable, so the list keeps its declaration order — which is
+     *   the intent. But it also means this value cannot be used to *re-derive*
+     *   a position that has already been computed. Sorting rendered cells or
+     *   components by it is a no-op either way: on tied orders because the sort
+     *   is stable, and on declared ones because everything the framework
+     *   derives from the field list is already in this order. Order those from
+     *   the assignment that placed them.
+     *
      * @returns The configured order value, or -1 if no order was specified.
      */
     getOrder(): number {

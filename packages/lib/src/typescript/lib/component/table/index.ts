@@ -12,7 +12,7 @@ export type { CellType, ColumnConfig, ColumnSpec, ComboOption } from '~/componen
 export { TableExporter } from '~/component/table/TableExporter.js';
 export type { ExportOptions } from '~/component/table/TableExporter.js';
 export { TableHeader } from '~/component/table/Header.js';
-export type { TableHeaderEvent } from '~/component/table/Header.js';
+export type { TableHeaderEvent, HeaderColumnGeometry } from '~/component/table/Header.js';
 export { Body } from '~/component/table/Body.js';
 export type { BodyEvent, CellClickEvent } from '~/component/table/Body.js';
 export { TreeBody } from '~/component/table/TreeBody.js';

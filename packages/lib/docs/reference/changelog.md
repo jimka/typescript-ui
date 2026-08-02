@@ -75,7 +75,48 @@ without a `treeFieldName`. A wide `TreeTable` scrolled to the right has no tree
 cell on its rows. Callers must null-check on every access rather than caching
 the result; the framework's own `TreeBody` call sites already did.
 
+**Breaking:** `TableHeader.getColumns()` returns only the header cells the
+header currently renders, not one per visible column. `getColumnWindowStart()`
+converts a position in that array back to a visible-column index by addition.
+Code that indexed the result with a column index — to reach the cell for column
+`n`, or to derive a column index with `indexOf` — must add that offset; code
+that only iterates it is unaffected. `Table.getColumns()` still enumerates every
+column and is the right source for a column count.
+
+**Breaking:** `VirtualRowView`'s protected `onPoolRowAdded()` hook is removed.
+It existed so `Body` could extend a per-pool-slot array alongside the base
+ones; the geometry it tracked is now keyed on the cell rather than the slot, so
+there is no parallel array left to extend and no caller. A consumer subclass of
+`Body`, `Tree` or `TreeBody` that overrode it must move that work into
+`createPoolRow`, which is still called once per slot added.
+
+**Breaking:** `TableHeader.sortColumns()` is removed. It reordered the rendered
+header cells by `Field.getOrder()`, which the header no longer derives its cell
+order from — the column-window reconciler places cells itself, in the order it
+assigned them. Against that order the method could only ever be a no-op, so
+nothing in the framework called it and removing it changes no behaviour. Order
+is already correct after every reconcile; there is no replacement to call.
+
+**Breaking:** a `TableHeader` renders no cells until its first layout pass. The
+header builds its cells when it is given column geometry, so a header that has
+been constructed but never laid out reports zero columns, in the same way a
+table body holds no rows until its first render. Every framework path that
+changes the visible column set ends in a layout pass, so this is visible only to
+code that constructs a header directly and reads its cells without laying the
+table out first.
+
 ### Changed
+
+- **A table header renders only its horizontally-visible columns**, matching the
+  body beneath it. A header cell whose column scrolls out of view is recycled for
+  a column scrolling in, and the parent (group) row builds no cells at all when
+  no visible column declares a group — previously it built one blank spanning
+  cell per ungrouped column.
+
+- **`Table.setStore()` now ends in a layout pass**, as `setColumnVisible`,
+  `resetColumns` and `bindView` already did. Swapping a store rewrites the
+  header's model, columns and hidden set, which now needs a layout to render
+  the new column set.
 
 - **A table body renders only its horizontally-visible columns.** Each pooled
   row builds cells for the scrolled-in column range plus a small buffer on each
@@ -173,6 +214,24 @@ the result; the framework's own `TreeBody` call sites already did.
   do, plus the offset that converts a position in `getComponents()` /
   `getFieldNames()` back to a visible-column index.
 
+- **`HeaderColumnGeometry`** — the geometry a table layout hands the header on
+  each pass: the per-column widths, the width they are windowed against, and
+  the two row heights. Exported from `@jimka/typescript-ui/component/table`.
+
+- **`TableHeader.renderColumnWindow(geometry?)`** — reconciles the rendered
+  header cells to the horizontally-visible column range and positions them.
+  Called with geometry from the table layout, and with none from the scroll
+  path, which reuses the cached value.
+
+- **`TableHeader.setScrollX()` / `getScrollX()`, `TableHeader.setFocusedColumn()`
+  and `TableHeader.getColumnWindowStart()`** — the header now owns mirroring the
+  body's horizontal scroll offset and painting the focused-column indicator,
+  both of which have to re-run whenever the column window slides.
+
+- **`HeaderCell.setFieldName()` / `getFieldName()`** — a header cell can be
+  re-targeted at another column's field, which is what lets a cell be recycled
+  across columns instead of rebuilt.
+
 - **`Table.getAvailableColumnWidth()` and `Table.getColumnWidthTarget()`** —
   the width the columns have to fill, and the total a resize drag has grown
   them to (`0` when the columns still fit without growth).
@@ -221,6 +280,36 @@ the result; the framework's own `TreeBody` call sites already did.
   the old behaviour per instance with `maxFps: 0` (or `setMaxFps(0)`).
 
 ### Fixed
+
+- **Horizontal table scrolling no longer lays out every cell it scrolls past.**
+  A table cell's position is content-absolute — scrolling translates the rows
+  rather than moving the cells — so a cell that keeps its column keeps its
+  geometry, and the layout pass was reproducing the layout it already had. Both
+  the body's pooled rows and the header now skip a cell whose geometry is
+  unchanged, from one shared mechanism keyed on the cell rather than on its
+  position. Position-keying was the expensive part: every column-window slide
+  renumbered the slots and so re-laid-out every cell in the pool, even though
+  the cells that survive a slide stay on their own columns. On a 45-column
+  table 12 columns wide, one column of horizontal scroll went from 363 cell
+  layouts to none beyond the cells actually entering the window. A theme change
+  drops the records, so the next layout pass re-fits every cell against the new
+  padding and border, as it did before.
+
+- **A glyph cell rebound to a different glyph no longer renders it unsized.**
+  A glyph renderer answers a value change by replacing its child component, and
+  the replacement had no bounds until something laid the renderer out — which a
+  scroll that rebinds a row to new data does not do, since the cell keeps its
+  geometry. The renderer now lays itself out when it swaps the child, as the
+  cell already did when swapping its active renderer.
+
+- **`HeaderCell.setHeaderGlyph()` now takes effect immediately.** Mounting or
+  clearing a header glyph shifts the label's left inset to clear the glyph, and
+  the inset only reaches the label through a layout pass, which the setter did
+  not run — so the label kept its old indent until the next pass over the
+  header happened to re-fit it. That used to be every layout pass and every
+  horizontal scroll, which hid the gap; with the skip above it is only a pass
+  that also moves the cell, so the setter now lays itself out, as `Cell`
+  already did when swapping its active renderer.
 
 - **A component disposed part-way through a layout flush no longer aborts the
   rest of it.** The flush snapshots its queue once, so a component that an

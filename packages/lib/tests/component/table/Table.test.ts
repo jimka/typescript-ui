@@ -122,4 +122,36 @@ describe('Column window — export and ARIA column count are scroll-independent'
 
         expect(table.getAria().getColCount()).toBe(20);
     });
+
+    // table-header-column-virtualization plan: `layout/Table.doLayout` derives
+    // `columnCount` from `container.getColumns().length`, never the header's
+    // own rendered-cell count. Reading the latter is fatal on the very first
+    // layout — the header has rendered no window yet, so `columnCount` would
+    // read 0, match the also-empty stored width array, and permanently block
+    // width derivation.
+    it('the first layout derives real column widths even though the header has not rendered a window yet', async () => {
+        const table = await wideTable();
+
+        expect(table.getColumnWidths().length).toBe(20);
+        expect(table.getColumnWidths().every(w => w > 0)).toBe(true);
+    });
+
+    it('setStore on an already-sized table repopulates the header without the caller calling doLayout', async () => {
+        const table = await wideTable();
+
+        const otherModel = new Model(
+            Array.from({ length: 5 }, (_, i) => ({ name: `d${i}`, type: 'string', order: i })),
+            'd0',
+        );
+        const otherStore = new MemoryStore(otherModel, []);
+        await otherStore.load();
+
+        table.setStore(otherStore);
+
+        const header = table.getHeader();
+        const cells  = header.getColumns();
+
+        expect(cells.length).toBe(5);
+        expect(cells.map((c: any) => c.getFieldName()).sort()).toEqual(['d0', 'd1', 'd2', 'd3', 'd4']);
+    });
 });
