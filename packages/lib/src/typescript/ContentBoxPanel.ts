@@ -2,7 +2,8 @@
 
 import { callable, Component, Container, Panel } from '@jimka/typescript-ui/core';
 import { HFlow, VBox } from '@jimka/typescript-ui/layout';
-import { FieldSet, MenuItem } from '@jimka/typescript-ui/component/container';
+import type { BoxLayout } from '@jimka/typescript-ui/layout';
+import { FieldSet, MenuItem, Scrollbar, ScrollStrip } from '@jimka/typescript-ui/component/container';
 import {
     AutoCompleteField,
     ComboBox,
@@ -76,6 +77,35 @@ const LIST_ITEMS = [
 ];
 
 /**
+ * Nodes for the scroll-chrome row's `Tree`: enough leaves to overflow the
+ * demo box vertically, plus one label long enough to overflow it horizontally
+ * too, so both `VirtualScroller` scrollbars appear.
+ */
+const SCROLL_TREE_NODES: TreeNode[] = [
+    {
+        label: "src", children: [
+            { label: "This label is deliberately long enough to overflow the tree horizontally.ts" },
+            { label: "Event.ts" },
+            { label: "Component.ts" },
+            { label: "DOM.ts" },
+            { label: "Animation.ts" },
+            { label: "ListenerBag.ts" },
+            { label: "Callable.ts" },
+            { label: "Util.ts" },
+        ],
+    },
+    { label: "package.json" },
+    { label: "tsconfig.json" },
+    { label: "README.md" },
+];
+
+/** Labels for the scroll-chrome row's `ScrollStrip`, wide enough in total to overflow its 250px demo box and force both paging arrows. */
+const STRIP_ITEMS = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf"];
+
+/** Fixed band height for the scroll-chrome row's `ScrollStrip` demo. */
+const STRIP_HEIGHT = 32;
+
+/**
  * A `Tree` whose pool rows carry a border, reaching the row through the
  * `protected createPoolRow` seam — the only route a consumer has, since
  * `TreeRow` is not exported.
@@ -102,6 +132,69 @@ class BorderedRowTree extends Tree {
     }
 }
 
+/** Drives a bordered ScrollStrip the way an owner does: size the band, then lay its content. */
+class BorderedStripHost extends Container {
+    private _strip: ScrollStrip = new ScrollStrip({ border: BORDER, scrollable: true });
+
+    constructor() {
+        super();
+
+        // Reported so the stretching VBox that hosts this row sizes it to the
+        // fixed band height on the main axis while still stretching it to the
+        // FieldSet's full content width on the cross axis.
+        this.setPreferredSize({ width: 0, height: STRIP_HEIGHT });
+
+        for (const label of STRIP_ITEMS) {
+            this._strip.addItem(Button({ text: label }));
+        }
+
+        // ScrollStrip's own clip box defaults to "equal" mode, which divides
+        // the available width among the items instead of letting them
+        // overflow — the same reason TabBar's applyTabWidths switches its
+        // clip to "preferred" + setOverflowing before relying on paging
+        // arrows. Without this the items always fit and the arrows, though
+        // correctly positioned, would have nothing to page.
+        const box = this._strip.getContentBox() as BoxLayout;
+        box.setMode("preferred");
+        box.setOverflowing(true, false);
+
+        this.addComponent(this._strip);
+    }
+
+    /**
+     * Sizes the strip to this host's content box and a fixed band height, then
+     * asks the strip whether its items overflow before laying out its content
+     * — the same two-step sequence an owner like `TabBar` follows.
+     *
+     * @returns This host, for method chaining.
+     */
+    doLayout(): this {
+        const box = this.getContentBounds() ?? { x: 0, y: 0, width: 0, height: 0 };
+
+        this._strip.setX(box.x);
+        this._strip.setY(box.y);
+        this._strip.setWidth(box.width);
+        this._strip.setHeight(STRIP_HEIGHT);
+
+        const reserve = this._strip.arrowReserve(this.predictedItemsExtent(), box.width);
+
+        this._strip.layoutContent(reserve, 0);
+
+        return this;
+    }
+
+    /**
+     * Sums each item's preferred width — the same overflow prediction an
+     * owner runs before deciding whether to reserve arrow gutters.
+     *
+     * @returns The predicted total main-axis extent of the strip's items.
+     */
+    private predictedItemsExtent(): number {
+        return this._strip.getItems()
+            .reduce((sum, item) => sum + (item.getPreferredSize()?.width ?? 0), 0);
+    }
+}
+
 /**
  * Exercises content-box containment: the components here carry a border, so any
  * child still placed against its owner's *outer* box overruns the far edge and
@@ -119,11 +212,14 @@ class BorderedRowTree extends Tree {
  *
  * What to look for here: a caret, icon, spinner, picker button, or label that
  * is cut off on its right or bottom edge, or a label that starts flush against
- * the border instead of inside it. Everything bordered here — all three rows —
+ * the border instead of inside it. Everything bordered here — all four rows —
  * should sit fully inside its border with the frame unbroken all the way round.
  *
- * Covered: the single-line fields, the tree row, and the four public row
- * renderers. `Dialog`, `Tooltip` and `DragGhost` carry real theme borders and
+ * Covered: the single-line fields, the tree row, the four public row
+ * renderers, the menu item, and the three pieces of scroll chrome (a `Tree`'s
+ * `VirtualScroller` bars, a `ScrollStrip`'s clip and paging arrows, and a
+ * `Scrollbar`'s thumb and arrow caps).
+ * `Dialog`, `Tooltip` and `DragGhost` carry real theme borders and
  * have their own demos. `TreeCellRenderer` is covered by nothing: every shipped
  * theme sets `table.cell.border` to `none`, so its content-box arithmetic never
  * runs anywhere in this app and a regression in it would go unseen — worth
@@ -147,6 +243,14 @@ class BorderedRowTree extends Tree {
  * produces no artefact — the content-derived minimum floors the committed
  * height back to the right value — but the stale mirror is real, and a future
  * change to that clamp would surface here first.
+ *
+ * The fourth row exercises the three pieces of scroll chrome fixed alongside
+ * this panel — `VirtualScroller` (the bordered `Tree`'s two scrollbars),
+ * `ScrollStrip` (its inner clip and paging arrows), and `Scrollbar` (its
+ * thumb and arrow caps) — all three previously placed against their owner's
+ * outer box instead of its content box. None of the three carries a border
+ * under any shipped theme, so this row is the only place their fix is visible
+ * at all.
  */
 class ContentBoxPanel extends Panel {
 
@@ -158,13 +262,14 @@ class ContentBoxPanel extends Panel {
 
         this.addComponent(new Text(
             "Every component below carries a border. Look for a child clipped at the "
-            + "right or bottom edge, or sitting flush against the frame. The last row's "
+            + "right or bottom edge, or sitting flush against the frame. The third row's "
             + "second FieldSet is still on the lint rule's baseline.",
         ));
 
         this.addComponent(this.buildFieldRow());
         this.addComponent(this.buildRowRendererRow());
         this.addComponent(this.buildMenuAndNotificationRow());
+        this.addComponent(this.buildScrollChromeRow());
     }
 
     /**
@@ -324,6 +429,52 @@ class ContentBoxPanel extends Panel {
                 components   : [{ component }],
             }));
         }
+
+        return row;
+    }
+
+    /**
+     * Builds the row exercising the three scroll-chrome fixes: a bordered
+     * `Tree` (its two `VirtualScroller` bars), a bordered `ScrollStrip`
+     * (driven by {@link BorderedStripHost}), and a bordered `Scrollbar` fed
+     * synthetic metrics on first layout.
+     *
+     * @returns A wrapping row of one FieldSet per scroll-chrome component.
+     */
+    private buildScrollChromeRow(): Container {
+        const row = Container({ layoutManager: HFlow({ spacing: 8, lineSpacing: 8 }) });
+
+        const tree = new Tree({ border: BORDER, preferredSize: { width: 200, height: 120 } });
+        tree.setNodes(SCROLL_TREE_NODES);
+        tree.expandAll();
+
+        row.addComponent(FieldSet("Tree (VirtualScroller)", {
+            preferredSize: BOX,
+            layoutManager: VBox(),
+            components   : [{ component: tree }],
+        }));
+
+        row.addComponent(FieldSet("ScrollStrip", {
+            preferredSize: BOX,
+            layoutManager: VBox({ stretching: true }),
+            components   : [{ component: new BorderedStripHost() }],
+        }));
+
+        // Metrics deferred to onFirstLayout: setMetrics reads the bar's
+        // committed size, which does not exist until the element is rendered.
+        const scrollbar = new Scrollbar("vertical", { border: BORDER, preferredSize: { width: 12, height: 200 } });
+        scrollbar.onFirstLayout(() => scrollbar.setMetrics(200, 1000, 300));
+        // A standalone bar has no owner to scroll, so it emits a position that
+        // nothing consumes and the thumb never moves. Feeding the position
+        // straight back makes the thumb follow a drag, a track click and an
+        // arrow step — the three things this row exists to let you check.
+        scrollbar.on("scroll", position => scrollbar.setMetrics(200, 1000, position));
+
+        row.addComponent(FieldSet("Scrollbar", {
+            preferredSize: BOX,
+            layoutManager: VBox(),
+            components   : [{ component: scrollbar }],
+        }));
 
         return row;
     }

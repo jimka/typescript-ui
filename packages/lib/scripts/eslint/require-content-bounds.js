@@ -17,9 +17,10 @@
 //
 // It is a guard, not a proof, and the baseline is what the rule reports today
 // rather than the whole remainder. Known gaps, all deliberate: a method that
-// places children from *delegated* arguments names no box the rule can see
-// (`ScrollStrip.layoutArrows(bandMain, thickness, reserve)` is handed its
-// owner's extents by the baselined `layoutContent`); a fixed-size component
+// places children from *delegated* arguments names no box the rule can see —
+// `ScrollStrip.layoutArrows` is handed its rectangle by `layoutContent` and was
+// never reported, so fixing `layoutContent` alone would have left the arrows
+// against the outer box with a green build; a fixed-size component
 // whose outer extent is spelled any way other than `Self.WIDTH` / `Self.HEIGHT`
 // is invisible; only `MethodDefinition` is visited, so a class-field arrow
 // function is not; and both escapes below are whole-method, so a single

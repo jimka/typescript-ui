@@ -63,7 +63,7 @@ export class VirtualScroller {
     /**
      * Constructs a VirtualScroller and attaches it to the owner element.
      *
-     * @param owner - The component being scrolled (used for `getWidth`/`getHeight`).
+     * @param owner - The component being scrolled (used for `getContentBounds`).
      * @param element - The owner's root DOM element. Must already exist; call
      * this from the owner's `init()` after `super.init(element)`.
      * @param onScroll - Callback invoked when scroll position changes via
@@ -75,8 +75,8 @@ export class VirtualScroller {
 
         // Two-element wrapper: the outer `clipBox` carries `overflow:hidden`
         // sized to the effective viewport so the Scrollbar widgets — positioned
-        // by `layoutScrollbars` at `(outerW - trackW, outerH - trackW)` — sit
-        // in their own reserved band rather than overlaying the rightmost
+        // by `layoutScrollbars` at the far edge of the owner's content box —
+        // sit in their own reserved band rather than overlaying the rightmost
         // column / bottom row. The inner `rowsContainer` carries the scroll
         // transform; the transform cannot sit on the same element as
         // `overflow:hidden` because CSS clipping happens in the element's own
@@ -208,8 +208,9 @@ export class VirtualScroller {
 
     /**
      * Sets the vertical scroll position. Clamped against the last-known
-     * content height and the *effective* viewport height (full owner height
-     * minus the horizontal scrollbar's reservation when that bar is visible),
+     * content height and the *effective* viewport height (the owner's
+     * content-box height minus the horizontal scrollbar's reservation when
+     * that bar is visible),
      * so the maximum reachable scroll position matches what the vertical
      * scrollbar's thumb tops out at. Triggers the owner's `onScroll` callback
      * if the position changed.
@@ -233,8 +234,9 @@ export class VirtualScroller {
 
     /**
      * Sets the horizontal scroll position. Clamped against the last-known
-     * content width and the *effective* viewport width (full owner width
-     * minus the vertical scrollbar's reservation when that bar is visible),
+     * content width and the *effective* viewport width (the owner's
+     * content-box width minus the vertical scrollbar's reservation when that
+     * bar is visible),
      * so the maximum reachable scroll position matches what the horizontal
      * scrollbar's thumb tops out at. Triggers the owner's `onScroll` callback
      * if the position changed.
@@ -290,10 +292,23 @@ export class VirtualScroller {
      * the cross-axis viewport, which can in turn force the other bar to
      * become visible. Two iterations are sufficient: each pass can only
      * promote one flag from false to true.
+     *
+     * The effective viewport is measured in the owner's content box, not its
+     * outer box, so a bordered or padded owner reports the space actually
+     * visible to rows.
      */
     private computeScrollbarVisibility(contentWidth: number, contentHeight: number): { vVisible: boolean, hVisible: boolean, effW: number, effH: number } {
-        const outerH = this._owner.getHeight() || 0;
-        const outerW = this._owner.getWidth()  || 0;
+        const box = this._owner.getContentBounds()
+                 ?? { x: 0, y: 0, width: this._owner.getWidth() || 0, height: this._owner.getHeight() || 0 };
+
+        // `box.{width,height}` derive from the owner's committed `_width`/
+        // `_height`, which are declared `NaN` and stay so until the owner is
+        // first sized. The `?? …` fallback above covers the no-element case,
+        // not that one — an element-bearing but unsized owner still yields a
+        // non-null box whose extents are NaN — so `|| 0` stays, the same
+        // coercion the outer-box reads it replaced already used.
+        const outerH = box.height || 0;
+        const outerW = box.width  || 0;
         const trackW = this._scrollbarV.getTrackWidth();
 
         let vVisible = false;
@@ -313,8 +328,9 @@ export class VirtualScroller {
     }
 
     /**
-     * Effective vertical viewport — the owner height minus the horizontal
-     * scrollbar's track-width reservation when that bar would be visible.
+     * Effective vertical viewport — the owner's content-box height minus the
+     * horizontal scrollbar's track-width reservation when that bar would be
+     * visible.
      * Single source of truth so the clamps in `setScrollY` agree with what
      * the vertical scrollbar's `setMetrics` is fed.
      */
@@ -330,9 +346,9 @@ export class VirtualScroller {
     }
 
     /**
-     * Effective viewport width for the last-known content metrics — the owner
-     * width minus the vertical scrollbar's track reservation when that bar is
-     * visible. Owners that size fill-width rows (e.g. the
+     * Effective viewport width for the last-known content metrics — the owner's
+     * content-box width minus the vertical scrollbar's track reservation when
+     * that bar is visible. Owners that size fill-width rows (e.g. the
      * [`Tree`](/api/component/tree/classes/Tree)) base their row width on this so
      * content does not run under the vertical bar, which would otherwise force a
      * spurious horizontal bar for the reserved band. Reads the current
@@ -388,6 +404,11 @@ export class VirtualScroller {
      * cross-axis scrollbar's track width when it is visible), then positions
      * the scrollbars and pushes metrics. Call at end of `renderWindow`.
      *
+     * Both bars and the clip box are placed in the owner's content box: a
+     * child's containing block is already the owner's padding box, so
+     * placing them against the outer box would run the far edge a
+     * border-width past where `overflow: hidden` clips.
+     *
      * @param contentWidth - The total scrollable content width in pixels.
      * @param contentHeight - The total scrollable content height in pixels.
      */
@@ -395,9 +416,10 @@ export class VirtualScroller {
         this._contentWidth  = contentWidth;
         this._contentHeight = contentHeight;
 
+        const box    = this._owner.getContentBounds()
+                     ?? { x: 0, y: 0, width: this._owner.getWidth() || 0, height: this._owner.getHeight() || 0 };
+
         const trackW = this._scrollbarV.getTrackWidth();
-        const outerW = this._owner.getWidth();
-        const outerH = this._owner.getHeight();
 
         const { effW, effH } = this.computeScrollbarVisibility(contentWidth, contentHeight);
 
@@ -409,11 +431,13 @@ export class VirtualScroller {
             this.updateTransform();
         }
 
-        this._scrollbarV.setX(Math.max(0, outerW - trackW));
+        this._scrollbarV.setX(box.x + Math.max(0, box.width - trackW));
+        this._scrollbarV.setY(box.y);
         this._scrollbarV.setHeight(effH);
         this._scrollbarV.setMetrics(effH, contentHeight, this._scrollY);
 
-        this._scrollbarH.setY(Math.max(0, outerH - trackW));
+        this._scrollbarH.setX(box.x);
+        this._scrollbarH.setY(box.y + Math.max(0, box.height - trackW));
         this._scrollbarH.setWidth(effW);
         this._scrollbarH.setMetrics(effW, contentWidth, this._scrollX);
 
@@ -421,9 +445,9 @@ export class VirtualScroller {
         // by the horizontal scroll can't bleed under the vertical scrollbar
         // (and rows beyond the bottom can't bleed under the horizontal
         // scrollbar). When neither bar is visible this collapses to the
-        // full owner size, matching the previous `width/height: 100%`
-        // behaviour.
-        DOM.sink.apply(this._clipBox, { style: { width: effW + "px", height: effH + "px" } });
+        // full owner content box, matching the previous `width/height: 100%`
+        // behaviour for a borderless, unpadded owner.
+        DOM.sink.apply(this._clipBox, { style: { left: box.x + "px", top: box.y + "px", width: effW + "px", height: effH + "px" } });
 
         // Content size / viewport may have changed without the scroll position
         // moving (so `updateTransform` did not run above) — refresh the shadow

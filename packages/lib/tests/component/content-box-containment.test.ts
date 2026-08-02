@@ -13,9 +13,12 @@
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
+import type { Handle } from '~/core/DOM';
 import { Component } from '~/core/Component';
+import { Container } from '~/core/Container';
 import { Insets } from '~/primitive/Insets';
 import { installTestDOM } from '../dom/TestDOM';
+import type { RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 import { DateField } from '~/component/input/DateField';
@@ -47,6 +50,9 @@ import { _FooterRow } from '~/component/table/Footer';
 import { _TableHeader } from '~/component/table/Header';
 import { Model } from '~/data/Model';
 import { MemoryStore } from '~/data/MemoryStore';
+import { VirtualScroller } from '~/component/container/VirtualScroller';
+import { Scrollbar } from '~/component/container/Scrollbar';
+import { ScrollStrip } from '~/component/container/ScrollStrip';
 
 // `--ts-ui-input-border` must resolve: with the empty `themeVars` every other
 // suite uses, the input border measures 0 and every picker case would pass
@@ -892,5 +898,413 @@ describe('table bands size their inner rows to the content box', () => {
             h => h.getComponents(),
             300, 24, 2,
         );
+    });
+});
+
+/** The accumulated inline style a raw handle has been written, last write wins. */
+function styleOf(sink: RecordingDOMSink, handle: Handle): Record<string, string | null> {
+    const style: Record<string, string | null> = {};
+
+    for (const write of sink.writes) {
+        if (write.op === 'apply' && write.args[0] === handle) {
+            Object.assign(style, (write.args[1] as { style?: Record<string, string | null> }).style ?? {});
+        }
+    }
+
+    return style;
+}
+
+// TRACK_WIDTH read off a real Scrollbar rather than hard-coded, per the plan's
+// Expected Behaviour section. Constructing it before any installTestDOM() call
+// is safe: construction is DOM-write-buffered only (no DOM read), matching
+// VirtualScroller.test.ts's module-level use of the same pattern.
+const TRACK_WIDTH = new Scrollbar('vertical').getTrackWidth();
+
+// VirtualScroller is not a Component: it owns raw `clipBox` / `rowsContainer`
+// handles it creates directly, so its scrollbars and clip box are placed in
+// the owner's content box rather than through getContentBounds() on itself.
+describe('VirtualScroller places its bars and clip box in the owner content box', () => {
+    /** A sized, detached owner Container wired to a fresh VirtualScroller. */
+    function makeScroller(width: number, height: number, configure?: (owner: Container) => void): { owner: Container; scroller: VirtualScroller } {
+        const owner = new Container();
+
+        owner.getElement(true);
+        configure?.(owner);
+        owner.setWidth(width);
+        owner.setHeight(height);
+
+        const scroller = new VirtualScroller(owner, owner.getElement(true)!, () => {});
+
+        return { owner, scroller };
+    }
+
+    it('keeps both bars and the clip box inside a bordered owner\'s content box', () => {
+        const sink = installTestDOM(CONFIG);
+        const { owner, scroller } = makeScroller(200, 400, o => o.setBorder('2px solid black'));
+
+        expect(owner.getBorderSize().left).toBe(2);
+        expect(owner.getContentBounds()).toEqual({ x: 0, y: 0, width: 196, height: 396 });
+
+        scroller.layoutScrollbars(100, 1000);
+
+        const [vBar, hBar] = [(scroller as any)._scrollbarV as Scrollbar, (scroller as any)._scrollbarH as Scrollbar];
+        const clipBox = scroller.ownedHandles()[0];
+
+        expect(rect(vBar)).toEqual({ x: 184, y: 0, width: TRACK_WIDTH, height: 396 });
+        expect(rect(hBar)).toEqual({ x: 0, y: 384, width: 184, height: TRACK_WIDTH });
+        expect(styleOf(sink, clipBox)).toMatchObject({ left: '0px', top: '0px', width: '184px', height: '396px' });
+    });
+
+    it('the borderless arm is unchanged', () => {
+        const sink = installTestDOM(CONFIG);
+        const { scroller } = makeScroller(196, 396, o => o.setBorder('none'));
+
+        scroller.layoutScrollbars(100, 1000);
+
+        const [vBar, hBar] = [(scroller as any)._scrollbarV as Scrollbar, (scroller as any)._scrollbarH as Scrollbar];
+        const clipBox = scroller.ownedHandles()[0];
+
+        expect(rect(vBar)).toEqual({ x: 184, y: 0, width: TRACK_WIDTH, height: 396 });
+        expect(rect(hBar)).toEqual({ x: 0, y: 384, width: 184, height: TRACK_WIDTH });
+        expect(styleOf(sink, clipBox)).toMatchObject({ left: '0px', top: '0px', width: '184px', height: '396px' });
+    });
+
+    it('a padded owner offsets the whole rectangle', () => {
+        const sink = installTestDOM(CONFIG);
+        const { owner, scroller } = makeScroller(200, 400, o => o.setPadding(new Insets(5, 5, 5, 5)));
+
+        expect(owner.getContentBounds()).toEqual({ x: 5, y: 5, width: 190, height: 390 });
+
+        scroller.layoutScrollbars(100, 1000);
+
+        const [vBar, hBar] = [(scroller as any)._scrollbarV as Scrollbar, (scroller as any)._scrollbarH as Scrollbar];
+        const clipBox = scroller.ownedHandles()[0];
+
+        expect(rect(vBar)).toEqual({ x: 183, y: 5, width: TRACK_WIDTH, height: 390 });
+        expect(rect(hBar)).toEqual({ x: 5, y: 383, width: 178, height: TRACK_WIDTH });
+        expect(styleOf(sink, clipBox)).toMatchObject({ left: '5px', top: '5px', width: '178px', height: '390px' });
+    });
+});
+
+// ScrollStrip.layoutContent places the inner clip and (via layoutArrows) the
+// two paging arrows against its own outer box today; both must stay inside
+// the content box the owner-driven band resolves.
+describe('ScrollStrip.layoutContent keeps the clip and both arrows inside the content box', () => {
+    it('a bordered horizontal strip', () => {
+        const strip = new ScrollStrip();
+
+        strip.getElement(true);
+        strip.setBorder('2px solid black');
+        strip.setWidth(300);
+        strip.setHeight(30);
+
+        expect(strip.getBorderSize().left).toBe(2);
+        expect(strip.getContentBounds()).toEqual({ x: 0, y: 0, width: 296, height: 26 });
+
+        strip.layoutContent(24, 0);
+
+        const clip = (strip as any)._clip as Component;
+        const lead = (strip as any)._leadArrow as Component;
+        const trail = (strip as any)._trailArrow as Component;
+
+        expect(rect(clip)).toEqual({ x: 24, y: 0, width: 248, height: 26 });
+        expect(rect(lead)).toEqual({ x: 0, y: 0, width: 24, height: 26 });
+        expect(rect(trail)).toEqual({ x: 272, y: 0, width: 24, height: 26 });
+    });
+
+    it('the borderless arm is unchanged', () => {
+        const strip = new ScrollStrip();
+
+        strip.getElement(true);
+        strip.setBorder('none');
+        strip.setWidth(296);
+        strip.setHeight(26);
+
+        strip.layoutContent(24, 0);
+
+        const clip = (strip as any)._clip as Component;
+        const lead = (strip as any)._leadArrow as Component;
+        const trail = (strip as any)._trailArrow as Component;
+
+        expect(rect(clip)).toEqual({ x: 24, y: 0, width: 248, height: 26 });
+        expect(rect(lead)).toEqual({ x: 0, y: 0, width: 24, height: 26 });
+        expect(rect(trail)).toEqual({ x: 272, y: 0, width: 24, height: 26 });
+    });
+
+    it('a bordered vertical strip', () => {
+        const strip = new ScrollStrip({ orientation: 'vertical' });
+
+        strip.getElement(true);
+        strip.setBorder('2px solid black');
+        strip.setWidth(30);
+        strip.setHeight(300);
+
+        strip.layoutContent(24, 0);
+
+        const clip = (strip as any)._clip as Component;
+        const lead = (strip as any)._leadArrow as Component;
+        const trail = (strip as any)._trailArrow as Component;
+
+        expect(rect(clip)).toEqual({ x: 0, y: 24, width: 26, height: 248 });
+        expect(rect(lead)).toEqual({ x: 0, y: 0, width: 26, height: 24 });
+        expect(rect(trail)).toEqual({ x: 0, y: 272, width: 26, height: 24 });
+    });
+
+    // A border never moves the content-box origin (the above cases all resolve
+    // to x/y 0), so padding is the only lever that proves the box's ORIGIN —
+    // not just its shrunk extent — reaches the writes in layoutContent and
+    // layoutArrows. Both orientations need their own padded arm: the two
+    // branches share no origin write, so a padded horizontal case leaves every
+    // vertical one unpinned.
+    it('a padded strip offsets the clip and both arrows, with no border involved', () => {
+        const strip = new ScrollStrip();
+
+        strip.getElement(true);
+        strip.setPadding(new Insets(4, 4, 4, 4));
+        strip.setWidth(300);
+        strip.setHeight(30);
+
+        expect(strip.getContentBounds()).toEqual({ x: 4, y: 4, width: 292, height: 22 });
+
+        strip.layoutContent(24, 0);
+
+        const clip = (strip as any)._clip as Component;
+        const lead = (strip as any)._leadArrow as Component;
+        const trail = (strip as any)._trailArrow as Component;
+
+        expect(rect(clip)).toEqual({ x: 28, y: 4, width: 244, height: 22 });
+        expect(rect(lead)).toEqual({ x: 4, y: 4, width: 24, height: 22 });
+        expect(rect(trail)).toEqual({ x: 272, y: 4, width: 24, height: 22 });
+    });
+
+    // The vertical arm of the same writes. TabBar switches its strip to
+    // vertical, so this branch is live code, and it shares no origin write
+    // with the horizontal one above.
+    it('a padded vertical strip offsets the clip and both arrows', () => {
+        const strip = new ScrollStrip({ orientation: 'vertical' });
+
+        strip.getElement(true);
+        strip.setPadding(new Insets(4, 4, 4, 4));
+        strip.setWidth(30);
+        strip.setHeight(300);
+
+        expect(strip.getContentBounds()).toEqual({ x: 4, y: 4, width: 22, height: 292 });
+
+        strip.layoutContent(24, 0);
+
+        const clip = (strip as any)._clip as Component;
+        const lead = (strip as any)._leadArrow as Component;
+        const trail = (strip as any)._trailArrow as Component;
+
+        expect(rect(clip)).toEqual({ x: 4, y: 28, width: 22, height: 244 });
+        expect(rect(lead)).toEqual({ x: 4, y: 4, width: 22, height: 24 });
+        expect(rect(trail)).toEqual({ x: 4, y: 272, width: 22, height: 24 });
+    });
+});
+
+// Scrollbar.setMetrics places the thumb and (when enabled) both arrows
+// against the bar's own outer box today; all three must stay inside its
+// content box, projected onto the scroll axis.
+describe('Scrollbar.setMetrics keeps the thumb and both arrows inside the content box', () => {
+    /** The committed thumb child — Scrollbar adds it first. */
+    const thumb = (bar: Scrollbar): Component => bar.getComponents()[0];
+    const arrowStart = (bar: Scrollbar): Component => (bar as any)._arrowStart as Component;
+    const arrowEnd = (bar: Scrollbar): Component => (bar as any)._arrowEnd as Component;
+
+    it('a bordered vertical bar', () => {
+        const bar = new Scrollbar('vertical');
+
+        bar.getElement(true);
+        bar.setBorder('2px solid black');
+        bar.setHeight(200);
+
+        expect(bar.getBorderSize().left).toBe(2);
+        expect(bar.getContentBounds()).toEqual({ x: 0, y: 0, width: TRACK_WIDTH - 4, height: 196 });
+
+        bar.setMetrics(200, 1000, 0);
+
+        expect(rect(thumb(bar))).toEqual({ x: 2, y: 12, width: 4, height: 34 });
+        // Width 8, not TRACK_WIDTH: an arrow is built as a rigid 12px square,
+        // so the cross axis has to be re-derived or it overruns the 8-wide
+        // content box by the two 2px border sides. The main axis stays 12 —
+        // that is the gutter getTrackLength reserves at each end.
+        expect(rect(arrowStart(bar))).toEqual({ x: 0, y: 0, width: 8, height: TRACK_WIDTH });
+        expect(rect(arrowEnd(bar))).toEqual({ x: 0, y: 184, width: 8, height: TRACK_WIDTH });
+    });
+
+    // A border never moves the content-box origin (the case above resolves to
+    // origin 0 on both axes), so padding is the only lever that proves the
+    // box's ORIGIN — not just its shrunk extent — reaches the thumb and both
+    // arrows through axisBox().
+    it('a padded bar offsets the thumb and both arrows, with no border involved', () => {
+        const bar = new Scrollbar('vertical');
+
+        bar.getElement(true);
+        bar.setPadding(new Insets(2, 2, 2, 2));
+        bar.setHeight(200);
+
+        expect(bar.getContentBounds()).toEqual({ x: 2, y: 2, width: TRACK_WIDTH - 4, height: 196 });
+
+        bar.setMetrics(200, 1000, 0);
+
+        expect(rect(thumb(bar))).toEqual({ x: 4, y: 14, width: 4, height: 34 });
+        expect(rect(arrowStart(bar))).toEqual({ x: 2, y: 2, width: 8, height: TRACK_WIDTH });
+        expect(rect(arrowEnd(bar))).toEqual({ x: 2, y: 186, width: 8, height: TRACK_WIDTH });
+    });
+
+    it('main-axis parity with a shorter borderless bar', () => {
+        const bordered = new Scrollbar('vertical');
+
+        bordered.getElement(true);
+        bordered.setBorder('2px solid black');
+        bordered.setHeight(200);
+        bordered.setMetrics(200, 1000, 0);
+
+        const bare = new Scrollbar('vertical');
+
+        bare.getElement(true);
+        bare.setBorder('none');
+        bare.setHeight(196);
+        bare.setMetrics(200, 1000, 0);
+
+        expect(thumb(bare).getY()).toBe(thumb(bordered).getY());
+        expect(thumb(bare).getHeight()).toBe(thumb(bordered).getHeight());
+        expect(arrowEnd(bare).getY()).toBe(arrowEnd(bordered).getY());
+
+        // The cross axis differs by design: the borderless bar keeps today's
+        // shipped 8px-wide thumb at x 2, since it has no border to shrink it.
+        expect(rect(thumb(bare))).toEqual({ x: 2, y: 12, width: 8, height: 34 });
+    });
+
+    it('arrows disabled', () => {
+        const bar = new Scrollbar('vertical', { arrowsEnabled: false });
+
+        bar.getElement(true);
+        bar.setBorder('2px solid black');
+        bar.setHeight(200);
+
+        bar.setMetrics(200, 1000, 0);
+
+        expect(thumb(bar).getY()).toBe(0);
+        expect(thumb(bar).getHeight()).toBe(39);
+    });
+
+    // The horizontal branch is the one VirtualScroller and Panel's overlay
+    // actually instantiate, and it is a separate arm of every write in
+    // setMetrics — the vertical cases above pin none of it.
+    it('a bordered horizontal bar', () => {
+        const bar = new Scrollbar('horizontal');
+
+        bar.getElement(true);
+        bar.setBorder('2px solid black');
+        bar.setWidth(200);
+
+        expect(bar.getContentBounds()).toEqual({ x: 0, y: 0, width: 196, height: TRACK_WIDTH - 4 });
+
+        bar.setMetrics(200, 1000, 0);
+
+        expect(rect(thumb(bar))).toEqual({ x: 12, y: 2, width: 34, height: 4 });
+        expect(rect(arrowStart(bar))).toEqual({ x: 0, y: 0, width: TRACK_WIDTH, height: 8 });
+        expect(rect(arrowEnd(bar))).toEqual({ x: 184, y: 0, width: TRACK_WIDTH, height: 8 });
+    });
+
+    it('a padded horizontal bar offsets the thumb and both arrows', () => {
+        const bar = new Scrollbar('horizontal');
+
+        bar.getElement(true);
+        bar.setPadding(new Insets(2, 2, 2, 2));
+        bar.setWidth(200);
+
+        expect(bar.getContentBounds()).toEqual({ x: 2, y: 2, width: 196, height: TRACK_WIDTH - 4 });
+
+        bar.setMetrics(200, 1000, 0);
+
+        expect(rect(thumb(bar))).toEqual({ x: 14, y: 4, width: 34, height: 4 });
+        expect(rect(arrowStart(bar))).toEqual({ x: 2, y: 2, width: TRACK_WIDTH, height: 8 });
+        expect(rect(arrowEnd(bar))).toEqual({ x: 186, y: 2, width: TRACK_WIDTH, height: 8 });
+    });
+});
+
+// _onTrackClick compares a pointer coordinate against axisBox()'s
+// content-box-relative numbers, and its two input branches arrive in
+// different spaces: offsetX/offsetY is padding-box-relative, while
+// getViewportRect is the border box. Both must land on the same track
+// coordinate or a bordered bar pages the wrong way near the ends.
+describe('Scrollbar track click measures the content box', () => {
+    /** Fires the private track-click handler and returns the scroll it emitted, or null. */
+    function trackClick(bar: Scrollbar, event: Record<string, unknown>): number | null {
+        let emitted: number | null = null;
+
+        bar.on('scroll', (position: number) => { emitted = position; });
+        (bar as any)._onTrackClick({ preventDefault: () => {}, ...event });
+
+        return emitted;
+    }
+
+    /** A bordered vertical bar sized and positioned so the viewport rect resolves. */
+    function borderedBar(): Scrollbar {
+        const bar = new Scrollbar('vertical');
+
+        bar.getElement(true);
+        bar.setBorder('2px solid black');
+        bar.setX(0);
+        bar.setY(0);
+        bar.setHeight(200);
+        bar.setMetrics(200, 1000, 0);
+
+        return bar;
+    }
+
+    /** The horizontal twin — the orientation VirtualScroller and Panel's overlay build. */
+    function borderedHorizontalBar(): Scrollbar {
+        const bar = new Scrollbar('horizontal');
+
+        bar.getElement(true);
+        bar.setBorder('2px solid black');
+        bar.setX(0);
+        bar.setY(0);
+        bar.setWidth(200);
+        bar.setMetrics(200, 1000, 0);
+
+        return bar;
+    }
+
+    it('mouse and touch agree on the same point', () => {
+        // Probed at the start arrow's boundary, where the 2px difference
+        // decides the outcome rather than being absorbed: the track begins at
+        // content y 12, so a touch at viewport y 13 is y 11 in the content box
+        // and belongs to the arrow. Without the border subtraction it reads as
+        // 13 and pages instead. A mouse offsetY is already padding-box-relative,
+        // so 11 is the same point and must give the same answer.
+        expect(trackClick(borderedBar(), { touches: [{ clientY: 13 }], changedTouches: [] })).toBeNull();
+        expect(trackClick(borderedBar(), { offsetY: 11 })).toBeNull();
+
+        // Two pixels further in, both branches agree the click is on the track.
+        expect(trackClick(borderedBar(), { touches: [{ clientY: 15 }], changedTouches: [] })).toBe(0);
+        expect(trackClick(borderedBar(), { offsetY: 13 })).toBe(0);
+    });
+
+    it('pages backwards above the thumb and forwards below it', () => {
+        expect(trackClick(borderedBar(), { offsetY: 150 })).toBe(200);
+        // At scroll 0 the thumb sits at the top, so a click above its centre
+        // clamps to 0 rather than going negative.
+        expect(trackClick(borderedBar(), { offsetY: 14 })).toBe(0);
+    });
+
+    it('ignores clicks inside either arrow region', () => {
+        // The end arrow starts at content-box y 184, not outer y 188: reading
+        // the outer box would let a click at 185 through as a track page.
+        expect(trackClick(borderedBar(), { offsetY: 185 })).toBeNull();
+        expect(trackClick(borderedBar(), { offsetY: 5 })).toBeNull();
+    });
+
+    // The horizontal arm subtracts border.left rather than border.top, and is
+    // a separate line: the vertical cases above pin none of it.
+    it('mouse and touch agree on the same point, horizontally', () => {
+        expect(trackClick(borderedHorizontalBar(), { touches: [{ clientX: 13 }], changedTouches: [] })).toBeNull();
+        expect(trackClick(borderedHorizontalBar(), { offsetX: 11 })).toBeNull();
+
+        expect(trackClick(borderedHorizontalBar(), { touches: [{ clientX: 15 }], changedTouches: [] })).toBe(0);
+        expect(trackClick(borderedHorizontalBar(), { offsetX: 13 })).toBe(0);
     });
 });

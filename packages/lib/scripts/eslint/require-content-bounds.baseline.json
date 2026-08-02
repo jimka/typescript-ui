@@ -1,7 +1,4 @@
 [
-  "src/typescript/lib/component/container/ScrollStrip.ts:ScrollStrip.layoutContent",
-  "src/typescript/lib/component/container/Scrollbar.ts:Scrollbar.setMetrics",
-  "src/typescript/lib/component/container/VirtualScroller.ts:VirtualScroller.layoutScrollbars",
   "src/typescript/lib/component/table/cell/Cell.ts:Cell.alignEditorWithContent",
   "src/typescript/lib/overlay/Notification.ts:Notification.doLayout"
 ]

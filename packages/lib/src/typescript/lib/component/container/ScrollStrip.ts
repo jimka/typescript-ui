@@ -43,6 +43,9 @@ const SCROLL_ARROW_STEP = 80;
  */
 export type ScrollStripOrientation = "horizontal" | "vertical";
 
+/** The rectangle `getContentBounds()` returns, passed from layoutContent to layoutArrows. */
+type ContentBox = { x: number; y: number; width: number; height: number };
+
 /**
  * Construction-time options for {@link ScrollStrip}.
  *
@@ -74,7 +77,8 @@ export interface ScrollStripOptions extends PanelOptions {
  * clip's scroll translation, while the items scroll inside the clip between them.
  * When the items overflow along the main axis the strip reserves a gutter at each
  * end (see {@link arrowReserve}); the owner sizes the band, and the strip sizes its
- * clip to the band minus the gutters and places the arrows ({@link layoutContent}).
+ * clip to the band's content box minus the gutters and places the arrows
+ * ({@link layoutContent}).
  * The clip's native main-axis offset is the single source of truth — read via
  * {@link mainScroll}, written via {@link setMainScroll} — so any overlay
  * raw-appended into the clip element (via {@link getClipElement}) scrolls and
@@ -498,7 +502,7 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
      * Lays out the strip's content within its own (owner-positioned) band: sizes
      * the inner clip to the band minus a gutter at each end, places and enables the
      * arrows into those gutters, runs the clip's box, and resyncs the cached scroll
-     * offset. The band is the strip's own width/height; the gutters carry the fixed
+     * offset. The band is the strip's own content box; the gutters carry the fixed
      * arrows while the clip scrolls the items between them. An `endGap` trailing-
      * aligns the items by insetting the clip's leading edge.
      *
@@ -508,29 +512,32 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
      * @returns This strip, for method chaining.
      */
     layoutContent(reserve: number, endGap: number): this {
+        const box = this.getContentBounds()
+                 ?? { x: 0, y: 0, width: this.getWidth() || 0, height: this.getHeight() || 0 };
+
         const vertical = this.isVertical();
-        const bandMain = vertical ? this.getHeight() : this.getWidth();
-        const thickness = vertical ? this.getWidth() : this.getHeight();
+        const bandMain = vertical ? box.height : box.width;
+        const thickness = vertical ? box.width : box.height;
         const clipMain = bandMain - 2 * reserve;
 
         // Size the inner clip to the region between the gutters and fold the
         // end-align gap into its leading inset, so the box trailing-aligns natively.
         if (vertical) {
-            this._clip.setX(0);
-            this._clip.setY(reserve);
+            this._clip.setX(box.x);
+            this._clip.setY(box.y + reserve);
             this._clip.setWidth(thickness);
             this._clip.setHeight(clipMain);
             this._clip.setInsets(new Insets(endGap, 0, 0, 0));
         } else {
-            this._clip.setX(reserve);
-            this._clip.setY(0);
+            this._clip.setX(box.x + reserve);
+            this._clip.setY(box.y);
             this._clip.setWidth(clipMain);
             this._clip.setHeight(thickness);
             this._clip.setInsets(new Insets(0, 0, 0, endGap));
         }
 
         this.layoutItems();
-        this.layoutArrows(bandMain, thickness, reserve);
+        this.layoutArrows(box, reserve);
 
         return this;
     }
@@ -538,15 +545,15 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
     /**
      * Positions, sizes, and enables the two arrows in the gutters at each end of the
      * band, or hides them when the band carries no reserve. The lead gutter sits at
-     * band origin 0, the trail gutter at `bandMain - reserve`, both spanning the
-     * cross-axis thickness. Each arrow is disabled (not hidden) at its scroll limit
-     * so the chrome never shifts as the items scroll between them.
+     * the box's main-axis origin, the trail gutter at `box origin + bandMain - reserve`,
+     * both spanning the box's cross-axis thickness. Each arrow is disabled (not
+     * hidden) at its scroll limit so the chrome never shifts as the items scroll
+     * between them.
      *
-     * @param bandMain - The band's main-axis extent (px).
-     * @param thickness - The band's cross-axis thickness (px).
+     * @param box - The content box `layoutContent` resolved.
      * @param reserve - The per-end gutter (the arrows' main-axis size) in px; 0 hides them.
      */
-    private layoutArrows(bandMain: number, thickness: number, reserve: number): void {
+    private layoutArrows(box: ContentBox, reserve: number): void {
         if (!this._scrollable || reserve <= 0) {
             this.hideArrows();
 
@@ -558,6 +565,8 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
         const lead = this._leadArrow as Button;
         const trail = this._trailArrow as Button;
         const vertical = this.isVertical();
+        const bandMain = vertical ? box.height : box.width;
+        const thickness = vertical ? box.width : box.height;
 
         lead.setGlyph(vertical ? "angle-up" : "angle-left");
         trail.setGlyph(vertical ? "angle-down" : "angle-right");
@@ -567,30 +576,30 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
 
         this.refreshArrows();
 
-        const trailPos = bandMain - reserve;
+        const trailPos = (vertical ? box.y : box.x) + bandMain - reserve;
 
         for (const button of [lead, trail]) {
             if (vertical) {
                 // Pin the main-axis (height) to the gutter; fill the thickness.
                 button.setMinSize({ width: 0, height: reserve });
                 button.setMaxSize({ width: Number.MAX_VALUE, height: reserve });
-                button.setX(0);
+                button.setX(box.x);
                 button.setWidth(thickness);
                 button.setHeight(reserve);
             } else {
                 button.setMinSize({ width: reserve, height: 0 });
                 button.setMaxSize({ width: reserve, height: Number.MAX_VALUE });
-                button.setY(0);
+                button.setY(box.y);
                 button.setHeight(thickness);
                 button.setWidth(reserve);
             }
         }
 
         if (vertical) {
-            lead.setY(0);
+            lead.setY(box.y);
             trail.setY(trailPos);
         } else {
-            lead.setX(0);
+            lead.setX(box.x);
             trail.setX(trailPos);
         }
     }
