@@ -654,3 +654,32 @@ Coverage differs per fix, and one of the three cannot be pinned offline at all:
 - **#2 is only half offline-testable, and the untestable half is the half the fix exists for.** The guard has two arms: it skips a component that never rendered, and it skips one an earlier entry in the same flush disposed. The first arm is pinned by a new case in `tests/core/DisposedPendingLayout.test.ts`. The second cannot be, because it reads `getElement()` and the offline recording sink keeps answering for a disposed component — `release()` does not evict the stub, so `getElementById` still resolves the id and returns a live handle (verified directly: `getElement()` returns a handle after `dispose()`). Offline the guard therefore never fires on that path, and any test that made it fire would have to stub `getElement` itself, asserting the mock rather than the behaviour. That arm is verified live instead, on the `MiscPanel` "wide table (45 columns)" demo the plan names for manual verification: before the fix the console throws "DOM handle not registered" on the first layout after the widths arrive; after it, no console error, header and body column offsets stay pixel-aligned, and three full left-right wheel-scroll cycles leave the shared stylesheet's rule count unchanged (2472 before and after).
 
 Note also that the guard is slightly broader than the crash it was added for: reading `getElement()` also skips a component that scheduled a layout before its first render. That is intended — there is nothing to lay out against, and rendering schedules its own pass — and it is the arm the new test pins.
+
+### Follow-up: the per-slide cell-geometry clear was reversed
+
+This plan specifies that `bindAndPositionRows` clears the row's cached cell
+geometry whenever the column window changes, on the reasoning that the slot →
+column mapping has moved and the per-slot records no longer describe the cell
+sitting at each slot. That is correct for a cache keyed on the slot, which is
+what the plan designed and what shipped.
+
+A later change (branch `feature/table-header-column-virtualization`) re-keys the
+records on the **cell** instead, and with that the clear is not merely
+unnecessary but the dominant cost of horizontal scrolling. A slide renumbers the
+slots while the surviving cells stay on their own columns, so every survivor
+keeps its geometry; clearing threw that away and re-laid-out the whole pool.
+Measured on a 45-column, 150px-column table at a 1200×600 viewport, mid-scroll
+(so the window slides rather than merely growing from the left edge): sliding
+by one column width fired 462 cell layouts before the change — the entire
+14-column × 33-row rendered pool, because the clear ran on every slide —
+against 33 after, one per displayed row for the single column that entered the
+window. The clear is therefore removed and the cache moved to a shared
+`CellGeometryCache` used by both the body and the header.
+
+The plan's reasoning is not wrong, only tied to the slot keying it assumed. What
+the reversal costs is a safety net: clearing on every slide also happened to
+repair any cell whose *content* had been changed without a layout. One such case
+existed — a glyph renderer replaces a child component on a value change and did
+not lay itself out — and it is fixed at its source rather than left to the
+accidental repair, matching how `Cell.setActiveRenderer` and
+`TreeCellRenderer.setTreeState` already handle the same obligation.
