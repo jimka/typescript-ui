@@ -1160,6 +1160,18 @@ class Table extends Component<TableOptions> {
     }
 
     /**
+     * Disposes the column context menu, then runs the inherited teardown.
+     * `_columnContextMenu` is a LayerManager-mounted panel, never a
+     * registered child (see Menu.ts's class comment), so
+     * `super.destructor()`'s child recursion cannot reach it.
+     */
+    protected destructor(): void {
+        this._columnContextMenu.dispose();
+
+        super.destructor();
+    }
+
+    /**
      * Displays the column visibility context menu, listing only columns present in
      * the resolved column list (excluded columns do not appear). While rotated,
      * shows only the export entries (when enabled) — there are no per-column

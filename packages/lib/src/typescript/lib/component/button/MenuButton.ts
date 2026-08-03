@@ -97,6 +97,18 @@ class MenuButton<TOptions extends MenuButtonOptions = MenuButtonOptions> extends
     }
 
     /**
+     * Disposes the lazily-created dropdown, then runs the inherited teardown.
+     * `_menu` is a LayerManager-mounted panel, never a registered child (see
+     * Menu.ts's class comment), so `super.destructor()`'s child recursion
+     * cannot reach it.
+     */
+    protected destructor(): void {
+        this._menu?.dispose();
+
+        super.destructor();
+    }
+
+    /**
      * Replaces the configured dropdown items — a fixed array, or a provider
      * re-invoked on every open.
      *

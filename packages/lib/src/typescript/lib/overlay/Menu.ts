@@ -664,6 +664,19 @@ class Menu extends Component implements DismissableLayer {
         this._fadeHideAnimation?.cancel();
         this._fadeHideAnimation = null;
 
+        // A still-open submenu is a raw field, not a registered child (see the
+        // class comment above _menuItems: no Menu anywhere in the library is
+        // registered via addComponent), so the child recursion in
+        // super.destructor() below can never reach it.
+        this._openSubmenuPanel?.dispose();
+        this._openSubmenuPanel = null;
+
+        // Cancelling the fades above suppresses whatever fade-completion callback
+        // would otherwise have unregistered this menu from the layer tree
+        // (mirrors AnimatedDropdown.destructor()). Idempotent, so an
+        // already-closed menu costs nothing.
+        LayerManager.unregister(this);
+
         super.destructor();
     }
 

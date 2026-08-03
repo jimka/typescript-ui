@@ -648,6 +648,20 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     }
 
     /**
+     * Disposes the overflow dropdown, then runs the inherited teardown.
+     * `_overflowMenu` is a LayerManager-mounted panel, never a registered
+     * child (see Menu.ts's class comment), so `super.destructor()`'s child
+     * recursion cannot reach it. `_overflowButton` needs no matching call —
+     * it is registered via `addComponent` (`_createOverflowAffordance`), so
+     * the base recursion already reaches it.
+     */
+    protected destructor(): void {
+        this._overflowMenu?.dispose();
+
+        super.destructor();
+    }
+
+    /**
      * Builds one {@link MenuItemConfig} per currently-overflowed button and
      * toggles the rebuild-mode dropdown anchored under the trigger — opening it,
      * or closing it when the trigger is pressed again. Each row's `action`
