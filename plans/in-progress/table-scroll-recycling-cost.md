@@ -402,6 +402,50 @@ recalculation confirmed above, out of this plan's scope.
 
 ---
 
+## Implementation Notes
+
+**Expected Behaviour #5's literal test setup ("calling `cell.setBaseBackground(null)` twice
+in a row" on a freshly-constructed `editableCell()`) is not distinguishing.** A fresh
+`Cell` never has `_options.shadow` set to anything (`Cell`'s constructor never calls
+`setShadow`/`clearShadow`, and `_applyStateTint` is not run until something like
+`setRequiredEmpty` or `setBaseBackground` calls it), so `getShadow()` already reports
+`null` before either pinned call. With the guard in place, `clearShadow`'s check
+(`this._options.shadow === undefined`) is already satisfied on the very *first* call —
+both calls write zero `boxShadow` rules, not "first writes, second doesn't." This was
+confirmed empirically (spying on `Component`'s protected `setElementCSSRule` and on the
+`RecordingDOMSink`) before writing the final test, rather than assumed from the plan
+text. The implemented test in
+[`Cell.test.ts`](packages/lib/tests/component/table/cell/Cell.test.ts#L165) instead
+plants a stale shadow first via the public `cell.setShadow(...)` — standing in for a
+recycled cell's carried-over value from a previous, differently-configured row, which is
+what actually produces a real `boxShadow` write on Row.setColumnWindow's *first*
+reconcile of a retargeted cell — then makes the two `setBaseBackground(null)` calls and
+asserts, via `ruleStyleWrites`/`RecordingDOMSink` filtered to the cell's own selector,
+that the write count does not grow on the second call. This still pins the exact
+reported path (`setBaseBackground` reaching `clearShadow` with nothing left to change)
+while actually being able to fail before the fix and pass after it — confirmed by
+reverting the `Component.ts` guard and re-running the test: pre-fix, the write count
+after the first call is 2 (the plant + the real clear) but grows to 3 after the
+redundant second call (`expected 3 to be 2`), where post-fix it correctly stays at 2 —
+before re-applying the fix.
+
+**Manual browser verification (Ordered Implementation Step 6 / Expected Behaviour #7)
+was re-run against the finished, committed code**, not just during earlier live-patch
+experimentation. With `git status` clean at commit `9cedf787` (the code commit), `npm
+run dev` in `packages/lib`, the Misc panel's wide-table (45 columns) demo, and the
+plan's own `## Verification` console script: `steady` ≈ 23.0ms/frame, 46
+rule-writes/frame; `oscillating` ≈ 28.8ms/frame, 87 rule-writes/frame (ratio ≈1.25×
+wall-clock, ≈1.9× rule-writes). Rule-writes are close to the plan's predicted ~44/frame
+for steady, well under the plan's predicted ~174/frame for oscillating — but still a
+clear, large drop from the documented "before" baseline (387/526), consistent with
+"removes ~90% of the redundant writes, does not close the full gap." Absolute
+wall-clock numbers differ from the plan's original figures (this run's machine/browser
+differs from the plan author's), so only the relative shape — large rule-write cut,
+modest wall-time cut, direction-sensitivity ratio preserved rather than closed — was
+treated as the pass/fail signal, per the plan's own caveat in `## Potential Challenges`.
+
+---
+
 ## Notes
 
 [^refutation-evidence]: Full instrumentation methodology and numbers in
