@@ -58,8 +58,8 @@ The factory **must return the same `Component` instance** for a given `panelId` 
 
 `restoreLayout` performs one pass:
 
-1. **Park** every factory-known leaf — detach it from the live tree (and open windows) without destroying it, preserving its state.
-2. **Tear down** all `Split`/`Tab` containers under `root` and close all open windows. These are cheap, stateless arrangement managers.
+1. **Park** every factory-known leaf — detach it from the live tree (and open windows) without destroying it, preserving its state, and detach any transient chrome (e.g. a Dock empty-state placeholder) the same way.
+2. **Dispose** all `Split`/`Tab` containers under `root` and close all open windows.
 3. **Rebuild** the container tree from the target state.
 4. **Re-home** the parked leaves into it via [`moveComponent`](/api/core/classes/Component).
 5. **Apply geometry** — pane ratios, active tab, window rects.
