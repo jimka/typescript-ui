@@ -111,6 +111,7 @@ A few patterns can defeat the rAF coalescing and force multiple layout passes pe
 - **Reading `getSize()` between sets.** Every `getSize` call forces a flush so the read is up-to-date. If you write, read, write again, you've caused two layout passes. Batch your sets, then read once at the end.
 - **Mutating during a layout callback.** Adding or removing components from inside `doLayout` (or a layout-triggered listener) re-enters the layout pass. The framework handles this safely, but the immediate call you triggered won't see the new children — they land on the next frame.
 - **Missing `pauseLayout` for large bulk operations.** rAF coalescing helps, but for thousands of changes you'll also pay queue-management overhead. `pauseLayout` skips that.
+- **A style or layout read landing after a stylesheet-rule write, in the same task.** This makes every later rule write in that task dramatically more expensive — roughly proportional to the number of rules on the shared sheet — regardless of which kind of read it is (`getComputedStyle`, `getBoundingClientRect`, `offsetWidth`, `scrollLeft`, …). A render pass that writes many rules and also reads geometry mid-pass pays this on every write after the first read. Batch reads ahead of the frame's first rule write, or serve them from a cache keyed on the read's inputs, so a repeated read never lands mid-write.
 
 ## Deferring expensive panel construction
 
