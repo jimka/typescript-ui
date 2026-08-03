@@ -60,6 +60,12 @@ export interface PanelNode {
      * per-container constraint would otherwise be dropped by the re-home).
      */
     glyph?:  string | null;
+    /** Captured from the leaf's {@link LayoutConstraints.tooltip}. */
+    tooltip?: string | null;
+    /** Captured from the leaf's {@link LayoutConstraints.closeable}. */
+    closeable?: boolean;
+    /** Captured from the leaf's {@link LayoutConstraints.disposeOnClose}. */
+    disposeOnClose?: boolean;
 }
 
 /**
@@ -224,9 +230,18 @@ function nodeFor(component: Component): LayoutNode {
         };
     }
 
-    const glyph = component.getParentComponent()?.getLayoutConstraints(component)?.glyph ?? null;
+    const constraints = component.getParentComponent()?.getLayoutConstraints(component);
+    const glyph       = constraints?.glyph ?? null;
+    const tooltip     = constraints?.tooltip ?? null;
 
-    return { kind: "panel", panelId: panelIdOf(component), glyph };
+    return {
+        kind:           "panel",
+        panelId:        panelIdOf(component),
+        glyph,
+        tooltip,
+        closeable:      constraints?.closeable,
+        disposeOnClose: constraints?.disposeOnClose,
+    };
 }
 
 /**
@@ -402,21 +417,36 @@ function hostsComponent(win: AbstractWindow, node: Component): boolean {
 
 /**
  * Returns the layout constraints to re-home a panel leaf under, carrying its
- * captured `glyph` through so a restored tab keeps its glyph. Identity rides on
+ * captured `glyph`, `tooltip`, `closeable` and `disposeOnClose` through so a
+ * restored tab keeps its presentation and close behaviour. Identity rides on
  * the component's own id (see {@link panelIdOf}), not a constraint, so no `name`
  * is stamped — that keeps the leaf's visible label (its component name) intact
- * across a restore. Sub-containers and glyph-less leaves carry no constraints.
+ * across a restore. Sub-containers and leaves that carry none of the four
+ * fields carry no constraints.
  *
  * @param node - The child node being placed.
  * @returns The constraints, or `undefined` when none are needed.
  */
 function constraintsFor(node: LayoutNode): LayoutConstraints | undefined {
-    if (node.kind !== "panel" || !node.glyph) {
+    if (node.kind !== "panel") {
+        return undefined;
+    }
+
+    const carries = node.glyph != null
+        || node.tooltip != null
+        || node.closeable !== undefined
+        || node.disposeOnClose !== undefined;
+
+    if (!carries) {
         return undefined;
     }
 
     const constraints = new LayoutConstraints();
-    constraints.glyph = node.glyph;
+
+    constraints.glyph          = node.glyph ?? null;
+    constraints.tooltip        = node.tooltip ?? null;
+    constraints.closeable      = node.closeable;
+    constraints.disposeOnClose = node.disposeOnClose;
 
     return constraints;
 }

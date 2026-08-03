@@ -9,6 +9,8 @@ import { Split } from '~/layout/Split';
 import { Tab } from '~/layout/Tab';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { serializeLayout, restoreLayout, type LayoutFactory } from '~/layout/LayoutSerialization';
+import { Glyph } from '~/component/display/Glyph';
+import { circle_check } from '~/glyphs/solid/circle_check';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -96,6 +98,56 @@ describe('serializeLayout shape', () => {
         const child = (state.root as { children: Array<{ glyph?: string | null }> }).children[0];
 
         expect(child.glyph).toBe('star');
+    });
+});
+
+describe('PanelNode presentation and disposal constraints', () => {
+    afterEach(() => DOM.reset());
+
+    it('S1 — a captured leaf round-trips its presentation and disposal constraints', () => {
+        installTestDOM(CONFIG);
+        Glyph.register(circle_check);
+
+        const tabHost = new Container({ layoutManager: new Tab() });
+        const a = new Component({}); a.setId('a');
+
+        tabHost.addComponent(a, Object.assign(new LayoutConstraints(), {
+            glyph: 'circle-check', tooltip: 'T', closeable: true, disposeOnClose: false,
+        }));
+
+        const state = serializeLayout(tabHost);
+
+        const freshRoot = new Container({});
+        restoreLayout(freshRoot, state, instanceFactory({ a }));
+
+        const constraints = freshRoot.getLayoutConstraints(a);
+
+        expect(constraints?.glyph).toBe('circle-check');
+        expect(constraints?.tooltip).toBe('T');
+        expect(constraints?.closeable).toBe(true);
+        expect(constraints?.disposeOnClose).toBe(false);
+    });
+
+    it('S2 — a state written without the new fields still restores', () => {
+        installTestDOM(CONFIG);
+
+        const a = new Component({}); a.setId('a');
+        const freshRoot = new Container({});
+
+        const state = {
+            version: 1 as const,
+            root:    { kind: 'panel' as const, panelId: 'a', glyph: 'star' },
+            windows: [],
+        };
+
+        restoreLayout(freshRoot, state, instanceFactory({ a }));
+
+        const constraints = freshRoot.getLayoutConstraints(a);
+
+        expect(freshRoot.getComponents()).toContain(a);
+        expect(constraints?.glyph).toBe('star');
+        expect(constraints?.closeable).toBeUndefined();
+        expect(constraints?.disposeOnClose).toBeUndefined();
     });
 });
 

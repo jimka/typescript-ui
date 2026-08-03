@@ -26,7 +26,9 @@ import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
 /**
  * String-literal union of the events emitted by {@link Tab}.
  *
- * `"tabclose"` fires when a tab is closed (carrying the removed content);
+ * `"tabclose"` fires when a tab is closed (carrying the removed content), just
+ * before the content is destroyed — a listener that re-parents it (or a
+ * `disposeOnClose: false` constraint) keeps it alive, see {@link Tab.closeTab};
  * `"empty"` fires when the strip loses its last tab by any path — close,
  * tear-off, or re-dock — and carries no payload; `"detach"` fires when a tab
  * is torn off into a new floating window (carrying that window), the one
@@ -1079,9 +1081,11 @@ class Tab extends LayoutManager {
      * Tears down the tab with cell id `id` — the single close implementation
      * shared by the user-✕ click ({@link Tab._onBarTabClose}) and the public
      * {@link closeTab}. Removes the cell and its content component, emits
-     * `"tabclose"`, selects the next tab, re-lays out, syncs the host window's
-     * closeable state, closes an emptied strip-mode tear-off window, and emits
-     * `"empty"` once the strip is drained.
+     * `"tabclose"`, destroys the content (unless the caller opted out with
+     * `disposeOnClose: false` or a `"tabclose"` listener re-homed it), selects
+     * the next tab, re-lays out, syncs the host window's closeable state,
+     * closes an emptied strip-mode tear-off window, and emits `"empty"` once
+     * the strip is drained.
      *
      * @param id - The cell id to close.
      */
@@ -1107,8 +1111,10 @@ class Tab extends LayoutManager {
         this._bar.removeBarEntry(id);
         this._contents.splice(idx, 1);
 
+        let constraints: LayoutConstraints | undefined;
+
         if (content) {
-            container.removeComponent(content);
+            constraints = container.removeComponent(content);
         }
 
         // An entry closed mid-build still owns a mounted spinner; leaving it in
@@ -1121,6 +1127,15 @@ class Tab extends LayoutManager {
 
         if (content) {
             this.emit("tabclose", content);
+
+            // A close is a destroy: the content, its children, and the pooled rows
+            // and overlay chrome their own destructors reach all release their
+            // per-instance stylesheet rules here. Skipped when the caller opted out,
+            // and when a "tabclose" listener re-homed the content — it has an owner
+            // again, so destroying it would take out a live subtree.
+            if (constraints?.disposeOnClose !== false && content.getParentComponent() === null) {
+                content.dispose();
+            }
         }
 
         this.selectNextContent(idx, wasSelected);
@@ -1135,10 +1150,12 @@ class Tab extends LayoutManager {
 
     /**
      * Closes the tab hosting `content` through the same teardown a user ✕ click
-     * performs — removes the cell and content, emits `"tabclose"`, selects the
-     * next tab, and emits `"empty"` when the strip drains. The programmatic
-     * entry point for a tree owner such as [`Dock`](/api/overlay/classes/Dock)
-     * to close a panel by its content component.
+     * performs — removes the cell and content, emits `"tabclose"`, destroys the
+     * content, selects the next tab, and emits `"empty"` when the strip drains.
+     * The destroy is skipped when the closed tab's `LayoutConstraints.disposeOnClose`
+     * is `false`, or when a `"tabclose"` listener re-parented the content before
+     * the destroy runs. The programmatic entry point for a tree owner such as
+     * [`Dock`](/api/overlay/classes/Dock) to close a panel by its content component.
      *
      * @param content - The content component whose tab to close.
      *
@@ -2256,7 +2273,10 @@ class Tab extends LayoutManager {
 
     /**
      * Registers a listener for the `"tabclose"` event, which fires after a tab
-     * is closed, receiving the content component that was removed.
+     * is closed, receiving the content component that was removed. The content
+     * is destroyed once every `"tabclose"` listener has run, unless the closed
+     * tab's `LayoutConstraints.disposeOnClose` is `false` or this (or another)
+     * listener re-parents the component — moving it out of the closed state.
      *
      * @param event - The `"tabclose"` event.
      * @param listener - The callback to invoke when a tab is closed.
