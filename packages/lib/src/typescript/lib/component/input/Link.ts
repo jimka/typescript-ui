@@ -263,17 +263,6 @@ class Link extends Text<LinkOptions> {
     }
 
     /**
-     * Removes the keyboard listener, then the inherited theme listener. Call
-     * when the link is permanently removed.
-     */
-    protected destructor(): void {
-        // Unconditional — the listener is always registered.
-        Event.removeListener(this, "keydown", this.handleKeyDown);
-
-        super.destructor();
-    }
-
-    /**
      * Activates on Enter only — Space is button semantics, not link semantics.
      * A no-href `<a>` fires no native click on Enter, so it is synthesised
      * here; with no href it can never double-fire.

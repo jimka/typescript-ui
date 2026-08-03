@@ -201,11 +201,10 @@ interface BarEntry {
     name: string;
     constraints?: LayoutConstraints;
     /**
-     * The button's `contextmenu` subtree listener, retained so {@link TabBar.removeBarEntry}
-     * can remove it. Subtree listeners are keyed by component id in a module-level
-     * map (see {@link Event.addSubtreeListener}); removing the button's element
-     * does not purge that map, so the listener must be torn down explicitly or it
-     * (and the entry it closes over) leaks across open/close churn.
+     * The button's `contextmenu` subtree listener. Retained on the entry so it
+     * can be registered via {@link Event.addSubtreeListener} at construction —
+     * removal needs no reference of its own, since {@link TabBar.removeBarEntry}
+     * disposes the button and disposal purges every registration it holds.
      */
     contextMenuListener: (e: MouseEvent) => void;
     /** The live content's component id, supplied by the owner via {@link TabBar.setEntryContentId}; `""` until set. */
@@ -1578,11 +1577,6 @@ class TabBar extends Container<TabBarOptions> {
         this._rovingTabIndex.remove(entry.button);
         this._entries.splice(idx, 1);
         this._tabClip.removeItem(entry.button);
-
-        // Subtree listeners are keyed by component id in a module-level map;
-        // removing the wrapper's element does not purge it, so tear it down or it
-        // (and the entry it closes over) leaks.
-        Event.removeSubtreeListener(entry.button, "contextmenu", entry.contextMenuListener);
 
         // The tooltip attachment is keyed by the button's id in a static map and
         // holds a reference to it; detach so a removed tab does not leak (a no-op

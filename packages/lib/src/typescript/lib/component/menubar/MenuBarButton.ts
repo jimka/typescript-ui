@@ -160,16 +160,6 @@ class MenuBarButton extends Button<MenuBarButtonOptions> {
         return this;
     }
 
-    /**
-     * Removes Event listeners registered by this button, then defers to the
-     * base class for the rest of teardown.
-     */
-    protected destructor(): void {
-        Event.removeListener(this, "click",     this._onClickHandler);
-        Event.removeListener(this, "mouseover", this._onMouseOverHandler);
-
-        super.destructor();
-    }
 }
 
 const MenuBarButtonCallable = callable(MenuBarButton);

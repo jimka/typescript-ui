@@ -1059,8 +1059,8 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
     // ── Lifecycle ──────────────────────────────────────────────────────────────
 
     /**
-     * Unbinds the store, removes the theme and interaction subscriptions, and
-     * hides any open tooltip. Call when the chart is permanently removed.
+     * Unbinds the store, removes the theme subscription, and hides any open
+     * tooltip. Call when the chart is permanently removed.
      */
     protected destructor(): void {
         if (this._boundStore) {
@@ -1075,10 +1075,6 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
             this._themeCleanup();
             this._themeCleanup = null;
         }
-
-        Event.removeSubtreeListener(this, "mousemove", this.handlePointerMove);
-        Event.removeSubtreeListener(this, "mouseout", this.handlePointerOut);
-        Event.removeSubtreeListener(this, "click", this.handlePointerClick);
 
         // Release the last repaint's marks. They deliberately bypass
         // `trackHandle` (only the <svg> and its groups are tracked, and released

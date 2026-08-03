@@ -167,3 +167,85 @@ describe('Event.addSubtreeListener / addViewportListener accounting', () => {
         expect(countWrites(sink, 'addListener', type)).toBe(1);
     });
 });
+
+describe('Event.purgeComponent', () => {
+    afterEach(() => DOM.reset());
+
+    it('E1 — clears all three maps for one id', () => {
+        installTestDOM(CONFIG);
+        const comp = new Component({});
+        const exactType = uniqueType();
+        const subtreeType = uniqueType();
+        const viewportType = uniqueType();
+
+        Event.addListener(comp, exactType, () => {});
+        Event.addSubtreeListener(comp, subtreeType, () => {});
+        Event.addViewportListener(comp, viewportType, () => {});
+
+        expect(Event._registeredComponentIds()).toContain(comp.getId());
+
+        Event.purgeComponent(comp.getId());
+
+        expect(Event._registeredComponentIds()).not.toContain(comp.getId());
+    });
+
+    it('E2 — uninstalls a base listener whose last registration it removed', () => {
+        const sink = installTestDOM(CONFIG);
+        const exactType = uniqueType();
+        const viewportType = uniqueType();
+        const exactComp = new Component({});
+        const viewportComp = new Component({});
+
+        Event.addListener(exactComp, exactType, () => {});
+        Event.addViewportListener(viewportComp, viewportType, () => {});
+
+        Event.purgeComponent(exactComp.getId());
+        expect(countWrites(sink, 'removeListener', exactType)).toBe(1);
+
+        Event.purgeComponent(viewportComp.getId());
+        expect(countWrites(sink, 'removeListener', viewportType)).toBe(1);
+    });
+
+    it('E3 — a sibling\'s registrations for the same type survive', () => {
+        const sink = installTestDOM(CONFIG);
+        const type = uniqueType();
+        const a = new Component({});
+        const b = new Component({});
+
+        Event.addListener(a, type, () => {});
+        Event.addListener(b, type, () => {});
+
+        Event.purgeComponent(a.getId());
+
+        expect(Event._registeredComponentIds()).toContain(b.getId());
+        expect(countWrites(sink, 'removeListener', type)).toBe(0);
+    });
+
+    it('E4 — purging an id with no registrations is a no-op', () => {
+        const sink = installTestDOM(CONFIG);
+        const comp = new Component({});
+
+        expect(() => Event.purgeComponent(comp.getId())).not.toThrow();
+        expect(sink.writes.length).toBe(0);
+    });
+
+    it('E5 — dispose() drives the purge; removeComponent does not', () => {
+        installTestDOM(CONFIG);
+        const type = uniqueType();
+        const child = new Component({});
+        const container = new Component({});
+        const otherContainer = new Component({});
+
+        Event.addSubtreeListener(child, type, () => {});
+        container.addComponent(child);
+
+        container.removeComponent(child);
+        expect(Event._registeredComponentIds()).toContain(child.getId());
+
+        otherContainer.addComponent(child);
+        expect(Event._registeredComponentIds()).toContain(child.getId());
+
+        child.dispose();
+        expect(Event._registeredComponentIds()).not.toContain(child.getId());
+    });
+});
