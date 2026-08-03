@@ -427,3 +427,55 @@ All cases below are unit-testable under the offline harness. The three manual ch
 [^version]: `packages/lib/docs/reference/migration.md` states the rule this follows. Under *Versioning policy*, `0.x.y` means "anything may change in any release, including breaking the public API"; under *Pre-1.0 compatibility*, "the version number alone is not a compatibility guarantee" and what a breaking change owes the consumer is an entry on the migration page, not a particular bump size. A patch release is therefore the right vehicle: it carries the fix to a blocked consumer without implying a feature release, and the migration entry does the work the version number cannot. The bump itself stays out of this plan: `packages/lib/package.json` still reads `0.4.0` when this lands, and the version strings across the four packages are bumped as their own release step per `release-steps.md`. Writing the changelog page ahead of the bump is what that document expects — its publish-readiness check is "verify that the changelog contains everything in the coming version".
 
 [^migration-title]: Verified subsection by subsection against the changelog pages. The section holds nine subsections: three are 0.4.0 material (*Marker lists paint their own bullets and numbers*, *`DOMSource` gained `startFontLoad`*, *`SplitGutter.destroy()` and `CollapseButton.destroy()` were removed*, all matching `changelog/0.4.0.md`'s breaking-change list), five are genuinely 0.3.0 (*`Aria.applyToElement` was removed*, *The optional `elkjs` peer moved to `^0.12.0`*, *Rewriting an element's `class` attribute drops its positioning*, *`Component._defaultOptions` is frozen and shared per class*, *`DOMSink.setRuleStyle` became `setRuleStyles`*, all matching `changelog/0.3.0.md`), and the closing *Behaviour changes worth a check* list mixes one 0.3.0 bullet with two 0.4.0 ones. So the section spans both releases and the heading names only the first — retitling to `0.2.x to 0.4.0` is accurate, whereas splitting it in two would mean re-sorting nine subsections and one mixed bullet list for no consumer benefit. The mislabelling has a traceable cause: `plans/implemented/scrollbar-leak-and-layout-guards.md`'s addendum records that its removal note was added "inside the existing `## Upgrading from 0.2.x to 0.3.0` section" because that plan named the changelog but not the migration page. This plan's own entry gets a correctly-named section, so the pattern stops here.
+
+---
+
+## Implementation Notes
+
+- **No package.json version bump.** Per an explicit constraint from the plan's
+  author (binding on this run, given outside the plan text itself): the
+  release is a separate manual step performed later, after this fix is
+  verified in SQLAdmin against a symlinked local build of this checkout. The
+  changelog page and migration entry this plan calls for were written in
+  full; only the `packages/lib/package.json` (and any sibling package)
+  version numbers were left untouched, exactly as [^version] already commits
+  this plan to.
+
+- **No new demo added.** The `implement` skill's Work Instructions call for
+  adding a demo of the new feature to the project's demo/example surface "if
+  it has one." This project has one (`packages/docs/src/demos/` and the
+  in-repo `packages/lib/src/typescript/TabDemoPanel.ts` / `MiscPanel.ts`
+  demo app), but `disposeOnClose` has no incremental demo to add: it is an
+  invisible teardown behaviour (a component and its stylesheet rules are
+  released instead of retained) with nothing new to render — a demo tab
+  looks identical whether or not its content survives the close. The plan's
+  own manual-verification list instead exercises the *existing* demo tabs
+  (`TabDemoPanel`'s closeable Beta/Gamma, the tear-off strips, and the
+  `Notification` buttons on the Misc. panel) under the new destroy
+  semantics, which is what was actually run (see below) rather than adding
+  new demo surface.
+
+- **Manual verification, run against the live demo app** (`npm run dev` in
+  `packages/lib`, driven in a real browser): closing a closeable tab via its
+  ✕ (Beta) left the strip usable with the surviving tabs rendering and
+  switching correctly; closing a tab via the right-click context menu's
+  **Close** (Gamma) and, after adding two more closeable tabs, **Close all**
+  both behaved the same way, with zero console errors or warnings after
+  either; stacking four toasts via **Notification — show all types** and
+  letting them auto-dismiss showed all four disappear cleanly with no
+  leftover DOM/console artifacts, matching the "re-stacking correctly"
+  expectation. The tear-off-into-a-float-window case (dragging a tab off the
+  strip and back) could not be driven through the available browser
+  automation in this session — the framework's tear-off gesture is a
+  custom mousedown-then-4px-movement-threshold drag (`DragManager`), not a
+  native HTML5 drag, and neither the available synthetic-drag tool nor a
+  hand-built `MouseEvent` sequence reliably triggered it (no error resulted;
+  the gesture was simply a no-op). That path is instead pinned by the
+  automated case **T4** in `packages/lib/tests/layout/Tab.closeDisposal.test.ts`,
+  which calls the private `detachTabToWindow` directly and asserts the
+  content survives while the strip cell's button rules do not — the exact
+  code this plan's `TabBar.removeBarEntry` change added, on the exact path
+  a live tear-off exercises. This is the Test-first skill's documented
+  escape hatch (describe the expected behaviour, implement it, verify it —
+  by an automated test where the harness allows one, in place of a manual
+  step the tooling in this session could not drive).
