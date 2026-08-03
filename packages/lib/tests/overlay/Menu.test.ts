@@ -6,6 +6,7 @@ import type { Rect } from '~/core/DOM';
 import { LayerManager } from '~/core/LayerManager';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
+import { _ruleCacheKeys } from '~/core/StyleTarget';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -901,5 +902,47 @@ describe('Menu show(x, y, …) — pointer-anchored regression', () => {
         menu.show(100, 100, [{ text: 'A' }, { text: 'B' }]);
 
         expect(menu.getY()).toBe(100);
+    });
+});
+
+// Regression: both showAnchored (rebuild mode) and rebuildPersistentItems
+// (persistent mode) only disposed items that passed an `instanceof MenuItem`
+// filter, so a MenuSeparator built by showAnchored was never disposed on a
+// reshow — leaking one per separator, forever.
+describe('Menu item teardown — disposes every replaced item, separators included', () => {
+    afterEach(() => DOM.reset());
+
+    it('M1: a reshow with a separator evicts the prior separator\'s style rule', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(0, 0, [{ text: 'A', action: () => {} }, { separator: true }]);
+
+        const oldSeparator = (menu as any)._menuItems[1];
+        oldSeparator.getElement(true);
+        const id = oldSeparator.getId();
+        expect(_ruleCacheKeys().some((k: string) => k.startsWith('#' + id))).toBe(true);
+
+        menu.show(0, 0, [{ text: 'B', action: () => {} }]);
+
+        expect(_ruleCacheKeys().some((k: string) => k.startsWith('#' + id))).toBe(false);
+    });
+
+    it('M2: rebuilding a persistent menu evicts every prior MenuItem\'s style rule', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu([{ text: 'A', action: () => {} }], () => {});
+        const oldItems = (menu as any)._menuItems.slice();
+        oldItems.forEach((item: MenuItem) => item.getElement(true));
+        const ids = oldItems.map((item: MenuItem) => item.getId());
+
+        expect(ids.some((id: string) => _ruleCacheKeys().some((k: string) => k.startsWith('#' + id)))).toBe(true);
+
+        (menu as any).rebuildPersistentItems([
+            { text: 'B', action: () => {} },
+            { text: 'C', action: () => {}, separator: true },
+        ]);
+
+        expect(ids.some((id: string) => _ruleCacheKeys().some((k: string) => k.startsWith('#' + id)))).toBe(false);
     });
 });

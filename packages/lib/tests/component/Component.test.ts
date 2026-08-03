@@ -358,6 +358,70 @@ describe('Component child lifecycle — wiring & teardown', () => {
 
         expect(schedule).not.toHaveBeenCalled();
     });
+    it('disposes then fully unwires every child on disposeAllComponents', () => {
+        const parent = new Component({});
+        const a = new Component({});
+        const b = new Component({});
+        parent.addComponent(a);
+        parent.addComponent(b);
+
+        const disposeA = vi.spyOn(a, 'dispose');
+        const disposeB = vi.spyOn(b, 'dispose');
+
+        expect(parent.disposeAllComponents()).toBe(parent);
+
+        expect(disposeA).toHaveBeenCalled();
+        expect(disposeB).toHaveBeenCalled();
+        expect(parent.getComponents()).toEqual([]);
+
+        for (const child of [a, b]) {
+            const hooks = sizeHooks(child);
+            expect(child.getParentComponent()).toBeNull();
+            expect(hooks._onPreferredSizeChange).toBeNull();
+            expect(hooks._onConstraintSizeChange).toBeNull();
+        }
+    });
+    it('disposes children while they are still registered, before removing them from the list', () => {
+        const parent = new Component({});
+        const a = new Component({});
+        parent.addComponent(a);
+
+        let sawAWhileStillRegistered = false;
+        vi.spyOn(a, 'dispose').mockImplementation(() => {
+            sawAWhileStillRegistered = parent.getComponents().includes(a);
+        });
+
+        parent.disposeAllComponents();
+
+        expect(sawAWhileStillRegistered).toBe(true);
+        expect(parent.getComponents()).toEqual([]);
+    });
+    it('does not schedule a layout on disposeAllComponents', () => {
+        const parent = new Component({});
+        parent.addComponent(new Component({}));
+
+        const schedule = vi.spyOn(parent, 'scheduleLayout');
+        parent.disposeAllComponents();
+
+        expect(schedule).not.toHaveBeenCalled();
+    });
+    it('accepts a fresh child after disposeAllComponents with no residual layout schedule', () => {
+        const parent = new Component({});
+        parent.addComponent(new Component({}));
+        parent.disposeAllComponents();
+
+        const fresh = new Component({});
+        const schedule = vi.spyOn(parent, 'scheduleLayout');
+        parent.addComponent(fresh);
+
+        expect(parent.getComponents()).toEqual([fresh]);
+        expect(schedule).not.toHaveBeenCalled();
+    });
+    it('disposeAllComponents on an empty parent is a no-op returning this', () => {
+        const parent = new Component({});
+        expect(parent.disposeAllComponents()).toBe(parent);
+        expect(parent.getComponents()).toEqual([]);
+    });
 });
 
 // Regression: destructor() must remove a component's per-instance stylesheet
@@ -391,6 +455,23 @@ describe('Component — destructor disposes style rules', () => {
 
         (button as unknown as { destructor(): void }).destructor();
 
+        expect(_ruleCacheKeys().some((key) => key.startsWith('#' + id))).toBe(false);
+    });
+
+    it('evicts a child\'s style rule via disposeAllComponents', () => {
+        const parent = new Component({});
+        parent.getElement(true);
+
+        const child = new Component({});
+        parent.addComponent(child);
+        child.getElement(true);   // render -> materialises _styleRule
+        const id = child.getId();
+
+        expect(_ruleCacheHas('#' + id)).toBe(true);
+
+        parent.disposeAllComponents();
+
+        expect(_ruleCacheHas('#' + id)).toBe(false);
         expect(_ruleCacheKeys().some((key) => key.startsWith('#' + id))).toBe(false);
     });
 });

@@ -151,14 +151,10 @@ class MenuBar extends Component {
             panel.dispose();
         }
 
-        for (const button of this._buttons) {
-            button.dispose();
-        }
-
         this._buttons.length = 0;
         this._panels.length = 0;
 
-        this.removeAllComponents();
+        this.disposeAllComponents();
 
         for (let i = 0; i < menus.length; i++) {
             const menu = menus[i];

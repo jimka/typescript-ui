@@ -5021,6 +5021,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param component - The Component instance to remove.
      *
      * @returns The layout constraints that were registered for the removed component, or undefined.
+     *
+     * @remarks Detach-only — does not call {@link dispose}. To discard every child at once
+     * instead of re-parenting them, use {@link disposeAllComponents}.
      */
     removeComponent(component: Component): LayoutConstraints | undefined {
         let index = this._components.indexOf(component);
@@ -5043,6 +5046,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Removes all child components and their DOM elements without triggering layout.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks Detach-only, like {@link removeComponent} — none of the removed children are
+     * disposed, so a re-parenting caller keeps them alive. To discard the children instead, use
+     * {@link disposeAllComponents}.
      */
     removeAllComponents(): this {
         for (const component of this._components) {
@@ -5052,6 +5059,28 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._components = [];
 
         return this;
+    }
+
+    /**
+     * Disposes every current child, then removes them all.
+     *
+     * The discarding counterpart to {@link removeAllComponents}: that method
+     * only detaches children (a re-parenting move, e.g. through
+     * {@link moveComponent}, depends on the detached child staying alive), so a
+     * caller that means to throw the children away instead has to loop
+     * `.dispose()` over {@link getComponents} itself before calling it —
+     * forgotten, that loop leaks each child's per-instance stylesheet rule and
+     * any theme/listener subscriptions on every rebuild. Use this whenever a
+     * rebuild's old children are not going to be reused.
+     *
+     * @returns This component, for method chaining.
+     */
+    disposeAllComponents(): this {
+        for (const component of this._components) {
+            component.dispose();
+        }
+
+        return this.removeAllComponents();
     }
 
     /**

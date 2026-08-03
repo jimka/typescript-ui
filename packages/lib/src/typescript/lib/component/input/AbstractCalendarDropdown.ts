@@ -699,7 +699,7 @@ abstract class AbstractCalendarDropdown<
      * first so repeated calls don't accumulate cells.
      */
     protected buildDayGrid(): void {
-        this._dayGrid.removeAllComponents();
+        this._dayGrid.disposeAllComponents();
         this._highlightedDayIdx = -1;
 
         const year  = this._monthAnchor.getFullYear();

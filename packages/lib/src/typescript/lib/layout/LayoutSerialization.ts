@@ -294,11 +294,31 @@ export function serializeLayout(root: Component): LayoutState {
  * the caller passes the rebuild-target container, which is never a parkable
  * leaf.
  *
+ * Also detaches (but does not dispose) every transient child it finds along
+ * the way — chrome like a Dock empty-state placeholder, excluded from state so
+ * it has no slot to be re-homed into.
+ *
  * @param component - The container whose descendants to walk.
  * @param into - The accumulator the leaves are pushed onto.
  */
 function collectLeaves(component: Component, into: Component[]): void {
-    serializableChildren(component).forEach(child => {
+    // Snapshot before mutating: a transient child's own removeComponent below
+    // splices the live array getComponents() returns, so walking it directly
+    // would shift a later sibling into the removed slot and skip it (see
+    // Header.ts's reconcileColumnCells for the same snapshot-before-mutate
+    // precedent).
+    component.getComponents().slice().forEach(child => {
+        if (component.getLayoutConstraints(child)?.transient === true) {
+            // Transient chrome (e.g. a Dock empty-state placeholder) is never
+            // captured in `state` and not owned by this module — detach it now,
+            // before restoreLayout's scaffold-disposal sweep, so that sweep
+            // cannot reach and dispose it. Its owner re-mounts the same
+            // instance on its own next sweep (see Dock.showEmptyState).
+            component.removeComponent(child);
+
+            return;
+        }
+
         const kind = managerKind(child);
 
         if (kind === "Split" || kind === "Tab") {
@@ -315,6 +335,8 @@ function collectLeaves(component: Component, into: Component[]): void {
  * leaf is parked only when the factory hands back that very instance, so a
  * misbehaving factory degrades to "state not preserved" rather than re-homing a
  * stale orphan. Parked leaves are **not** destroyed — they carry panel state.
+ * Transient children are also detached along the way (see collectLeaves) so
+ * the caller's teardown sweep cannot reach them either.
  *
  * @param root - The container subtree to park leaves from.
  * @param liveWindows - The open windows whose content to park.
@@ -543,9 +565,9 @@ function applyWindow(node: WindowNode, parked: Map<string, Component>, factory: 
  * `factory`. Safe to call repeatedly on a live, already-arranged tree to switch
  * between saved layouts at runtime.
  *
- * @remarks Single-pass park-and-rebuild: it parks every factory-known leaf
- * (detaching but never destroying them, so their state survives), tears down
- * all `Split`/`Tab` containers under `root` and closes all open windows,
+ * @remarks Single-pass park-and-rebuild: it parks every factory-known leaf and
+ * detaches any transient chrome (so both survive undisposed), disposes
+ * whatever scaffold remains under `root`, and closes all open windows,
  * rebuilds the container tree from `state`, re-homes the parked leaves via
  * [`moveComponent`](/api/core/classes/Component#movecomponent), then applies
  * geometry. Because the container tree is rebuilt from scratch each call,
@@ -571,7 +593,7 @@ export function restoreLayout(root: Component, state: LayoutState, factory: Layo
     // 2. TEAR DOWN the live arrangement: close the float windows (content already
     //    parked) and clear the root container subtree wholesale.
     liveWindows.forEach(win => win.onExitAction());
-    root.removeAllComponents();
+    root.disposeAllComponents();
 
     // 3-5. REBUILD the container tree, RE-HOME parked leaves, APPLY geometry.
     if (state.root.kind === "panel") {

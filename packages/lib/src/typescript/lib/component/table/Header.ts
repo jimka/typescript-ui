@@ -623,7 +623,7 @@ class TableHeader extends Component {
     private rebuildParentCells(): void {
         const row = this.getParentRow();
 
-        row.removeAllComponents();
+        row.disposeAllComponents();
 
         if (!this.hasParentRow()) {
             return;
