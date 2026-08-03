@@ -2427,12 +2427,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Sets the CSS box-shadow. Use {@link clearShadow} to set the shadow to `"none"`.
+     * Idempotent: a repeat call with the same value writes nothing.
      *
      * @param shadow - A CSS box-shadow string.
      *
      * @returns This component, for method chaining.
      */
     setShadow(shadow: string): this {
+        if (this._options.shadow === shadow) {
+            return this;
+        }
+
         this._options.shadow = shadow;
         this.setElementCSSRule("boxShadow", shadow);
 
@@ -2441,11 +2446,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Removes the box-shadow by writing `"none"` (preserving the legacy
-     * `setShadow(null)` semantic — not a removeProperty).
+     * `setShadow(null)` semantic — not a removeProperty). Idempotent: a
+     * repeat call while already cleared writes nothing.
      *
      * @returns This component, for method chaining.
      */
     clearShadow(): this {
+        if (this._options.shadow === undefined) {
+            return this;
+        }
+
         this._options.shadow = undefined;
         this.setElementCSSRule("boxShadow", "none");
 

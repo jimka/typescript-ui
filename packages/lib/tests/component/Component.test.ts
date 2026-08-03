@@ -476,6 +476,77 @@ describe('Component — destructor disposes style rules', () => {
     });
 });
 
+// Regression: setShadow/clearShadow lacked the idempotence guard every
+// sibling chrome setter (setBackgroundColor, setBorderRadius/clearBorderRadius,
+// setTouchAction/clearTouchAction) already has, so a repeat call re-wrote the
+// shared stylesheet's boxShadow declaration even when nothing changed (see
+// plans/implemented/table-scroll-recycling-cost.md — the table's per-cell
+// column-window reconcile calls this path on every rendered cell on every
+// reconcile, unconditionally, by design).
+describe('Component — setShadow / clearShadow idempotence', () => {
+    beforeEach(() => installTestDOM(DOM_CONFIG));
+    afterEach(() => DOM.reset());
+
+    function boxShadowWrites(sink: RecordingDOMSink): Array<{ selector: string; key: string; value: string | null }> {
+        return ruleStyleWrites(sink).filter((write) => write.key === 'boxShadow');
+    }
+
+    it('a repeat setShadow with the same value writes nothing further', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const c    = new Component({});
+        c.getElement(true);
+
+        c.setShadow('inset 0 0 0 1px red');
+        const before = boxShadowWrites(sink).length;
+
+        c.setShadow('inset 0 0 0 1px red');
+
+        expect(boxShadowWrites(sink).length).toBe(before);
+        expect(c.getShadow()).toBe('inset 0 0 0 1px red');
+    });
+
+    it('setShadow with a changed value still writes', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const c    = new Component({});
+        c.getElement(true);
+
+        c.setShadow('inset 0 0 0 1px red');
+        const before = boxShadowWrites(sink).length;
+
+        c.setShadow('inset 0 0 0 1px blue');
+
+        expect(boxShadowWrites(sink).length).toBe(before + 1);
+        expect(c.getShadow()).toBe('inset 0 0 0 1px blue');
+    });
+
+    it('clearShadow on a component that never had a shadow writes nothing', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const c    = new Component({});
+        c.getElement(true);
+
+        c.clearShadow();
+
+        expect(boxShadowWrites(sink).length).toBe(0);
+        expect(c.getShadow()).toBeNull();
+    });
+
+    it('a repeat clearShadow after the first writes nothing further', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const c    = new Component({});
+        c.getElement(true);
+
+        c.setShadow('inset 0 0 0 1px red');
+        c.clearShadow();
+        const afterFirstClear = boxShadowWrites(sink);
+
+        expect(afterFirstClear.at(-1)?.value).toBe('none');
+
+        c.clearShadow();
+
+        expect(boxShadowWrites(sink).length).toBe(afterFirstClear.length);
+    });
+});
+
 // Regression: a discarded onThemeChange disposer leaks the whole subtree it
 // belongs to (see plans/implemented/theme-listener-teardown-leak.md). Proves
 // the base `subscribeTheme` bag is populated and flushed by `destructor()`,

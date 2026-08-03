@@ -8,7 +8,7 @@
 // recording handler pin the sequence without needing real focus or scroll.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../../dom/TestDOM';
+import { installTestDOM, RecordingDOMSink, ruleStyleWrites } from '../../../dom/TestDOM';
 import fontMetrics from '../../../dom/font-metrics.test-font.json';
 import { Cell } from '~/component/table/cell/Cell';
 import { StringRenderer } from '~/component/table/cell/renderer/String';
@@ -160,6 +160,32 @@ describe('Cell background/cursor/outline state precedence', () => {
         cell.setRequiredEmpty(true);
 
         expect(spy).not.toHaveBeenCalled();
+    });
+
+    // Pins the exact reported path (see plans/implemented/table-scroll-recycling-cost.md):
+    // unlike setRequiredEmpty above, setBaseBackground has no upstream guard of its
+    // own — by design, since Row.setColumnWindow's Pass 3 must call it unconditionally
+    // on every rendered cell on every reconcile — so it always reaches
+    // `_applyStateTint` -> `clearShadow`. The stale shadow planted below stands in for
+    // a recycled cell's carried-over value from a previous, differently-configured
+    // row; the idempotence guard lives in `clearShadow` itself (Component.ts), not
+    // here, so this only proves it is reached with nothing left to change.
+    it('setBaseBackground reaching clearShadow with nothing to change writes only once, not on the redundant reconcile', () => {
+        const sink         = DOM.sink as RecordingDOMSink;
+        const cell         = editableCell();
+        const cellSelector = '#' + cell.getId();
+
+        cell.setShadow('inset 0 0 0 1px red'); // stale shadow from a prior recycle target
+
+        cell.setBaseBackground(null); // real transition: red -> none
+        const afterFirst = ruleStyleWrites(sink).filter((w) => w.key === 'boxShadow' && w.selector === cellSelector);
+
+        expect(afterFirst.at(-1)?.value).toBe('none');
+
+        cell.setBaseBackground(null); // redundant reconcile: none -> none
+        const afterSecond = ruleStyleWrites(sink).filter((w) => w.key === 'boxShadow' && w.selector === cellSelector);
+
+        expect(afterSecond.length).toBe(afterFirst.length);
     });
 
     it('a read-only cell shows the default cursor; requiredEmpty and base both clear the cursor', () => {
