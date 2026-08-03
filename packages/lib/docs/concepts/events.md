@@ -162,6 +162,11 @@ Event.removeListener(button, 'click', onClick);
 
 Anonymous arrow functions cannot be removed because each call creates a new reference. Save the function to a variable if you need to unsubscribe.
 
+Disposing a component drops every registration it holds through the `Event`
+API automatically, so teardown needs no explicit `removeX` call. `removeX` is
+for unhooking while the component keeps living — a finished drag, a consumer
+unsubscribing — not for teardown.
+
 ## Hover events: use `mouseover` / `mouseout`
 
 ::: warning Don't use mouseenter / mouseleave with subtree listeners

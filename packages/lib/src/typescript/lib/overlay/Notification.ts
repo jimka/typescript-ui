@@ -651,12 +651,6 @@ export class Notification extends Component {
         this._dismissAnimation?.cancel();
         this._dismissAnimation = null;
 
-        // Subtree listeners are keyed by component id in a module-level map
-        // that element removal does not purge — unhook the pair `init`
-        // registers or they (and the closures they hold) leak.
-        Event.removeSubtreeListener(this, "mouseover", this._boundOnMouseOver);
-        Event.removeSubtreeListener(this, "mouseout",  this._boundOnMouseOut);
-
         // `finishDismiss` is the only place a notification leaves the static
         // active list, and cancelling above suppressed it. That list outlives
         // every teardown, and `restack` writes setX/setY to each entry — so a

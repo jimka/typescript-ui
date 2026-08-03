@@ -725,6 +725,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Tears this component down: the public call entry point for teardown.
      * The entire body defers to `destructor()`, which recursively destroys
      * this component's children, releases every tracked theme subscription,
+     * unregisters every DOM listener it registered through the `Event` API,
      * detaches its layout manager, removes the DOM element, deletes the
      * component's per-instance stylesheet rules, and releases tracked
      * handles.
@@ -740,9 +741,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Destroys this component: recursively destroys its children, releases
-     * every tracked theme subscription, detaches its layout manager, removes
-     * the DOM element, deletes the component's per-instance stylesheet
-     * rules, and releases tracked handles.
+     * every tracked theme subscription, unregisters every DOM listener it
+     * registered through the `Event` API, detaches its layout manager,
+     * removes the DOM element, deletes the component's per-instance
+     * stylesheet rules, and releases tracked handles.
      *
      * @remarks Idempotent — calling this more than once is a harmless no-op.
      * This is the override hook — a subclass releasing its own resources
@@ -762,6 +764,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // covered by the child recursion below, which reaches this same line for
         // each of them.
         pendingLayouts.delete(this);
+
+        // Same reason as the line above: a module-level registration keyed by this
+        // component's id outlives it, and each entry holds the component itself. An
+        // entry left behind pins the whole instance (disarming the GC finalizer), and
+        // a stale viewport entry keeps firing its handler against handles released at
+        // the bottom of this method.
+        Event.purgeComponent(this.getId());
 
         // Discard the subtree eagerly — a destroyed container destroys its
         // children too. `removeComponent` never calls destructor (a removed

@@ -462,6 +462,78 @@ export namespace Event {
     }
 
     /**
+     * @internal Drops every exact-target, subtree and viewport listener
+     * registration held under `componentId`, and uninstalls each window-level
+     * base listener whose last registration this removed. Called from
+     * `Component.destructor`. No-op for an id with no registrations.
+     */
+    export function purgeComponent(componentId: string): void {
+        const touched = new Set<string>();
+
+        // The maps are declared with `String` (object) keys throughout this
+        // module while every write passes a primitive, so normalise on the
+        // way out (same reasoning as `_registeredComponentIds` below).
+        for (const [type, typeMap] of listenerMap) {
+            if (typeMap.delete(componentId)) {
+                touched.add(String(type));
+
+                if (typeMap.size === 0) {
+                    listenerMap.delete(type);
+                }
+            }
+        }
+
+        for (const [type, typeMap] of subtreeListenerMap) {
+            if (typeMap.delete(componentId)) {
+                touched.add(String(type));
+
+                if (typeMap.size === 0) {
+                    subtreeListenerMap.delete(type);
+                }
+            }
+        }
+
+        // Both id-routed maps share one window-level base listener per type, so the
+        // uninstall check runs once per touched type after both loops — mirroring
+        // the `bothEmpty` test in removeListener / removeSubtreeListener.
+        for (const type of touched) {
+            if (!listenerMap.has(type) && !subtreeListenerMap.has(type) && installedListenerTypes.has(type)) {
+                uninstallBaseListener(type);
+            }
+        }
+
+        // The viewport map has its own base listener, installed and removed with
+        // the type-map itself rather than through installedListenerTypes.
+        for (const [type, typeMap] of viewportListenerMap) {
+            if (!typeMap.delete(componentId) || typeMap.size > 0) {
+                continue;
+            }
+
+            viewportListenerMap.delete(type);
+
+            const typeStr = String(type);
+            DOM.sink.removeListener(DOM.source.getWindow(), typeStr, baseViewportListener, captureOpts(typeStr));
+        }
+    }
+
+    /** Ids currently holding any listener registration; for tests only. @internal */
+    export function _registeredComponentIds(): readonly string[] {
+        const ids = new Set<string>();
+
+        for (const map of [listenerMap, subtreeListenerMap, viewportListenerMap]) {
+            for (const typeMap of map.values()) {
+                // The maps are declared with `String` (object) keys throughout this
+                // module while every write passes a primitive, so normalise here.
+                for (const id of typeMap.keys()) {
+                    ids.add(String(id));
+                }
+            }
+        }
+
+        return Array.from(ids);
+    }
+
+    /**
      * Registers a viewport-level listener that fires for all matching events regardless of target element.
      *
      * @param component - The component to associate the listener with.
