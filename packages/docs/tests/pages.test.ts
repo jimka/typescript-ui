@@ -6,10 +6,11 @@ import type { NavEntry, NavGroup } from '../src/content/pages.js';
 
 // Independent of pages.ts's own glob, so the bijection test below is a real
 // cross-check rather than comparing the implementation against itself.
-// `reference/changelog` is listed explicitly because its per-version pages
-// sit one directory deeper than the other six groups.
+// `reference/changelog` and `reference/migration` are listed explicitly
+// because their per-version pages sit one directory deeper than the other
+// six groups.
 const ALL_DOC_KEYS = Object.keys(
-    import.meta.glob('../../lib/docs/{guide,concepts,components,layouts,data,recipes,reference,reference/changelog}/*.md'),
+    import.meta.glob('../../lib/docs/{guide,concepts,components,layouts,data,recipes,reference,reference/changelog,reference/migration}/*.md'),
 );
 
 function routePathForTest(globKey: string): string {
@@ -101,12 +102,14 @@ describe('getNav', () => {
         }
     });
 
-    it("every subgroup has an undefined path, except Reference's Changelog", () => {
+    it("every subgroup has an undefined path, except Reference's Changelog and Migration", () => {
         (function walk(groups: NavGroup[]): void {
             for (const group of groups) {
                 for (const subgroup of group.groups ?? []) {
                     if (subgroup.title === 'Changelog') {
                         expect(subgroup.path).toBe('/reference/changelog');
+                    } else if (subgroup.title === 'Migration') {
+                        expect(subgroup.path).toBe('/reference/migration');
                     } else {
                         expect(subgroup.path).toBeUndefined();
                     }
@@ -151,18 +154,18 @@ describe('getNav', () => {
         expect(labels.every((label) => label !== 'Overview')).toBe(true);
     });
 
-    it('flattens to exactly 151 distinct leaf entries', () => {
+    it('flattens to exactly 156 distinct leaf entries', () => {
         const paths = flattenEntries(nav).map((entry) => entry.path);
 
-        expect(paths.length).toBe(151);
-        expect(new Set(paths).size).toBe(151);
+        expect(paths.length).toBe(156);
+        expect(new Set(paths).size).toBe(156);
     });
 
-    it('leaf entries plus section paths total 159 distinct paths', () => {
+    it('leaf entries plus section paths total 165 distinct paths', () => {
         const paths = flattenPaths(nav);
 
-        expect(paths.length).toBe(159);
-        expect(new Set(paths).size).toBe(159);
+        expect(paths.length).toBe(165);
+        expect(new Set(paths).size).toBe(165);
     });
 
     it('has the expected per-section leaf entry counts', () => {
@@ -177,11 +180,11 @@ describe('getNav', () => {
             Layouts:    16,
             Data:       6,
             Recipes:    14,
-            Reference:  10,
+            Reference:  15,
         });
     });
 
-    it('nests subgroups only under Components (13), Layouts (3), Recipes (5), and Reference (1)', () => {
+    it('nests subgroups only under Components (13), Layouts (3), Recipes (5), and Reference (2)', () => {
         const groupCounts = Object.fromEntries(
             nav.map((group) => [group.title, group.groups?.length ?? 0]),
         );
@@ -193,7 +196,7 @@ describe('getNav', () => {
             Layouts:    3,
             Data:       0,
             Recipes:    5,
-            Reference:  1,
+            Reference:  2,
         });
     });
 
@@ -207,7 +210,7 @@ describe('getNav', () => {
         const reference = nav.find((group) => group.title === 'Reference')!;
 
         expect(reference.pages.map((entry) => entry.label)).toEqual([
-            'Browser support', 'FAQ', 'Glossary', 'Migration', 'Troubleshooting',
+            'Browser support', 'FAQ', 'Glossary', 'Troubleshooting',
         ]);
     });
 
@@ -216,7 +219,16 @@ describe('getNav', () => {
         const changelog = reference.groups!.find((group) => group.title === 'Changelog')!;
 
         expect(changelog.pages.map((entry) => entry.label)).toEqual([
-            '0.1.0', '0.1.1', '0.2.0', '0.3.0', '0.4.0',
+            '0.1.0', '0.1.1', '0.2.0', '0.3.0', '0.4.0', '0.4.1', 'Next',
+        ]);
+    });
+
+    it("Reference's Migration subgroup pages are in compareLabels order", () => {
+        const reference = nav.find((group) => group.title === 'Reference')!;
+        const migration = reference.groups!.find((group) => group.title === 'Migration')!;
+
+        expect(migration.pages.map((entry) => entry.label)).toEqual([
+            '0.2.0', '0.4.0', '0.4.1', 'Next',
         ]);
     });
 
