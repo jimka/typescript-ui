@@ -34,7 +34,7 @@ tabs.addTab(closeableExtra, "Delta", { closeable: true });
 tabs.addTab(staredPanel, "Epsilon", { glyph: "star" });
 ```
 
-`addTab` accepts `{ closeable?, glyph?, lazy? }`; `addLazyTab` accepts `{ closeable?, glyph? }` — it always defers, so it has no `lazy` to set.
+`addTab` accepts `{ closeable?, glyph?, lazy?, disposeOnClose? }`; `addLazyTab` accepts `{ closeable?, glyph?, disposeOnClose? }` — it always defers, so it has no `lazy` to set. `disposeOnClose` defaults to `true`: closing the tab destroys its content. Pass `false` for a component you hold and intend to re-add later.
 
 ## Lazy tabs
 
@@ -73,7 +73,7 @@ Pass the construction-time `onTabClose` option, or wire a listener on the wrappe
 tabs.getTab().on("tabclose", component => store.removeBinding(component));
 ```
 
-The callback fires after the tab is removed; the closed component is passed in so callers can dispose any external state.
+The callback fires after the tab is removed and before the content is destroyed; the closed component is passed in so callers can capture anything they need before it goes. Once every `tabclose` listener has run, the content is disposed — releasing its element, handles, and per-instance stylesheet rules — unless the tab was added with `disposeOnClose: false`, or a listener re-parented the component during the callback.
 
 ## Right-click context menu
 

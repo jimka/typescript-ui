@@ -109,6 +109,28 @@ describe('TabPanel wiring', () => {
         expect(eager.getComponents()).toHaveLength(1);
     });
 
+    it('forwards disposeOnClose from addTab options into the layout constraint', () => {
+        installTestDOM(CONFIG);
+
+        const panel = new TabPanel();
+        const c     = new Component();
+
+        panel.addTab(c, 'Gamma', { disposeOnClose: false });
+
+        expect(panel.getLayoutConstraints(c)?.disposeOnClose).toBe(false);
+    });
+
+    it('forwards disposeOnClose from a tabs-bag entry into the layout constraint', () => {
+        installTestDOM(CONFIG);
+
+        const c = new Component();
+        const panel = new TabPanel({
+            tabs: [{ label: 'Alpha', component: c, disposeOnClose: false }],
+        });
+
+        expect(panel.getLayoutConstraints(c)?.disposeOnClose).toBe(false);
+    });
+
     it('registers onTabClose on the wrapped manager without throwing', () => {
         installTestDOM(CONFIG);
 

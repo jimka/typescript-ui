@@ -63,6 +63,15 @@ export class LayoutConstraints {
      */
     lazy?: boolean;
     /**
+     * Whether closing this component's tab destroys it. Read by the `Tab`
+     * manager only, where it defaults to `true`: a closed tab's content is
+     * disposed, releasing its element, handles and per-instance stylesheet
+     * rules. Pass `false` for a component the caller owns and intends to
+     * re-use after the tab closes. Ignored by every other layout manager,
+     * and by the tear-off / re-dock path, which relocates rather than closes.
+     */
+    disposeOnClose?: boolean;
+    /**
      * Marks a child as chrome that participates in layout but is excluded from
      * layout serialization. A `transient` child is laid out normally (it can be a
      * real tab or pane), but [`serializeLayout`](/api/layout/functions/serializeLayout)

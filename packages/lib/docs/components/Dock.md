@@ -36,6 +36,8 @@ dock.addPanel({ id: 'console', title: 'Console', content: consolePanel });
 
 `addPanel` docks into the active region: the root if it is a `Tab`, otherwise the first `Tab` region found depth-first.
 
+A spec's `disposeOnClose` defaults to `true`: closing the panel's tab destroys its `content`. A spec whose `content` is a **live component** you intend to re-add later needs `disposeOnClose: false` — a spec whose `content` is a **factory** needs nothing, since re-adding a registered id rebuilds the frame through the factory.
+
 ## Empty-state placeholder
 
 `DockOptions.emptyContent` is a start-page shown only while the dock holds **no live panel anywhere** — every tab closed, with nothing torn off into a float either. It appears the instant the dock becomes empty and disappears the instant a panel opens:
@@ -110,7 +112,7 @@ The `content` in every payload is the panel's stable Dock-owned identity frame �
 A few rules make the events predictable:
 
 - **A move is `detach` then `attach`.** Leaving one host and entering another is two real transitions, in that order — so a tear-off is `detach`(tiled) + `attach`(float), and a re-dock is `detach`(float) + `attach`(tiled). The `window` field tells the two apart.
-- **`close` is never paired with a `detach`.** A destroy (tab ✕, `removePanel`, float ✕) fires `close` alone — the frame is gone, so no phantom host-leave is emitted. A panel torn off and *then* closed produces the tear-off pair first, then `close` when destroyed.
+- **`close` is never paired with a `detach`.** A destroy (tab ✕, `removePanel`, float ✕) fires `close` alone — the frame is gone, so no phantom host-leave is emitted. A panel torn off and *then* closed produces the tear-off pair first, then `close` when destroyed. Once the event has been delivered to every listener, the panel's content is destroyed — releasing its element, handles, and per-instance stylesheet rules — unless the spec set `disposeOnClose: false`.
 - **A relocation within one host fires `move`, not `attach`/`detach`.** Dragging a panel to a *different region* in the same host — between `Split` panes, or onto another `Tab` region's bar — keeps its host, so it fires a single `move` whose `window` names that (unchanged) host. A host change fires `detach`+`attach` and **never** `move`; a first appearance fires `attach` alone. A pure **reorder within one strip** repositions a panel within the same place, not to a different one, so it fires **nothing**. `move` carries no region detail (regions are anonymous) — a listener reacting to a layout change re-reads `getLayoutState()`. A `setLayoutState` restore rebuilds the tree but is not a user relocation, so it stays silent for `move`.
 - **`focus` is one nullable event — there is no `blur`.** The previously-focused panel is whatever the last non-null `focus` named; the `null` payload covers "nothing focused now" (e.g. the last panel closed). Re-activating the already-focused panel is silent. A non-null `focus` payload's `window` names the focused panel's current host.
 - **Re-dock and layout restore fire `focus` too.** A re-dock and a `setLayoutState` both genuinely change the active panel, so each fires a `focus` for the now-active panel in addition to the host-transition events.

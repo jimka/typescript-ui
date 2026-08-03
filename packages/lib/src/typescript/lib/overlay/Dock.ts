@@ -43,6 +43,13 @@ export interface DockPanelSpec {
     /** Whether the tab shows a close button. Defaults to `true`. */
     closeable?: boolean;
     /**
+     * Whether closing this panel's tab destroys its content. Defaults to
+     * `true`. Pass `false` when `content` is a live component you hold and
+     * intend to re-add later; a factory needs no opt-out, since a re-add
+     * rebuilds through it.
+     */
+    disposeOnClose?: boolean;
+    /**
      * The content: a live component, or a factory built on first resolve. It is
      * placed inside the identity frame, never mutated. A factory returning a
      * promise is accepted only by {@link Dock.addLazyPanel}, which shows a
@@ -640,6 +647,7 @@ class Dock extends Container<DockOptions> {
 
         // Dock tabs are closeable by default; a spec may opt out.
         constraints.closeable = spec.closeable ?? true;
+        constraints.disposeOnClose = spec.disposeOnClose ?? true;
 
         if (spec.glyph) {
             constraints.glyph = spec.glyph;
@@ -1016,6 +1024,10 @@ class Dock extends Container<DockOptions> {
 
         constraints.closeable = false;
         constraints.transient = true;
+        // The placeholder is consumer-owned chrome that `hideEmptyState` closes
+        // through `closeTab` and `showEmptyState` re-mounts — a close must not
+        // destroy it.
+        constraints.disposeOnClose = false;
 
         return constraints;
     }

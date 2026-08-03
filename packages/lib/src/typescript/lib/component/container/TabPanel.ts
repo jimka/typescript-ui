@@ -29,6 +29,8 @@ export interface TabEntryConfig {
      * ignored when `component` is an already-constructed component.
      */
     lazy?:      boolean;
+    /** Whether closing this tab destroys its content. Defaults to `true`. */
+    disposeOnClose?: boolean;
 }
 
 /**
@@ -100,7 +102,12 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Conta
 
         if (options?.tabs) {
             for (const entry of options.tabs) {
-                this.addTab(entry.component, entry.label, { closeable: entry.closeable, glyph: entry.glyph, lazy: entry.lazy });
+                this.addTab(entry.component, entry.label, {
+                    closeable:      entry.closeable,
+                    glyph:          entry.glyph,
+                    lazy:           entry.lazy,
+                    disposeOnClose: entry.disposeOnClose,
+                });
             }
         }
 
@@ -124,20 +131,22 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Conta
      * @param component - The content shown when this tab is selected, or a factory producing it.
      * @param label - The tab button's label.
      * @param options - Optional. Supports `{ closeable: true }`, a leading `glyph` name,
-     *   and `{ lazy: false }` to decline deferral.
+     *   `{ lazy: false }` to decline deferral, and `{ disposeOnClose: false }` to keep the
+     *   content alive (undestroyed) when its tab closes — see {@link Tab.closeTab}.
      *
      * @returns This panel, for method chaining.
      */
     addTab(
         component: Component | ComponentFactory,
         label: string,
-        options?: { closeable?: boolean; glyph?: string; lazy?: boolean },
+        options?: { closeable?: boolean; glyph?: string; lazy?: boolean; disposeOnClose?: boolean },
     ): this {
         const constraints = new LayoutConstraints();
-        constraints.name      = label;
-        constraints.closeable = options?.closeable ?? false;
-        constraints.glyph     = options?.glyph ?? null;
-        constraints.lazy      = options?.lazy;
+        constraints.name           = label;
+        constraints.closeable      = options?.closeable ?? false;
+        constraints.glyph          = options?.glyph ?? null;
+        constraints.lazy           = options?.lazy;
+        constraints.disposeOnClose = options?.disposeOnClose;
 
         this.addComponent(component, constraints);
 
@@ -150,11 +159,16 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Conta
      *
      * @param factory - Builds the content component on first activation.
      * @param label - The tab button's label.
-     * @param options - Optional. Supports `{ closeable: true }` and a leading `glyph` name.
+     * @param options - Optional. Supports `{ closeable: true }`, a leading `glyph` name,
+     *   and `{ disposeOnClose: false }` to keep the built content alive when its tab closes.
      *
      * @returns This panel, for method chaining.
      */
-    addLazyTab(factory: ComponentFactory, label: string, options?: { closeable?: boolean; glyph?: string }): this {
+    addLazyTab(
+        factory: ComponentFactory,
+        label: string,
+        options?: { closeable?: boolean; glyph?: string; disposeOnClose?: boolean },
+    ): this {
         return this.addTab(factory, label, options);
     }
 

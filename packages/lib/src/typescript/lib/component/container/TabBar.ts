@@ -1593,6 +1593,12 @@ class TabBar extends Container<TabBarOptions> {
             this._activeId = null;
         }
 
+        // Both callers (`Tab.closeEntry`, `Tab.removeEntryKeepingContent`) mint a
+        // fresh cell at wherever the tab ends up next — a close's destination is
+        // nowhere, a tear-off/re-dock's is a new strip — so the button itself is
+        // never reused and is destroyed on both paths.
+        entry.button.dispose();
+
         return this;
     }
 
