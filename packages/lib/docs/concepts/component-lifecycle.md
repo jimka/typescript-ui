@@ -137,6 +137,10 @@ The framework uses these in built-in components — `Button` adds a label in `in
 
 A registered child (anything passed to `addComponent` / `insertComponent`) needs none of this from its owner: when the parent itself is torn down, its teardown recurses into every registered child automatically. `removeComponent`, on the other hand, only detaches — it does not call `dispose()` or `destructor()`. A component you `removeComponent`'d and are discarding for good still needs an explicit `dispose()` call; nothing does that step for you. Discarding every child at once (a rebuild, not a re-parent) is what `disposeAllComponents()` is for — it disposes each one first.
 
+Closing a [`Tab`](/layouts/Tab) is the one container operation that **does** dispose on the caller's behalf: `Tab.closeTab` (and therefore [`TabPanel`](/components/TabPanel) and [`Dock`](/components/Dock)) `removeComponent`s the closed content and then calls its `dispose()`, unless the tab was registered with `LayoutConstraints.disposeOnClose: false` (or the `DockPanelSpec` / `TabPanel.addTab` equivalent) or a `"tabclose"` listener re-parented the content first. Every other container's removal verb — `removeComponent`, `Split`'s pane collapse, `Accordion`'s section collapse — stays a pure detach.
+
+Because teardown recursion calls `destructor()`, a consumer's own cleanup must live in a `protected destructor()` override on a `Component` subclass — never a `dispose()` method or field on a plain object that merely wraps a `Component`. The wrapper is not in any parent's child list, so nothing ever calls it; an owning `Component`'s `destructor()` must call the wrapper explicitly if the wrapper's cleanup needs to run.
+
 ## See also
 
 - [Mental model](/guide/mental-model) — the architectural overview

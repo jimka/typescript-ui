@@ -2,7 +2,7 @@
 
 [`serializeLayout`](/api/layout/functions/serializeLayout) and [`restoreLayout`](/api/layout/functions/restoreLayout) capture and restore the **arrangement** of the container managers that own topology — [`Split`](/layouts/Split) pane ratios, [`Tab`](/layouts/Tab) order and active index, and floating [`Window`](/api/overlay/classes/Window) rects, state, and internal split/tab arrangement — as a plain, serializable [`LayoutState`](/api/layout/interfaces/LayoutState) object.
 
-They do **not** serialize the component tree. A leaf panel is an arbitrary [`Component`](/api/core/classes/Component) subclass built imperatively with constructor arguments and post-construction wiring the framework cannot reconstruct from data. So the captured form is **topology + geometry only** — each leaf is recorded as a bare `{ kind: "panel", panelId }` reference, and on restore a caller-supplied [`LayoutFactory`](/api/layout/type-aliases/LayoutFactory) maps each `panelId` back to its content component. The library rebuilds the *containers*; the caller owns the *content*.
+They do **not** serialize the component tree. A leaf panel is an arbitrary [`Component`](/api/core/classes/Component) subclass built imperatively with constructor arguments and post-construction wiring the framework cannot reconstruct from data. So the captured form is **topology + geometry, plus the leaf's presentation and close-behaviour constraints** — each leaf is recorded as a `{ kind: "panel", panelId, glyph?, tooltip?, closeable?, disposeOnClose? }` node, and on restore a caller-supplied [`LayoutFactory`](/api/layout/type-aliases/LayoutFactory) maps each `panelId` back to its content component while the four constraint fields are re-applied to the re-homed leaf. The library rebuilds the *containers*; the caller owns the *content*. A state written before 0.4.1 carries only `panelId` and `glyph`, so restoring one leaves `tooltip`, `closeable` and `disposeOnClose` at their defaults on every leaf.
 
 ```
 serializeLayout(root) ──► LayoutState ──► (persist / hold in memory)
@@ -78,7 +78,7 @@ interface LayoutState {
 
 | Node | Captures |
 | --- | --- |
-| [`PanelNode`](/api/layout/interfaces/PanelNode) | A content leaf — just its `panelId`. |
+| [`PanelNode`](/api/layout/interfaces/PanelNode) | A content leaf's `panelId`, plus its captured `glyph`, `tooltip`, `closeable` and `disposeOnClose` constraints (all optional; a pre-0.4.1 state carries only `glyph`). |
 | [`SplitNode`](/api/layout/interfaces/SplitNode) | `direction`, child nodes, per-pane `ratios` (sum ~1.0) and `collapsed` flags. |
 | [`TabNode`](/api/layout/interfaces/TabNode) | Child nodes in tab order plus the `activeIndex`. |
 | [`WindowNode`](/api/layout/interfaces/WindowNode) | A `content` region tree (the float's internal split/tab arrangement), title `header`, `rect`, `state`, and the normal-state `restoreRect`. The legacy single-panel `panelId` is still read on restore as a fallback. |

@@ -55,6 +55,8 @@ tabbed.addComponent(advancedPanel,  { name: 'Advanced' });
 
 `empty` is a passive announcement: the `Tab` fires it but does nothing itself, so a strip you place deliberately stays on screen when emptied. A dock layer can subscribe to it to clean up — [`DockRegion`](/layouts/DockRegion) listens on the stacks it creates to remove an emptied stack and collapse a leftover single-pane [`Split`](/layouts/Split). It is orthogonal to `tabclose`: a close-button close fires `tabclose` (with the content) and then, if that was the last tab, `empty` (with none); a tear-off fires `detach` (with the new window) and, only when it drained the strip, `empty` too. `detach` is what lets a dock fold *every* tear-off into its model — [`Dock`](/api/overlay/classes/Dock) schedules an adoption sweep on it — since `empty` alone misses a tear-off that keeps siblings.
 
+A close **destroys** the content: once every `tabclose` listener has run, `Tab` disposes the removed component, releasing its element, handles, and per-instance stylesheet rules. A listener that re-parents the content during `tabclose` (`otherContainer.moveComponent(content)`) keeps it alive with no flag needed — it has an owner again by the time the destroy check runs. `disposeOnClose: false` opts out unconditionally, for a component the caller holds and intends to re-use.
+
 ## Per-child constraints
 
 | Field | Purpose |
@@ -62,6 +64,7 @@ tabbed.addComponent(advancedPanel,  { name: 'Advanced' });
 | `name` | Per-placement tab button label override (see resolution below). |
 | `closeable` | When `true`, render a [`TabCloseButton`](/components/TabCloseButton) inside the tab button. |
 | `glyph` | Optional registry glyph name shown leading the tab button's label (dispatched to the button's `setGlyph`). |
+| `disposeOnClose` | Whether closing this tab destroys its content. Defaults to `true`; pass `false` for a component you hold and intend to re-use after the tab closes. |
 
 A tab button's label resolves in priority order: the per-placement `name` constraint above, then the component's intrinsic [`name`](/api/core/classes/Component#getname) (which travels with it across moves and tear-offs), then its `id` as a last resort. So a component constructed with `{ name: "Console" }` labels its tab automatically — and its torn-off window title too — without any constraint, while the constraint stays available to override the label for a specific placement.
 
