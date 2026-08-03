@@ -782,7 +782,10 @@ class TabBar extends Container<TabBarOptions> {
      * rather than registered via `addComponent` (mirroring `WindowBorder`'s
      * strips), so the base class's recursive teardown cannot reach them —
      * they, and everything they in turn hold (tab cells, tool buttons, the
-     * lead widget), must be disposed explicitly here.
+     * lead widget), must be disposed explicitly here. `_contextMenu` is in
+     * the same position for a different reason: it is a LayerManager-mounted
+     * `Menu`, never a registered child of anything (see Menu.ts's class
+     * comment), so it needs the same explicit call.
      */
     protected destructor(): void {
         this.teardownTabDnD();
@@ -796,6 +799,7 @@ class TabBar extends Container<TabBarOptions> {
         this._indicator.dispose();
         this._dropTint.dispose();
         this._reorderBar.dispose();
+        this._contextMenu.dispose();
 
         super.destructor();
     }

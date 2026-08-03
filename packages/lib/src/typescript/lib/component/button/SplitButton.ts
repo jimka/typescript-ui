@@ -149,6 +149,18 @@ class SplitButton extends Button<SplitButtonOptions> {
     }
 
     /**
+     * Disposes the lazily-created dropdown, then runs the inherited teardown.
+     * `_menu` is a LayerManager-mounted panel, never a registered child (see
+     * Menu.ts's class comment), so `super.destructor()`'s child recursion
+     * cannot reach it.
+     */
+    protected destructor(): void {
+        this._menu?.dispose();
+
+        super.destructor();
+    }
+
+    /**
      * Replaces the dropdown items shown when the chevron is clicked.
      *
      * @param items - The new item configurations.

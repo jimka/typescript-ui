@@ -16,14 +16,24 @@
 //
 // Re-derived count (grep is a superset — read each hit before trusting it):
 // `grep -rn '^\s*protected destructor(' packages/lib/src/typescript/lib`
-// currently returns 20 hits. `Component.ts:726` is the base `destructor()`
-// this registry's rows override and doesn't belong here. Of the remaining 19,
-// five predate this plan and were never `dispose()`-named — `StatusBar.ts`,
-// `Canvas.ts`, `WebGLCanvas.ts`, `core/Panel.ts`, `overlay/AbstractWindow.ts`
-// — so they are out of this registry's scope (the classes this plan's
-// contract covers) the same way they were before the dispose()-to-destructor()
-// move. That leaves 14 real relocated overrides — matching this registry's 15
-// rows minus `Menu`, whose row is explained below.
+// currently returns 35 hits. `Component.ts:756` is the base `destructor()`
+// this registry's rows override and doesn't belong here. Five predate the
+// original component-teardown-seam.md move and were never `dispose()`-named
+// — `StatusBar.ts`, `Canvas.ts`, `WebGLCanvas.ts`, `core/Panel.ts`,
+// `overlay/AbstractWindow.ts` — so they stay out of this registry's scope.
+//
+// plans/implemented/table-tab-close-residual-leak.md added five of this
+// registry's rows — `MenuButton`, `SplitButton`, `ToolBar`, `Table`,
+// `MenuBar` — each gaining its first `destructor()` override to dispose a
+// `Menu` held in a private field (never a registered child; see Menu.ts's
+// class comment), plus one line inside `TabBar`'s pre-existing override for
+// the same reason. It did not audit the remaining, unaccounted-for hits —
+// several later, unrelated plans (`Dock`, `Notification`,
+// `DropZoneOverlay`, `Dialog`, `Drawer`, `Rail`, `DiagramView`,
+// `VirtualRowView`, `table/cell/Header`, plus the abstract `AnimatedDropdown`
+// and the singleton `Tooltip`) have added `destructor()` overrides without a
+// corresponding row here since this count was last reconciled — a
+// pre-existing gap this plan did not introduce and did not close.
 import { describe, it, expect } from 'vitest';
 import { Component } from '~/core/Component';
 import { Markdown } from '~/component/display/Markdown';
@@ -43,6 +53,12 @@ import { Popover } from '~/overlay/Popover';
 import { Link } from '~/component/input/Link';
 import { TabBar } from '~/component/container/TabBar';
 import { ScrollStrip } from '~/component/container/ScrollStrip';
+import { MenuButton, MenuButtonOptions } from '~/component/button/MenuButton';
+import { SplitButton } from '~/component/button/SplitButton';
+import { ToolBar } from '~/component/menubar/ToolBar';
+import { Button } from '~/component/button/Button';
+import { Table } from '~/component/table/Table';
+import { MenuBar } from '~/component/menubar/MenuBar';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
 
 /**
@@ -109,6 +125,86 @@ const REGISTRY: Array<{
     // ancestor-recursion contract this plan's fix depends on — for a real,
     // non-synthetic class.
     { name: 'Menu',    make: () => new Menu([{ text: 'A' }], () => {}) },
+    // `_menu` is lazily created (only on the first toggle), so a bare
+    // `new MenuButton(...)` never builds it — toggle the dropdown once to
+    // materialise it, mirroring the Popover row's `ensureArrow()` idiom.
+    // `_menu` is never a registered child (see Menu.ts's class comment), so
+    // it is only reached by this row at all because MenuButton's own
+    // `destructor()` now disposes it explicitly.
+    {
+        name: 'MenuButton',
+        make: () => {
+            const button = new MenuButton<MenuButtonOptions>('Export', { menuItems: [{ text: 'A', action: () => {} }] });
+
+            button.getElement(true);
+            (button as unknown as { toggleMenu(): void }).toggleMenu();
+
+            return button;
+        },
+    },
+    // Same shape as MenuButton, for SplitButton's own lazily-created `_menu`.
+    {
+        name: 'SplitButton',
+        make: () => {
+            const button = new SplitButton('Save', { menuItems: [{ text: 'A', action: () => {} }] });
+
+            button.getElement(true);
+            (button as unknown as { _toggleMenu(): void })._toggleMenu();
+
+            return button;
+        },
+    },
+    // `_overflowMenu` is built eagerly (`_createOverflowAffordance`), but
+    // `_toggleOverflowMenu()` only opens it once at least one child has
+    // overflowed — force that by adding several real-width buttons and
+    // narrowing the bar past all of them, then run a real layout pass so
+    // `_reflowOverflow` computes the overflow set before toggling.
+    {
+        name: 'ToolBar',
+        make: () => {
+            const bar = new ToolBar({ overflow: 'menu' });
+
+            bar.addComponents([
+                new Button('Some Label'),
+                new Button('Another Label'),
+                new Button('A Third Label'),
+            ]);
+            bar.getElement(true);
+            bar.setWidth(40);
+            bar.doLayout();
+            (bar as unknown as { _toggleOverflowMenu(): void })._toggleOverflowMenu();
+
+            return bar;
+        },
+    },
+    // `_columnContextMenu` is a non-nullable field, built eagerly, but writes
+    // no rule until `showColumnMenu` actually shows it (see the row-selection
+    // comment on `StyleTarget.set` elsewhere in this file's siblings).
+    {
+        name: 'Table',
+        make: () => {
+            const table = new Table(new MemoryStore(new Model([{ name: 'a', type: 'string', order: 0 }], 'a'), []));
+
+            table.getElement(true);
+            (table as unknown as { showColumnMenu(x: number, y: number): void }).showColumnMenu(0, 0);
+
+            return table;
+        },
+    },
+    // `_panels` are built by `setMenus` (constructor-time here, via the
+    // `menus` option) but each stays unopened — and so rule-less — until
+    // `openMenu` actually shows one.
+    {
+        name: 'MenuBar',
+        make: () => {
+            const bar = new MenuBar({ menus: [{ label: 'File', items: [{ text: 'A', action: () => {} }] }] });
+
+            bar.getElement(true);
+            bar.openMenu(0);
+
+            return bar;
+        },
+    },
     {
         // `ensureArrow()` is lazy (only called from `show()`), so a bare
         // `new Popover()` never builds `_arrowComponent` — call the private
@@ -127,7 +223,23 @@ const REGISTRY: Array<{
     { name: 'Link',    make: () => new Link('x') },
     {
         name: 'TabBar',
-        make: () => new TabBar(),
+        // Opens the real right-click context menu (rather than leaving
+        // `_contextMenu` unshown) so its row also exercises the new
+        // `_contextMenu.dispose()` line in `TabBar.destructor()` — driven the
+        // same way tests/component/container/TabBar.contextMenu.test.ts
+        // reaches `openTabMenu`, except against the real menu, not a stub.
+        make: () => {
+            const bar = new TabBar();
+
+            bar.createBarEntry('a', 'Alpha');
+
+            const entry = (bar as unknown as { _entries: unknown[] })._entries[0];
+
+            (bar as unknown as { openTabMenu(entry: unknown, x: number, y: number): void })
+                .openTabMenu(entry, 0, 0);
+
+            return bar;
+        },
         ownIds: (c) => {
             const bar = c as unknown as {
                 _tabClip: Component;
@@ -136,11 +248,12 @@ const REGISTRY: Array<{
                 _indicator: Component;
                 _dropTint: Component;
                 _reorderBar: Component;
+                _contextMenu: Component;
             };
 
             return collectIds(c, [
                 bar._tabClip, bar._toolGroup, bar._leadGroup,
-                bar._indicator, bar._dropTint, bar._reorderBar,
+                bar._indicator, bar._dropTint, bar._reorderBar, bar._contextMenu,
             ]);
         },
     },

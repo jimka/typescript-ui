@@ -188,6 +188,24 @@ class MenuBar extends Component {
     }
 
     /**
+     * Disposes every top-level dropdown, then runs the inherited teardown.
+     * `_panels` are LayerManager-mounted panels, never registered children
+     * (see Menu.ts's class comment), so `super.destructor()`'s child
+     * recursion cannot reach them. `_buttons` need no matching call — they
+     * are registered via `addComponent` above, so the base recursion already
+     * reaches them. `Component.dispose()` is idempotent, so a panel already
+     * disposed by a `setMenus` call that ran just before teardown costs
+     * nothing here.
+     */
+    protected destructor(): void {
+        for (const panel of this._panels) {
+            panel.dispose();
+        }
+
+        super.destructor();
+    }
+
+    /**
      * Programmatically opens the menu at the given index, closing any currently open menu first.
      *
      * @param index - Zero-based index into the menus array.
