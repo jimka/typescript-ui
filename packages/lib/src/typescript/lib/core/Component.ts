@@ -23,6 +23,7 @@ import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
 import { COMPONENT_CLASS, ensureClassStyleRule } from "~/core/ClassStyleRules.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
+import { measureBorderWidths } from "~/core/BorderWidths.js";
 
 //import { FastDom } from "~/FastDom.js";
 
@@ -2979,11 +2980,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Returns the per-side pixel widths of the component's border. Once the element
      * is connected to the document the widths are browser-measured (so `var()`,
      * `none`, and keywords all resolve) and cached until the next
-     * `setBorder`/`clearBorder` or theme change. Before the element is connected,
-     * `getComputedStyle` can't resolve `var()` (the element doesn't yet inherit
-     * from `:root`), so it falls back to an estimate from the spec strings that
-     * resolves a leading `var(--name)` against `:root` directly. The estimate is
-     * not cached, so it is re-measured authoritatively once the element connects.
+     * `setBorder`/`clearBorder` or theme change. The measurement itself is shared
+     * by every component carrying the same border specification — not repeated
+     * per instance — and discarded on theme change; a border side whose width is
+     * font-relative (`em`/`ex`/`ch`/`lh`) opts out of sharing and is measured per
+     * component, since it can resolve differently on each element. Before the
+     * element is connected, `getComputedStyle` can't resolve `var()` (the element
+     * doesn't yet inherit from `:root`), so it falls back to an estimate from the
+     * spec strings that resolves a leading `var(--name)` against `:root` directly.
+     * The estimate is not cached, so it is re-measured authoritatively once the
+     * element connects.
      *
      * @returns A PerimeterSize with zero values on each side when no border is set.
      */
@@ -3001,14 +3007,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (element && DOM.source.isConnected(element)) {
             // Authoritative: getComputedStyle resolves var()/none/keywords to "<n>px"
             // once the element is in the document and inherits :root's custom props.
-            const cs = DOM.source.getBorderWidths(element);
-
-            this._borderWidths = {
-                top:    borderSideWidth(cs.top),
-                right:  borderSideWidth(cs.right),
-                bottom: borderSideWidth(cs.bottom),
-                left:   borderSideWidth(cs.left),
-            };
+            this._borderWidths = measureBorderWidths(this._border, element);
 
             return this._borderWidths;
         }

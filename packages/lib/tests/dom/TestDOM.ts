@@ -16,6 +16,7 @@ import { DOM, type DOMSink, type DOMSource, type ElementPatch, type Handle, type
 import type { Component } from '~/core/Component';
 import type { Size } from '~/primitive/Size';
 import type { TextMeasureOptions, TextMetrics } from '~/core/Util';
+import { clearBorderWidths } from '~/core/BorderWidths';
 
 /**
  * Per-font baked metrics: font ascent/descent/cap-top plus per-character
@@ -1380,6 +1381,10 @@ export function installTestDOM(config: ModelledDOMConfig): RecordingDOMSink {
     _table = new TestHandleTable();
     _windowHandle = _table.mint('window');
     _fullscreenHandle = null;
+
+    // Drop any border-width measurements shared from a previously installed
+    // source, so a test file's cases cannot inherit widths measured against it.
+    clearBorderWidths();
 
     const sink   = new RecordingDOMSink();
     const source = new ModelledDOMSource(config);
