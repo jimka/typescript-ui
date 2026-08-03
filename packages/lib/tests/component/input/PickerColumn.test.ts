@@ -4,9 +4,21 @@
 // and wired as a click listener; cast to invoke it directly (the offline sink
 // runs no event loop). No TestDOM: selection state is read back without a
 // layout pass.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { PickerCell, PickerCellList, PickerColumn } from '~/component/input/PickerColumn';
 import { Component } from '~/core/Component';
+import { installTestDOM } from '../../dom/TestDOM';
+import fontMetrics from '../../dom/font-metrics.test-font.json';
+import { DOM } from '~/core/DOM';
+import { _ruleCacheKeys } from '~/core/StyleTarget';
+
+const CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
 
 describe('PickerCell selected state', () => {
     it('round-trips setSelected/isSelected', () => {
@@ -124,5 +136,28 @@ describe('PickerCellList getMinSize (scroll surface)', () => {
         expect(min!.height).toBe(0);
         // Horizontal min is preserved so the column still reserves label width.
         expect(min!.width).toBe(40);
+    });
+});
+
+// Regression: clearCells only detached the old cells via removeAllComponents,
+// leaking each cell's per-instance style rule every time the year scroller
+// (or any other clearCells caller) rebuilds its cell list.
+describe('PickerColumn.clearCells — disposes replaced cells', () => {
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => DOM.reset());
+
+    it('evicts the old cells\' style rules on clearCells', () => {
+        const column = new PickerColumn('Hour');
+        const cells  = ['00', '05', '10'].map(label => new PickerCell(label, () => {}));
+
+        cells.forEach(cell => column.addCell(cell));
+        cells.forEach(cell => cell.getElement(true));
+
+        const ids = cells.map(cell => cell.getId());
+        expect(ids.some(id => _ruleCacheKeys().some(key => key.startsWith('#' + id)))).toBe(true);
+
+        column.clearCells();
+
+        expect(ids.some(id => _ruleCacheKeys().some(key => key.startsWith('#' + id)))).toBe(false);
     });
 });

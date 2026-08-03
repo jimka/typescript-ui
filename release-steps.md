@@ -11,7 +11,7 @@ Run `npm install --package-lock-only` at the root to update package-lock.json
 
 ## Verify publish readiness.
 
-Verify that the changelog looks ok and contains everything in the coming version.
+Verify that the changelog and migration guides looks ok and contains everything in the coming version.
 
 Run from root:
 - npm run test

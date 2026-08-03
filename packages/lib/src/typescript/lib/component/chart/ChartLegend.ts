@@ -171,7 +171,7 @@ class ChartLegend extends Panel<ChartLegendOptions> {
 
         this._entries = entries.map((e) => ({ ...e }));
 
-        this.removeAllComponents();
+        this.disposeAllComponents();
         this._rows = [];
 
         for (const entry of this._entries) {

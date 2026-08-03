@@ -1,8 +1,20 @@
 // ChartLegend composition: setEntries builds one row per entry; the toggle
 // event fires with the clicked row's index (click routing is exercised via the
 // white-box emit seam, since real hit-testing is a manual-verify).
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { _ChartLegend } from '~/component/chart/ChartLegend';
+import { installTestDOM } from '../../dom/TestDOM';
+import fontMetrics from '../../dom/font-metrics.test-font.json';
+import { DOM } from '~/core/DOM';
+import { _ruleCacheKeys } from '~/core/StyleTarget';
+
+const CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
 
 /** White-box subclass exposing the protected emit so toggle fan-out is testable. */
 class TestLegend extends _ChartLegend {
@@ -101,5 +113,29 @@ describe('ChartLegend toggle event', () => {
         legend.fireToggle(5);
 
         expect(seen).toEqual([5]);
+    });
+});
+
+// Regression: setEntries rebuilds every row (Panel + swatch Component + Text)
+// but previously only detached the old ones via removeAllComponents, leaking
+// each row's per-instance style rule on every rebuild.
+describe('ChartLegend.setEntries — disposes replaced rows', () => {
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => DOM.reset());
+
+    it('evicts the prior rows\' style rules on a subsequent setEntries', () => {
+        const legend = new _ChartLegend();
+
+        legend.setEntries([{ name: 'A', color: '#111' }, { name: 'B', color: '#222' }]);
+
+        const oldRows = legend.getComponents();
+        oldRows.forEach((row) => row.getElement(true));
+        const ids = oldRows.map((row) => row.getId());
+
+        expect(ids.some((id) => _ruleCacheKeys().some((key) => key.startsWith('#' + id)))).toBe(true);
+
+        legend.setEntries([{ name: 'Solo', color: '#333' }]);
+
+        expect(ids.some((id) => _ruleCacheKeys().some((key) => key.startsWith('#' + id)))).toBe(false);
     });
 });

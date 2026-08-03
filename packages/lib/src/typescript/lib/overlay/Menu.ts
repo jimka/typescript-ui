@@ -276,14 +276,8 @@ class Menu extends Component implements DismissableLayer {
         this._rebuildOnClose = onClose;
         this._excludedEl = excludeEl;
 
-        for (const item of this._menuItems) {
-            if (item instanceof MenuItem) {
-                item.dispose();
-            }
-        }
-
         this._menuItems = [];
-        this.removeAllComponents();
+        this.disposeAllComponents();
 
         this.pauseLayout();
 
@@ -895,15 +889,9 @@ class Menu extends Component implements DismissableLayer {
     private rebuildPersistentItems(configs: MenuItemConfig[]): void {
         this.closeOpenSubmenu();
 
-        for (const item of this._menuItems) {
-            if (item instanceof MenuItem) {
-                item.dispose();
-            }
-        }
-
         this._menuItems = [];
         this._focusedIndex = -1;
-        this.removeAllComponents();
+        this.disposeAllComponents();
 
         this.buildPersistentItems(configs);
     }

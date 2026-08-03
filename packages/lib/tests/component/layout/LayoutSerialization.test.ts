@@ -12,6 +12,7 @@ import { serializeLayout, restoreLayout, type LayoutFactory } from '~/layout/Lay
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
+import { _ruleCacheKeys } from '~/core/StyleTarget';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -151,16 +152,26 @@ describe('restoreLayout round-trip', () => {
         installTestDOM(CONFIG);
 
         const split = new Container({ layoutManager: new Split({ orientation: 'horizontal' }) });
-        const a = new Component({}); a.setId('a');
-        const b = new Component({}); b.setId('b');
+        // Ids unique within this file (not 'a'/'b') — the style-rule cache
+        // below is process-global and not cleared by DOM.reset(), so a
+        // colliding id would pick up another test's still-live rule.
+        const a = new Component({}); a.setId('l3-a');
+        const b = new Component({}); b.setId('l3-b');
 
         split.addComponent(a);
         split.addComponent(b);
 
+        // L3: the dropped leaf is rendered before restoreLayout runs, so its
+        // style rule's fate can be checked below — previously it was silently
+        // orphaned but never disposed.
+        b.getElement(true);
+        const bId = b.getId();
+        expect(_ruleCacheKeys().some(key => key.startsWith('#' + bId))).toBe(true);
+
         const state = serializeLayout(split);
 
-        // Factory drops 'b'.
-        const factory: LayoutFactory = (id) => (id === 'a' ? a : null);
+        // Factory drops 'l3-b'.
+        const factory: LayoutFactory = (id) => (id === 'l3-a' ? a : null);
 
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -173,8 +184,93 @@ describe('restoreLayout round-trip', () => {
         const children = (after.root as { children: Array<{ panelId?: string }> }).children;
 
         expect(children.length).toBe(1);
-        expect(children[0].panelId).toBe('a');
+        expect(children[0].panelId).toBe('l3-a');
+
+        // L3: the dropped leaf is now disposed (caught by the scaffold-disposal
+        // sweep, since it was never parked) rather than silently orphaned.
+        expect(_ruleCacheKeys().some(key => key.startsWith('#' + bId))).toBe(false);
 
         warn.mockRestore();
+    });
+
+    it('L1: disposes the interior scaffold container left behind after leaves are parked', () => {
+        installTestDOM(CONFIG);
+
+        const root = new Container({ layoutManager: new Split({ orientation: 'horizontal' }) });
+        const nested = new Container({ layoutManager: new Split({ orientation: 'vertical' }) });
+        const a = new Component({}); a.setId('a');
+        const b = new Component({}); b.setId('b');
+        const c = new Component({}); c.setId('c');
+
+        nested.addComponent(a);
+        nested.addComponent(b);
+        root.addComponent(nested);
+        root.addComponent(c);
+
+        nested.getElement(true);
+        const nestedId = nested.getId();
+        expect(_ruleCacheKeys().some(key => key.startsWith('#' + nestedId))).toBe(true);
+
+        const state = serializeLayout(root);
+
+        restoreLayout(root, state, instanceFactory({ a, b, c }));
+
+        expect(_ruleCacheKeys().some(key => key.startsWith('#' + nestedId))).toBe(false);
+    });
+
+    it('L2: detaches (but does not dispose) a transient child, mirroring a Dock empty-state placeholder', () => {
+        installTestDOM(CONFIG);
+
+        const root = new Container({ layoutManager: new Tab() });
+        const leaf = new Component({}); leaf.setId('leaf');
+
+        root.addComponent(leaf);
+
+        const state = serializeLayout(root);
+
+        // The transient child is mounted after the state was captured — it is
+        // never part of `state`, the same way a Dock's empty-state placeholder
+        // is never captured by serializeLayout.
+        const placeholder = new Component({});
+        root.addComponent(placeholder, Object.assign(new LayoutConstraints(), { transient: true }));
+        placeholder.getElement(true);
+        const placeholderId = placeholder.getId();
+
+        restoreLayout(root, state, instanceFactory({ leaf }));
+
+        expect(placeholder.getParentComponent()).toBeNull();
+        expect(_ruleCacheKeys().some(key => key.startsWith('#' + placeholderId))).toBe(true);
+    });
+
+    it('L2b: a transient child mounted before a leaf does not cause the leaf to be skipped', () => {
+        installTestDOM(CONFIG);
+
+        const root = new Container({ layoutManager: new Tab() });
+
+        // Transient child mounted FIRST, ahead of the leaf: collectLeaves walks
+        // getComponents() and detaches a transient child mid-walk, so removing
+        // an earlier sibling must not shift a later one out from under the
+        // walk's cursor and cause it to be silently skipped (and later
+        // wrongly disposed rather than parked).
+        const placeholder = new Component({});
+        root.addComponent(placeholder, Object.assign(new LayoutConstraints(), { transient: true }));
+
+        const leaf = new Component({}); leaf.setId('leaf-after-transient');
+        root.addComponent(leaf);
+
+        const state = serializeLayout(root);
+
+        // Spied rather than inferred from getParentComponent(): a leaf skipped
+        // by a buggy walk is left behind in root's tree, so the later
+        // scaffold-disposal sweep disposes it — but materializeNode's
+        // `parked.get(id) ?? factory(id)` fallback then re-attaches that same
+        // (already-disposed) instance via the factory, which would make a bare
+        // getParentComponent() === root check pass despite the dispose.
+        const disposeSpy = vi.spyOn(leaf, 'dispose');
+
+        restoreLayout(root, state, instanceFactory({ 'leaf-after-transient': leaf }));
+
+        expect(disposeSpy).not.toHaveBeenCalled();
+        expect(leaf.getParentComponent()).toBe(root);
     });
 });

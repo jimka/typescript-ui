@@ -323,7 +323,7 @@ class PickerColumn extends Component {
      * @returns This component, for method chaining.
      */
     clearCells(): this {
-        this._cellList.removeAllComponents();
+        this._cellList.disposeAllComponents();
 
         return this;
     }
