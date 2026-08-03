@@ -101,6 +101,18 @@ class TabButton extends ToggleButton {
     }
 
     /**
+     * Disposes the overlaid close button, then runs the inherited teardown.
+     * `_closeButton` is raw-appended onto this button's own element rather than
+     * registered via `addComponent` (see `buildCloseButton`'s doc comment), so
+     * `super.destructor()`'s child recursion cannot reach it.
+     */
+    protected destructor(): void {
+        this._closeButton?.dispose();
+
+        super.destructor();
+    }
+
+    /**
      * Paints the tab's unselected, hover, and selected states from the
      * `--ts-ui-tab-button-*` theme tokens. The unselected fill routes the tab
      * token through both the background colour *and* image layer so Button's

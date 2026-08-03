@@ -59,6 +59,7 @@ import { ToolBar } from '~/component/menubar/ToolBar';
 import { Button } from '~/component/button/Button';
 import { Table } from '~/component/table/Table';
 import { MenuBar } from '~/component/menubar/MenuBar';
+import { TabButton } from '~/component/button/TabButton';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
 
 /**
@@ -222,6 +223,16 @@ const REGISTRY: Array<{
     },
     { name: 'Link',    make: () => new Link('x') },
     {
+        name: 'TabButton',
+        make: () => {
+            const button = new TabButton('Home', { closeable: true });
+
+            button.getElement(true);
+
+            return button;
+        },
+    },
+    {
         name: 'TabBar',
         // Opens the real right-click context menu (rather than leaving
         // `_contextMenu` unshown) so its row also exercises the new
@@ -231,7 +242,7 @@ const REGISTRY: Array<{
         make: () => {
             const bar = new TabBar();
 
-            bar.createBarEntry('a', 'Alpha');
+            bar.createBarEntry('a', 'Alpha', { closeable: true });
 
             const entry = (bar as unknown as { _entries: unknown[] })._entries[0];
 
@@ -249,11 +260,15 @@ const REGISTRY: Array<{
                 _dropTint: Component;
                 _reorderBar: Component;
                 _contextMenu: Component;
+                _entries: Array<{ button: { getCloseButton(): Component | null } }>;
             };
+
+            const closeButton = bar._entries[0].button.getCloseButton();
 
             return collectIds(c, [
                 bar._tabClip, bar._toolGroup, bar._leadGroup,
                 bar._indicator, bar._dropTint, bar._reorderBar, bar._contextMenu,
+                ...(closeButton ? [closeButton] : []),
             ]);
         },
     },
