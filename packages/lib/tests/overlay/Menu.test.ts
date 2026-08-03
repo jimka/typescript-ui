@@ -444,6 +444,34 @@ describe('Menu as DismissableLayer', () => {
         expect(LayerManager.getTopLayer()).not.toBe(menu);
     });
 
+    it('dispose() while open unregisters from LayerManager', () => {
+        installTestDOM(CONFIG);
+
+        // LayerManager is a module-level singleton with no reset hook, and a
+        // few tests elsewhere in this file (`Menu rebuild-mode submenus`)
+        // hover a submenu without ever closing the parent, leaving it
+        // registered. Drain any such stray layers first so the absolute
+        // `toBeNull()` below reflects only this test's own menu.
+        let stray = LayerManager.getTopLayer();
+
+        while (stray) {
+            LayerManager.unregister(stray);
+            stray = LayerManager.getTopLayer();
+        }
+
+        const menu = new Menu();
+
+        menu.show(100, 100, [{ text: 'A', action: () => {} }]);
+        expect(LayerManager.getTopLayer()).toBe(menu);
+
+        // dispose() bypasses hide()'s fade-then-unregister path entirely —
+        // cancelling the fades in destructor() must not leave the menu
+        // registered.
+        menu.dispose();
+
+        expect(LayerManager.getTopLayer()).toBeNull();
+    });
+
     it('reports the click-outside dismiss mode and the dropdown band', () => {
         installTestDOM(CONFIG);
 
