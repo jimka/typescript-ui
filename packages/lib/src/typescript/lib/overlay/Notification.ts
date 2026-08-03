@@ -569,12 +569,16 @@ export class Notification extends Component {
     }
 
     /**
-     * Removes this notification from the active stack and from the DOM.
+     * Removes this notification from the active stack and destroys it.
+     *
+     * @remarks A dismissed toast is discarded and never re-shown — `show`
+     * returns `void`, so no consumer ever holds the instance — so this is a
+     * pure destroy with no consumer-visible contract change.
      */
     private finishDismiss(): void {
         Notification.activeNotifications = Notification.activeNotifications.filter(n => n !== this);
 
-        this.removeElement();
+        this.dispose();
 
         Notification.restack();
     }
@@ -646,6 +650,12 @@ export class Notification extends Component {
         this._showAnimation = null;
         this._dismissAnimation?.cancel();
         this._dismissAnimation = null;
+
+        // Subtree listeners are keyed by component id in a module-level map
+        // that element removal does not purge — unhook the pair `init`
+        // registers or they (and the closures they hold) leak.
+        Event.removeSubtreeListener(this, "mouseover", this._boundOnMouseOver);
+        Event.removeSubtreeListener(this, "mouseout",  this._boundOnMouseOut);
 
         // `finishDismiss` is the only place a notification leaves the static
         // active list, and cancelling above suppressed it. That list outlives
