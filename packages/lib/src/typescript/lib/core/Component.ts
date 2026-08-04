@@ -409,6 +409,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // evaluated. Plain initializer: only propagateEffectiveVisibility
     // (post-render) writes it, never a cascade setter.
     private _lastEffectiveVisible : boolean | null           = null;
+    // Set by release(), consumed at the end of the next init() to queue the
+    // scroll/focus restore. Plain initializer: only release() and init() write
+    // it, never a cascade setter.
+    private _pendingRematerialize   : boolean = false;
+    // Captured at release(), consumed by restoreReleasedState() on rebuild.
+    private _refocusOnRematerialize : boolean = false;
     // Cache for setAnimationPlayState. Plain initializer for the same reason.
     private _animationPlayState   : string | null            = null;
     private _outline              : string | null           = null;
@@ -1034,6 +1040,57 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         DOM.sink.removeElement(element);
 
         return this;
+    }
+
+    /**
+     * Releases this component's DOM element — detaches the node from the
+     * document and clears the cached handle — while keeping the component
+     * object alive and reusable. A fresh element is built lazily the next time
+     * getElement(true) is called. Distinct from dispose(), which destroys the
+     * component. Refused (returns false, no-op) unless the component opts in by
+     * overriding the release gate; also a no-op when no element is materialised.
+     *
+     * @returns true if an element was released, false if refused or none was live.
+     */
+    release(): boolean {
+        if (!this.canRelease()) {
+            return false;
+        }
+
+        // Read the field directly — NOT getElement(), which would resurrect a
+        // detached node by id.
+        const element = this._element;
+        if (!element) {
+            return false;
+        }
+
+        // Capture focus intent before the node leaves the document.
+        this._refocusOnRematerialize = DOM.source.getActiveElement() === element;
+
+        // Tear any active clip / content frame down first so their fields reset
+        // to null and the next layout re-frames the fresh element (mirrors
+        // destructor()'s teardown, minus child/theme/style-rule disposal).
+        this.clearClipFrame();
+        this.clearContentFrame();
+
+        // Detach the node so getElement()'s by-id lookup misses and render() runs.
+        DOM.sink.removeElement(element);
+
+        // Abandon any transition still running against the handle released below.
+        // A pending deferred write — Animation.play's two-frame entrance dance, or
+        // its completion — would otherwise resolve a released handle and throw.
+        // Mirrors destructor()'s same guard.
+        cancelTransitions(element);
+
+        // Drop the outgoing handle so it can never be resolved again and
+        // _ownedHandles does not accumulate a dead entry per release cycle.
+        DOM.sink.release(element);
+        this.untrackHandle(element);
+
+        this._element               = undefined;
+        this._pendingRematerialize   = true;
+
+        return true;
     }
 
     /**
@@ -3327,6 +3384,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Whether this component supports releasing its element without being
+     * destroyed. Default false — a component becomes releasable only by
+     * overriding this to true, and only once its own element-derived state is
+     * provably rebuilt by render()/init() or absent.
+     *
+     * @returns `true` to allow {@link release} to detach and later rebuild this
+     *   component's element; `false` to refuse release.
+     */
+    protected canRelease(): boolean {
+        return false;
+    }
+
+    /**
      * Clamps a width value to this component's `[minSize.width, maxSize.width]`
      * range so {@link setWidth}, {@link setHeight}, and {@link setSize} cannot
      * drive `_width` / `_height` outside it. The bounding constraints are the
@@ -3549,6 +3619,30 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         return this;
+    }
+
+    /**
+     * Restores the scroll offset and focus a released element held, onto the
+     * freshly rebuilt element — queued by {@link release} / `init()` into the
+     * first-connected-layout drain, since neither lands on a still-detached
+     * element.
+     *
+     * @param element - The freshly rebuilt element to restore state onto.
+     */
+    private restoreReleasedState(element: Handle): void {
+        // Routed through getScrollElement() — not the raw root `element` — so a
+        // subclass whose scroll happens on an inner element (see getScrollElement's
+        // own doc) restores onto the same target every other scroll write uses.
+        const scrollElement = this.getScrollElement();
+        if (scrollElement && (this._scrollLeft !== 0 || this._scrollTop !== 0)) {
+            DOM.sink.apply(scrollElement, { scrollLeft: this._scrollLeft, scrollTop: this._scrollTop });
+        }
+
+        if (this._refocusOnRematerialize) {
+            this._refocusOnRematerialize = false;
+            // preventScroll: avoid focus-scroll pollution of an overflow:hidden ancestor.
+            DOM.sink.focus(element, { preventScroll: true });
+        }
     }
 
     /**
@@ -5588,6 +5682,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             let compElement = component.getElement(true);
 
             DOM.sink.appendChild(element, compElement!);
+        }
+
+        if (this._pendingRematerialize) {
+            this._pendingRematerialize = false;
+            // Queue the scroll/focus restore for the first connected layout — a
+            // detached element cannot hold scroll or focus. Pushed directly
+            // (not via onFirstLayout, which calls getElement() — unset here
+            // mid-render) and paired with a scheduled layout to guarantee the
+            // drain.
+            (this._firstLayoutCallbacks ??= []).push(() => this.restoreReleasedState(element));
+            this.scheduleLayout();
         }
 
         return this;
