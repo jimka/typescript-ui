@@ -68,6 +68,9 @@ function ensureMarkdownClassRules(): void {
             borderRadius: "var(--ts-ui-border-radius, 3px)",
             // Snug em-relative padding so the wash hugs inline code glyphs.
             padding:      "0.1em 0.3em",
+            // Reset the prose line-height the root sets for reading — code reads
+            // as fixed-width text, not continuous prose.
+            lineHeight:   "normal",
         },
     });
 
@@ -85,6 +88,9 @@ function ensureMarkdownClassRules(): void {
             // than reflow them.
             whiteSpace:   "pre",
             overflow:     "auto",
+            // Reset the prose line-height the root sets for reading — fenced
+            // code reads as fixed-width text, not continuous prose.
+            lineHeight:   "normal",
         },
     });
 
@@ -349,6 +355,17 @@ class Markdown extends Component<MarkdownOptions> {
         // its own `white-space: pre` + self-scroll from the `pre` class rule.
         this.setWhiteSpace("normal");
         this.setElementCSSRule("overflowWrap", "break-word");
+
+        // Prose reads continuously, unlike the framework's UI controls (tuned
+        // for scanned single-line text), so it wants looser leading. Inherits
+        // to every prose descendant; code/pre reset it back to "normal" via
+        // their own class rules.
+        this.setElementCSSRule("lineHeight", "var(--ts-ui-md-line-height, 1.6)");
+
+        // Caps the prose column to a comfortable reading measure regardless of
+        // how wide the assigned layout box is; oversized tables/code fall back
+        // to their own class-rule horizontal scroll within the capped column.
+        this.setElementCSSRule("maxWidth", "var(--ts-ui-md-max-measure, 70ch)");
 
         // Prose metrics (font, spacing) are theme-bound, so a theme swap can
         // change the rendered height — re-measure when it fires (mirrors Text).

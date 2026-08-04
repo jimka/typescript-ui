@@ -8,6 +8,7 @@ import { getNav } from '../content/pages.js';
 import type { NavGroup, NavEntry } from '../content/pages.js';
 import { API_PREFIX, getApiNav } from '../content/api.js';
 import type { ApiNavNode } from '../content/api.js';
+import { Insets } from '@jimka/typescript-ui/primitive';
 
 // Wide enough for the longest nav label ("Linking a local library checkout"),
 // which sits one indent level deeper than any Phase-1 label, without
@@ -40,6 +41,7 @@ class DocsSidebar extends Panel {
         super(options, {
             layoutManager: Fit(),
             preferredSize: { width: SIDEBAR_WIDTH, height: 0 },
+            insets: new Insets(0, 0, 0, 0)
         });
 
         this._router = router;

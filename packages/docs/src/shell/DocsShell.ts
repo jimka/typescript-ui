@@ -1,4 +1,4 @@
-import { callable, Panel } from '@jimka/typescript-ui/core';
+import { callable, Container, Panel } from '@jimka/typescript-ui/core';
 import { Border } from '@jimka/typescript-ui/layout';
 import { Placement } from '@jimka/typescript-ui/primitive';
 import { Header } from '@jimka/typescript-ui/component/display';
@@ -15,17 +15,27 @@ import { DocsContent } from './DocsContent.js';
  * shell mirrors the demo app's composition" in
  * plans/implemented/packages-docs.md.
  */
-class DocsShell extends Panel {
+class DocsShell extends Container {
 
     private readonly _sidebar: DocsSidebar;
     private readonly _content: DocsContent;
 
     constructor(router: Router) {
-        super({ layoutManager: Border() });
+        super({ layoutManager: Border( { spacing: 0 }) });
 
-        const header = new Header('@jimka/typescript-ui');
+        const header = new Header('@jimka/typescript-ui', {
+            backgroundColor: "#f6f6f7",
+            border: {
+                borderBottom: "1px solid var(--ts-ui-statusbar-border, rgb(220, 220, 220))"
+            }
+        });
 
-        this._sidebar = new DocsSidebar(router);
+        this._sidebar = new DocsSidebar(router, {
+            backgroundColor: "#f6f6f7",
+            border: {
+                borderRight: "1px solid var(--ts-ui-statusbar-border, rgb(220, 220, 220))"
+            }
+        });
         this._content = new DocsContent(router);
 
         const statusBar = new StatusBar({

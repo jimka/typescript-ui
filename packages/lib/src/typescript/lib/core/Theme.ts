@@ -673,6 +673,30 @@ export interface Theme {
     };
 
     /**
+     * Tokens consumed by [`Markdown`](/api/component/display/classes/Markdown).
+     * Scheme-invariant, so the value lives in {@link BaseTheme}, not the
+     * per-scheme palettes.
+     */
+    markdown: {
+        /**
+         * Unitless line-height for flowed prose (paragraphs, list items,
+         * headings, blockquotes). Deliberately looser than the framework's
+         * UI line-height, which is tuned for scanned single-line controls
+         * rather than continuously read text. Code/pre keep the UA's
+         * `normal` line-height regardless of this token.
+         */
+        lineHeight: string;
+        /**
+         * Max width of the prose column, as a CSS length — typically a `ch`
+         * value so it tracks the reading measure (comfortable line length is
+         * roughly 45–75 characters) rather than a fixed pixel width. Caps the
+         * root element, so it also bounds oversized tables/code blocks, which
+         * fall back to their own horizontal scroll within the capped column.
+         */
+        maxMeasure: string;
+    };
+
+    /**
      * Charting tokens consumed by the [`component/chart`](/api/component/chart) family.
      * `series` is the ordered categorical palette — emitted as
      * `--ts-ui-chart-series-1 … --ts-ui-chart-series-N`, one custom property per
@@ -1173,6 +1197,8 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-filedropzone-active-bg'           : theme.fileDropZone.activeBackground,
         '--ts-ui-filedropzone-active-border'       : theme.fileDropZone.activeBorder,
         '--ts-ui-scroll-shadow-color'              : theme.scroll.shadowColor,
+        '--ts-ui-md-line-height'                   : theme.markdown.lineHeight,
+        '--ts-ui-md-max-measure'                   : theme.markdown.maxMeasure,
         '--ts-ui-chart-axis'                       : theme.chart.axis,
         '--ts-ui-chart-grid'                       : theme.chart.grid,
         '--ts-ui-chart-label'                      : theme.chart.label,

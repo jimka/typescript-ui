@@ -1,5 +1,5 @@
-import { callable, Component, Panel } from '@jimka/typescript-ui/core';
-import type { PanelOptions } from '@jimka/typescript-ui/core';
+import { callable, Component, Container, Panel, ThemeManager } from '@jimka/typescript-ui/core';
+import type { ContainerOptions } from '@jimka/typescript-ui/core';
 import { Fit, VBox, AnchorType } from '@jimka/typescript-ui/layout';
 import { ToggleButton } from '@jimka/typescript-ui/component/button';
 import { Markdown } from '@jimka/typescript-ui/component/display';
@@ -10,22 +10,29 @@ const SHOW_SOURCE_LABEL = "Show source";
 const HIDE_SOURCE_LABEL = "Hide source";
 
 /**
- * Widest a demo block is allowed to get, whatever the window.
- *
- * The pane the docs content scrolls in is full-bleed, so an uncapped block
- * stretches its demo across the whole monitor: a table's four columns spread
- * to a couple of hundred pixels each, a chart's bars grow to the width of a
- * hand, and a form's inputs run the length of the page. The cap is the width
- * axis' counterpart to a module's `height` — the module fixes how tall its
- * live area is, this fixes how wide it may become.
+ * Widest a demo block is allowed to get, whatever the window, resolved from
+ * Markdown's own `--ts-ui-md-max-measure` theme token so a demo block's right
+ * edge lines up with the prose column around it instead of sticking out past
+ * it. Resolved via an off-screen probe rather than parsed from the `ch`
+ * value by hand — `ch` is font-relative, and the probe picks up whatever
+ * font the active theme has applied to `<html>`, the same as Markdown's own
+ * prose.
  *
  * It sits on the block rather than on the stage so the "Show source" toggle,
  * anchored to the block's east edge, stays against the stage's right edge
- * instead of drifting off to the far side of the pane. The block is left
- * narrower than the pane rather than centred, so demos line up on the prose's
- * left edge.
+ * instead of drifting off to the far side of the pane.
+ *
+ * @returns The resolved max width in pixels, rounded up.
  */
-const BLOCK_MAX_WIDTH = 900;
+function resolveBlockMaxWidth(): number {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;visibility:hidden;width:var(--ts-ui-md-max-measure, 70ch);';
+    document.body.appendChild(probe);
+    const width = probe.getBoundingClientRect().width;
+    document.body.removeChild(probe);
+
+    return Math.ceil(width);
+}
 
 /**
  * An inline live demo block: a bordered, scrollable stage holding the
@@ -35,7 +42,7 @@ const BLOCK_MAX_WIDTH = 900;
  * stops the docs app's link interception at its own boundary" in
  * plans/implemented/docs-inline-demos.md.
  */
-class DocsDemo extends Panel {
+class DocsDemo extends Container {
 
     private readonly _stage:  Panel;
     private readonly _toggle: ToggleButton;
@@ -61,10 +68,25 @@ class DocsDemo extends Panel {
         }
     };
 
-    constructor(entry: DemoEntry, options?: PanelOptions) {
+    /**
+     * Handle to detach the {@link ThemeManager.onThemeChange} listener on
+     * {@link destructor}. That listener also fires once the web font
+     * settles (see `Theme.ts`'s `scheduleFontReflow`), which is why it is
+     * needed here at all: `resolveBlockMaxWidth`'s first call, made from the
+     * constructor below, can race the font-display: swap fallback face and
+     * cache a wrong (too-wide) measure — this re-resolves it once the real
+     * face is active, mirroring `Markdown`'s own re-measure-on-theme-change.
+     */
+    private readonly _unsubscribeTheme: () => void;
+
+    constructor(entry: DemoEntry, options?: ContainerOptions) {
         super(options, {
             layoutManager: VBox({ stretching: true }),
-            maxSize:       { width: BLOCK_MAX_WIDTH, height: UNBOUNDED },
+            maxSize:       { width: resolveBlockMaxWidth(), height: UNBOUNDED },
+        });
+
+        this._unsubscribeTheme = ThemeManager.onThemeChange(() => {
+            this.setMaxSize({ width: resolveBlockMaxWidth(), height: UNBOUNDED });
         });
 
         this.setDataAttribute('docs-demo', 'true');
@@ -120,6 +142,7 @@ class DocsDemo extends Panel {
      */
     protected destructor(): void {
         this._disposed = true;
+        this._unsubscribeTheme();
 
         super.destructor();
     }

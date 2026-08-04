@@ -19,6 +19,17 @@ export const BaseTheme: DeepPartial<Theme> = {
         size       : '14px',
         linePadding: '2px',
     },
+    markdown: {
+        // Looser than the UI's line box (font-size + 2px linePadding, ≈1.14 at
+        // the 14px base) — prose read continuously wants more leading than a
+        // scanned single-line control.
+        lineHeight: '1.8',
+        // Typographic convention places comfortable line length at roughly
+        // 45-75 characters; 80ch runs a bit past that range, chosen after
+        // trying a few values. A `ch` value tracks the reading measure rather
+        // than pinning a pixel width.
+        maxMeasure: '80ch',
+    },
     border: {
         radius: '4px',
     },
