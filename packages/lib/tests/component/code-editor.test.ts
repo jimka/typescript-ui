@@ -143,6 +143,138 @@ describe('CodeEditor listeners bag', () => {
         (editor as any).emit('change', { value: 'b' });
         expect(fired).toBe(1);
     });
+
+    it('on() / off() register and remove a heightchange listener', () => {
+        const editor = new CodeEditor();
+        let received: { height: number } | null = null;
+        const listener = (payload: { height: number }): void => { received = payload; };
+
+        editor.on('heightchange', listener);
+        (editor as any).emit('heightchange', { height: 240 });
+        expect(received).toEqual({ height: 240 });
+
+        received = null;
+        editor.off('heightchange', listener);
+        (editor as any).emit('heightchange', { height: 300 });
+        expect(received).toBeNull();
+    });
+});
+
+describe('CodeEditor autoHeightMaxRows', () => {
+    it('getAutoHeightMaxRows defaults to null', () => {
+        const editor = new CodeEditor();
+
+        expect(editor.getAutoHeightMaxRows()).toBeNull();
+    });
+
+    it('round-trips through the constructor options bag', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 });
+
+        expect(editor.getAutoHeightMaxRows()).toBe(20);
+    });
+
+    it('syncAutoHeight is a no-op with no live view (the real offline contract)', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        let fired = false;
+        editor.on('heightchange', () => { fired = true; });
+
+        const heightBefore = editor.getHeight();
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(heightBefore);
+        expect(fired).toBe(false);
+    });
+
+    it('syncAutoHeight is a no-op with a view but autoHeightMaxRows unset', () => {
+        const editor = new CodeEditor() as any;
+        editor._view = { contentHeight: 100, defaultLineHeight: 20, documentPadding: { top: 0, bottom: 0 } };
+        let fired = false;
+        editor.on('heightchange', () => { fired = true; });
+
+        const heightBefore = editor.getHeight();
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(heightBefore);
+        expect(fired).toBe(false);
+    });
+
+    it('sets the content height when it is below the row cap', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = { contentHeight: 100, defaultLineHeight: 20, documentPadding: { top: 4, bottom: 4 } };
+
+        let received: { height: number } | null = null;
+        editor.on('heightchange', (payload: { height: number }) => { received = payload; });
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(100);
+        expect(received).toEqual({ height: 100 });
+    });
+
+    it('clamps to the row cap when content height exceeds it', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        // capPx = 20 * 20 + 4 + 4 = 408
+        editor._view = { contentHeight: 5000, defaultLineHeight: 20, documentPadding: { top: 4, bottom: 4 } };
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(408);
+    });
+
+    it('reserves the horizontal scrollbar width before applying the cap', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = { contentHeight: 100, defaultLineHeight: 20, documentPadding: { top: 0, bottom: 0 } };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 600, scrollHeight: 100,
+            clientWidth: 500, clientHeight: 100,
+        });
+        vi.spyOn(DOM.source, 'getScrollBarWidth').mockReturnValue(15);
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(115);
+    });
+
+    it('reserves the width before the cap, not after: the cap wins even when only the reserved sum exceeds it', () => {
+        // capPx = 20 * 20 + 0 + 0 = 400. contentHeight (395) alone is under the
+        // cap, but 395 + the 15px reserve (410) is not — reserving before
+        // Math.min clamps to 400; reserving after would instead clamp 395 to
+        // 395 first and add 15 on top, landing on 410. The two orders are
+        // indistinguishable at any contentHeight that already exceeds the cap
+        // on its own, which is why this case (just under, only over once the
+        // reserve is added) is what actually pins the ordering.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = { contentHeight: 395, defaultLineHeight: 20, documentPadding: { top: 0, bottom: 0 } };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 600, scrollHeight: 100,
+            clientWidth: 500, clientHeight: 100,
+        });
+        vi.spyOn(DOM.source, 'getScrollBarWidth').mockReturnValue(15);
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(400);
+    });
+
+    it('is idempotent: a second call with unchanged inputs makes no further setHeight/emit calls', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = { contentHeight: 100, defaultLineHeight: 20, documentPadding: { top: 0, bottom: 0 } };
+
+        let fireCount = 0;
+        editor.on('heightchange', () => { fireCount += 1; });
+
+        editor.syncAutoHeight();
+        expect(fireCount).toBe(1);
+
+        editor.syncAutoHeight();
+        expect(fireCount).toBe(1);
+    });
 });
 
 describe('CodeEditor format() dispatch', () => {
