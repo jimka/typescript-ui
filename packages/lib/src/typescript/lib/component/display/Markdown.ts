@@ -9,6 +9,11 @@ import { callable } from "~/core/Callable.js";
 import { Size } from "~/primitive/Size.js";
 import { lexer } from "marked";
 import type { Token, Tokens } from "marked";
+// Type-only: erased at compile time. `CodeEditor` itself is loaded through a
+// narrow dynamic import (see `loadCodeEditorUpgrade`) so a static top-level
+// value import here would force every `Markdown` consumer's bundler to
+// resolve CodeMirror the moment it imports `Markdown` at all.
+import type { CodeEditor } from "~/component/editor/CodeEditor.js";
 
 /**
  * Shared class names for the prose elements built by {@link Markdown}. Kept as
@@ -28,11 +33,60 @@ const TD_CLASS            = "ts-ui-md-td";
 const ALIGN_LEFT_CLASS   = "ts-ui-md-align-left";
 const ALIGN_CENTER_CLASS = "ts-ui-md-align-center";
 const ALIGN_RIGHT_CLASS  = "ts-ui-md-align-right";
+/**
+ * Wraps a fenced block that upgrades to a live `CodeEditor`. `position:
+ * relative` gives the absolutely-positioned `CodeEditor` child a local
+ * positioning context wherever the block sits in the token tree (top-level,
+ * inside a blockquote, inside a list item) — without it, the editor would
+ * resolve `top`/`left` against `Markdown`'s own root instead.
+ */
+const CODE_HOST_CLASS = "ts-ui-md-code-host";
 
 // Markdown heading levels span h1..h6; a deeper `#######` run is not a heading
 // in CommonMark, but clamp anyway so a stray `depth` never mints an invalid tag.
 const HEADING_MIN_DEPTH = 1;
 const HEADING_MAX_DEPTH = 6;
+
+/**
+ * Maps a fenced code block's info-string language (lowercased, first word) to
+ * the [`CodeEditor`](/components/CodeEditor) registry id it upgrades to. Only
+ * the five ids `languages.ts` registers are
+ * reachable; every other alias, and any language with no registered editor
+ * support, is intentionally absent — {@link mapFenceLangToEditorId} returns
+ * `null` for those rather than guessing, since passing an unregistered id to
+ * `CodeEditor` would silently render unhighlighted text.
+ */
+const FENCE_LANG_ALIASES: Record<string, string> = {
+    js: "javascript", javascript: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript",
+    ts: "javascript", typescript: "javascript", tsx: "javascript",
+    json: "json",
+    html: "html", htm: "html",
+    sql: "sql",
+    md: "markdown", markdown: "markdown",
+};
+
+/**
+ * Resolves a fenced code block's info-string language to the `CodeEditor`
+ * registry id it should upgrade to, per {@link FENCE_LANG_ALIASES}.
+ *
+ * @param lang - The fence's info string as reported by `marked` (e.g. `"js"`,
+ *   `"ts {1,3}"`), or `undefined` when the fence carries none.
+ * @returns The mapped `CodeEditor` language id, or `null` when `lang` is
+ *   unset or names a language with no registered editor support — the caller
+ *   treats both identically (render the plain `<pre>`).
+ */
+function mapFenceLangToEditorId(lang: string | undefined): string | null {
+    if (!lang) {
+        return null;
+    }
+
+    // Only the first whitespace-delimited word is the language token per
+    // CommonMark; a shebang-style modifier after it (`js {1,3}`) must not
+    // defeat the match.
+    const word = lang.trim().split(/\s+/, 1)[0]?.toLowerCase();
+
+    return word ? (FENCE_LANG_ALIASES[word] ?? null) : null;
+}
 
 let _classRulesEnsured = false;
 
@@ -185,6 +239,12 @@ function ensureMarkdownClassRules(): void {
         name:   ALIGN_RIGHT_CLASS,
         styles: { textAlign: "right" },
     });
+
+    new StyleRule({
+        scope:  "class",
+        name:   CODE_HOST_CLASS,
+        styles: { position: "relative" },
+    });
 }
 
 /**
@@ -271,6 +331,46 @@ export interface MarkdownOptions extends ComponentOptions {
 }
 
 /**
+ * The fixed identity of one fenced block's pending upgrade — the placeholder
+ * handles it will replace, its literal text and mapped language, and the
+ * render generation it belongs to (see {@link Markdown._renderGeneration}).
+ * Shared shape between {@link QueuedCodeUpgrade} (waiting on visibility,
+ * import not yet started) and {@link PendingCodeUpgrade} (import already
+ * resolved, still waiting on visibility to apply).
+ */
+interface CodeUpgradeIdentity {
+    wrapper: Handle;
+    pre:     Handle;
+    code:    Handle;
+    text:    string;
+    languageId: string;
+    generation: number;
+}
+
+/**
+ * A supported-language fenced block whose `CodeEditor` dynamic import has not
+ * started yet because `Markdown` was not effectively visible when its
+ * deferred kickoff (queued by {@link Markdown.appendCode} through
+ * `onFirstLayout`) ran. Flushed by {@link Markdown.onEffectiveVisibilityChange}
+ * once visibility flips to `true` — edge-triggered, not polled, mirroring
+ * `Canvas.onEffectiveVisibilityChange`'s animation-loop reconcile.
+ */
+type QueuedCodeUpgrade = CodeUpgradeIdentity;
+
+/**
+ * A supported-language fenced block still waiting for `CodeEditor` to
+ * become visible after its dynamic import already resolved (queued by
+ * {@link Markdown.loadCodeEditorUpgrade} when the import settles while
+ * `Markdown` is not effectively visible).
+ */
+interface PendingCodeUpgrade extends CodeUpgradeIdentity {
+    // Constructor type built from the type-only `CodeEditor` import — `typeof
+    // CodeEditor` is not available here because the value itself is never
+    // statically imported.
+    CodeEditorClass: new (value: string, options: { readOnly: true; language: string }) => CodeEditor;
+}
+
+/**
  * A display component that renders a Markdown source string as a live DOM
  * subtree.
  *
@@ -287,6 +387,17 @@ export interface MarkdownOptions extends ComponentOptions {
  * (including per-column alignment). Any other token type (images, raw HTML,
  * the remaining GFM extensions) falls through to a defined fallback that
  * renders the token's plain text — never a crash, never markup.
+ *
+ * A fenced code block whose info string names a language
+ * [`CodeEditor`](/components/CodeEditor) has a registered grammar for
+ * (`js`/`ts`/`json`/`html`/`sql`/`markdown`, plus aliases) upgrades from the
+ * plain `<pre>` to a live, read-only, syntax-highlighted `CodeEditor` once it
+ * loads; an unrecognised language, or no info string, keeps the plain
+ * `<pre>`. The upgrade is lazy —
+ * `CodeEditor`'s CodeMirror dependency loads through a dynamic import that
+ * fires only when a fenced block actually needs it, deferred until this
+ * component's first connected, displayed layout — so a `Markdown` with no
+ * fenced code (or only unsupported languages) pays no extra bundle cost.
  *
  * Links render as plain `<a href target="_blank" rel="noopener noreferrer">`
  * with native navigation; the component exposes no event surface in v1.
@@ -332,6 +443,28 @@ class Markdown extends Component<MarkdownOptions> {
 
     /** Handle to detach the {@link ThemeManager.onThemeChange} listener on {@link dispose}. */
     private readonly _unsubscribeTheme: () => void;
+
+    /** Live `CodeEditor` upgrades, raw-DOM-appended per fenced block; see {@link applyCodeEditorUpgrade}. */
+    private _codeEditors: Array<{ editor: CodeEditor; wrapper: Handle }> = [];
+
+    /** Supported-language fenced blocks still waiting to upgrade; see {@link PendingCodeUpgrade}. */
+    private _pendingCodeUpgrades: PendingCodeUpgrade[] = [];
+
+    /**
+     * Supported-language fenced blocks whose dynamic import hasn't started
+     * because `Markdown` wasn't effectively visible when their deferred
+     * kickoff ran; see {@link QueuedCodeUpgrade} and
+     * {@link onEffectiveVisibilityChange}.
+     */
+    private _awaitingVisibilityKickoffs: QueuedCodeUpgrade[] = [];
+
+    /**
+     * Bumped by {@link clearContent}; a resolved dynamic import compares its
+     * captured generation against this to detect a render it no longer
+     * belongs to (a later {@link setMarkdown}, or disposal), mirroring
+     * `DiagramView.relayout`'s generation token.
+     */
+    private _renderGeneration = 0;
 
     /**
      * Constructs a Markdown component for the given source string.
@@ -531,6 +664,10 @@ class Markdown extends Component<MarkdownOptions> {
      * permanently removed from the page, mirroring `CodeEditor.destructor`.
      */
     protected destructor(): void {
+        // Disposes every live CodeEditor: raw-DOM-appended (never through
+        // addComponent), so the base class's own child-recursion below never
+        // reaches them — Markdown must dispose them explicitly.
+        this.clearContent();
         this._unsubscribeTheme();
         super.destructor();
     }
@@ -549,6 +686,8 @@ class Markdown extends Component<MarkdownOptions> {
         if (!element) {
             return;
         }
+
+        this.syncCodeEditors();
 
         // Read the true content height, not the committed box. `scrollHeight` is
         // floored at the element's own `clientHeight`, so measuring the live
@@ -627,6 +766,203 @@ class Markdown extends Component<MarkdownOptions> {
         }
 
         this._contentHandles.length = 0;
+
+        // Bumped so any dynamic import already in flight for this render
+        // (see loadCodeEditorUpgrade) recognises itself as stale and no-ops
+        // instead of applying against handles this rebuild just tore down.
+        this._renderGeneration += 1;
+
+        for (const { editor } of this._codeEditors) {
+            editor.dispose();
+        }
+
+        this._codeEditors.length = 0;
+        this._pendingCodeUpgrades.length = 0;
+        this._awaitingVisibilityKickoffs.length = 0;
+    }
+
+    /**
+     * Swaps a fenced block's placeholder `<pre>`/`<code>` for a live,
+     * syntax-highlighted `CodeEditor`, sized to exactly fill the `wrapper`
+     * (see the "position: relative wrapper" architecture decision — an
+     * absolutely positioned child does not contribute to its ancestor's auto
+     * height, so the wrapper's own height is pinned explicitly below).
+     *
+     * @param CodeEditorClass - The dynamically-imported `CodeEditor` constructor.
+     * @param wrapper - The `ts-ui-md-code-host` wrapper the placeholder `<pre>` sits in.
+     * @param pre - The placeholder `<pre>` handle being replaced.
+     * @param code - The placeholder `<code>` handle being replaced.
+     * @param text - The fenced block's literal source text.
+     * @param languageId - The mapped `CodeEditor` registry id.
+     */
+    private applyCodeEditorUpgrade(
+        CodeEditorClass: PendingCodeUpgrade["CodeEditorClass"],
+        wrapper: Handle,
+        pre: Handle,
+        code: Handle,
+        text: string,
+        languageId: string,
+    ): void {
+        const metrics = DOM.source.getScrollMetrics(pre);
+        const width   = metrics.clientWidth;
+        const height  = metrics.scrollHeight;
+
+        for (const handle of [pre, code]) {
+            DOM.sink.removeElement(handle);
+            this.untrackHandle(handle);
+            DOM.sink.release(handle);
+
+            const index = this._contentHandles.indexOf(handle);
+            if (index !== -1) {
+                this._contentHandles.splice(index, 1);
+            }
+        }
+
+        const editor = new CodeEditorClass(text, { readOnly: true, language: languageId });
+
+        editor.setX(0).setY(0).setWidth(width).setHeight(height);
+        DOM.sink.appendChild(wrapper, editor.getElement(true)!);
+        DOM.sink.apply(wrapper, { style: { height: height + "px" } });
+
+        this._codeEditors.push({ editor, wrapper });
+    }
+
+    /**
+     * Flushes any {@link PendingCodeUpgrade} that has become visible since it
+     * was queued, then re-syncs every already-applied editor's width from its
+     * wrapper's current `clientWidth` — what keeps a code block's width
+     * tracking `Markdown`'s own width on resize. Called as the first line of
+     * {@link measureContentHeight}, so a freshly-applied wrapper's height is
+     * committed before `Markdown`'s own content height is measured.
+     *
+     * @remarks The resync loop is skipped entirely while not effectively
+     * visible (e.g. `measureContentHeight` still fires on a theme change for
+     * a hidden `Markdown`): a hidden subtree's `clientWidth` reads `0`, and
+     * writing that through would collapse a previously-applied editor with
+     * nothing to correct it on re-show (no width actually changes on
+     * re-show, so `setWidth`'s "only re-measure when changed" guard would
+     * never re-run this method). Skipping leaves the last-good width intact
+     * instead.
+     */
+    private syncCodeEditors(): void {
+        this._pendingCodeUpgrades = this._pendingCodeUpgrades.filter((pending) => {
+            if (!this.isEffectivelyVisible()) {
+                return true;
+            }
+
+            this.applyCodeEditorUpgrade(
+                pending.CodeEditorClass, pending.wrapper, pending.pre, pending.code,
+                pending.text, pending.languageId,
+            );
+
+            return false;
+        });
+
+        if (!this.isEffectivelyVisible()) {
+            return;
+        }
+
+        for (const { editor, wrapper } of this._codeEditors) {
+            editor.setWidth(DOM.source.getScrollMetrics(wrapper).clientWidth);
+        }
+    }
+
+    /**
+     * Starts a fenced block's `CodeEditor` upgrade if `Markdown` is currently
+     * effectively visible, or queues it in {@link _awaitingVisibilityKickoffs}
+     * otherwise — flushed later by {@link onEffectiveVisibilityChange} once
+     * visibility flips to `true`, edge-triggered rather than polled. This is
+     * the single check-once gate the deferred kickoff registered in
+     * {@link appendCode} runs through: `onFirstLayout` alone only guarantees
+     * "connected + displayed" for a component's very first render — once the
+     * element is already connected (e.g. a second `setMarkdown()` on a
+     * previously-shown, now-hidden instance), it takes
+     * `Component.afterNextLayout`'s fast path, which fires unconditionally on
+     * the next flush with no displayed-gating — so the visibility check has
+     * to happen here, not be assumed from having been called at all.
+     *
+     * @param entry - The fenced block's placeholder handles, text, mapped
+     *   language, and the render generation it belongs to.
+     */
+    private startCodeEditorImport(entry: QueuedCodeUpgrade): void {
+        if (!this.isEffectivelyVisible()) {
+            this._awaitingVisibilityKickoffs.push(entry);
+
+            return;
+        }
+
+        void this.loadCodeEditorUpgrade(entry.wrapper, entry.pre, entry.code, entry.text, entry.languageId, entry.generation);
+    }
+
+    /**
+     * Flushes any {@link QueuedCodeUpgrade} once this component becomes
+     * effectively visible, starting the dynamic import for each — the
+     * edge-triggered replacement for a per-frame visibility poll, mirroring
+     * `Canvas.onEffectiveVisibilityChange`'s animation-loop reconcile.
+     *
+     * @param effective - The component's new effective-visibility state.
+     */
+    protected onEffectiveVisibilityChange(effective: boolean): void {
+        super.onEffectiveVisibilityChange(effective);
+
+        if (!effective || this._awaitingVisibilityKickoffs.length === 0) {
+            return;
+        }
+
+        const queued = this._awaitingVisibilityKickoffs;
+
+        this._awaitingVisibilityKickoffs = [];
+
+        for (const entry of queued) {
+            this.startCodeEditorImport(entry);
+        }
+    }
+
+    /**
+     * Loads `CodeEditor` through a narrow dynamic import — the two specific
+     * modules it needs (`CodeEditor.js` itself, and `languages.js` for its
+     * side-effect language registration), never the `component/editor`
+     * barrel, which would also pull in the unrelated Lexical-based
+     * `MarkdownEditor` stack. Once the import resolves, applies the upgrade
+     * immediately if `Markdown` is still showing the render that queued this
+     * call and is effectively visible, or queues it in {@link _pendingCodeUpgrades}
+     * otherwise.
+     *
+     * @param wrapper - The `ts-ui-md-code-host` wrapper the placeholder `<pre>` sits in.
+     * @param pre - The placeholder `<pre>` handle.
+     * @param code - The placeholder `<code>` handle.
+     * @param text - The fenced block's literal source text.
+     * @param languageId - The mapped `CodeEditor` registry id.
+     * @param generation - The {@link _renderGeneration} captured when this
+     *   fenced block was queued in {@link appendCode}.
+     */
+    private async loadCodeEditorUpgrade(
+        wrapper: Handle,
+        pre: Handle,
+        code: Handle,
+        text: string,
+        languageId: string,
+        generation: number,
+    ): Promise<void> {
+        const [{ CodeEditor: CodeEditorClass }] = await Promise.all([
+            import("~/component/editor/CodeEditor.js"),
+            import("~/component/editor/languages.js"),
+        ]);
+
+        if (generation !== this._renderGeneration) {
+            // A later setMarkdown() (or disposal, which also bumps the
+            // generation) rebuilt since this block was queued — the wrapper/
+            // pre/code handles this call closed over no longer belong to a
+            // live render.
+            return;
+        }
+
+        if (this.isEffectivelyVisible()) {
+            this.applyCodeEditorUpgrade(CodeEditorClass, wrapper, pre, code, text, languageId);
+            this.measureContentHeight();
+        } else {
+            this._pendingCodeUpgrades.push({ CodeEditorClass, wrapper, pre, code, text, languageId, generation });
+        }
     }
 
     /**
@@ -837,7 +1173,13 @@ class Markdown extends Component<MarkdownOptions> {
 
     /**
      * Builds a `<pre>` › `<code>` carrying the fenced block's literal text
-     * verbatim (newlines preserved).
+     * verbatim (newlines preserved). When the fence's info string maps to a
+     * registered `CodeEditor` language (see {@link mapFenceLangToEditorId}),
+     * the `<pre>` is additionally wrapped in a `ts-ui-md-code-host` div and a
+     * deferred upgrade to a live, syntax-highlighted `CodeEditor` is queued —
+     * see {@link loadCodeEditorUpgrade}. An unmapped language, or no info
+     * string, renders exactly as before: a bare `<pre>` with no wrapper and
+     * no dynamic import triggered.
      *
      * @param parent - The element handle to append into.
      * @param token - The code token.
@@ -851,7 +1193,29 @@ class Markdown extends Component<MarkdownOptions> {
 
         DOM.sink.apply(code, { text: token.text });
         DOM.sink.appendChild(pre, code);
-        DOM.sink.appendChild(parent, pre);
+
+        const languageId = mapFenceLangToEditorId(token.lang);
+
+        if (languageId === null) {
+            DOM.sink.appendChild(parent, pre);
+
+            return;
+        }
+
+        const wrapper = this.create("div");
+
+        DOM.sink.apply(wrapper, { addClass: [CODE_HOST_CLASS] });
+        DOM.sink.appendChild(wrapper, pre);
+        DOM.sink.appendChild(parent, wrapper);
+
+        // Not a direct call: the kickoff itself, not just the DOM swap, waits
+        // for Markdown's first connected layout. `startCodeEditorImport`
+        // re-checks visibility itself rather than trusting `onFirstLayout`
+        // alone to guarantee "connected + displayed" — see its own docblock
+        // for why that guarantee doesn't hold for every registration.
+        const entry: QueuedCodeUpgrade = { wrapper, pre, code, text: token.text, languageId, generation: this._renderGeneration };
+
+        this.onFirstLayout(() => this.startCodeEditorImport(entry));
     }
 
     /**
@@ -973,4 +1337,7 @@ type MarkdownCallable = Markdown;
 export {
     Markdown         as _Markdown,
     MarkdownCallable as Markdown,
+    // Not re-exported from the package barrel (`component/display/index.ts`):
+    // a test-only hook, not part of the public API surface.
+    mapFenceLangToEditorId,
 };
