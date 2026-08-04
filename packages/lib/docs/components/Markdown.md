@@ -35,7 +35,7 @@ Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) 
 | paragraph text | `<p>` |
 | `**bold**`, `*italic*` | `<strong>`, `<em>` |
 | `` `inline code` `` | `<code>` |
-| fenced ```` ``` ```` block | `<pre>` › `<code>` (literal text, newlines preserved) |
+| fenced ```` ``` ```` block | `<pre>` › `<code>` (literal text, newlines preserved), or a syntax-highlighted `CodeEditor` for a supported language — see [Syntax highlighting](#syntax-highlighting-in-fenced-code-blocks) |
 | `-`/`*` and `1.` lists | `<ul>`/`<ol>` with `<li>` items |
 | `> quote` | `<blockquote>` |
 | `[text](url)` | `<a href target="_blank" rel="noopener noreferrer">` |
@@ -58,6 +58,33 @@ Markdown(source, {
         : { href, external: true },
 });
 ```
+
+### Syntax highlighting in fenced code blocks
+
+A fenced code block whose language maps to one of `CodeEditor`'s registered
+grammars upgrades from a plain `<pre>` to a live, read-only
+[`CodeEditor`](/components/CodeEditor), sized and positioned to exactly fill
+the block's spot in the document — including nested inside a blockquote or
+list item.
+
+| Fence info string (first word, case-insensitive) | Renders as |
+| --- | --- |
+| `js`, `javascript`, `jsx`, `mjs`, `cjs` | JavaScript highlighting |
+| `ts`, `typescript`, `tsx` | JavaScript highlighting (no separate TypeScript grammar; the JS grammar covers both) |
+| `json` | JSON highlighting |
+| `html`, `htm` | HTML highlighting |
+| `sql` | SQL highlighting |
+| `md`, `markdown` | Markdown highlighting |
+| anything else, or no info string | plain `<pre>` (unchanged) |
+
+The upgrade is lazy: `CodeMirror` — an order of magnitude heavier than
+`marked`, `Markdown`'s only other runtime dependency — loads through a
+dynamic import that fires only once a fenced block with a supported language
+actually needs it, and only after `Markdown` completes its first connected,
+displayed layout. A `Markdown` instance with no fenced code, or only
+unsupported languages, triggers no import and pays no extra bundle cost. A
+`Markdown` constructed with `displayed: false` (e.g. a collapsed "show
+source" panel) defers the import until it is shown.
 
 ### Fallback for unsupported tokens
 
@@ -83,3 +110,4 @@ Because prose reflows, `Markdown` measures its rendered content **height** at th
 
 - [API: Markdown](/api/component/display/classes/Markdown)
 - [`Text`](/components/Text) — for a single non-Markdown string.
+- [`CodeEditor`](/components/CodeEditor) — the syntax-highlighting editor a supported-language fenced block upgrades to.
