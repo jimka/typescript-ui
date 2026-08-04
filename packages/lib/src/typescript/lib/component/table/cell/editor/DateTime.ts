@@ -50,6 +50,18 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
     }
 
     /**
+     * Disposes the lazily-created picker dropdown, then runs the inherited
+     * teardown. `_dropdown` is a LayerManager-mounted overlay (AnimatedDropdown
+     * subclass), never a registered child, so the base destructor's recursion
+     * cannot reach it.
+     */
+    protected destructor(): void {
+        this._dropdown?.dispose();
+
+        super.destructor();
+    }
+
+    /**
      * Keeps the edit alive while focus moves from the editor input into the
      * picker dropdown — including the embedded time field and its own popped
      * time-picker layer. Without this, focusing the embedded field would blur
