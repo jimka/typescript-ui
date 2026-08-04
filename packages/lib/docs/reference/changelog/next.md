@@ -20,6 +20,16 @@ page resets to empty.
   block actually needs it, so a `Markdown` instance with no fenced code (or
   only unsupported languages) pays no extra bundle cost. No consumer action
   is needed.
+- **A fenced code block in `Markdown` now grows to fit its real rendered
+  content, capped at 20 rows before its own vertical scrollbar takes over**,
+  and no longer clips its last content row when a horizontal scrollbar
+  appears for an overly long line — both driven by
+  [`CodeEditor`](/components/CodeEditor)'s real measured content height
+  rather than a fixed snapshot of the placeholder `<pre>`'s size. The
+  underlying mechanism is a new opt-in `CodeEditor` option,
+  `autoHeightMaxRows`, and a `"heightchange"` event; every other `CodeEditor`
+  caller is unaffected, since the option defaults to unset (today's
+  fixed-height, fill-parent behaviour). No consumer action is needed.
 
 ## Fixed
 

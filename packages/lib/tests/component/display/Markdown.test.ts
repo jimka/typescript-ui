@@ -779,12 +779,15 @@ describe('mapFenceLangToEditorId', () => {
 class FakeCodeEditor {
     readonly value: string;
     readonly language: string;
+    readonly autoHeightMaxRows: number | undefined;
     private readonly _el: Handle;
     disposed = false;
+    heightChangeListener: ((payload: { height: number }) => void) | null = null;
 
-    constructor(value: string, options: { readOnly: true; language: string }) {
+    constructor(value: string, options: { readOnly: true; language: string; autoHeightMaxRows?: number }) {
         this.value = value;
         this.language = options.language;
+        this.autoHeightMaxRows = options.autoHeightMaxRows;
         this._el = DOM.sink.createElement('div');
     }
 
@@ -794,6 +797,14 @@ class FakeCodeEditor {
     setHeight(): this { return this; }
     getElement(_force?: boolean): Handle { return this._el; }
     dispose(): void { this.disposed = true; }
+
+    on(event: string, listener: (payload: { height: number }) => void): this {
+        if (event === 'heightchange') {
+            this.heightChangeListener = listener;
+        }
+
+        return this;
+    }
 }
 
 describe('Markdown.applyCodeEditorUpgrade (private, called directly)', () => {
@@ -826,6 +837,43 @@ describe('Markdown.applyCodeEditorUpgrade (private, called directly)', () => {
         expect(anyMd._codeEditors[0].editor.value).toBe('const a = 1;');
         expect(anyMd._codeEditors[0].editor.language).toBe('javascript');
         expect(anyMd._codeEditors[0].wrapper).toBe(wrapper);
+    });
+
+    it('wires a heightchange listener that resizes the wrapper and re-measures', () => {
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 0, scrollHeight: 240,
+            clientWidth: 500, clientHeight: 240,
+        });
+
+        const md = new Markdown('hello');
+        md.getElement(true);
+
+        const anyMd = md as any;
+        const measureSpy = vi.spyOn(anyMd, 'measureContentHeight');
+        const wrapper = anyMd.create('div');
+        const pre     = anyMd.create('pre');
+        const code    = anyMd.create('code');
+        DOM.sink.appendChild(pre, code);
+        DOM.sink.appendChild(wrapper, pre);
+
+        anyMd.applyCodeEditorUpgrade(FakeCodeEditor, wrapper, pre, code, 'const a = 1;', 'javascript');
+
+        const editor: FakeCodeEditor = anyMd._codeEditors[0].editor;
+
+        expect(editor.heightChangeListener).not.toBeNull();
+        expect(editor.autoHeightMaxRows).toBe(20); // Markdown.ts's CODE_BLOCK_MAX_AUTO_ROWS
+
+        measureSpy.mockClear();
+        editor.heightChangeListener!({ height: 360 });
+
+        const heightWrite = sink.writes.find(
+            (w) => w.op === 'apply' && w.args[0] === wrapper
+                && (w.args[1] as { style?: { height?: string } }).style?.height === '360px',
+        );
+
+        expect(heightWrite).toBeDefined();
+        expect(measureSpy).toHaveBeenCalledOnce();
     });
 });
 

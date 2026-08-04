@@ -34,6 +34,7 @@ Give the editor a sized host (a `Fit` panel, as above, or an explicit `preferred
 | `value` | `string` | `""` | Initial document text. |
 | `language` | `string` | unset | A registered language id (e.g. `"javascript"`, `"sql"`). Unset renders plain text with no grammar. |
 | `readOnly` | `boolean` | `false` | Whether the editor rejects edits. |
+| `autoHeightMaxRows` | `number` | unset | Row count the editor grows to fit before its own vertical scrollbar takes over. Unset: today's fixed-height, fill-parent behaviour, controlled via `setHeight`/`preferredSize`. |
 | `listeners` | `{ change?: (payload) => void }` | — | Construction-time listener bag for the `"change"` event. |
 
 Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields (preferred size, background, foreground, etc.).
@@ -99,6 +100,8 @@ Tab then moves focus again, and the same shortcut switches back to indenting.
 | `getReadOnly()` / `setReadOnly(readOnly)` | Read or toggle whether the editor accepts edits. |
 | `format()` | Format the document (or re-indent, with no formatter). |
 | `on('change', fn)` / `off('change', fn)` | Subscribe to document changes. |
+| `getAutoHeightMaxRows()` | Read the configured `autoHeightMaxRows`, or `null` when unset. |
+| `on('heightchange', fn)` / `off('heightchange', fn)` | Subscribe to the editor's own auto-height changes (only fires when `autoHeightMaxRows` is set). |
 | `dispose()` | Detach the theme-change listener and destroy the live CodeMirror view — call before discarding a dynamically-built `CodeEditor`. |
 
 ## Theming

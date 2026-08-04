@@ -26,13 +26,25 @@ export interface CodeEditorChange {
 }
 
 /**
+ * Payload of {@link CodeEditor}'s `"heightchange"` event: the editor's new
+ * height in pixels.
+ *
+ * @category Components
+ */
+export interface CodeEditorHeightChange {
+    height: number;
+}
+
+/**
  * The events {@link CodeEditor} exposes through its custom `on` / `off` surface:
  *
  * - `"change"` — the document text changed (payload {@link CodeEditorChange}).
  * - `"readonlyedit"` — a user edit was rejected because the editor is read-only
  *   (no payload); see {@link CodeEditor.on}.
+ * - `"heightchange"` — {@link CodeEditorOptions.autoHeightMaxRows} is set and the
+ *   editor's own computed height changed (payload {@link CodeEditorHeightChange}).
  */
-type CodeEditorEvent = "change" | "readonlyedit";
+type CodeEditorEvent = "change" | "readonlyedit" | "heightchange";
 
 /**
  * Construction-time options for {@link CodeEditor}.
@@ -46,8 +58,14 @@ export interface CodeEditorOptions extends ComponentOptions {
     language?: string;
     /** Whether the editor rejects edits. Default `false`. */
     readOnly?: boolean;
-    /** Construction-time listener bag; the events are `"change"` and `"readonlyedit"`. */
-    listeners?: { change?: (payload: CodeEditorChange) => void; readonlyedit?: () => void };
+    /**
+     * Row count the editor grows to fit before its own vertical scrollbar
+     * takes over. Unset (the default): today's behaviour — a fixed height
+     * the caller controls via `setHeight`/`preferredSize`, filling its host.
+     */
+    autoHeightMaxRows?: number;
+    /** Construction-time listener bag; the events are `"change"`, `"readonlyedit"`, and `"heightchange"`. */
+    listeners?: { change?: (payload: CodeEditorChange) => void; readonlyedit?: () => void; heightchange?: (payload: CodeEditorHeightChange) => void };
 }
 
 /**
@@ -210,6 +228,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
         if (options.value    !== undefined) this._options.value    = options.value;
         if (options.language !== undefined) this._options.language = options.language;
         if (options.readOnly !== undefined) this._options.readOnly = options.readOnly;
+        if (options.autoHeightMaxRows !== undefined) this._options.autoHeightMaxRows = options.autoHeightMaxRows;
 
         return this;
     }
@@ -318,6 +337,17 @@ class CodeEditor extends Component<CodeEditorOptions> {
         }
 
         return this;
+    }
+
+    /**
+     * Returns the row-count cap this editor grows to before its own vertical
+     * scrollbar takes over.
+     *
+     * @returns The configured {@link CodeEditorOptions.autoHeightMaxRows}, or
+     *   `null` when unset (today's fixed-height, fill-parent contract).
+     */
+    getAutoHeightMaxRows(): number | null {
+        return this._options.autoHeightMaxRows ?? null;
     }
 
     /**
@@ -437,7 +467,17 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * @returns This component, for method chaining.
      */
     on(event: "readonlyedit", listener: () => void): this;
-    on(event: CodeEditorEvent, listener: (payload: CodeEditorChange) => void): this {
+    /**
+     * Registers a listener for the `"heightchange"` event, fired when
+     * {@link CodeEditorOptions.autoHeightMaxRows} is set and the editor's own
+     * computed height changes.
+     *
+     * @param event - Must be `"heightchange"`.
+     * @param listener - Invoked with the editor's new height.
+     * @returns This component, for method chaining.
+     */
+    on(event: "heightchange", listener: (payload: CodeEditorHeightChange) => void): this;
+    on(event: CodeEditorEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
         return this;
@@ -459,7 +499,15 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * @returns This component, for method chaining.
      */
     off(event: "readonlyedit", listener: () => void): this;
-    off(event: CodeEditorEvent, listener: (payload: CodeEditorChange) => void): this {
+    /**
+     * Removes a previously registered `"heightchange"` listener.
+     *
+     * @param event - Must be `"heightchange"`.
+     * @param listener - The exact callback reference to remove.
+     * @returns This component, for method chaining.
+     */
+    off(event: "heightchange", listener: (payload: CodeEditorHeightChange) => void): this;
+    off(event: CodeEditorEvent, listener: Function): this {
         this._listeners.remove(event, listener);
 
         return this;
@@ -469,11 +517,12 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * Fans an event out to its registered listeners.
      *
      * @param event - The event name.
-     * @param payload - The event payload (`"change"` only; `"readonlyedit"` has none).
+     * @param payload - The event payload (`"change"`/`"heightchange"`; `"readonlyedit"` has none).
      */
     protected emit(event: "change", payload: CodeEditorChange): void;
     protected emit(event: "readonlyedit"): void;
-    protected emit(event: CodeEditorEvent, payload?: CodeEditorChange): void {
+    protected emit(event: "heightchange", payload: CodeEditorHeightChange): void;
+    protected emit(event: CodeEditorEvent, payload?: CodeEditorChange | CodeEditorHeightChange): void {
         this._listeners.fire(event, ...(payload ? [payload] : []));
     }
 
@@ -571,6 +620,10 @@ class CodeEditor extends Component<CodeEditorOptions> {
                     this._options.value = update.state.doc.toString();
                     this.emit("change", { value: this._options.value });
                 }
+
+                if (update.heightChanged || update.geometryChanged) {
+                    this.syncAutoHeight();
+                }
             }),
             EditorView.domEventHandlers({
                 // A user edit while read-only is blocked by `EditorState.readOnly`
@@ -604,6 +657,50 @@ class CodeEditor extends Component<CodeEditorOptions> {
         if (language) {
             this.setLanguage(language);
         }
+
+        // CM6's constructor-time initial update is not documented to
+        // reliably invoke `updateListener`, so this call seeds the first
+        // measurement explicitly rather than assuming it does.
+        this.syncAutoHeight();
+    }
+
+    /**
+     * Computes this editor's desired height when {@link CodeEditorOptions.autoHeightMaxRows}
+     * is set — the real rendered content height, plus the horizontal scrollbar's
+     * measured thickness when `.cm-scroller` is showing one, capped at the row
+     * limit converted to pixels via CodeMirror's own measured line height and
+     * content padding — and applies it via `setHeight()`, emitting `"heightchange"`
+     * when the value actually moves. No-op offline (no `_view`) and when
+     * `autoHeightMaxRows` is unset (today's fixed-height contract).
+     */
+    private syncAutoHeight(): void {
+        const maxRows = this.getAutoHeightMaxRows();
+
+        if (!this._view || maxRows === null) {
+            return;
+        }
+
+        let desired = this._view.contentHeight;
+
+        if (this._scrollElement) {
+            const metrics = DOM.source.getScrollMetrics(this._scrollElement);
+
+            if (metrics.scrollWidth > metrics.clientWidth) {
+                desired += DOM.source.getScrollBarWidth();
+            }
+        }
+
+        const capPx = maxRows * this._view.defaultLineHeight
+                    + this._view.documentPadding.top + this._view.documentPadding.bottom;
+
+        desired = Math.min(desired, capPx);
+
+        if (desired === this.getHeight()) {
+            return;
+        }
+
+        this.setHeight(desired);
+        this.emit("heightchange", { height: desired });
     }
 
     /**

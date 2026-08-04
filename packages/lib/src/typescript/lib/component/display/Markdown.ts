@@ -66,6 +66,16 @@ const FENCE_LANG_ALIASES: Record<string, string> = {
 };
 
 /**
+ * Cap on how many rows a fenced block's upgraded CodeEditor grows to before
+ * its own vertical scrollbar takes over, rather than the wrapper continuing
+ * to grow — keeps one long fenced block from pushing the rest of the prose
+ * far down the page. Not a theme token: this is the only call site that
+ * needs it, and BaseTheme.ts has no existing "row count" token shape to
+ * extend (see Architecture Decisions).
+ */
+const CODE_BLOCK_MAX_AUTO_ROWS = 20;
+
+/**
  * Resolves a fenced code block's info-string language to the `CodeEditor`
  * registry id it should upgrade to, per {@link FENCE_LANG_ALIASES}.
  *
@@ -367,7 +377,10 @@ interface PendingCodeUpgrade extends CodeUpgradeIdentity {
     // Constructor type built from the type-only `CodeEditor` import — `typeof
     // CodeEditor` is not available here because the value itself is never
     // statically imported.
-    CodeEditorClass: new (value: string, options: { readOnly: true; language: string }) => CodeEditor;
+    CodeEditorClass: new (
+        value: string,
+        options: { readOnly: true; language: string; autoHeightMaxRows?: number },
+    ) => CodeEditor;
 }
 
 /**
@@ -818,13 +831,32 @@ class Markdown extends Component<MarkdownOptions> {
             }
         }
 
-        const editor = new CodeEditorClass(text, { readOnly: true, language: languageId });
+        const editor = new CodeEditorClass(text, {
+            readOnly: true,
+            language: languageId,
+            autoHeightMaxRows: CODE_BLOCK_MAX_AUTO_ROWS,
+        });
 
         editor.setX(0).setY(0).setWidth(width).setHeight(height);
+        editor.on("heightchange", (payload) => this.handleCodeEditorHeightChange(wrapper, payload.height));
         DOM.sink.appendChild(wrapper, editor.getElement(true)!);
         DOM.sink.apply(wrapper, { style: { height: height + "px" } });
 
         this._codeEditors.push({ editor, wrapper });
+    }
+
+    /**
+     * Re-pins the `ts-ui-md-code-host` wrapper's height to a live CodeEditor's
+     * own auto-grown height, then re-measures Markdown's own content height so
+     * the taller/shorter block folds into the reported size. Wired in
+     * {@link applyCodeEditorUpgrade} onto each editor's `"heightchange"` event.
+     *
+     * @param wrapper - The wrapper the fired editor sits in.
+     * @param height - The editor's new height in pixels.
+     */
+    private handleCodeEditorHeightChange(wrapper: Handle, height: number): void {
+        DOM.sink.apply(wrapper, { style: { height: height + "px" } });
+        this.measureContentHeight();
     }
 
     /**
