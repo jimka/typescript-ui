@@ -1,6 +1,6 @@
 # Grid
 
-[`Grid`](/api/layout/classes/Grid) tiles children in a uniform grid of equal-sized cells. Row and column counts can be set explicitly or left at `0` for auto-calculation.
+[`Grid`](/api/layout/classes/Grid) arranges children into a row/column grid. By default every column and row shares the available space equally, but tracks can be sized independently — fixed, weighted, or content-sized — and children can span multiple cells or be pinned to an exact one. Row and column counts can be set explicitly or left at `0` for auto-calculation.
 
 ```
 +------+------+------+
@@ -11,9 +11,9 @@
    uniform M × N grid
 ```
 
-<!-- demo: grid-tracks -->
-> **Live demo** — a 3-column grid with fixed, weight, and content column
-> tracks; resizing the pane moves only the weighted column.
+<!-- demo: grid-uniform -->
+> **Live demo** — a uniform 2×3 grid of equal-sized cells, matching the
+> diagram above.
 > [Open the Grid page](https://jimka.github.io/typescript-ui/layouts/Grid)
 <!-- /demo -->
 
@@ -57,6 +57,12 @@ panel.setLayoutManager(Grid({
 ```
 
 `setRowTracks` works the same way for rows. When fewer tracks are supplied than the grid has columns/rows, the missing tracks default to `{ mode: "weight", value: 1 }`. If no track carries weight, leftover space is left unused (cells pack to the top-left).
+
+<!-- demo: grid-tracks -->
+> **Live demo** — a 3-column grid with fixed, weight, and content column
+> tracks; resizing the pane moves only the weighted column.
+> [Open the Grid page](https://jimka.github.io/typescript-ui/layouts/Grid)
+<!-- /demo -->
 
 ## Cell spanning and explicit placement
 
