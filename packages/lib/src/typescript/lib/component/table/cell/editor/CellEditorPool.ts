@@ -109,6 +109,23 @@ export class CellEditorPool {
     }
 
     /**
+     * Disposes every editor this pool has lazily constructed, releasing their
+     * per-instance stylesheet rules. Called once, from `Body.destructor()`,
+     * when the owning table is torn down — a shared editor is acquired into
+     * `_editors` only on a real edit gesture (`Cell.startEdit` → `acquire`),
+     * held there for the table's whole lifetime, and detached-but-not-disposed
+     * on every edit end (`Cell.detachEditor`'s `removeComponent`, which keeps a
+     * reusable editor alive across edits) — so nothing else ever reaches it.
+     */
+    dispose(): void {
+        for (const editor of this._editors.values()) {
+            editor.dispose();
+        }
+
+        this._editors.clear();
+    }
+
+    /**
      * Wires `blur` and `keydown` listeners on the shared editor exactly once at construction,
      * dispatching through `activeCell` so the same listener serves every cell that borrows the
      * editor.

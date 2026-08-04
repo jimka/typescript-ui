@@ -58,6 +58,9 @@ import { SplitButton } from '~/component/button/SplitButton';
 import { ToolBar } from '~/component/menubar/ToolBar';
 import { Button } from '~/component/button/Button';
 import { Table } from '~/component/table/Table';
+import { DateEditor } from '~/component/table/cell/editor/Date';
+import { TimeEditor } from '~/component/table/cell/editor/Time';
+import { DateTimeEditor } from '~/component/table/cell/editor/DateTime';
 import { MenuBar } from '~/component/menubar/MenuBar';
 import { TabButton } from '~/component/button/TabButton';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
@@ -84,7 +87,7 @@ function collectIds(c: Component, extraSubtrees: Component[] = []): string[] {
 
 const REGISTRY: Array<{
     name: string;
-    make?: () => Component;
+    make?: () => Component | Promise<Component>;
     reason?: string;
     // Narrows the leak check to keys belonging to this component's own known
     // subtree. `Panel`'s `_scrollbarV` / `_scrollbarH` overlay-scrollbar
@@ -190,6 +193,74 @@ const REGISTRY: Array<{
             (table as unknown as { showColumnMenu(x: number, y: number): void }).showColumnMenu(0, 0);
 
             return table;
+        },
+    },
+    // `Body._editorPool` lazily builds one shared editor per variant on the
+    // first edit of that type and holds it in a private Map for the table's
+    // whole lifetime — never a registered child, so the base destructor's
+    // recursion cannot reach it. Materialise a `StringEditor` by starting and
+    // cancelling an edit on the pool row's first cell before disposing.
+    // `store.load()` is required (unlike the `Table` row above, which never
+    // renders a data row) — `Body`'s row pool only grows to fit records the
+    // store has actually loaded.
+    {
+        name: 'Table (cell-editor pool)',
+        make: async () => {
+            const store = new MemoryStore(new Model([{ name: 'a', type: 'string', order: 0 }], 'a'), [{ a: 'x' }]);
+
+            await store.load();
+
+            const table = new Table(store);
+
+            table.getElement(true);
+            table.setWidth(400);
+            table.setHeight(200);
+            table.doLayout();
+
+            const body = (table as unknown as {
+                _body: { getRowPool(): Array<{ getComponents(): Array<{ startEdit(): void; cancelEdit(): void }> }> };
+            })._body;
+            const cell = body.getRowPool()[0].getComponents()[0];
+
+            cell.startEdit();
+            cell.cancelEdit();
+
+            return table;
+        },
+    },
+    // `_dropdown` is a LayerManager-mounted picker overlay, lazily built on
+    // first focus and held in a private field — never a registered child.
+    {
+        name: 'DateEditor',
+        make: () => {
+            const editor = new DateEditor();
+
+            editor.getElement(true);
+            (editor as unknown as { openDropdown(): void }).openDropdown();
+
+            return editor;
+        },
+    },
+    {
+        name: 'TimeEditor',
+        make: () => {
+            const editor = new TimeEditor();
+
+            editor.getElement(true);
+            (editor as unknown as { openDropdown(): void }).openDropdown();
+
+            return editor;
+        },
+    },
+    {
+        name: 'DateTimeEditor',
+        make: () => {
+            const editor = new DateTimeEditor();
+
+            editor.getElement(true);
+            (editor as unknown as { openDropdown(): void }).openDropdown();
+
+            return editor;
         },
     },
     // `_panels` are built by `setMenus` (constructor-time here, via the
@@ -300,20 +371,20 @@ describe('dispose-full-teardown registry: every dispose() leaves zero new rule-c
             continue;
         }
 
-        it(name, () => {
+        it(name, async () => {
             // Warm-up pass: some classes lazily materialise process-global,
             // shared state on first use — a module-level `.classname` rule
             // (e.g. Markdown's `.ts-ui-md-*` block styles), or a lazily-built
             // singleton (e.g. `Tooltip`, attached by any titled Button). That
             // state is correctly never torn down by one instance's dispose(),
             // so constructing once here keeps it out of the real diff below.
-            const warm = make();
+            const warm = await make();
             warm.getElement(true);
             warm.dispose();
 
             const before = new Set(_ruleCacheKeys());
 
-            const c = make();
+            const c = await make();
             c.getElement(true);
 
             const ids = ownIds?.(c);

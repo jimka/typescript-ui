@@ -46,6 +46,18 @@ class DateEditor extends TextInputCellEditor<Date | null> {
     }
 
     /**
+     * Disposes the lazily-created picker dropdown, then runs the inherited
+     * teardown. `_dropdown` is a LayerManager-mounted overlay (AnimatedDropdown
+     * subclass), never a registered child, so the base destructor's recursion
+     * cannot reach it.
+     */
+    protected destructor(): void {
+        this._dropdown?.dispose();
+
+        super.destructor();
+    }
+
+    /**
      * Returns whether the input is empty (no typed text, no committed value).
      *
      * @returns true when both the rendered text and the cached value are empty.

@@ -785,6 +785,19 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
+     * Disposes the shared cell-editor pool, then runs the inherited teardown
+     * (which disposes the row pool and the scroller — see
+     * VirtualRowView.destructor()). `_editorPool`'s cached editors are held in
+     * a private Map, never a registered child of this body, so the base
+     * destructor's recursion cannot reach them.
+     */
+    protected destructor(): void {
+        this._editorPool.dispose();
+
+        super.destructor();
+    }
+
+    /**
      * Runs a render pass the startup font gate deferred, once a layout reaches
      * this body again.
      *
