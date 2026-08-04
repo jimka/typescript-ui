@@ -198,7 +198,16 @@ describe('DOM-state replay probe', () => {
         expect(wrote).toBe(true);
     });
 
-    it('double-registers an init()-installed listener across a rebuild (Component)', () => {
+    // This probe originally asserted the opposite — that a rebuild double-
+    // registered an init()-installed listener, needing two `removeListener`
+    // calls to fully unregister — which was true when this audit was written
+    // (see plans/component-element-release.md). That plan made `Event`'s
+    // terminal `listeners.push` idempotent by exact reference, so the probe is
+    // kept, inverted, as the regression guard: one registration survives a
+    // rebuild, and a single `removeListener` uninstalls the base window
+    // listener. `ListenerOnInitComponent.handleProbe` is already a stable
+    // bound field, so idempotency-by-reference dedups it.
+    it('registers an init()-installed listener once across a rebuild (Component)', () => {
         const component = new ListenerOnInitComponent({});
         component.getElement(true);
         rebuild(component);
@@ -208,15 +217,9 @@ describe('DOM-state replay probe', () => {
             w.op === 'removeListener' && w.args[0] === LISTENER_PROBE_EVENT_TYPE
         ).length;
 
-        // One `removeListener` call only drops ONE of the two pushed entries —
-        // the window-level base listener stays installed, proving a second
-        // registration is still sitting in Event's listener array.
-        Event.removeListener(component, LISTENER_PROBE_EVENT_TYPE, component.handleProbe);
-        expect(removeListenerCount()).toBe(0);
-
-        // The second call drains the array to empty, which is what finally
-        // uninstalls the base listener — confirming exactly two registrations,
-        // not more.
+        // A single `removeListener` call fully unregisters it, draining the
+        // array to empty and uninstalling the window-level base listener —
+        // confirming exactly one registration survived the rebuild.
         Event.removeListener(component, LISTENER_PROBE_EVENT_TYPE, component.handleProbe);
         expect(removeListenerCount()).toBe(1);
     });

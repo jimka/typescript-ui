@@ -318,7 +318,9 @@ export namespace Event {
             typeMap.set(component.getId(), compFunc);
         }
 
-        compFunc.listeners.push(listener);
+        if (!compFunc.listeners.includes(listener)) {
+            compFunc.listeners.push(listener);
+        }
     }
 
     /**
@@ -410,7 +412,9 @@ export namespace Event {
             typeMap.set(component.getId(), compFunc);
         }
 
-        compFunc.listeners.push(listener);
+        if (!compFunc.listeners.includes(listener)) {
+            compFunc.listeners.push(listener);
+        }
     }
 
     /**
