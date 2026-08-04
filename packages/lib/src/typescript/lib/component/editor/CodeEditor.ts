@@ -668,30 +668,42 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * Computes this editor's desired height when {@link CodeEditorOptions.autoHeightMaxRows}
      * is set — the real rendered content height, plus the horizontal scrollbar's
      * measured thickness when `.cm-scroller` is showing one, capped at the row
-     * limit converted to pixels via CodeMirror's own measured line height and
-     * content padding — and applies it via `setHeight()`, emitting `"heightchange"`
-     * when the value actually moves. No-op offline (no `_view`) and when
-     * `autoHeightMaxRows` is unset (today's fixed-height contract).
+     * limit — and applies it via `setHeight()`, emitting `"heightchange"` when
+     * the value actually moves. No-op offline (no `_view`, or `_scrollElement`
+     * hasn't resolved) and when `autoHeightMaxRows` is unset (today's
+     * fixed-height contract).
+     *
+     * @remarks Reads `.cm-scroller`'s live `scrollHeight`/`scrollWidth`/
+     * `clientWidth` via `DOM.source.getScrollMetrics` rather than CodeMirror's
+     * own `contentHeight`/`defaultLineHeight` getters. CodeMirror defers its own
+     * internal line-height refresh while its view is scrolled outside the
+     * browser's visible viewport (`ViewState.measure`'s `inView` gate, a
+     * performance optimisation for large documents), so those getters can keep
+     * reporting CodeMirror's pre-measurement default indefinitely for a fenced
+     * block that upgrades below the page fold. `.cm-scroller`'s native scroll
+     * metrics force a real reflow on every read and are accurate regardless of
+     * that gate, since CodeMirror always renders a short document's line DOM
+     * eagerly at construction. The row cap's per-row pixel height is derived
+     * the same way — from the live line count, not `defaultLineHeight`.
      */
     private syncAutoHeight(): void {
         const maxRows = this.getAutoHeightMaxRows();
 
-        if (!this._view || maxRows === null) {
+        if (!this._view || maxRows === null || !this._scrollElement) {
             return;
         }
 
-        let desired = this._view.contentHeight;
+        const metrics = DOM.source.getScrollMetrics(this._scrollElement);
 
-        if (this._scrollElement) {
-            const metrics = DOM.source.getScrollMetrics(this._scrollElement);
+        let desired = metrics.scrollHeight;
 
-            if (metrics.scrollWidth > metrics.clientWidth) {
-                desired += DOM.source.getScrollBarWidth();
-            }
+        if (metrics.scrollWidth > metrics.clientWidth) {
+            desired += DOM.source.getScrollBarWidth();
         }
 
-        const capPx = maxRows * this._view.defaultLineHeight
-                    + this._view.documentPadding.top + this._view.documentPadding.bottom;
+        const padding       = this._view.documentPadding.top + this._view.documentPadding.bottom;
+        const perLineHeight = (metrics.scrollHeight - padding) / this._view.state.doc.lines;
+        const capPx         = perLineHeight * maxRows + padding;
 
         desired = Math.min(desired, capPx);
 
