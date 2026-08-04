@@ -68,6 +68,19 @@ The first call to `getElement()` invokes the subclass's `render()` followed by `
 
 You usually don't call `getElement()` directly — it's called for you the first time the component participates in a layout pass.
 
+## Releasing the element
+
+```typescript
+component.release(); // detaches the element; the component object stays alive
+component.getElement(true); // rebuilds lazily, later
+```
+
+`release()` is the sibling of `dispose()` that keeps the component alive: it detaches the DOM node and clears the cached element handle, but the component object itself — its fields, its children, its theme subscriptions — is untouched and reusable. A fresh element is built lazily the next time `getElement(true)` is called, riding the same `render()` / `init()` path a first render uses.
+
+Release is refused (`release()` returns `false`, a no-op) unless the component opts in by overriding the protected `canRelease()` gate to return `true`. The base default is `false`, so a component is releasable only once its own element-derived state is provably rebuilt by `render()` / `init()` or genuinely absent — releasing an un-audited component would silently drop whatever state only its live element held. Native scroll offset and focus are restored automatically once the rebuilt element is mounted and sized; any other per-component state (selection ranges, media playback position, an editor's internal view, and so on) is the releasing component's own responsibility to capture and replay.
+
+Use this when you want to reclaim a component's DOM footprint without discarding the object itself — an offscreen tab's content, a virtualized row you expect to come back — and prefer it over `dispose()` whenever the caller intends to show the component again. Contrast with the [Disposal](#disposal) section below for the case where the component is gone for good.
+
 ## Layout: `doLayout()`
 
 Layout is what positions absolutely-positioned children and writes pixel values for `top` / `left` / `width` / `height`. It runs:
