@@ -6,6 +6,12 @@ Parsing uses the [`marked`](https://marked.js.org/) library's **lexer only** —
 
 Use this to render authored copy (help text, release notes, a README-style panel) without hand-building the element tree.
 
+<!-- demo: markdown-preview -->
+> **Live demo** — a `TextArea` of Markdown source with a `Markdown` panel
+> below it that re-renders live as you type.
+> [Open the Markdown page](https://jimka.github.io/typescript-ui/components/Markdown)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

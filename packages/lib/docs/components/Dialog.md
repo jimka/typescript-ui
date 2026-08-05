@@ -2,6 +2,12 @@
 
 [`Dialog`](/api/overlay/classes/Dialog) is a modal panel with a title bar, scrollable content area, and a button row. The static `Dialog.show(config)` returns a `Promise<DialogResult>` resolving to `'confirm'`, `'cancel'`, or `'close'`.
 
+<!-- demo: dialog-basic -->
+> **Live demo** — a button that opens a modal `Dialog` with a message and
+> two buttons; the result is echoed below.
+> [Open the Dialog page](https://jimka.github.io/typescript-ui/components/Dialog)
+<!-- /demo -->
+
 ## One-shot prompt
 
 ```typescript
