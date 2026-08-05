@@ -303,6 +303,25 @@ function slugify(text: string): string {
 }
 
 /**
+ * Shared by {@link Markdown.appendHeading} and {@link extractMarkdownHeadings}
+ * — the single place a heading's slug is deduped against ids already used
+ * earlier in the same render/extraction pass, so both produce identical ids
+ * from identical inputs.
+ *
+ * @param text - The heading's plain text.
+ * @param headingIds - The current pass's dedupe counter, keyed by slug.
+ * @returns The slug, suffixed with `-N` when it was already seen this pass.
+ */
+function nextHeadingId(text: string, headingIds: Map<string, number>): string {
+    const slug = slugify(text);
+    const seen = headingIds.get(slug) ?? 0;
+
+    headingIds.set(slug, seen + 1);
+
+    return seen === 0 ? slug : `${slug}-${seen}`;
+}
+
+/**
  * How a link href should be rendered: the final href, and whether it leaves
  * the site the {@link Markdown} instance is embedded in.
  *
@@ -1091,12 +1110,7 @@ class Markdown extends Component<MarkdownOptions> {
     private appendHeading(parent: Handle, token: Tokens.Heading, headingIds: Map<string, number>): void {
         const depth = Math.min(Math.max(token.depth, HEADING_MIN_DEPTH), HEADING_MAX_DEPTH);
         const heading = this.create("h" + depth);
-        const slug = slugify(token.text);
-        const seen = headingIds.get(slug) ?? 0;
-
-        headingIds.set(slug, seen + 1);
-
-        const id = seen === 0 ? slug : `${slug}-${seen}`;
+        const id = nextHeadingId(token.text, headingIds);
 
         DOM.sink.apply(heading, { addClass: [HEADING_CLASS], setAttr: { id } });
         this.appendInlineTokens(heading, token.tokens);
@@ -1402,6 +1416,91 @@ class Markdown extends Component<MarkdownOptions> {
         DOM.sink.apply(span, { text });
         DOM.sink.appendChild(parent, span);
     }
+}
+
+/**
+ * One heading extracted from Markdown source by {@link extractMarkdownHeadings}.
+ *
+ * @category Components
+ */
+export interface MarkdownHeading {
+    /** The slugified id — byte-identical to the `id` {@link Markdown} renders onto the corresponding heading element. */
+    id:    string;
+    /** The heading's plain text. */
+    text:  string;
+    /** The heading's level, clamped to `[1, 6]`. */
+    depth: number;
+}
+
+/**
+ * Flattens a heading's inline token tree to plain text — the same content
+ * {@link Markdown.appendInlineTokens} would render, minus the markup: a
+ * `strong`/`em` wrapper contributes its inner text with no `**`/`_` marks, a
+ * `codespan` contributes its code text with no backticks, and a `link`
+ * contributes its label text with no `[]()` syntax. `heading.text` (the raw
+ * source substring) is deliberately not used here — it still carries that
+ * markup, which is correct for {@link nextHeadingId} (matching `appendHeading`'s
+ * own slug input) but wrong for display.
+ *
+ * @param tokens - A heading's inline-level tokens (`Tokens.Heading.tokens`).
+ * @returns The heading's rendered plain text.
+ */
+function inlineText(tokens: Token[]): string {
+    return tokens.map((token) => {
+        switch (token.type) {
+            case "text":     return (token as Tokens.Text).tokens ? inlineText((token as Tokens.Text).tokens!) : (token as Tokens.Text).text;
+            case "strong":   return inlineText((token as Tokens.Strong).tokens);
+            case "em":       return inlineText((token as Tokens.Em).tokens);
+            case "codespan": return (token as Tokens.Codespan).text;
+            case "link":     return inlineText((token as Tokens.Link).tokens);
+            default:         return (token as Tokens.Text).text ?? token.raw ?? "";
+        }
+    }).join("");
+}
+
+/**
+ * Recursively walks `tokens` for heading tokens, the same block-token shapes
+ * {@link Markdown.appendBlockToken} recurses into for headings: top-level, and
+ * nested inside a blockquote or a (loose) list item.
+ *
+ * @param tokens - The block tokens to walk.
+ * @param headingIds - The current pass's dedupe counter — see `nextHeadingId`.
+ * @param out - The array headings are appended to, in document order.
+ */
+function collectHeadings(tokens: Token[], headingIds: Map<string, number>, out: MarkdownHeading[]): void {
+    for (const token of tokens) {
+        if (token.type === "heading") {
+            const heading = token as Tokens.Heading;
+            const depth = Math.min(Math.max(heading.depth, HEADING_MIN_DEPTH), HEADING_MAX_DEPTH);
+
+            out.push({ id: nextHeadingId(heading.text, headingIds), text: inlineText(heading.tokens), depth });
+        } else if (token.type === "blockquote") {
+            collectHeadings((token as Tokens.Blockquote).tokens, headingIds, out);
+        } else if (token.type === "list") {
+            for (const item of (token as Tokens.List).items) {
+                collectHeadings(item.tokens, headingIds, out);
+            }
+        }
+    }
+}
+
+/**
+ * Computes the heading outline of a Markdown source string, without building
+ * any DOM — the ids produced are byte-identical to the `id` {@link Markdown}
+ * renders onto the corresponding `<h1>`-`<h6>` element for the same source,
+ * since both go through `nextHeadingId`.
+ *
+ * @param source - The Markdown source to extract headings from.
+ * @returns The source's headings, in document order.
+ *
+ * @category Components
+ */
+export function extractMarkdownHeadings(source: string): MarkdownHeading[] {
+    const headings: MarkdownHeading[] = [];
+
+    collectHeadings(lexer(source), new Map<string, number>(), headings);
+
+    return headings;
 }
 
 const MarkdownCallable = callable(Markdown);

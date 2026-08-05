@@ -30,6 +30,12 @@ page resets to empty.
   `autoHeightMaxRows`, and a `"heightchange"` event; every other `CodeEditor`
   caller is unaffected, since the option defaults to unset (today's
   fixed-height, fill-parent behaviour). No consumer action is needed.
+- **`Markdown` gains a new pure export, `extractMarkdownHeadings(source)`**,
+  which computes a Markdown source string's heading outline —
+  `{ id, text, depth }[]`, in document order — without building any DOM. The
+  `id` for each heading is byte-identical to the `id` `Markdown` renders onto
+  the corresponding `<h1>`–`<h6>` element for that same source. No consumer
+  action is needed.
 
 ## Fixed
 

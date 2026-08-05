@@ -1,8 +1,8 @@
-import { callable, Component, DOM, Event, Panel } from '@jimka/typescript-ui/core';
+import { callable, Component, DOM, Event, ListenerBag, Panel } from '@jimka/typescript-ui/core';
 import type { Handle, PanelOptions } from '@jimka/typescript-ui/core';
 import { VBox } from '@jimka/typescript-ui/layout';
-import { Markdown } from '@jimka/typescript-ui/component/display';
-import type { MarkdownLinkResolution } from '@jimka/typescript-ui/component/display';
+import { Markdown, extractMarkdownHeadings } from '@jimka/typescript-ui/component/display';
+import type { MarkdownHeading, MarkdownLinkResolution } from '@jimka/typescript-ui/component/display';
 import { Router } from '@jimka/typescript-ui/router';
 import { getPage } from '../content/pages.js';
 import { resolveDocLink, resolveApiLink } from '../content/links.js';
@@ -67,6 +67,10 @@ class DocsContent extends Panel {
     // path, so a revisited page renders instantly with no network request.
     private readonly _apiSources: Map<string, string> = new Map();
 
+    // Backs the "outlinechange" event — mirrors Video's own on/off/emit +
+    // ListenerBag shape for a re-emitted, non-DOM event.
+    private readonly _listeners: ListenerBag<"outlinechange"> = new ListenerBag<"outlinechange">();
+
     // Stable reference so Event.addSubtreeListener always sees the same
     // function identity; delegates to the named handler below.
     private readonly handleLinkClick: (e: MouseEvent) => void = (e) => this.onLinkClick(e);
@@ -88,6 +92,45 @@ class DocsContent extends Panel {
         this._router = router;
 
         Event.addSubtreeListener(this, 'click', this.handleLinkClick);
+    }
+
+    /**
+     * Registers a listener for `"outlinechange"`, fired with the current
+     * page's heading outline every time {@link showSource} renders one.
+     *
+     * @param event - `"outlinechange"`.
+     * @param listener - Invoked with the page's headings, in document order.
+     *
+     * @returns This component, for method chaining.
+     */
+    on(event: "outlinechange", listener: (headings: MarkdownHeading[]) => void): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered `"outlinechange"` listener.
+     *
+     * @param event - `"outlinechange"`.
+     * @param listener - The exact callback reference to remove.
+     *
+     * @returns This component, for method chaining.
+     */
+    off(event: "outlinechange", listener: (headings: MarkdownHeading[]) => void): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fans `"outlinechange"` out to its registered listeners.
+     *
+     * @param event - `"outlinechange"`.
+     * @param headings - The current page's headings, in document order.
+     */
+    protected emit(event: "outlinechange", headings: MarkdownHeading[]): void {
+        this._listeners.fire(event, headings);
     }
 
     /**
@@ -166,8 +209,26 @@ class DocsContent extends Panel {
      * @param source - The Markdown source to render.
      */
     private showSource(source: string): void {
-        this.showBlocks(splitBlocks(source));
+        const blocks = splitBlocks(source);
+
+        this.emitOutline(blocks);
+        this.showBlocks(blocks);
         this.applyFragment(this._targetFragment);
+    }
+
+    /**
+     * Fires `"outlinechange"` with the full page's heading outline: every
+     * `markdown` block's headings, concatenated in document order. A `demo`
+     * block contributes nothing — a live demo's rendered content is not
+     * statically knowable.
+     *
+     * @param blocks - The page's blocks, in document order.
+     */
+    private emitOutline(blocks: DocBlock[]): void {
+        const headings = blocks.flatMap((block) =>
+            block.kind === 'markdown' ? extractMarkdownHeadings(block.source) : []);
+
+        this.emit('outlinechange', headings);
     }
 
     /**
