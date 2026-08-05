@@ -700,6 +700,15 @@ class Markdown extends Component<MarkdownOptions> {
             return;
         }
 
+        // Flush any pending style writes — in particular a `width` queued by
+        // LayoutManager.commitBounds, which disables auto-commit
+        // (setAutoCommitStyle(false)) for the duration of a layout pass.
+        // Markdown.setWidth calls measureContentHeight synchronously from
+        // inside that window, so without this flush syncCodeEditors below reads
+        // each wrapper's clientWidth against the previous frame's width. Same
+        // fix as Panel.doLayout's pre-measureScrollbarGutter flush.
+        this.commitElementStyle();
+
         this.syncCodeEditors();
 
         // Read the true content height, not the committed box. `scrollHeight` is
@@ -707,9 +716,9 @@ class Markdown extends Component<MarkdownOptions> {
         // (already height-committed) box would only ever report *growth* — a
         // document that reflows wider or is edited shorter could never shrink its
         // extent, leaving stale dead space. Collapse the box to its content
-        // first; the flush also commits the buffered width so the read reflects
-        // the assigned width (the commitBounds/stale-DOM gotcha). The raw style
-        // write is a transient probe restored below, not persistent state, so it
+        // first — the width was already flushed above, so this second flush only
+        // needs to commit the `height: auto` write below. The raw style write is
+        // a transient probe restored below, not persistent state, so it
         // deliberately bypasses the typed `setHeight` (which takes only a number).
         const restoreHeight = this.getHeight();
         this.setElementStyle("height", "auto");

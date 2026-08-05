@@ -977,6 +977,41 @@ describe('Markdown.syncCodeEditors (private, called directly)', () => {
     });
 });
 
+describe('Markdown.measureContentHeight — commitBounds width-flush ordering', () => {
+    it('flushes a pending width write before syncCodeEditors reads wrapper geometry', () => {
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper } = buildCodeHostTrio(md);
+        const editor = new FakeCodeEditor('x', { readOnly: true, language: 'javascript' });
+        anyMd._codeEditors.push({ editor, wrapper });
+
+        const scrollMetricsWriteCounts: number[] = [];
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation(() => {
+            scrollMetricsWriteCounts.push(sink.writes.length);
+            return {
+                scrollTop: 0, scrollLeft: 0, scrollWidth: 0,
+                scrollHeight: 240, clientWidth: 640, clientHeight: 240,
+            };
+        });
+
+        // Mirrors LayoutManager.commitBounds: Markdown.setWidth calls
+        // measureContentHeight synchronously from inside this window.
+        md.setAutoCommitStyle(false);
+        md.setWidth(300);
+        md.setAutoCommitStyle(true);
+
+        const widthWriteIndex = sink.writes.findIndex(
+            (w) => w.op === 'apply' && w.args[0] === md.getElement()
+                && (w.args[1] as { style?: { width?: string } }).style?.width === '300px',
+        );
+
+        expect(widthWriteIndex).toBeGreaterThanOrEqual(0);
+        expect(scrollMetricsWriteCounts.length).toBeGreaterThan(0);
+        expect(scrollMetricsWriteCounts[0]).toBeGreaterThan(widthWriteIndex);
+    });
+});
+
 describe('Markdown.loadCodeEditorUpgrade (private, called directly)', () => {
     it('is a no-op when the render generation has advanced since queuing', async () => {
         const md = new Markdown('hello');
