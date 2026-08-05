@@ -268,39 +268,268 @@ describe('CodeEditor autoHeightMaxRows', () => {
             scrollWidth: 600, scrollHeight: 100,
             clientWidth: 500, clientHeight: 100,
         });
-        vi.spyOn(DOM.source, 'getScrollBarWidth').mockReturnValue(15);
+        // A real, already-rendered horizontal scrollbar: offsetHeight (115)
+        // exceeds clientHeight (100, from getScrollMetrics above) by its
+        // thickness (15).
+        vi.spyOn(DOM.source, 'getOffsetSize').mockReturnValue({ offsetTop: 0, offsetHeight: 115 });
 
         editor.syncAutoHeight();
 
         expect(editor.getHeight()).toBe(115);
     });
 
-    it('reserves the width before the cap, not after: the cap wins even when only the reserved sum exceeds it', () => {
-        // capPx = 10 (perLineHeight = 190 / 19 lines) * 20 (maxRows) + 0
-        // (padding) = 200. Content alone (190) is under the cap, but content +
-        // the 15px scrollbar reserve (205) is not — reserving before Math.min
-        // clamps to 200; reserving after would clamp 190 to 190 first and add
-        // 15 on top, landing on 205. The two orders are indistinguishable at
-        // any content height that already exceeds the cap on its own, which is
-        // why this case (just under, only over once the reserve is added) is
-        // what actually pins the ordering.
-        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+    it('still reserves the horizontal scrollbar width when the row cap, not real content, is the binding constraint', () => {
+        // A document that genuinely exceeds autoHeightMaxRows (30 lines
+        // against a 10-row cap) forces the row cap to be the binding
+        // constraint regardless of the scrollbar reserve. Live-reproduced:
+        // reserving only on the pre-clamp content height let Math.min
+        // silently discard it whenever the cap won, so the horizontal
+        // scrollbar rendered inside the capped box and overlapped the last
+        // visible row instead of getting room of its own. The reserve must
+        // still apply on top of the cap, not just on top of real content.
+        // capPx = 10 (perLineHeight = 300 / 30 lines) * 10 (maxRows) + 0
+        // (padding) = 100; plus the 15px scrollbar reserve = 115.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 10 }) as any;
         editor._view = {
-            state: { doc: { lines: 19 } },
+            state: { doc: { lines: 30 } },
             documentPadding: { top: 0, bottom: 0 },
         };
         editor._scrollElement = DOM.sink.createElement('div');
 
         vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
             scrollTop: 0, scrollLeft: 0,
-            scrollWidth: 600, scrollHeight: 190,
+            scrollWidth: 600, scrollHeight: 300,
             clientWidth: 500, clientHeight: 100,
         });
-        vi.spyOn(DOM.source, 'getScrollBarWidth').mockReturnValue(15);
+        vi.spyOn(DOM.source, 'getOffsetSize').mockReturnValue({ offsetTop: 0, offsetHeight: 115 });
 
         editor.syncAutoHeight();
 
-        expect(editor.getHeight()).toBe(200);
+        expect(editor.getHeight()).toBe(115);
+    });
+
+    it('does not reserve any height when scrollWidth exceeds clientWidth but no real horizontal scrollbar is currently rendering', () => {
+        // `.cm-scroller`'s one-time `scrollbar-gutter: stable` (see mount())
+        // reserves a vertical scrollbar's worth of width unconditionally,
+        // narrowing clientWidth regardless of whether a vertical scrollbar
+        // ever actually renders — so `scrollWidth > clientWidth` alone does
+        // NOT reliably predict a real, space-consuming horizontal scrollbar.
+        // Live measurement found two docs blocks both with scrollWidth over
+        // clientWidth (7px and 15px) where only one actually rendered a
+        // scrollbar; a scrollWidth/clientWidth-based threshold (with or
+        // without a scrollbar-width fudge factor) cannot tell them apart.
+        // This reproduces the block with no real scrollbar: offsetHeight
+        // equals clientHeight (nothing rendered is consuming extra space),
+        // so no reserve should be added despite the scrollWidth overflow.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 5 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 507, scrollHeight: 100,
+            clientWidth: 500, clientHeight: 100,
+        });
+        vi.spyOn(DOM.source, 'getOffsetSize').mockReturnValue({ offsetTop: 0, offsetHeight: 100 });
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(100);
+    });
+
+    it('measures the horizontal-scrollbar reserve against a content-sized box, not whatever height the box had before this call', () => {
+        // Live-reproduced: the free first commit for a new shape read
+        // offsetHeight/clientHeight against `.cm-scroller`'s height as it was
+        // BEFORE this call — this component's own pre-sync default on the
+        // very first call ever. A block that correctly shows no scrollbar
+        // once content-sized measured a false 15px reserve against that
+        // stale, far-too-short box, and since no growth against an unchanged
+        // shape is ever trusted, the wrong reading then locked in
+        // permanently — every later call reused it, and nothing ever
+        // re-measured. `getScrollMetrics` here returns a short clientHeight
+        // (20) on the first read (matching the pre-sync default) and the
+        // content-accurate one (100, matching contentDesired) on the second,
+        // taken after this method commits the content-only height first;
+        // `getOffsetSize` reflects no real scrollbar once content-sized. Had
+        // the reserve been computed against the stale first reading instead,
+        // it would have come out to 80 (100 - 20), not 0.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 5 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics')
+            .mockReturnValueOnce({
+                scrollTop: 0, scrollLeft: 0,
+                scrollWidth: 507, scrollHeight: 100,
+                clientWidth: 500, clientHeight: 20,
+            })
+            .mockReturnValueOnce({
+                scrollTop: 0, scrollLeft: 0,
+                scrollWidth: 507, scrollHeight: 100,
+                clientWidth: 500, clientHeight: 100,
+            });
+        vi.spyOn(DOM.source, 'getOffsetSize').mockReturnValue({ offsetTop: 0, offsetHeight: 100 });
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(100);
+    });
+
+    it('re-measures the horizontal-scrollbar reserve on a later call against the same shape, picking up a scrollbar that resolved on its own', () => {
+        // Live-reproduced: a language grammar loads asynchronously
+        // (setLanguage's loadExtension().then(...), well after mount's
+        // synchronous initial measurement) — a real, visible horizontal
+        // scrollbar present at that initial measurement can resolve once
+        // highlighting settles and re-flows the text, without the document's
+        // line count, length, or container width ever changing. A reserve
+        // trusted only once, on the shape change, would never notice and
+        // would leave the dead space it originally added forever.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 5 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 600, scrollHeight: 100,
+            clientWidth: 500, clientHeight: 100,
+        });
+        const getOffsetSize = vi.spyOn(DOM.source, 'getOffsetSize')
+            .mockReturnValue({ offsetTop: 0, offsetHeight: 115 });
+
+        editor.syncAutoHeight();
+        expect(editor.getHeight()).toBe(115);
+        expect(getOffsetSize).toHaveBeenCalledTimes(1);
+
+        // The scrollbar resolved: offsetHeight now matches clientHeight.
+        getOffsetSize.mockReturnValue({ offsetTop: 0, offsetHeight: 100 });
+
+        editor.syncAutoHeight();
+        expect(editor.getHeight()).toBe(100);
+        expect(getOffsetSize).toHaveBeenCalledTimes(2);
+    });
+
+    it('corrects a fractional-pixel undershoot invisible to integer scrollHeight/clientHeight, once, on the shape-change commit', () => {
+        // Live-reproduced via a raw DOM snapshot: CodeMirror's own gutter
+        // carried an inline `min-height: 223.504px` (its internal,
+        // full-precision content measurement) while the committed height was
+        // 224px, yet the block still showed a hair of real, non-zero scroll
+        // range. `scrollHeight`/`clientHeight` are integer DOM properties —
+        // rounding can hide this kind of shortfall from them entirely (both
+        // can read back the same rounded value even when a real gap exists),
+        // so the correction reads `.cm-content`'s fractional
+        // getBoundingClientRect-based rect directly instead. Reproduced here
+        // as a content rect of 101.5 against a scroller rect of 101 (content
+        // box, after the 1px padding-bottom, of 100) — a genuine 1.5px
+        // shortfall that must be folded in, not left as dead scroll range.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 5 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement  = DOM.sink.createElement('div');
+        editor._contentElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight: 100,
+            clientWidth: 500, clientHeight: 100,
+        });
+        vi.spyOn(DOM.source, 'getOffsetSize').mockReturnValue({ offsetTop: 0, offsetHeight: 100 });
+        vi.spyOn(DOM.source, 'getElementRect').mockImplementation((handle: unknown) => {
+            const height = handle === editor._contentElement ? 101.5 : 101;
+
+            return { x: 0, y: 0, width: 0, height, top: 0, left: 0, right: 0, bottom: height };
+        });
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(101.5);
+    });
+
+    it('does not let a later call against the same shape revert the fractional-undershoot correction as a false shrink', () => {
+        // Live-reproduced: after the fractional correction above commits
+        // (e.g. 224.5), CodeMirror's own settling fires another
+        // geometryChanged almost immediately, with the shape genuinely
+        // unchanged. That later call recomputes contentDesired from the
+        // same plain integer scrollHeight (224, not 224.5) — since it's
+        // less than the fractionally-corrected height this method itself
+        // just committed, and shrinks are otherwise always trusted, it read
+        // straight through as a "genuine" shrink, silently reverting the
+        // correction on every subsequent geometryChanged event — the
+        // correction never held past its own first call.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 5 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement  = DOM.sink.createElement('div');
+        editor._contentElement = DOM.sink.createElement('div');
+
+        // Fixed across every call, matching a real .cm-scroller: its
+        // integer scrollHeight/clientHeight never change on their own —
+        // only this method's own fractional correction (not reflected in
+        // these mocked integer properties) does.
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight: 224,
+            clientWidth: 500, clientHeight: 224,
+        });
+        vi.spyOn(DOM.source, 'getOffsetSize').mockReturnValue({ offsetTop: 0, offsetHeight: 224 });
+        vi.spyOn(DOM.source, 'getElementRect').mockImplementation((handle: unknown) => {
+            const height = handle === editor._contentElement ? 223.5 : 224;
+
+            return { x: 0, y: 0, width: 0, height, top: 0, left: 0, right: 0, bottom: height };
+        });
+
+        editor.syncAutoHeight();
+        expect(editor.getHeight()).toBe(224.5);
+
+        editor.syncAutoHeight();
+        expect(editor.getHeight()).toBe(224.5);
+    });
+
+    it('does not apply the fractional-undershoot correction when the row cap, not real content, produced this height', () => {
+        // A capped block is EXPECTED to keep overflowing past its committed
+        // height — that overflow is what drives its own intentional
+        // internal vertical scroll — so the correction above must not fire
+        // just because the content rect still shows more than the scroller's
+        // content box in that case.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 10 }) as any;
+        editor._view = {
+            state: { doc: { lines: 30 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement  = DOM.sink.createElement('div');
+        editor._contentElement = DOM.sink.createElement('div');
+
+        // capPx = 10 (perLineHeight = 300 / 30 lines) * 10 (maxRows) = 100;
+        // content (300) exceeds it, so the cap is the binding constraint.
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight: 300,
+            clientWidth: 500, clientHeight: 100,
+        });
+        vi.spyOn(DOM.source, 'getOffsetSize').mockReturnValue({ offsetTop: 0, offsetHeight: 100 });
+        // A large content rect that WOULD add a big residual if the row-cap
+        // exclusion weren't applied.
+        vi.spyOn(DOM.source, 'getElementRect').mockImplementation((handle: unknown) => {
+            const height = handle === editor._contentElement ? 500 : 100;
+
+            return { x: 0, y: 0, width: 0, height, top: 0, left: 0, right: 0, bottom: height };
+        });
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(100);
     });
 
     it('is idempotent: a second call with unchanged inputs makes no further setHeight/emit calls', () => {
@@ -387,6 +616,180 @@ describe('CodeEditor autoHeightMaxRows', () => {
         }
 
         expect(editor.getHeight()).toBe(trueContent);
+    });
+
+    it('caps consecutive height growths for an unchanged document and width, breaking CodeMirror\'s own geometry-echo loop', () => {
+        // `syncAutoHeight`'s own `setHeight()` commit changes `.cm-scroller`'s
+        // real `clientHeight`. CodeMirror's internal `ViewState.measure()`
+        // (@codemirror/view, runs on its own schedule, independent of any
+        // user interaction) compares that live value against its own cached
+        // copy on every pass and reports a fresh `geometryChanged` update
+        // when they differ — which they always do, right after we commit.
+        // That re-invokes this method with no genuine content or width
+        // change. On a real (non-integer) device-pixel ratio the re-measure
+        // does not reliably read back the exact value just committed (unlike
+        // the mount-time case the previous test models, which converges) —
+        // it can read fractionally MORE, live-observed climbing by tens of
+        // pixels every ~100ms, forever, with the editor merely visible and
+        // no further interaction. This mock reproduces the worst case: raw
+        // `scrollHeight` grows on literally every call, unconditionally,
+        // with lines/width held constant — the exact signature observed
+        // live. `syncAutoHeight` must still stop growing well short of
+        // following it, since nothing about the document has changed.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 4, length: 80 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        let scrollHeight = 100;
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation(() => {
+            scrollHeight += 50;
+            return {
+                scrollTop: 0, scrollLeft: 0,
+                scrollWidth: 500, scrollHeight,
+                clientWidth: 500, clientHeight: scrollHeight,
+            };
+        });
+
+        for (let i = 0; i < 20; i++) {
+            editor.syncAutoHeight();
+        }
+
+        // 20 unbounded steps at +50px each would reach 1100px; the cap must
+        // stop it far short of that.
+        expect(editor.getHeight()).toBeLessThan(500);
+    });
+
+    it('resumes growing after a genuine document change, even once growth against the old shape has been locked out', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 4, length: 80 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        let scrollHeight = 100;
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation(() => {
+            scrollHeight += 50;
+            return {
+                scrollTop: 0, scrollLeft: 0,
+                scrollWidth: 500, scrollHeight,
+                clientWidth: 500, clientHeight: scrollHeight,
+            };
+        });
+
+        for (let i = 0; i < 10; i++) {
+            editor.syncAutoHeight();
+        }
+        const heightAfterLockOut = editor.getHeight();
+
+        // A real edit: line count changes, so this is a genuinely new shape.
+        editor._view.state.doc.lines = 6;
+        editor._view.state.doc.length = 120;
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBeGreaterThan(heightAfterLockOut);
+    });
+
+    it('rejects any growth against an unchanged shape, even a single plausible-looking follow-up correction', () => {
+        // An earlier version trusted exactly one follow-up growth per shape,
+        // on the theory that an initial pre-layout guess might need one
+        // accurate correction once CodeMirror's real layout became
+        // available (e.g. settling 100 -> 150 here). Live testing across
+        // several unrelated docs blocks (Dialog, Drawer, LineChart, Button)
+        // refuted that: that "follow-up" fired on essentially every
+        // multi-line editor regardless of whether real settling was needed,
+        // each time adding a line or two of dead space with nothing behind
+        // it — the same self-referential echo the unbounded case shows, just
+        // bounded to a single step. No growth against an unchanged shape is
+        // trusted now, however plausible it looks; only the always-free
+        // first commit for a shape, or a later genuine shape change, grows
+        // the editor.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 4, length: 80 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        let scrollHeight = 100;
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation(() => ({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight,
+            clientWidth: 500, clientHeight: scrollHeight,
+        }));
+
+        editor.syncAutoHeight(); // free first commit
+        expect(editor.getHeight()).toBe(100);
+
+        scrollHeight = 150; // a plausible-looking settling correction
+        editor.syncAutoHeight();
+        expect(editor.getHeight()).toBe(100);
+
+        // A later, unrelated trigger (focus/scroll), still the same document
+        // and width, reads taller still — also rejected.
+        scrollHeight = 300;
+        editor.syncAutoHeight();
+        expect(editor.getHeight()).toBe(100);
+    });
+
+    it('rejects a growth attempt flagged as a pure selection change, even with budget available', () => {
+        // Live-confirmed via direct mutation-log comparison: a click that
+        // moves the cursor to a DIFFERENT line reassigns cm-activeLine /
+        // cm-activeLineGutter and rewrites .cm-content's own style —
+        // CodeMirror's heavier internal refresh — while a same-line
+        // reposition (or a single-line document, structurally incapable of
+        // having a different line to click) never does. A cursor move alone
+        // can never legitimately need more vertical space (a monospace grid
+        // layout has no reflow to trigger), so any growth surfacing during
+        // one is the same .cm-content self-reference the rest of this
+        // method's guards target — reject it outright rather than spending
+        // budget on it.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 4, length: 80 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        let scrollHeight = 160;
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation(() => ({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight,
+            clientWidth: 500, clientHeight: scrollHeight,
+        }));
+
+        editor.syncAutoHeight(); // free first commit
+        expect(editor.getHeight()).toBe(160);
+
+        scrollHeight = 184; // budget would normally allow this once
+        editor.syncAutoHeight(true); // ...but this call is a pure selection change
+        expect(editor.getHeight()).toBe(160);
+    });
+
+    it('still allows a shrink during a pure selection change', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 4, length: 80 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        let scrollHeight = 160;
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation(() => ({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight,
+            clientWidth: 500, clientHeight: scrollHeight,
+        }));
+
+        editor.syncAutoHeight();
+        expect(editor.getHeight()).toBe(160);
+
+        scrollHeight = 120; // a shrink is always safe to apply
+        editor.syncAutoHeight(true);
+        expect(editor.getHeight()).toBe(120);
     });
 });
 

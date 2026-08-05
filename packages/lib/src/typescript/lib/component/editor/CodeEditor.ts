@@ -90,6 +90,9 @@ const _defaultCodeEditorOptions: Partial<CodeEditorOptions> = {
 /** CodeMirror's scrolling viewport element, inside the mounted view. */
 const CM_SCROLLER_SELECTOR = ".cm-scroller";
 
+/** CodeMirror's content element, inside `.cm-scroller`. */
+const CM_CONTENT_SELECTOR = ".cm-content";
+
 // Padding-bottom applied once to an auto-height editor's `.cm-scroller`
 // (see the `_scrollElement` resolution in `mount`) so a sub-pixel content
 // overhang can never leave the scroller a fraction of a pixel short and
@@ -105,6 +108,33 @@ const CM_SCROLLER_SELECTOR = ".cm-scroller";
 // measurement and ratcheted the editor's height upward forever. Mirrors
 // ScrollStrip.arrowReserve's `+1` slop against the same rounding noise.
 const SUBPIXEL_HEIGHT_SLOP_PX = 1;
+
+// `syncAutoHeight` trusts a height GROWTH only on the call where the
+// document/width shape genuinely changed (a real edit or resize) — never
+// again against the same shape, no matter how plausible the reading looks.
+// Committing a height changes `.cm-scroller`'s real `clientHeight`;
+// CodeMirror's own `ViewState.measure()` (@codemirror/view) runs on its own
+// schedule and compares that live value against its cached copy on every
+// pass, reporting a fresh `geometryChanged` update whenever they differ —
+// which they always do, immediately after any commit. That re-invokes
+// `syncAutoHeight` with no genuine content or width change. On a real
+// (non-integer) device-pixel ratio the re-measurement does not reliably read
+// back the exact value just committed (unlike the mount-time case
+// `SUBPIXEL_HEIGHT_SLOP_PX` handles, which converges): it can read
+// fractionally MORE, live-observed climbing by tens of pixels roughly every
+// 100ms, forever, with the editor merely visible and no further interaction.
+// A one-growth-of-slack budget was tried first, on the theory that an
+// initial pre-layout guess might need exactly one accurate follow-up once
+// CodeMirror's real layout became available. Live testing across several
+// unrelated blocks (Dialog, Drawer, LineChart, Button) refuted that: the
+// "follow-up" fired on essentially every multi-line editor regardless of
+// whether real settling was needed, each time adding a line or two of dead
+// space with nothing behind it — the same self-referential echo the
+// unbounded case shows, just bounded to a single step instead of climbing
+// forever. There is no reliable signal that distinguishes a genuine
+// follow-up correction from this echo, so none is trusted; a block whose
+// first, always-free commit undershoots true content is a distinct bug (the
+// initial measurement itself, not this guard) to fix at the source.
 
 /** Duration of the read-only rejection flash, in milliseconds. */
 const READONLY_FLASH_MS = 300;
@@ -202,6 +232,37 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * {@link CodeEditor.getScrollElement}.
      */
     private _scrollElement: Handle | null = null;
+
+    /**
+     * Handle for CodeMirror's own content element (`.cm-content`, inside
+     * `.cm-scroller`), resolved once the view mounts; `null` until then (or
+     * forever, offline). Used by {@link CodeEditor.syncAutoHeight} to read
+     * its true, fractional rendered content height — `scrollHeight` /
+     * `clientHeight` are integer DOM properties that can round away a
+     * sub-pixel shortfall this element's own `getBoundingClientRect` still
+     * shows.
+     */
+    private _contentElement: Handle | null = null;
+
+    /**
+     * `[lines, docLength, clientWidth]` as of the last call to
+     * `syncAutoHeight`, or `null` before the first call. Used to tell a
+     * genuine content/width change from a self-triggered geometry echo — a
+     * growth is trusted only when this differs from the previous call.
+     */
+    private _lastSyncedShape: readonly [number, number, number] | null = null;
+
+    /**
+     * Horizontal-scrollbar height reserve, re-measured on every call to
+     * `syncAutoHeight` (rendered content width — and so a real scrollbar's
+     * presence — can change without the document/width shape itself
+     * changing, e.g. once an async language grammar finishes loading and
+     * re-flows the text). Cached here only so a later call can fold it into
+     * `desired` without re-deriving it. See
+     * {@link CodeEditor.syncAutoHeight}'s `@remarks` for why it's measured
+     * this way at all.
+     */
+    private _lastHbarReserve = 0;
 
     /**
      * Constructs a code editor.
@@ -559,7 +620,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
         // Before the view is destroyed below, so any later scroll read (the
         // base destructor's own teardown, a queued layout) resolves through the
         // base element rather than a handle whose node CodeMirror has removed.
-        this._scrollElement = null;
+        this._scrollElement  = null;
+        this._contentElement = null;
 
         // Nulled after destroy so a second destructor() pass on this same
         // instance (dispose() is documented idempotent — a harmless no-op —
@@ -638,7 +700,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
                 }
 
                 if (update.heightChanged || update.geometryChanged) {
-                    this.syncAutoHeight();
+                    this.syncAutoHeight(update.selectionSet && !update.docChanged);
                 }
             }),
             EditorView.domEventHandlers({
@@ -666,6 +728,13 @@ class CodeEditor extends Component<CodeEditorOptions> {
             // the handle is interned weakly, so the live DOM keeps owning it
             // and it must not be tracked as one of this component's own.
             this._scrollElement = DOM.source.querySelector(element, CM_SCROLLER_SELECTOR);
+
+            // Resolved from `_scrollElement` (not `element`) so the query is
+            // scoped to this editor's own scroller, matching how `_scrollElement`
+            // itself is resolved.
+            if (this._scrollElement) {
+                this._contentElement = DOM.source.querySelector(this._scrollElement, CM_CONTENT_SELECTOR);
+            }
 
             // Auto-height mode only: two fixed, one-time styles, never
             // recomputed, so neither can feed back into a later measurement.
@@ -743,8 +812,27 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * the height it computes — see that constant's comment for why the slop
      * cannot live here without ratcheting the editor's height upward on every
      * call.
+     *
+     * A growth this method applies is itself a geometry change CodeMirror's
+     * own internal measurement reacts to independently of this component, so
+     * a growth is trusted only on the call where the document/width shape
+     * genuinely changed — see the comment above `_lastSyncedShape`'s
+     * declaration for why no growth against an unchanged shape is trusted,
+     * however plausible it looks.
+     *
+     * @param pureSelectionChange - True when the caller's `updateListener`
+     *   update carries a selection change but no document change. A cursor
+     *   move alone can never legitimately need more vertical space (a
+     *   monospace grid layout has no reflow to trigger), so a growth request
+     *   arriving this way is rejected outright, even on a call that would
+     *   otherwise read as a shape change — live-confirmed via a direct
+     *   mutation-log comparison: a click moving the cursor to a *different*
+     *   line reassigns `cm-activeLine` / `cm-activeLineGutter` and rewrites
+     *   `.cm-content`'s own style, CodeMirror's heavier internal refresh,
+     *   while a same-line reposition (or a single-line document, structurally
+     *   incapable of having a different line to click) never does.
      */
-    private syncAutoHeight(): void {
+    private syncAutoHeight(pureSelectionChange = false): void {
         const maxRows = this.getAutoHeightMaxRows();
 
         if (!this._view || maxRows === null || !this._scrollElement) {
@@ -753,19 +841,147 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
         const metrics = DOM.source.getScrollMetrics(this._scrollElement);
 
-        let desired = metrics.scrollHeight;
-
-        if (metrics.scrollWidth > metrics.clientWidth) {
-            desired += DOM.source.getScrollBarWidth();
-        }
-
         const padding       = this._view.documentPadding.top + this._view.documentPadding.bottom;
         const perLineHeight = (metrics.scrollHeight - padding) / this._view.state.doc.lines;
         const capPx         = perLineHeight * maxRows + padding;
 
-        desired = Math.min(desired, capPx);
+        let contentDesired = Math.min(metrics.scrollHeight, capPx);
 
-        if (desired === this.getHeight()) {
+        if (pureSelectionChange && contentDesired > this.getHeight()) {
+            return;
+        }
+
+        const shape = [this._view.state.doc.lines, this._view.state.doc.length, metrics.clientWidth] as const;
+        const shapeChanged = this._lastSyncedShape === null || shape.some((v, i) => v !== this._lastSyncedShape![i]);
+
+        this._lastSyncedShape = shape;
+
+        // Captured before this call's own commits (the intermediate one
+        // below, when shapeChanged), so the convergence/growth checks after
+        // it compare against the height this call STARTED with rather than
+        // one it already changed mid-call.
+        const previousHeight = this.getHeight();
+
+        // `.cm-scroller`'s one-time `scrollbar-gutter: stable` (see `mount`)
+        // reserves a vertical scrollbar's worth of width unconditionally,
+        // narrowing `clientWidth` regardless of whether a vertical scrollbar
+        // ever actually renders — so whether a REAL horizontal scrollbar
+        // renders cannot be predicted from `scrollWidth` vs. `clientWidth`
+        // (with or without a scrollbar-width fudge factor): live measurement
+        // found two blocks both with `scrollWidth > clientWidth` (7px and
+        // 15px over) where only the second actually rendered one. The fix is
+        // to measure the box's own rendered state directly instead of
+        // predicting it — `offsetHeight` includes a real horizontal
+        // scrollbar's thickness, `clientHeight` excludes it, so their
+        // difference (floored at zero) is exactly the space it's costing.
+        //
+        // Measured on EVERY call, not just a shape change: a real
+        // scrollbar's presence depends on rendered content width, which can
+        // change WITHOUT the shape tuple above changing — live-confirmed via
+        // a block whose language grammar loads asynchronously
+        // (`setLanguage`'s `loadExtension().then(...)`, well after `mount`'s
+        // synchronous initial measurement): a real, visible horizontal
+        // scrollbar present at that initial measurement resolved on its own
+        // once highlighting settled and re-flowed the text, but the shape
+        // tuple (line count, doc length, container width) never changed, so
+        // a reserve cached only on shape changes never got revisited and the
+        // dead space it added stayed forever. Re-measuring costs one more
+        // forced-layout read per call, same class as the several already
+        // happening here, and is safe to trust unconditionally in a way a
+        // content-height GROWTH is not: the box's own height is fed back
+        // into `.cm-content`'s `min-height: 100%`, which is what makes a
+        // height growth self-reinforcing, but a scrollbar's thickness is
+        // independent of this element's height, so re-reading it here can't
+        // manufacture its own feedback loop. Any resulting increase in the
+        // committed height still passes through the same shape-gated growth
+        // check below as always; a decrease passes through the same
+        // sub-pixel-noise-guarded shrink check.
+        //
+        // On the call that first establishes a new shape, `.cm-scroller` is
+        // still whatever height it had BEFORE (this component's own pre-sync
+        // default on the very first call ever, or the previous shape's
+        // height on a later one) — live-confirmed wrong: a block correctly
+        // showing no scrollbar once content-sized measured a false 15px
+        // reserve read against that stale height, and since no growth
+        // against an unchanged shape is ever trusted (see above), the wrong
+        // reading then locked in permanently. So on a shape change the
+        // content-only height is committed FIRST, forcing a real layout pass
+        // (a plain synchronous property read already forces one; the box
+        // itself needs an actual write, not just a read, since the
+        // scrollbar's presence is being measured against ITS height), and
+        // the reserve is measured against that — all still within this one
+        // call, so nothing paints in between. On a later call against an
+        // unchanged shape the box is already content-sized from that
+        // earlier commit, so `metrics.clientHeight` (read once, at the top
+        // of this method, before any commit this call might make) is
+        // already an accurate reference — no second commit needed.
+        let settledClientHeight = metrics.clientHeight;
+
+        if (shapeChanged) {
+            this.setHeight(contentDesired);
+
+            const settled = DOM.source.getScrollMetrics(this._scrollElement);
+
+            settledClientHeight = settled.clientHeight;
+
+            // The pre-commit `metrics.scrollHeight` above, and `settled`
+            // here, are both integer DOM properties — browsers round or
+            // floor them, which can hide a genuine sub-pixel shortfall
+            // entirely: live-confirmed via a raw DOM snapshot where
+            // CodeMirror's own gutter carried an inline `min-height:
+            // 223.504px` (its internal, full-precision content measurement)
+            // against a rounded 224px commit that STILL left a hair of real,
+            // non-zero scroll range — yet `scrollHeight`/`clientHeight` both
+            // read back as the same rounded 224, showing no gap at all. The
+            // fractional `getBoundingClientRect`-based rect on `.cm-content`
+            // itself doesn't round this away, so it's compared directly
+            // against `.cm-scroller`'s own fractional content-box height
+            // (its rect height minus the fixed padding-bottom applied in
+            // `mount` — `.cm-content`'s `min-height: 100%` resolves against
+            // that content box, not the padding-inclusive border box).
+            // Skipped when this call's height came from the row cap, not
+            // real content: a capped block is EXPECTED to keep overflowing
+            // past its committed height — that's what drives its own
+            // intentional internal scroll — so "correcting" it here would
+            // defeat the cap.
+            if (metrics.scrollHeight <= capPx && this._contentElement) {
+                const contentRectHeight        = DOM.source.getElementRect(this._contentElement).height;
+                const scrollerContentBoxHeight = DOM.source.getElementRect(this._scrollElement).height - SUBPIXEL_HEIGHT_SLOP_PX;
+
+                contentDesired += Math.max(0, contentRectHeight - scrollerContentBoxHeight);
+            }
+        }
+
+        const offsetSize = DOM.source.getOffsetSize(this._scrollElement);
+
+        this._lastHbarReserve = Math.max(0, offsetSize.offsetHeight - settledClientHeight);
+
+        const desired = contentDesired + this._lastHbarReserve;
+
+        if (desired === previousHeight) {
+            return;
+        }
+
+        if (desired > previousHeight && !shapeChanged) {
+            return;
+        }
+
+        // A shrink against an UNCHANGED shape, smaller than one pixel, can
+        // only be integer-rounding noise, never genuine content: the
+        // document/width haven't changed, so real content can't have gotten
+        // shorter without an edit (which would itself be a shape change).
+        // `metrics.scrollHeight` above is an integer DOM property — on a
+        // later call against a shape whose height this method already
+        // corrected upward by a fraction of a pixel (see the fractional
+        // undershoot correction above), it reads back that already-correct
+        // height rounded DOWN, which is strictly LESS than what this method
+        // itself committed. Live-confirmed: that read straight back
+        // through as a "genuine" shrink every time (shrinks are otherwise
+        // always trusted, unlike growths), silently reverting the
+        // correction on the very next geometryChanged event — CodeMirror's
+        // own settling fires one almost immediately — so the fix never held
+        // past its own first call.
+        if (desired < previousHeight && !shapeChanged && previousHeight - desired < 1) {
             return;
         }
 
