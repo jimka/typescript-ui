@@ -10,6 +10,11 @@ import { Glyph } from '~/component/display/Glyph';
 import { xmark } from '~/glyphs/solid/xmark';
 import { lookupGlyph } from '~/component/display/Glyphs';
 import { ToolBar } from '~/component/menubar/ToolBar';
+import { Tree } from '~/component/tree/Tree';
+import { MenuBar } from '~/component/menubar/MenuBar';
+import { DiagramNode } from '~/component/diagram/DiagramNode';
+import { DiagramGroupNode } from '~/component/diagram/DiagramGroupNode';
+import { ScrollStrip } from '~/component/container/ScrollStrip';
 import { SplitGutter } from '~/component/container/SplitGutter';
 import { HBox } from '~/layout/HBox';
 import { VBox } from '~/layout/VBox';
@@ -21,6 +26,15 @@ import { NumberedListItemStyle } from '~/component/list/NumberedListItemStyle';
 import { TabCloseButton } from '~/component/button/TabCloseButton';
 import { NotificationHistoryButton } from '~/overlay/NotificationHistoryButton';
 import { Button } from '~/component/button/Button';
+import { ToggleButton } from '~/component/button/ToggleButton';
+import { TabButton } from '~/component/button/TabButton';
+import { StatusBar } from '~/component/container/StatusBar';
+import { TabBar } from '~/component/container/TabBar';
+import { MenuSeparator } from '~/component/container/MenuSeparator';
+import { SortPriorityBadge } from '~/component/table/cell/SortPriorityBadge';
+import { Scrollbar } from '~/component/container/Scrollbar';
+import { ToolBarSeparator } from '~/component/menubar/ToolBarSeparator';
+import { ChartLegend } from '~/component/chart/ChartLegend';
 import { Drawer } from '~/overlay/Drawer';
 import { Popover } from '~/overlay/Popover';
 import { AnimatedDropdown } from '~/core/AnimatedDropdown';
@@ -237,6 +251,29 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'ToolBar orientation',          resolve: () => new ToolBar().getOrientation(),                             expected: 'horizontal' },
     { label: 'ToolBar compact',              resolve: () => new ToolBar().isCompact(),                                  expected: true },
     { label: 'ToolBar backgroundColor',      resolve: () => new ToolBar().getBackgroundColor(),                         expected: 'var(--ts-ui-toolbar-bg, rgb(245, 245, 245))' },
+    { label: 'Tree backgroundColor',         resolve: () => new Tree().getBackgroundColor(),                            expected: 'var(--ts-ui-input-bg, rgb(255, 255, 255))' },
+    { label: 'MenuBar backgroundColor',      resolve: () => new MenuBar().getBackgroundColor(),                         expected: 'var(--ts-ui-menu-bar-bg, rgb(245, 245, 245))' },
+    { label: 'DiagramNode backgroundColor',  resolve: () => new DiagramNode().getBackgroundColor(),                     expected: 'var(--ts-ui-diagram-node-bg, var(--ts-ui-button-bg, rgb(245, 245, 245)))' },
+    { label: 'DiagramGroupNode backgroundColor', resolve: () => new DiagramGroupNode().getBackgroundColor(),            expected: 'var(--ts-ui-diagram-group-bg, rgba(120, 120, 120, 0.08))' },
+    { label: 'ScrollStrip backgroundColor',  resolve: () => new ScrollStrip().getBackgroundColor(),                     expected: 'transparent' },
+    { label: 'TabButton backgroundColor',    resolve: () => new TabButton('x').getBackgroundColor(),                    expected: 'var(--ts-ui-tab-button-bg, #b8b8c3)' },
+    { label: 'TabButton backgroundImage',    resolve: () => new TabButton('x').getBackgroundImage(),                    expected: 'var(--ts-ui-tab-button-bg, #b8b8c3)' },
+    // ToggleButton itself has no backgroundColor default of its own; the value
+    // below comes from Button's unrelated (out-of-scope) resting-background
+    // chrome mechanism, not from anything this plan changes — pinned here only
+    // so Step 12's plumbing addition is confirmed not to disturb it.
+    { label: 'ToggleButton backgroundColor (unset)', resolve: () => new ToggleButton('x').getBackgroundColor(),         expected: 'var(--ts-ui-button-bg, transparent)' },
+    { label: 'StatusBar backgroundColor',    resolve: () => new StatusBar().getBackgroundColor(),                       expected: 'var(--ts-ui-statusbar-bg, rgb(245, 245, 245))' },
+    { label: 'StatusBar foregroundColor',    resolve: () => new StatusBar().getForegroundColor(),                       expected: 'var(--ts-ui-statusbar-color, rgb(60, 60, 60))' },
+    { label: 'TabBar backgroundColor',       resolve: () => new TabBar().getBackgroundColor(),                          expected: 'var(--ts-ui-tab-toolbar-bg, #eee)' },
+    { label: 'MenuSeparator backgroundColor', resolve: () => new MenuSeparator().getBackgroundColor(),                  expected: 'transparent' },
+    { label: 'SortPriorityBadge backgroundColor', resolve: () => new SortPriorityBadge().getBackgroundColor(),          expected: 'var(--ts-ui-sort-badge-bg, rgba(0,0,0,0.15))' },
+    { label: 'SortPriorityBadge foregroundColor', resolve: () => new SortPriorityBadge().getForegroundColor(),          expected: 'var(--ts-ui-sort-badge-color, inherit)' },
+    { label: 'Scrollbar backgroundColor',    resolve: () => new Scrollbar().getBackgroundColor(),                       expected: 'var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))' },
+    { label: 'ToolBarSeparator backgroundColor', resolve: () => new ToolBarSeparator().getBackgroundColor(),            expected: 'var(--ts-ui-toolbar-separator-color, rgb(220, 220, 220))' },
+    { label: 'ChartLegend backgroundColor',  resolve: () => new ChartLegend().getBackgroundColor(),                     expected: 'transparent' },
+    { label: 'Popover backgroundColor',      resolve: () => new Popover().getBackgroundColor(),                        expected: 'var(--ts-ui-popover-bg, rgb(255, 255, 255))' },
+    { label: 'Popover foregroundColor',      resolve: () => new Popover().getForegroundColor(),                        expected: 'var(--ts-ui-popover-color, rgb(0, 0, 0))' },
     { label: 'SplitGutter collapsible',      resolve: () => new SplitGutter('horizontal').isCollapsible(),              expected: true },
     { label: 'SplitGutter movable',          resolve: () => new SplitGutter('horizontal').isMovable(),                  expected: true },
     { label: 'BulletedList itemStyle',       resolve: () => new BulletedList().getStyle(),                              expected: BulletedListItemStyle.DISC },
@@ -307,6 +344,64 @@ describe('an explicit value wins over a class default', () => {
         const list = new BulletedList() as any;
         expect(list._options.itemStyle).toBeUndefined();   // resolved via getStyle fold, never stored
         expect(tb._options.backgroundColor).toBeUndefined(); // resolved via getBackgroundColor fold
+    });
+
+    it('a caller-supplied backgroundColor wins over the fourteen clobbering-bug sites’ hardcoded default', () => {
+        expect(new Tree({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new MenuBar({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new DiagramNode({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new DiagramGroupNode({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new ScrollStrip({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+    });
+
+    it('a subclassDefaults bag overrides the class’s own default for the new-bag sites', () => {
+        expect(new Tree(undefined, { backgroundColor: 'green' }).getBackgroundColor()).toBe('green');
+        expect(new MenuBar(undefined, { backgroundColor: 'green' }).getBackgroundColor()).toBe('green');
+        expect(new DiagramGroupNode(undefined, { backgroundColor: 'green' }).getBackgroundColor()).toBe('green');
+        expect(new ScrollStrip(undefined, { backgroundColor: 'green' }).getBackgroundColor()).toBe('green');
+    });
+
+    it('TabButton backgroundColor/backgroundImage override wins', () => {
+        expect(new TabButton('x', { backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new TabButton('x', { backgroundImage: 'none' }).getBackgroundImage()).toBe('none');
+    });
+
+    it('ToggleButton forwards subclassDefaults through to Button', () => {
+        // backgroundImage (not backgroundColor) demonstrates the plumbing in
+        // isolation: Button's own applyChromeOptions folds
+        // `_defaultOptions.backgroundImage` cleanly, so a subclassDefaults
+        // value reaches it with no further help. backgroundColor is different
+        // — Button's applyChromeOptions also unconditionally repaints a plain
+        // resting background via a direct `setBackgroundColor` call whenever
+        // the caller passed no explicit `backgroundColor`, bypassing
+        // `_defaultOptions` — so it does NOT reliably show through at the bare
+        // ToggleButton level; TabButton (the one real subclassDefaults
+        // consumer) papers over that by reasserting it in its own
+        // `applyTabStyling`, see TabButton.ts.
+        expect(new ToggleButton('x', undefined, { backgroundImage: 'none' }).getBackgroundImage()).toBe('none');
+    });
+
+    it('TabButton default wins the "deepest class wins" conflict against Button\'s own gradient', () => {
+        // Button contributes a competing backgroundImage default (a gradient);
+        // TabButton's own default must win because it is spread after Button's.
+        expect(new TabButton('x').getBackgroundImage()).toBe('var(--ts-ui-tab-button-bg, #b8b8c3)');
+    });
+
+    it('a caller-supplied backgroundColor/foregroundColor wins for StatusBar, TabBar, MenuSeparator, SortPriorityBadge', () => {
+        expect(new StatusBar({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new StatusBar({ foregroundColor: 'blue' }).getForegroundColor()).toBe('blue');
+        expect(new TabBar({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new MenuSeparator(undefined, { backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new SortPriorityBadge({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new SortPriorityBadge({ foregroundColor: 'blue' }).getForegroundColor()).toBe('blue');
+    });
+
+    it('a caller-supplied backgroundColor/foregroundColor wins for Scrollbar, ToolBarSeparator, ChartLegend, Popover', () => {
+        expect(new Scrollbar('vertical', { backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new ToolBarSeparator({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new ChartLegend({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new Popover({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new Popover({ foregroundColor: 'blue' }).getForegroundColor()).toBe('blue');
     });
 
     it('a caller value beats the ScrollingPanel subclass defaults', () => {

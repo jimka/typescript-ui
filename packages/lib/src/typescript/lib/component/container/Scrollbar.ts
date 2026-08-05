@@ -301,6 +301,10 @@ class ScrollArrowButton extends Component {
 
 }
 
+const _defaultScrollbarOptions: Partial<ScrollbarOptions> = {
+    backgroundColor: "var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))",
+};
+
 /**
  * A custom virtual scrollbar overlay.
  *
@@ -351,9 +355,12 @@ class Scrollbar extends Component<ScrollbarOptions> {
      * @param options - Optional configuration bag. ComponentOptions fields are
      *   forwarded to `super` so the standard cascade applies; the
      *   arrow-specific fields are read here ahead of any DOM construction.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(orientation: AxisOrientation = "vertical", options?: ScrollbarOptions) {
-        super(options);
+    constructor(orientation: AxisOrientation = "vertical", options?: ScrollbarOptions, subclassDefaults?: Partial<ScrollbarOptions>) {
+        super(options, { ..._defaultScrollbarOptions, ...(subclassDefaults ?? {}) });
 
         this._orientation = orientation;
 
@@ -367,7 +374,6 @@ class Scrollbar extends Component<ScrollbarOptions> {
             this._arrowsEnabled = options.arrowsEnabled;
         }
 
-        this.setBackgroundColor("var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))");
         this.setUserSelect("none");
 
         // Purely decorative: the real scroll semantics live on the native scroll

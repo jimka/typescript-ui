@@ -13,12 +13,11 @@ export interface MenuSeparatorOptions extends ComponentOptions {
 }
 
 /**
- * Empty subclass-default const so the super call follows the framework's
- * `(options, defaults)` shape uniformly. MenuSeparator owns no class-level
- * option overrides today; the const exists so a future field has a place to
- * land without reshuffling the super call.
+ * User-overridable default fill; a caller-supplied `backgroundColor` wins.
  */
-const _defaultMenuSeparatorOptions: Partial<MenuSeparatorOptions> = {};
+const _defaultMenuSeparatorOptions: Partial<MenuSeparatorOptions> = {
+    backgroundColor: "transparent",
+};
 
 /**
  * A horizontal separator rule used inside a [`Menu`](/api/overlay/classes/Menu) panel to visually group menu items.
@@ -50,7 +49,6 @@ class MenuSeparator extends Component<MenuSeparatorOptions> {
 
         this.setHeight(MenuSeparator.HEIGHT);
         this.setPreferredSize({ width: 0, height: MenuSeparator.HEIGHT });
-        this.setBackgroundColor("transparent");
         this.setElementCSSRule(
             "borderTop",
             `1px solid var(--ts-ui-${cssVarPrefix}-separator-color, rgb(220, 220, 220))`

@@ -101,6 +101,8 @@ const _defaultPopoverOptions: Partial<PopoverOptions> = {
     placement: "auto",
     dismissOn: "click-outside",
     showArrow: true,
+    backgroundColor: "var(--ts-ui-popover-bg, rgb(255, 255, 255))",
+    foregroundColor: "var(--ts-ui-popover-color, rgb(0, 0, 0))",
 };
 
 /**
@@ -187,8 +189,6 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         this.setLayoutManager(vbox);
 
         // Theme-driven chrome.
-        this.setBackgroundColor("var(--ts-ui-popover-bg, rgb(255, 255, 255))");
-        this.setForegroundColor("var(--ts-ui-popover-color, rgb(0, 0, 0))");
         this.setBorder({ border: "1px solid var(--ts-ui-popover-border, rgb(200, 200, 200))" });
         this.setBorderRadius("var(--ts-ui-popover-radius, 6px)");
         this.setShadow("var(--ts-ui-popover-shadow, 2px 4px 12px rgba(0, 0, 0, 0.18))");

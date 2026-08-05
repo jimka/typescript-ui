@@ -14,10 +14,11 @@ export interface ToolBarSeparatorOptions extends ComponentOptions {
 }
 
 /**
- * Empty subclass-default const so the super call follows the framework's
- * `(options, defaults)` shape uniformly.
+ * User-overridable default fill; a caller-supplied `backgroundColor` wins.
  */
-const _defaultToolBarSeparatorOptions: Partial<ToolBarSeparatorOptions> = {};
+const _defaultToolBarSeparatorOptions: Partial<ToolBarSeparatorOptions> = {
+    backgroundColor: "var(--ts-ui-toolbar-separator-color, rgb(220, 220, 220))",
+};
 
 /**
  * A thin divider rule used inside a [`ToolBar`](/api/component/menubar/classes/ToolBar) to visually group
@@ -81,8 +82,6 @@ class ToolBarSeparator extends Component<ToolBarSeparatorOptions> {
         }
 
         // The element IS the rule — a 1 px line filled with the theme colour.
-        this.setBackgroundColor("var(--ts-ui-toolbar-separator-color, rgb(220, 220, 220))");
-
         this.getAria().setRole("separator");
         this.getAria().setOrientation(this._orientation);
         this.getAria().setTabIndex(-1);

@@ -58,6 +58,8 @@ export interface StatusBarOptions extends ContainerOptions {
  */
 const _defaultStatusBarOptions: Partial<StatusBarOptions> = {
     insets: new Insets(0, 6, 0, 6),
+    backgroundColor: "var(--ts-ui-statusbar-bg, rgb(245, 245, 245))",
+    foregroundColor: "var(--ts-ui-statusbar-color, rgb(60, 60, 60))",
 };
 
 /**
@@ -120,8 +122,6 @@ class StatusBar extends Container<StatusBarOptions> {
         row.setComponentSpacing(STATUS_BAR_SPACING);   // 4 — the zones' former internal spacing
         this.setLayoutManager(row);                    // stretching stays at its default (false) — that's what we want
 
-        this.setBackgroundColor("var(--ts-ui-statusbar-bg, rgb(245, 245, 245))");
-        this.setForegroundColor("var(--ts-ui-statusbar-color, rgb(60, 60, 60))");
         this.setBorder({ borderTop: `${STATUS_BAR_BORDER_TOP_WIDTH}px solid var(--ts-ui-statusbar-border, rgb(220, 220, 220))` });
         this.setMinSize({ width: 0, height: STATUS_BAR_HEIGHT });
         this.setMaxSize({ width: Number.MAX_SAFE_INTEGER, height: STATUS_BAR_HEIGHT });

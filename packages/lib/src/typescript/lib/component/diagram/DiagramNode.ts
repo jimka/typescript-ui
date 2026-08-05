@@ -40,6 +40,7 @@ const _defaultDiagramNodeOptions: Partial<DiagramNodeOptions> = {
     // Vertical 4px / horizontal 8px so a short label never sits flush against
     // the rounded border — structural interior spacing, not cosmetic nudging.
     insets: new Insets(4, 8, 4, 8),
+    backgroundColor: "var(--ts-ui-diagram-node-bg, var(--ts-ui-button-bg, rgb(245, 245, 245)))",
 };
 
 /** Corner radius in pixels for the node's rounded box. */
@@ -90,7 +91,6 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
             ...(subclassDefaults ?? {}),
         });
 
-        this.setBackgroundColor("var(--ts-ui-diagram-node-bg, var(--ts-ui-button-bg, rgb(245, 245, 245)))");
         this.setBorder("1px solid var(--ts-ui-border-color, rgb(180, 180, 180))");
         this.setBorderRadius(NODE_BORDER_RADIUS);
         this.setCursor("pointer");
