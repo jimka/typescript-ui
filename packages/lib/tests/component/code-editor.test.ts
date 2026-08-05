@@ -322,9 +322,11 @@ describe('CodeEditor autoHeightMaxRows', () => {
 
         editor.syncAutoHeight();
         expect(fireCount).toBe(1);
+        expect(editor.getHeight()).toBe(100);
 
         editor.syncAutoHeight();
         expect(fireCount).toBe(1);
+        expect(editor.getHeight()).toBe(100);
     });
 
     it('reads the real DOM scroll metrics for content height, not the CodeMirror view\'s own possibly-stale estimate', () => {
@@ -350,6 +352,41 @@ describe('CodeEditor autoHeightMaxRows', () => {
         editor.syncAutoHeight();
 
         expect(editor.getHeight()).toBe(100);
+    });
+
+    it('does not ratchet the height upward when a later call observes its own previously-committed height reflected back as scrollHeight', () => {
+        // A real `.cm-scroller` can never report a `scrollHeight` smaller than
+        // its own `clientHeight` — once the editor's committed height exceeds
+        // its true content extent (e.g. from the mount-time sub-pixel slop
+        // padding, or any other cause), `.cm-content`'s `min-height: 100%`
+        // makes the "content" grow to fill that height, so the *next*
+        // `getScrollMetrics` call reports the box's own last-committed height
+        // back as if it were fresh content. This mock reproduces exactly that:
+        // `scrollHeight` is `max(trueContent, editor.getHeight())`. If
+        // `syncAutoHeight` ever added anything to the height it commits, this
+        // would climb by that amount on every call, forever; committing the
+        // measured extent verbatim (with no in-method slop) converges instead.
+        const trueContent = 100;
+        let lastCommitted = 0;
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 5 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+        editor.on('heightchange', (payload: { height: number }) => { lastCommitted = payload.height; });
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation(() => ({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight: Math.max(trueContent, lastCommitted),
+            clientWidth: 500, clientHeight: Math.max(trueContent, lastCommitted),
+        }));
+
+        for (let i = 0; i < 5; i++) {
+            editor.syncAutoHeight();
+        }
+
+        expect(editor.getHeight()).toBe(trueContent);
     });
 });
 

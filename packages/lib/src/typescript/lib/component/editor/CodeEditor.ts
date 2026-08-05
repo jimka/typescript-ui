@@ -90,6 +90,22 @@ const _defaultCodeEditorOptions: Partial<CodeEditorOptions> = {
 /** CodeMirror's scrolling viewport element, inside the mounted view. */
 const CM_SCROLLER_SELECTOR = ".cm-scroller";
 
+// Padding-bottom applied once to an auto-height editor's `.cm-scroller`
+// (see the `_scrollElement` resolution in `mount`) so a sub-pixel content
+// overhang can never leave the scroller a fraction of a pixel short and
+// paint a permanent, non-functional vertical scrollbar. `.cm-scroller`'s
+// `scrollHeight` is a whole number but the content it measures is not, so
+// committing the reported extent verbatim discards up to a pixel of real
+// content. This must be a fixed, one-time style, not part of the height
+// `syncAutoHeight` (re)computes on every call: `.cm-content`'s own
+// `min-height: 100%` means its rendered height — and so `.cm-scroller`'s
+// `scrollHeight`, which can never report less than the scroller's own
+// `clientHeight` — floors at whatever height was last committed, so adding
+// this slop to the committed height itself fed straight back into the next
+// measurement and ratcheted the editor's height upward forever. Mirrors
+// ScrollStrip.arrowReserve's `+1` slop against the same rounding noise.
+const SUBPIXEL_HEIGHT_SLOP_PX = 1;
+
 /** Duration of the read-only rejection flash, in milliseconds. */
 const READONLY_FLASH_MS = 300;
 
@@ -650,6 +666,42 @@ class CodeEditor extends Component<CodeEditorOptions> {
             // the handle is interned weakly, so the live DOM keeps owning it
             // and it must not be tracked as one of this component's own.
             this._scrollElement = DOM.source.querySelector(element, CM_SCROLLER_SELECTOR);
+
+            // Auto-height mode only: two fixed, one-time styles, never
+            // recomputed, so neither can feed back into a later measurement.
+            if (this._scrollElement && this.getAutoHeightMaxRows() !== null) {
+                DOM.sink.apply(this._scrollElement, {
+                    style: {
+                        // A one-time padding-bottom absorbs the sub-pixel
+                        // content overhang `syncAutoHeight` cannot safely
+                        // absorb itself — see SUBPIXEL_HEIGHT_SLOP_PX.
+                        // Recomputing it every call fed back into the next
+                        // `scrollHeight` read instead (`.cm-content`'s
+                        // `min-height: 100%` floors its own rendered height
+                        // at whatever `.cm-scroller`'s clientHeight last was),
+                        // ratcheting the height upward forever.
+                        paddingBottom: SUBPIXEL_HEIGHT_SLOP_PX + "px",
+                        // `syncAutoHeight` reserves room for a horizontal
+                        // scrollbar by comparing `scrollWidth` against
+                        // `.cm-scroller`'s own `clientWidth` — but that
+                        // `clientWidth` shrinks whenever `.cm-scroller` is
+                        // itself showing a *vertical* scrollbar (the native
+                        // scrollbar eats horizontal space). For a document
+                        // whose longest line sits within one scrollbar-width
+                        // of that boundary, this is circular: committing the
+                        // taller (reserved) height removes the vertical
+                        // scrollbar, which widens `clientWidth`, which drops
+                        // the horizontal reserve, which commits the shorter
+                        // height, which brings the vertical scrollbar back —
+                        // forever. `scrollbar-gutter: stable` reserves the
+                        // vertical scrollbar's track unconditionally, so
+                        // `clientWidth` no longer depends on whether a
+                        // vertical scrollbar is currently showing, breaking
+                        // the cycle at its source.
+                        scrollbarGutter: "stable",
+                    },
+                });
+            }
         }
 
         const language = this.getLanguage();
@@ -685,6 +737,12 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * that gate, since CodeMirror always renders a short document's line DOM
      * eagerly at construction. The row cap's per-row pixel height is derived
      * the same way — from the live line count, not `defaultLineHeight`.
+     *
+     * `.cm-scroller` carries a one-time `SUBPIXEL_HEIGHT_SLOP_PX` padding-
+     * bottom (applied once, in `mount`) rather than this method adding it to
+     * the height it computes — see that constant's comment for why the slop
+     * cannot live here without ratcheting the editor's height upward on every
+     * call.
      */
     private syncAutoHeight(): void {
         const maxRows = this.getAutoHeightMaxRows();
