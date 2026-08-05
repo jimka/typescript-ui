@@ -198,9 +198,32 @@ describe('CodeEditor autoHeightMaxRows', () => {
         expect(fired).toBe(false);
     });
 
+    it('syncAutoHeight is a no-op with a view but no resolved scroll element', () => {
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = { state: { doc: { lines: 5 } }, documentPadding: { top: 0, bottom: 0 } };
+        let fired = false;
+        editor.on('heightchange', () => { fired = true; });
+
+        const heightBefore = editor.getHeight();
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(heightBefore);
+        expect(fired).toBe(false);
+    });
+
     it('sets the content height when it is below the row cap', () => {
         const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
-        editor._view = { contentHeight: 100, defaultLineHeight: 20, documentPadding: { top: 4, bottom: 4 } };
+        editor._view = {
+            state: { doc: { lines: 5 } },
+            documentPadding: { top: 4, bottom: 4 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight: 100,
+            clientWidth: 500, clientHeight: 100,
+        });
 
         let received: { height: number } | null = null;
         editor.on('heightchange', (payload: { height: number }) => { received = payload; });
@@ -212,9 +235,20 @@ describe('CodeEditor autoHeightMaxRows', () => {
     });
 
     it('clamps to the row cap when content height exceeds it', () => {
+        // 250 lines at an even 20px/line + 8px padding = 5008px of real
+        // content; capPx = 20 (perLineHeight) * 20 (maxRows) + 8 (padding) = 408.
         const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
-        // capPx = 20 * 20 + 4 + 4 = 408
-        editor._view = { contentHeight: 5000, defaultLineHeight: 20, documentPadding: { top: 4, bottom: 4 } };
+        editor._view = {
+            state: { doc: { lines: 250 } },
+            documentPadding: { top: 4, bottom: 4 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight: 5008,
+            clientWidth: 500, clientHeight: 100,
+        });
 
         editor.syncAutoHeight();
 
@@ -223,7 +257,10 @@ describe('CodeEditor autoHeightMaxRows', () => {
 
     it('reserves the horizontal scrollbar width before applying the cap', () => {
         const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
-        editor._view = { contentHeight: 100, defaultLineHeight: 20, documentPadding: { top: 0, bottom: 0 } };
+        editor._view = {
+            state: { doc: { lines: 5 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
         editor._scrollElement = DOM.sink.createElement('div');
 
         vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
@@ -239,32 +276,46 @@ describe('CodeEditor autoHeightMaxRows', () => {
     });
 
     it('reserves the width before the cap, not after: the cap wins even when only the reserved sum exceeds it', () => {
-        // capPx = 20 * 20 + 0 + 0 = 400. contentHeight (395) alone is under the
-        // cap, but 395 + the 15px reserve (410) is not — reserving before
-        // Math.min clamps to 400; reserving after would instead clamp 395 to
-        // 395 first and add 15 on top, landing on 410. The two orders are
-        // indistinguishable at any contentHeight that already exceeds the cap
-        // on its own, which is why this case (just under, only over once the
-        // reserve is added) is what actually pins the ordering.
+        // capPx = 10 (perLineHeight = 190 / 19 lines) * 20 (maxRows) + 0
+        // (padding) = 200. Content alone (190) is under the cap, but content +
+        // the 15px scrollbar reserve (205) is not — reserving before Math.min
+        // clamps to 200; reserving after would clamp 190 to 190 first and add
+        // 15 on top, landing on 205. The two orders are indistinguishable at
+        // any content height that already exceeds the cap on its own, which is
+        // why this case (just under, only over once the reserve is added) is
+        // what actually pins the ordering.
         const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
-        editor._view = { contentHeight: 395, defaultLineHeight: 20, documentPadding: { top: 0, bottom: 0 } };
+        editor._view = {
+            state: { doc: { lines: 19 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
         editor._scrollElement = DOM.sink.createElement('div');
 
         vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
             scrollTop: 0, scrollLeft: 0,
-            scrollWidth: 600, scrollHeight: 100,
+            scrollWidth: 600, scrollHeight: 190,
             clientWidth: 500, clientHeight: 100,
         });
         vi.spyOn(DOM.source, 'getScrollBarWidth').mockReturnValue(15);
 
         editor.syncAutoHeight();
 
-        expect(editor.getHeight()).toBe(400);
+        expect(editor.getHeight()).toBe(200);
     });
 
     it('is idempotent: a second call with unchanged inputs makes no further setHeight/emit calls', () => {
         const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
-        editor._view = { contentHeight: 100, defaultLineHeight: 20, documentPadding: { top: 0, bottom: 0 } };
+        editor._view = {
+            state: { doc: { lines: 5 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight: 100,
+            clientWidth: 500, clientHeight: 100,
+        });
 
         let fireCount = 0;
         editor.on('heightchange', () => { fireCount += 1; });
@@ -274,6 +325,31 @@ describe('CodeEditor autoHeightMaxRows', () => {
 
         editor.syncAutoHeight();
         expect(fireCount).toBe(1);
+    });
+
+    it('reads the real DOM scroll metrics for content height, not the CodeMirror view\'s own possibly-stale estimate', () => {
+        // contentHeight/defaultLineHeight stand in for CodeMirror's stale,
+        // pre-measurement defaults (see the syncAutoHeight doc comment) — set
+        // to deliberately wrong values to prove the method no longer reads
+        // them; only the DOM.source.getScrollMetrics mock below should win.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            contentHeight: 9999,
+            defaultLineHeight: 9999,
+            state: { doc: { lines: 5 } },
+            documentPadding: { top: 4, bottom: 4 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight: 100,
+            clientWidth: 500, clientHeight: 100,
+        });
+
+        editor.syncAutoHeight();
+
+        expect(editor.getHeight()).toBe(100);
     });
 });
 
