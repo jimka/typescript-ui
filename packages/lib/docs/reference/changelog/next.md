@@ -19,6 +19,17 @@ is unchanged in every shipped theme. A custom theme that set
 `--ts-ui-body-bg` loses that override — supply a different value via
 `Component.setBackgroundColor` on a `Drawer` / `Rail` instance instead.
 
+### Component defaults
+
+Fourteen components — `Tree`, `MenuBar`, `DiagramNode`, `DiagramGroupNode`,
+`ScrollStrip`, `TabButton`, `StatusBar`, `TabBar`, `MenuSeparator`,
+`SortPriorityBadge`, `Scrollbar`, `ToolBarSeparator`, `ChartLegend`, and
+`Popover` — previously ignored a caller-supplied `backgroundColor` (and, on
+`StatusBar`, `SortPriorityBadge`, and `Popover`, `foregroundColor`) and
+always painted their own hardcoded default instead. Passing either option
+now works as documented. No consumer action is needed unless code relied on
+the option being silently ignored.
+
 ## Added
 
 ### Display
