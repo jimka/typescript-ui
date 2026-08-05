@@ -92,7 +92,6 @@ The strip and its handles read these tokens (see [theming](/concepts/theming)):
 
 | Token | Purpose |
 | --- | --- |
-| `--ts-ui-rail-bg` | Strip background |
 | `--ts-ui-rail-border` | Divider on the content-facing edge |
 | `--ts-ui-rail-shadow` | Strip drop shadow |
 | `--ts-ui-rail-handle-hover-bg` | Handle hover wash |
