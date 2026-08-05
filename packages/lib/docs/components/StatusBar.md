@@ -2,6 +2,12 @@
 
 [`StatusBar`](/api/component/container/classes/StatusBar) is a thin horizontal strip mounted at the bottom of a window or panel that surfaces transient status messages and small persistent indicators (connection state, cursor row/col, document counts, zoom %, an inline [`ProgressBar`](/components/ProgressBar) or [`ProgressSpinner`](/components/ProgressSpinner)). The component is chrome-only: the message string is convenience sugar over an internal [`Text`](/api/component/input/classes/Text); every other widget the caller wants in the bar is built from existing components and inserted via `addLeft` / `addRight`.
 
+<!-- demo: statusbar-basic -->
+> **Live demo** — a `StatusBar` showing a status message and a small
+> persistent indicator.
+> [Open the StatusBar page](https://jimka.github.io/typescript-ui/components/StatusBar)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

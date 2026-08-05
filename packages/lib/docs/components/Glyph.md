@@ -6,6 +6,12 @@ SVG path data is mounted **once** into a hidden `<svg>` sprite on `document.body
 
 The framework is self-contained — the glyphs it needs ship with the library, and there is no peer dependency for icons.
 
+<!-- demo: glyph-gallery -->
+> **Live demo** — six named `Glyph`s in an `HFlow`, plus a button cycling
+> one glyph through `spin` / `pulse` / `beat` / none.
+> [Open the Glyph page](https://jimka.github.io/typescript-ui/components/Glyph)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

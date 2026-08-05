@@ -4,6 +4,12 @@
 
 You usually use this indirectly via `NumberSpinner`. Reach for `SpinButton` directly only when you're building your own spinner-style control.
 
+<!-- demo: spinbutton-counter -->
+> **Live demo** — a `SpinButton` incrementing/decrementing a
+> `Text`-displayed count; hold it down to see the repeat cadence.
+> [Open the SpinButton page](https://jimka.github.io/typescript-ui/components/SpinButton)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

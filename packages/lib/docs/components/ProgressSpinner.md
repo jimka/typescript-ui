@@ -8,6 +8,12 @@ rendered as a rotating arc. Two usage modes:
   overlay on a target component, complete with a semi-transparent backdrop.
   `hideOverlay()` removes it.
 
+<!-- demo: progressspinner-basic -->
+> **Live demo** — two `ProgressSpinner`s at different sizes, spinning via
+> the component's own CSS animation.
+> [Open the ProgressSpinner page](https://jimka.github.io/typescript-ui/components/ProgressSpinner)
+<!-- /demo -->
+
 ## Usage
 
 Inline:

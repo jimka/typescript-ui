@@ -2,6 +2,12 @@
 
 [`FieldSet`](/api/component/container/classes/FieldSet) is a `<fieldset>` container with an embedded [`Legend`](/components/Legend) title. Use it to group related form fields with a visible border and title.
 
+<!-- demo: fieldset-basic -->
+> **Live demo** — a bordered `FieldSet` with a legend title, wrapping two
+> `Checkbox`es.
+> [Open the FieldSet page](https://jimka.github.io/typescript-ui/components/FieldSet)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
