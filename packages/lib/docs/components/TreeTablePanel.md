@@ -4,6 +4,12 @@
 
 The toolbar is docked to the north region; the tree table fills the centre. The constructor takes the same `(store, spec)` pair as `TreeTable`.
 
+<!-- demo: treetablepanel-toolbar -->
+> **Live demo** — a `TreeTablePanel` over a file/folder hierarchy, showing
+> its toolbar with rows that expand and collapse.
+> [Open the TreeTablePanel page](https://jimka.github.io/typescript-ui/components/TreeTablePanel)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
