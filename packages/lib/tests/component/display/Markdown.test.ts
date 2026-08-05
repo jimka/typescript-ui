@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Markdown, mapFenceLangToEditorId } from '~/component/display/Markdown';
+import { Markdown, mapFenceLangToEditorId, extractMarkdownHeadings } from '~/component/display/Markdown';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { Component } from '~/core/Component';
@@ -114,6 +114,76 @@ describe('Markdown heading ids', () => {
 
         expect(secondId).toBe(firstId);
         expect(secondId).toBe('repeat');
+    });
+});
+
+describe('extractMarkdownHeadings', () => {
+    it('extracts top-level headings in document order with their depth', () => {
+        expect(extractMarkdownHeadings('# A\n\n## B\n')).toEqual([
+            { id: 'a', text: 'A', depth: 1 },
+            { id: 'b', text: 'B', depth: 2 },
+        ]);
+    });
+
+    it('dedupes identical heading text with a "-N" suffix, matching Markdown\'s own dedupe rule', () => {
+        const headings = extractMarkdownHeadings('## Overview\n\n## Overview\n');
+
+        expect(headings.map((h) => h.id)).toEqual(['overview', 'overview-1']);
+    });
+
+    // marked's own ATX-heading tokenizer only recognizes 1-6 leading `#`s
+    // (CommonMark spec); a 7th makes the whole line a paragraph, not a
+    // "heading" token with depth 7 — so this exercises the same "not a
+    // heading" outcome appendHeading's DOM render produces for this input,
+    // rather than the depth-clamp branch (which no realistic Markdown source
+    // can trigger, since marked never emits a heading token outside [1, 6]).
+    it('does not treat a 7-hash line as a heading, matching appendHeading\'s DOM render', () => {
+        expect(extractMarkdownHeadings('####### Too Deep\n')).toEqual([]);
+    });
+
+    it('finds a heading nested inside a blockquote', () => {
+        expect(extractMarkdownHeadings('> ## Quoted Heading\n')).toEqual([
+            { id: 'quoted-heading', text: 'Quoted Heading', depth: 2 },
+        ]);
+    });
+
+    it('finds a heading nested inside a loose list item', () => {
+        expect(extractMarkdownHeadings('- item\n\n  ## Nested Heading\n')).toEqual([
+            { id: 'nested-heading', text: 'Nested Heading', depth: 2 },
+        ]);
+    });
+
+    it('strips inline markup from the displayed text but keeps it in the slug input', () => {
+        // The link's URL segment ("text") only survives into the slug if the
+        // id is built from the raw `heading.text` — it never appears in the
+        // displayed text, so a fixture without a link (where stripping
+        // markup happens to leave the slug unchanged either way) couldn't
+        // catch nextHeadingId being fed the wrong string.
+        expect(extractMarkdownHeadings('### `setX()` and [bold](/text)\n')).toEqual([
+            { id: 'setx-and-bold-text', text: 'setX() and bold', depth: 3 },
+        ]);
+    });
+
+    it('returns an empty array for source with no headings', () => {
+        expect(extractMarkdownHeadings('')).toEqual([]);
+        expect(extractMarkdownHeadings('Just prose.\n')).toEqual([]);
+    });
+
+    it('produces the same id as the corresponding rendered <h1>-<h6> element', () => {
+        // A link in the heading, repeated to also exercise dedupe: its
+        // rendered text ("Guide") and raw source ("[Guide](/setup)") slugify
+        // to different strings ("guide" vs "guide-setup"), so this fails if
+        // extractMarkdownHeadings and appendHeading ever stop feeding
+        // nextHeadingId the same one of the two.
+        const source = '## [Guide](/setup)\n\n## [Guide](/setup)\n';
+
+        new Markdown(source).getElement(true);
+
+        const renderedIds = attrWrites().map((a) => a.id).filter((id) => id !== undefined);
+        const extractedIds = extractMarkdownHeadings(source).map((h) => h.id);
+
+        expect(extractedIds).toEqual(['guide-setup', 'guide-setup-1']);
+        expect(extractedIds).toEqual(renderedIds);
     });
 });
 

@@ -15,6 +15,8 @@ export { IconText } from '~/component/display/IconText.js';
 export type { IconTextOptions } from '~/component/display/IconText.js';
 export { Markdown } from '~/component/display/Markdown.js';
 export type { MarkdownOptions, MarkdownLinkResolution, MarkdownLinkResolver } from '~/component/display/Markdown.js';
+export { extractMarkdownHeadings } from '~/component/display/Markdown.js';
+export type { MarkdownHeading } from '~/component/display/Markdown.js';
 export { IconLabel } from '~/component/display/IconLabel.js';
 export type { IconLabelOptions } from '~/component/display/IconLabel.js';
 export { ProgressBar } from '~/component/display/ProgressBar.js';

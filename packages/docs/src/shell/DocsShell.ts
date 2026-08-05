@@ -2,23 +2,31 @@ import { callable, Container, Panel } from '@jimka/typescript-ui/core';
 import { Border } from '@jimka/typescript-ui/layout';
 import { Placement } from '@jimka/typescript-ui/primitive';
 import { Header } from '@jimka/typescript-ui/component/display';
+import type { MarkdownHeading } from '@jimka/typescript-ui/component/display';
 import { StatusBar } from '@jimka/typescript-ui/component/container';
 import { Router } from '@jimka/typescript-ui/router';
 import { moduleCount, symbolCount } from '../content/api.js';
 import { DocsSidebar } from './DocsSidebar.js';
 import { DocsContent } from './DocsContent.js';
+import { DocsMinimap } from './DocsMinimap.js';
 
 /**
- * The app shell: `Header` north, `DocsSidebar` west, `DocsContent` centre, and
- * a `StatusBar` south carrying the TypeDoc model counts — mirrors
- * `packages/lib/src/typescript/main.ts`'s `Border` composition. See "The app
- * shell mirrors the demo app's composition" in
+ * The app shell: `Header` north, `DocsSidebar` west, `DocsContent` centre,
+ * `DocsMinimap` east, and a `StatusBar` south carrying the TypeDoc model
+ * counts — mirrors `packages/lib/src/typescript/main.ts`'s `Border`
+ * composition. See "The app shell mirrors the demo app's composition" in
  * plans/implemented/packages-docs.md.
  */
 class DocsShell extends Container {
 
     private readonly _sidebar: DocsSidebar;
     private readonly _content: DocsContent;
+    private readonly _minimap: DocsMinimap;
+
+    // Stable reference so DocsContent.off would find the same identity;
+    // delegates to the named handler below — mirrors DocsContent's own
+    // handleLinkClick idiom.
+    private readonly handleOutlineChange: (headings: MarkdownHeading[]) => void = (headings) => this.onOutlineChange(headings);
 
     constructor(router: Router) {
         super({ layoutManager: Border( { spacing: 0 }) });
@@ -37,6 +45,14 @@ class DocsShell extends Container {
             }
         });
         this._content = new DocsContent(router);
+        this._minimap = new DocsMinimap(router, {
+            backgroundColor: "#f6f6f7",
+            border: {
+                borderLeft: "1px solid var(--ts-ui-statusbar-border, rgb(220, 220, 220))"
+            }
+        });
+
+        this._content.on('outlinechange', this.handleOutlineChange);
 
         const statusBar = new StatusBar({
             message: `${moduleCount()} modules · ${symbolCount()} documented symbols`,
@@ -45,7 +61,17 @@ class DocsShell extends Container {
         this.addComponent(header,         { placement: Placement.NORTH });
         this.addComponent(this._sidebar,  { placement: Placement.WEST });
         this.addComponent(this._content,  { placement: Placement.CENTER });
+        this.addComponent(this._minimap,  { placement: Placement.EAST });
         this.addComponent(statusBar,      { placement: Placement.SOUTH });
+    }
+
+    /**
+     * Reflects the current page's heading outline into the minimap.
+     *
+     * @param headings - The current page's headings, in document order.
+     */
+    private onOutlineChange(headings: MarkdownHeading[]): void {
+        this._minimap.setHeadings(headings);
     }
 
     /**
