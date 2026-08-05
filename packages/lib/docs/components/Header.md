@@ -4,6 +4,11 @@
 
 This is the standalone header component, exported from `@jimka/typescript-ui/component/display`. The table's column-header strip ([`TableHeader`](/api/component/table/classes/TableHeader) in `@jimka/typescript-ui/component/table`) is a distinct class with a distinct name, so the two can be imported together without aliasing.
 
+<!-- demo: header-basic -->
+> **Live demo** — a `Header` bar with a section title.
+> [Open the Header page](https://jimka.github.io/typescript-ui/components/Header)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

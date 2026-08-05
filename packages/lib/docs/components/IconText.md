@@ -4,6 +4,12 @@
 
 Use this when you need an icon next to free-floating text (a status line, a toolbar caption, a button-like row that isn't a button). For an icon paired with a **form-control label**, use [`IconLabel`](/api/component/display/classes/IconLabel) instead — its trailing text is a real `<label for="…">`.
 
+<!-- demo: icontext-basic -->
+> **Live demo** — three `IconText`s pairing a glyph with a standalone `Text`
+> label.
+> [Open the IconText page](https://jimka.github.io/typescript-ui/components/IconText)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

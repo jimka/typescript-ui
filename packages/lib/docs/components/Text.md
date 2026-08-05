@@ -4,6 +4,12 @@
 
 Use `Text` for any standalone text — status messages, captions next to fields, headings, body content. Reach for [`Label`](/components/Label) only when the text is associated with a specific form control via the HTML `for` attribute, or [`Header`](/components/Header) for header bars.
 
+<!-- demo: text-basic -->
+> **Live demo** — a left-aligned `Text` beside one centred in a
+> fixed-height box.
+> [Open the Text page](https://jimka.github.io/typescript-ui/components/Text)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

@@ -9,6 +9,12 @@ Two modes:
 
 The element is `aria-hidden`, has a transparent background, and sets `pointer-events: none`, so it never appears in the accessibility tree and never intercepts hover or click events.
 
+<!-- demo: spacer-basic -->
+> **Live demo** — two `Button`s in an `HBox`, pushed to opposite ends by a
+> `Spacer` between them.
+> [Open the Spacer page](https://jimka.github.io/typescript-ui/components/Spacer)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

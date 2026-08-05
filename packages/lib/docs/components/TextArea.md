@@ -2,6 +2,12 @@
 
 [`TextArea`](/api/component/input/classes/TextArea) is a multi-line text input backed by a `<textarea>` element. Internal text state stays in sync with the DOM on every input event.
 
+<!-- demo: textarea-basic -->
+> **Live demo** — a `TextArea` with a `Text` below echoing its live value
+> as you type.
+> [Open the TextArea page](https://jimka.github.io/typescript-ui/components/TextArea)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

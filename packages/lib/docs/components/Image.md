@@ -2,6 +2,12 @@
 
 [`Image`](/api/component/display/classes/Image) is an image component backed by an `<img>` element. Reports its preferred size from the image's natural intrinsic dimensions once loaded.
 
+<!-- demo: image-basic -->
+> **Live demo** — an `Image` rendering a small inline SVG `data:` URI, no
+> external asset.
+> [Open the Image page](https://jimka.github.io/typescript-ui/components/Image)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
