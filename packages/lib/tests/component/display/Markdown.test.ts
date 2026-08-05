@@ -845,6 +845,7 @@ describe('Markdown.applyCodeEditorUpgrade (private, called directly)', () => {
             scrollWidth: 0, scrollHeight: 240,
             clientWidth: 500, clientHeight: 240,
         });
+        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
         const md = new Markdown('hello');
         md.getElement(true);
@@ -874,6 +875,78 @@ describe('Markdown.applyCodeEditorUpgrade (private, called directly)', () => {
 
         expect(heightWrite).toBeDefined();
         expect(measureSpy).toHaveBeenCalledOnce();
+        warnSpy.mockRestore();
+    });
+
+    it('does not warn when the first heightchange payload is within 8px of the guess', () => {
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 0, scrollHeight: 240,
+            clientWidth: 500, clientHeight: 240,
+        });
+        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper, pre, code } = buildCodeHostTrio(md);
+
+        anyMd.applyCodeEditorUpgrade(FakeCodeEditor, wrapper, pre, code, 'const a = 1;', 'javascript');
+        const editor: FakeCodeEditor = anyMd._codeEditors[0].editor;
+
+        editor.heightChangeListener!({ height: 245 }); // 5px delta, under the 8px threshold
+
+        expect(warnSpy).not.toHaveBeenCalled();
+        warnSpy.mockRestore();
+    });
+
+    it('warns once with the language id and both heights when the correction exceeds 8px', () => {
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 0, scrollHeight: 240,
+            clientWidth: 500, clientHeight: 240,
+        });
+        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper, pre, code } = buildCodeHostTrio(md);
+
+        anyMd.applyCodeEditorUpgrade(FakeCodeEditor, wrapper, pre, code, 'const a = 1;', 'javascript');
+        const editor: FakeCodeEditor = anyMd._codeEditors[0].editor;
+
+        editor.heightChangeListener!({ height: 360 }); // 120px delta
+
+        expect(warnSpy).toHaveBeenCalledOnce();
+        const message = warnSpy.mock.calls[0][0] as string;
+        expect(message).toContain('javascript');
+        expect(message).toContain('240');
+        expect(message).toContain('360');
+        warnSpy.mockRestore();
+    });
+
+    it('never warns more than once per editor, regardless of later heightchange deltas', () => {
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 0, scrollHeight: 240,
+            clientWidth: 500, clientHeight: 240,
+        });
+        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper, pre, code } = buildCodeHostTrio(md);
+
+        anyMd.applyCodeEditorUpgrade(FakeCodeEditor, wrapper, pre, code, 'const a = 1;', 'javascript');
+        const editor: FakeCodeEditor = anyMd._codeEditors[0].editor;
+
+        editor.heightChangeListener!({ height: 360 }); // 120px delta — warns
+        editor.heightChangeListener!({ height: 500 }); // another large delta — must not warn again
+
+        expect(warnSpy).toHaveBeenCalledOnce();
+        warnSpy.mockRestore();
     });
 });
 

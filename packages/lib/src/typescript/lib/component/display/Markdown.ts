@@ -76,6 +76,19 @@ const FENCE_LANG_ALIASES: Record<string, string> = {
 const CODE_BLOCK_MAX_AUTO_ROWS = 20;
 
 /**
+ * Threshold, in pixels, for warning when a fenced block's `CodeEditor`
+ * corrects its mount-time guessed height (measured from the plain-text
+ * placeholder `<pre>`) to CodeMirror's real, measured content height. Two
+ * live reproductions of a "spasms and never settles" report measured this
+ * correction at 20px and 29px on an ordinary page — this sits above that
+ * noise floor's sub-pixel/fractional rounding (CodeMirror's own line
+ * metrics can report fractional heights like 19.5938px) while still
+ * catching either measured case, so a future report of the same shape
+ * comes with hard numbers instead of a cold trail.
+ */
+const GUESS_HEIGHT_CORRECTION_WARN_PX = 8;
+
+/**
  * Resolves a fenced code block's info-string language to the `CodeEditor`
  * registry id it should upgrade to, per {@link FENCE_LANG_ALIASES}.
  *
@@ -847,7 +860,25 @@ class Markdown extends Component<MarkdownOptions> {
         });
 
         editor.setX(0).setY(0).setWidth(width).setHeight(height);
-        editor.on("heightchange", (payload) => this.handleCodeEditorHeightChange(wrapper, payload.height));
+
+        let correctionWarned = false;
+
+        editor.on("heightchange", (payload) => {
+            if (!correctionWarned) {
+                correctionWarned = true;
+
+                const delta = Math.abs(payload.height - height);
+
+                if (delta > GUESS_HEIGHT_CORRECTION_WARN_PX) {
+                    console.warn(
+                        `Markdown: fenced "${languageId}" code block's CodeEditor corrected its guessed ` +
+                        `height by ${Math.round(delta)}px (${height}px → ${payload.height}px) on mount.`,
+                    );
+                }
+            }
+
+            this.handleCodeEditorHeightChange(wrapper, payload.height);
+        });
         DOM.sink.appendChild(wrapper, editor.getElement(true)!);
         DOM.sink.apply(wrapper, { style: { height: height + "px" } });
 
