@@ -2,6 +2,12 @@
 
 [`MenuBar`](/api/component/menubar/classes/MenuBar) is the top-of-window menu bar — File, Edit, View, etc. Construct it with a config array describing each top-level entry; the bar handles dropdown panels, keyboard navigation, and submenus internally.
 
+<!-- demo: menubar-basic -->
+> **Live demo** — a `MenuBar` with File/Edit/View menus; clicking an item
+> updates a `Text`.
+> [Open the MenuBar page](https://jimka.github.io/typescript-ui/components/MenuBar)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

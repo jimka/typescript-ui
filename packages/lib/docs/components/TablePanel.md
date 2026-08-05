@@ -4,6 +4,12 @@
 
 This is the convenience component for CRUD UIs that don't need a custom toolbar layout.
 
+<!-- demo: tablepanel-toolbar -->
+> **Live demo** — a `TablePanel` over a five-row store, showing its
+> built-in add / remove / sync toolbar.
+> [Open the TablePanel page](https://jimka.github.io/typescript-ui/components/TablePanel)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

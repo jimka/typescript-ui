@@ -6,6 +6,12 @@
 
 By default the bar gives its [`Button`](/api/component/button/classes/Button) and [`ToggleButton`](/api/component/button/classes/ToggleButton) children the classical flat appearance: no resting frame, a light frame and subtle fill on hover, and a sunken inset frame on press. A toggled-on `ToggleButton` reads as depressed, and a glyph-only button tightens to a compact square. Pass `flat: false` (or call `setFlat(false)`) to keep raised buttons.
 
+<!-- demo: toolbar-basic -->
+> **Live demo** — a `ToolBar` with enough buttons, at the stage's 900px
+> cap, to show its overflow menu.
+> [Open the ToolBar page](https://jimka.github.io/typescript-ui/components/ToolBar)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

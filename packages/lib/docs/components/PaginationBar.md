@@ -7,6 +7,12 @@ next / last buttons plus a `Page X of Y` label.
 The bar listens to the store's `'pagechange'` and `'load'` events and
 keeps button-enabled state in sync automatically.
 
+<!-- demo: paginationbar-basic -->
+> **Live demo** — a `PaginationBar` over a five-row store at
+> `setPageSize(3)`, paging a plain `Table` through two pages.
+> [Open the PaginationBar page](https://jimka.github.io/typescript-ui/components/PaginationBar)
+<!-- /demo -->
+
 ## Usage
 
 Pair the bar with any store that has had `setPageSize(n)` called on it.

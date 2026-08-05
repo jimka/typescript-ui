@@ -4,6 +4,12 @@
 
 Every item shares one marker column, which for a bulleted list is just the width of the single bullet glyph — one style per list means every marker is the same character.
 
+<!-- demo: bulletedlist-styles -->
+> **Live demo** — two `BulletedList`s side by side over the same four items,
+> in `SQUARE` and `CIRCLE` styles.
+> [Open the BulletedList page](https://jimka.github.io/typescript-ui/components/BulletedList)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

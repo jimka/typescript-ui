@@ -2,6 +2,12 @@
 
 [`MultiSelectList`](/api/component/list/classes/MultiSelectList) is a multi-selection list box rendered as a `<div role="listbox" aria-multiselectable="true">` populated with `<div role="option">` rows. It implements [`Bindable<string[]>`](/api/core/interfaces/Bindable) so it can be plugged into a [`Binding`](/api/core/classes/Binding) directly.
 
+<!-- demo: multiselectlist-selection -->
+> **Live demo** — a `MultiSelectList` of five tag strings with Ctrl/Shift
+> multi-select, and a `Text` below showing the current selection.
+> [Open the MultiSelectList page](https://jimka.github.io/typescript-ui/components/MultiSelectList)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

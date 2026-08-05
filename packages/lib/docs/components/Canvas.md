@@ -2,6 +2,12 @@
 
 [`Canvas`](/api/component/display/classes/Canvas) is a raster drawing surface backed by a `<canvas>` element and a live `CanvasRenderingContext2D`. You draw through an `onDraw` hook (in CSS pixels — the device-pixel-ratio transform is applied for you), and the component re-emits your drawing after every resize or DPI change so it stays crisp.
 
+<!-- demo: canvas-shapes -->
+> **Live demo** — a `Canvas` drawing a few static shapes through its 2D
+> context once, at construction.
+> [Open the Canvas page](https://jimka.github.io/typescript-ui/components/Canvas)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

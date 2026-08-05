@@ -13,6 +13,12 @@
    each child positioned manually
 ```
 
+<!-- demo: absolute-placement -->
+> **Live demo** — three labelled panels pinned at literal pixel positions
+> via `setX`/`setY`; unlike `Anchor`, nothing re-anchors on resize.
+> [Open the Absolute page](https://jimka.github.io/typescript-ui/layouts/Absolute)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

@@ -6,6 +6,12 @@ That is the reason to prefer it over a chromeless [`Button`](/components/Button)
 
 `Link` has **no `href`** — it navigates nothing by itself. Activation is always `on('action', fn)`, which suits in-app navigation (opening a tab, revealing a panel) rather than following a URL.
 
+<!-- demo: link-basic -->
+> **Live demo** — an in-app `Link` that activates on click/Enter, beside a
+> presentational (non-activating) `Link`.
+> [Open the Link page](https://jimka.github.io/typescript-ui/components/Link)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

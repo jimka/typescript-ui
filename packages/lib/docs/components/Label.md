@@ -4,6 +4,12 @@
 
 For standalone text without a form-control association, use [`Text`](/components/Text) instead.
 
+<!-- demo: label-basic -->
+> **Live demo** — a plain `Label` beside one associated with a `Checkbox`
+> via `for`.
+> [Open the Label page](https://jimka.github.io/typescript-ui/components/Label)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

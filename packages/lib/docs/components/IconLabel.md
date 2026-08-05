@@ -4,6 +4,12 @@
 
 Use this when the icon belongs to a **form control**: the trailing element is a real `<label for="…">`, so the browser still focuses the associated input when the user clicks the label text. For an icon paired with free-floating text, use [`IconText`](/api/component/display/classes/IconText) instead.
 
+<!-- demo: iconlabel-basic -->
+> **Live demo** — three `IconLabel`s pairing a glyph with a form-control
+> label.
+> [Open the IconLabel page](https://jimka.github.io/typescript-ui/components/IconLabel)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

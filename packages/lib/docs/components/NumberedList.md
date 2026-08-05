@@ -4,6 +4,12 @@
 
 Every item in one list shares a marker column as wide as that list's widest marker, and each marker is right-aligned inside it. So `9.` and `10.` end at the same x and their labels start at the same x, however much the markers differ in width.
 
+<!-- demo: numberedlist-styles -->
+> **Live demo** — two `NumberedList`s side by side over the same four items,
+> in `DECIMAL` and `LOWER_ALPHA` styles.
+> [Open the NumberedList page](https://jimka.github.io/typescript-ui/components/NumberedList)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript

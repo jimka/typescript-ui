@@ -6,6 +6,12 @@ The strip is a non-scrolling band that hosts an inner clip plus the two arrows. 
 
 Available in horizontal (default, an `HBox`) and vertical (a `VBox`) orientations.
 
+<!-- demo: scrollstrip-reveal -->
+> **Live demo** — a horizontal `ScrollStrip` of ten labelled chips; a
+> button scrolls the sixth chip into view.
+> [Open the ScrollStrip page](https://jimka.github.io/typescript-ui/components/ScrollStrip)
+<!-- /demo -->
+
 ## Usage
 
 Instantiate, add items, and let the strip scroll on overflow. The owner reserves the arrow gutters from `arrowReserve`, sizes the band, and then asks the strip to lay its clip and arrows within the band:

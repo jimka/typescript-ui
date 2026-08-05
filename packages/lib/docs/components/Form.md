@@ -4,6 +4,12 @@
 
 Submission is triggered the normal way — a `<button type="submit">` inside the form, or Enter in a text field — or from outside the form via [`requestSubmit()`](/api/core/classes/Form#requestsubmit), which reaches the browser's native `HTMLFormElement.requestSubmit()`. That runs the browser's constraint validation and fires the cancelable `submit` event (unlike `.submit()`, which skips both), so an external footer button can drive the same validated submission path as a native submit button.
 
+<!-- demo: form-basic -->
+> **Live demo** — a `Form` with two `TextField`s and a submit `Button`;
+> submitting updates a `Text` with the entered values.
+> [Open the Form page](https://jimka.github.io/typescript-ui/components/Form)
+<!-- /demo -->
+
 ## Usage
 
 ```typescript
