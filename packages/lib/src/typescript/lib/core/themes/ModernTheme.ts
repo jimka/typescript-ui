@@ -282,12 +282,10 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
         affirm  : { background: 'rgba(30, 180, 80, 0.15)',  foreground: 'rgb(30, 180, 80)'  },
     },
     drawer: {
-        background: 'var(--ts-ui-body-bg)',
         shadow    : '4px 0 24px rgba(0, 0, 0, 0.25)',
         border    : 'rgb(220, 220, 220)',
     },
     rail: {
-        background: 'var(--ts-ui-body-bg)',
         border    : 'rgb(220, 220, 220)',
         shadow    : '2px 0 12px rgba(0, 0, 0, 0.18)',
         handle: {

@@ -208,7 +208,7 @@ const OPPOSITE_HEADING: Record<CollapseDirection, CollapseDirection> = {
 const _defaultRailOptions: Partial<RailOptions> = {
     edge:            Placement.WEST,
     orientation:     "horizontal",
-    backgroundColor: "var(--ts-ui-rail-bg)",
+    backgroundColor: "var(--ts-ui-body-bg)",
     shadow:          "var(--ts-ui-rail-shadow)",
 };
 
@@ -530,7 +530,7 @@ class Rail extends Component<RailOptions> {
             this.setBorder("1px solid var(--ts-ui-button-border, #c8c8c8)");
         } else {
             this.clearBackgroundImage();
-            this.setBackgroundColor("var(--ts-ui-rail-bg)");
+            this.setBackgroundColor("var(--ts-ui-body-bg)");
             this.applyEdgeBorder();
         }
     }

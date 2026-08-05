@@ -121,7 +121,7 @@ const _defaultDrawerOptions: Partial<DrawerOptions> = {
     size:            DEFAULT_DRAWER_SIZE_PX,
     durationMs:      DEFAULT_DRAWER_DURATION_MS,
     overflow:        "auto",
-    backgroundColor: "var(--ts-ui-drawer-bg)",
+    backgroundColor: "var(--ts-ui-body-bg)",
     shadow:          "var(--ts-ui-drawer-shadow)",
 };
 
