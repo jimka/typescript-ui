@@ -28,7 +28,7 @@ export function create(): Component {
     const pinnedButton = Button({ text: 'Pinned' });
 
     const centerPanel = Header('Centered 50%', {
-        border: { border: '1px solid var(--ts-ui-border-color, rgb(180, 180, 180))' },
+        border: { border: '1px solid var(--ts-ui-border-color)' },
     });
 
     const canvas = Panel({ layoutManager: Anchor() });
