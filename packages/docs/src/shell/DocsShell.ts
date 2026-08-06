@@ -1,14 +1,25 @@
-import { callable, Container, Panel } from '@jimka/typescript-ui/core';
-import { Border } from '@jimka/typescript-ui/layout';
+import { callable, Component, Container, Panel } from '@jimka/typescript-ui/core';
+import { Border, HBox, AnchorType } from '@jimka/typescript-ui/layout';
 import { Placement } from '@jimka/typescript-ui/primitive';
-import { Header } from '@jimka/typescript-ui/component/display';
+import { Header, Glyph } from '@jimka/typescript-ui/component/display';
 import type { MarkdownHeading } from '@jimka/typescript-ui/component/display';
+import { Button } from '@jimka/typescript-ui/component/button';
 import { StatusBar } from '@jimka/typescript-ui/component/container';
 import { Router } from '@jimka/typescript-ui/router';
+import { github } from '@jimka/typescript-ui/glyphs/brands/github';
+import { bug } from '@jimka/typescript-ui/glyphs/solid/bug';
 import { moduleCount, symbolCount } from '../content/api.js';
 import { DocsSidebar } from './DocsSidebar.js';
 import { DocsContent } from './DocsContent.js';
 import { DocsMinimap } from './DocsMinimap.js';
+
+Glyph.register(github, bug);
+
+/** Opens the repo on GitHub — the header's leftmost shortcut button. */
+const GITHUB_REPO_URL = 'https://github.com/jimka/typescript-ui';
+
+/** Opens GitHub's new-issue form — the header's rightmost shortcut button. */
+const GITHUB_NEW_ISSUE_URL = 'https://github.com/jimka/typescript-ui/issues/new';
 
 /**
  * The app shell: `Header` north, `DocsSidebar` west, `DocsContent` centre,
@@ -37,6 +48,7 @@ class DocsShell extends Container {
                 borderBottom: "1px solid var(--ts-ui-statusbar-border, rgb(220, 220, 220))"
             }
         });
+        header.addComponent(this.buildHeaderActions(), { placement: Placement.EAST, anchor: AnchorType.CENTER });
 
         this._sidebar = new DocsSidebar(router, {
             backgroundColor: "#f6f6f7",
@@ -63,6 +75,28 @@ class DocsShell extends Container {
         this.addComponent(this._content,  { placement: Placement.CENTER });
         this.addComponent(this._minimap,  { placement: Placement.EAST });
         this.addComponent(statusBar,      { placement: Placement.SOUTH });
+    }
+
+    /**
+     * Builds the header's trailing shortcut row: flat, icon-only buttons that
+     * open the GitHub repo and a new GitHub issue in a new tab. `showText:
+     * false` keeps the title off the button face while still driving its
+     * hover tooltip and accessible name.
+     *
+     * @returns The action row, ready to add at `Placement.EAST`.
+     */
+    private buildHeaderActions(): Component {
+        const repoButton = new Button({ glyph: 'github', text: 'GitHub repository', showText: false, flat: true, compact: true });
+        repoButton.on('action', () => { window.open(GITHUB_REPO_URL, '_blank', 'noopener,noreferrer'); });
+
+        const issueButton = new Button({ glyph: 'bug', text: 'Report an issue', showText: false, flat: true, compact: true });
+        issueButton.on('action', () => { window.open(GITHUB_NEW_ISSUE_URL, '_blank', 'noopener,noreferrer'); });
+
+        const actions = new Component({ layoutManager: new HBox({ spacing: 4 }) });
+        actions.addComponent(repoButton);
+        actions.addComponent(issueButton);
+
+        return actions;
     }
 
     /**
