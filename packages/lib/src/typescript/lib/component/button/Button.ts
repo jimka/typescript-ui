@@ -200,12 +200,14 @@ const BUTTON_COMPACT_INSETS_GLYPH: Insets = new Insets(2, 2, 2, 2);
 const BUTTON_FLAT_GLYPH_INSETS: Insets = new Insets(4, 4, 4, 4);
 
 /**
- * Resting background the chromeful path installs as a colour (mirroring the
- * `--ts-ui-button-bg` image `super.applyChromeOptions` paints). Shared between
- * `applyChromeOptions` and `_applyFlatChrome` so the flat path can recognise
- * this framework default in `_options.backgroundColor` and tell it apart from a
- * colour the consumer set — the flat appearance is transparent at rest, so it
- * must clear the former but preserve the latter.
+ * Resting background colour (mirroring the `--ts-ui-button-bg` image
+ * `super.applyChromeOptions` paints). Seeds `_defaultButtonOptions.backgroundColor`
+ * below, so `getBackgroundColor()` / `applyStyle` resolve it without an
+ * imperative repaint. `BUTTON_RESTING_BACKGROUND` is compared by identity in
+ * the chromeless branch of `applyChromeOptions` only, which uses this constant
+ * (rather than `_defaultOptions.backgroundColor`) to tell "nobody painted over
+ * the UA face" apart from a subclass's own themed fill — see that branch's
+ * comment.
  */
 const BUTTON_RESTING_BACKGROUND: string = "var(--ts-ui-button-bg, transparent)";
 
@@ -224,6 +226,7 @@ const _defaultButtonOptions: Partial<ButtonOptions> = {
     border:                 "2px ridge var(--ts-ui-button-border, rgb(200, 200, 200))",
     borderRadius:           "var(--ts-ui-border-radius, 4px)",
     shadow:                 "var(--ts-ui-button-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2))",
+    backgroundColor:        BUTTON_RESTING_BACKGROUND,
     backgroundImage:        "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))",
     insets:                 BUTTON_DEFAULT_INSETS,
     anchor:                 AnchorType.CENTER,
@@ -676,12 +679,19 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             //
             // Finally, the UA `<button>` element has a non-transparent
             // background-color; set transparent unless the caller specified
-            // their own backgroundColor.
+            // their own backgroundColor. Once Button seeds `backgroundColor`
+            // in `_defaultButtonOptions`, a plain Button's resting colour can
+            // never be `null` any more, so the framework token joins `null` as
+            // the second "nobody pinned one" answer; a subclass fill
+            // (`MenuBarButton`, `TabButton`) matches neither and survives.
             this.clearBorder();
             this._options.borderRadius    = undefined;
             this._options.shadow          = undefined;
             this._options.backgroundImage = undefined;
-            if (this.getBackgroundColor() === null) {
+
+            const resting = this.getBackgroundColor();
+
+            if (resting === null || resting === BUTTON_RESTING_BACKGROUND) {
                 this._options.backgroundColor = "transparent";
             }
             return;
@@ -689,19 +699,17 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
 
         super.applyChromeOptions(options);
 
-        // Chromeful resting background: `super` applied the `--ts-ui-button-bg`
-        // token as a background *image* (for gradient tokens); also apply it as
-        // a background *colour* so a flat-colour token (e.g. the Modern theme)
-        // renders too — whichever channel is valid paints, the other is dropped.
-        // Without the colour channel a flat-colour token was invalid as an image
-        // and the button fell back to the UA `<button>` background. Skipped when
-        // the caller set their own backgroundColor, and when flat (flat is
-        // transparent at rest — see `_applyFlatChrome`).
-        const isFlat = (this._options.flat ?? options.flat) === true;
-
-        if (!isFlat && options.backgroundColor === undefined) {
-            this.setBackgroundColor(BUTTON_RESTING_BACKGROUND);
-        }
+        // Chromeful resting background: `super` applies the `--ts-ui-button-bg`
+        // token as a background *image* (for gradient tokens) via the chrome
+        // group's dispatch; the same token is also applied as a background
+        // *colour* so a flat-colour token (e.g. the Modern theme) renders too —
+        // whichever channel is valid paints, the other is dropped. Without the
+        // colour channel a flat-colour token was invalid as an image and the
+        // button fell back to the UA `<button>` background. The colour channel
+        // is now a class default (`_defaultButtonOptions.backgroundColor`)
+        // resolved by `getBackgroundColor()` / `applyStyle` rather than an
+        // imperative repaint here, so a caller-supplied `backgroundColor` (or a
+        // subclass default) wins without this method needing to check for it.
 
         // The pressed/hover colour + shadow + image fields carry class defaults,
         // so dispatch the caller value or the class default. The pressed/hover
@@ -1610,12 +1618,14 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         const d = this._defaultOptions as ButtonOptions;
 
         // Re-apply the chromeful resting background `_applyFlatChrome` cleared.
-        // Flat set the sentinel "transparent" only when neither the consumer nor
-        // a subclass default pinned a colour (otherwise that colour was
-        // preserved through flat and needs no restore); swap that sentinel back
-        // for the framework token so the un-flattened button regains its fill.
-        if (d.backgroundColor === undefined && this._options.backgroundColor === "transparent") {
-            this.setBackgroundColor(BUTTON_RESTING_BACKGROUND);
+        // This is `_applyFlatChrome`'s inverse: flat (or chromeless) wrote the
+        // "transparent" sentinel only when the painted colour was the class
+        // default, so restoring that default here is exactly right. The
+        // `d.backgroundColor !== undefined` arm covers a subclass that
+        // suppresses Button's default with an explicit `backgroundColor:
+        // undefined` key — nothing to restore, so the sentinel stays.
+        if (this._options.backgroundColor === "transparent" && d.backgroundColor !== undefined) {
+            this.setBackgroundColor(d.backgroundColor);
         }
 
         if (d.border                 !== undefined) this.setBorder(d.border);
@@ -1764,17 +1774,20 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this.clearBackgroundImage();
 
         // Drop the resting background *colour* too — flat is transparent at
-        // rest. The chromeful path wrote `BUTTON_RESTING_BACKGROUND` into the
-        // rule via `setBackgroundColor` (see `applyChromeOptions`), which also
-        // stored it in `_options.backgroundColor`. A runtime `setFlat(true)` on
-        // an already-rendered chromeful button therefore sees that token here,
-        // not `undefined`; recognising it lets us override the rule to
-        // transparent while still preserving a genuine consumer-set colour (the
-        // old field-only write left the token painting). `_restoreChrome`
-        // re-applies the token on `setFlat(false)`.
+        // rest. The chromeful path no longer writes the token into `_options`
+        // (it is a class default), so the value read here comes from
+        // `_defaultOptions` at construction and from `_options` only after a
+        // consumer set one — or after a previous flat pass wrote "transparent",
+        // which matches neither arm below and is left alone, keeping the method
+        // idempotent. Comparing against the *class* default (rather than the
+        // constant the chromeless branch uses) means a subclass that defaults
+        // its own fill is flattened too, while a genuine consumer colour is
+        // preserved. `_restoreChrome` is the inverse and restores the same
+        // value.
         const restingBackground = this.getBackgroundColor();
+        const classDefault      = this._defaultOptions.backgroundColor ?? null;
 
-        if (restingBackground === undefined || restingBackground === BUTTON_RESTING_BACKGROUND) {
+        if (restingBackground === null || restingBackground === classDefault) {
             this.setBackgroundColor("transparent");
         }
 

@@ -107,6 +107,15 @@ describe('TabButton chrome styling (regression)', () => {
     });
 });
 
+describe('TabButton hover fields', () => {
+    it('a caller-supplied hoverBackgroundColor wins over the tab hover token', () => {
+        expect(new TabButton('Home', { hoverBackgroundColor: 'red' }).getHoverBackgroundColor()).toBe('red');
+    });
+    it('a caller-supplied hoverBorder wins over the tab hover-border tokens', () => {
+        expect(new TabButton('Home', { hoverBorder: '1px solid red' }).getHoverBorder()).toEqual({ border: '1px solid red' });
+    });
+});
+
 describe('TabButton listeners bag', () => {
     // ToggleButton routes on("action") to the DOM "change" event. A subclass
     // that takes its options after `super(text)` must wire the inherited

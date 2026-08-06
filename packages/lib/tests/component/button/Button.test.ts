@@ -134,6 +134,40 @@ describe('Button flat state', () => {
         // ignored with a dev-time warning, so isFlat() stays false.
         expect(btn.isFlat()).toBe(false);
     });
+    it('paints transparent at rest when built flat', () => {
+        // Behaviour change: `getBackgroundColor()` used to return `null` at
+        // construction (the old `=== undefined` guard never matched it), so
+        // the UA `<button>` face painted through. Seeding `backgroundColor`
+        // in `_defaultButtonOptions` makes the flat guard's `null` arm live.
+        expect((new Button('x', { flat: true }) as any)._options.backgroundColor).toBe('transparent');
+    });
+    it('round-trips the resting background across setFlat', () => {
+        const btn = new Button('x');
+
+        btn.setFlat(true);
+        expect(btn.getBackgroundColor()).toBe('transparent');
+
+        btn.setFlat(false);
+        expect(btn.getBackgroundColor()).toBe('var(--ts-ui-button-bg, transparent)');
+    });
+    it('preserves a caller-supplied backgroundColor across setFlat flips', () => {
+        const btn = new Button('x', { backgroundColor: 'red' });
+
+        btn.setFlat(true);
+        expect(btn.getBackgroundColor()).toBe('red');
+
+        btn.setFlat(false);
+        expect(btn.getBackgroundColor()).toBe('red');
+    });
+});
+
+describe('Button resting background', () => {
+    it('a caller-supplied backgroundColor wins over the default token', () => {
+        expect(new Button('x', { backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+    });
+    it('chromeless still neutralises the UA face', () => {
+        expect(new Button('x', { chromeless: true }).getBackgroundColor()).toBe('transparent');
+    });
 });
 
 describe('Button description', () => {
