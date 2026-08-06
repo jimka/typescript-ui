@@ -41,6 +41,9 @@ const _defaultTabButtonOptions: Partial<TabButtonOptions> = {
     // deleted.
     borderRadius: undefined,
     shadow:       undefined,
+    hoverBackgroundColor: "var(--ts-ui-tab-button-hover-bg, #c4c4cf)",
+    hoverBackgroundImage: "var(--ts-ui-tab-button-hover-bg, #c4c4cf)",
+    hoverShadow:          "none",
 };
 
 /**
@@ -141,35 +144,23 @@ class TabButton extends ToggleButton {
     }
 
     /**
-     * Paints the tab's unselected background, hover, and selected states from
-     * the `--ts-ui-tab-button-*` theme tokens. Runs after `applyOptions()` so
-     * these overrides win over `Button`'s inherited chrome defaults — see the
-     * call site's comment.
+     * Paints the tab's selected states from the `--ts-ui-tab-button-*` theme
+     * tokens. Runs after `applyOptions()` so these overrides win over
+     * `Button`'s inherited chrome defaults — see the call site's comment.
      *
-     * The unselected `backgroundImage` and the resting `border` /
-     * `borderRadius` / `shadow` are handled entirely by
-     * `_defaultTabButtonOptions` (top of this file), which layers through
-     * `ToggleButton`'s `subclassDefaults` forwarding — `Button`'s own chrome
-     * dispatch folds each of those correctly, so nothing needs reasserting
-     * here. `backgroundColor` still does: unlike the others, `Button`'s
-     * `applyChromeOptions` override repaints a plain resting background
-     * (`BUTTON_RESTING_BACKGROUND`) via a direct `setBackgroundColor` call
-     * whenever the caller passed no explicit `backgroundColor` — bypassing
-     * `_defaultOptions` entirely — so the tab-token fallback still needs this
-     * explicit (options-aware) reassert, not just the `_defaultTabButtonOptions`
-     * bag.
+     * The resting fill, border, radius, shadow, and the three hover
+     * colour/shadow fields all resolve from `_defaultTabButtonOptions` (top of
+     * this file), which layers through `ToggleButton`'s `subclassDefaults`
+     * forwarding — `Button`'s own chrome dispatch folds each of those
+     * correctly, so nothing needs reasserting here. Only `hoverBorder` is
+     * reasserted below: `getHoverBorder()` has no `_defaultOptions` fold (it
+     * returns a private field), so a bag entry for it would be dead data.
      *
      * @param options - The options this `TabButton` was constructed with, so
-     *   an explicit caller `backgroundColor` still wins over the tab token.
+     *   the hover-border fold below still reads an explicit caller value.
      */
     private applyTabStyling(options?: TabButtonOptions): void {
-        this.setBackgroundColor(options?.backgroundColor ?? (this._defaultOptions.backgroundColor as string));
-
-        // Hover state.
-        this.setHoverBackgroundColor("var(--ts-ui-tab-button-hover-bg, #c4c4cf)");
-        this.setHoverBackgroundImage("var(--ts-ui-tab-button-hover-bg, #c4c4cf)");
-        this.setHoverShadow("none");
-        this.setHoverBorder({
+        this.setHoverBorder(options?.hoverBorder ?? {
             borderTop:    "var(--ts-ui-tab-button-hover-border-top,    var(--ts-ui-tab-button-hover-border, none))",
             borderRight:  "var(--ts-ui-tab-button-hover-border-right,  var(--ts-ui-tab-button-hover-border, none))",
             borderBottom: "var(--ts-ui-tab-button-hover-border-bottom, var(--ts-ui-tab-button-hover-border, none))",

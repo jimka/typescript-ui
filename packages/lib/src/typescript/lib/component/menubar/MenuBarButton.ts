@@ -14,6 +14,9 @@ import { callable } from "~/core/Callable.js";
 export interface MenuBarButtonOptions extends ButtonOptions {
 }
 
+/** Horizontal padding inside the button, folded into the defaults bag below. */
+const HORIZONTAL_PAD = 10;
+
 /**
  * User-overridable visual defaults forwarded to `super` via the third
  * constructor arg. The cascade in `Component`'s constructor merges these
@@ -24,13 +27,17 @@ const _defaultMenuBarButtonOptions: Partial<MenuBarButtonOptions> = {
     backgroundColor: "var(--ts-ui-menu-bar-btn-bg, transparent)",
     foregroundColor: "var(--ts-ui-menu-bar-btn-fg, inherit)",
     cursor:          "pointer",
+    // chromeless suppresses Button's ridge border, drop shadow, gradient
+    // background, and the pressed/hover treatments — the menubar wants a flat
+    // label-shaped surface.
+    chromeless:      true,
+    // Horizontal padding inside the button — replaces Button's 4-px insets
+    // default.
+    insets:          new Insets(0, HORIZONTAL_PAD, 0, HORIZONTAL_PAD),
 };
 
 /** Pixel gap between the leading glyph and the label in the content row. */
 const GLYPH_TEXT_GAP = 4;
-
-/** Horizontal padding inside the button, applied via `setInsets`. */
-const HORIZONTAL_PAD = 10;
 
 /**
  * Fixed row height shared by every `MenuBarButton` and by the parent
@@ -81,10 +88,6 @@ class MenuBarButton extends Button<MenuBarButtonOptions> {
             text,
             {
                 ...options,
-                // chromeless suppresses Button's ridge border, drop shadow,
-                // gradient background, and the pressed/hover treatments —
-                // the menubar wants a flat label-shaped surface.
-                chromeless: true,
                 // Menubar-specific :hover highlight rides Button's styleRules
                 // bag so the cascade routes through createStyleRule's
                 // dedupe-and-defer machinery. Merge with any caller-supplied
@@ -105,13 +108,6 @@ class MenuBarButton extends Button<MenuBarButtonOptions> {
         // Bump the HBox content-row spacing from Button's default (2) to the
         // menubar's GLYPH_TEXT_GAP (4).
         (this._content.getLayoutManager() as HBox).setComponentSpacing(GLYPH_TEXT_GAP);
-
-        // Horizontal padding inside the button — replaces Button's 4-px
-        // insets default. `setInsets` (overridden in Button) auto-fires
-        // `recomputePreferredSize`, so the menubar's fixed-height
-        // `computePreferredSize` override lands the right dimensions
-        // without explicit prodding here.
-        this.setInsets(new Insets(0, HORIZONTAL_PAD, 0, HORIZONTAL_PAD));
 
         this.getAria().setRole("menuitem");
         this.getAria().setHasPopup("menu");

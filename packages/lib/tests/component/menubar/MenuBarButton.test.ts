@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MenuBarButton } from '~/component/menubar/MenuBarButton';
 import { Tooltip } from '~/overlay/Tooltip';
 import { DOM } from '~/core/DOM';
+import { Insets } from '~/primitive/Insets';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -35,6 +36,23 @@ describe('MenuBarButton chromeless contract', () => {
         // The button constructs chromeless; setFlat(true) is suppressed because
         // chromeless and flat are mutually exclusive.
         expect(btn.isFlat()).toBe(false);
+    });
+    it('a caller-supplied chromeless: false wins over the default', () => {
+        expect(new MenuBarButton('File', NOOP, NOOP, { chromeless: false }).isChromeless()).toBe(false);
+    });
+});
+
+describe('MenuBarButton resting background', () => {
+    it('keeps its own token instead of the chromeless transparent overwrite', () => {
+        expect(new MenuBarButton('File', NOOP, NOOP).getBackgroundColor()).toBe('var(--ts-ui-menu-bar-btn-bg, transparent)');
+    });
+});
+
+describe('MenuBarButton insets', () => {
+    it('a caller-supplied insets wins over the default padding', () => {
+        const insets = new MenuBarButton('File', NOOP, NOOP, { insets: new Insets(1, 2, 3, 4) }).getInsets();
+
+        expect([insets.getTop(), insets.getRight(), insets.getBottom(), insets.getLeft()]).toEqual([1, 2, 3, 4]);
     });
 });
 

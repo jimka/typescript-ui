@@ -28,6 +28,7 @@ import { NotificationHistoryButton } from '~/overlay/NotificationHistoryButton';
 import { Button } from '~/component/button/Button';
 import { ToggleButton } from '~/component/button/ToggleButton';
 import { TabButton } from '~/component/button/TabButton';
+import { MenuBarButton } from '~/component/menubar/MenuBarButton';
 import { Checkbox } from '~/component/input/Checkbox';
 import { RadioButton } from '~/component/input/RadioButton';
 import { Toggle } from '~/component/input/Toggle';
@@ -227,6 +228,10 @@ describe('default options as pure fallback', () => {
 // Add a row when you add a defaulted field.
 const insetsTuple = (i: Insets | null) => i && [i.getTop(), i.getRight(), i.getBottom(), i.getLeft()];
 
+// MenuBarButton's onClick/onHover constructor params, for rows that only need
+// a bare instance and never fire either callback.
+const NOOP = (): void => {};
+
 // Runs `read` with `xmark` registered. The registry is global and shared, and
 // TabCloseButton registers `xmark` for its own default glyph — so unregistering
 // unconditionally would pull it out from under the TabCloseButton rows below.
@@ -260,12 +265,19 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'DiagramNode backgroundColor',  resolve: () => new DiagramNode().getBackgroundColor(),                     expected: 'var(--ts-ui-diagram-node-bg, var(--ts-ui-button-bg, rgb(245, 245, 245)))' },
     { label: 'DiagramGroupNode backgroundColor', resolve: () => new DiagramGroupNode().getBackgroundColor(),            expected: 'var(--ts-ui-diagram-group-bg, rgba(120, 120, 120, 0.08))' },
     { label: 'ScrollStrip backgroundColor',  resolve: () => new ScrollStrip().getBackgroundColor(),                     expected: 'transparent' },
+    { label: 'Button backgroundColor',       resolve: () => new Button('x').getBackgroundColor(),                       expected: 'var(--ts-ui-button-bg, transparent)' },
     { label: 'TabButton backgroundColor',    resolve: () => new TabButton('x').getBackgroundColor(),                    expected: 'var(--ts-ui-tab-button-bg, #b8b8c3)' },
     { label: 'TabButton backgroundImage',    resolve: () => new TabButton('x').getBackgroundImage(),                    expected: 'var(--ts-ui-tab-button-bg, #b8b8c3)' },
+    { label: 'TabButton hoverBackgroundColor', resolve: () => new TabButton('x').getHoverBackgroundColor(),             expected: 'var(--ts-ui-tab-button-hover-bg, #c4c4cf)' },
+    { label: 'TabButton hoverBackgroundImage', resolve: () => new TabButton('x').getHoverBackgroundImage(),             expected: 'var(--ts-ui-tab-button-hover-bg, #c4c4cf)' },
+    { label: 'TabButton hoverShadow',        resolve: () => new TabButton('x').getHoverShadow(),                        expected: 'none' },
+    { label: 'MenuBarButton chromeless',     resolve: () => new MenuBarButton('File', NOOP, NOOP).isChromeless(),       expected: true },
+    { label: 'MenuBarButton insets',         resolve: () => insetsTuple(new MenuBarButton('File', NOOP, NOOP).getInsets()), expected: [0, 10, 0, 10] },
     // ToggleButton itself has no backgroundColor default of its own; the value
-    // below comes from Button's unrelated (out-of-scope) resting-background
-    // chrome mechanism, not from anything this plan changes — pinned here only
-    // so Step 12's plumbing addition is confirmed not to disturb it.
+    // below now comes from `Button`'s own `_defaultButtonOptions.backgroundColor`
+    // entry — this plan's fix folds it through the getter instead of an
+    // imperative repaint, so a bare ToggleButton (no subclassDefaults) still
+    // resolves the same token.
     { label: 'ToggleButton backgroundColor (unset)', resolve: () => new ToggleButton('x').getBackgroundColor(),         expected: 'var(--ts-ui-button-bg, transparent)' },
     { label: 'StatusBar backgroundColor',    resolve: () => new StatusBar().getBackgroundColor(),                       expected: 'var(--ts-ui-statusbar-bg, rgb(245, 245, 245))' },
     { label: 'StatusBar foregroundColor',    resolve: () => new StatusBar().getForegroundColor(),                       expected: 'var(--ts-ui-statusbar-color, rgb(60, 60, 60))' },
@@ -388,6 +400,7 @@ describe('an explicit value wins over a class default', () => {
         const list = new BulletedList() as any;
         expect(list._options.itemStyle).toBeUndefined();   // resolved via getStyle fold, never stored
         expect(tb._options.backgroundColor).toBeUndefined(); // resolved via getBackgroundColor fold
+        expect((new Button('x') as any)._options.backgroundColor).toBeUndefined();
     });
 
     it('a caller-supplied backgroundColor wins over the fourteen clobbering-bug sites’ hardcoded default', () => {
@@ -411,18 +424,13 @@ describe('an explicit value wins over a class default', () => {
     });
 
     it('ToggleButton forwards subclassDefaults through to Button', () => {
-        // backgroundImage (not backgroundColor) demonstrates the plumbing in
-        // isolation: Button's own applyChromeOptions folds
-        // `_defaultOptions.backgroundImage` cleanly, so a subclassDefaults
-        // value reaches it with no further help. backgroundColor is different
-        // — Button's applyChromeOptions also unconditionally repaints a plain
-        // resting background via a direct `setBackgroundColor` call whenever
-        // the caller passed no explicit `backgroundColor`, bypassing
-        // `_defaultOptions` — so it does NOT reliably show through at the bare
-        // ToggleButton level; TabButton (the one real subclassDefaults
-        // consumer) papers over that by reasserting it in its own
-        // `applyTabStyling`, see TabButton.ts.
+        // Both backgroundImage and backgroundColor demonstrate the plumbing:
+        // Button's own applyChromeOptions folds `_defaultOptions.backgroundImage`
+        // and (since this plan) `_defaultOptions.backgroundColor` the same way,
+        // so a subclassDefaults value reaches either field with no further help
+        // — no subclass needs to reassert backgroundColor itself any more.
         expect(new ToggleButton('x', undefined, { backgroundImage: 'none' }).getBackgroundImage()).toBe('none');
+        expect(new ToggleButton('x', undefined, { backgroundColor: 'blue' }).getBackgroundColor()).toBe('blue');
     });
 
     it('TabButton default wins the "deepest class wins" conflict against Button\'s own gradient', () => {
