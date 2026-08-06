@@ -34,6 +34,10 @@ export interface RadioButtonOptions extends AbstractBooleanInputOptions {
     };
 }
 
+const _defaultRadioButtonOptions: Partial<RadioButtonOptions> = {
+    outline: "none",
+};
+
 /**
  * A custom-drawn radio button rendered as a focusable `<div>` with
  * `role="radio"`. The ring + dot is drawn with framework primitives; the
@@ -57,9 +61,16 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
      *               positional for back-compat with consumers that wrote
      *               `new RadioButton("Hello")`.
      * @param options - Optional construction-time options bag.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(text?: string, options?: TOptions) {
-        super({ ...(options ?? {}) } as TOptions);
+    constructor(text?: string, options?: RadioButtonOptions, subclassDefaults?: Partial<RadioButtonOptions>);
+    constructor(text?: string, options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        super(
+            { ...(options ?? {}) } as TOptions,
+            { ..._defaultRadioButtonOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
+        );
 
         this.setLayoutManager(new HBox());
 
@@ -101,8 +112,6 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
         this.getAria().setRole("radio");
         this.getAria().setTabIndex(0);
         this.getAria().setChecked(false);
-
-        this.setOutline("none");
 
         // The ring owns the user-select click so the pointer/click + cursor
         // surface is exactly the visible 16 × 16 graphic — clicks on a label or

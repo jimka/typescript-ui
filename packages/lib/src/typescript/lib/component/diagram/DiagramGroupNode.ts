@@ -24,9 +24,6 @@ export interface DiagramGroupNodeOptions extends PanelOptions {
     glyph?: string;
 }
 
-/** Corner radius in pixels for the container's box, matching `DiagramNode`. */
-const GROUP_BORDER_RADIUS = "4px";
-
 /**
  * Distance in pixels from the box's top-left corner to the header label's
  * origin — enough breathing room that the label never sits flush against the
@@ -36,6 +33,12 @@ const HEADER_INSET = 6;
 
 const _defaultDiagramGroupNodeOptions: Partial<DiagramGroupNodeOptions> = {
     backgroundColor: "var(--ts-ui-diagram-group-bg, rgba(120, 120, 120, 0.08))",
+    // A container is a selectable node like any leaf, so it carries the same
+    // pointer cursor `DiagramNode` does — left at the Component default it
+    // would read as an arrow and promise a pan its own box does not perform.
+    cursor:       "pointer",
+    border:       "1px solid var(--ts-ui-diagram-group-border, var(--ts-ui-border-color, rgb(180, 180, 180)))",
+    borderRadius: "4px",
 };
 
 /**
@@ -59,14 +62,6 @@ class DiagramGroupNode extends Panel<DiagramGroupNodeOptions> {
             ..._defaultDiagramGroupNodeOptions,
             ...(subclassDefaults ?? {}),
         });
-
-        // A container is a selectable node like any leaf, so it carries the same
-        // pointer cursor `DiagramNode` does — left at the Component default it
-        // would read as an arrow and promise a pan its own box does not perform.
-        this.setCursor("pointer");
-
-        this.setBorder("1px solid var(--ts-ui-diagram-group-border, var(--ts-ui-border-color, rgb(180, 180, 180)))");
-        this.setBorderRadius(GROUP_BORDER_RADIUS);
 
         // The header is built here (not during super's cascade), so the values
         // cached pure in `applyOptions` are dispatched now that the box exists.

@@ -103,6 +103,10 @@ const _defaultPopoverOptions: Partial<PopoverOptions> = {
     showArrow: true,
     backgroundColor: "var(--ts-ui-popover-bg, rgb(255, 255, 255))",
     foregroundColor: "var(--ts-ui-popover-color, rgb(0, 0, 0))",
+    // Theme-driven chrome.
+    border:       { border: "1px solid var(--ts-ui-popover-border, rgb(200, 200, 200))" },
+    borderRadius: "var(--ts-ui-popover-radius, 6px)",
+    shadow:       "var(--ts-ui-popover-shadow, 2px 4px 12px rgba(0, 0, 0, 0.18))",
 };
 
 /**
@@ -187,11 +191,6 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
 
         vbox.setStretching(true);
         this.setLayoutManager(vbox);
-
-        // Theme-driven chrome.
-        this.setBorder({ border: "1px solid var(--ts-ui-popover-border, rgb(200, 200, 200))" });
-        this.setBorderRadius("var(--ts-ui-popover-radius, 6px)");
-        this.setShadow("var(--ts-ui-popover-shadow, 2px 4px 12px rgba(0, 0, 0, 0.18))");
 
         // Overlay placement: top-level, viewport-fixed. The z-index is
         // stamped from LayerManager's Popover band at show() time, so no

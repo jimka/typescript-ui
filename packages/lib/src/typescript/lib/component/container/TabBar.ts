@@ -446,6 +446,11 @@ class TabDropTint extends Component {
 
 const _defaultTabBarOptions: Partial<TabBarOptions> = {
     backgroundColor: "var(--ts-ui-tab-toolbar-bg, #eee)",
+    // Seeds the bar's own preferred size with the floor; the owning `Tab`
+    // sizes the strip from `stripThickness()` directly (never from this
+    // self-report), so this is only the bar's pre-layout self-size, kept at
+    // the floor so it matches the unmeasured strip.
+    preferredSize: { width: 0, height: STRIP_THICKNESS },
 };
 
 /**
@@ -588,12 +593,7 @@ class TabBar extends Container<TabBarOptions> {
         // exist (so a `tools` / `listeners` option has somewhere to land).
         this.setLayoutManager(new HBox({ mode: "equal", spacing: 0, stretching: true }));
         this._underBorderFullWidth = ThemeManager.getTheme().tab.underBorderFullWidth;
-        this.applyUnderBorder();
-        // Seeds the bar's own preferred size with the floor; the owning `Tab`
-        // sizes the strip from `stripThickness()` directly (never from this
-        // self-report), so this is only the bar's pre-layout self-size, kept at
-        // the floor so it matches the unmeasured strip.
-        this.setPreferredSize({ width: 0, height: STRIP_THICKNESS });
+        this.applyUnderBorder(options);
         this.getAria().setRole("tablist");
 
         // The tab wrappers live in the clip frame (its box lays them out), not on
@@ -812,9 +812,26 @@ class TabBar extends Container<TabBarOptions> {
 
     /**
      * Applies the current `_underBorderFullWidth` value to the strip: a full-width
-     * 1px rule when set, no border when cleared.
+     * 1px rule when set, no border when cleared. A caller-supplied `border`
+     * option wins over both — see the deviation note in
+     * `plans/implemented/option-setter-clobbering-audit.md`'s Implementation
+     * Notes: the theme-driven `_underBorderFullWidth` default (false in the
+     * shipped Modern/Dark themes) would otherwise still clobber a construction-
+     * time override via the early-return `clearBorder()` branch below, even
+     * after folding `options?.border` into the full-width branch alone.
+     *
+     * @param options - The construction options, when called from the
+     *   constructor; omitted for every runtime recompute (theme change,
+     *   `setUnderBorderFullWidth`, `setSide`), which always re-derive the
+     *   theme-token border.
      */
-    private applyUnderBorder(): void {
+    private applyUnderBorder(options?: TabBarOptions): void {
+        if (options?.border !== undefined) {
+            this.setBorder(options.border);
+
+            return;
+        }
+
         if (!this._underBorderFullWidth) {
             this.clearBorder();
 
@@ -826,7 +843,8 @@ class TabBar extends Container<TabBarOptions> {
         // The under-border is the single rule between the strip and the content
         // area, so it sits on the strip's *inner* edge — the one adjacent to the
         // content: bottom for north, top for south, right for west, left for
-        // east. The other three edges stay borderless.
+        // east. The other three edges stay borderless. (`options?.border` is
+        // guaranteed undefined here — the early return above already handled it.)
         this.setBorder({
             borderTop:    this._side === "south" ? rule : "none",
             borderBottom: this._side === "north" ? rule : "none",

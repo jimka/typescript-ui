@@ -23,6 +23,7 @@ export interface MenuBarOptions extends ComponentOptions {
 // toolBar.background, and this untokened fallback matches ToolBar's own.
 const _defaultMenuBarOptions: Partial<MenuBarOptions> = {
     backgroundColor: "var(--ts-ui-menu-bar-bg, rgb(245, 245, 245))",
+    minSize: { width: 0, height: MENU_BAR_BUTTON_HEIGHT },
 };
 
 /**
@@ -83,8 +84,6 @@ class MenuBar extends Component {
             "borderBottom",
             "1px solid var(--ts-ui-menu-bar-border, rgb(220, 220, 220))"
         );
-        this.setMinSize({ width: 0, height: MENU_BAR_BUTTON_HEIGHT });
-
         this.getAria().setRole("menubar");
         this.getAria().setLabel("Main menu");
         this.getAria().setTabIndex(0);

@@ -28,6 +28,10 @@ import { NotificationHistoryButton } from '~/overlay/NotificationHistoryButton';
 import { Button } from '~/component/button/Button';
 import { ToggleButton } from '~/component/button/ToggleButton';
 import { TabButton } from '~/component/button/TabButton';
+import { Checkbox } from '~/component/input/Checkbox';
+import { RadioButton } from '~/component/input/RadioButton';
+import { Toggle } from '~/component/input/Toggle';
+import { Slider } from '~/component/input/Slider';
 import { StatusBar } from '~/component/container/StatusBar';
 import { TabBar } from '~/component/container/TabBar';
 import { MenuSeparator } from '~/component/container/MenuSeparator';
@@ -316,6 +320,46 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'ScrollingPanel overflowY',      resolve: () => new ScrollingPanel().getOverflowY(),                        expected: 'auto' },
     { label: 'ScrollingPanel scrollShadows',  resolve: () => new ScrollingPanel().getScrollShadows(),                    expected: false },
     { label: 'ScrollingPanel scrollbarStyle', resolve: () => new ScrollingPanel().getScrollbarStyle(),                   expected: 'native' },
+
+    // option-setter-clobbering-audit: the follow-up sweep across border,
+    // borderRadius, shadow, cursor, outline, overflow, preferredSize, minSize,
+    // maxSize.
+    { label: 'DiagramNode border',           resolve: () => new DiagramNode().getBorder(),                              expected: { border: '1px solid var(--ts-ui-border-color, rgb(180, 180, 180))' } },
+    { label: 'DiagramNode borderRadius',     resolve: () => new DiagramNode().getBorderRadius(),                        expected: '4px' },
+    { label: 'DiagramNode cursor',           resolve: () => new DiagramNode().getCursor(),                              expected: 'pointer' },
+    { label: 'DiagramGroupNode cursor',      resolve: () => new DiagramGroupNode().getCursor(),                         expected: 'pointer' },
+    { label: 'DiagramGroupNode border',      resolve: () => new DiagramGroupNode().getBorder(),                         expected: { border: '1px solid var(--ts-ui-diagram-group-border, var(--ts-ui-border-color, rgb(180, 180, 180)))' } },
+    { label: 'DiagramGroupNode borderRadius', resolve: () => new DiagramGroupNode().getBorderRadius(),                  expected: '4px' },
+    { label: 'StatusBar border',             resolve: () => new StatusBar().getBorder(),                                expected: { borderTop: '1px solid var(--ts-ui-statusbar-border, rgb(220, 220, 220))' } },
+    { label: 'StatusBar minSize',            resolve: () => new StatusBar().getMinSizeConstraint(),                     expected: { width: 0, height: 22 } },
+    { label: 'StatusBar maxSize',            resolve: () => new StatusBar().getMaxSizeConstraint(),                     expected: { width: Number.MAX_SAFE_INTEGER, height: 22 } },
+    { label: 'Popover border',               resolve: () => new Popover().getBorder(),                                  expected: { border: '1px solid var(--ts-ui-popover-border, rgb(200, 200, 200))' } },
+    { label: 'Popover borderRadius',         resolve: () => new Popover().getBorderRadius(),                            expected: 'var(--ts-ui-popover-radius, 6px)' },
+    { label: 'Popover shadow',               resolve: () => new Popover().getShadow(),                                  expected: 'var(--ts-ui-popover-shadow, 2px 4px 12px rgba(0, 0, 0, 0.18))' },
+    { label: 'TabButton border',             resolve: () => new TabButton('x').getBorder(),                             expected: {
+        borderTop:    'var(--ts-ui-tab-button-border-top,    var(--ts-ui-tab-button-border, none))',
+        borderRight:  'var(--ts-ui-tab-button-border-right,  var(--ts-ui-tab-button-border, none))',
+        borderBottom: 'var(--ts-ui-tab-button-border-bottom, var(--ts-ui-tab-button-border, none))',
+        borderLeft:   'var(--ts-ui-tab-button-border-left,   var(--ts-ui-tab-button-border, none))',
+    } },
+    { label: 'TabButton borderRadius (suppressed)', resolve: () => new TabButton('x').getBorderRadius(),                expected: null },
+    { label: 'MenuBar minSize',              resolve: () => new MenuBar().getMinSizeConstraint(),                       expected: { width: 0, height: 28 } },
+    { label: 'Tree overflow',                resolve: () => new Tree().getOverflow(),                                   expected: 'hidden' },
+    { label: 'Tree preferredSize',           resolve: () => new Tree().getPreferredSizeConstraint(),                    expected: { width: 200, height: 300 } },
+    { label: 'Tree maxSize',                 resolve: () => new Tree().getMaxSizeConstraint(),                          expected: { width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER } },
+    { label: 'TabBar preferredSize',         resolve: () => new TabBar().getPreferredSizeConstraint(),                  expected: { width: 0, height: 30 } },
+    // The active theme in the test harness (Modern) has tab.underBorderFullWidth
+    // false, so applyUnderBorder()'s early-return branch clears the border —
+    // this row pins that pre-existing, theme-driven default, not anything this
+    // plan changes (Step 8 only makes the *border* argument options-aware).
+    { label: 'TabBar under-border (theme default: cleared)', resolve: () => new TabBar().getBorder(),                    expected: { border: 'none' } },
+    { label: 'Checkbox outline',             resolve: () => new Checkbox().getOutline(),                                expected: 'none' },
+    { label: 'RadioButton outline',          resolve: () => new RadioButton().getOutline(),                             expected: 'none' },
+    { label: 'Toggle outline',               resolve: () => new Toggle().getOutline(),                                  expected: 'none' },
+    { label: 'Slider outline',               resolve: () => new Slider().getOutline(),                                  expected: 'none' },
+    { label: 'Slider cursor',                resolve: () => new Slider().getCursor(),                                   expected: 'pointer' },
+    { label: 'AbstractChart preferredSize (via LineChart)', resolve: () => new LineChart({}).getPreferredSizeConstraint(), expected: { width: 400, height: 300 } },
+    { label: 'AbstractChart minSize (via LineChart)', resolve: () => new LineChart({}).getMinSizeConstraint(),          expected: { width: 80, height: 60 } },
 ];
 
 describe('default-resolution registry: a bare construction resolves every class default', () => {
@@ -431,6 +475,88 @@ describe('an explicit value wins over a class default', () => {
 
     it('a subclass default is never dispatched into the _options bag', () => {
         expect((new ScrollingPanel() as any)._options.autoScroll).toBeUndefined();
+    });
+
+    // option-setter-clobbering-audit: a caller-supplied value now wins at each
+    // of the thirteen sites the sweep fixed, instead of being silently
+    // clobbered by a hardcoded constructor-time setter call.
+    it('DiagramNode border/borderRadius/cursor overrides win', () => {
+        const n = new DiagramNode({ border: '2px dashed red', borderRadius: '10px', cursor: 'grab' });
+        expect(n.getBorder()).toEqual({ border: '2px dashed red' });
+        expect(n.getBorderRadius()).toBe('10px');
+        expect(n.getCursor()).toBe('grab');
+    });
+
+    it('DiagramGroupNode cursor/border/borderRadius overrides win', () => {
+        const n = new DiagramGroupNode({ cursor: 'grab', border: '2px dashed red', borderRadius: '10px' });
+        expect(n.getCursor()).toBe('grab');
+        expect(n.getBorder()).toEqual({ border: '2px dashed red' });
+        expect(n.getBorderRadius()).toBe('10px');
+    });
+
+    it('StatusBar border/minSize/maxSize overrides win', () => {
+        const bar = new StatusBar({
+            border:  { border: '2px dashed red' },
+            minSize: { width: 50, height: 10 },
+            maxSize: { width: 500, height: 100 },
+        });
+        expect(bar.getBorder()).toEqual({ border: '2px dashed red' });
+        expect(bar.getMinSizeConstraint()).toEqual({ width: 50, height: 10 });
+        expect(bar.getMaxSizeConstraint()).toEqual({ width: 500, height: 100 });
+    });
+
+    it('Popover border/borderRadius/shadow overrides win', () => {
+        const p = new Popover({ border: { border: '2px dashed red' }, borderRadius: '10px', shadow: 'none' });
+        expect(p.getBorder()).toEqual({ border: '2px dashed red' });
+        expect(p.getBorderRadius()).toBe('10px');
+        expect(p.getShadow()).toBe('none');
+    });
+
+    it('TabButton resting border/borderRadius overrides win over the tab token', () => {
+        const t = new TabButton('x', { border: '3px solid green', borderRadius: '10px' });
+        expect(t.getBorder()).toEqual({ border: '3px solid green' });
+        expect(t.getBorderRadius()).toBe('10px');
+    });
+
+    it('MenuBar minSize override wins', () => {
+        expect(new MenuBar({ minSize: { width: 50, height: 40 } }).getMinSizeConstraint()).toEqual({ width: 50, height: 40 });
+    });
+
+    it('Tree overflow/preferredSize/maxSize overrides win', () => {
+        const tree = new Tree({ overflow: 'visible', preferredSize: { width: 100, height: 150 }, maxSize: { width: 500, height: 500 } });
+        expect(tree.getOverflow()).toBe('visible');
+        expect(tree.getPreferredSizeConstraint()).toEqual({ width: 100, height: 150 });
+        expect(tree.getMaxSizeConstraint()).toEqual({ width: 500, height: 500 });
+    });
+
+    it('TabBar preferredSize override wins, and border override wins at construction', () => {
+        const bar = new TabBar({ preferredSize: { width: 10, height: 40 }, border: { border: '1px solid red' } });
+        expect(bar.getPreferredSizeConstraint()).toEqual({ width: 10, height: 40 });
+        expect(bar.getBorder()).toEqual({ border: '1px solid red' });
+    });
+
+    it('Checkbox/RadioButton/Toggle/Slider outline overrides win', () => {
+        expect(new Checkbox({ outline: '2px solid blue' }).getOutline()).toBe('2px solid blue');
+        expect(new RadioButton(undefined, { outline: '2px solid blue' }).getOutline()).toBe('2px solid blue');
+        expect(new Toggle({ outline: '2px solid blue' }).getOutline()).toBe('2px solid blue');
+        expect(new Slider({ outline: '2px solid blue' }).getOutline()).toBe('2px solid blue');
+    });
+
+    it('Slider cursor override wins', () => {
+        expect(new Slider({ cursor: 'grab' }).getCursor()).toBe('grab');
+    });
+
+    it('AbstractChart preferredSize/minSize overrides win (via LineChart)', () => {
+        const chart = new LineChart({ preferredSize: { width: 600, height: 400 }, minSize: { width: 100, height: 100 } });
+        expect(chart.getPreferredSizeConstraint()).toEqual({ width: 600, height: 400 });
+        expect(chart.getMinSizeConstraint()).toEqual({ width: 100, height: 100 });
+    });
+
+    it('a subclassDefaults bag overrides the class default for the four new-bag sites', () => {
+        expect(new Checkbox(undefined, { outline: 'green' } as any).getOutline()).toBe('green');
+        expect(new RadioButton(undefined, undefined, { outline: 'green' } as any).getOutline()).toBe('green');
+        expect(new Toggle(undefined, { outline: 'green' } as any).getOutline()).toBe('green');
+        expect(new Slider(undefined, { outline: 'green', cursor: 'grab' } as any).getOutline()).toBe('green');
     });
 });
 

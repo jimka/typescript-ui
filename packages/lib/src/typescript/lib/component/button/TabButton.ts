@@ -27,6 +27,20 @@ export interface TabButtonOptions extends ToggleButtonOptions {
 const _defaultTabButtonOptions: Partial<TabButtonOptions> = {
     backgroundColor: "var(--ts-ui-tab-button-bg, #b8b8c3)",
     backgroundImage: "var(--ts-ui-tab-button-bg, #b8b8c3)",
+    border: {
+        borderTop:    "var(--ts-ui-tab-button-border-top,    var(--ts-ui-tab-button-border, none))",
+        borderRight:  "var(--ts-ui-tab-button-border-right,  var(--ts-ui-tab-button-border, none))",
+        borderBottom: "var(--ts-ui-tab-button-border-bottom, var(--ts-ui-tab-button-border, none))",
+        borderLeft:   "var(--ts-ui-tab-button-border-left,   var(--ts-ui-tab-button-border, none))",
+    },
+    // Explicit `undefined` keys — not omitted — so these two win over Button's
+    // own non-empty `_defaultButtonOptions.borderRadius`/`.shadow` in the
+    // spread merge at ComponentDefaults.ts's resolveClassDefaults. Omitting
+    // the keys would let Button's rounded/shadowed look leak through once the
+    // unconditional `clearBorderRadius()`/`clearShadow()` calls below are
+    // deleted.
+    borderRadius: undefined,
+    shadow:       undefined,
 };
 
 /**
@@ -127,36 +141,29 @@ class TabButton extends ToggleButton {
     }
 
     /**
-     * Paints the tab's unselected background, border, hover, and selected
-     * states from the `--ts-ui-tab-button-*` theme tokens. Runs after
-     * `applyOptions()` so these overrides win over `Button`'s inherited chrome
-     * defaults — see the call site's comment.
+     * Paints the tab's unselected background, hover, and selected states from
+     * the `--ts-ui-tab-button-*` theme tokens. Runs after `applyOptions()` so
+     * these overrides win over `Button`'s inherited chrome defaults — see the
+     * call site's comment.
      *
-     * The unselected `backgroundImage` is handled entirely by
+     * The unselected `backgroundImage` and the resting `border` /
+     * `borderRadius` / `shadow` are handled entirely by
      * `_defaultTabButtonOptions` (top of this file), which layers through
      * `ToggleButton`'s `subclassDefaults` forwarding — `Button`'s own chrome
-     * dispatch folds `_defaultOptions.backgroundImage` correctly, so nothing
-     * needs reasserting here. `backgroundColor` still does: unlike
-     * `backgroundImage`, `Button`'s `applyChromeOptions` override repaints a
-     * plain resting background (`BUTTON_RESTING_BACKGROUND`) via a direct
-     * `setBackgroundColor` call whenever the caller passed no explicit
-     * `backgroundColor` — bypassing `_defaultOptions` entirely — so the
-     * tab-token fallback still needs this explicit (options-aware) reassert,
-     * not just the `_defaultTabButtonOptions` bag.
+     * dispatch folds each of those correctly, so nothing needs reasserting
+     * here. `backgroundColor` still does: unlike the others, `Button`'s
+     * `applyChromeOptions` override repaints a plain resting background
+     * (`BUTTON_RESTING_BACKGROUND`) via a direct `setBackgroundColor` call
+     * whenever the caller passed no explicit `backgroundColor` — bypassing
+     * `_defaultOptions` entirely — so the tab-token fallback still needs this
+     * explicit (options-aware) reassert, not just the `_defaultTabButtonOptions`
+     * bag.
      *
      * @param options - The options this `TabButton` was constructed with, so
      *   an explicit caller `backgroundColor` still wins over the tab token.
      */
     private applyTabStyling(options?: TabButtonOptions): void {
         this.setBackgroundColor(options?.backgroundColor ?? (this._defaultOptions.backgroundColor as string));
-        this.setBorder({
-            borderTop:    "var(--ts-ui-tab-button-border-top,    var(--ts-ui-tab-button-border, none))",
-            borderRight:  "var(--ts-ui-tab-button-border-right,  var(--ts-ui-tab-button-border, none))",
-            borderBottom: "var(--ts-ui-tab-button-border-bottom, var(--ts-ui-tab-button-border, none))",
-            borderLeft:   "var(--ts-ui-tab-button-border-left,   var(--ts-ui-tab-button-border, none))",
-        });
-        this.clearBorderRadius();
-        this.clearShadow();
 
         // Hover state.
         this.setHoverBackgroundColor("var(--ts-ui-tab-button-hover-bg, #c4c4cf)");

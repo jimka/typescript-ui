@@ -44,6 +44,11 @@ const DEFAULT_MIN     = 0;
 const DEFAULT_MAX     = 100;
 const DEFAULT_STEP    = 1;
 
+const _defaultSliderOptions: Partial<SliderOptions> = {
+    outline: "none",
+    cursor:  "pointer",
+};
+
 /**
  * A custom-drawn range slider rendered as a focusable `<div>` with
  * `role="slider"`.
@@ -68,9 +73,16 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
      * Constructs a Slider.
      *
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: TOptions) {
-        super({ ...(options ?? {}) } as TOptions);
+    constructor(options?: SliderOptions, subclassDefaults?: Partial<SliderOptions>);
+    constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        super(
+            { ...(options ?? {}) } as TOptions,
+            { ..._defaultSliderOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
+        );
 
         this._track = new Component();
         this._track.setBackgroundColor("var(--ts-ui-slider-track-bg, rgb(220, 220, 220))");
@@ -100,8 +112,6 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
 
         this.setPreferredSize({ width: 200, height: THUMB_SIZE });
         this.setMaxSize({ width: UNBOUNDED, height: THUMB_SIZE });
-        this.setOutline("none");
-        this.setCursor("pointer");
 
         this.getAria().setRole("slider");
         this.getAria().setTabIndex(0);

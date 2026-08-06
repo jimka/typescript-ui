@@ -90,6 +90,13 @@ export interface AbstractChartOptions extends PanelOptions {
     listeners?: ChartListeners;
 }
 
+// A sensible default envelope: a fixed preferred size, plus a small min so
+// the Panel can shrink (it clamps only to its explicit min/max).
+const _defaultAbstractChartOptions: Partial<AbstractChartOptions> = {
+    preferredSize: { width: 400, height: 300 },
+    minSize:       { width: 80, height: 60 },
+};
+
 /**
  * Shared SVG-first foundation for the chart family. An `AbstractChart` is a
  * `Panel` whose root `<div>` hosts a single raw `<svg>` drawing surface (a
@@ -160,12 +167,7 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
      * @param subclassDefaults - Optional subclass default options.
      */
     constructor(options?: O, subclassDefaults?: Partial<O>) {
-        super(options, subclassDefaults);
-
-        // A sensible default envelope: a fixed preferred size, plus a small min
-        // so the Panel can shrink (it clamps only to its explicit min/max).
-        this.setPreferredSize({ width: 400, height: 300 });
-        this.setMinSize({ width: 80, height: 60 });
+        super(options, { ..._defaultAbstractChartOptions, ...(subclassDefaults ?? {}) } as Partial<O>);
 
         this.addComponent(this._legend);
         this._legend.on("toggle", this.handleLegendToggle);

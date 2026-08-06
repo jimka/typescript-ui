@@ -16,6 +16,10 @@ export interface ToggleOptions extends AbstractBooleanInputOptions {
     value?: boolean;
 }
 
+const _defaultToggleOptions: Partial<ToggleOptions> = {
+    outline: "none",
+};
+
 /**
  * A custom-drawn on/off switch widget rendered as a focusable `<div>` with
  * `role="switch"`.
@@ -39,9 +43,16 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
      * Constructs a Toggle.
      *
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: TOptions) {
-        super({ ...(options ?? {}) } as TOptions);
+    constructor(options?: ToggleOptions, subclassDefaults?: Partial<ToggleOptions>);
+    constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        super(
+            { ...(options ?? {}) } as TOptions,
+            { ..._defaultToggleOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
+        );
 
         this.setLayoutManager(new HBox());
 
@@ -85,8 +96,6 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
         this.getAria().setRole("switch");
         this.getAria().setTabIndex(0);
         this.getAria().setChecked(false);
-
-        this.setOutline("none");
 
         // The track owns the user-toggle click so the pointer/click + cursor
         // surface is exactly the visible pill — clicks on a label or in any
