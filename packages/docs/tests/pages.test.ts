@@ -154,18 +154,18 @@ describe('getNav', () => {
         expect(labels.every((label) => label !== 'Overview')).toBe(true);
     });
 
-    it('flattens to exactly 156 distinct leaf entries', () => {
+    it('flattens to exactly 159 distinct leaf entries', () => {
         const paths = flattenEntries(nav).map((entry) => entry.path);
 
-        expect(paths.length).toBe(156);
-        expect(new Set(paths).size).toBe(156);
+        expect(paths.length).toBe(159);
+        expect(new Set(paths).size).toBe(159);
     });
 
-    it('leaf entries plus section paths total 165 distinct paths', () => {
+    it('leaf entries plus section paths total 168 distinct paths', () => {
         const paths = flattenPaths(nav);
 
-        expect(paths.length).toBe(165);
-        expect(new Set(paths).size).toBe(165);
+        expect(paths.length).toBe(168);
+        expect(new Set(paths).size).toBe(168);
     });
 
     it('has the expected per-section leaf entry counts', () => {
@@ -176,7 +176,7 @@ describe('getNav', () => {
         expect(counts).toEqual({
             Guide:      2,
             Concepts:   12,
-            Components: 91,
+            Components: 94,
             Layouts:    16,
             Data:       6,
             Recipes:    14,

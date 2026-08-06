@@ -30,6 +30,8 @@ panel.addComponent(Markdown('# Title\n\nSome **bold** text with a [link](https:/
 | --- | --- | --- | --- |
 | `markdown` | `string` | `""` | The Markdown source string to render. |
 | `linkResolver` | `(href: string) => { href: string; external: boolean }` | resolves every href as external, unchanged | Maps an authored link href to its rendered form — see [Link resolution](#link-resolution). |
+| `maxMeasure` | `string \| number \| null` | `null` (theme default) | Per-instance override of the prose column's max width — see [Reading width and font scale](#reading-width-and-font-scale). |
+| `fontScale` | `number` | `1` | Multiplies the prose's base font size — see [Reading width and font scale](#reading-width-and-font-scale). |
 
 Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields (preferred size, background, foreground, etc.).
 
@@ -102,6 +104,14 @@ The prose **wraps** to whatever width its parent assigns — paragraphs reflow a
 
 Because prose reflows, `Markdown` measures its rendered content **height** at the width it is assigned and reports it as its minimum and preferred height. Dropping one in a vertically-scrolling [`Panel`](/api/component/container/classes/Panel) (via `setAutoScroll("y")`) is all it takes — the panel grows to the full prose height and scrolls when the document is taller than the viewport. The height is re-measured on content, width, and theme change. Only the **height** axis is derived; the width stays freely assignable. The measured height is reported as a **minimum**, so an explicit `preferredSize` or `setMinSize` *taller* than the content still wins — to cap the component *below* its content, place it in a bounded scroll host rather than setting a smaller `preferredSize`.
 
+### Reading width and font scale
+
+`setMaxMeasure(value)` overrides the prose column's max width for this instance — a CSS width string (e.g. `"60ch"`), a bare number of `ch` units, or `null` to revert to the theme's `--ts-ui-md-max-measure` default (`70ch` unless the active theme overrides it). Passing `null` reverts to the **live** theme variable, not a value snapshotted at call time — a theme change afterward still takes effect.
+
+`setFontScale(value)` multiplies the prose's base font size; headings and other relatively-sized elements scale with it via their own relative sizing. Pass `1` to clear the override — this writes a cleared inline style, not a literal `"100%"`, so the rendered result is identical to never having called it.
+
+[`MarkdownViewer`](/components/MarkdownViewer)'s floating width/zoom control cluster is built on exactly these two setters, stepping through fixed presets rather than exposing continuous sliders.
+
 ## Common methods
 
 | Method | Purpose |
@@ -110,6 +120,8 @@ Because prose reflows, `Markdown` measures its rendered content **height** at th
 | `setMarkdown(markdown)` | Replace the source, re-lexing and rebuilding the rendered subtree. |
 | `getLinkResolver()` | Return the current link resolver — the default resolver when unset, never `null`. |
 | `setLinkResolver(resolver)` | Replace the link resolver used to render links. Does not re-render already-built content. |
+| `getMaxMeasure()` / `setMaxMeasure(value)` | Read or override the prose column's max width — see [Reading width and font scale](#reading-width-and-font-scale). |
+| `getFontScale()` / `setFontScale(value)` | Read or override the prose's base font-size multiplier — see [Reading width and font scale](#reading-width-and-font-scale). |
 | `dispose()` | Detach the theme-change listener — call this before removing a dynamically-built `Markdown` from the page so the listener doesn't leak. |
 
 ## See also
@@ -117,3 +129,4 @@ Because prose reflows, `Markdown` measures its rendered content **height** at th
 - [API: Markdown](/api/component/display/classes/Markdown)
 - [`Text`](/components/Text) — for a single non-Markdown string.
 - [`CodeEditor`](/components/CodeEditor) — the syntax-highlighting editor a supported-language fenced block upgrades to.
+- [`MarkdownViewer`](/components/MarkdownViewer) — wraps a single `Markdown` instance with a floating heading-outline minimap and width/zoom controls.
