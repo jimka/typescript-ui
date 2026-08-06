@@ -561,6 +561,25 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
+     * Expands `node` if it is not already expanded — the same commit path as
+     * clicking its collapsed caret (loading its children first when it is an
+     * unloaded lazy node), without requiring a prior click. No-ops if `node`
+     * is already expanded. Useful for defaulting specific sections open after
+     * {@link setNodes}, which always starts every node collapsed.
+     *
+     * @param node - The node to expand.
+     *
+     * @returns This tree, for method chaining.
+     */
+    expandNode(node: TreeNode): this {
+        if (!this._expandedNodes.has(node)) {
+            this._onToggle(node);
+        }
+
+        return this;
+    }
+
+    /**
      * Toggles the expanded state of a node, re-flattens, and re-renders.
      *
      * @param node - The node whose expanded state should be toggled.

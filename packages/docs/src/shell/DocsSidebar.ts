@@ -92,6 +92,11 @@ class DocsSidebar extends Panel {
             }
         });
         this._tree.setNodes(this._fullNodes);
+        // Guide and Reference are the two sections a developer needs most often;
+        // expanded by default so their pages are one click away on first load.
+        // Both paths are guaranteed to resolve — getNav() always includes them.
+        this._tree.expandNode(this._nodesByPath.get('/guide')!);
+        this._tree.expandNode(this._nodesByPath.get('/reference')!);
 
         this.addComponent(this._searchField, { placement: Placement.NORTH });
         this.addComponent(this._tree,        { placement: Placement.CENTER });
