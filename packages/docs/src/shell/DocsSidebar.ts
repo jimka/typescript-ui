@@ -1,16 +1,16 @@
-import { callable, Panel } from '@jimka/typescript-ui/core';
-import type { PanelOptions } from '@jimka/typescript-ui/core';
-import { Border } from '@jimka/typescript-ui/layout';
-import { Tree } from '@jimka/typescript-ui/component/tree';
-import type { TreeNode } from '@jimka/typescript-ui/component/tree';
-import { TextField } from '@jimka/typescript-ui/component/input';
-import { extractMarkdownHeadings } from '@jimka/typescript-ui/component/display';
-import { Router } from '@jimka/typescript-ui/router';
-import { getNav, getPage } from '../content/pages.js';
-import type { NavGroup, NavEntry } from '../content/pages.js';
+import { callable, Panel }                  from '@jimka/typescript-ui/core';
+import type { PanelOptions }                from '@jimka/typescript-ui/core';
+import { Border }                           from '@jimka/typescript-ui/layout';
+import { Tree }                             from '@jimka/typescript-ui/component/tree';
+import type { TreeNode }                    from '@jimka/typescript-ui/component/tree';
+import { TextField }                        from '@jimka/typescript-ui/component/input';
+import { extractMarkdownHeadings }          from '@jimka/typescript-ui/component/display';
+import { Router }                           from '@jimka/typescript-ui/router';
+import { getNav, getPage }                  from '../content/pages.js';
+import type { NavGroup, NavEntry }          from '../content/pages.js';
 import { API_PREFIX, getApiNav, isApiPath } from '../content/api.js';
-import type { ApiNavNode } from '../content/api.js';
-import { Insets, Placement } from '@jimka/typescript-ui/primitive';
+import type { ApiNavNode }                  from '../content/api.js';
+import { Insets, Placement }                from '@jimka/typescript-ui/primitive';
 
 /** One tree node's searchable text, keyed by its route path. */
 interface SearchEntry {
@@ -76,15 +76,22 @@ class DocsSidebar extends Panel {
         this._fullNodes   = this.buildNodes();
         this._searchIndex = this.buildSearchIndex(this._fullNodes);
 
-        this._searchField = new TextField({
+        this._searchField = TextField({
             placeholder: 'Search docs…',
             padding:     SEARCH_FIELD_PADDING,
+            listeners: {
+                action: this.handleQueryChange
+            }
         });
-        this._searchField.on('action', this.handleQueryChange);
 
-        this._tree = new Tree();
+        this._tree = Tree({
+            backgroundColor: "transparent",
+            insets: new Insets(20, 0, 0, 20),
+            listeners: {
+                selection: this.handleSelection
+            }
+        });
         this._tree.setNodes(this._fullNodes);
-        this._tree.on('selection', this.handleSelection);
 
         this.addComponent(this._searchField, { placement: Placement.NORTH });
         this.addComponent(this._tree,        { placement: Placement.CENTER });
