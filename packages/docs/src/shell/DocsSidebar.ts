@@ -86,7 +86,7 @@ class DocsSidebar extends Panel {
 
         this._tree = Tree({
             backgroundColor: "transparent",
-            insets: new Insets(20, 0, 0, 20),
+            insets: new Insets(20, 0, 0, 0),
             listeners: {
                 selection: this.handleSelection
             }
