@@ -47,6 +47,11 @@ function ensureSortBadgeClassRule(): void {
     });
 }
 
+const _defaultSortPriorityBadgeOptions: Partial<SortPriorityBadgeOptions> = {
+    backgroundColor: "var(--ts-ui-sort-badge-bg, rgba(0,0,0,0.15))",
+    foregroundColor: "var(--ts-ui-sort-badge-color, inherit)",
+};
+
 /**
  * A small numeric badge anchored to the top-right corner of a table header
  * cell, used to surface the multi-sort priority (1-based) of that column.
@@ -74,16 +79,17 @@ class SortPriorityBadge extends Component<SortPriorityBadgeOptions> {
      *
      * @param options - Optional configuration bag (initial priority plus
      *   common Component fields).
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: SortPriorityBadgeOptions) {
+    constructor(options?: SortPriorityBadgeOptions, subclassDefaults?: Partial<SortPriorityBadgeOptions>) {
         ensureSortBadgeClassRule();
 
-        super({ tag: "span", ...(options ?? {}) });
+        super({ tag: "span", ...(options ?? {}) }, { ..._defaultSortPriorityBadgeOptions, ...(subclassDefaults ?? {}) });
 
         this._priority ??= null;
 
-        this.setBackgroundColor("var(--ts-ui-sort-badge-bg, rgba(0,0,0,0.15))");
-        this.setForegroundColor("var(--ts-ui-sort-badge-color, inherit)");
         this.setVisible(this._shouldShow(this._priority));
     }
 

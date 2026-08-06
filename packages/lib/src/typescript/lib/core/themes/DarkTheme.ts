@@ -271,12 +271,10 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
         affirm  : { background: 'rgba(80, 200, 110, 0.25)', foreground: 'rgb(80, 200, 110)' },
     },
     drawer: {
-        background: 'var(--ts-ui-body-bg)',
         shadow    : '4px 0 24px rgba(0, 0, 0, 0.55)',
         border    : 'rgb(70, 70, 70)',
     },
     rail: {
-        background: 'var(--ts-ui-body-bg)',
         border    : 'rgb(70, 70, 70)',
         shadow    : '2px 0 12px rgba(0, 0, 0, 0.45)',
         handle: {

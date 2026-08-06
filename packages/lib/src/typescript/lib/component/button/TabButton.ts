@@ -20,6 +20,16 @@ export interface TabButtonOptions extends ToggleButtonOptions {
 }
 
 /**
+ * User-overridable default fill for the unselected state; a caller-supplied
+ * `backgroundColor`/`backgroundImage` wins. Reaches `Button` through
+ * `ToggleButton`'s `subclassDefaults` parameter (see `ToggleButton.ts`).
+ */
+const _defaultTabButtonOptions: Partial<TabButtonOptions> = {
+    backgroundColor: "var(--ts-ui-tab-button-bg, #b8b8c3)",
+    backgroundImage: "var(--ts-ui-tab-button-bg, #b8b8c3)",
+};
+
+/**
  * A tab-styled toggle button: a {@link ToggleButton} that paints its own
  * unselected/hover/selected fill from the `--ts-ui-tab-button-*` theme tokens
  * and optionally overlays a close (✕) affordance built from
@@ -57,12 +67,16 @@ class TabButton extends ToggleButton {
      *
      * @param text - The visible label for the tab.
      * @param options - Tab button options; `closeable` gates the close button.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(text: string, options?: TabButtonOptions) {
+    constructor(text: string, options?: TabButtonOptions, subclassDefaults?: Partial<TabButtonOptions>) {
         // ToggleButton (via Button) builds its inner text/HBox content row in
-        // its constructor body, so forward the positional `text` to super
-        // first; the styling setters below then fire on a fully-built button.
-        super(text);
+        // its constructor body, so forward the positional `text` to super,
+        // ... (options still isn't forwarded, only the defaults bag is); the
+        // styling setters below then fire on a fully-built button.
+        super(text, undefined, { ..._defaultTabButtonOptions, ...(subclassDefaults ?? {}) });
 
         this._closeable = options?.closeable ?? false;
 
@@ -77,7 +91,7 @@ class TabButton extends ToggleButton {
         // ridged, shadowed button. Running it last lets the flat tab tokens and
         // the cleared radius/shadow win — matching the legacy createBarEntry,
         // which styled a no-options ToggleButton with nothing applied afterward.
-        this.applyTabStyling();
+        this.applyTabStyling(options);
 
         // Button's constructor late-dispatches `setGlyph` from the options bag
         // once, before this subclass's `applyOptions` runs; a glyph passed to a
@@ -93,7 +107,7 @@ class TabButton extends ToggleButton {
         }
 
         // ToggleButton's constructor wired the listener bag from the options it
-        // received — but `super(text)` above passed none, so it wired nothing.
+        // received — but `super(text, ...)` above passed none, so it wired nothing.
         // Wire the bag here, as the leaf, after super() and applyOptions, so a
         // `new TabButton(name, { listeners: { action } })` is not silently
         // dropped (ARCHITECTURE.md, Event handling).
@@ -113,15 +127,28 @@ class TabButton extends ToggleButton {
     }
 
     /**
-     * Paints the tab's unselected, hover, and selected states from the
-     * `--ts-ui-tab-button-*` theme tokens. The unselected fill routes the tab
-     * token through both the background colour *and* image layer so Button's
-     * inherited `--ts-ui-button-bg` gradient drops out (invalid as an image)
-     * and the tab colour wins, killing the gradient bleed-through.
+     * Paints the tab's unselected background, border, hover, and selected
+     * states from the `--ts-ui-tab-button-*` theme tokens. Runs after
+     * `applyOptions()` so these overrides win over `Button`'s inherited chrome
+     * defaults — see the call site's comment.
+     *
+     * The unselected `backgroundImage` is handled entirely by
+     * `_defaultTabButtonOptions` (top of this file), which layers through
+     * `ToggleButton`'s `subclassDefaults` forwarding — `Button`'s own chrome
+     * dispatch folds `_defaultOptions.backgroundImage` correctly, so nothing
+     * needs reasserting here. `backgroundColor` still does: unlike
+     * `backgroundImage`, `Button`'s `applyChromeOptions` override repaints a
+     * plain resting background (`BUTTON_RESTING_BACKGROUND`) via a direct
+     * `setBackgroundColor` call whenever the caller passed no explicit
+     * `backgroundColor` — bypassing `_defaultOptions` entirely — so the
+     * tab-token fallback still needs this explicit (options-aware) reassert,
+     * not just the `_defaultTabButtonOptions` bag.
+     *
+     * @param options - The options this `TabButton` was constructed with, so
+     *   an explicit caller `backgroundColor` still wins over the tab token.
      */
-    private applyTabStyling(): void {
-        this.setBackgroundColor("var(--ts-ui-tab-button-bg, #b8b8c3)");
-        this.setBackgroundImage("var(--ts-ui-tab-button-bg, #b8b8c3)");
+    private applyTabStyling(options?: TabButtonOptions): void {
+        this.setBackgroundColor(options?.backgroundColor ?? (this._defaultOptions.backgroundColor as string));
         this.setBorder({
             borderTop:    "var(--ts-ui-tab-button-border-top,    var(--ts-ui-tab-button-border, none))",
             borderRight:  "var(--ts-ui-tab-button-border-right,  var(--ts-ui-tab-button-border, none))",

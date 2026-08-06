@@ -444,6 +444,10 @@ class TabDropTint extends Component {
     }
 }
 
+const _defaultTabBarOptions: Partial<TabBarOptions> = {
+    backgroundColor: "var(--ts-ui-tab-toolbar-bg, #eee)",
+};
+
 /**
  * A standalone, window-agnostic tab **strip** — the toolbar element, the tab
  * buttons, the selection indicator, the reorder bar, the tool group, overflow
@@ -570,9 +574,12 @@ class TabBar extends Container<TabBarOptions> {
      * Creates a tab strip with an empty toolbar.
      *
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: TabBarOptions) {
-        super(options);
+    constructor(options?: TabBarOptions, subclassDefaults?: Partial<TabBarOptions>) {
+        super(options, { ..._defaultTabBarOptions, ...(subclassDefaults ?? {}) });
 
         // This bar's element is the strip toolbar (was Tab._toolbar). Configure
         // it, then build the raw-appended chrome overlays. The base options were
@@ -580,7 +587,6 @@ class TabBar extends Container<TabBarOptions> {
         // options are dispatched at the end of this body once the sub-components
         // exist (so a `tools` / `listeners` option has somewhere to land).
         this.setLayoutManager(new HBox({ mode: "equal", spacing: 0, stretching: true }));
-        this.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
         this._underBorderFullWidth = ThemeManager.getTheme().tab.underBorderFullWidth;
         this.applyUnderBorder();
         // Seeds the bar's own preferred size with the floor; the owning `Tab`

@@ -18,6 +18,13 @@ export interface MenuBarOptions extends ComponentOptions {
     menus?: MenuConfig[];
 }
 
+// Default to the tool bar's background so menu bars and tool bars read as
+// one surface; the shipped themes set --ts-ui-menu-bar-bg to their
+// toolBar.background, and this untokened fallback matches ToolBar's own.
+const _defaultMenuBarOptions: Partial<MenuBarOptions> = {
+    backgroundColor: "var(--ts-ui-menu-bar-bg, rgb(245, 245, 245))",
+};
+
 /**
  * A persistent horizontal menu bar that hosts top-level dropdown menus.
  *
@@ -60,19 +67,18 @@ class MenuBar extends Component {
      * options-bag equivalent of a tail `setMenus()` call).
      *
      * @param options - Optional construction-time options; `menus` populates the bar.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: MenuBarOptions) {
-        super(options);
+    constructor(options?: MenuBarOptions, subclassDefaults?: Partial<MenuBarOptions>) {
+        super(options, { ..._defaultMenuBarOptions, ...(subclassDefaults ?? {}) });
 
         const hbox = new HBox();
         hbox.setComponentSpacing(0);
         hbox.setStretching(true);
         this.setLayoutManager(hbox);
 
-        // Default to the tool bar's background so menu bars and tool bars read as
-        // one surface; the shipped themes set --ts-ui-menu-bar-bg to their
-        // toolBar.background, and this untokened fallback matches ToolBar's own.
-        this.setBackgroundColor("var(--ts-ui-menu-bar-bg, rgb(245, 245, 245))");
         this.setElementCSSRule(
             "borderBottom",
             "1px solid var(--ts-ui-menu-bar-border, rgb(220, 220, 220))"

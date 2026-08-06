@@ -5,6 +5,31 @@ tied to a version number yet. Once this release is tagged, its content moves
 onto its own numbered page (see [Changelog](/reference/changelog)) and this
 page resets to empty.
 
+## Breaking changes
+
+### Theme
+
+`Theme.drawer.background` and `Theme.rail.background` are removed — both
+were set to `'var(--ts-ui-body-bg)'` in every shipped theme, a redundant
+alias with no per-theme value of its own. `Drawer` and `Rail` still paint an
+opaque background by default; they now read `--ts-ui-body-bg` directly, the
+same pattern `AbstractWindow` and `Dialog` already use. The rendered colour
+is unchanged in every shipped theme. A custom theme that set
+`drawer.background` or `rail.background` to something other than
+`--ts-ui-body-bg` loses that override — supply a different value via
+`Component.setBackgroundColor` on a `Drawer` / `Rail` instance instead.
+
+### Component defaults
+
+Fourteen components — `Tree`, `MenuBar`, `DiagramNode`, `DiagramGroupNode`,
+`ScrollStrip`, `TabButton`, `StatusBar`, `TabBar`, `MenuSeparator`,
+`SortPriorityBadge`, `Scrollbar`, `ToolBarSeparator`, `ChartLegend`, and
+`Popover` — previously ignored a caller-supplied `backgroundColor` (and, on
+`StatusBar`, `SortPriorityBadge`, and `Popover`, `foregroundColor`) and
+always painted their own hardcoded default instead. Passing either option
+now works as documented. No consumer action is needed unless code relied on
+the option being silently ignored.
+
 ## Added
 
 ### Display

@@ -59,6 +59,10 @@ const SWATCH_SIZE = 12;
 /** Opacity applied to a legend row whose series is toggled hidden. */
 const HIDDEN_OPACITY = 0.4;
 
+const _defaultChartLegendOptions: Partial<ChartLegendOptions> = {
+    backgroundColor: "transparent",
+};
+
 /**
  * A clickable chart legend: one row per series (colour swatch + name). A click
  * on a row emits `"toggle"(seriesIndex)` so the owning chart can hide/show that
@@ -81,11 +85,13 @@ class ChartLegend extends Panel<ChartLegendOptions> {
      * `ListenerBag` and row list exist).
      *
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: ChartLegendOptions) {
-        super(options);
+    constructor(options?: ChartLegendOptions, subclassDefaults?: Partial<ChartLegendOptions>) {
+        super(options, { ..._defaultChartLegendOptions, ...(subclassDefaults ?? {}) });
 
-        this.setBackgroundColor("transparent");
         this.clearInsets();
         this.applyOrientationLayout();
 

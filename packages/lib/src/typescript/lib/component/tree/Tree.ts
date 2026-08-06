@@ -60,6 +60,11 @@ export interface TreeOptions extends ComponentOptions {
     };
 }
 
+/** User-overridable default fill; a caller-supplied `backgroundColor` wins. */
+const _defaultTreeOptions: Partial<TreeOptions> = {
+    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
+};
+
 /**
  * A hierarchical data view with collapsible nodes and virtual scrolling.
  *
@@ -108,11 +113,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     private _listeners          : ListenerBag<TreeEvent>                                  = new ListenerBag<TreeEvent>();
     private _rendererFactory    : () => TreeNodeRenderer                                  = () => new LabelTreeNodeRenderer();
 
-    constructor(options?: TreeOptions) {
-        super(options);
+    constructor(options?: TreeOptions, subclassDefaults?: Partial<TreeOptions>) {
+        super(options, { ..._defaultTreeOptions, ...(subclassDefaults ?? {}) });
 
         this.setOverflow("hidden");
-        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
         this.setPreferredSize({ width: 200, height: 300 });
         this.setMaxSize({ width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER });
 

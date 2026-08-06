@@ -34,6 +34,10 @@ const GROUP_BORDER_RADIUS = "4px";
  */
 const HEADER_INSET = 6;
 
+const _defaultDiagramGroupNodeOptions: Partial<DiagramGroupNodeOptions> = {
+    backgroundColor: "var(--ts-ui-diagram-group-bg, rgba(120, 120, 120, 0.08))",
+};
+
 /**
  * The default themed container renderer for a
  * [`DiagramView`](/api/component/diagram/classes/DiagramView) compound node.
@@ -49,15 +53,18 @@ class DiagramGroupNode extends Panel<DiagramGroupNodeOptions> {
     /** The header shown at the box's top-left corner: a bare label, or a glyph + label. */
     private _header!: IconText | Text;
 
-    constructor(options?: DiagramGroupNodeOptions) {
-        super(options, { layoutManager: new Absolute() });
+    constructor(options?: DiagramGroupNodeOptions, subclassDefaults?: Partial<DiagramGroupNodeOptions>) {
+        super(options, {
+            layoutManager: new Absolute(),
+            ..._defaultDiagramGroupNodeOptions,
+            ...(subclassDefaults ?? {}),
+        });
 
         // A container is a selectable node like any leaf, so it carries the same
         // pointer cursor `DiagramNode` does — left at the Component default it
         // would read as an arrow and promise a pan its own box does not perform.
         this.setCursor("pointer");
 
-        this.setBackgroundColor("var(--ts-ui-diagram-group-bg, rgba(120, 120, 120, 0.08))");
         this.setBorder("1px solid var(--ts-ui-diagram-group-border, var(--ts-ui-border-color, rgb(180, 180, 180)))");
         this.setBorderRadius(GROUP_BORDER_RADIUS);
 

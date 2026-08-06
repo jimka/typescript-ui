@@ -35,13 +35,17 @@ class ToggleButton extends Button<ToggleButtonOptions> {
         return this._selectedStyleRule ??= this.createStyleRule(".selected:not(:hover)");
     }
 
-    constructor(text: string, options?: ToggleButtonOptions) {
+    constructor(text: string, options?: ToggleButtonOptions, subclassDefaults?: Partial<ToggleButtonOptions>) {
         // Button is a children-build class: it builds its inner text/HBox row
         // in its constructor body. We forward the positional `text` to super
         // (no options), queue the selected-state styles into the lazy rule,
         // then dispatch the consumer options through `applyOptions` at the
         // tail so Button's own option-backed setters run after children exist.
-        super(text);
+        // `subclassDefaults` is forwarded regardless, since it only seeds the
+        // `_defaultOptions` fallback bag — a separate, independent parameter
+        // from `options` — so a subclass's own defaults (e.g. `TabButton`'s
+        // tab fill) still layer in even though `options` waits.
+        super(text, undefined, subclassDefaults);
 
         this.selectedStyleRule.set("boxShadow",       "var(--ts-ui-toggle-selected-shadow, 2px 2px 1px inset grey)");
         this.selectedStyleRule.set("backgroundColor", "var(--ts-ui-toggle-selected-bg, rgb(200, 200, 200))");

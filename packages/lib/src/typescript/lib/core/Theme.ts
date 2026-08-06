@@ -493,13 +493,11 @@ export interface Theme {
     };
 
     drawer: {
-        background: string;
         shadow:     string;
         border:     string;
     };
 
     rail: {
-        background: string;
         border:     string;
         shadow:     string;
         handle: {
@@ -1159,10 +1157,8 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-dialog-info-fg'                   : theme.dialog.info.foreground,
         '--ts-ui-dialog-affirm-bg'                 : theme.dialog.affirm.background,
         '--ts-ui-dialog-affirm-fg'                 : theme.dialog.affirm.foreground,
-        '--ts-ui-drawer-bg'                        : theme.drawer.background,
         '--ts-ui-drawer-shadow'                    : theme.drawer.shadow,
         '--ts-ui-drawer-border'                    : theme.drawer.border,
-        '--ts-ui-rail-bg'                          : theme.rail.background,
         '--ts-ui-rail-border'                      : theme.rail.border,
         '--ts-ui-rail-shadow'                      : theme.rail.shadow,
         '--ts-ui-rail-handle-hover-bg'             : theme.rail.handle.hoverBackground,

@@ -65,6 +65,10 @@ export interface ScrollStripOptions extends PanelOptions {
     arrowStep?: number;
 }
 
+const _defaultScrollStripOptions: Partial<ScrollStripOptions> = {
+    backgroundColor: "transparent",
+};
+
 /**
  * A button rail that lays a row or column of items and scrolls them past its
  * edges when they overflow, showing lead/trail paging arrows in reserved gutters.
@@ -134,9 +138,12 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
      * transparent background, and an inner overflow:hidden clip for the items.
      *
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: ScrollStripOptions) {
-        super(options);
+    constructor(options?: ScrollStripOptions, subclassDefaults?: Partial<ScrollStripOptions>) {
+        super(options, { ..._defaultScrollStripOptions, ...(subclassDefaults ?? {}) });
 
         // Seed the cascade-written fields to their defaults. The super() cascade
         // already dispatched any option that was passed; these `??=`-style seeds
@@ -154,7 +161,6 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
         // The band element itself does not scroll (it hosts the fixed arrows); the
         // inner clip carries the overflow:hidden scroll-port. Both are transparent
         // so the owner's surface shows through.
-        this.setBackgroundColor("transparent");
         this.clearInsets();
 
         this._clip.setOverflow("hidden");
