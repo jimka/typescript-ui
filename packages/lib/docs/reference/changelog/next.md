@@ -40,6 +40,18 @@ component) and always painted their own hardcoded default instead. Passing
 any of these options now works as documented. No consumer action is needed
 unless code relied on the option being silently ignored.
 
+### Button defaults
+
+`Button` painted its resting background with a hardcoded token instead of a
+class default, so a subclass that defaulted its own fill was repainted over.
+The token is now an entry in Button's defaults bag. As a result `TabButton`
+honours a caller-supplied `hoverBackgroundColor`, `hoverBackgroundImage`,
+`hoverShadow`, and `hoverBorder`, and `MenuBarButton` honours `insets` and
+`chromeless`, where all six were previously discarded. Every button's default
+appearance is unchanged, with one exception: a button built with
+`flat: true` now correctly renders a transparent resting background instead
+of falling through to the browser's default `<button>` face.
+
 ## Changed
 
 ### Editor
