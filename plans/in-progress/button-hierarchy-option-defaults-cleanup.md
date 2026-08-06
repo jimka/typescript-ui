@@ -293,6 +293,17 @@ All cases are unit-testable **(U)** through the offline harness already used by 
 
 ---
 
+## Implementation Notes
+
+Case 8 (the manual-verify visual smoke test) was run against this worktree, not skipped. `npm run build:lib` produced a fresh `dist/`, a worktree-local `node_modules/@jimka/typescript-ui` symlink was pointed at this worktree's `packages/lib` (the default resolution otherwise walks up to the main tree's `node_modules`, serving unfixed code), and both the docs app and the library's own demo app were served on spare ports and driven via `mcp__chrome-devtools__*`:
+
+- **Flat resting transparency (case 5, the one real behaviour change).** The docs shell's own header buttons (`packages/docs/src/shell/DocsShell.ts:89,92`, `flat: true, compact: true`) were inspected directly via `getComputedStyle` and the underlying `CSSStyleRule` text, under the Modern theme: resting `background-color: rgba(0, 0, 0, 0)` / `border: 1px solid rgba(0, 0, 0, 0)`, with the `:hover:not(:active)` and `:active` rules still carrying the `--ts-ui-button-flat-*` tokens unchanged. Confirms the UA `<button>` face no longer shows through and the hover/pressed treatments are untouched.
+- **No-regression sweep.** A plain `Button` (Save/Cancel), a `MenuBar` (File/Edit/View/Help, including the `setActive` open-dropdown highlight), a `ToolBar` of flat buttons (bold/italic/underline, cut/copy/paste, a long overflowing row), and a `TabBar` (selected vs. unselected fill, via `getComputedStyle` on the tab elements) were all checked across all three shipped themes (Modern, Classic, Dark) using the library demo app's built-in theme-cycle button. All rendered as expected in every theme; `TabBar`'s selected/unselected fill stayed visually and computationally distinct in each (e.g. Dark: `rgb(30, 30, 30)` selected vs. `rgb(58, 58, 58)` unselected).
+
+No visual regression found anywhere case 8 asked to look.
+
+---
+
 ## Notes
 
 [^why-bag-not-fold]: The alternative was to keep the imperative call and make it fold — `this.setBackgroundColor(this._defaultOptions.backgroundColor ?? BUTTON_RESTING_BACKGROUND)` — which would also unblock `TabButton`. It was rejected on three counts. It keeps a construction-time imperative setter, which is the thing this plan exists to remove. It keeps writing a default value into `_options`, breaking the "a default is never dispatched into `_options`" contract the constructor doc comment states and the registry test's purity case asserts for other classes. And it leaves `backgroundColor` the odd one out in `_defaultButtonOptions`, where its own sibling `backgroundImage` — the other channel of the identical `--ts-ui-button-bg` token — is already a plain bag entry. The bag route also costs one line rather than one line plus a permanent explanation of why this field is special.
