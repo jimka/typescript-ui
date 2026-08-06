@@ -137,8 +137,9 @@ describe('scaffold', () => {
         await scaffold(target);
 
         const pkg = JSON.parse(readFileSync(join(target, 'package.json'), 'utf8'));
+        const templatePkg = JSON.parse(readFileSync(join(TEMPLATE_DIR, 'package.json'), 'utf8'));
         expect(pkg.name).toBe(toValidPackageName(basename(target)));
-        expect(pkg.dependencies['@jimka/typescript-ui']).toBe('^0.1.0');
+        expect(pkg.dependencies['@jimka/typescript-ui']).toBe(templatePkg.dependencies['@jimka/typescript-ui']);
     });
 
     it('copies the whole template, including nested files', async () => {

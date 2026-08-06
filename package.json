@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "workspaces": ["packages/lib", "packages/docs", "packages/create-app"],
+  "devDependencies": {
+    "typedoc": "0.28.19",
+    "typedoc-plugin-markdown": "~4.11.0",
+    "typedoc-vitepress-theme": "^1.1.2"
+  },
   "scripts": {
     "dev": "npm -w packages/lib run dev",
     "build:lib": "npm -w packages/lib run build:lib",

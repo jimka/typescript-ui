@@ -30,6 +30,15 @@ always painted their own hardcoded default instead. Passing either option
 now works as documented. No consumer action is needed unless code relied on
 the option being silently ignored.
 
+## Changed
+
+### Editor
+
+- **The `lexical` rich-text editor and its `@lexical/*` packages are upgraded
+  from 0.46 to 0.49.** `MarkdownEditor` and its Markdown/table transformers
+  build on the newer editor core; the full test suite and library build are
+  unaffected. No consumer action is needed.
+
 ## Added
 
 ### Display
