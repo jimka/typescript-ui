@@ -313,4 +313,32 @@ Manual verification only (real browser layout/typing, not exercised by the offli
 
 [^substring-match]: A per-word AND-match (so `"tree filter"` would match a page containing "filter" and "tree" anywhere, not as one substring) and fuzzy/typo-tolerant matching were both considered and rejected for v1: neither is needed to satisfy "titles and headings only," both add real implementation surface (tokenizing, scoring, tie-breaking) that this plan's own product scope doesn't ask for, and the codebase's only existing search-like feature already ships the simpler behavior in production.
 
+---
+
+## Implementation Notes
+
+**`filterNodes`'s exact code in `## Internal Structure` contradicted the plan's own `## Expected Behaviour` bullet, and was corrected during implementation.** The plan's snippet decides what to push with `filteredChildren.length > 0 ? { ...node, children: filteredChildren } : node` — when a group node's own page matches the query but *none* of its children do, `filteredChildren.length` is `0`, so that ternary pushes `node` **unchanged**, restoring the group's full original (non-matching) children array. This directly contradicts the bullet "A group node whose own page matches, but none of whose children match, appears with an empty (or `undefined`) `children` — filtering does not pull in non-matching siblings just because their parent matched." A test written from that bullet (query `"concepts"`, which matches only the `Concepts` group's own page title, not any of its twelve children's titles or headings) failed against the plan's literal code: `concepts!.children` came back with all twelve original entries instead of `[]`.
+
+The fix distinguishes "this node never had children to begin with" (a leaf — push unchanged, nothing to override) from "this node had children but the filtered set came back empty" (a group — always push a copy with the filtered, possibly-empty, `children`):
+
+```typescript
+const hadChildren      = (node.children?.length ?? 0) > 0;
+const filteredChildren = hadChildren ? this.filterNodes(node.children!, query) : [];
+const selfMatches      = typeof node.data === 'string' && this.matchesQuery(node.data, query);
+
+if (!selfMatches && filteredChildren.length === 0) {
+    continue;
+}
+
+kept.push(hadChildren ? { ...node, children: filteredChildren } : node);
+```
+
+This changes only the disposition of the `!selfMatches`-false / `filteredChildren.length === 0` branch (a group whose own page matches but whose children don't); every other branch — dropped nodes, groups with matching children, unmatched leaves — produces the same output as the plan's version. No other file or behaviour was affected.
+
+**Manual verification (`## Verification` step 3) was run and passed.** `npm run docs:api` generated the TypeDoc output the app needs (gitignored, absent in a fresh worktree), then `npx vite --port 5177` served the app and Chrome DevTools MCP drove it against `http://localhost:5177/typescript-ui/`, exercising all three "Manual verification only" bullets from `## Expected Behaviour`:
+
+- The search box rendered in the sidebar's `Border` NORTH region, spanning the tree's full width, above the collapsed root sections — confirmed by screenshot.
+- Typing `baseline` live-filtered the tree on every keystroke to `Concepts > Sizing` (heading match), `Layouts > Layout managers > {Grid, HBox, HFlow, VBox, VFlow}` (heading match), and `API Reference > core > Namespaces > Util > Functions > measureTextBaseline` (label match) — confirmed by an accessibility-tree snapshot taken after typing.
+- Clicking the filtered `Sizing` row navigated to `/concepts/sizing`, cleared the search field back to empty, and re-showed the full tree with `Concepts` expanded and `Sizing` selected — confirmed by a follow-up screenshot.
+
 [^type-then-click]: Both considered affordances are real, standard patterns elsewhere (e.g. a command palette's arrow-key result navigation), but neither was asked for by the two locked-in product decisions, and `Tree`'s own keyboard handling already lets a user reach a filtered row via Tab and its existing arrow/Enter selection once focus is inside the tree. Backspacing the field to empty already restores the full tree, covering "I want to undo my search" with no new code.
