@@ -40,3 +40,5 @@ export { TabPanel } from '~/component/container/TabPanel.js';
 export type { TabPanelOptions, TabEntryConfig } from '~/component/container/TabPanel.js';
 export { AccordionPanel } from '~/component/container/AccordionPanel.js';
 export type { AccordionPanelOptions, AccordionSectionConfig } from '~/component/container/AccordionPanel.js';
+export { FloatingPanel } from '~/component/container/FloatingPanel.js';
+export type { FloatingPanelOptions, FloatingPanelCorner } from '~/component/container/FloatingPanel.js';

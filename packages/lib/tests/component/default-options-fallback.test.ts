@@ -46,6 +46,9 @@ import { AnimatedDropdown } from '~/core/AnimatedDropdown';
 import { LineChart } from '~/component/chart/LineChart';
 import { BarChart } from '~/component/chart/BarChart';
 import { DiagramView } from '~/component/diagram/DiagramView';
+import { FloatingPanel } from '~/component/container/FloatingPanel';
+import { MarkdownMinimap } from '~/component/display/MarkdownMinimap';
+import { MarkdownViewer } from '~/component/display/MarkdownViewer';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { Canvas, CanvasOptions } from '~/component/display/Canvas';
 import { WebGLCanvas, WebGLCanvasOptions } from '~/component/display/WebGLCanvas';
@@ -320,6 +323,13 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'BarChart grouped (no data)',   resolve: () => new BarChart({}).isGrouped(),                               expected: false },
     { label: 'DiagramView zoom',             resolve: () => new DiagramView().getZoom(),                                expected: 1 },
     { label: 'DiagramView controls',         resolve: () => new DiagramView().isControlsVisible(),                      expected: true },
+    { label: 'FloatingPanel corner',         resolve: () => new FloatingPanel({}).getCorner(),                          expected: 'top-right' },
+    { label: 'FloatingPanel margin',         resolve: () => new FloatingPanel({}).getMargin(),                          expected: 12 },
+    { label: 'MarkdownMinimap maxHeadingDepth', resolve: () => new MarkdownMinimap({}).getMaxHeadingDepth(),            expected: 3 },
+    { label: 'MarkdownMinimap minSize',      resolve: () => new MarkdownMinimap({}).getMinSizeConstraint(),             expected: { width: 160, height: 0 } },
+    { label: 'MarkdownMinimap maxSize',      resolve: () => new MarkdownMinimap({}).getMaxSizeConstraint(),             expected: { width: Number.MAX_SAFE_INTEGER, height: 500 } },
+    { label: 'MarkdownViewer showMinimap',   resolve: () => new MarkdownViewer({}).isMinimapVisible(),                   expected: true },
+    { label: 'MarkdownViewer showControls',  resolve: () => new MarkdownViewer({}).isControlsVisible(),                  expected: true },
     { label: 'MarkdownEditor readOnly',      resolve: () => new MarkdownEditor().getReadOnly(),                         expected: false },
     { label: 'Link tag',                     resolve: () => new Link().getTag(),                                        expected: 'a' },
     { label: 'Link foregroundColor',         resolve: () => new Link().getForegroundColor(),                            expected: 'var(--ts-ui-link-color, rgb(21, 101, 192))' },
