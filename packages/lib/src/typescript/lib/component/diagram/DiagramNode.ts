@@ -41,10 +41,10 @@ const _defaultDiagramNodeOptions: Partial<DiagramNodeOptions> = {
     // the rounded border — structural interior spacing, not cosmetic nudging.
     insets: new Insets(4, 8, 4, 8),
     backgroundColor: "var(--ts-ui-diagram-node-bg, var(--ts-ui-button-bg, rgb(245, 245, 245)))",
+    border:       "1px solid var(--ts-ui-border-color, rgb(180, 180, 180))",
+    borderRadius: "4px",
+    cursor:       "pointer",
 };
-
-/** Corner radius in pixels for the node's rounded box. */
-const NODE_BORDER_RADIUS = "4px";
 
 // The badge's opacity: present but secondary to the label it trails. Matches
 // the "dim the supporting value" weight the framework already uses for a
@@ -90,10 +90,6 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
             layoutManager: new Fit(),
             ...(subclassDefaults ?? {}),
         });
-
-        this.setBorder("1px solid var(--ts-ui-border-color, rgb(180, 180, 180))");
-        this.setBorderRadius(NODE_BORDER_RADIUS);
-        this.setCursor("pointer");
 
         this.selectedStyleRule.set("borderColor",     "var(--ts-ui-accent-color, rgb(30, 100, 200))");
         this.selectedStyleRule.set("backgroundColor", "var(--ts-ui-diagram-node-selected-bg, var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15)))");

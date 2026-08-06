@@ -60,6 +60,9 @@ const _defaultStatusBarOptions: Partial<StatusBarOptions> = {
     insets: new Insets(0, 6, 0, 6),
     backgroundColor: "var(--ts-ui-statusbar-bg, rgb(245, 245, 245))",
     foregroundColor: "var(--ts-ui-statusbar-color, rgb(60, 60, 60))",
+    border:  { borderTop: `${STATUS_BAR_BORDER_TOP_WIDTH}px solid var(--ts-ui-statusbar-border, rgb(220, 220, 220))` },
+    minSize: { width: 0, height: STATUS_BAR_HEIGHT },
+    maxSize: { width: Number.MAX_SAFE_INTEGER, height: STATUS_BAR_HEIGHT },
 };
 
 /**
@@ -121,10 +124,6 @@ class StatusBar extends Container<StatusBarOptions> {
         const row = new HBox();
         row.setComponentSpacing(STATUS_BAR_SPACING);   // 4 — the zones' former internal spacing
         this.setLayoutManager(row);                    // stretching stays at its default (false) — that's what we want
-
-        this.setBorder({ borderTop: `${STATUS_BAR_BORDER_TOP_WIDTH}px solid var(--ts-ui-statusbar-border, rgb(220, 220, 220))` });
-        this.setMinSize({ width: 0, height: STATUS_BAR_HEIGHT });
-        this.setMaxSize({ width: Number.MAX_SAFE_INTEGER, height: STATUS_BAR_HEIGHT });
 
         this._messageText = new Text("");
         // The bar's row anchor, not cosmetic padding: a 21px line box (the strip

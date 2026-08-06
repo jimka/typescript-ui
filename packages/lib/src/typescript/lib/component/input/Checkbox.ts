@@ -34,6 +34,10 @@ export interface CheckboxOptions extends AbstractBooleanInputOptions {
     };
 }
 
+const _defaultCheckboxOptions: Partial<CheckboxOptions> = {
+    outline: "none",
+};
+
 /**
  * A custom-drawn checkbox rendered as a focusable `<div>` with `role="checkbox"`.
  *
@@ -55,9 +59,16 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
      * Constructs a Checkbox.
      *
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: TOptions) {
-        super({ ...(options ?? {}) } as TOptions);
+    constructor(options?: CheckboxOptions, subclassDefaults?: Partial<CheckboxOptions>);
+    constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        super(
+            { ...(options ?? {}) } as TOptions,
+            { ..._defaultCheckboxOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
+        );
 
         this.setLayoutManager(new HBox());
 
@@ -114,8 +125,6 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         this.getAria().setRole("checkbox");
         this.getAria().setTabIndex(0);
         this.getAria().setChecked(false);
-
-        this.setOutline("none");
 
         // The box owns the user-toggle click so the pointer/click + cursor
         // surface is exactly the visible 16 × 16 graphic — clicks on a label or
