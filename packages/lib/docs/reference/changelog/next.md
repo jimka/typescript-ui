@@ -30,6 +30,16 @@ always painted their own hardcoded default instead. Passing either option
 now works as documented. No consumer action is needed unless code relied on
 the option being silently ignored.
 
+The same follow-up sweep now covers the rest of the constructor-time
+clobbering-bug shape: `DiagramNode`, `DiagramGroupNode`, `StatusBar`,
+`Popover`, `TabButton`, `MenuBar`, `Tree`, `TabBar`, `Checkbox`,
+`RadioButton`, `Toggle`, `Slider`, and `AbstractChart` previously ignored a
+caller-supplied `border`, `borderRadius`, `shadow`, `cursor`, `outline`,
+`overflow`, `preferredSize`, `minSize`, or `maxSize` (depending on the
+component) and always painted their own hardcoded default instead. Passing
+any of these options now works as documented. No consumer action is needed
+unless code relied on the option being silently ignored.
+
 ## Changed
 
 ### Editor
