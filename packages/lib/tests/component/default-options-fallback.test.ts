@@ -367,8 +367,9 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'TabButton borderRadius (suppressed)', resolve: () => new TabButton('x').getBorderRadius(),                expected: null },
     { label: 'MenuBar minSize',              resolve: () => new MenuBar().getMinSizeConstraint(),                       expected: { width: 0, height: 28 } },
     { label: 'Tree overflow',                resolve: () => new Tree().getOverflow(),                                   expected: 'hidden' },
-    { label: 'Tree preferredSize',           resolve: () => new Tree().getPreferredSizeConstraint(),                    expected: { width: 200, height: 300 } },
+    { label: 'Tree preferredSize (no constraint; height is content-derived)', resolve: () => new Tree().getPreferredSizeConstraint(), expected: null },
     { label: 'Tree maxSize',                 resolve: () => new Tree().getMaxSizeConstraint(),                          expected: { width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER } },
+    { label: 'Tree rowOverflow',             resolve: () => new Tree().getRowOverflow(),                                expected: 'scroll' },
     { label: 'TabBar preferredSize',         resolve: () => new TabBar().getPreferredSizeConstraint(),                  expected: { width: 0, height: 30 } },
     // The active theme in the test harness (Modern) has tab.underBorderFullWidth
     // false, so applyUnderBorder()'s early-return branch clears the border —

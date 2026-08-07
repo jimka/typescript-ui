@@ -36,7 +36,7 @@ export class LabelTreeNodeRenderer extends TreeNodeRenderer {
         super();
         this.clearInsets();
 
-        this._label = new Text();
+        this._label = new Text(undefined, { truncate: true });
         this._label.clearInsets();
         this._label.setAutoMeasure(false);
     }
@@ -77,15 +77,20 @@ export class LabelTreeNodeRenderer extends TreeNodeRenderer {
      * The label goes inside this renderer's content box, so a border or padding
      * on the renderer shrinks it rather than being painted over.
      *
-     * @param _width - Unused; the label sizes to its natural content width.
+     * @param width - The row's available width in pixels. The label clamps to
+     *   this when it is narrower than the label's own natural width — its box
+     *   is otherwise always exactly as wide as its content (`getContentWidth`),
+     *   so `text-overflow: ellipsis` would never actually have room to trigger.
+     *   In `Tree`'s default `rowOverflow: "scroll"` mode this is a no-op: rows
+     *   already grow to fit the widest label (`Tree`'s `_maxContentWidth`), so
+     *   `width` is never narrower than `getContentWidth()` there. It only
+     *   clamps when `rowOverflow: "clip"` caps the row at the viewport width.
      * @param height - The vertical extent of the row in pixels. Used only while
      *   the renderer has no element yet and the content box is unavailable.
      */
-    layoutChildren(_width: number, height: number): void {
-        // No `width` in the fallback: this renderer never reads the box's
-        // width, so the argument stays genuinely unused.
+    layoutChildren(width: number, height: number): void {
         const box        = this.getContentBounds() ?? { x: 0, y: 0, height };
-        const labelWidth = this.getContentWidth();
+        const labelWidth = Math.min(this.getContentWidth(), width);
 
         this._label.setAutoCommitStyle(false);
         this._label.setX(box.x);

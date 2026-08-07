@@ -3,6 +3,7 @@
 import { ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import type { Size } from "~/primitive/Size.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
@@ -20,11 +21,30 @@ import { callable } from "~/core/Callable.js";
  */
 export type TreeEvent = "selection" | "loaderror" | "contextmenu" | "dblclick";
 
+/**
+ * How a row wider than the viewport is handled.
+ *
+ * - `"scroll"` (the default) — every row grows to the widest label seen so
+ *   far and the horizontal scrollbar reveals the rest. Appropriate when a
+ *   label's full text matters (e.g. a file path).
+ * - `"clip"` — every row caps at the viewport width and a row-node renderer
+ *   that honours it (e.g. {@link LabelTreeNodeRenderer}) truncates with an
+ *   ellipsis instead. Appropriate for a TOC-style outline, where reading a
+ *   label matters more than its exact text and scrolling sideways to read
+ *   one would be worse than truncating it.
+ *
+ * @category Components
+ */
+export type TreeRowOverflow = "scroll" | "clip";
+
 /** Pixels of indentation added per depth level. */
 const INDENT_PX = 16;
 
 /** Fixed height in pixels for every visible row. */
 const ROW_HEIGHT = 24;
+
+/** Default preferred width when the caller sets no explicit `preferredSize`. */
+const DEFAULT_PREFERRED_WIDTH = 200;
 
 /** CSS background applied to the selected row. */
 const SELECTED_BG = "var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))";
@@ -48,6 +68,9 @@ interface FlatRow {
  * @category Components
  */
 export interface TreeOptions extends ComponentOptions {
+    /** How a row wider than the viewport is handled. Default `"scroll"`. See {@link TreeRowOverflow}. */
+    rowOverflow?: TreeRowOverflow;
+
     /**
      * Multi-event listener bag dispatched to {@link Tree.on} at
      * construction time.
@@ -64,8 +87,8 @@ export interface TreeOptions extends ComponentOptions {
 const _defaultTreeOptions: Partial<TreeOptions> = {
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
     overflow:      "hidden",
-    preferredSize: { width: 200, height: 300 },
     maxSize:       { width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER },
+    rowOverflow:   "scroll",
 };
 
 /**
@@ -126,6 +149,65 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this.subscribeTheme(() => this.onThemeReflow());
 
         this.applyListeners(options?.listeners);
+    }
+
+    /**
+     * Dispatches {@link TreeOptions.rowOverflow}; every other option is
+     * inherited from {@link Component}.
+     *
+     * @param options - The options bag carrying the values to apply.
+     * @returns This tree, for method chaining.
+     */
+    protected applyOptions(options: TreeOptions): this {
+        super.applyOptions(options);
+
+        if (options.rowOverflow !== undefined) {
+            this.setRowOverflow(options.rowOverflow);
+        }
+
+        return this;
+    }
+
+    /**
+     * How a row wider than the viewport is handled.
+     *
+     * @returns The cached {@link TreeOptions.rowOverflow}, or the class default when never set.
+     */
+    getRowOverflow(): TreeRowOverflow {
+        return this._options.rowOverflow ?? this._defaultOptions.rowOverflow ?? "scroll";
+    }
+
+    /**
+     * Sets how a row wider than the viewport is handled.
+     *
+     * @param rowOverflow - `"scroll"` grows rows to fit the widest label and
+     *   scrolls; `"clip"` caps rows at the viewport width and truncates. See
+     *   {@link TreeRowOverflow}.
+     * @returns This tree, for method chaining.
+     */
+    setRowOverflow(rowOverflow: TreeRowOverflow): this {
+        this._options.rowOverflow = rowOverflow;
+
+        return this;
+    }
+
+    /**
+     * Reports a height derived from the current flattened row count as the
+     * preferred height when the caller has set no explicit `preferredSize`,
+     * mirroring `Markdown.getPreferredSize`'s own measured-content override —
+     * so a `Tree` sized by its preferred size (e.g. a corner-pinned `Anchor`
+     * child, not stretched) grows and shrinks with its actual content instead
+     * of reporting a fixed guess. Width keeps the class default; an explicit
+     * `preferredSize` constraint wins outright.
+     *
+     * @returns The preferred `{width, height}`.
+     */
+    getPreferredSize(): Size | null {
+        if (this.getPreferredSizeConstraint() !== null) {
+            return super.getPreferredSize();
+        }
+
+        return { width: DEFAULT_PREFERRED_WIDTH, height: this._flatRows.length * this.getRowHeight() };
     }
 
     /**
@@ -1106,7 +1188,13 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         // `layoutScrollbars` as the content width forces a spurious horizontal
         // bar for the reserved band. `clampToContent` above has already refreshed
         // the scroller's content metrics this pass.
-        const rowWidth = Math.max(scroller.getViewportWidth(), this._maxContentWidth);
+        //
+        // `rowOverflow: "clip"` never grows past the viewport at all — every
+        // row (and so every renderer) is capped there instead, trading the
+        // horizontal scrollbar for truncation (see `LabelTreeNodeRenderer`).
+        const rowWidth = this.getRowOverflow() === "clip"
+            ? scroller.getViewportWidth()
+            : Math.max(scroller.getViewportWidth(), this._maxContentWidth);
         if (rowWidth !== this._lastRowWidth) {
             this._lastRowWidth = rowWidth;
             this.invalidateGeom();
