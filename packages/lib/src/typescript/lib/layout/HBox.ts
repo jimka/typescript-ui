@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { BoxLayout, BoxLayoutOptions } from "~/layout/BoxLayout.js";
+import type { ResolvedPlacement } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -284,11 +285,15 @@ class HBox extends BoxLayout {
         // `innerSize` stays the real viewport for equal mode's overflow test.
         const containerSize = this.inflateForOverflow(innerSize);
 
+        let placements: ResolvedPlacement[];
+
         if (this._mode === "equal") {
-            this.layoutEqualMode(components, innerSize, containerSize, containerInsets, spacing);
+            placements = this.layoutEqualMode(components, innerSize, containerSize, containerInsets, spacing);
         } else {
-            this.layoutPreferredMode(components, containerSize, containerInsets, spacing);
+            placements = this.layoutPreferredMode(components, containerSize, containerInsets, spacing);
         }
+
+        this.commitPlacements(placements);
 
         this.reserveContentFrame();
     }
@@ -305,21 +310,23 @@ class HBox extends BoxLayout {
      * @param containerSize - The working size, possibly inflated for overflow.
      * @param insets - The container's content insets.
      * @param spacing - Inter-child spacing in pixels.
+     * @returns The resolved placements, ready for {@link LayoutManager.commitPlacements}.
      */
-    private layoutEqualMode(components: Component[], innerSize: Size, containerSize: Size, insets: Insets, spacing: number): void {
+    private layoutEqualMode(components: Component[], innerSize: Size, containerSize: Size, insets: Insets, spacing: number): ResolvedPlacement[] {
         const cellWidth = this.computeEqualCellWidth(components, innerSize.width, spacing);
 
         if (this.isStretching()) {
             const y = insets.getTop();
             let x = insets.getLeft();
+            const placements: ResolvedPlacement[] = [];
 
             for (const component of components) {
-                this.placeComponent(component, x, y, cellWidth, containerSize.height, FillType.BOTH);
+                placements.push({ component, ...this.resolveBounds(component, x, y, cellWidth, containerSize.height, FillType.BOTH) });
 
                 x += cellWidth + spacing;
             }
 
-            return;
+            return placements;
         }
 
         const heights: number[] = [];
@@ -341,6 +348,7 @@ class HBox extends BoxLayout {
         const crossExtent = containerSize.height;
 
         let x = insets.getLeft();
+        const placements: ResolvedPlacement[] = [];
 
         for (let idx = 0; idx < components.length; idx += 1) {
             const component = components[idx];
@@ -348,15 +356,17 @@ class HBox extends BoxLayout {
             const cross = this.crossPlacement(component, crossLead, crossExtent, heights[idx], true);
 
             if (cross) {
-                this.placeComponent(component, x, cross.offset, cellWidth, cross.extent, FillType.BOTH);
+                placements.push({ component, ...this.resolveBounds(component, x, cross.offset, cellWidth, cross.extent, FillType.BOTH) });
             } else {
                 const y = this.rowChildY(insets.getTop(), heights[idx], baselines[idx], rowAscent, rowDescent);
 
-                this.placeComponent(component, x, y, cellWidth, heights[idx], FillType.BOTH);
+                placements.push({ component, ...this.resolveBounds(component, x, y, cellWidth, heights[idx], FillType.BOTH) });
             }
 
             x += cellWidth + spacing;
         }
+
+        return placements;
     }
 
     /**
@@ -416,8 +426,9 @@ class HBox extends BoxLayout {
      * @param containerSize - The working size, possibly inflated for overflow.
      * @param insets - The container's content insets.
      * @param spacing - Inter-child spacing in pixels.
+     * @returns The resolved placements, ready for {@link LayoutManager.commitPlacements}.
      */
-    private layoutPreferredMode(components: Component[], containerSize: Size, insets: Insets, spacing: number): void {
+    private layoutPreferredMode(components: Component[], containerSize: Size, insets: Insets, spacing: number): ResolvedPlacement[] {
         const { totalWeight, fixedPreferred, fixedMin } = this.measureFixedWidths(components, spacing);
 
         const { remaining: remainingWidth, shrinkRatio } = this.computeShrink(
@@ -501,6 +512,7 @@ class HBox extends BoxLayout {
         const crossExtent = containerSize.height - (insets.getTop() + insets.getBottom());
 
         let x = insets.getLeft() + lead;
+        const placements: ResolvedPlacement[] = [];
 
         for (let idx = 0; idx < components.length; idx += 1) {
             const component = components[idx];
@@ -519,11 +531,11 @@ class HBox extends BoxLayout {
             const cross = this.crossPlacement(component, crossLead, crossExtent, naturalCross, true);
 
             if (cross) {
-                this.placeComponent(component, x, cross.offset, widths[idx], cross.extent, FillType.BOTH);
+                placements.push({ component, ...this.resolveBounds(component, x, cross.offset, widths[idx], cross.extent, FillType.BOTH) });
             } else {
                 const y = this.rowChildY(insets.getTop(), heights[idx], baselines[idx], rowAscent, rowDescent);
 
-                this.placeComponent(component, x, y, widths[idx], heights[idx], FillType.BOTH);
+                placements.push({ component, ...this.resolveBounds(component, x, y, widths[idx], heights[idx], FillType.BOTH) });
             }
 
             // Advance by the resolved width, not getWidth(): the gap is measured
@@ -532,6 +544,8 @@ class HBox extends BoxLayout {
             x += widths[idx];
             x += spacing + gap;
         }
+
+        return placements;
     }
 
     /**
