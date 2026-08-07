@@ -93,6 +93,18 @@ of falling through to the browser's default `<button>` face.
   the corresponding `<h1>`–`<h6>` element for that same source. No consumer
   action is needed.
 
+### Containers
+
+- **`FloatingPanel` gains a new method, `placeNextTo(textColumn)`**, promoted
+  from `MarkdownMinimap` (its original, sole owner) once a second consumer
+  needed the same corner-vs-text-column hugging behaviour. Repositions the
+  panel to sit just past `textColumn`'s rendered right edge instead of
+  pinning to its own corner, falling back to the corner position when
+  `textColumn` is `null` or not yet mounted — see
+  [Positioning next to a text column](/components/FloatingPanel#positioning-next-to-a-text-column).
+  `MarkdownMinimap` now inherits the method rather than declaring its own
+  copy; its behaviour is unchanged. No consumer action is needed.
+
 ## Fixed
 
 ### Core
@@ -102,7 +114,20 @@ of falling through to the browser's default `<button>` face.
   content — no longer throws `DOM handle <n> is not registered` when that
   same event's subtree-listener walk reaches the released handle. The walk
   now ends cleanly at that point instead.
-  
+
+### Buttons
+
+- **A `Button`/`ToggleButton`/`TabButton` built with a positional label, a
+  `glyph`, and `showText: false` in the same options bag now correctly
+  renders glyph-only**, instead of the full label at its normal width. A
+  subclass whose constructor forwards only the positional label to `super`
+  (no options) and applies its own options bag in a tail `applyOptions`
+  call — `ToggleButton` and `TabButton` both do this — rendered the label in
+  full before `showText` had been recorded anywhere, and nothing re-blanked
+  it afterwards because `showText` alone had no dispatched setter to trigger
+  that resync when no `text` key rode along in the same call. No consumer
+  action is needed.
+
 ### Table
 
 **Editing a date, time, or datetime cell — even just opening it and cancelling, never committing — used to strand that editor's picker overlay on the shared stylesheet forever once the table itself was later disposed.** The shared editor pool behind in-place cell editing was never disposed when the owning table was, and none of the three date/time/datetime editors disposed their own lazily-built picker dropdown either. No consumer action is needed.
