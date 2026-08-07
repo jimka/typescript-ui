@@ -46,38 +46,10 @@ Inherits [`FloatingPanelOptions`](/api/component/container/interfaces/FloatingPa
 | --- | --- |
 | `setHeadings(headings)` | Replaces the shown outline, rebuilding the tree from a flat, document-ordered heading list. |
 | `getMaxHeadingDepth()` | Returns the deepest heading depth shown. |
-| `placeNextTo(textColumn)` | Repositions the panel to sit just past `textColumn`'s rendered right edge — see [Positioning next to a text column](#positioning-next-to-a-text-column) below. |
+| `placeNextTo(textColumn)` | Inherited from [`FloatingPanel`](/components/FloatingPanel#positioning-next-to-a-text-column) — repositions the panel to sit just past `textColumn`'s rendered right edge instead of pinning to its own corner. |
 | `on('select', listener)` / `off('select', listener)` | Registers or removes a listener for the clicked heading's id. |
 
 Disposing a `MarkdownMinimap` unwires its `scrollSource` listener, so a `scrollSource` that outlives the minimap does not keep firing into torn-down state.
-
-## Positioning next to a text column
-
-By default `MarkdownMinimap` just pins to its `corner` like any other `FloatingPanel` — on a wide viewport that can leave it far from the prose it summarizes, if the prose itself is narrower than the space it's laid out in (a `Markdown` instance caps its own rendered width via CSS `max-width`, not a JS layout constraint, so its rendered box is often narrower than its allocated one).
-
-`placeNextTo(textColumn)` closes that gap: it reads `textColumn`'s real rendered width via a live DOM measurement (deliberately not `textColumn.getWidth()`, which would report the wider *allocated* box) and moves the panel to sit just past its right edge, clamped so it never ends up further right than the plain corner position would. Passing `null` — or a `textColumn` not yet mounted — falls back to that same corner position outright.
-
-This is a method the panel's **owner** calls, not something `MarkdownMinimap` drives itself via its own `doLayout` — mirroring how other self-positioning components in this library expose a placement verb for their owner to call rather than repositioning themselves against a parent's layout mid-pass. Call it from the owner's own `doLayout` override (after `super.doLayout()`, so every sibling has already committed its geometry for that pass) *and* after anything that can change `textColumn`'s rendered width without triggering a layout pass at all — `Markdown.setMaxMeasure` / `setFontScale` are the two built-in examples, since both write a CSS rule directly:
-
-```typescript
-class MyViewer extends Panel {
-    private readonly _markdown: Markdown;
-    private readonly _minimap: MarkdownMinimap;
-
-    doLayout(): this {
-        super.doLayout();
-        this._minimap.placeNextTo(this._markdown);
-        return this;
-    }
-
-    widen(): void {
-        this._markdown.setMaxMeasure('90ch');
-        this._minimap.placeNextTo(this._markdown); // setMaxMeasure alone won't re-trigger layout
-    }
-}
-```
-
-[`MarkdownViewer`](/components/MarkdownViewer) is exactly this pattern, already wired up — see its own `doLayout` override and its width/zoom step methods.
 
 ## See also
 

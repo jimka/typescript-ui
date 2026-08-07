@@ -8,6 +8,8 @@ import { Router } from '@jimka/typescript-ui/router';
 import { getPage } from '../content/pages.js';
 import { resolveDocLink, resolveApiLink } from '../content/links.js';
 import { apiFileFor, apiDirOf, fetchApiPage } from '../content/api.js';
+import { filterInheritedMembers } from '../content/apiMarkdown.js';
+import { loadShowInheritedMembers, saveShowInheritedMembers } from '../content/apiPreferences.js';
 import { notFoundSource, fetchErrorSource } from '../content/notFound.js';
 import { splitBlocks } from '../content/blocks.js';
 import type { DocBlock } from '../content/blocks.js';
@@ -79,6 +81,12 @@ class DocsContent extends Panel {
     // directory while an API page is shown — resolveLink reads this to decide
     // which link-resolution rule the current page's links need.
     private _linkBaseDir: string | null = null;
+
+    // null while an authored (bundled) page is shown; the API page's
+    // unfiltered fetched source while an API page is shown — kept alongside
+    // _linkBaseDir so setShowInheritedMembers can re-filter and re-render
+    // without a network re-fetch.
+    private _rawApiSource: string | null = null;
 
     // Bumped on every showPath call; a stale async fetch compares its own
     // token against this before touching the pane, so a slow response for an
@@ -154,7 +162,9 @@ class DocsContent extends Panel {
 
     /**
      * Registers a listener for `"outlinechange"`, fired with the current
-     * page's heading outline every time {@link showSource} renders one.
+     * page's heading outline every time {@link renderContent} renders one —
+     * a real navigation via {@link showSource}, or an in-place re-render via
+     * {@link setShowInheritedMembers}.
      *
      * @param event - `"outlinechange"`.
      * @param listener - Invoked with the page's headings, in document order.
@@ -254,6 +264,7 @@ class DocsContent extends Panel {
         const page = getPage(path);
         if (page) {
             this._linkBaseDir = null;
+            this._rawApiSource = null;
             this.showSource(page.source);
             return;
         }
@@ -261,6 +272,7 @@ class DocsContent extends Panel {
         const file = apiFileFor(path);
         if (file === null) {
             this._linkBaseDir = null;
+            this._rawApiSource = null;
             this.showSource(notFoundSource(path));
             return;
         }
@@ -268,7 +280,7 @@ class DocsContent extends Panel {
         const cached = this._apiSources.get(file);
         if (cached !== undefined) {
             this._linkBaseDir = apiDirOf(file);
-            this.showSource(cached);
+            this.renderApiSource(cached);
             return;
         }
 
@@ -277,16 +289,30 @@ class DocsContent extends Panel {
                 this._apiSources.set(file, source);
                 if (token === this._requestToken) {
                     this._linkBaseDir = apiDirOf(file);
-                    this.showSource(source);
+                    this.renderApiSource(source);
                 }
             },
             () => {
                 if (token === this._requestToken) {
                     this._linkBaseDir = null;
+                    this._rawApiSource = null;
                     this.showSource(fetchErrorSource(path));
                 }
             },
         );
+    }
+
+    /**
+     * Renders an API page's fetched source, filtered per the reader's
+     * current inherited-members preference, and remembers the unfiltered
+     * source so {@link setShowInheritedMembers} can re-filter and re-render
+     * without a network re-fetch.
+     *
+     * @param source - The API page's fetched (and already normalized) source.
+     */
+    private renderApiSource(source: string): void {
+        this._rawApiSource = source;
+        this.showSource(loadShowInheritedMembers() ? source : filterInheritedMembers(source));
     }
 
     /**
@@ -300,11 +326,53 @@ class DocsContent extends Panel {
      * @param source - The Markdown source to render.
      */
     private showSource(source: string): void {
+        this.renderContent(source);
+        this.applyFragment(this._targetFragment);
+    }
+
+    /**
+     * Splits `source` into blocks, emits its heading outline, and rebuilds
+     * the pane's rendered blocks — the part of {@link showSource} that both
+     * a real navigation and {@link setShowInheritedMembers} (an in-place
+     * re-render with no fragment change) need. Kept separate from {@link
+     * showSource} so a toggle click doesn't also re-run {@link applyFragment},
+     * which would snap a scrolled-down reader back to the top on every click.
+     *
+     * @param source - The Markdown source to render.
+     */
+    private renderContent(source: string): void {
         const blocks = splitBlocks(source);
 
         this.emitOutline(blocks);
         this.showBlocks(blocks);
-        this.applyFragment(this._targetFragment);
+    }
+
+    /**
+     * Whether the page currently shown is a generated API reference page,
+     * rather than an authored page or the not-found/fetch-error view.
+     *
+     * @returns `true` while an API page is shown.
+     */
+    isApiPage(): boolean {
+        return this._linkBaseDir !== null;
+    }
+
+    /**
+     * Shows or hides inherited members on the currently shown API page, and
+     * persists the choice for future pages. A no-op on the rendered content
+     * when no API page is shown (the preference still saves, for the next
+     * API page to read) — see {@link renderApiSource} for the read side.
+     *
+     * @param value - `true` to show inherited members, `false` to hide them.
+     */
+    setShowInheritedMembers(value: boolean): void {
+        saveShowInheritedMembers(value);
+
+        if (this._rawApiSource === null) {
+            return;
+        }
+
+        this.renderContent(value ? this._rawApiSource : filterInheritedMembers(this._rawApiSource));
     }
 
     /**

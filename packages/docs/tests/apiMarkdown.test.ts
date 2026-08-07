@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     normalizeApiMarkdown,
+    filterInheritedMembers,
     moduleIndexSource,
     collapseModuleGroups,
     expandModuleBreadcrumb,
@@ -28,6 +29,182 @@ describe('normalizeApiMarkdown', () => {
         const source = '**bold** and ***emphasis*** stay\n***\nkept';
 
         expect(normalizeApiMarkdown(source)).toBe('**bold** and ***emphasis*** stay\n\nkept');
+    });
+});
+
+describe('filterInheritedMembers', () => {
+    it('returns a source with no "#### Inherited from" line byte-identical', () => {
+        const source = [
+            '# Class: Foo',
+            '',
+            '## Methods',
+            '',
+            '### bar()',
+            '',
+            'Own method, not inherited.',
+            '',
+        ].join('\n');
+
+        expect(filterInheritedMembers(source)).toBe(source);
+    });
+
+    it('removes only the inherited members from a section with a mix, keeping the heading and own members', () => {
+        const source = [
+            '## Methods',
+            '',
+            '### ownMethod()',
+            '',
+            'Declared by this class.',
+            '',
+            '### inheritedMethod()',
+            '',
+            'Body text.',
+            '',
+            '#### Inherited from',
+            '',
+            '[`Base`](../Base.md).[`inheritedMethod`](../Base.md#inheritedmethod)',
+            '',
+            '### anotherOwnMethod()',
+            '',
+            'Also declared here.',
+        ].join('\n');
+
+        const result = filterInheritedMembers(source);
+
+        expect(result).toContain('## Methods');
+        expect(result).toContain('### ownMethod()');
+        expect(result).toContain('### anotherOwnMethod()');
+        expect(result).not.toContain('inheritedMethod');
+    });
+
+    it('removes a whole section, heading included, when every member in it is inherited', () => {
+        const source = [
+            '# Class: Thin',
+            '',
+            '## Methods',
+            '',
+            '### addComponent()',
+            '',
+            '#### Inherited from',
+            '',
+            '[`Component`](../Component.md).[`addComponent`](../Component.md#addcomponent)',
+            '',
+            '### addComponents()',
+            '',
+            '#### Inherited from',
+            '',
+            '[`Component`](../Component.md).[`addComponents`](../Component.md#addcomponents)',
+            '',
+            '## Properties',
+            '',
+            '### ownProp',
+            '',
+            'Declared here.',
+        ].join('\n');
+
+        const result = filterInheritedMembers(source);
+
+        expect(result).not.toContain('## Methods');
+        expect(result).not.toContain('addComponent');
+        expect(result).toContain('## Properties');
+        expect(result).toContain('### ownProp');
+    });
+
+    it('filters multiple sections independently', () => {
+        const source = [
+            '## Methods',
+            '',
+            '### ownMethod()',
+            '',
+            'Declared here.',
+            '',
+            '### inheritedMethod()',
+            '',
+            '#### Inherited from',
+            '',
+            '[`Base`](../Base.md).[`inheritedMethod`](../Base.md#inheritedmethod)',
+            '',
+            '## Properties',
+            '',
+            '### inheritedProp',
+            '',
+            '#### Inherited from',
+            '',
+            '[`Base`](../Base.md).[`inheritedProp`](../Base.md#inheritedprop)',
+            '',
+            '### ownProp',
+            '',
+            'Declared here.',
+        ].join('\n');
+
+        const result = filterInheritedMembers(source);
+
+        expect(result).toContain('### ownMethod()');
+        expect(result).not.toContain('inheritedMethod');
+        expect(result).toContain('### ownProp');
+        expect(result).not.toContain('inheritedProp');
+    });
+
+    it('removes an entire inherited member block, including nested Parameters content, not just from the marker down', () => {
+        const source = [
+            '## Methods',
+            '',
+            '### setWidth()',
+            '',
+            '```ts',
+            'setWidth(value: number): this;',
+            '```',
+            '',
+            '#### Parameters',
+            '',
+            '##### value',
+            '',
+            '`number`',
+            '',
+            '#### Returns',
+            '',
+            '`this`',
+            '',
+            '#### Inherited from',
+            '',
+            '[`Component`](../Component.md).[`setWidth`](../Component.md#setwidth)',
+            '',
+            '### ownMethod()',
+            '',
+            'Declared here.',
+        ].join('\n');
+
+        const result = filterInheritedMembers(source);
+
+        expect(result).not.toContain('setWidth');
+        expect(result).not.toContain('##### value');
+        expect(result).toContain('### ownMethod()');
+    });
+
+    it('leaves the literal text "Inherited from" alone when it is not an exact "#### Inherited from" heading line', () => {
+        const source = [
+            '## Methods',
+            '',
+            '### ownMethod()',
+            '',
+            'See "Inherited from" in the base class docs for background — not a real heading here.',
+        ].join('\n');
+
+        expect(filterInheritedMembers(source)).toBe(source);
+    });
+
+    it('does not treat a line merely starting with "#### Inherited from" as the exact marker', () => {
+        const source = [
+            '## Methods',
+            '',
+            '### ownMethod()',
+            '',
+            '#### Inherited from a mixin, not a base class — different heading, not the exact marker.',
+            '',
+            'Still declared here in prose.',
+        ].join('\n');
+
+        expect(filterInheritedMembers(source)).toBe(source);
     });
 });
 
