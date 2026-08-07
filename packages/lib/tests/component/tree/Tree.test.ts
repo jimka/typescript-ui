@@ -63,12 +63,32 @@ describe('Tree — construction contract', () => {
         expect(tree.getAria().getMultiselectable()).toBe(true);
     });
 
-    it('defaults its preferred size to 200×300', () => {
+    it('defaults its preferred width to 200 and height to 0 when empty', () => {
         const tree = new _Tree();
         const pref = tree.getPreferredSize();
 
         expect(pref?.width).toBe(200);
-        expect(pref?.height).toBe(300);
+        expect(pref?.height).toBe(0);
+    });
+
+    it('derives its preferred height from the current flattened row count', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+
+        // 2 roots, both collapsed.
+        expect(tree.getPreferredSize()?.height).toBe(2 * ROW_HEIGHT);
+
+        // Expanding 'Hello' (2 children) flattens 2 more rows into view.
+        tree.expandNode(nodes[0]);
+        expect(tree.getPreferredSize()?.height).toBe(4 * ROW_HEIGHT);
+    });
+
+    it('an explicit preferredSize constraint wins over the content-derived height', () => {
+        const tree = new _Tree({ preferredSize: { width: 500, height: 500 } });
+        tree.setNodes(fruitTree());
+
+        expect(tree.getPreferredSize()).toEqual({ width: 500, height: 500 });
     });
 });
 
@@ -649,6 +669,44 @@ describe('Tree — rows fill the effective viewport width', () => {
         // No horizontal range: the horizontal bar stays hidden (scrollX pinned).
         priv._scroller.setScrollX(99999);
         expect(priv._scroller.getScrollX()).toBe(0);
+    });
+});
+
+describe('Tree rowOverflow', () => {
+    afterEach(() => DOM.reset());
+
+    it('defaults to "scroll"', () => {
+        const tree = new _Tree();
+
+        expect(tree.getRowOverflow()).toBe('scroll');
+    });
+
+    it('"scroll" (the default) grows a row wider than the viewport to fit its label, rather than clipping it', () => {
+        installTestDOM(CONFIG);
+
+        const tree = new _Tree();
+        tree.getElement(true);
+        tree.setWidth(100);
+        tree.setHeight(24);
+        tree.setNodes([{ label: 'Hello World Hello World Hello World Hello World' }]);
+
+        const priv = tree as unknown as { _rowPool: Array<{ getWidth(): number }> };
+
+        expect(priv._rowPool[0].getWidth()).toBeGreaterThan(100);
+    });
+
+    it('"clip" caps a row wider than the viewport at the effective viewport width instead of growing to fit it', () => {
+        installTestDOM(CONFIG);
+
+        const tree = new _Tree({ rowOverflow: 'clip' });
+        tree.getElement(true);
+        tree.setWidth(100);
+        tree.setHeight(24);
+        tree.setNodes([{ label: 'Hello World Hello World Hello World Hello World' }]);
+
+        const priv = tree as unknown as { _rowPool: Array<{ getWidth(): number }> };
+
+        expect(priv._rowPool[0].getWidth()).toBeLessThanOrEqual(100);
     });
 });
 

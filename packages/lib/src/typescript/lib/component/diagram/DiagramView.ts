@@ -18,8 +18,8 @@ import { Container } from "~/core/Container.js";
 import { Component } from "~/core/Component.js";
 import { Absolute } from "~/layout/Absolute.js";
 import { Anchor } from "~/layout/Anchor.js";
-import { AnchorConstraints } from "~/layout/AnchorConstraints.js";
 import { VBox } from "~/layout/VBox.js";
+import { FloatingPanel } from "~/component/container/FloatingPanel.js";
 import { Button } from "~/component/button/Button.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
@@ -298,7 +298,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
     private _lastViewportHeight: number = NaN;
 
     /** The corner-pinned zoom / fit / reset control cluster. */
-    private _controls!: Component;
+    private _controls!: FloatingPanel;
     private _zoomInBtn!: Button;
     private _zoomOutBtn!: Button;
     private _fitBtn!: Button;
@@ -338,10 +338,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
         this.buildControls();
         this.wireControlListeners();
 
-        const controlsConstraints = new AnchorConstraints();
-        controlsConstraints.right = CONTROLS_MARGIN;
-        controlsConstraints.bottom = CONTROLS_MARGIN;
-        this.addComponent(this._controls, controlsConstraints);
+        this.addComponent(this._controls, this._controls.getAnchorConstraints());
 
         this.applyListeners(options?.listeners);
 
@@ -1732,8 +1729,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
         this._fitBtn     = this.makeControlButton("expand",     "Fit to view");
         this._resetBtn   = this.makeControlButton("crosshairs", "Reset view");
 
-        this._controls = new Component();
-        this._controls.setLayoutManager(new VBox());
+        this._controls = new FloatingPanel({ corner: "bottom-right", margin: CONTROLS_MARGIN, layoutManager: new VBox() });
         this._controls.addComponent(this._zoomInBtn);
         this._controls.addComponent(this._zoomOutBtn);
         this._controls.addComponent(this._fitBtn);

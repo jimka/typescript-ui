@@ -88,6 +88,14 @@ interface HandleStub {
      * handle offline, so it is an explicit injected input (default `{0,0,0,0}`).
      */
     borderInset: { top: number; right: number; bottom: number; left: number };
+    /**
+     * Per-handle scroll extent for {@link ModelledDOMSource.getScrollMetrics},
+     * seeded by {@link setScrollExtent}. Overflow has no offline derivation
+     * (there is no real layout to measure content against the client box), so
+     * it is an explicit injected input; `null` (the default) means no
+     * overflow was injected and the scroll extent equals the client box.
+     */
+    scrollExtent: { width: number; height: number } | null;
 }
 
 /**
@@ -143,6 +151,7 @@ class TestHandleTable {
             styleHeight:    '',
             styleTransform: '',
             borderInset:    { top: 0, right: 0, bottom: 0, left: 0 },
+            scrollExtent:   null,
         });
 
         return handle;
@@ -386,6 +395,15 @@ export class RecordingDOMSink implements DOMSink {
 
         if (patch.scrollTop !== undefined) {
             stub.scrollTop = patch.scrollTop;
+        }
+
+        // Mirrors production fidelity: a real `getElementById` finds an id
+        // however it was written (`.id =`, `setAttribute("id", …)`, …), but the
+        // modelled `_byId` index only grew through the dedicated `setId` sink
+        // call until now — leaving an id set via a generic `setAttr` patch (as
+        // `Markdown`'s rendered headings are) unfindable offline.
+        if (patch.setAttr?.id !== undefined) {
+            _table.indexId(handle, patch.setAttr.id);
         }
 
         this.foldGeometry(stub, patch);
@@ -1027,8 +1045,8 @@ export class ModelledDOMSource implements DOMSource {
 
     /**
      * Reports the handle's written client box (`width`/`height`) and recorded
-     * scroll offsets. Absent an injected overflow extent, the scroll extent
-     * equals the client box (no overflow).
+     * scroll offsets. The scroll extent is the injected {@link setScrollExtent}
+     * value when seeded, else equals the client box (no overflow).
      */
     getScrollMetrics(handle: Handle): ScrollMetrics {
         const stub        = _table.stub(handle);
@@ -1038,8 +1056,8 @@ export class ModelledDOMSource implements DOMSource {
         return {
             scrollTop:    stub.scrollTop,
             scrollLeft:   stub.scrollLeft,
-            scrollWidth:  clientWidth,
-            scrollHeight: clientHeight,
+            scrollWidth:  stub.scrollExtent?.width  ?? clientWidth,
+            scrollHeight: stub.scrollExtent?.height ?? clientHeight,
             clientWidth,
             clientHeight,
         };
@@ -1513,4 +1531,18 @@ export function setBorderInset(
     insets: { top: number; right: number; bottom: number; left: number }
 ): void {
     _table.stub(handle).borderInset = insets;
+}
+
+/**
+ * Seeds a handle's scroll extent, read back by
+ * {@link ModelledDOMSource.getScrollMetrics} as `scrollWidth`/`scrollHeight`.
+ * There is no real layout offline to measure overflowing content against the
+ * client box, so overflow is an explicit injected input (default: no
+ * overflow, the scroll extent equals the client box).
+ *
+ * @param handle - The scrollable element handle.
+ * @param extent - The scroll extent in pixels.
+ */
+export function setScrollExtent(handle: Handle, extent: { width: number; height: number }): void {
+    _table.stub(handle).scrollExtent = extent;
 }

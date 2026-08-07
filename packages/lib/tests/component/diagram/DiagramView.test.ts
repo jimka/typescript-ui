@@ -1054,6 +1054,20 @@ describe('DiagramView — control cluster (behaviour 19)', () => {
         expect(view._controls.getX() + view._controls.getWidth()).toBe(1280 - 12);
         expect(view._controls.getY() + view._controls.getHeight()).toBe(800 - 12);
     });
+
+    // Guards against FloatingPanel's Panel ancestry silently reintroducing
+    // Panel's own default 4px insets (Panel.ts's `_defaultPanelOptions`),
+    // which would shift the cluster's buttons in from its edge — FloatingPanel
+    // must keep its own zero-inset default for this refactor to be
+    // byte-identical to the pre-refactor plain-Component cluster.
+    it('keeps the controls cluster at zero insets after the FloatingPanel refactor', () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView() as any;
+        const insets = view._controls.getInsets();
+
+        expect([insets.getTop(), insets.getRight(), insets.getBottom(), insets.getLeft()]).toEqual([0, 0, 0, 0]);
+    });
 });
 
 describe('DiagramView — the cursor promises what a drag will do', () => {

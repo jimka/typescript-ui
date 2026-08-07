@@ -1,7 +1,8 @@
 import { callable, Component, DOM, Event, ListenerBag, Panel } from '@jimka/typescript-ui/core';
 import type { Handle, PanelOptions } from '@jimka/typescript-ui/core';
 import { VBox } from '@jimka/typescript-ui/layout';
-import { Markdown, extractMarkdownHeadings } from '@jimka/typescript-ui/component/display';
+import { Insets } from '@jimka/typescript-ui/primitive';
+import { Markdown, extractMarkdownHeadings, findActiveHeading } from '@jimka/typescript-ui/component/display';
 import type { MarkdownHeading, MarkdownLinkResolution } from '@jimka/typescript-ui/component/display';
 import { Router } from '@jimka/typescript-ui/router';
 import { getPage } from '../content/pages.js';
@@ -19,12 +20,35 @@ import { DocsDemo } from './DocsDemo.js';
 const BASE_URL = import.meta.env.BASE_URL;
 
 /**
+ * Left margin kept on each prose block's own content box, so the reading
+ * column starts indented from the pane's edge the way text sits on a
+ * printed page or in a word processor, rather than flush against it —
+ * mirrors `MarkdownViewer`'s own `PROSE_LEFT_MARGIN_PX`.
+ */
+const PROSE_LEFT_MARGIN_PX = 32;
+
+/** String-literal union of the events emitted by {@link DocsContent}. */
+type DocsContentEvent = "outlinechange" | "activeheadingchange";
+
+/**
  * The centre content pane: a scrolling, stacked column of blocks — prose
  * `Markdown` segments and live `DocsDemo` demos — showing the page for the
  * current route, with in-app link interception — see "The app intercepts
  * link clicks on its own subtree" in plans/implemented/packages-docs.md and
  * "A page is an ordered list of blocks, split at render time" in
  * plans/implemented/docs-inline-demos.md.
+ *
+ * Deliberately not a `MarkdownViewer` (a `Markdown` plus a floating minimap
+ * and width/zoom controls, bundled for a single document): a page here is a
+ * stack of independently-rendered blocks, and some of those blocks are live
+ * `DocsDemo` components rather than markdown text at all, so there is no
+ * single `Markdown` instance for a `MarkdownViewer` wrapper to own. Rather
+ * than force that shape on, `DocsShell` composes the same lower-level pieces
+ * directly instead — a `MarkdownMinimap` floated over this pane (via {@link
+ * getTextColumnReference}) plus the shared `findActiveHeading` scroll
+ * tracking — duplicating `MarkdownViewer`'s own `scrollToHeading` technique
+ * locally rather than sharing it. See the "Non-Goals" section of
+ * plans/implemented/markdown-viewer-floating-minimap-and-controls.md.
  */
 class DocsContent extends Panel {
 
@@ -67,13 +91,32 @@ class DocsContent extends Panel {
     // path, so a revisited page renders instantly with no network request.
     private readonly _apiSources: Map<string, string> = new Map();
 
-    // Backs the "outlinechange" event — mirrors Video's own on/off/emit +
-    // ListenerBag shape for a re-emitted, non-DOM event.
-    private readonly _listeners: ListenerBag<"outlinechange"> = new ListenerBag<"outlinechange">();
+    // Backs the "outlinechange" / "activeheadingchange" events — mirrors
+    // Video's own on/off/emit + ListenerBag shape for a re-emitted, non-DOM
+    // event.
+    private readonly _listeners: ListenerBag<DocsContentEvent> = new ListenerBag<DocsContentEvent>();
+
+    // The current page's headings, in document order — read by
+    // handleNativeScroll to resolve the active heading as the pane scrolls.
+    private _headings: MarkdownHeading[] = [];
+
+    // The last id handleNativeScroll emitted, so a native "scroll" tick that
+    // doesn't change the resolved heading doesn't re-fire the event.
+    private _lastActiveHeadingId: string | null = null;
+
+    // The scrollTop scrollToHeading last landed the pane on, or null once a
+    // later native scroll has moved past it. Lets onNativeScroll recognise
+    // "nothing has organically scrolled since that click" and skip
+    // re-deriving the active heading from geometry alone — see both methods'
+    // own doc comments for why that re-derivation can't be trusted here.
+    private _pendingClickScrollTop: number | null = null;
 
     // Stable reference so Event.addSubtreeListener always sees the same
     // function identity; delegates to the named handler below.
     private readonly handleLinkClick: (e: MouseEvent) => void = (e) => this.onLinkClick(e);
+
+    // Stable reference, mirroring handleLinkClick above.
+    private readonly handleNativeScroll: () => void = () => this.onNativeScroll();
 
     // Stable reference, mirroring handleLinkClick above: Component.afterNextLayout
     // needs the same function identity every call; delegates to the named
@@ -92,6 +135,21 @@ class DocsContent extends Panel {
         this._router = router;
 
         Event.addSubtreeListener(this, 'click', this.handleLinkClick);
+        Event.addSubtreeListener(this, 'scroll', this.handleNativeScroll);
+    }
+
+    /**
+     * The current page's first block — a reasonable proxy for "the page's
+     * rendered prose column" (see `DocsShell`, which hugs its floating
+     * minimap against this). Deliberately re-read live rather than cached:
+     * {@link showBlocks} replaces `_blocks` wholesale on every navigation, so
+     * a caller holding onto a stale reference across a page change would end
+     * up hugging a disposed block.
+     *
+     * @returns The first block, or `null` before any page has rendered.
+     */
+    getTextColumnReference(): Component | null {
+        return this._blocks[0] ?? null;
     }
 
     /**
@@ -103,7 +161,20 @@ class DocsContent extends Panel {
      *
      * @returns This component, for method chaining.
      */
-    on(event: "outlinechange", listener: (headings: MarkdownHeading[]) => void): this {
+    on(event: "outlinechange", listener: (headings: MarkdownHeading[]) => void): this;
+
+    /**
+     * Registers a listener for `"activeheadingchange"`, fired with the id of
+     * whichever heading is currently topmost in the pane's viewport as it
+     * scrolls, or `null` before any heading has scrolled into view.
+     *
+     * @param event - `"activeheadingchange"`.
+     * @param listener - Invoked with the active heading's id, or `null`.
+     *
+     * @returns This component, for method chaining.
+     */
+    on(event: "activeheadingchange", listener: (headingId: string | null) => void): this;
+    on(event: DocsContentEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
         return this;
@@ -117,7 +188,18 @@ class DocsContent extends Panel {
      *
      * @returns This component, for method chaining.
      */
-    off(event: "outlinechange", listener: (headings: MarkdownHeading[]) => void): this {
+    off(event: "outlinechange", listener: (headings: MarkdownHeading[]) => void): this;
+
+    /**
+     * Removes a previously registered `"activeheadingchange"` listener.
+     *
+     * @param event - `"activeheadingchange"`.
+     * @param listener - The exact callback reference to remove.
+     *
+     * @returns This component, for method chaining.
+     */
+    off(event: "activeheadingchange", listener: (headingId: string | null) => void): this;
+    off(event: DocsContentEvent, listener: Function): this {
         this._listeners.remove(event, listener);
 
         return this;
@@ -129,8 +211,17 @@ class DocsContent extends Panel {
      * @param event - `"outlinechange"`.
      * @param headings - The current page's headings, in document order.
      */
-    protected emit(event: "outlinechange", headings: MarkdownHeading[]): void {
-        this._listeners.fire(event, headings);
+    protected emit(event: "outlinechange", headings: MarkdownHeading[]): void;
+
+    /**
+     * Fans `"activeheadingchange"` out to its registered listeners.
+     *
+     * @param event - `"activeheadingchange"`.
+     * @param headingId - The active heading's id, or `null`.
+     */
+    protected emit(event: "activeheadingchange", headingId: string | null): void;
+    protected emit(event: DocsContentEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
     }
 
     /**
@@ -228,6 +319,7 @@ class DocsContent extends Panel {
         const headings = blocks.flatMap((block) =>
             block.kind === 'markdown' ? extractMarkdownHeadings(block.source) : []);
 
+        this._headings = headings;
         this.emit('outlinechange', headings);
     }
 
@@ -270,13 +362,15 @@ class DocsContent extends Panel {
      * @returns The component to add to the pane.
      */
     private buildBlock(block: DocBlock): Component {
+        const proseMargin = new Insets(0, 0, 0, PROSE_LEFT_MARGIN_PX);
+
         if (block.kind === 'markdown') {
-            return new Markdown(block.source, { linkResolver: this.resolveLink });
+            return new Markdown(block.source, { linkResolver: this.resolveLink, padding: proseMargin });
         }
 
         const entry = getDemo(block.id);
 
-        return entry !== null ? new DocsDemo(entry) : new Markdown(missingDemoSource(block.id));
+        return entry !== null ? new DocsDemo(entry) : new Markdown(missingDemoSource(block.id), { padding: proseMargin });
     }
 
     /**
@@ -440,6 +534,55 @@ class DocsContent extends Panel {
         const paneTop     = DOM.source.getElementRect(scrollElement).top;
 
         this.setScrollTop(this.getScrollTop() + (headingTop - paneTop));
+        this._pendingClickScrollTop = this.getScrollTop();
+
+        // Marks `id` active immediately rather than waiting for the
+        // resulting native scroll event to drive that through
+        // findActiveHeading: a heading close to the document's end can share
+        // its clamped landing scrollTop with a neighbouring heading, and
+        // geometry alone then can't tell which of them this click actually
+        // targeted (see findActiveHeading's own doc comment).
+        if (id !== this._lastActiveHeadingId) {
+            this._lastActiveHeadingId = id;
+            this.emit('activeheadingchange', id);
+        }
+    }
+
+    /**
+     * Computes the active heading from the current native scroll position and
+     * emits `"activeheadingchange"` only when it differs from the previous
+     * tick. A no-op while the pane is still sitting exactly where {@link
+     * scrollToHeading} last left it (see `_pendingClickScrollTop`'s own doc
+     * comment) — geometry alone can't be trusted to reproduce that click's
+     * own target there, so this defers to whatever it already set.
+     */
+    private onNativeScroll(): void {
+        const scrollElement = this.getScrollElement();
+
+        if (!scrollElement) {
+            return;
+        }
+
+        if (this._pendingClickScrollTop !== null) {
+            // Reads the live DOM value, not the cached getScrollTop(): an
+            // organic scroll (wheel, scrollbar drag) updates the pane's real
+            // scrollTop without ever going through setScrollTop, so the cache
+            // would otherwise still read the click's own landing spot forever.
+            if (DOM.source.getScrollTop(scrollElement) === this._pendingClickScrollTop) {
+                return;
+            }
+
+            this._pendingClickScrollTop = null;
+        }
+
+        const id = findActiveHeading(scrollElement, this._headings);
+
+        if (id === this._lastActiveHeadingId) {
+            return;
+        }
+
+        this._lastActiveHeadingId = id;
+        this.emit('activeheadingchange', id);
     }
 }
 

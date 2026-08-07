@@ -214,6 +214,8 @@ export function getNav(): NavGroup[] {
         { path: '/components/IconText',        label: 'IconText' },
         { path: '/components/IconLabel',       label: 'IconLabel' },
         { path: '/components/Markdown',        label: 'Markdown' },
+        { path: '/components/MarkdownMinimap', label: 'MarkdownMinimap' },
+        { path: '/components/MarkdownViewer',  label: 'MarkdownViewer' },
         { path: '/components/CodeEditor',      label: 'CodeEditor' },
         { path: '/components/MarkdownEditor',  label: 'MarkdownEditor' },
         { path: '/components/FieldSet',        label: 'FieldSet' },
@@ -261,6 +263,7 @@ export function getNav(): NavGroup[] {
         { path: '/components/TabBar',         label: 'TabBar' },
         { path: '/components/TabPanel',       label: 'TabPanel' },
         { path: '/components/AccordionPanel', label: 'AccordionPanel' },
+        { path: '/components/FloatingPanel',  label: 'FloatingPanel' },
     ];
     const componentsTable: NavEntry[] = [
         { path: '/components/Table',           label: 'Table' },

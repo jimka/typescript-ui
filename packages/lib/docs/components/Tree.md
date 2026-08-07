@@ -84,6 +84,23 @@ If `loadChildren` rejects, the node reverts to a collapsed, unloaded caret — t
 | `on("selection", fn)` | Subscribe to user-driven selection changes. |
 | `on("loaderror", fn)` | Subscribe to lazy-load failures (see [Lazy loading](#lazy-loading)). |
 | `setRendererFactory(fn)` | Replace the content renderer used for every row. |
+| `getRowOverflow()` / `setRowOverflow(mode)` | Get/set how a row wider than the viewport is handled — see [Row overflow](#row-overflow). |
+
+## Row overflow
+
+By default (`rowOverflow: "scroll"`), a row wider than the viewport grows the whole row set to fit it and the horizontal scrollbar reveals the rest — every row shares one width, the widest label seen so far, so the bar stays stable instead of jittering as different-width rows scroll through. This is the right choice when a label's exact text matters, e.g. a file path in a file-browser-style tree.
+
+Pass `rowOverflow: "clip"` when reading a label matters more than its exact text and scrolling sideways to read one would be worse than truncating it — a table-of-contents-style outline, for instance. Every row caps at the viewport width instead of growing, and [`LabelTreeNodeRenderer`](/api/component/tree/classes/LabelTreeNodeRenderer) (the default renderer) truncates with an ellipsis rather than letting the tree's own clipping cut it off with no visual cue:
+
+```typescript
+const tree = Tree({ rowOverflow: 'clip' });
+```
+
+A custom [`TreeNodeRenderer`](#custom-row-renderers) opts into the same behaviour by clamping its own content to the `width` its `layoutChildren(width, height)` receives, the way `LabelTreeNodeRenderer` clamps its label to `Math.min(getContentWidth(), width)` — under `"scroll"` this is a no-op (the row is never narrower than `getContentWidth()` there), so an existing renderer that ignores `width` keeps its current behaviour either way.
+
+## Preferred size
+
+A `Tree` with no explicit `preferredSize` reports a width of `200` and a height derived live from the current flattened row count (visible rows × row height) — so a tree sized by its preferred size rather than stretched (a corner-pinned [`FloatingPanel`](/components/FloatingPanel) child, for instance) grows and shrinks with its actual content instead of a fixed guess. An explicit `preferredSize` set via the constructor or `setPreferredSize` always wins outright, on both axes. This only matters when something reads the tree's preferred size to size it — a tree placed in a stretching layout (a `Border` centre region, say) ignores it entirely and fills whatever space it's given, staying shrinkable and internally scrollable either way.
 
 ## Custom row renderers
 
@@ -110,7 +127,7 @@ To write a fully custom renderer, subclass [`TreeNodeRenderer`](/api/component/t
 
 - `update(context)` — bind the renderer to the new node. The [`TreeNodeRenderContext`](/api/component/tree/interfaces/TreeNodeRenderContext) carries the node, depth, expanded/selected flags, and whether the node has children.
 - `getContentWidth()` — return the natural pixel width of the rendered content so the tree can size its horizontal scroll extent.
-- `layoutChildren(width, height)` — position internal sub-components within the allocated box.
+- `layoutChildren(width, height)` — position internal sub-components within the allocated box. `width` is the row's available width — under `rowOverflow: "clip"` it can be narrower than `getContentWidth()`; a renderer that wants to clip/truncate rather than overflow should clamp to it (see [Row overflow](#row-overflow)).
 
 The renderer never sees the toggle or the row-level selection highlight — those stay under the tree's structural control. Plain selection style changes (background, focus ring) do not flow through `update()`; expansion changes do, because they force a full re-bind.
 

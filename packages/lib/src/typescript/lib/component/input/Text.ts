@@ -109,8 +109,6 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private _measuredGeneration: number = -1;
     private _wordBreak: string | null = null;
     private _lineClamp: number | null = null;
-    private _textOverflow: string | null = null;
-    private _truncate: boolean = true;
 
     // `NoInfer` on `options` keeps a partial options literal from narrowing
     // TOptions to just the keys it carries: `new Text("x", { fontWeight: "600" })`
@@ -217,10 +215,14 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             this.setWhiteSpace(options.whiteSpace);
         }
 
-        // `truncate` carries a class default (true) and applies its CSS
-        // (white-space / overflow / text-overflow) imperatively via the setter
-        // with no render re-read, so always dispatch the caller value or the
-        // default — otherwise a default-truncating Text never gets the CSS.
+        // Unlike every option above, this can't be gated on `options.truncate
+        // !== undefined`: `setTruncate` also drives `whiteSpace`/`overflow`,
+        // and those two — unlike `textOverflow` (see `getTextOverflow`,
+        // folded into `applyStyle` below) — have no truncate-aware fallback
+        // in their own render-time recompute (Component's `applyMiscInlineStyles`
+        // / `applyOverflowStyles` only ever see a value once a setter has
+        // actually run). So the resolved value — explicit or default — must
+        // always dispatch, or a default-truncating Text never gets this CSS.
         this.setTruncate(options.truncate ?? this._defaultOptions.truncate!);
 
         return this;
@@ -353,7 +355,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             // parent layout widens to fit instead of squeezing the text;
             // otherwise cap it so the parent can shrink the text past its
             // natural width.
-            const autoMinWidth = this._truncate
+            const autoMinWidth = this.isTruncate()
                 ? Math.min(natural.width, TEXT_AUTO_MIN_WIDTH_CAP_PX)
                 : natural.width;
             this._measuredMinSize = {
@@ -1056,13 +1058,22 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
-     * Returns the CSS text-overflow value last passed to {@link setTextOverflow},
-     * or `null` if not set.
+     * Returns the effective CSS text-overflow value: an explicit override
+     * from {@link setTextOverflow} (or the `textOverflow` constructor
+     * option), or — when neither was given — the value implied by
+     * {@link isTruncate}'s resolved default ("ellipsis" when truncating,
+     * `null` otherwise). Mirrors this class's other getters (e.g.
+     * {@link getTextAlign}), which query `_options`/`_defaultOptions` rather
+     * than a dedicated field.
      *
      * @returns The text-overflow string, or null.
      */
     getTextOverflow(): string | null {
-        return this._textOverflow;
+        if (this._options.textOverflow !== undefined) {
+            return this._options.textOverflow;
+        }
+
+        return this.isTruncate() ? "ellipsis" : null;
     }
 
     /**
@@ -1073,7 +1084,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setTextOverflow(value: string): this {
-        this._textOverflow = value;
+        this._options.textOverflow = value as TOptions["textOverflow"];
 
         this.setElementCSSRule("textOverflow", value);
 
@@ -1086,11 +1097,11 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     clearTextOverflow(): this {
-        if (this._textOverflow === null) {
+        if (this._options.textOverflow === undefined) {
             return this;
         }
 
-        this._textOverflow = null;
+        this._options.textOverflow = undefined;
         this.setElementCSSRule("textOverflow", null);
 
         return this;
@@ -1104,7 +1115,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      *   natural width.
      */
     isTruncate(): boolean {
-        return this._truncate;
+        return this._options.truncate ?? this._defaultOptions.truncate ?? true;
     }
 
     /**
@@ -1120,21 +1131,20 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setTruncate(value: boolean): this {
-        this._truncate = value;
+        this._options.truncate = value as TOptions["truncate"];
 
         if (value) {
             this.setWhiteSpace("nowrap");
             this.setOverflow("hidden");
             this.setTextOverflow("ellipsis");
         } else {
-            this.setElementCSSRule("whiteSpace",   null);
+            this.setElementCSSRule("whiteSpace", null);
             this.setOverflow("visible");
-            this.setElementCSSRule("textOverflow", null);
-            this._textOverflow = null;
+            this.clearTextOverflow();
         }
 
-        // The auto-min cap depends on `_truncate`; re-measure so the parent
-        // layout sees the new floor on the next layout pass.
+        // The auto-min cap depends on the resolved truncate value; re-measure
+        // so the parent layout sees the new floor on the next layout pass.
         this._measurementDirty = true;
         (this.getParentComponent() ?? this).scheduleLayout();
 
@@ -1249,7 +1259,14 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             fontStyle:      this.getFontStyle()     ?? '',
             fontVariant:    this.getFontVariant()   ?? '',
             fontWeight:     this.getFontWeight()    ?? '',
-            lineHeight:     this._lineHeightCSSRule  ?? (lineHeight !== null ? `${lineHeight}px` : '')
+            lineHeight:     this._lineHeightCSSRule  ?? (lineHeight !== null ? `${lineHeight}px` : ''),
+            // `textOverflow` has no render-time recompute anywhere else
+            // (unlike `whiteSpace`/`overflow`, `truncate`'s other two
+            // properties, which are covered by Component's own field-backed
+            // phases) — folding it in here matches how every property above
+            // is re-derived from a getter rather than left to whatever an
+            // imperative setter last wrote.
+            textOverflow:   this.getTextOverflow()  ?? '',
         });
 
         return this;

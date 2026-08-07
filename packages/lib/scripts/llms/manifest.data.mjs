@@ -47,6 +47,7 @@ export const groups = [
         { task: "Bottom status bar with segments", symbol: "StatusBar" },
         { task: "Virtualize a huge child list (render only visible rows)", symbol: "VirtualScroller" },
         { task: "Mutually-exclusive group of toggle buttons", symbol: "ButtonGroup" },
+        { task: "Corner-pinned floating panel", symbol: "FloatingPanel" },
     ] },
 
     { name: "Inputs / Forms", entries: [
@@ -87,6 +88,8 @@ export const groups = [
         { task: "Font-Awesome icon glyph", symbol: "Glyph" },
         { task: "Icon paired with a label", symbol: "IconLabel" },
         { task: "Render a Markdown string as formatted content", symbol: "Markdown" },
+        { task: "Floating heading-outline minimap", symbol: "MarkdownMinimap" },
+        { task: "Markdown viewer with minimap and zoom controls", symbol: "MarkdownViewer" },
         { task: "Syntax-highlighted code editor with one-command formatting", symbol: "CodeEditor" },
         { task: "WYSIWYG rich-text editor whose value is a Markdown string", symbol: "MarkdownEditor" },
         { task: "Determinate/indeterminate progress bar", symbol: "ProgressBar" },

@@ -46,6 +46,9 @@ import { AnimatedDropdown } from '~/core/AnimatedDropdown';
 import { LineChart } from '~/component/chart/LineChart';
 import { BarChart } from '~/component/chart/BarChart';
 import { DiagramView } from '~/component/diagram/DiagramView';
+import { FloatingPanel } from '~/component/container/FloatingPanel';
+import { MarkdownMinimap } from '~/component/display/MarkdownMinimap';
+import { MarkdownViewer } from '~/component/display/MarkdownViewer';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { Canvas, CanvasOptions } from '~/component/display/Canvas';
 import { WebGLCanvas, WebGLCanvasOptions } from '~/component/display/WebGLCanvas';
@@ -320,6 +323,13 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'BarChart grouped (no data)',   resolve: () => new BarChart({}).isGrouped(),                               expected: false },
     { label: 'DiagramView zoom',             resolve: () => new DiagramView().getZoom(),                                expected: 1 },
     { label: 'DiagramView controls',         resolve: () => new DiagramView().isControlsVisible(),                      expected: true },
+    { label: 'FloatingPanel corner',         resolve: () => new FloatingPanel({}).getCorner(),                          expected: 'top-right' },
+    { label: 'FloatingPanel margin',         resolve: () => new FloatingPanel({}).getMargin(),                          expected: 12 },
+    { label: 'MarkdownMinimap maxHeadingDepth', resolve: () => new MarkdownMinimap({}).getMaxHeadingDepth(),            expected: 3 },
+    { label: 'MarkdownMinimap minSize',      resolve: () => new MarkdownMinimap({}).getMinSizeConstraint(),             expected: { width: 160, height: 0 } },
+    { label: 'MarkdownMinimap maxSize',      resolve: () => new MarkdownMinimap({}).getMaxSizeConstraint(),             expected: { width: Number.MAX_SAFE_INTEGER, height: 500 } },
+    { label: 'MarkdownViewer showMinimap',   resolve: () => new MarkdownViewer({}).isMinimapVisible(),                   expected: true },
+    { label: 'MarkdownViewer showControls',  resolve: () => new MarkdownViewer({}).isControlsVisible(),                  expected: true },
     { label: 'MarkdownEditor readOnly',      resolve: () => new MarkdownEditor().getReadOnly(),                         expected: false },
     { label: 'Link tag',                     resolve: () => new Link().getTag(),                                        expected: 'a' },
     { label: 'Link foregroundColor',         resolve: () => new Link().getForegroundColor(),                            expected: 'var(--ts-ui-link-color, rgb(21, 101, 192))' },
@@ -357,8 +367,9 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'TabButton borderRadius (suppressed)', resolve: () => new TabButton('x').getBorderRadius(),                expected: null },
     { label: 'MenuBar minSize',              resolve: () => new MenuBar().getMinSizeConstraint(),                       expected: { width: 0, height: 28 } },
     { label: 'Tree overflow',                resolve: () => new Tree().getOverflow(),                                   expected: 'hidden' },
-    { label: 'Tree preferredSize',           resolve: () => new Tree().getPreferredSizeConstraint(),                    expected: { width: 200, height: 300 } },
+    { label: 'Tree preferredSize (no constraint; height is content-derived)', resolve: () => new Tree().getPreferredSizeConstraint(), expected: null },
     { label: 'Tree maxSize',                 resolve: () => new Tree().getMaxSizeConstraint(),                          expected: { width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER } },
+    { label: 'Tree rowOverflow',             resolve: () => new Tree().getRowOverflow(),                                expected: 'scroll' },
     { label: 'TabBar preferredSize',         resolve: () => new TabBar().getPreferredSizeConstraint(),                  expected: { width: 0, height: 30 } },
     // The active theme in the test harness (Modern) has tab.underBorderFullWidth
     // false, so applyUnderBorder()'s early-return branch clears the border —

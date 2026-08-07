@@ -31,6 +31,7 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Bottom status bar with segments → **StatusBar** · `@jimka/typescript-ui/component/container` · A thin horizontal strip mounted at the bottom of a window or panel that surfaces a transient status message and small persistent indicators. · docs/components/StatusBar.md
 - Virtualize a huge child list (render only visible rows) → **VirtualScroller** · `@jimka/typescript-ui/component/container` · Shared scroll machinery for transform-based virtual lists (e.g. table body, tree). Owns the rows-container element, two custom Scrollbar ov… · docs/components/VirtualScroller.md
 - Mutually-exclusive group of toggle buttons → **ButtonGroup** · `@jimka/typescript-ui/overlay` · Manages mutual exclusivity among a set of RadioButton or ToggleButton instances. · docs/components/ButtonGroup.md
+- Corner-pinned floating panel → **FloatingPanel** · `@jimka/typescript-ui/component/container` · A `Panel` that pins itself to one corner of its host's inner box, via an owned AnchorConstraints instance. · docs/components/FloatingPanel.md
 
 ### Inputs / Forms
 - Semantic <form> container with submit handling → **Form** · `@jimka/typescript-ui/core` · A Panel that bakes the semantic `<form>` tag and wires the native `submit` event to a single `onSubmit` callback. · docs/components/Form.md
@@ -68,6 +69,8 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Font-Awesome icon glyph → **Glyph** · `@jimka/typescript-ui/component/display` · A small icon rendered from the internal `Glyphs` registry. · docs/components/Glyph.md
 - Icon paired with a label → **IconLabel** · `@jimka/typescript-ui/component/display` · A small composite pairing a leading `Glyph` with a trailing `Label`, laid out horizontally with a configurable gap (default 2). · docs/components/IconLabel.md
 - Render a Markdown string as formatted content → **Markdown** · `@jimka/typescript-ui/component/display` · A display component that renders a Markdown source string as a live DOM subtree. · docs/components/Markdown.md
+- Floating heading-outline minimap → **MarkdownMinimap** · `@jimka/typescript-ui/component/display` · A floating card showing a document's heading outline as a `Tree`. · docs/components/MarkdownMinimap.md
+- Markdown viewer with minimap and zoom controls → **MarkdownViewer** · `@jimka/typescript-ui/component/display` · A single-document Markdown viewer with a floating outline minimap and width/zoom controls, both pinned over the prose. · docs/components/MarkdownViewer.md
 - Syntax-highlighted code editor with one-command formatting → **CodeEditor** · `@jimka/typescript-ui/component/editor` · A syntax-highlighting, formatting code editor wrapping CodeMirror 6. · docs/components/CodeEditor.md
 - WYSIWYG rich-text editor whose value is a Markdown string → **MarkdownEditor** · `@jimka/typescript-ui/component/editor` · A WYSIWYG rich-text editor whose public value is a Markdown string, with an optional raw-Markdown source mode. · docs/components/MarkdownEditor.md
 - Determinate/indeterminate progress bar → **ProgressBar** · `@jimka/typescript-ui/component/display` · A horizontal progress indicator with a determinate (0–100%) and an indeterminate (continuously animated) mode. · docs/components/ProgressBar.md
