@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { DOM } from "~/core/DOM.js";
 import { FloatingPanel, FloatingPanelOptions } from "~/component/container/FloatingPanel.js";
 import { Tree } from "~/component/tree/Tree.js";
 import type { TreeNode } from "~/component/tree/TreeNode.js";
@@ -48,9 +47,6 @@ export interface MarkdownMinimapOptions extends FloatingPanelOptions {
 
 /** Deepest heading depth shown when the caller doesn't specify one. */
 const DEFAULT_MAX_HEADING_DEPTH = 3;
-
-/** Pixel gap kept between the text column's right edge and this minimap's left edge. */
-const TEXT_COLUMN_GAP_PX = 16;
 
 /** Header row text above the tree. */
 const HEADER_TEXT = "On this page";
@@ -214,74 +210,6 @@ class MarkdownMinimap extends FloatingPanel<MarkdownMinimapOptions> {
         }
 
         return { width: Math.max(computed.width, DEFAULT_WIDTH_PX), height: computed.height };
-    }
-
-    /**
-     * Repositions this panel horizontally to sit just past `textColumn`'s
-     * real rendered right edge, instead of pinning to this panel's own
-     * corner — so it reads as "beside the prose" rather than "in the far
-     * corner of the window" on a wide viewport. Clamped so it never sits
-     * further right than the plain corner position would, and falls back to
-     * that same corner position outright when `textColumn` is `null` or not
-     * yet mounted.
-     *
-     * The caller — not this panel's own `doLayout` — decides when to call
-     * this, mirroring how other self-positioning components in this codebase
-     * expose a placement verb for their *owner* to drive (`TabBar.placeAt`,
-     * `Menu`'s anchored placement) rather than fighting their own parent's
-     * layout pass from inside `doLayout`. A `Panel` host must call this from
-     * its own `doLayout` (after `super.doLayout()`, so every sibling this
-     * pass touches — including `textColumn` — has already committed and
-     * flushed its geometry for it) *and* after anything that can change
-     * `textColumn`'s rendered width without triggering a layout pass at all,
-     * e.g. `Markdown.setMaxMeasure` / `setFontScale` (both write a CSS rule
-     * directly and schedule no layout of their own).
-     *
-     * Reads `textColumn`'s *rendered* width via a live DOM rect rather than
-     * `textColumn.getWidth()` — deliberately: `Markdown`'s reading-width cap
-     * is CSS-only (`max-width`), not a JS layout constraint, so on a wide
-     * viewport the *rendered* box is far narrower than the *allocated* one
-     * `getWidth()` would report. Needs no DOM read of this panel's own host,
-     * only of `textColumn` itself — its left edge (`getX()`) is a plain JS
-     * layout query, since only `textColumn`'s *width* is CSS-overridden, not
-     * its position.
-     *
-     * @param textColumn - The column whose rendered right edge to hug, or
-     *   `null` to use the plain corner position outright.
-     * @returns This panel, for method chaining.
-     */
-    placeNextTo(textColumn: Component | null): this {
-        const host = this.getParentComponent();
-        const innerSize = host?.getInnerSize();
-
-        if (!host || !innerSize) {
-            return this;
-        }
-
-        const origin  = host.getContentInsets().getLeft();
-        const cornerX = origin + innerSize.width - this.getWidth() - this.getMargin();
-
-        // Frees the X axis for this method to drive directly — only the
-        // corner's vertical edge (top/bottom) stays anchor-managed. Reasserted
-        // on every call (idempotent) since a later setCorner/setMargin call
-        // would otherwise silently restore `right` and re-introduce the
-        // conflict this is meant to avoid.
-        this.getAnchorConstraints().right = undefined;
-
-        const textEl = textColumn?.getElement() ?? null;
-
-        if (!textColumn || !textEl) {
-            this.setX(cornerX);
-
-            return this;
-        }
-
-        const renderedWidth = DOM.source.getElementRect(textEl).width;
-        const hugX = textColumn.getX() + renderedWidth + TEXT_COLUMN_GAP_PX;
-
-        this.setX(Math.min(hugX, cornerX));
-
-        return this;
     }
 
     /**

@@ -26,6 +26,88 @@ export function normalizeApiMarkdown(source: string): string {
     return source.replace(HR_LINE, '');
 }
 
+/** The exact heading line marking a member as inherited from a base class. */
+const INHERITED_FROM_HEADING = '#### Inherited from';
+
+/** A `[start, end)` line-index range in a Markdown source, to drop verbatim. */
+interface LineRange {
+    start: number;
+    end:   number;
+}
+
+/**
+ * Removes every inherited member from a generated class/interface page's
+ * Markdown, so the reader sees only what the type declares itself. A
+ * generated page groups members under `## `-level headings (`## Methods`,
+ * `## Properties`, …), each member its own `### ` heading; a member
+ * inherited from a base class carries an {@link INHERITED_FROM_HEADING}
+ * sub-heading somewhere in its block, a member the type declares itself does
+ * not. A section left with no surviving members has its now-empty `## `
+ * heading dropped too, so a fully-inherited class doesn't leave a dangling
+ * heading with nothing under it — a section with no `### ` children at all
+ * (`## Extends`, `## Extended by`) is never a candidate for that cleanup,
+ * since it starts with zero members. A source with no
+ * {@link INHERITED_FROM_HEADING} line anywhere is returned byte-identical.
+ *
+ * @param source - The generated API page's Markdown source.
+ * @returns `source` with every inherited member, and any section left empty
+ *   by that removal, dropped.
+ */
+export function filterInheritedMembers(source: string): string {
+    if (!source.includes(INHERITED_FROM_HEADING)) {
+        return source;
+    }
+
+    const lines = source.split('\n');
+
+    const sectionStarts: number[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith('## ')) {
+            sectionStarts.push(i);
+        }
+    }
+
+    const removedRanges = sectionStarts.flatMap((sectionStart, s) =>
+        sectionRangesToRemove(lines, sectionStart, sectionStarts[s + 1] ?? lines.length));
+
+    const isRemoved = (index: number): boolean =>
+        removedRanges.some(({ start, end }) => index >= start && index < end);
+
+    return lines.filter((_, i) => !isRemoved(i)).join('\n');
+}
+
+/**
+ * Computes the ranges to remove from one `## `-headed section: every
+ * inherited member's own range when the section keeps at least one member of
+ * its own, or the whole section (heading included) when every member in it
+ * is inherited.
+ *
+ * @param lines - The full source, split into lines.
+ * @param sectionStart - The section's `## ` heading line index.
+ * @param sectionEnd - The index one past the section's last line — the next
+ *   `## ` heading's index, or `lines.length` for the last section.
+ * @returns The ranges to remove for this section, possibly empty.
+ */
+function sectionRangesToRemove(lines: string[], sectionStart: number, sectionEnd: number): LineRange[] {
+    const memberStarts: number[] = [];
+
+    for (let i = sectionStart + 1; i < sectionEnd; i++) {
+        if (lines[i].startsWith('### ')) {
+            memberStarts.push(i);
+        }
+    }
+
+    if (memberStarts.length === 0) {
+        return [];
+    }
+
+    const members = memberStarts.map((start, m) => ({ start, end: memberStarts[m + 1] ?? sectionEnd }));
+    const inherited = members.filter(({ start, end }) => lines.slice(start, end).includes(INHERITED_FROM_HEADING));
+
+    return inherited.length === members.length ? [{ start: sectionStart, end: sectionEnd }] : inherited;
+}
+
 /** One `## `-headed link list on a synthesized module index page. */
 export interface IndexSection {
     heading: string;

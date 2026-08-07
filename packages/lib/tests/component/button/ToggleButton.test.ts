@@ -120,6 +120,24 @@ describe('ToggleButton glyph option (regression)', () => {
     });
 });
 
+describe('ToggleButton showText option (regression)', () => {
+    // ToggleButton's positional `text` is set on Button's own constructor
+    // before showText has been recorded anywhere (ToggleButton forwards only
+    // `text` to super, with no options), so Button's late-dispatch there
+    // renders the title in full. `showText: false` then only reaches
+    // `_options` via ToggleButton's tail `applyOptions` call, which carries
+    // no `text` key of its own — nothing re-blanks `_text`, so a ToggleButton
+    // constructed with a positional label, a glyph, and `showText: false`
+    // rendered the label anyway.
+    it('renders the title blank on the face when constructed with a positional label and { glyph, showText: false }', () => {
+        const btn  = new ToggleButton('Show inherited members', { glyph: 'xmark', showText: false });
+        const text = (btn as any)._text;
+
+        expect(text.getText().valueOf()).toBe('');
+        expect(btn.getText()).toBe('Show inherited members');
+    });
+});
+
 describe('ToggleButton structural layout (regression)', () => {
     // Button installs a per-instance Fit layout imperatively in its constructor
     // (a fresh manager can't live in the shared _defaultOptions). ToggleButton

@@ -610,6 +610,22 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // by the constructor's own late dispatch for the cascade path).
         const contentBuilt = this._text !== undefined;
 
+        // `showText` alone has no setter of its own to dispatch below — it
+        // only takes effect through `setText`'s `_isShowText()` read. A call
+        // that changes `showText` without also supplying `text` in the same
+        // options bag falls through every branch below with `_text` never
+        // re-synced: the concrete case is a subclass whose positional-text
+        // constructor forwards only `text` to super (`ToggleButton` /
+        // `TabButton`), so a tail `applyOptions({ showText: false, glyph })`
+        // carries no `text` key to trigger the resync the comment above
+        // describes for glyph/description. Re-dispatch through `setShowText`,
+        // which blanks/restores `_text` from the already-current
+        // `_options.text` and rebuilds the row itself, so the flag change
+        // alone still lands correctly.
+        if (contentBuilt && options.showText !== undefined && options.text === undefined) {
+            this.setShowText(options.showText);
+        }
+
         // Glyph / description tints are stored before the glyph / description
         // dispatch below, so a `setGlyph` / `setDescription` fired here (or by the
         // constructor's late dispatch) re-reads and re-applies them to the fresh
