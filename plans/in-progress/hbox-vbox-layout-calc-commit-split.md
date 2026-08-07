@@ -252,3 +252,62 @@ None. Neither new symbol reaches a package entry point: `commitPlacements` is `p
 [^equal-gap]: Verified, and **pre-existing** — not introduced by this refactor. `grep -rln 'mode: "equal"' packages/lib/tests/` returns nothing, so no test constructs an equal-mode box at all; the branch is reached only indirectly through `TabBar` and `ScrollStrip`, both of which pass `stretching: true` and therefore only ever hit the stretching branch. Separately, `grep -rln 'anchor: AnchorType\|fill: FillType' packages/lib/tests/` matches only `Fit.test.ts`, and `VBox.test.ts` uses `LayoutConstraints` for `weight` alone — so no test drives `crossPlacement` to return non-null inside a box. Both gaps are worth filling; that is separate work, and this plan only flags them so the implementer knows which branches the green suite is *not* proving.
 
 [^ordering]: The rule the refactor rests on: `resolveBounds` reads only its own arguments, the manager's own `_layoutConstraints` map, and the child's own `getPreferredSize()`/`getSize()`/`getMinSize()`/`getMaxSize()`. It never reads a component's current `x`/`y`/`width`/`height` and never mutates anything. The surrounding calc code in both files is the same: `cellWidth`/`cellHeight`, `widths[]`/`heights[]`, `baselines[]`, `rowAscent`/`rowDescent`, `lead`/`gap`, and the `crossPlacement` result all derive from running locals plus per-child size and baseline getters. `commitBounds` writes only the child it was handed and recurses into that child's own subtree, so no commit can change a sibling's reported size. Two loops therefore produce identical numbers to one interleaved loop.
+
+---
+
+## Implementation Notes
+
+**The `vbox-sizing-modes` demo does not exercise the branch `## Expected Behaviour` and `## Verification` cite it for.** Lines 174 and 196 of this plan, and the `[^equal-gap]` footnote, name the `vbox-sizing-modes` docs demo (`packages/docs/src/demos/vbox-sizing-modes.ts`) as the manual-verify route for `VBox.layoutEqualMode`'s **non-stretching** branch (the loop converted at Ordered Implementation Step 11). That demo's equal-mode column actually passes `stretching: true` (`vbox-sizing-modes.ts:48`), so it exercises the *stretching* early-return branch, not the non-stretching one — the "both keep their children at preferred width" claim at line 196 does not hold for that demo's equal column, whose children are forced to a shared 104px width by stretching rather than each keeping its own preferred width. This was caught by audit, not planning.
+
+No automated test constructs an equal-mode box at all (confirmed: `grep -rln 'mode: "equal"' packages/lib/tests/` is empty), so the non-stretching branch shipped with neither working automated coverage nor a working manual-verify route. Since the test harness can exercise it perfectly well (it just wasn't tried), I closed the gap with a temporary offline test using the same `installTestDOM` harness as `VBox.test.ts` — `hostVBox(200, 300, new VBox({ mode: 'equal', spacing: 4 }))` with three children of preferred size 58×29, 104×41, 69×29 — ran it once, and deleted it (per this plan's `## Non-Goals`, "New tests," this was verification, not a permanent addition). Result, confirming the converted branch is correct:
+
+```
+a { x: 0, y: 0,                 w: 58,  h: 97.333 }
+b { x: 0, y: 101.333 (97.333+4), w: 104, h: 97.333 }
+c { x: 0, y: 202.667 (2×97.333+8), w: 69, h: 97.333 }
+```
+
+Equal heights (`(300 − 2×4) / 3 = 97.333` each), correct cumulative spacing-adjusted `y`, each child at its own preferred width (not a shared uniform width), left-aligned `x`. This is the intended contract and matches the plan's prose description of the mode — only its cited verification route was wrong.
+
+Left as-is, uncorrected: this note documents the discrepancy rather than editing plan lines 174/196/`[^equal-gap]` in place, per this skill's rule that plan-file edits are limited to this section.
+
+**The "no in-repo consumer" claim at line 210 and in `[^equal-gap]` is also wrong — for the HBox side.** Both say all three in-repo equal-mode sites (`TabBar.ts:594`, `ScrollStrip.ts:236–237`) pass `stretching: true`, concluding there is no in-repo consumer of the non-stretching equal-mode branch. `ColumnPanel.ts:11-13` constructs `new HBox({ mode: "equal", stretching: false })` — a fourth equal-mode site the plan missed, exercising exactly the branch converted at Ordered Implementation Step 6 (`HBox.ts` non-stretching `layoutEqualMode`). `ColumnPanel` is not dead code: it is mounted as the "Column" section in `packages/lib/src/typescript/main.ts:67`, the entry point `npm run dev` serves — a real, currently-running manual-verify route existed for this branch the whole time; the plan's inventory just missed it. (The VBox side of the same claim holds: `RowPanel.ts:11` does pass `stretching: true`, so VBox's non-stretching equal-mode branch genuinely had no in-repo consumer, as the first note above already establishes.) This was caught by a second audit round, not planning.
+
+Verified the HBox non-stretching equal-mode branch the same way as VBox's above: a temporary offline test, `hostHBox(300, 200, new HBox({ mode: 'equal', stretching: false, spacing: 4 }))` with three children of preferred size 29×58, 41×104, 29×69, run once and deleted. Result:
+
+```
+a { x: 0,                 y: 0, w: 97.333, h: 58  }
+b { x: 101.333 (97.333+4), y: 0, w: 97.333, h: 104 }
+c { x: 202.667 (2×97.333+8), y: 0, w: 97.333, h: 69  }
+```
+
+Equal widths (`(300 − 2×4) / 3 = 97.333` each), correct cumulative spacing-adjusted `x`, each child at its own preferred height (not a shared uniform height). Confirms the converted `HBox.ts` non-stretching `layoutEqualMode` branch is correct; only the plan's site inventory was incomplete.
+
+**The "no in-repo consumer" claim is wrong for the VBox side too, contradicting the previous note's parenthetical.** The second note above states "the VBox side of the same claim holds: `RowPanel.ts:11` does pass `stretching: true`, so VBox's non-stretching equal-mode branch genuinely had no in-repo consumer" — but that check only looked at `RowPanel.ts`. `packages/lib/src/typescript/AlignSelfPanel.ts` also constructs a non-stretching equal-mode `VBox`: `buildVBoxColumn()` (lines 58–69) is called with `mode: "equal"` at line 26 (`this.addComponent(this.buildVBoxColumn("equal"))`), and builds `VBox({ mode })` with no `stretching` key, which defaults to `false` (confirmed in `VBox.ts`'s JSDoc and `VBox.test.ts`'s "defaults stretching to false" case). `AlignSelfPanel` is mounted live via `packages/lib/src/typescript/main.ts:74` (`addSection(() => new AlignSelfPanel(), "AlignSelf")`), so a real, currently-running manual-verify route exists for exactly the branch converted at Ordered Implementation Step 11 (`VBox.ts` non-stretching `layoutEqualMode`) — the plan's inventory, and the second note's follow-up check, both missed it. This was caught by a third audit round, not planning.
+
+`AlignSelfPanel` is also an in-repo site exercising `crossPlacement`'s non-null (anchor/fill) return path inside a box layout, which the `[^equal-gap]` footnote separately (and, per this note, also incompletely) claims has no in-repo consumer: `buildVBoxColumn`'s children use `constraints: { anchor: AnchorType.WEST }`, `constraints: { anchor: AnchorType.EAST }`, and `constraints: { fill: FillType.HORIZONTAL }` on a `VBox` whose `mode` is either `"preferred"` or `"equal"` depending on which column is built — the `"equal"` column exercises both gaps the footnote flagged, at once. (It is not the *only* such site — see the fifth note below.)
+
+Verified with a temporary offline test in `VBox.test.ts`, using the same `installTestDOM`/`hostVBox` harness as the two notes above: `hostVBox(220, 200, new VBox({ mode: 'equal', spacing: 4 }))` with four 50×20 children — one default, one with `{ anchor: AnchorType.WEST }`, one with `{ anchor: AnchorType.EAST }`, one with `{ fill: FillType.HORIZONTAL }` — mirroring `buildVBoxColumn`'s WEST/EAST/fill buttons. Run once and deleted (per this plan's `## Non-Goals`, "New tests"). Result:
+
+```
+default { x: 0,   w: 50  }  // crossPlacement returns null; falls back to insets.left / preferred width
+WEST    { x: 0,   w: 50  }  // crossPlacement anchors to the leading edge
+EAST    { x: 170, w: 50  }  // crossPlacement anchors to the trailing edge (220 − 50)
+fill    { x: 0,   w: 220 }  // crossPlacement fills the full cross extent
+```
+
+**The two notes above, while correcting the VBox side, both stopped short on the HBox side of `AlignSelfPanel.ts`.** The second note's "no in-repo consumer" correction (above) cites only `ColumnPanel.ts:11-13` as an additional non-stretching-equal-mode `HBox` consumer. `AlignSelfPanel.ts:24` also calls `buildHBoxRow("equal")`, and `buildHBoxRow` (`AlignSelfPanel.ts:37–48`) builds `HBox({ mode })` at `:40` with no `stretching` key — a second, independent in-repo consumer of the same branch (Ordered Implementation Step 6). Separately, the third note's crossPlacement paragraph (above) claims `AlignSelfPanel` is "the only in-repo site exercising `crossPlacement`'s non-null (anchor/fill) return path inside a box layout" and only cites `buildVBoxColumn`'s WEST/EAST/fill children — but `buildHBoxRow`'s children (`AlignSelfPanel.ts:43–45`: `constraints: { anchor: AnchorType.NORTH } }`, `constraints: { anchor: AnchorType.SOUTH } }`, `constraints: { fill: FillType.VERTICAL } }`) drive the same `crossPlacement` non-null path in **HBox**, in both the `"preferred"` and `"equal"` calls (`AlignSelfPanel.ts:23–24`) — so the HBox anchor/fill push sites (`HBox.ts:356`, `HBox.ts:530`) had a real in-repo consumer and manual-verify route the whole time, same as their VBox counterparts. This was caught by a fourth audit round, not planning.
+
+Verified the HBox side the same way as the VBox side above: a temporary offline test in `HBox.test.ts`, using the same `installTestDOM`/`hostHBox` harness, `hostHBox(300, 90, new HBox({ mode: 'equal', spacing: 4 }))` (90 mirrors `AlignSelfPanel`'s `ROW_HEIGHT`) with three 50×20 children — one with `{ anchor: AnchorType.NORTH }`, one with `{ anchor: AnchorType.SOUTH }`, one with `{ fill: FillType.VERTICAL }` — mirroring `buildHBoxRow`'s NORTH/SOUTH/fill buttons. Run once and deleted (per this plan's `## Non-Goals`, "New tests"). Result (cross extent = the host's 90px inner height, insets cleared):
+
+```
+NORTH { y: 0,  h: 20 }  // crossPlacement anchors to the leading edge
+SOUTH { y: 70, h: 20 }  // crossPlacement anchors to the trailing edge (90 − 20)
+fill  { y: 0,  h: 90 }  // crossPlacement fills the full cross extent
+```
+
+Matches `BoxLayout.crossPlacement`'s contract for `horizontal: true` (NORTH = lead, SOUTH = trail), committed correctly through the split `resolveBounds`/`commitPlacements` pair. Confirms the HBox anchor/fill cross-constraint path is exercised in-repo and behaves correctly after the refactor; the plan's and the earlier notes' site inventories were incomplete on this side too.
+
+**The third note's "only in-repo site" claim above was itself an overclaim — `AlignSelfPanel` is not the only in-repo consumer of `crossPlacement`'s non-null path.** `packages/docs/src/shell/DocsDemo.ts` wraps every inline live demo block shown across the docs app: its constructor (`DocsDemo.ts:59-62`) sets `layoutManager: VBox({ stretching: true })` (default `"preferred"` mode) and adds its "Show source" toggle with `this.addComponent(this._toggle, { anchor: AnchorType.EAST })` (`DocsDemo.ts:88`). `crossAnchorEdge(EAST, horizontal: false)` returns `"trail"`, so `crossPlacement` returns non-null for that child even though the box is globally stretching (an explicit per-child anchor overrides global `stretching`, per `BoxLayout.ts`'s own doc comment on `LayoutConstraints.anchor`) — driving the same `VBox.layoutPreferredMode` push (`VBox.ts:505`) already verified in the note above. This doesn't change any geometry conclusion in this section — `DocsDemo` adds another live consumer of an already-verified path, it doesn't reveal a new one — so no further offline verification was run for it. This was caught by a fifth audit round, not planning.
+
+Each result matches `BoxLayout.crossPlacement`'s documented contract, committed correctly through the split `resolveBounds`/`commitPlacements` pair. Confirms both the non-stretching equal-mode branch and the anchor/fill cross-constraint path are exercised in-repo and behave correctly after the refactor; only the plan's and the prior notes' site inventories were incomplete.
