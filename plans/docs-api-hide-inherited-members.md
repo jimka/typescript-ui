@@ -8,7 +8,7 @@ depends-on: [markdown-viewer-floating-minimap-and-controls]
 
 The docs app's API reference pages render TypeDoc-generated Markdown as-is, and TypeDoc inlines every inherited member alongside a class's own — [`FieldSet.md`](packages/lib/docs/api/component/container/classes/FieldSet.md) pulls in roughly 150 `Component` methods it never declares itself; `Button.md` is 7,169 lines, 71% of it inherited. This plan adds a floating toggle button, in the style of [`DiagramView`](packages/lib/src/typescript/lib/component/diagram/DiagramView.ts)'s own zoom/fit/reset cluster, that hides inherited members by default and lets a reader reveal them. All of it lives in `packages/docs` — the generated Markdown tree, the VitePress site, and the typedoc pipeline are untouched.
 
-This plan depends on `markdown-viewer-floating-minimap-and-controls`,[^depends-on-branch] which introduces the `FloatingPanel` primitive and restructures `DocsShell`/`DocsContent` around a floating `MarkdownMinimap`. This plan's toggle button reuses that same structure as a second floating control.
+This plan depends on `markdown-viewer-floating-minimap-and-controls`, which introduces the `FloatingPanel` primitive and restructures `DocsShell`/`DocsContent` around a floating `MarkdownMinimap` — merged to `master` in `433897ea`. This plan's toggle button reuses that same structure as a second floating control.
 
 ---
 
@@ -260,8 +260,6 @@ Manual verification only (scroll/visual behaviour the test harness can't exercis
 ---
 
 ## Notes
-
-[^depends-on-branch]: `markdown-viewer-floating-minimap-and-controls` is recorded in `plans/implemented/` but its commits live only on `feature/markdown-viewer-floating-minimap-and-controls` (worktree `.worktrees/markdown-viewer-floating-minimap-and-controls`), not yet on `master`. `/implement`'s standard dependency chaining assumes a dependency plan's code is reachable from the local base branch; here it is not. This plan's own implementation must happen inside that same worktree/branch rather than a fresh one branched from `master`, and that worktree may carry its own unrelated uncommitted work at the time — resolve both with the user before dispatching, rather than assuming.
 
 [^page-structure]: Confirmed by inspecting `packages/lib/docs/api/component/container/classes/FieldSet.md`: `## Methods` at line 54, `### addComponent()` at line 56, `#### Inherited from` at line 101, repeating for every member.
 
