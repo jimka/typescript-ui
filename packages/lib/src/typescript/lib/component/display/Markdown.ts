@@ -370,6 +370,19 @@ export interface MarkdownOptions extends ComponentOptions {
      * links external.
      */
     linkResolver?: MarkdownLinkResolver;
+
+    /**
+     * Per-instance override of the prose column's max width (e.g. `"60ch"`,
+     * `60`). `null` or omitted uses the theme's `--ts-ui-md-max-measure`
+     * default.
+     */
+    maxMeasure?: string | number | null;
+
+    /**
+     * Multiplies the prose's base font size; headings scale with it via their
+     * own relative sizing. Default `1`.
+     */
+    fontScale?: number;
 }
 
 /**
@@ -512,6 +525,14 @@ class Markdown extends Component<MarkdownOptions> {
     private _renderGeneration = 0;
 
     /**
+     * Normalised form of {@link MarkdownOptions.maxMeasure} — a bare `number`
+     * is stored here with its `"ch"` suffix appended, so the canonical string
+     * form is computed once and reused by every {@link setMaxMeasure} write.
+     * `null` (the default) means "use the theme's `--ts-ui-md-max-measure`".
+     */
+    private _maxMeasure: string | null = null;
+
+    /**
      * Constructs a Markdown component for the given source string.
      *
      * @param markdown - The Markdown source to render (optional; defaults to "").
@@ -543,7 +564,14 @@ class Markdown extends Component<MarkdownOptions> {
         // Caps the prose column to a comfortable reading measure regardless of
         // how wide the assigned layout box is; oversized tables/code fall back
         // to their own class-rule horizontal scroll within the capped column.
-        this.setElementCSSRule("maxWidth", "var(--ts-ui-md-max-measure, 70ch)");
+        // Dispatched through the setter (even for the unset default) so a
+        // later `setMaxMeasure(null)` reverts to the same theme-var default
+        // this constructor seeds.
+        this.setMaxMeasure(this._options.maxMeasure ?? null);
+
+        // Scales the prose's base font size; headings scale with it via their
+        // own relative sizing (see setFontScale).
+        this.setFontScale(this._options.fontScale ?? 1);
 
         // Prose metrics (font, spacing) are theme-bound, so a theme swap can
         // change the rendered height — re-measure when it fires (mirrors Text).
@@ -572,6 +600,14 @@ class Markdown extends Component<MarkdownOptions> {
 
         if (options.linkResolver !== undefined) {
             this._options.linkResolver = options.linkResolver;
+        }
+
+        if (options.maxMeasure !== undefined) {
+            this._options.maxMeasure = options.maxMeasure;
+        }
+
+        if (options.fontScale !== undefined) {
+            this._options.fontScale = options.fontScale;
         }
 
         return this;
@@ -608,6 +644,55 @@ class Markdown extends Component<MarkdownOptions> {
      */
     getLinkResolver(): MarkdownLinkResolver {
         return this._options.linkResolver ?? defaultLinkResolver;
+    }
+
+    /**
+     * Overrides the prose column's max width. Pass `null` to revert to the
+     * theme's `--ts-ui-md-max-measure` default.
+     *
+     * @param value - A CSS width string (e.g. `"60ch"`), a bare number of
+     *   `ch` units, or `null` to revert to the theme default.
+     * @returns This component, for method chaining.
+     */
+    setMaxMeasure(value: string | number | null): this {
+        this._options.maxMeasure = value;
+        this._maxMeasure = typeof value === "number" ? `${value}ch` : value;
+        this.setElementCSSRule("maxWidth", this._maxMeasure ?? "var(--ts-ui-md-max-measure, 70ch)");
+
+        return this;
+    }
+
+    /**
+     * Returns the current max-measure override, or `null` when unset (the
+     * theme default applies).
+     *
+     * @returns The cached {@link MarkdownOptions.maxMeasure} value, or `null`.
+     */
+    getMaxMeasure(): string | number | null {
+        return this._options.maxMeasure ?? null;
+    }
+
+    /**
+     * Scales the prose's base font size; headings and other relatively-sized
+     * elements scale with it. Pass `1` to clear the override.
+     *
+     * @param value - The multiplier applied to the base font size.
+     * @returns This component, for method chaining.
+     */
+    setFontScale(value: number): this {
+        this._options.fontScale = value;
+        this.setElementCSSRule("fontSize", value === 1 ? null : (value * 100) + "%");
+
+        return this;
+    }
+
+    /**
+     * Returns the current font-scale multiplier, or `1` (no scaling) when unset.
+     *
+     * @returns The cached {@link MarkdownOptions.fontScale} value, or `1`.
+     */
+    getFontScale(): number {
+        return this._options.fontScale ?? 1;
     }
 
     /**
@@ -1501,6 +1586,71 @@ export function extractMarkdownHeadings(source: string): MarkdownHeading[] {
     collectHeadings(lexer(source), new Map<string, number>(), headings);
 
     return headings;
+}
+
+/**
+ * Sub-pixel tolerance for "at or above the pane's top". A scroll-to-heading
+ * lands its target via a delta computed from sub-pixel-precise
+ * `getBoundingClientRect()` reads, but the native `scrollTop` it's applied
+ * through can round the requested value — landing the heading a fraction of
+ * a pixel past the pane's top, enough to fail a strict `<=` and fall back to
+ * the previous heading.
+ */
+const ACTIVE_HEADING_TOP_TOLERANCE_PX = 1;
+
+/**
+ * Resolves which heading in `headings` is at or nearest above
+ * `scrollElement`'s viewport top — the last heading, in document order,
+ * whose top edge is at or above the scroll container's own top (within
+ * `ACTIVE_HEADING_TOP_TOLERANCE_PX`). Mirrors
+ * `DocsContent.scrollToHeading`'s lookup technique in the read direction.
+ *
+ * Once `scrollElement` has scrolled to its maximum, the first heading that
+ * hasn't yet reached the pane's own top is active outright, instead of
+ * whichever heading last crossed it: a heading near the document's end (or
+ * several, clustered together) may have less than a full viewport of
+ * content left below it, so no amount of scrolling can bring it exactly to
+ * the pane's top, and the top-crossing rule alone would otherwise resolve to
+ * a much earlier heading than whichever one the scroll actually landed on.
+ *
+ * @param scrollElement - The scroll-owning element to read the pane's own top from.
+ * @param headings - The document's headings, in document order.
+ * @returns The active heading's id, or `null` when the pane's top is above every heading.
+ *
+ * @category Components
+ */
+export function findActiveHeading(scrollElement: Handle, headings: MarkdownHeading[]): string | null {
+    const paneTop = DOM.source.getElementRect(scrollElement).top;
+    const metrics = DOM.source.getScrollMetrics(scrollElement);
+    const atMaxScroll = metrics.scrollHeight > metrics.clientHeight
+        && metrics.scrollTop >= metrics.scrollHeight - metrics.clientHeight - ACTIVE_HEADING_TOP_TOLERANCE_PX;
+
+    let active: string | null = null;
+
+    for (const heading of headings) {
+        const el = DOM.source.getElementById(heading.id);
+
+        if (!el || !DOM.source.contains(scrollElement, el)) {
+            continue;
+        }
+
+        if (DOM.source.getElementRect(el).top <= paneTop + ACTIVE_HEADING_TOP_TOLERANCE_PX) {
+            active = heading.id;
+        } else {
+            // Headings are in document order; every later one is further
+            // below. At max scroll, though, this first not-yet-reached
+            // heading is already on screen — nothing can scroll it up any
+            // further — so it wins outright rather than leaving whichever
+            // earlier heading last crossed the top still active.
+            if (atMaxScroll) {
+                active = heading.id;
+            }
+
+            break;
+        }
+    }
+
+    return active;
 }
 
 const MarkdownCallable = callable(Markdown);

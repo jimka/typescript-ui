@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Markdown, mapFenceLangToEditorId, extractMarkdownHeadings } from '~/component/display/Markdown';
+import { Markdown, mapFenceLangToEditorId, extractMarkdownHeadings, findActiveHeading } from '~/component/display/Markdown';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { Component } from '~/core/Component';
 import { Container } from '~/core/Container';
 import { Fit } from '~/layout/Fit';
 import { ThemeManager, DarkTheme, ModernTheme } from '~/core/Theme';
-import { installTestDOM, type RecordingDOMSink } from '../../dom/TestDOM';
+import { installTestDOM, setScrollExtent, type RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -60,6 +60,22 @@ function classWrites(): string[][] {
     return sink.writes
         .filter((w) => w.op === 'apply' && (w.args[1] as { addClass?: string[] }).addClass !== undefined)
         .map((w) => (w.args[1] as { addClass: string[] }).addClass);
+}
+
+/** The most recently `setRuleStyles`-written value for `prop`, or `undefined` if never written. */
+function lastRuleStyle(prop: string): string | null | undefined {
+    const writes = sink.writes.filter((w) => w.op === 'setRuleStyles') as
+        Array<{ op: string; args: [string, Record<string, string | null>] }>;
+
+    for (let i = writes.length - 1; i >= 0; i--) {
+        const styles = writes[i].args[1];
+
+        if (prop in styles) {
+            return styles[prop];
+        }
+    }
+
+    return undefined;
 }
 
 describe('Markdown headings', () => {
@@ -425,6 +441,156 @@ describe('Markdown linkResolver accessors', () => {
         md.setLinkResolver(resolver);
 
         expect(md.getLinkResolver()).toBe(resolver);
+    });
+});
+
+describe('Markdown setMaxMeasure / getMaxMeasure', () => {
+    it('defaults to null, writing the theme-var maxWidth', () => {
+        new Markdown('x').getElement(true);
+
+        expect(new Markdown().getMaxMeasure()).toBeNull();
+        expect(lastRuleStyle('maxWidth')).toBe('var(--ts-ui-md-max-measure, 70ch)');
+    });
+
+    it('normalises a bare number to a "ch" string and writes it as the maxWidth rule', () => {
+        const md = new Markdown('x', { maxMeasure: 60 });
+
+        md.getElement(true);
+
+        expect(md.getMaxMeasure()).toBe(60);
+        expect(lastRuleStyle('maxWidth')).toBe('60ch');
+    });
+
+    it('accepts a raw CSS width string', () => {
+        const md = new Markdown('x');
+
+        md.getElement(true);
+        md.setMaxMeasure('80%');
+
+        expect(md.getMaxMeasure()).toBe('80%');
+        expect(lastRuleStyle('maxWidth')).toBe('80%');
+    });
+
+    it('setMaxMeasure(null) reverts to the theme-var default, not a resolved literal', () => {
+        const md = new Markdown('x', { maxMeasure: 60 });
+
+        md.getElement(true);
+        md.setMaxMeasure(null);
+
+        expect(md.getMaxMeasure()).toBeNull();
+        expect(lastRuleStyle('maxWidth')).toBe('var(--ts-ui-md-max-measure, 70ch)');
+    });
+});
+
+describe('Markdown setFontScale / getFontScale', () => {
+    it('defaults to 1, writing a cleared (null) fontSize rather than "100%"', () => {
+        new Markdown('x').getElement(true);
+
+        expect(new Markdown().getFontScale()).toBe(1);
+        expect(lastRuleStyle('fontSize')).toBeNull();
+    });
+
+    it('writes a percentage fontSize for a non-1 scale', () => {
+        const md = new Markdown('x', { fontScale: 1.3 });
+
+        md.getElement(true);
+
+        expect(md.getFontScale()).toBe(1.3);
+        expect(lastRuleStyle('fontSize')).toBe('130%');
+    });
+
+    it('setFontScale(1) clears the inline override by writing null, not "100%"', () => {
+        const md = new Markdown('x', { fontScale: 1.3 });
+
+        md.getElement(true);
+        md.setFontScale(1);
+
+        expect(md.getFontScale()).toBe(1);
+        expect(lastRuleStyle('fontSize')).toBeNull();
+    });
+});
+
+describe('findActiveHeading', () => {
+    /** Builds a Markdown with three headings and stages their document-order rects at `tops`. */
+    function stageHeadings(tops: [number, number, number]) {
+        const md = new Markdown('# Introduction\n\n## Getting Started\n\n### Install\n');
+        const handle = md.getElement(true)!;
+
+        DOM.sink.apply(handle, { style: { left: '0px', top: '0px', width: '400px', height: '2000px' } });
+
+        const headings = extractMarkdownHeadings(md.getMarkdown());
+
+        headings.forEach((heading, i) => {
+            const headingHandle = DOM.source.getElementById(heading.id)!;
+
+            DOM.sink.apply(headingHandle, { style: { left: '0px', top: `${tops[i]}px`, width: '10px', height: '10px' } });
+        });
+
+        return { handle, headings };
+    }
+
+    it('returns the last heading whose top is at or above the pane\'s own top, per the worked example', () => {
+        const { handle, headings } = stageHeadings([100, 600, 900]);
+
+        DOM.sink.apply(handle, { scrollTop: 500 });
+        expect(findActiveHeading(handle, headings)).toBe(headings[0].id);
+
+        DOM.sink.apply(handle, { scrollTop: 650 });
+        expect(findActiveHeading(handle, headings)).toBe(headings[1].id);
+
+        DOM.sink.apply(handle, { scrollTop: 950 });
+        expect(findActiveHeading(handle, headings)).toBe(headings[2].id);
+    });
+
+    it('returns null when the pane top is above every heading', () => {
+        const { handle, headings } = stageHeadings([100, 600, 900]);
+
+        DOM.sink.apply(handle, { scrollTop: 0 });
+
+        expect(findActiveHeading(handle, headings)).toBeNull();
+    });
+
+    it('treats a heading a fraction of a pixel past the pane\'s top as still active, absorbing native scrollTop rounding', () => {
+        const { handle, headings } = stageHeadings([100, 600, 900]);
+
+        // Lands the second heading's viewport top at +0.4px — just past the
+        // pane's own top, the way a scroll-to-heading landing a hair short of
+        // exact alignment would. A strict `<=` comparison would reject this
+        // heading and fall back to the first one instead.
+        DOM.sink.apply(handle, { scrollTop: 599.6 });
+
+        expect(findActiveHeading(handle, headings)).toBe(headings[1].id);
+    });
+
+    it('treats the last heading as active once the pane has scrolled to its maximum, even when that heading cannot reach the pane\'s own top (not enough content left below it)', () => {
+        const { handle, headings } = stageHeadings([100, 600, 900]);
+
+        // clientHeight is 2000 (staged by stageHeadings); a scroll extent of
+        // 2850 caps the max scroll at 850, leaving the third heading's
+        // viewport top at 900 - 850 = 50px — still below the pane's top, the
+        // way a heading near the document's end can never reach it (there
+        // isn't a full viewport's worth of content left below it to scroll
+        // into place). The strict top-crossing rule alone would resolve to
+        // the second heading instead.
+        setScrollExtent(handle, { width: 400, height: 2850 });
+        DOM.sink.apply(handle, { scrollTop: 850 });
+
+        expect(findActiveHeading(handle, headings)).toBe(headings[2].id);
+    });
+
+    it('treats the first not-yet-reached heading as active once at max scroll, even when a later heading is also clustered past the fold', () => {
+        const { handle, headings } = stageHeadings([100, 600, 900]);
+
+        // A scroll extent of 2300 caps the max scroll at 300, leaving both
+        // the second heading (600 - 300 = 300px) and the third (900 - 300 =
+        // 600px) below the pane's top — clicking either lands the exact same
+        // clamped scrollTop, so the first of the two that hasn't been reached
+        // yet (the second heading) is the one the click actually targeted,
+        // not whichever heading is last in the document.
+        setScrollExtent(handle, { width: 400, height: 2300 });
+        DOM.sink.apply(handle, { scrollTop: 300 });
+
+        expect(findActiveHeading(handle, headings)).toBe(headings[1].id);
     });
 });
 
