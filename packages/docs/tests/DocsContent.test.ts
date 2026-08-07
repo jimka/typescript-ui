@@ -9,6 +9,8 @@
 // each test controls its own page source rather than depending on real
 // authored content.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Body } from '@jimka/typescript-ui/core';
+import { Fit } from '@jimka/typescript-ui/layout';
 import { Router } from '@jimka/typescript-ui/router';
 import type { MarkdownHeading } from '@jimka/typescript-ui/component/display';
 import { DocsContent } from '../src/shell/DocsContent.js';
@@ -25,11 +27,20 @@ function mockPage(path: string, source: string): void {
 let router: Router;
 let content: DocsContent;
 
+// Set by mountAndFindScrollPane when a test mounts `content` into the Body
+// singleton — Body outlives every test, so afterEach must explicitly detach
+// `content` from it (removeComponent never disposes) before disposing, or a
+// later test's Body.init call finds this test's now-destroyed content still
+// sitting in Body's children alongside the new one.
+let mountedBody: Body | null = null;
+
 beforeEach(() => {
     router = new Router();
 });
 
 afterEach(() => {
+    mountedBody?.removeComponent(content);
+    mountedBody = null;
     content.dispose();
 });
 
@@ -94,5 +105,188 @@ describe('DocsContent outlinechange', () => {
         content.showPath('/same-page', 'b');
 
         expect(listener).toHaveBeenCalledTimes(1);
+    });
+});
+
+/**
+ * Mounts `content` into a real, connected DOM (mirroring `DocsSidebar.test.ts`'s
+ * own `Body.init` + `flushLayout` idiom) and resolves the raw element that
+ * `getScrollElement()` reads native `"scroll"` events from: the id-less
+ * overlay-scroller div Panel's default `scrollbarStyle: "overlay"` wraps
+ * content in, found via its shared `PanelOverlayScroller` class (see
+ * `core/Panel.ts`), falling back to the panel's own element if overlay mode
+ * never installed (e.g. no measured overflow in jsdom's layout-free DOM).
+ */
+function mountAndFindScrollPane(): Element {
+    const body = Body.init({ layoutManager: Fit(), components: [content] });
+
+    mountedBody = body;
+    body.flushLayout();
+
+    const root = document.getElementById(content.getId())!;
+
+    return root.querySelector('.PanelOverlayScroller') ?? root;
+}
+
+/** Stubs a real jsdom element's `getBoundingClientRect().top` (jsdom never lays out for real). */
+function stubTop(element: Element, top: number): void {
+    vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({
+        top, left: 0, right: 0, bottom: top, width: 0, height: 0, x: 0, y: top,
+        toJSON: () => ({}),
+    } as DOMRect);
+}
+
+describe('DocsContent.getTextColumnReference', () => {
+    it('returns null before any page has rendered', () => {
+        content = new DocsContent(router);
+
+        expect(content.getTextColumnReference()).toBeNull();
+    });
+
+    it('returns the page\'s first block once a page has rendered', () => {
+        mockPage('/text-column', '# A\n\ntext\n');
+        content = new DocsContent(router);
+
+        content.showPath('/text-column', '');
+
+        expect(content.getTextColumnReference()).not.toBeNull();
+    });
+
+    it('re-reads live rather than returning a cached reference, so it points at the new first block after navigating to a different page', () => {
+        vi.mocked(getPage).mockImplementation((p) => {
+            if (p === '/first')  return { path: p, title: 'Test', source: '# A\n\ntext\n' } as DocPage;
+            if (p === '/second') return { path: p, title: 'Test', source: '# B\n\ntext\n' } as DocPage;
+            return null;
+        });
+        content = new DocsContent(router);
+
+        content.showPath('/first', '');
+        const first = content.getTextColumnReference();
+
+        content.showPath('/second', '');
+        const second = content.getTextColumnReference();
+
+        expect(second).not.toBeNull();
+        expect(second).not.toBe(first);
+    });
+});
+
+describe('DocsContent prose left margin', () => {
+    it('gives a markdown block a left margin, so prose reads like a page rather than sitting flush against the pane edge', () => {
+        mockPage('/prose-margin', '# A\n\ntext\n');
+        content = new DocsContent(router);
+
+        content.showPath('/prose-margin', '');
+
+        expect(content.getTextColumnReference()?.getPadding()?.getLeft()).toBe(32);
+    });
+});
+
+describe('DocsContent activeheadingchange', () => {
+    // The pane's own viewport rect stays fixed (its frame doesn't move as its
+    // content scrolls); a heading counts as "scrolled past" — and therefore a
+    // candidate for active — only once its own top has dropped to at or below
+    // the pane's fixed top. Scrolling down further is modelled by moving more
+    // headings' stubbed tops at-or-below that fixed pane top, not by moving
+    // the pane.
+    it('fires with the topmost visible heading id as the pane scrolls', () => {
+        mockPage('/scroll-headings', '# Introduction\n\n## Getting Started\n\n### Install\n');
+        content = new DocsContent(router);
+        content.showPath('/scroll-headings', '');
+
+        const pane = mountAndFindScrollPane();
+        const listener = vi.fn();
+
+        content.on('activeheadingchange', listener);
+
+        stubTop(pane, 0);
+        // Introduction has scrolled past the pane's top; the other two are
+        // still below it (not yet reached).
+        stubTop(document.getElementById('introduction')!, -10);
+        stubTop(document.getElementById('getting-started')!, 500);
+        stubTop(document.getElementById('install')!, 900);
+
+        pane.dispatchEvent(new Event('scroll'));
+
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(listener).toHaveBeenLastCalledWith('introduction');
+
+        // Scrolling further: Getting Started has now scrolled past too, so it
+        // becomes the new (later, in document order) active heading.
+        stubTop(document.getElementById('getting-started')!, -5);
+        pane.dispatchEvent(new Event('scroll'));
+
+        expect(listener).toHaveBeenCalledTimes(2);
+        expect(listener).toHaveBeenLastCalledWith('getting-started');
+    });
+
+    it('does not re-fire when the computed id is unchanged', () => {
+        mockPage('/scroll-stable', '# Introduction\n\n## Getting Started\n');
+        content = new DocsContent(router);
+        content.showPath('/scroll-stable', '');
+
+        const pane = mountAndFindScrollPane();
+        const listener = vi.fn();
+
+        content.on('activeheadingchange', listener);
+
+        stubTop(pane, 0);
+        stubTop(document.getElementById('introduction')!, -10);
+        stubTop(document.getElementById('getting-started')!, 500);
+
+        pane.dispatchEvent(new Event('scroll'));
+        pane.dispatchEvent(new Event('scroll'));
+        pane.dispatchEvent(new Event('scroll'));
+
+        expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the clicked heading active through the native scroll event it triggers, even when a later heading ties it for the top-crossing position', () => {
+        mockPage('/scroll-pin', '# Introduction\n\n## Getting Started\n\n### Install\n');
+        content = new DocsContent(router);
+        content.showPath('/scroll-pin', '');
+
+        const pane = mountAndFindScrollPane();
+        const listener = vi.fn();
+
+        content.on('activeheadingchange', listener);
+
+        stubTop(pane, 0);
+        stubTop(document.getElementById('introduction')!, 0);
+        // Getting Started and Install sit at the exact same top — two
+        // adjacent headings with no content between them, a layout a real
+        // clamped scroll-to-end can also produce (see findActiveHeading's
+        // own doc comment). Pure top-crossing alone would resolve to
+        // whichever of the two comes last in document order, regardless of
+        // which one was actually clicked.
+        stubTop(document.getElementById('getting-started')!, 200);
+        stubTop(document.getElementById('install')!, 200);
+
+        (content as unknown as { scrollToHeading(id: string): void }).scrollToHeading('getting-started');
+
+        expect((pane as HTMLElement).scrollTop).toBe(200);
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(listener).toHaveBeenLastCalledWith('getting-started');
+
+        // The resulting native scroll event fires with scrollTop unchanged.
+        // findActiveHeading alone would resolve to "install" here (both tie
+        // for "last crossed") — the pin from the click keeps "getting
+        // started", the one actually clicked, active instead.
+        pane.dispatchEvent(new Event('scroll'));
+
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(listener).toHaveBeenLastCalledWith('getting-started');
+
+        // A genuine further scroll clears the pin and resumes geometry-driven
+        // tracking: both later headings have now scrolled past the pane's
+        // top, so "install" (the later of the two, in document order) is
+        // correctly resolved as active.
+        stubTop(document.getElementById('getting-started')!, -10);
+        stubTop(document.getElementById('install')!, -5);
+        (pane as HTMLElement).scrollTop = 205;
+        pane.dispatchEvent(new Event('scroll'));
+
+        expect(listener).toHaveBeenCalledTimes(2);
+        expect(listener).toHaveBeenLastCalledWith('install');
     });
 });
