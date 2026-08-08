@@ -21,6 +21,19 @@ export interface LayoutManagerOptions {
 }
 
 /**
+ * A child's resolved bounds, paired with the component they belong to —
+ * the hand-off between a placement loop's calc phase ({@link LayoutManager.resolveBounds})
+ * and its commit phase ({@link LayoutManager.commitPlacements}).
+ */
+export interface ResolvedPlacement {
+    component: Component;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+/**
  * Abstract base class for all layout managers.
  * A layout manager is attached to a container component and is responsible for
  * computing size hints and positioning child components within the container.
@@ -478,6 +491,19 @@ export abstract class LayoutManager extends BaseObject {
         component.doLayout();
 
         component.setAutoCommitStyle(true);
+    }
+
+    /**
+     * Commits a whole placement loop's resolved rects in order, one child at a
+     * time. Pairs with a calc phase that pushed each child's {@link LayoutManager.resolveBounds}
+     * result into a `ResolvedPlacement[]` instead of committing it immediately.
+     *
+     * @param placements - The resolved rects to commit, in placement order.
+     */
+    protected commitPlacements(placements: ResolvedPlacement[]): void {
+        for (const placement of placements) {
+            this.commitBounds(placement.component, placement.x, placement.y, placement.width, placement.height);
+        }
     }
 
     /**

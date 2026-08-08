@@ -5,6 +5,7 @@ import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Component } from "~/core/Component.js";
 import { BoxLayout, BoxLayoutOptions } from "~/layout/BoxLayout.js";
+import type { ResolvedPlacement } from "~/layout/LayoutManager.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -283,11 +284,15 @@ class VBox extends BoxLayout {
         // `innerSize` stays the real viewport for equal mode's overflow test.
         const containerSize = this.inflateForOverflow(innerSize);
 
+        let placements: ResolvedPlacement[];
+
         if (this._mode === "equal") {
-            this.layoutEqualMode(components, innerSize, containerSize, containerInsets, spacing);
+            placements = this.layoutEqualMode(components, innerSize, containerSize, containerInsets, spacing);
         } else {
-            this.layoutPreferredMode(components, containerSize, containerInsets, spacing);
+            placements = this.layoutPreferredMode(components, containerSize, containerInsets, spacing);
         }
+
+        this.commitPlacements(placements);
 
         this.reserveContentFrame();
     }
@@ -304,8 +309,9 @@ class VBox extends BoxLayout {
      * @param containerSize - The working size, possibly inflated for overflow.
      * @param insets - The container's content insets.
      * @param spacing - Inter-child spacing in pixels.
+     * @returns The resolved placements, ready for {@link LayoutManager.commitPlacements}.
      */
-    private layoutEqualMode(components: Component[], innerSize: Size, containerSize: Size, insets: Insets, spacing: number): void {
+    private layoutEqualMode(components: Component[], innerSize: Size, containerSize: Size, insets: Insets, spacing: number): ResolvedPlacement[] {
         const cellHeight = this.computeEqualCellHeight(components, innerSize.height, spacing);
 
         const x = insets.getLeft();
@@ -313,14 +319,15 @@ class VBox extends BoxLayout {
 
         if (this.isStretching()) {
             const cellWidth = containerSize.width;
+            const placements: ResolvedPlacement[] = [];
 
             for (const component of components) {
-                this.placeComponent(component, x, y, cellWidth, cellHeight, FillType.BOTH);
+                placements.push({ component, ...this.resolveBounds(component, x, y, cellWidth, cellHeight, FillType.BOTH) });
 
                 y += cellHeight + spacing;
             }
 
-            return;
+            return placements;
         }
 
         // Match the equal-stretch band exactly: the stretch branch fills
@@ -328,6 +335,7 @@ class VBox extends BoxLayout {
         // so an EAST/fill align-self child reaches the same trailing edge.
         const crossLead   = insets.getLeft();
         const crossExtent = containerSize.width;
+        const placements: ResolvedPlacement[] = [];
 
         for (const component of components) {
             const size  = component.getPreferredSize();
@@ -336,13 +344,15 @@ class VBox extends BoxLayout {
             const cross = this.crossPlacement(component, crossLead, crossExtent, width, false);
 
             if (cross) {
-                this.placeComponent(component, cross.offset, y, cross.extent, cellHeight, FillType.BOTH);
+                placements.push({ component, ...this.resolveBounds(component, cross.offset, y, cross.extent, cellHeight, FillType.BOTH) });
             } else {
-                this.placeComponent(component, x, y, width, cellHeight, FillType.BOTH);
+                placements.push({ component, ...this.resolveBounds(component, x, y, width, cellHeight, FillType.BOTH) });
             }
 
             y += cellHeight + spacing;
         }
+
+        return placements;
     }
 
     /**
@@ -402,8 +412,9 @@ class VBox extends BoxLayout {
      * @param containerSize - The working size, possibly inflated for overflow.
      * @param insets - The container's content insets.
      * @param spacing - Inter-child spacing in pixels.
+     * @returns The resolved placements, ready for {@link LayoutManager.commitPlacements}.
      */
-    private layoutPreferredMode(components: Component[], containerSize: Size, insets: Insets, spacing: number): void {
+    private layoutPreferredMode(components: Component[], containerSize: Size, insets: Insets, spacing: number): ResolvedPlacement[] {
         const { totalWeight, fixedPreferred, fixedMin } = this.measureFixedHeights(components, spacing);
 
         const { remaining: remainingHeight, shrinkRatio } = this.computeShrink(
@@ -452,6 +463,7 @@ class VBox extends BoxLayout {
 
         const x = insets.getLeft();
         let y = insets.getTop() + lead;
+        const placements: ResolvedPlacement[] = [];
 
         for (let idx = 0; idx < components.length; idx += 1) {
             const component = components[idx];
@@ -494,9 +506,9 @@ class VBox extends BoxLayout {
             const cross = this.crossPlacement(component, crossLead, crossExtent, naturalWidth, false);
 
             if (cross) {
-                this.placeComponent(component, cross.offset, y, cross.extent, heights[idx], FillType.BOTH);
+                placements.push({ component, ...this.resolveBounds(component, cross.offset, y, cross.extent, heights[idx], FillType.BOTH) });
             } else {
-                this.placeComponent(component, x, y, defaultWidth, heights[idx], FillType.BOTH);
+                placements.push({ component, ...this.resolveBounds(component, x, y, defaultWidth, heights[idx], FillType.BOTH) });
             }
 
             // Advance by the resolved height, not getHeight(): the gap is
@@ -505,6 +517,8 @@ class VBox extends BoxLayout {
             y += heights[idx];
             y += spacing + gap;
         }
+
+        return placements;
     }
 
     /**
