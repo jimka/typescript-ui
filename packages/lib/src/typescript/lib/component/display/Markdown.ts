@@ -464,11 +464,14 @@ interface PendingCodeUpgrade extends CodeUpgradeIdentity {
  * (`js`/`ts`/`json`/`html`/`sql`/`markdown`, plus aliases) upgrades from the
  * plain `<pre>` to a live, read-only, syntax-highlighted `CodeEditor` once it
  * loads; an unrecognised language, or no info string, keeps the plain
- * `<pre>`. The upgrade is lazy —
+ * `<pre>`. The upgrade is lazy in two ways —
  * `CodeEditor`'s CodeMirror dependency loads through a dynamic import that
  * fires only when a fenced block actually needs it, deferred until this
- * component's first connected, displayed layout — so a `Markdown` with no
- * fenced code (or only unsupported languages) pays no extra bundle cost.
+ * component's first connected, displayed layout, and further deferred per
+ * block until its wrapper comes within one viewport-height of the visible
+ * area — so a `Markdown` with no fenced code (or only unsupported languages)
+ * pays no extra bundle cost, and a long document upgrades only the blocks
+ * the reader actually scrolls to.
  *
  * Links render as plain `<a href target="_blank" rel="noopener noreferrer">`
  * with native navigation; the component exposes no event surface in v1.
