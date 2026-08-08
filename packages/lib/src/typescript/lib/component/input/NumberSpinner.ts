@@ -191,19 +191,33 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
      * the spinner's outer box is that inner-input box plus the spinner's own
      * vertical insets/padding/border. Reading the inner input's padding (rather
      * than the spinner's, which is zero) keeps the spinner the same height as a
-     * standalone `TextField` in the same row.
+     * standalone `TextField` in the same row. Width is read back from the
+     * already-resolved constraint — a caller override, or the class default on
+     * the very first call — so only the height component changes on a theme
+     * change, mirroring `TextField.setBorder`'s own read-back technique. The
+     * *constraint* accessors are used rather than the merged `getMinSize()` /
+     * `getMaxSize()` because this component's own `HBox` layout manager folds a
+     * real, non-zero derived width into the merged getters (the up/down button
+     * column); reading the raw constraint avoids feeding that derived width
+     * back into the explicit `minSize`/`maxSize` on the next call.
      */
     private updateHeight(): void {
         // Reads the *inner* input's padding (not the spinner's own, which is
         // zero) so the spinner matches a standalone TextField's height.
         const h = Util.singleLineBoxHeight(this.getInsets(), this._input.getPadding(), this.getBorderSize());
 
-        this.setPreferredSize({ width: 120, height: h });
-        this.setMaxSize({ width: UNBOUNDED, height: h });
+        const width = this.getPreferredSizeConstraint()?.width ?? 120;
+        this.setPreferredSize({ width, height: h });
+
+        const maxWidth = this.getMaxSizeConstraint()?.width ?? UNBOUNDED;
+        this.setMaxSize({ width: maxWidth, height: h });
+
         // Min-height pinned to the single-line box so the field can't be
-        // vertically compressed below one line; min-width 0 keeps it
-        // horizontally flexible.
-        this.setMinSize({ width: 0, height: h });
+        // vertically compressed below one line; min-width preserves whatever
+        // was already resolved (a caller override, or 0 by default) instead of
+        // re-asserting a literal on every call.
+        const minWidth = this.getMinSizeConstraint()?.width ?? 0;
+        this.setMinSize({ width: minWidth, height: h });
     }
 
     /**
