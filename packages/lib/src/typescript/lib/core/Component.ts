@@ -2395,7 +2395,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS `touch-action` string, or null.
      */
     getTouchAction(): string | null {
-        return this._options.touchAction ?? null;
+        return "touchAction" in this._options ? (this._options.touchAction ?? null) : (this._defaultOptions.touchAction ?? null);
     }
 
     /**
@@ -2422,10 +2422,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearTouchAction(): this {
-        if (this._options.touchAction === undefined) {
-            return this;
-        }
-
+        // Set (not skip) the key so `getTouchAction` sees an explicit clear and
+        // returns null, suppressing the class default — distinct from the
+        // never-set case where the key is absent and the default applies.
         this._options.touchAction = undefined;
         this.setElementStyle("touchAction", null);
 
@@ -4784,8 +4783,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Writes the remaining inline and rule styles (white-space, pointer-events,
-     * writing-mode, z-index, will-change, transition, opacity, user-select,
-     * padding, insets, margin) — the sixth `applyStyle` phase.
+     * writing-mode, touch-action, z-index, will-change, transition, opacity,
+     * user-select, padding, insets, margin) — the sixth `applyStyle` phase.
      */
     private applyMiscInlineStyles(): void {
         if (this._whiteSpace) {
@@ -4800,6 +4799,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const writingMode = this.getWritingMode();
         if (writingMode) {
             this._inlineStyle.set("writingMode", writingMode);
+        }
+
+        const touchAction = this.getTouchAction();
+        if (touchAction) {
+            this._inlineStyle.set("touchAction", touchAction);
         }
 
         const zIndex = this.getZIndex();

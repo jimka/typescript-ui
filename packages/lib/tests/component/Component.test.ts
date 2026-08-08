@@ -636,3 +636,35 @@ describe('Component — will-change survives applyStyle', () => {
         expect(component.getWillChange()).toBe('transform');
     });
 });
+
+// Mirrors the will-change replay above: touchAction had no _defaultOptions
+// fold or applyStyle replay before this plan, so a construction-time value
+// was silently dropped by the same inline-style wipe.
+describe('Component — touch-action survives applyStyle and folds a class default', () => {
+    beforeEach(() => installTestDOM(DOM_CONFIG));
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    it('replays a construction-time touchAction past the inline-style wipe', () => {
+        const sink      = DOM.sink as RecordingDOMSink;
+        const component = new Component({ touchAction: 'pan-y' });
+        const root      = component.getElement(true)!;
+
+        const applies = sink.writes.filter(w => w.op === 'apply' && w.args[0] === root);
+        const wipeAt  = applies.findIndex(w =>
+            (w.args[1] as { removeAttr?: string[] }).removeAttr?.includes('style'));
+
+        expect(wipeAt).toBeGreaterThanOrEqual(0);
+
+        const replayed = applies.slice(wipeAt + 1).some(w =>
+            (w.args[1] as { style?: Record<string, string> }).style?.touchAction === 'pan-y');
+
+        expect(replayed).toBe(true);
+    });
+
+    it('keeps reporting the caller value through getTouchAction', () => {
+        const component = new Component({ touchAction: 'pan-y' });
+        component.getElement(true);
+
+        expect(component.getTouchAction()).toBe('pan-y');
+    });
+});

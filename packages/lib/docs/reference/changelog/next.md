@@ -64,6 +64,12 @@ runtime still recomputes the field unconditionally, unchanged from before.
 No consumer action is needed unless code relied on the option being
 silently ignored.
 
+`Scrollbar` previously ignored a caller-supplied `touchAction` option: its
+`init()` always painted `touchAction: "none"` after construction had already
+applied the option's value. Passing `touchAction` now works as documented;
+the default resting behaviour (`touchAction: "none"`) is unchanged. No
+consumer action is needed unless code relied on the option being silently
+ignored.
 ### Button defaults
 
 `Button` painted its resting background with a hardcoded token instead of a

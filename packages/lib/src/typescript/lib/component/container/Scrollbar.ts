@@ -4,7 +4,6 @@ import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
-import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { AutoRepeat } from "~/core/AutoRepeat.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -303,6 +302,7 @@ class ScrollArrowButton extends Component {
 
 const _defaultScrollbarOptions: Partial<ScrollbarOptions> = {
     backgroundColor: "var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))",
+    touchAction:     "none",
 };
 
 /**
@@ -502,20 +502,6 @@ class Scrollbar extends Component<ScrollbarOptions> {
     private _onThumbMouseOut = (): void => {
         this._thumb.setBackgroundColor("var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))");
     };
-
-    /**
-     * Initializes the scrollbar element and sets `touch-action: none` so the
-     * browser doesn't try to page-scroll when the user drags on the track.
-     *
-     * @param element - Optional. The HTMLElement to initialize with.
-     */
-    protected init(element?: Handle): this {
-        super.init(element);
-
-        this.setTouchAction("none");
-
-        return this;
-    }
 
     /**
      * Registers a listener for one of this scrollbar's events.
