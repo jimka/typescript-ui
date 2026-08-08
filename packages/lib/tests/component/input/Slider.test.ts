@@ -12,6 +12,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { Slider } from '~/component/input/Slider';
 import { Container } from '~/core/Container';
 import { Insets } from '~/primitive/Insets';
+import { UNBOUNDED } from '~/primitive/Size';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -110,6 +111,60 @@ describe('Slider getters and deprecated aliases', () => {
         expect(s.getMaxValue()).toBe(90);
         expect(s.getMin()).toBe(10);
         expect(s.getMax()).toBe(90);
+    });
+});
+
+describe('Slider orientation sizing', () => {
+    it('defaults to the horizontal preferred/max size', () => {
+        const s = new Slider();
+
+        expect(s.getPreferredSizeConstraint()).toEqual({ width: 200, height: 16 });
+        expect(s.getMaxSizeConstraint()).toEqual({ width: UNBOUNDED, height: 16 });
+    });
+
+    it('applies the vertical preferred/max size for { orientation: "vertical" }', () => {
+        const s = new Slider({ orientation: 'vertical' });
+
+        expect(s.getPreferredSizeConstraint()).toEqual({ width: 16, height: 200 });
+        expect(s.getMaxSizeConstraint()).toEqual({ width: 16, height: UNBOUNDED });
+    });
+
+    it('honours a construction-time preferredSize override, leaving maxSize at its default', () => {
+        const s = new Slider({ preferredSize: { width: 300, height: 40 } });
+
+        expect(s.getPreferredSizeConstraint()).toEqual({ width: 300, height: 40 });
+        expect(s.getMaxSizeConstraint()).toEqual({ width: UNBOUNDED, height: 16 });
+    });
+
+    it('honours a construction-time maxSize override, leaving preferredSize at its default', () => {
+        const s = new Slider({ maxSize: { width: 500, height: 50 } });
+
+        expect(s.getPreferredSizeConstraint()).toEqual({ width: 200, height: 16 });
+        expect(s.getMaxSizeConstraint()).toEqual({ width: 500, height: 50 });
+    });
+
+    it('folds preferredSize independently of orientation, still deriving maxSize from it', () => {
+        const s = new Slider({ orientation: 'vertical', preferredSize: { width: 50, height: 300 } });
+
+        expect(s.getPreferredSizeConstraint()).toEqual({ width: 50, height: 300 });
+        expect(s.getMaxSizeConstraint()).toEqual({ width: 16, height: UNBOUNDED });
+    });
+
+    it('recomputes both fields unconditionally on a runtime setOrientation, dropping a construction-time override', () => {
+        const s = new Slider({ preferredSize: { width: 300, height: 40 }, maxSize: { width: 500, height: 50 } });
+
+        s.setOrientation('vertical');
+
+        expect(s.getPreferredSizeConstraint()).toEqual({ width: 16, height: 200 });
+        expect(s.getMaxSizeConstraint()).toEqual({ width: 16, height: UNBOUNDED });
+    });
+
+    it('recomputes back to the horizontal default after a construction-time vertical override', () => {
+        const s = new Slider({ orientation: 'vertical', maxSize: { width: 999, height: 999 } });
+
+        s.setOrientation('horizontal');
+
+        expect(s.getMaxSizeConstraint()).toEqual({ width: UNBOUNDED, height: 16 });
     });
 });
 

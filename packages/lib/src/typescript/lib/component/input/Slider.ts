@@ -110,12 +110,8 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         super.addComponent(this._track);
         super.addComponent(this._thumb);
 
-        this.setPreferredSize({ width: 200, height: THUMB_SIZE });
-        this.setMaxSize({ width: UNBOUNDED, height: THUMB_SIZE });
-
         this.getAria().setRole("slider");
         this.getAria().setTabIndex(0);
-        this.getAria().setOrientation("horizontal");
         this.getAria().setValueMin(DEFAULT_MIN);
         this.getAria().setValueMax(DEFAULT_MAX);
         this.getAria().setValueNow(DEFAULT_MIN);
@@ -138,9 +134,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             this.applyMax(this._options.max);
         }
 
-        if (this._options.orientation !== undefined) {
-            this.applyOrientation(this._options.orientation);
-        }
+        this.applyOrientation(this.getOrientation(), this._options);
 
         if (this._options.value !== undefined) {
             const snapped = this.snap(this._options.value);
@@ -715,17 +709,34 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
 
     /**
      * Reflects the orientation in ARIA, swaps the preferred size between
-     * landscape and portrait, and forces a layout.
+     * landscape and portrait, and forces a layout. A caller-supplied
+     * `preferredSize` / `maxSize` wins over the orientation-derived default.
+     *
+     * @param orientation - `"horizontal"` or `"vertical"`.
+     * @param options - Passed only from the constructor, so a caller-supplied
+     *   `preferredSize` / `maxSize` wins there; every runtime caller (the public
+     *   {@link setOrientation}) omits it, so both are always recomputed from
+     *   `orientation`.
      */
-    private applyOrientation(orientation: AxisOrientation): void {
+    private applyOrientation(orientation: AxisOrientation, options?: SliderOptions): void {
         this.getAria().setOrientation(orientation);
 
-        if (orientation === "horizontal") {
-            this.setPreferredSize({ width: 200, height: THUMB_SIZE });
-            this.setMaxSize({ width: UNBOUNDED, height: THUMB_SIZE });
+        const horizontal = orientation === "horizontal";
+
+        if (options?.preferredSize !== undefined) {
+            this.setPreferredSize(options.preferredSize);
         } else {
-            this.setPreferredSize({ width: THUMB_SIZE, height: 200 });
-            this.setMaxSize({ width: THUMB_SIZE, height: UNBOUNDED });
+            this.setPreferredSize(horizontal
+                ? { width: 200, height: THUMB_SIZE }
+                : { width: THUMB_SIZE, height: 200 });
+        }
+
+        if (options?.maxSize !== undefined) {
+            this.setMaxSize(options.maxSize);
+        } else {
+            this.setMaxSize(horizontal
+                ? { width: UNBOUNDED, height: THUMB_SIZE }
+                : { width: THUMB_SIZE, height: UNBOUNDED });
         }
 
         this.scheduleLayout();

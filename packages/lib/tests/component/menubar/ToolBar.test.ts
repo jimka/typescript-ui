@@ -59,6 +59,35 @@ describe('ToolBar orientation', () => {
     it('applies an { orientation: "vertical" } option', () => {
         expect(new ToolBar({ orientation: 'vertical' }).getOrientation()).toBe('vertical');
     });
+    it('defaults to a bottom border rule', () => {
+        expect(new ToolBar().getBorder()).toEqual({
+            borderBottom: '1px solid var(--ts-ui-toolbar-border, rgb(220, 220, 220))',
+        });
+    });
+    it('derives a right border rule for { orientation: "vertical" }', () => {
+        expect(new ToolBar({ orientation: 'vertical' }).getBorder()).toEqual({
+            borderRight: '1px solid var(--ts-ui-toolbar-border, rgb(220, 220, 220))',
+        });
+    });
+    it('honours a construction-time border override on the default orientation', () => {
+        const bar = new ToolBar({ border: { borderBottom: '2px dashed red' } });
+
+        expect(bar.getBorder()).toEqual({ borderBottom: '2px dashed red' });
+    });
+    it('honours a construction-time border override alongside an explicit orientation', () => {
+        const bar = new ToolBar({ orientation: 'vertical', border: { borderLeft: '3px solid blue' } });
+
+        expect(bar.getBorder()).toEqual({ borderLeft: '3px solid blue' });
+    });
+    it('recomputes the border unconditionally on a runtime setOrientation, dropping a construction-time override', () => {
+        const bar = new ToolBar({ border: { borderBottom: '2px dashed red' } });
+
+        bar.setOrientation('vertical');
+
+        expect(bar.getBorder()).toEqual({
+            borderRight: '1px solid var(--ts-ui-toolbar-border, rgb(220, 220, 220))',
+        });
+    });
 });
 
 describe('ToolBar compact', () => {

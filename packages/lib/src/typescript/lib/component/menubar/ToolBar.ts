@@ -193,7 +193,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
         // These fields all carry a class default and seed construction-time
         // backing state, so dispatch the caller value or the class default —
         // never leave the setter unfired (mirrors Panel.setAutoScroll).
-        this.setOrientation(options.orientation ?? this.getOrientation());
+        this.applyOrientation(options.orientation ?? this.getOrientation(), options);
         this.setCompact(options.compact ?? this.isCompact());
         // Dispatched before `overflow` so the trigger, created on entry to
         // `"menu"` mode, is positioned on the configured side from the start.
@@ -219,8 +219,26 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
      * @returns This component, for method chaining.
      */
     setOrientation(value: AxisOrientation): this {
+        this.applyOrientation(value);
+
+        return this;
+    }
+
+    /**
+     * Recomputes the layout manager, ARIA orientation, and trailing-edge border
+     * for `value`. A no-op when `value` matches the current orientation.
+     *
+     * @param value - The new orientation.
+     * @param options - Passed only from the constructor's `applyOptions`
+     *   dispatch; when its `border` is set, that value wins over the
+     *   orientation-derived border so a caller-supplied `border` option
+     *   survives construction. Every runtime caller (the public
+     *   {@link setOrientation}) omits it, so the border is always recomputed
+     *   from `value`.
+     */
+    private applyOrientation(value: AxisOrientation, options?: ToolBarOptions): void {
         if (value === this._orientation) {
-            return this;
+            return;
         }
 
         const oldLM = this.getLayoutManager();
@@ -240,6 +258,11 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
 
         this.getAria().setOrientation(value);
 
+        if (options?.border !== undefined) {
+            this.setBorder(options.border);
+            return;
+        }
+
         const ruleColor = "var(--ts-ui-toolbar-border, rgb(220, 220, 220))";
 
         if (value === "horizontal") {
@@ -247,8 +270,6 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
         } else {
             this.setBorder({ borderRight: `1px solid ${ruleColor}` });
         }
-
-        return this;
     }
 
     /**
