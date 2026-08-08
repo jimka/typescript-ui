@@ -52,6 +52,18 @@ current theme on every call and remains non-configurable. No consumer
 action is needed unless code relied on the width option being silently
 ignored.
 
+A related follow-up fixes the same bug shape on two components whose
+orientation-recompute method also doubles as their runtime API, which the
+sweep above couldn't reach without breaking runtime orientation switching:
+`Slider`'s orientation-conditional `preferredSize` / `maxSize` and
+`ToolBar`'s orientation-conditional `border` previously ignored a
+caller-supplied override at construction time, always deriving the value
+from `orientation` instead. Passing `preferredSize`, `maxSize`, or `border`
+alongside `orientation` now works as documented; calling `setOrientation` at
+runtime still recomputes the field unconditionally, unchanged from before.
+No consumer action is needed unless code relied on the option being
+silently ignored.
+
 ### Button defaults
 
 `Button` painted its resting background with a hardcoded token instead of a
