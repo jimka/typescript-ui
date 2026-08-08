@@ -92,7 +92,11 @@ actually needs it, and only after `Markdown` completes its first connected,
 displayed layout. A `Markdown` instance with no fenced code, or only
 unsupported languages, triggers no import and pays no extra bundle cost. A
 `Markdown` constructed with `displayed: false` (e.g. a collapsed "show
-source" panel) defers the import until it is shown.
+source" panel) defers the import until it is shown. Each block is further
+deferred individually: it upgrades only once its wrapper comes within one
+viewport-height of the visible area, so a long document — a generated API
+page with hundreds of fenced blocks, for example — pays only for the blocks
+the reader actually scrolls to.
 
 ### Fallback for unsupported tokens
 

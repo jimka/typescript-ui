@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import { Event } from "~/core/Event.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
@@ -87,6 +88,18 @@ const CODE_BLOCK_MAX_AUTO_ROWS = 20;
  * comes with hard numbers instead of a cold trail.
  */
 const GUESS_HEIGHT_CORRECTION_WARN_PX = 8;
+
+/**
+ * How many viewport-heights below the fold a fenced block's `CodeEditor`
+ * upgrade starts before scrolling actually reaches it (see
+ * {@link Markdown.isBlockNearViewport}) — applied below the fold only, never
+ * above. One viewport-height is roughly 1.5 seconds of runway at a typical
+ * 900px pane and 60fps scroll speed: enough that a reader scrolling down
+ * never catches an unhighlighted block, while costing at most a screenful of
+ * extra upgrades over the strict minimum. A fixed pixel margin was rejected
+ * because it would make a tall monitor prefetch proportionally less.
+ */
+const CODE_UPGRADE_LOOKAHEAD_VIEWPORTS = 1;
 
 /**
  * Resolves a fenced code block's info-string language to the `CodeEditor`
@@ -451,11 +464,14 @@ interface PendingCodeUpgrade extends CodeUpgradeIdentity {
  * (`js`/`ts`/`json`/`html`/`sql`/`markdown`, plus aliases) upgrades from the
  * plain `<pre>` to a live, read-only, syntax-highlighted `CodeEditor` once it
  * loads; an unrecognised language, or no info string, keeps the plain
- * `<pre>`. The upgrade is lazy —
+ * `<pre>`. The upgrade is lazy in two ways —
  * `CodeEditor`'s CodeMirror dependency loads through a dynamic import that
  * fires only when a fenced block actually needs it, deferred until this
- * component's first connected, displayed layout — so a `Markdown` with no
- * fenced code (or only unsupported languages) pays no extra bundle cost.
+ * component's first connected, displayed layout, and further deferred per
+ * block until its wrapper comes within one viewport-height of the visible
+ * area — so a `Markdown` with no fenced code (or only unsupported languages)
+ * pays no extra bundle cost, and a long document upgrades only the blocks
+ * the reader actually scrolls to.
  *
  * Links render as plain `<a href target="_blank" rel="noopener noreferrer">`
  * with native navigation; the component exposes no event surface in v1.
@@ -517,6 +533,34 @@ class Markdown extends Component<MarkdownOptions> {
     private _awaitingVisibilityKickoffs: QueuedCodeUpgrade[] = [];
 
     /**
+     * Supported-language fenced blocks whose dynamic import hasn't started
+     * because their wrapper is not yet within {@link CODE_UPGRADE_LOOKAHEAD_VIEWPORTS}
+     * of the viewport; see {@link isBlockNearViewport} and {@link onViewportPass}.
+     */
+    private _awaitingViewportKickoffs: QueuedCodeUpgrade[] = [];
+
+    /** Whether the scroll/resize viewport listeners are currently registered. */
+    private _viewportWatchArmed = false;
+
+    /** Whether a viewport pass is already queued on the next layout flush. */
+    private _viewportPassScheduled = false;
+
+    /** Whether a coalesced content-height measure is already queued. */
+    private _measureScheduled = false;
+
+    /**
+     * Arrow field, not a prototype method: {@link Component.afterNextLayout}
+     * calls its callback bare with no receiver.
+     */
+    private readonly handleViewportPass: () => void = () => this.onViewportPass();
+
+    /**
+     * Arrow field, not a prototype method: {@link Component.afterNextLayout}
+     * calls its callback bare with no receiver.
+     */
+    private readonly handleScheduledMeasure: () => void = () => this.onScheduledMeasure();
+
+    /**
      * Bumped by {@link clearContent}; a resolved dynamic import compares its
      * captured generation against this to detect a render it no longer
      * belongs to (a later {@link setMarkdown}, or disposal), mirroring
@@ -574,8 +618,10 @@ class Markdown extends Component<MarkdownOptions> {
         this.setFontScale(this._options.fontScale ?? 1);
 
         // Prose metrics (font, spacing) are theme-bound, so a theme swap can
-        // change the rendered height — re-measure when it fires (mirrors Text).
-        this._unsubscribeTheme = ThemeManager.onThemeChange(() => this.measureContentHeight());
+        // change the rendered height, and `--ts-ui-md-max-measure`'s `ch` unit
+        // means it can change a code block's width too — react to both when
+        // it fires (mirrors Text).
+        this._unsubscribeTheme = ThemeManager.onThemeChange(() => this.onThemeChanged());
 
         // First measurement rides the first connected layout: only then is the
         // element attached and width-assigned, so the `scrollHeight` read is
@@ -782,10 +828,21 @@ class Markdown extends Component<MarkdownOptions> {
         super.setWidth(width);
 
         if (changed) {
+            this.resyncCodeEditorWidths();
             this.measureContentHeight();
         }
 
         return this;
+    }
+
+    /**
+     * Reacts to a theme swap: re-syncs live editors' widths (a `ch`-unit
+     * `--ts-ui-md-max-measure` moves with the font) and re-measures the
+     * content height (prose metrics are theme-bound).
+     */
+    private onThemeChanged(): void {
+        this.resyncCodeEditorWidths();
+        this.measureContentHeight();
     }
 
     /**
@@ -821,12 +878,12 @@ class Markdown extends Component<MarkdownOptions> {
         // LayoutManager.commitBounds, which disables auto-commit
         // (setAutoCommitStyle(false)) for the duration of a layout pass.
         // Markdown.setWidth calls measureContentHeight synchronously from
-        // inside that window, so without this flush syncCodeEditors below reads
-        // each wrapper's clientWidth against the previous frame's width. Same
-        // fix as Panel.doLayout's pre-measureScrollbarGutter flush.
+        // inside that window, so without this flush the scrollHeight read
+        // below would measure against the previous frame's width. Same fix
+        // as Panel.doLayout's pre-measureScrollbarGutter flush.
         this.commitElementStyle();
 
-        this.syncCodeEditors();
+        this.flushPendingCodeUpgrades();
 
         // Read the true content height, not the committed box. `scrollHeight` is
         // floored at the element's own `clientHeight`, so measuring the live
@@ -918,6 +975,8 @@ class Markdown extends Component<MarkdownOptions> {
         this._codeEditors.length = 0;
         this._pendingCodeUpgrades.length = 0;
         this._awaitingVisibilityKickoffs.length = 0;
+        this._awaitingViewportKickoffs.length = 0;
+        this.disarmViewportWatch();
     }
 
     /**
@@ -991,8 +1050,9 @@ class Markdown extends Component<MarkdownOptions> {
 
     /**
      * Re-pins the `ts-ui-md-code-host` wrapper's height to a live CodeEditor's
-     * own auto-grown height, then re-measures Markdown's own content height so
-     * the taller/shorter block folds into the reported size. Wired in
+     * own auto-grown height synchronously, then schedules a coalesced
+     * re-measure of Markdown's own content height (see {@link scheduleContentMeasure})
+     * so the taller/shorter block folds into the reported size. Wired in
      * {@link applyCodeEditorUpgrade} onto each editor's `"heightchange"` event.
      *
      * @param wrapper - The wrapper the fired editor sits in.
@@ -1000,27 +1060,16 @@ class Markdown extends Component<MarkdownOptions> {
      */
     private handleCodeEditorHeightChange(wrapper: Handle, height: number): void {
         DOM.sink.apply(wrapper, { style: { height: height + "px" } });
-        this.measureContentHeight();
+        this.scheduleContentMeasure();
     }
 
     /**
-     * Flushes any {@link PendingCodeUpgrade} that has become visible since it
-     * was queued, then re-syncs every already-applied editor's width from its
-     * wrapper's current `clientWidth` — what keeps a code block's width
-     * tracking `Markdown`'s own width on resize. Called as the first line of
-     * {@link measureContentHeight}, so a freshly-applied wrapper's height is
-     * committed before `Markdown`'s own content height is measured.
-     *
-     * @remarks The resync loop is skipped entirely while not effectively
-     * visible (e.g. `measureContentHeight` still fires on a theme change for
-     * a hidden `Markdown`): a hidden subtree's `clientWidth` reads `0`, and
-     * writing that through would collapse a previously-applied editor with
-     * nothing to correct it on re-show (no width actually changes on
-     * re-show, so `setWidth`'s "only re-measure when changed" guard would
-     * never re-run this method). Skipping leaves the last-good width intact
-     * instead.
+     * Applies any {@link PendingCodeUpgrade} that has become visible since it
+     * was queued. Called as the first line of {@link measureContentHeight}, so
+     * a freshly-applied wrapper's height is committed before `Markdown`'s own
+     * content height is measured.
      */
-    private syncCodeEditors(): void {
+    private flushPendingCodeUpgrades(): void {
         this._pendingCodeUpgrades = this._pendingCodeUpgrades.filter((pending) => {
             if (!this.isEffectivelyVisible()) {
                 return true;
@@ -1033,6 +1082,24 @@ class Markdown extends Component<MarkdownOptions> {
 
             return false;
         });
+    }
+
+    /**
+     * Re-syncs every already-applied editor's width from its wrapper's
+     * current `clientWidth` — what keeps a code block's width tracking
+     * `Markdown`'s own width. Called only from the two things that can
+     * actually change a wrapper's width: {@link setWidth} and the
+     * theme-change handler (a font swap moves the `ch`-unit max-measure).
+     *
+     * @remarks Skipped entirely while not effectively visible: a hidden
+     * subtree's `clientWidth` reads `0`, and writing that through would
+     * collapse a previously-applied editor with nothing to correct it on
+     * re-show (no width actually changes on re-show, so `setWidth`'s "only
+     * re-measure when changed" guard would never re-run this method).
+     * Skipping leaves the last-good width intact instead.
+     */
+    private resyncCodeEditorWidths(): void {
+        this.commitElementStyle();
 
         if (!this.isEffectivelyVisible()) {
             return;
@@ -1044,18 +1111,23 @@ class Markdown extends Component<MarkdownOptions> {
     }
 
     /**
-     * Starts a fenced block's `CodeEditor` upgrade if `Markdown` is currently
-     * effectively visible, or queues it in {@link _awaitingVisibilityKickoffs}
-     * otherwise — flushed later by {@link onEffectiveVisibilityChange} once
-     * visibility flips to `true`, edge-triggered rather than polled. This is
-     * the single check-once gate the deferred kickoff registered in
-     * {@link appendCode} runs through: `onFirstLayout` alone only guarantees
-     * "connected + displayed" for a component's very first render — once the
-     * element is already connected (e.g. a second `setMarkdown()` on a
-     * previously-shown, now-hidden instance), it takes
-     * `Component.afterNextLayout`'s fast path, which fires unconditionally on
-     * the next flush with no displayed-gating — so the visibility check has
-     * to happen here, not be assumed from having been called at all.
+     * Starts a fenced block's `CodeEditor` upgrade once it clears two gates in
+     * series. First, effective visibility: if `Markdown` is not currently
+     * effectively visible, the entry queues in {@link _awaitingVisibilityKickoffs},
+     * flushed later by {@link onEffectiveVisibilityChange} once visibility
+     * flips to `true`, edge-triggered rather than polled. This is the single
+     * check-once gate the deferred kickoff registered in {@link appendCode}
+     * runs through: `onFirstLayout` alone only guarantees "connected +
+     * displayed" for a component's very first render — once the element is
+     * already connected (e.g. a second `setMarkdown()` on a previously-shown,
+     * now-hidden instance), it takes `Component.afterNextLayout`'s fast path,
+     * which fires unconditionally on the next flush with no displayed-gating
+     * — so the visibility check has to happen here, not be assumed from
+     * having been called at all. Second, proximity to the viewport: once
+     * effectively visible, an entry whose wrapper is not yet within
+     * {@link CODE_UPGRADE_LOOKAHEAD_VIEWPORTS} of the viewport queues in
+     * {@link _awaitingViewportKickoffs} instead, flushed by {@link onViewportPass}
+     * as scrolling or resizing brings it into range.
      *
      * @param entry - The fenced block's placeholder handles, text, mapped
      *   language, and the render generation it belongs to.
@@ -1067,7 +1139,141 @@ class Markdown extends Component<MarkdownOptions> {
             return;
         }
 
+        if (!this.isBlockNearViewport(entry.wrapper)) {
+            this._awaitingViewportKickoffs.push(entry);
+            this.armViewportWatch();
+
+            return;
+        }
+
         void this.loadCodeEditorUpgrade(entry.wrapper, entry.pre, entry.code, entry.text, entry.languageId, entry.generation);
+    }
+
+    /**
+     * Tests whether a fenced block's wrapper is close enough to the visible
+     * window to start its `CodeEditor` upgrade now — not entirely above the
+     * top of the window, and not further than {@link CODE_UPGRADE_LOOKAHEAD_VIEWPORTS}
+     * viewport-heights below the fold. The lookahead applies below the fold
+     * only: swapping the placeholder for a live editor changes the block's
+     * height, and giving the margin no upward component means that in
+     * ordinary downward reading every upgrade happens at or below the
+     * reader's position, so the movement lands on off-screen content.
+     *
+     * @param wrapper - The fenced block's `ts-ui-md-code-host` wrapper.
+     * @returns `true` when the wrapper is within range of the viewport.
+     */
+    private isBlockNearViewport(wrapper: Handle): boolean {
+        const rect          = DOM.source.getElementRect(wrapper);
+        const viewportHeight = DOM.source.getViewportSize().height;
+        const cutoff         = viewportHeight * (1 + CODE_UPGRADE_LOOKAHEAD_VIEWPORTS);
+
+        return rect.bottom >= 0 && rect.top <= cutoff;
+    }
+
+    /**
+     * Registers the scroll/resize viewport listeners that drive {@link onViewportPass},
+     * if not already armed. Idempotent — safe to call from every enqueue.
+     */
+    private armViewportWatch(): void {
+        if (this._viewportWatchArmed) {
+            return;
+        }
+
+        this._viewportWatchArmed = true;
+        Event.addViewportListener(this, "scroll", this.handleViewportChange);
+        Event.addViewportListener(this, "resize", this.handleViewportChange);
+    }
+
+    /**
+     * Removes the scroll/resize viewport listeners registered by
+     * {@link armViewportWatch}, once nothing remains queued to watch for.
+     */
+    private disarmViewportWatch(): void {
+        if (!this._viewportWatchArmed) {
+            return;
+        }
+
+        this._viewportWatchArmed = false;
+        Event.removeViewportListener(this, "scroll", this.handleViewportChange);
+        Event.removeViewportListener(this, "resize", this.handleViewportChange);
+    }
+
+    /**
+     * Plain prototype-method reference passed to {@link Event.addViewportListener} /
+     * {@link Event.removeViewportListener}, which invoke it with this
+     * component bound as `this` — unlike {@link handleViewportPass}, this
+     * cannot be an arrow field (see the class-level remark on the two
+     * callback shapes).
+     */
+    private handleViewportChange(): void {
+        this.scheduleViewportPass();
+    }
+
+    /**
+     * Coalesces a burst of scroll/resize events into one {@link onViewportPass}
+     * per layout flush.
+     */
+    private scheduleViewportPass(): void {
+        if (this._viewportPassScheduled || this._awaitingViewportKickoffs.length === 0) {
+            return;
+        }
+
+        this._viewportPassScheduled = true;
+        Component.afterNextLayout(this.handleViewportPass);
+    }
+
+    /**
+     * Walks {@link _awaitingViewportKickoffs} in document order, starting the
+     * upgrade for every entry within range of the viewport and breaking at
+     * the first one past the lookahead cutoff (later entries are further
+     * down, since fenced blocks are appended in document order). Reads every
+     * entry's rect before starting any upgrade, so the pass costs at most one
+     * forced reflow rather than interleaving reads with the layout-affecting
+     * writes an upgrade triggers.
+     */
+    private onViewportPass(): void {
+        this._viewportPassScheduled = false;
+
+        if (this._awaitingViewportKickoffs.length === 0) {
+            this.disarmViewportWatch();
+
+            return;
+        }
+
+        if (!this.isEffectivelyVisible()) {
+            return;
+        }
+
+        this.commitElementStyle();
+
+        const viewportHeight = DOM.source.getViewportSize().height;
+        const cutoff         = viewportHeight * (1 + CODE_UPGRADE_LOOKAHEAD_VIEWPORTS);
+        const queue          = this._awaitingViewportKickoffs;
+        const due:       QueuedCodeUpgrade[] = [];
+        const remaining: QueuedCodeUpgrade[] = [];
+
+        for (let i = 0; i < queue.length; i++) {
+            const entry = queue[i]!;
+            const rect  = DOM.source.getElementRect(entry.wrapper);
+
+            if (rect.top > cutoff) {
+                remaining.push(...queue.slice(i));
+
+                break;
+            }
+
+            (rect.bottom >= 0 ? due : remaining).push(entry);
+        }
+
+        this._awaitingViewportKickoffs = remaining;
+
+        if (remaining.length === 0) {
+            this.disarmViewportWatch();
+        }
+
+        for (const entry of due) {
+            void this.loadCodeEditorUpgrade(entry.wrapper, entry.pre, entry.code, entry.text, entry.languageId, entry.generation);
+        }
     }
 
     /**
@@ -1135,10 +1341,38 @@ class Markdown extends Component<MarkdownOptions> {
 
         if (this.isEffectivelyVisible()) {
             this.applyCodeEditorUpgrade(CodeEditorClass, wrapper, pre, code, text, languageId);
-            this.measureContentHeight();
+            this.scheduleContentMeasure();
         } else {
             this._pendingCodeUpgrades.push({ CodeEditorClass, wrapper, pre, code, text, languageId, generation });
         }
+    }
+
+    /**
+     * Coalesces a burst of upgrade-driven re-measures — {@link loadCodeEditorUpgrade}
+     * and {@link handleCodeEditorHeightChange} each fire once per upgraded
+     * block — into one {@link measureContentHeight} call per layout flush,
+     * rather than one full-document reflow per block.
+     */
+    private scheduleContentMeasure(): void {
+        if (this._measureScheduled) {
+            return;
+        }
+
+        this._measureScheduled = true;
+        Component.afterNextLayout(this.handleScheduledMeasure);
+    }
+
+    /**
+     * Runs the coalesced {@link measureContentHeight} queued by
+     * {@link scheduleContentMeasure}, then re-evaluates the viewport queue:
+     * the measure's reflow can move a still-queued block relative to the
+     * fold without any scroll or resize event firing to trigger the pass
+     * itself.
+     */
+    private onScheduledMeasure(): void {
+        this._measureScheduled = false;
+        this.measureContentHeight();
+        this.scheduleViewportPass();
     }
 
     /**

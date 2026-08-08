@@ -4,6 +4,7 @@ import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { Component } from '~/core/Component';
 import { Container } from '~/core/Container';
+import { Event } from '~/core/Event';
 import { Fit } from '~/layout/Fit';
 import { ThemeManager, DarkTheme, ModernTheme } from '~/core/Theme';
 import { installTestDOM, setScrollExtent, type RecordingDOMSink } from '../../dom/TestDOM';
@@ -1087,7 +1088,7 @@ describe('Markdown.applyCodeEditorUpgrade (private, called directly)', () => {
         md.getElement(true);
 
         const anyMd = md as any;
-        const measureSpy = vi.spyOn(anyMd, 'measureContentHeight');
+        const scheduleMeasureSpy = vi.spyOn(anyMd, 'scheduleContentMeasure');
         const wrapper = anyMd.create('div');
         const pre     = anyMd.create('pre');
         const code    = anyMd.create('code');
@@ -1101,7 +1102,7 @@ describe('Markdown.applyCodeEditorUpgrade (private, called directly)', () => {
         expect(editor.heightChangeListener).not.toBeNull();
         expect(editor.autoHeightMaxRows).toBe(20); // Markdown.ts's CODE_BLOCK_MAX_AUTO_ROWS
 
-        measureSpy.mockClear();
+        scheduleMeasureSpy.mockClear();
         editor.heightChangeListener!({ height: 360 });
 
         const heightWrite = sink.writes.find(
@@ -1110,7 +1111,7 @@ describe('Markdown.applyCodeEditorUpgrade (private, called directly)', () => {
         );
 
         expect(heightWrite).toBeDefined();
-        expect(measureSpy).toHaveBeenCalledOnce();
+        expect(scheduleMeasureSpy).toHaveBeenCalledOnce();
         warnSpy.mockRestore();
     });
 
@@ -1197,7 +1198,7 @@ function buildCodeHostTrio(md: Markdown): { wrapper: Handle; pre: Handle; code: 
     return { wrapper, pre, code };
 }
 
-describe('Markdown.syncCodeEditors (private, called directly)', () => {
+describe('Markdown.flushPendingCodeUpgrades (private, called directly)', () => {
     it('leaves a pending upgrade in place while not effectively visible', () => {
         const md = new Markdown('hello');
         md.getElement(true);
@@ -1210,7 +1211,7 @@ describe('Markdown.syncCodeEditors (private, called directly)', () => {
         });
 
         vi.spyOn(md, 'isEffectivelyVisible').mockReturnValue(false);
-        anyMd.syncCodeEditors();
+        anyMd.flushPendingCodeUpgrades();
 
         expect(anyMd._pendingCodeUpgrades).toHaveLength(1);
         expect(anyMd._codeEditors).toHaveLength(0);
@@ -1234,12 +1235,14 @@ describe('Markdown.syncCodeEditors (private, called directly)', () => {
         });
 
         vi.spyOn(md, 'isEffectivelyVisible').mockReturnValue(true);
-        anyMd.syncCodeEditors();
+        anyMd.flushPendingCodeUpgrades();
 
         expect(anyMd._pendingCodeUpgrades).toHaveLength(0);
         expect(anyMd._codeEditors).toHaveLength(1);
     });
+});
 
+describe('Markdown.resyncCodeEditorWidths (private, called directly)', () => {
     it('re-syncs an already-applied editor width from its wrapper clientWidth', () => {
         vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
             scrollTop: 0, scrollLeft: 0,
@@ -1255,7 +1258,7 @@ describe('Markdown.syncCodeEditors (private, called directly)', () => {
         const setWidthSpy = vi.spyOn(editor, 'setWidth');
         anyMd._codeEditors.push({ editor, wrapper });
 
-        anyMd.syncCodeEditors();
+        anyMd.resyncCodeEditorWidths();
 
         expect(setWidthSpy).toHaveBeenCalledWith(640);
     });
@@ -1280,14 +1283,37 @@ describe('Markdown.syncCodeEditors (private, called directly)', () => {
         anyMd._codeEditors.push({ editor, wrapper });
 
         vi.spyOn(md, 'isEffectivelyVisible').mockReturnValue(false);
-        anyMd.syncCodeEditors();
+        anyMd.resyncCodeEditorWidths();
+
+        expect(setWidthSpy).not.toHaveBeenCalled();
+    });
+
+    it('applies measureContentHeight() without calling setWidth on a live editor', () => {
+        // Pins the split: the width resync used to run unconditionally as part
+        // of measureContentHeight before this method existed; now a bare
+        // measureContentHeight() must not touch editor widths at all.
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockReturnValue({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 240, scrollHeight: 240,
+            clientWidth: 640, clientHeight: 240,
+        });
+
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper } = buildCodeHostTrio(md);
+        const editor = new FakeCodeEditor('x', { readOnly: true, language: 'javascript' });
+        const setWidthSpy = vi.spyOn(editor, 'setWidth');
+        anyMd._codeEditors.push({ editor, wrapper });
+
+        anyMd.measureContentHeight();
 
         expect(setWidthSpy).not.toHaveBeenCalled();
     });
 });
 
-describe('Markdown.measureContentHeight — commitBounds width-flush ordering', () => {
-    it('flushes a pending width write before syncCodeEditors reads wrapper geometry', () => {
+describe('Markdown.resyncCodeEditorWidths — commitBounds width-flush ordering', () => {
+    it('flushes a pending width write before resyncCodeEditorWidths reads wrapper geometry', () => {
         const md = new Markdown('hello');
         md.getElement(true);
         const anyMd = md as any;
@@ -1305,7 +1331,7 @@ describe('Markdown.measureContentHeight — commitBounds width-flush ordering', 
         });
 
         // Mirrors LayoutManager.commitBounds: Markdown.setWidth calls
-        // measureContentHeight synchronously from inside this window.
+        // resyncCodeEditorWidths synchronously from inside this window.
         md.setAutoCommitStyle(false);
         md.setWidth(300);
         md.setAutoCommitStyle(true);
@@ -1365,6 +1391,195 @@ describe('Markdown.loadCodeEditorUpgrade (private, called directly)', () => {
     });
 });
 
+/** Seeds a wrapper's rect via the recording sink's inline-style geometry fold. */
+function seedRect(wrapper: Handle, top: number, height = 80): void {
+    DOM.sink.apply(wrapper, { style: { left: '0px', top: `${top}px`, width: '600px', height: `${height}px` } });
+}
+
+describe('Markdown viewport gate (private, called directly)', () => {
+    it('a block seeded beyond the lookahead cutoff queues instead of loading', () => {
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper, pre, code } = buildCodeHostTrio(md);
+        seedRect(wrapper, 5000);
+
+        const loadSpy = vi.spyOn(anyMd, 'loadCodeEditorUpgrade').mockImplementation(() => Promise.resolve());
+        const entry = { wrapper, pre, code, text: 'x', languageId: 'javascript', generation: anyMd._renderGeneration };
+
+        anyMd.startCodeEditorImport(entry);
+
+        expect(loadSpy).not.toHaveBeenCalled();
+        expect(anyMd._awaitingViewportKickoffs).toHaveLength(1);
+    });
+
+    it('a block seeded within the visible window loads immediately', () => {
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper, pre, code } = buildCodeHostTrio(md);
+        seedRect(wrapper, 200);
+
+        const loadSpy = vi.spyOn(anyMd, 'loadCodeEditorUpgrade').mockImplementation(() => Promise.resolve());
+        const entry = { wrapper, pre, code, text: 'x', languageId: 'javascript', generation: anyMd._renderGeneration };
+
+        anyMd.startCodeEditorImport(entry);
+
+        expect(loadSpy).toHaveBeenCalledTimes(1);
+        expect(anyMd._awaitingViewportKickoffs).toHaveLength(0);
+    });
+
+    it('a block seeded inside the 1600px lookahead loads immediately — the lookahead is live', () => {
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper, pre, code } = buildCodeHostTrio(md);
+        seedRect(wrapper, 1500);
+
+        const loadSpy = vi.spyOn(anyMd, 'loadCodeEditorUpgrade').mockImplementation(() => Promise.resolve());
+        const entry = { wrapper, pre, code, text: 'x', languageId: 'javascript', generation: anyMd._renderGeneration };
+
+        anyMd.startCodeEditorImport(entry);
+
+        expect(loadSpy).toHaveBeenCalledTimes(1);
+        expect(anyMd._awaitingViewportKickoffs).toHaveLength(0);
+    });
+
+    it('queueing a block arms the viewport watch', () => {
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper, pre, code } = buildCodeHostTrio(md);
+        seedRect(wrapper, 5000);
+
+        vi.spyOn(anyMd, 'loadCodeEditorUpgrade').mockImplementation(() => Promise.resolve());
+        const entry = { wrapper, pre, code, text: 'x', languageId: 'javascript', generation: anyMd._renderGeneration };
+
+        anyMd.startCodeEditorImport(entry);
+
+        expect(anyMd._viewportWatchArmed).toBe(true);
+        expect(Event._registeredComponentIds()).toContain(md.getId());
+    });
+
+    it('onViewportPass() loads a re-seeded queued block, empties the queue, and disarms the watch', () => {
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper, pre, code } = buildCodeHostTrio(md);
+        seedRect(wrapper, 5000);
+
+        const loadSpy = vi.spyOn(anyMd, 'loadCodeEditorUpgrade').mockImplementation(() => Promise.resolve());
+        const entry = { wrapper, pre, code, text: 'x', languageId: 'javascript', generation: anyMd._renderGeneration };
+
+        anyMd.startCodeEditorImport(entry);
+        expect(anyMd._awaitingViewportKickoffs).toHaveLength(1);
+
+        seedRect(wrapper, 200);
+        anyMd.onViewportPass();
+
+        expect(loadSpy).toHaveBeenCalledTimes(1);
+        expect(anyMd._awaitingViewportKickoffs).toHaveLength(0);
+        expect(anyMd._viewportWatchArmed).toBe(false);
+        expect(Event._registeredComponentIds()).not.toContain(md.getId());
+    });
+
+    it('a queued block fully above the window stays queued after a pass — no upward lookahead', () => {
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper, pre, code } = buildCodeHostTrio(md);
+        seedRect(wrapper, -900, 80); // bottom = -820: fully above the window
+
+        const loadSpy = vi.spyOn(anyMd, 'loadCodeEditorUpgrade').mockImplementation(() => Promise.resolve());
+        const entry = { wrapper, pre, code, text: 'x', languageId: 'javascript', generation: anyMd._renderGeneration };
+
+        anyMd._awaitingViewportKickoffs.push(entry);
+        anyMd.onViewportPass();
+
+        expect(loadSpy).not.toHaveBeenCalled();
+        expect(anyMd._awaitingViewportKickoffs).toHaveLength(1);
+    });
+
+    it('onViewportPass() on a not-effectively-visible Markdown leaves the queue untouched', () => {
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper, pre, code } = buildCodeHostTrio(md);
+        seedRect(wrapper, 200);
+
+        const loadSpy = vi.spyOn(anyMd, 'loadCodeEditorUpgrade').mockImplementation(() => Promise.resolve());
+        const entry = { wrapper, pre, code, text: 'x', languageId: 'javascript', generation: anyMd._renderGeneration };
+
+        anyMd._awaitingViewportKickoffs.push(entry);
+        vi.spyOn(md, 'isEffectivelyVisible').mockReturnValue(false);
+
+        anyMd.onViewportPass();
+
+        expect(loadSpy).not.toHaveBeenCalled();
+        expect(anyMd._awaitingViewportKickoffs).toHaveLength(1);
+    });
+
+    it('the pass breaks at the first out-of-range entry and trusts document order', () => {
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const first  = buildCodeHostTrio(md);
+        const second = buildCodeHostTrio(md);
+        const third  = buildCodeHostTrio(md);
+        seedRect(first.wrapper, 200);
+        seedRect(second.wrapper, 5000);
+        seedRect(third.wrapper, 300); // geometrically eligible, but queued after the 5000 entry
+
+        const loadSpy = vi.spyOn(anyMd, 'loadCodeEditorUpgrade').mockImplementation(() => Promise.resolve());
+        const toEntry = (h: typeof first) => ({
+            wrapper: h.wrapper, pre: h.pre, code: h.code,
+            text: 'x', languageId: 'javascript', generation: anyMd._renderGeneration,
+        });
+
+        anyMd._awaitingViewportKickoffs.push(toEntry(first), toEntry(second), toEntry(third));
+        anyMd.onViewportPass();
+
+        expect(loadSpy).toHaveBeenCalledTimes(1);
+        expect(loadSpy.mock.calls[0]![0]).toBe(first.wrapper);
+        expect(anyMd._awaitingViewportKickoffs).toHaveLength(2);
+    });
+
+    it('dispose() on an instance with a queued block leaves no viewport-listener registration', () => {
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const { wrapper, pre, code } = buildCodeHostTrio(md);
+        seedRect(wrapper, 5000);
+
+        vi.spyOn(anyMd, 'loadCodeEditorUpgrade').mockImplementation(() => Promise.resolve());
+        const entry = { wrapper, pre, code, text: 'x', languageId: 'javascript', generation: anyMd._renderGeneration };
+
+        anyMd.startCodeEditorImport(entry);
+        expect(Event._registeredComponentIds()).toContain(md.getId());
+
+        md.dispose();
+
+        expect(Event._registeredComponentIds()).not.toContain(md.getId());
+    });
+
+    it('coalesces two scheduleContentMeasure() calls into one measureContentHeight() call', () => {
+        const md = new Markdown('hello');
+        md.getElement(true);
+        const anyMd = md as any;
+        const afterNextLayoutSpy = vi.spyOn(Component, 'afterNextLayout');
+        const measureSpy = vi.spyOn(anyMd, 'measureContentHeight');
+
+        anyMd.scheduleContentMeasure();
+        anyMd.scheduleContentMeasure();
+
+        expect(afterNextLayoutSpy).toHaveBeenCalledOnce();
+
+        afterNextLayoutSpy.mock.calls[0]![0](); // run the queued callback, as a real flush would
+
+        expect(measureSpy).toHaveBeenCalledOnce();
+    });
+});
+
 describe('Markdown code editor disposal', () => {
     it('dispose() disposes every live CodeEditor child', () => {
         const md = new Markdown('hello');
@@ -1414,7 +1629,7 @@ describe('Markdown code editor disposal', () => {
         expect(anyMd._pendingCodeUpgrades).toHaveLength(0);
     });
 
-    it('setMarkdown() drops any kickoff still awaiting visibility, queued before the rebuild', () => {
+    it('setMarkdown() drops any kickoff still awaiting visibility or viewport, queued before the rebuild', () => {
         const md = new Markdown('hello');
         md.getElement(true);
         const anyMd = md as any;
@@ -1423,9 +1638,18 @@ describe('Markdown code editor disposal', () => {
         anyMd._awaitingVisibilityKickoffs.push({
             wrapper, pre, code, text: 'x', languageId: 'javascript', generation: anyMd._renderGeneration,
         });
+        anyMd._awaitingViewportKickoffs.push({
+            wrapper, pre, code, text: 'y', languageId: 'javascript', generation: anyMd._renderGeneration,
+        });
+        anyMd.armViewportWatch();
+        const generationBefore = anyMd._renderGeneration;
 
         md.setMarkdown('hello again');
 
         expect(anyMd._awaitingVisibilityKickoffs).toHaveLength(0);
+        expect(anyMd._awaitingViewportKickoffs).toHaveLength(0);
+        expect(anyMd._viewportWatchArmed).toBe(false);
+        expect(Event._registeredComponentIds()).not.toContain(md.getId());
+        expect(anyMd._renderGeneration).toBeGreaterThan(generationBefore);
     });
 });

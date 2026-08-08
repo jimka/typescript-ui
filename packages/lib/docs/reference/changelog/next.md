@@ -61,6 +61,21 @@ of falling through to the browser's default `<button>` face.
   build on the newer editor core; the full test suite and library build are
   unaffected. No consumer action is needed.
 
+### Display
+
+- **A fenced code block in `Markdown` now also defers its `CodeEditor`
+  upgrade until its wrapper comes within one viewport-height of the visible
+  area**, on top of the existing effective-visibility gate. A long document —
+  a generated API reference page with hundreds of fenced blocks, for
+  example — previously upgraded every block as soon as the whole `Markdown`
+  became visible; it now upgrades only the blocks the reader scrolls near,
+  re-evaluated on scroll and resize. Two related internal costs are removed
+  in the same change: re-syncing a live editor's width no longer runs on
+  every content-height measurement (only when something can actually change
+  a wrapper's width), and upgrade-driven re-measures coalesce to one per
+  layout flush instead of one per upgraded block. No consumer action is
+  needed.
+
 ## Added
 
 ### Display
