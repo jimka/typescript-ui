@@ -40,6 +40,18 @@ component) and always painted their own hardcoded default instead. Passing
 any of these options now works as documented. No consumer action is needed
 unless code relied on the option being silently ignored.
 
+The single-line input fields had their own variant of this bug in their
+`updateHeight()` pass: `TextField`, `PasswordField`, `UsernameField`,
+`ComboBox`, `NumberSpinner`, and every `AbstractPickerField` subclass
+(`DateField`, `TimeField`, `DateTimeField`) previously discarded a
+caller-supplied `preferredSize`, `minSize`, or `maxSize` **width** — both at
+construction and on every theme change — and always reasserted their own
+hardcoded default width instead. Passing a width through any of these
+options now works as documented; height is still fully recomputed from the
+current theme on every call and remains non-configurable. No consumer
+action is needed unless code relied on the width option being silently
+ignored.
+
 ### Button defaults
 
 `Button` painted its resting background with a hardcoded token instead of a
