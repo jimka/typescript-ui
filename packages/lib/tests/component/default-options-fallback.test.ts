@@ -289,6 +289,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'SortPriorityBadge backgroundColor', resolve: () => new SortPriorityBadge().getBackgroundColor(),          expected: 'var(--ts-ui-sort-badge-bg, rgba(0,0,0,0.15))' },
     { label: 'SortPriorityBadge foregroundColor', resolve: () => new SortPriorityBadge().getForegroundColor(),          expected: 'var(--ts-ui-sort-badge-color, inherit)' },
     { label: 'Scrollbar backgroundColor',    resolve: () => new Scrollbar().getBackgroundColor(),                       expected: 'var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))' },
+    { label: 'Scrollbar touchAction',        resolve: () => new Scrollbar().getTouchAction(),                           expected: 'none' },
     { label: 'ToolBarSeparator backgroundColor', resolve: () => new ToolBarSeparator().getBackgroundColor(),            expected: 'var(--ts-ui-toolbar-separator-color, rgb(220, 220, 220))' },
     { label: 'ChartLegend backgroundColor',  resolve: () => new ChartLegend().getBackgroundColor(),                     expected: 'transparent' },
     { label: 'Popover backgroundColor',      resolve: () => new Popover().getBackgroundColor(),                        expected: 'var(--ts-ui-popover-bg, rgb(255, 255, 255))' },
@@ -465,6 +466,24 @@ describe('an explicit value wins over a class default', () => {
         expect(new ChartLegend({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
         expect(new Popover({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
         expect(new Popover({ foregroundColor: 'blue' }).getForegroundColor()).toBe('blue');
+    });
+
+    it('a caller-supplied touchAction wins for Scrollbar', () => {
+        // Render is required to discriminate: Scrollbar's old `init()` override
+        // only clobbered the caller value with `setTouchAction("none")` once the
+        // element was created, so an unrendered instance passed even against the
+        // bug this fix removes.
+        const scrollbar = new Scrollbar('vertical', { touchAction: 'pan-y' });
+        scrollbar.getElement(true);
+
+        expect(scrollbar.getTouchAction()).toBe('pan-y');
+    });
+
+    it('clearTouchAction on Scrollbar suppresses the class default', () => {
+        const scrollbar = new Scrollbar();
+        scrollbar.clearTouchAction();
+
+        expect(scrollbar.getTouchAction()).toBeNull();
     });
 
     it('a caller value beats the ScrollingPanel subclass defaults', () => {
