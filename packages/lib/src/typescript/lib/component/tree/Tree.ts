@@ -19,7 +19,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export type TreeEvent = "selection" | "loaderror" | "contextmenu" | "dblclick";
+export type TreeEvent = "selection" | "loaderror" | "contextmenu" | "dblclick" | "expand" | "collapse";
 
 /**
  * How a row wider than the viewport is handled.
@@ -80,6 +80,8 @@ export interface TreeOptions extends ComponentOptions {
         loaderror?: (node: TreeNode, error: unknown) => void;
         contextmenu?: (node: TreeNode, event: MouseEvent) => void;
         dblclick?: (node: TreeNode) => void;
+        expand?: (node: TreeNode) => void;
+        collapse?: (node: TreeNode) => void;
     };
 }
 
@@ -134,6 +136,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     private _selectedNodes      : Set<TreeNode>                                           = new Set();
     private _loadingNodes       : Set<TreeNode>                                           = new Set();
     private _loadedNodes        : Set<TreeNode>                                           = new Set();
+    private _pendingExpansions  : Map<TreeNode, Promise<boolean>>                         = new Map();
     private _anchorNode         : TreeNode | null                                         = null;
     private _focusNode          : TreeNode | null                                         = null;
     private _listeners          : ListenerBag<TreeEvent>                                  = new ListenerBag<TreeEvent>();
@@ -221,6 +224,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this._selectedNodes.clear();
         this._loadingNodes.clear();
         this._loadedNodes.clear();
+        this._pendingExpansions.clear();
         this._anchorNode = null;
         this._focusNode = null;
         this._flatten();
@@ -301,6 +305,20 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
+     * Returns every currently expanded node, in no guaranteed order.
+     *
+     * @returns A snapshot array of expanded {@link TreeNode} instances.
+     *
+     * @remarks
+     * `expandAll` and `revealByPredicate` fill the expanded set without
+     * emitting `"expand"`, so this getter is how a caller reads the state
+     * after either.
+     */
+    getExpandedNodes(): TreeNode[] {
+        return Array.from(this._expandedNodes);
+    }
+
+    /**
      * Programmatically selects a single node, replacing any existing selection
      * and scrolling it into view.
      *
@@ -349,7 +367,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *
      * Revealing is not selecting: this method does not change the selection or
      * emit `"selection"`. Select the returned node with {@link selectNode} if the
-     * reveal should also highlight it.
+     * reveal should also highlight it. It likewise expands ancestors without
+     * emitting `"expand"` — read {@link getExpandedNodes} afterwards.
      *
      * The search is depth-first in root-then-child order and stops at the first
      * match. A lazy branch whose `loadChildren` rejects is skipped (its subtree
@@ -501,6 +520,33 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * @returns This tree, for method chaining.
      */
     on(event: "dblclick", listener: (node: TreeNode) => void): this;
+
+    /**
+     * Registers a listener for a node's expansion committing.
+     *
+     * @param event - `"expand"` fires after the expansion has committed and
+     *   the rows have been rebuilt — for an unloaded lazy node, after its
+     *   `loadChildren` resolved and the children were attached, not when the
+     *   toggle was first requested. It never fires from `setNodes`,
+     *   `expandAll`, or `revealByPredicate`; a rejected lazy load fires only
+     *   `"loaderror"` instead.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This tree, for method chaining.
+     */
+    on(event: "expand", listener: (node: TreeNode) => void): this;
+
+    /**
+     * Registers a listener for a node leaving the expanded set.
+     *
+     * @param event - `"collapse"` fires after the node has left the expanded
+     *   set and the rows have been rebuilt. It never fires from `setNodes`,
+     *   `expandAll`, or `revealByPredicate`.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This tree, for method chaining.
+     */
+    on(event: "collapse", listener: (node: TreeNode) => void): this;
     on(event: TreeEvent,   listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -533,6 +579,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     protected emit(event: "loaderror", node: TreeNode, error: unknown): void;
     protected emit(event: "contextmenu", node: TreeNode, event_: MouseEvent): void;
     protected emit(event: "dblclick", node: TreeNode): void;
+    protected emit(event: "expand",   node: TreeNode): void;
+    protected emit(event: "collapse", node: TreeNode): void;
     protected emit(event: TreeEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
@@ -651,13 +699,39 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * @param node - The node to expand.
      *
      * @returns This tree, for method chaining.
+     *
+     * @see Use {@link expandNodeAsync} instead when the caller needs to know
+     *   when a lazy expansion finished.
      */
     expandNode(node: TreeNode): this {
         if (!this._expandedNodes.has(node)) {
-            this._onToggle(node);
+            void this._expand(node);
         }
 
         return this;
+    }
+
+    /**
+     * Expands `node` and resolves once the expansion has committed.
+     *
+     * @param node - The node to expand.
+     *
+     * @returns A promise resolving to `true` when the node ends up expanded —
+     *   including when it already was — or `false` when a lazy load rejected
+     *   and the node stayed collapsed.
+     *
+     * @remarks
+     * A second call for a node whose lazy load is already in flight joins
+     * that load instead of starting another, and both callers resolve with
+     * its outcome. Emits `"expand"` on a real transition, the same as
+     * {@link expandNode}.
+     */
+    async expandNodeAsync(node: TreeNode): Promise<boolean> {
+        if (this._expandedNodes.has(node)) {
+            return true;
+        }
+
+        return this._expand(node);
     }
 
     /**
@@ -666,34 +740,89 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * @param node - The node whose expanded state should be toggled.
      *
      * @remarks
-     * Collapse and already-resolved expansion commit synchronously. A lazy node
-     * declared with `loadChildren` that has not loaded yet defers its expansion
-     * to {@link _loadAndExpand}, which only commits once the loader resolves.
+     * Delegates to {@link _collapse} for an expanded node and {@link _expand}
+     * for a collapsed one — the same commit path (and lazy-load join
+     * behaviour, via {@link _expandLazy}) used by every other caller.
      */
     private _onToggle(node: TreeNode): void {
         if (this._expandedNodes.has(node)) {
-            this._expandedNodes.delete(node);
-            this._reflattenAndRender();
+            this._collapse(node);
 
             return;
         }
 
+        void this._expand(node);
+    }
+
+    /**
+     * Commits `node`'s expansion, loading a lazy node's children first.
+     *
+     * @param node - The node to expand.
+     *
+     * @returns A promise resolving to `true` once the expansion has committed,
+     *   or `false` when a lazy load failed or was orphaned.
+     *
+     * @remarks
+     * An already-loaded node commits synchronously — the returned promise is
+     * already resolved by the time this returns, so a caller that ignores it
+     * still sees the expansion in the same tick.
+     */
+    private _expand(node: TreeNode): Promise<boolean> {
         const needsLoad = node.loadChildren !== undefined
             && !this._loadedNodes.has(node)
             && !(node.children && node.children.length);
 
-        if (!needsLoad) {
-            this._expandedNodes.add(node);
-            this._reflattenAndRender();
-
-            return;
+        if (needsLoad) {
+            return this._expandLazy(node);
         }
 
-        if (this._loadingNodes.has(node)) {
-            return;
+        this._expandedNodes.add(node);
+        this._reflattenAndRender();
+        this.emit("expand", node);
+
+        return Promise.resolve(true);
+    }
+
+    /**
+     * Removes `node` from the expanded set, re-renders, then reports the change.
+     *
+     * @param node - The node to collapse.
+     */
+    private _collapse(node: TreeNode): void {
+        this._expandedNodes.delete(node);
+        this._reflattenAndRender();
+        this.emit("collapse", node);
+    }
+
+    /**
+     * Starts a lazy node's load-and-expand, or joins the one already running for
+     * that node so a second caller never triggers a second `loadChildren`.
+     *
+     * @param node - The lazy node to expand.
+     *
+     * @returns The (possibly shared) promise resolving once the load settles.
+     */
+    private _expandLazy(node: TreeNode): Promise<boolean> {
+        const inFlight = this._pendingExpansions.get(node);
+
+        if (inFlight !== undefined) {
+            return inFlight;
         }
 
-        void this._loadAndExpand(node);
+        const pending = this._loadAndExpand(node);
+
+        this._pendingExpansions.set(node, pending);
+
+        // Identity-checked so a `setNodes` that cleared the map mid-flight, followed
+        // by a fresh load for the same node object, is not un-registered by the
+        // orphaned load's own cleanup.
+        void pending.then(() => {
+            if (this._pendingExpansions.get(node) === pending) {
+                this._pendingExpansions.delete(node);
+            }
+        });
+
+        return pending;
     }
 
     /**
@@ -711,24 +840,33 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * If `setNodes` swaps the dataset while the loader is in flight, it clears
      * `_loadingNodes`, so a still-present membership check after the await tells
      * us the node is still live; an orphaned resolve commits nothing.
+     *
+     * The `"expand"` emission is the last thing this method does, after the
+     * re-render, so a listener sees the loaded children already flattened.
+     *
+     * @returns `true` when the node's expansion committed, `false` when the
+     *   load failed or was orphaned by a `setNodes` swap.
      */
-    private async _loadAndExpand(node: TreeNode): Promise<void> {
+    private async _loadAndExpand(node: TreeNode): Promise<boolean> {
         this._loadingNodes.add(node);
         this._reflattenAndRender();
+
+        let expanded = false;
 
         try {
             const children = await node.loadChildren!();
 
             if (!this._loadingNodes.has(node)) {
-                return;
+                return false;
             }
 
             node.children = children;
             this._loadedNodes.add(node);
             this._expandedNodes.add(node);
+            expanded = true;
         } catch (error) {
             if (!this._loadingNodes.has(node)) {
-                return;
+                return false;
             }
 
             this.emit("loaderror", node, error);
@@ -736,6 +874,12 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             this._loadingNodes.delete(node);
             this._reflattenAndRender();
         }
+
+        if (expanded) {
+            this.emit("expand", node);
+        }
+
+        return expanded;
     }
 
     /**

@@ -411,6 +411,389 @@ describe('Tree (white-box) — _onToggle expand / collapse', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Expand / collapse observability — getExpandedNodes(), the "expand"/"collapse"
+// event pair, and expandNodeAsync(). Every row of the emission table in the
+// plan's Architecture Decisions is one test here; offline throughout, since
+// _reflattenAndRender is safe without a rendered element and lazy loads are
+// driven by hand-written loadChildren functions.
+// ---------------------------------------------------------------------------
+describe('Tree — expand / collapse observability', () => {
+    function lazyNode(loadChildren: () => Promise<TreeNode[]>): TreeNode {
+        return { label: 'lazy', hasChildren: true, loadChildren };
+    }
+
+    it('_onToggle on a collapsed node adds it and emits "expand" (caret click / ArrowRight path)', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+        const priv = asPrivate(tree);
+
+        const seen: TreeNode[] = [];
+        tree.on('expand', node => seen.push(node));
+
+        priv._onToggle(nodes[0]);
+
+        expect(priv._expandedNodes.has(nodes[0])).toBe(true);
+        expect(seen).toEqual([nodes[0]]);
+    });
+
+    it('_onToggle on an expanded node removes it and emits "collapse" (caret click / ArrowLeft path)', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+        const priv = asPrivate(tree);
+        priv._onToggle(nodes[0]);
+
+        const seen: TreeNode[] = [];
+        tree.on('collapse', node => seen.push(node));
+
+        priv._onToggle(nodes[0]);
+
+        expect(priv._expandedNodes.has(nodes[0])).toBe(false);
+        expect(seen).toEqual([nodes[0]]);
+    });
+
+    it('expandNode on a collapsed node adds it and emits "expand"', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+
+        const seen: TreeNode[] = [];
+        tree.on('expand', node => seen.push(node));
+
+        tree.expandNode(nodes[0]);
+
+        expect(asPrivate(tree)._expandedNodes.has(nodes[0])).toBe(true);
+        expect(seen).toEqual([nodes[0]]);
+    });
+
+    it('expandNode on an already-expanded node is a no-op and emits nothing', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+        tree.expandNode(nodes[0]);
+
+        let emitted = 0;
+        tree.on('expand', () => { emitted += 1; });
+
+        tree.expandNode(nodes[0]);
+
+        expect(emitted).toBe(0);
+    });
+
+    it('expandNodeAsync on a collapsed eager node commits synchronously and resolves true', async () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+        const priv = asPrivate(tree);
+
+        const seen: TreeNode[] = [];
+        tree.on('expand', node => seen.push(node));
+
+        const promise = tree.expandNodeAsync(nodes[0]);
+        // Synchronous commit: the state is already updated before the caller awaits.
+        expect(priv._expandedNodes.has(nodes[0])).toBe(true);
+
+        const result = await promise;
+        expect(result).toBe(true);
+        expect(seen).toEqual([nodes[0]]);
+    });
+
+    it('expandNodeAsync on a lazy node whose loader resolves adds it after the load and emits "expand"', async () => {
+        const tree = new _Tree();
+        const target: TreeNode = { label: 'child' };
+        const node = lazyNode(() => Promise.resolve([target]));
+        tree.setNodes([node]);
+        const priv = asPrivate(tree);
+
+        const seen: TreeNode[] = [];
+        tree.on('expand', n => seen.push(n));
+
+        const promise = tree.expandNodeAsync(node);
+        // Not committed yet — the load has not resolved.
+        expect(priv._expandedNodes.has(node)).toBe(false);
+
+        const result = await promise;
+
+        expect(result).toBe(true);
+        expect(priv._expandedNodes.has(node)).toBe(true);
+        expect(node.children).toEqual([target]);
+        expect(seen).toEqual([node]);
+    });
+
+    it('expandNodeAsync on a lazy node whose loader rejects resolves false and emits only "loaderror"', async () => {
+        const tree = new _Tree();
+        const node = lazyNode(() => Promise.reject(new Error('nope')));
+        tree.setNodes([node]);
+        const priv = asPrivate(tree);
+
+        let expandCount = 0;
+        let errorCount = 0;
+        tree.on('expand', () => { expandCount += 1; });
+        tree.on('loaderror', () => { errorCount += 1; });
+
+        const result = await tree.expandNodeAsync(node);
+
+        expect(result).toBe(false);
+        expect(expandCount).toBe(0);
+        expect(errorCount).toBe(1);
+        expect(priv._expandedNodes.has(node)).toBe(false);
+    });
+
+    it('a rejected lazy load leaves the node retryable: absent from _expandedNodes / _loadedNodes, and a second call reloads', async () => {
+        const tree = new _Tree();
+        let loadCount = 0;
+        const node = lazyNode(() => {
+            loadCount += 1;
+            return loadCount === 1 ? Promise.reject(new Error('nope')) : Promise.resolve([]);
+        });
+        tree.setNodes([node]);
+        const priv = asPrivate(tree);
+
+        const first = await tree.expandNodeAsync(node);
+        expect(first).toBe(false);
+        expect(priv._expandedNodes.has(node)).toBe(false);
+        expect(priv._loadedNodes.has(node)).toBe(false);
+
+        const second = await tree.expandNodeAsync(node);
+        expect(loadCount).toBe(2);
+        expect(second).toBe(true);
+    });
+
+    it('expandNodeAsync on an already-expanded node resolves true and emits nothing', async () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+        tree.expandNode(nodes[0]);
+
+        let emitted = 0;
+        tree.on('expand', () => { emitted += 1; });
+
+        const result = await tree.expandNodeAsync(nodes[0]);
+
+        expect(result).toBe(true);
+        expect(emitted).toBe(0);
+    });
+
+    it('a second expandNodeAsync while a load is in flight joins the first: one loadChildren call, one "expand"', async () => {
+        const tree = new _Tree();
+        let resolveLoad!: (children: TreeNode[]) => void;
+        let loadCount = 0;
+        const node = lazyNode(() => {
+            loadCount += 1;
+            return new Promise<TreeNode[]>(resolve => { resolveLoad = resolve; });
+        });
+        tree.setNodes([node]);
+
+        let expandCount = 0;
+        tree.on('expand', () => { expandCount += 1; });
+
+        const first = tree.expandNodeAsync(node);
+        const second = tree.expandNodeAsync(node);
+
+        resolveLoad([]);
+
+        const [r1, r2] = await Promise.all([first, second]);
+
+        expect(loadCount).toBe(1);
+        expect(r1).toBe(true);
+        expect(r2).toBe(true);
+        expect(expandCount).toBe(1);
+    });
+
+    it('expandNode then expandNodeAsync on the same lazy node also runs one load and one "expand"', async () => {
+        const tree = new _Tree();
+        let resolveLoad!: (children: TreeNode[]) => void;
+        let loadCount = 0;
+        const node = lazyNode(() => {
+            loadCount += 1;
+            return new Promise<TreeNode[]>(resolve => { resolveLoad = resolve; });
+        });
+        tree.setNodes([node]);
+
+        let expandCount = 0;
+        tree.on('expand', () => { expandCount += 1; });
+
+        tree.expandNode(node);
+        const asyncResult = tree.expandNodeAsync(node);
+
+        resolveLoad([]);
+        const result = await asyncResult;
+
+        expect(loadCount).toBe(1);
+        expect(result).toBe(true);
+        expect(expandCount).toBe(1);
+    });
+
+    it('expandNodeAsync on a leaf adds it to the expanded set, emits "expand", and renders nothing new', async () => {
+        const tree = new _Tree();
+        const leaf: TreeNode = { label: 'leaf' };
+        tree.setNodes([leaf]);
+        const priv = asPrivate(tree);
+
+        const seen: TreeNode[] = [];
+        tree.on('expand', n => seen.push(n));
+
+        const result = await tree.expandNodeAsync(leaf);
+
+        expect(result).toBe(true);
+        expect(priv._expandedNodes.has(leaf)).toBe(true);
+        expect(seen).toEqual([leaf]);
+        expect(priv._flatRows).toHaveLength(1);
+    });
+
+    it('setNodes during an in-flight load orphans it: resolves false, no "expand"/"loaderror", node stays uncommitted', async () => {
+        const tree = new _Tree();
+        let resolveLoad!: (children: TreeNode[]) => void;
+        const node = lazyNode(() => new Promise<TreeNode[]>(resolve => { resolveLoad = resolve; }));
+        tree.setNodes([node]);
+        const priv = asPrivate(tree);
+
+        let expandCount = 0;
+        let errorCount = 0;
+        tree.on('expand', () => { expandCount += 1; });
+        tree.on('loaderror', () => { errorCount += 1; });
+
+        const promise = tree.expandNodeAsync(node);
+
+        tree.setNodes([{ label: 'other' }]);
+        resolveLoad([]);
+
+        const result = await promise;
+
+        expect(result).toBe(false);
+        expect(expandCount).toBe(0);
+        expect(errorCount).toBe(0);
+        expect(priv._expandedNodes.has(node)).toBe(false);
+    });
+
+    it('expandAll() emits nothing while getExpandedNodes() reflects what it expanded', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+
+        let emitted = 0;
+        tree.on('expand', () => { emitted += 1; });
+
+        tree.expandAll();
+
+        expect(emitted).toBe(0);
+        expect(tree.getExpandedNodes()).toContain(nodes[0]);
+    });
+
+    it('revealByPredicate() emits nothing while getExpandedNodes() reflects the expanded ancestors', async () => {
+        const tree = new _Tree();
+        const target: TreeNode = { label: 'orders', data: { name: 'orders' } };
+        const nodes: TreeNode[] = [{ label: 'public', children: [target] }];
+        tree.setNodes(nodes);
+
+        let emitted = 0;
+        tree.on('expand', () => { emitted += 1; });
+
+        await tree.revealByPredicate(d => typeof d === 'object' && d !== null && (d as { name?: string }).name === 'orders');
+
+        expect(emitted).toBe(0);
+        expect(tree.getExpandedNodes()).toContain(nodes[0]);
+    });
+
+    it('setNodes() clears the expanded set and emits zero "collapse"', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+        tree.expandNode(nodes[0]);
+
+        let emitted = 0;
+        tree.on('collapse', () => { emitted += 1; });
+
+        tree.setNodes(fruitTree());
+
+        expect(emitted).toBe(0);
+        expect(tree.getExpandedNodes()).toEqual([]);
+    });
+
+    it('getExpandedNodes() returns [] on a fresh tree and [node] after expandNode', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+
+        expect(tree.getExpandedNodes()).toEqual([]);
+
+        tree.expandNode(nodes[0]);
+        expect(tree.getExpandedNodes()).toEqual([nodes[0]]);
+    });
+
+    it('getExpandedNodes() returns a snapshot copy that mutation does not affect', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+        tree.expandNode(nodes[0]);
+
+        const snapshot = tree.getExpandedNodes();
+        snapshot.push({ label: 'ghost' });
+        snapshot.pop();
+        snapshot.pop();
+
+        expect(tree.getExpandedNodes()).toEqual([nodes[0]]);
+    });
+
+    it('an "expand" listener for an eager parent sees the committed state and rebuilt rows', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+        const priv = asPrivate(tree);
+
+        let sawExpanded = false;
+        let sawChildren = false;
+        tree.on('expand', node => {
+            sawExpanded = tree.getExpandedNodes().includes(node);
+            sawChildren = priv._flatRows.some(r => r.node.label === 'Word');
+        });
+
+        tree.expandNode(nodes[0]);
+
+        expect(sawExpanded).toBe(true);
+        expect(sawChildren).toBe(true);
+    });
+
+    it('a "collapse" listener no longer sees the collapsed node\'s children in the flat rows', () => {
+        const tree = new _Tree();
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+        const priv = asPrivate(tree);
+        tree.expandNode(nodes[0]);
+
+        let sawChildren = true;
+        tree.on('collapse', () => {
+            sawChildren = priv._flatRows.some(r => r.node.label === 'Word');
+        });
+
+        priv._onToggle(nodes[0]);
+
+        expect(sawChildren).toBe(false);
+    });
+
+    it('the construction-time listeners bag wires both "expand" and "collapse"', () => {
+        let expandCount = 0;
+        let collapseCount = 0;
+        const tree = new _Tree({
+            listeners: {
+                expand:   () => { expandCount += 1; },
+                collapse: () => { collapseCount += 1; },
+            },
+        });
+        const nodes = fruitTree();
+        tree.setNodes(nodes);
+        const priv = asPrivate(tree);
+
+        priv._onToggle(nodes[0]); // expand
+        priv._onToggle(nodes[0]); // collapse
+
+        expect(expandCount).toBe(1);
+        expect(collapseCount).toBe(1);
+    });
+});
+
+// ---------------------------------------------------------------------------
 // Payload slot — the optional `data` field is an opaque caller-supplied carrier.
 // The tree never reads it for identity/dedup; it only round-trips by reference
 // through the node-flow API. All four behaviours are in-memory and offline.
@@ -451,7 +834,7 @@ describe('TreeNode — data payload slot', () => {
         tree.setNodes([parent]);
         // _loadAndExpand writes the resolved children onto the parent by
         // reference; awaiting it lets the child's payload settle in place.
-        const priv = tree as unknown as { _loadAndExpand(node: TreeNode): Promise<void> };
+        const priv = tree as unknown as { _loadAndExpand(node: TreeNode): Promise<boolean> };
         await priv._loadAndExpand(parent);
 
         expect(parent.children?.[0].data).toBe(childPayload);
