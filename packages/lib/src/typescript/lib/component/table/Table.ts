@@ -175,6 +175,7 @@ class Table extends Component<TableOptions> {
     private _listeners        : ListenerBag<TableEvent> = new ListenerBag<TableEvent>();
     private _displayMode      : TableDisplayMode = "normal";
     private _rotatedRecord    : ModelRecord | null = null;
+    private _rowVisible       : ((record: ModelRecord) => boolean) | null = null;
     private _rotatedStore     : MemoryStore | null = null;
     private _rotatedColumns   : Column[] = [];
     private _rotatedConfigs   : Map<string, ColumnConfig> = new Map();
@@ -402,11 +403,46 @@ class Table extends Component<TableOptions> {
             const rotatedStore = this.ensureRotatedStore();
 
             this.rebuildRotatedStore();
-            this.bindView(rotatedStore, this._rotatedColumns, this._rotatedConfigs, new Set(), () => true);
+            this.bindView(rotatedStore, this._rotatedColumns, this._rotatedConfigs, new Set(), () => true, null);
             this.emit("selection", this._rotatedRecord ? [this._rotatedRecord] : []);
         } else {
-            this.bindView(this._store, this.getSourceColumns(), this._columnConfigs, this.getEffectiveHiddenSet(), this._spec?.rowReadOnly ?? null);
+            this.bindView(this._store, this.getSourceColumns(), this._columnConfigs, this.getEffectiveHiddenSet(), this._spec?.rowReadOnly ?? null, this._rowVisible);
             this._body.selectRecord(this._rotatedRecord);
+        }
+
+        return this;
+    }
+
+    /**
+     * Sets a live predicate that hides non-matching rows without touching
+     * the store — a client-side quick search over an already-loaded grid.
+     * Cleared by passing `null`.
+     *
+     * Display-only: never touches {@link getStore}'s records,
+     * {@link getSelectedRecords}, or any pending edit. The predicate is
+     * re-applied automatically on every trigger that already re-renders the
+     * body — scrolling, a store `'datachange'` / `'add'` / `'remove'` /
+     * `'load'`, or a column show/hide — so calling this again is only
+     * needed when the predicate itself changes.
+     *
+     * Neutralized while {@link getDisplayMode} is `"rotated"`: the
+     * projection's rows are one per source field of a single displayed
+     * record, not one per source record, so a predicate written against
+     * source records cannot apply there. The last predicate set still
+     * takes effect immediately on returning to `"normal"`, even if it was
+     * set while rotated. Inherited by `TreeTable` as a documented no-op —
+     * see the `TreeTable` docs non-goal.
+     *
+     * @param predicate - Returns `true` to keep the record's row rendered.
+     *   Called for every loaded record on every render pass; must be O(1)
+     *   and pure.
+     * @returns This table, for method chaining.
+     */
+    setRowVisible(predicate: ((record: ModelRecord) => boolean) | null): this {
+        this._rowVisible = predicate;
+
+        if (this._displayMode === "normal") {
+            this._body.setRowVisible(predicate);
         }
 
         return this;
@@ -1117,6 +1153,9 @@ class Table extends Component<TableOptions> {
      * @param configs - The column-config map (drives `cellType` / `cellValues` / etc).
      * @param hidden - The set of field names to hide.
      * @param rowReadOnly - The row-level read-only predicate, or `null`.
+     * @param rowVisible - The row-visibility predicate, or `null`. Passed
+     *   `null` on the rotated call site — a predicate written against
+     *   source records cannot apply to the field/value projection.
      *
      * @remarks `Body.setStore` re-renders with pool rows whose cells still
      * match the outgoing model; `setColumns` (called after `setStore`) is
@@ -1144,6 +1183,7 @@ class Table extends Component<TableOptions> {
         configs:     Map<string, ColumnConfig>,
         hidden:      Set<string>,
         rowReadOnly: ((record: ModelRecord) => boolean) | null,
+        rowVisible:  ((record: ModelRecord) => boolean) | null,
     ): void {
         this._suppressSelectionForward = true;
 
@@ -1158,6 +1198,7 @@ class Table extends Component<TableOptions> {
         this._body.setColumns(columns);
         this._body.setHiddenColumns(hidden);
         this._body.setRowReadOnly(rowReadOnly);
+        this._body.setRowVisible(rowVisible);
         this._body.setStore(store);
 
         this._suppressSelectionForward = false;

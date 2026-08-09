@@ -204,6 +204,7 @@ class Body extends VirtualRowView<Row> {
     private _columns         : Column[]                  = [];
     private _columnConfigs   : Map<string, ColumnConfig> = new Map();
     private _rowReadOnly     : ((record: ModelRecord) => boolean) | null = null;
+    private _rowVisible      : ((record: ModelRecord) => boolean) | null = null;
     private _cellGeom        : CellGeometryCache         = new CellGeometryCache();
     private _lastBodyWidth   : number                    = 0;
     private _lastColumnWidths: number[]                  = [];
@@ -352,18 +353,22 @@ class Body extends VirtualRowView<Row> {
     /**
      * Returns the records visible in the current scroll window. Default
      * behaviour delegates to the store's view (filtered + sorted master
-     * collection).
+     * collection), further filtered through {@link setRowVisible}'s
+     * predicate when one is active.
      *
      * @returns The records the row pool should bind to, in display order.
      *
      * @remarks Subclassing seam — `TreeBody` overrides this to return its
-     * depth-flattened, expansion-aware visible subtree. Every internal
+     * depth-flattened, expansion-aware visible subtree, and does not
+     * consult `_rowVisible` — see {@link setRowVisible}. Every internal
      * site that needs the visible records — virtual-window math, click
      * dispatch, focus + active-descendant tracking, keyboard nav,
      * scroll-into-view — goes through this method. Not for consumer use.
      */
     protected getVisibleRecords(): ModelRecord[] {
-        return this._store.getRecords();
+        const records = this._store.getRecords();
+
+        return this._rowVisible ? records.filter(this._rowVisible) : records;
     }
 
     /**
@@ -582,6 +587,33 @@ class Body extends VirtualRowView<Row> {
      */
     setRowReadOnly(predicate: ((record: ModelRecord) => boolean) | null): this {
         this._rowReadOnly = predicate;
+
+        return this;
+    }
+
+    /**
+     * Sets a live predicate that hides non-matching rows without touching
+     * the store — the display-only filter behind {@link Table.setRowVisible}.
+     * Cleared by passing `null`.
+     *
+     * @param predicate - Returns `true` to keep the record's row rendered.
+     *   Called for every loaded record on every render pass; must be O(1)
+     *   and pure, the same contract {@link ColumnSpec.rowReadOnly} follows.
+     * @returns This body, for method chaining.
+     *
+     * @remarks Internal wiring called by {@link Table} — not for consumer
+     * use; consumers call {@link Table.setRowVisible}. Unlike
+     * {@link setRowReadOnly}, changing the predicate can shrink or grow the
+     * visible-records list itself, so a pool slot's cached data index can no
+     * longer be trusted to still name the same record — invalidating the
+     * bindings and forcing a render is required, not optional. Has no
+     * effect on `TreeBody`, whose depth-flattened visible-records override
+     * never consults `_rowVisible` — see the `TreeTable` docs non-goal.
+     */
+    setRowVisible(predicate: ((record: ModelRecord) => boolean) | null): this {
+        this._rowVisible = predicate;
+        this.invalidateRowBindings();
+        this.renderWindow();
 
         return this;
     }
