@@ -40,11 +40,12 @@ class HBox extends BoxLayout {
      * container by the same baseline its own children align to — rather than
      * auto-centring the whole container.
      *
-     * @returns The inner baseline offset in pixels, or `null` while stretching
-     * (baseline alignment is disabled) or when no child reports a baseline.
+     * @returns The inner baseline offset in pixels, or `null` when `itemAlign`
+     * is not `"baseline"` (a centred/edge-aligned or stretched row exposes no
+     * shared baseline) or when no child reports a baseline.
      */
     getContentBaseline(): number | null {
-        if (this.isStretching()) {
+        if (this._itemAlign !== "baseline") {
             return null;
         }
 
@@ -357,6 +358,10 @@ class HBox extends BoxLayout {
 
             if (cross) {
                 placements.push({ component, ...this.resolveBounds(component, x, cross.offset, cellWidth, cross.extent, FillType.BOTH) });
+            } else if (this._itemAlign === "start" || this._itemAlign === "center" || this._itemAlign === "end") {
+                const y = crossLead + this.crossItemOffset(heights[idx], crossExtent);
+
+                placements.push({ component, ...this.resolveBounds(component, x, y, cellWidth, heights[idx], FillType.BOTH) });
             } else {
                 const y = this.rowChildY(insets.getTop(), heights[idx], baselines[idx], rowAscent, rowDescent);
 
@@ -532,6 +537,10 @@ class HBox extends BoxLayout {
 
             if (cross) {
                 placements.push({ component, ...this.resolveBounds(component, x, cross.offset, widths[idx], cross.extent, FillType.BOTH) });
+            } else if (this._itemAlign === "start" || this._itemAlign === "center" || this._itemAlign === "end") {
+                const y = crossLead + this.crossItemOffset(heights[idx], crossExtent);
+
+                placements.push({ component, ...this.resolveBounds(component, x, y, widths[idx], heights[idx], FillType.BOTH) });
             } else {
                 const y = this.rowChildY(insets.getTop(), heights[idx], baselines[idx], rowAscent, rowDescent);
 

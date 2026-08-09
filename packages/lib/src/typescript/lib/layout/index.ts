@@ -24,7 +24,7 @@ export { Border } from '~/layout/Border.js';
 export type { BorderOptions } from '~/layout/Border.js';
 export type { AxisPosition, AxisSpread } from '~/primitive/Axis.js';
 export { BoxLayout } from '~/layout/BoxLayout.js';
-export type { BoxLayoutOptions, BoxMode, BoxOverflowSizing, BoxJustify } from '~/layout/BoxLayout.js';
+export type { BoxLayoutOptions, BoxMode, BoxOverflowSizing, BoxJustify, BoxItemAlign } from '~/layout/BoxLayout.js';
 export { HBox } from '~/layout/HBox.js';
 export type { HBoxOptions } from '~/layout/HBox.js';
 export { VBox } from '~/layout/VBox.js';
