@@ -55,3 +55,7 @@ page resets to empty.
   the editor again, the same trust rule growth already followed. No
   consumer action is needed.
 
+### Table
+
+**A `date`/`time`/`datetime` auto-sized column could truncate a real value with a trailing ellipsis even though its computed width looked correct.** The per-type width policy's cell-padding allowance was applied to every column type except the content-driven `string`/`auto` branch, and the date/time reference measurement compared only the reference instant's own formatted digits — missing a non-tabular font where some other digit renders wider. Both gaps are closed: the content-driven branch now adds the same cell padding every other branch already did, and the date/time/datetime floor is measured against the widest digit-substituted variant of the reference text. No consumer action is needed.
+
