@@ -174,7 +174,7 @@ table.setDisplayMode("normal");   // back to one row per record
 - **Per-field cell variants** come from the same `cellType` / `cellValues` mechanism described above — a boolean source field's row renders a checkbox, a `values`-constrained field's row renders a combo showing the option label, and so on.
 - **The view is read-only.** Every value cell refuses inline editing; there is no write-back path from a field/value row to the source record.
 - **Sorting the projection reorders the field rows** (e.g. alphabetically by field name) — it does not touch the source store's own sort, and un-rotating restores the normal column order.
-- **The `field` and `value` columns stay compact** — each is capped at a bounded width so a wide record does not stretch them across the whole table; a blank, expanding trailing column absorbs the leftover width, keeping the label and its value grouped on the left.
+- **The `field` and `value` columns stay compact** — each sizes to the displayed record's actual field labels and values, capped at a bounded maximum so a wide record does not stretch them across the whole table; a blank, expanding trailing column absorbs the leftover width, keeping the label and its value grouped on the left.
 - **Export always covers the source table** — `exportCSV()` / `exportJSON()` serialize every source record and column regardless of the active display mode, never the field/value projection.
 - `setColumnVisible` is a no-op while rotated (the projection's data columns are always shown), and the column-header context menu shows only the export entries.
 
@@ -323,9 +323,11 @@ total, regardless of column count — one for the shared reference strings
 the sampled body text — because every string measured in a pass is batched
 into a single document reflow. The derivation runs on first layout, a store
 swap, a reset, and once more after data first arrives (see `autoSizeColumns`
-above) — never per row and never on scroll. When `autoSizeColumns` is on, at
-most 50 records are read to size `string`/`auto` columns; `number` columns
-read the same sample for their digit count.
+above) — never per row and never on scroll. In rotated display mode it also
+re-runs on every record switch and on every source-store event, since the
+`field`/`value` columns size to the currently displayed record. When
+`autoSizeColumns` is on, at most 50 records are read to size `string`/`auto`
+columns; `number` columns read the same sample for their digit count.
 
 For large datasets, [`AbstractStore`](/api/data/classes/AbstractStore) automatically offloads sort and filter operations to a Web Worker once the dataset exceeds 1,000 rows.
 
