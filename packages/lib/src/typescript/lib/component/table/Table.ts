@@ -82,7 +82,11 @@ interface WidthPolicy {
 interface WidthReferences {
     /** Width of the widest digit glyph, "0" through "9". */
     digitPx: number;
-    /** Width of `REFERENCE_DATE` formatted, keyed by `${type}:${showSeconds}`. */
+    /**
+     * Widest digit-substituted variant of `REFERENCE_DATE` formatted, keyed
+     * by `${type}:${showSeconds}` — guards against a non-tabular font
+     * rendering some digit wider than `REFERENCE_DATE`'s own digits.
+     */
     datePx: Map<string, number>;
 }
 
@@ -1782,7 +1786,7 @@ class Table extends Component<TableOptions> {
                     return { min, preferred: null };       // auto-size off, or nothing to measure — flex column
                 }
 
-                return { min, preferred: Math.max(min, contentPx, headerPx) };
+                return { min, preferred: Math.max(min, contentPx + CELL_CHROME_PX, headerPx) };
             }
         }
     }
@@ -1802,24 +1806,38 @@ class Table extends Component<TableOptions> {
 
         const digits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
         const keys   = this.dateReferenceKeys();
-        const widths = Util.measureTextWidths([...digits, ...keys.map(k => k.text)]);
+        const widths = Util.measureTextWidths([...digits, ...keys.flatMap(k => k.texts)]);
+
+        const datePx = new Map<string, number>();
+        let offset = digits.length;
+
+        for (const k of keys) {
+            datePx.set(k.key, Math.max(...widths.slice(offset, offset + k.texts.length)));
+            offset += k.texts.length;
+        }
 
         this._widthRefs = {
             digitPx: Math.max(...widths.slice(0, digits.length)),
-            datePx : new Map(keys.map((k, i) => [k.key, widths[digits.length + i]])),
+            datePx,
         };
 
         return this._widthRefs;
     }
 
     /**
-     * Walks the visible columns and builds one `{key, text}` reference pair
+     * Walks the visible columns and builds one `{key, texts}` reference pair
      * per distinct `(temporal type, showSeconds)` combination in use,
      * formatting {@link REFERENCE_DATE} the same way the matching cell
-     * renderer would (via `TableExporter.formatValue`).
+     * renderer would (via `TableExporter.formatValue`), then widening the
+     * probe with every digit position substituted by each of 0-9 in turn —
+     * guards against a non-tabular font rendering some other digit wider
+     * than `REFERENCE_DATE`'s own digits, mirroring the per-digit-max
+     * defense `digitPx` already applies to `number` columns. A no-op (all
+     * variants equal) under a tabular font.
      */
-    private dateReferenceKeys(): Array<{ key: string; text: string }> {
-        const seen = new Map<string, string>();
+    private dateReferenceKeys(): Array<{ key: string; texts: string[] }> {
+        const digitChars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+        const seen = new Map<string, string[]>();
 
         for (const col of this.getColumns()) {
             const type = col.getField().getType();
@@ -1831,11 +1849,13 @@ class Table extends Component<TableOptions> {
             const key = `${type}:${this.showsSeconds(col)}`;
 
             if (!seen.has(key)) {
-                seen.set(key, String(TableExporter.formatValue(col, REFERENCE_DATE, this._columnConfigs) ?? ""));
+                const base = String(TableExporter.formatValue(col, REFERENCE_DATE, this._columnConfigs) ?? "");
+
+                seen.set(key, [base, ...digitChars.map(d => base.replace(/\d/g, d))]);
             }
         }
 
-        return Array.from(seen, ([key, text]) => ({ key, text }));
+        return Array.from(seen, ([key, texts]) => ({ key, texts }));
     }
 
     /**
