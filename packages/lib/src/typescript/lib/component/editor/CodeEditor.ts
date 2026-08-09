@@ -248,7 +248,9 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * `[lines, docLength, clientWidth]` as of the last call to
      * `syncAutoHeight`, or `null` before the first call. Used to tell a
      * genuine content/width change from a self-triggered geometry echo — a
-     * growth is trusted only when this differs from the previous call.
+     * growth is trusted only when this differs from the previous call, and
+     * so is a content shrink of a pixel or more (a smaller, sub-pixel
+     * content shrink is rounding noise regardless of this tuple).
      */
     private _lastSyncedShape: readonly [number, number, number] | null = null;
 
@@ -813,12 +815,13 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * cannot live here without ratcheting the editor's height upward on every
      * call.
      *
-     * A growth this method applies is itself a geometry change CodeMirror's
-     * own internal measurement reacts to independently of this component, so
-     * a growth is trusted only on the call where the document/width shape
-     * genuinely changed — see the comment above `_lastSyncedShape`'s
-     * declaration for why no growth against an unchanged shape is trusted,
-     * however plausible it looks.
+     * A height change this method applies is itself a geometry change
+     * CodeMirror's own internal measurement reacts to independently of this
+     * component, so a growth — and, symmetrically, a content shrink of a
+     * pixel or more — is trusted only on the call where the document/width
+     * shape genuinely changed — see the comment above `_lastSyncedShape`'s
+     * declaration for why no growth, and no such shrink, against an
+     * unchanged shape is trusted, however plausible either looks.
      *
      * @param pureSelectionChange - True when the caller's `updateListener`
      *   update carries a selection change but no document change. A cursor
@@ -950,6 +953,30 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
                 contentDesired += Math.max(0, contentRectHeight - scrollerContentBoxHeight);
             }
+        } else {
+            // A content shrink this call did NOT earn through a genuine shape
+            // change is the same self-triggered geometry echo the growth guard
+            // below already distrusts (see the comment above `_lastSyncedShape`,
+            // and the growth check a few lines down): CodeMirror's own internal
+            // remeasure pass can report a `scrollHeight` reading that drifts away
+            // from what this method already committed -- on a real device-pixel
+            // ratio it can read fractionally MORE, forever, on the growth side
+            // (see the comment above); live-confirmed to drift the other way too:
+            // a chain of such echoes, each shrinking `contentDesired` by more than
+            // the sub-pixel noise floor below, walks the committed height down
+            // with nothing to stop it short of zero -- even though the document
+            // never changed. Only a genuine shape change re-establishes trust in
+            // a smaller reading; a re-entrant call holds the content component at
+            // its last-trusted value instead. The hbar-reserve component measured
+            // below is unaffected -- it is re-measured, and trusted, on every
+            // call regardless of shape, since (per the comment above its own
+            // computation) it cannot manufacture this kind of feedback loop on
+            // its own.
+            const previousContentHeight = previousHeight - this._lastHbarReserve;
+
+            if (contentDesired < previousContentHeight && previousContentHeight - contentDesired >= 1) {
+                contentDesired = previousContentHeight;
+            }
         }
 
         const offsetSize = DOM.source.getOffsetSize(this._scrollElement);
@@ -966,21 +993,22 @@ class CodeEditor extends Component<CodeEditorOptions> {
             return;
         }
 
-        // A shrink against an UNCHANGED shape, smaller than one pixel, can
-        // only be integer-rounding noise, never genuine content: the
-        // document/width haven't changed, so real content can't have gotten
-        // shorter without an edit (which would itself be a shape change).
+        // A residual shrink against an UNCHANGED shape, smaller than one
+        // pixel, can only be integer-rounding noise, never genuine content:
+        // a content shrink of a pixel or more against an unchanged shape is
+        // already held at its last-trusted value by the guard above, so
+        // whatever reaches this point is either a sub-pixel content reading
+        // or a change in the independently-trusted hbar reserve.
         // `metrics.scrollHeight` above is an integer DOM property — on a
         // later call against a shape whose height this method already
         // corrected upward by a fraction of a pixel (see the fractional
         // undershoot correction above), it reads back that already-correct
         // height rounded DOWN, which is strictly LESS than what this method
-        // itself committed. Live-confirmed: that read straight back
-        // through as a "genuine" shrink every time (shrinks are otherwise
-        // always trusted, unlike growths), silently reverting the
-        // correction on the very next geometryChanged event — CodeMirror's
-        // own settling fires one almost immediately — so the fix never held
-        // past its own first call.
+        // itself committed. Live-confirmed: unguarded, that read straight
+        // back through as a "genuine" shrink every time, silently reverting
+        // the correction on the very next geometryChanged event —
+        // CodeMirror's own settling fires one almost immediately — so the
+        // fix never held past its own first call.
         if (desired < previousHeight && !shapeChanged && previousHeight - desired < 1) {
             return;
         }

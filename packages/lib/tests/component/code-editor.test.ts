@@ -769,7 +769,7 @@ describe('CodeEditor autoHeightMaxRows', () => {
         expect(editor.getHeight()).toBe(160);
     });
 
-    it('still allows a shrink during a pure selection change', () => {
+    it('rejects a content shrink flagged as a pure selection change against an unchanged shape', () => {
         const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
         editor._view = {
             state: { doc: { lines: 4, length: 80 } },
@@ -787,9 +787,57 @@ describe('CodeEditor autoHeightMaxRows', () => {
         editor.syncAutoHeight();
         expect(editor.getHeight()).toBe(160);
 
-        scrollHeight = 120; // a shrink is always safe to apply
+        // Mirrors its sibling growth-rejection test above: a cursor move
+        // triggers no reflow, so any reported shrink it carries against an
+        // unchanged shape is the same spurious geometry echo, not real
+        // content -- reject it.
+        scrollHeight = 120;
         editor.syncAutoHeight(true);
-        expect(editor.getHeight()).toBe(120);
+        expect(editor.getHeight()).toBe(160);
+    });
+
+    it('does not collapse the height when several re-entrant calls each shrink an unchanged shape by more than a pixel', () => {
+        // Mirrors 'caps consecutive height growths...' above, but for a
+        // shrink. Live-reproduced via a consumer app (SQLAdmin): a 4-line,
+        // 87.375px editor shrinks back to its original 3-line, 68px
+        // document, and its committed height collapses to 0px even though
+        // the document is correct -- CodeMirror's own geometryChanged echo
+        // (see the comment above the growth check below) can report a
+        // scrollHeight more than a pixel below what this method already
+        // committed, on a call no genuine edit caused; unlike growth,
+        // nothing stopped a chain of these from walking the height to zero.
+        const editor = new CodeEditor(undefined, { autoHeightMaxRows: 20 }) as any;
+        editor._view = {
+            state: { doc: { lines: 4, length: 80 } },
+            documentPadding: { top: 0, bottom: 0 },
+        };
+        editor._scrollElement = DOM.sink.createElement('div');
+
+        let scrollHeight = 160;
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation(() => ({
+            scrollTop: 0, scrollLeft: 0,
+            scrollWidth: 500, scrollHeight,
+            clientWidth: 500, clientHeight: scrollHeight,
+        }));
+
+        editor.syncAutoHeight(); // establishes the grown, 4-line state
+        expect(editor.getHeight()).toBe(160);
+
+        // A genuine edit shrinks the document back to 3 lines...
+        editor._view.state.doc.lines = 3;
+        editor._view.state.doc.length = 40;
+
+        // ...followed by repeated re-entrant echoes against the now-
+        // unchanged shape, each still reading a lower scrollHeight than
+        // the last.
+        for (let i = 0; i < 10; i++) {
+            scrollHeight = Math.max(0, scrollHeight - 20);
+            editor.syncAutoHeight();
+        }
+
+        // The first, shape-earned reading (140) is trusted and held; none
+        // of the nine unshaped echoes after it are.
+        expect(editor.getHeight()).toBe(140);
     });
 });
 
