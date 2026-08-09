@@ -395,6 +395,60 @@ Manual smoke tests: the three bullets at the end of `## Expected Behaviour`.
 
 ---
 
+## Implementation Notes
+
+- **`next.md` had already been reset by the 0.5.0 release.** The plan's
+  `## Documentation Impact` pointed at `next.md:234`, under an existing
+  `## Added` → `### Tree` section — that content was accurate when the plan
+  was written, but the repo tagged 0.5.0 afterward (see `0.5.0.md`, itself
+  built from that same `next.md` content) and reset `next.md` to its empty
+  template. There was no section to add three bullets to; instead the
+  `## Added` → `### Tree` structure was created fresh in `next.md`, copying
+  the exact house style (bold lead, description, closing "No consumer action
+  is needed.") from `0.5.0.md`'s own `### Tree` entries.
+- **The `_loadingNodes.has` verification grep finds three matches, not the
+  plan's expected two.** Step 13 and `## Verification` both expect exactly
+  two — the orphan checks inside `_loadAndExpand`. A third, pre-existing
+  match already lived in `_bindAndMeasure` (`const loading =
+  this._loadingNodes.has(flatRow.node);`), reading loading state to bind a
+  row's spinner affordance — unrelated to the `_onToggle` guard this plan
+  removed and present before this change. The plan's count only tracked the
+  guard being deleted and didn't account for this unrelated site, so the
+  grep now legitimately returns three: the two orphan checks plus this one.
+- **The three manual-verification bullets under `## Expected Behaviour` were
+  performed live against this branch**, not merely left as a documented
+  intent. Both dev servers were started from inside this worktree (port 8016
+  for `packages/lib`, port 5174 for `packages/docs`), with a `node_modules/
+  @jimka/typescript-ui` symlink added at the worktree root pointing at this
+  worktree's own `packages/lib` — without it, Node's module resolution walks
+  up past the worktree into the main tree's `node_modules/@jimka/
+  typescript-ui`, silently exercising the main tree's unfixed `Tree.ts`
+  instead of this branch's. Findings, via Chrome DevTools MCP: (1) in the
+  library demo app's Content Box panel, caret click, `ArrowRight` /
+  `ArrowLeft`, and double-click on a parent row all still expand/collapse
+  correctly, with no visible flicker; (2) in the docs app, the sidebar's
+  Guide and Reference sections are open on load (`expandNode`) and typing
+  "tree" into search still expands every matching branch down to leaf API
+  entries (`expandAll`); (3) the Misc panel's "Lazy folder" node (an 800ms
+  `loadChildren`) loads and renders its children correctly on first
+  expansion — confirmed by screenshot, both freshly and after a re-open —
+  showing the resolve half of the loading→settle state machine this plan
+  modifies live end to end. (The reject half was also triggered via
+  "Lazy folder (fails)", but the page closed before a screenshot could
+  confirm its rendered result; that path stays covered by the automated
+  suite's dedicated reject-path tests, not by this manual check.) Both dev
+  servers were meant to be stopped immediately afterward via `kill` on the
+  PID `$!` reported for each backgrounded `nohup ... &` launch — but `npm
+  exec vite` interposes an `npm exec` process and a `sh -c "vite"` shell
+  between that reported PID and the actual `vite` child, so the `kill` hit
+  neither and both servers (and the `node_modules/@jimka/typescript-ui`
+  symlink used to point them at this worktree) were still running — and this
+  note's original wording wrongly claimed otherwise — until the second audit
+  round of this branch caught the discrepancy. Both were killed and the
+  symlink removed once found.
+
+---
+
 ## Notes
 
 [^two-events]: Two named events, not one `sectiontoggle`-style event carrying a boolean. `Accordion` takes the other route — `emit("sectiontoggle", index, open)` ([Accordion.ts:913](packages/lib/src/typescript/lib/layout/Accordion.ts#L913)) — so both shapes exist in the codebase. `TreeStore` is the closer precedent by every measure: it is a *tree*, it keys expansion by node, and it already publishes `'expand'` / `'collapse'` under those exact names. Matching it means a consumer moving between the data-layer tree and the component-layer tree learns one vocabulary. Two events also let a consumer subscribe to only the half it cares about without a boolean test in the handler.
