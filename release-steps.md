@@ -1,3 +1,4 @@
+# Steps to take when releasing a new version
 
 ## Update version string
 
@@ -9,20 +10,40 @@ Update version in the following files:
 
 Run `npm install --package-lock-only` at the root to update package-lock.json
 
+## Changelog
+
+ - Rename packages/lib/docs/reference/changelog/next.md to whatever the new
+   version is.
+ - Create a new empty next.md file.
+ - Update index.md in the changelog directory so that all entries are included.
+ - Update packages/docs/src/content/pages.ts with information about the new
+   version.
+
+## Migration guide
+
+ - Rename packages/lib/docs/reference/migration/next.md to whatever the new
+   version is.
+ - Create a new empty next.md file.
+ - Update index.md in the migration directory so that all entries are included.
+ - Update packages/docs/src/content/pages.ts with information about the new
+   version.
+
 ## Verify publish readiness.
 
-Verify that the changelog and migration guides looks ok and contains everything in the coming version.
+Verify that the changelog and migration guides looks ok and contains everything
+in the coming version.
 
 Run from root:
-- npm run test
-- npm run lint
-- npm run typecheck
-- npm run build:lib
+- `npm test --workspaces --if-present`
+- `npm run lint`
+- `npm run typecheck`
+- `npm -w packages/docs run typecheck`
+- `npm run build:pages`
 
 And make sure everything looks OK!
 
 Run in packages/lib and packages/create-app
-- npm pack --dry-run
+- `npm pack --dry-run`
 
 To validate that the packages tar up correctly.
 
