@@ -99,6 +99,8 @@ The tab buttons render on first paint; the panels are constructed on first activ
 
 Materialization is asynchronous: clicking a lazy tab selects the button immediately, mounts a centred [`ProgressSpinner`](/components/ProgressSpinner) in the content area, and runs the factory after a two-rAF yield via [`Animation.materialize`](/api/core/namespaces/Animation/functions/materialize). The newly-built panel fades in over the spinner, so the spinner is briefly visible during construction and the UI stays responsive throughout. Layout-sizing queries (`getPreferredSize` / `getMinSize` / `getMaxSize`) observe the spinner placeholder until the build completes — they no longer trigger factory invocations.
 
+The tab itself is marked busy in the strip for the whole build — from the moment the entry starts building until the panel is ready — so a loading tab stays visible in the [`TabButton`](/components/TabButton#busy-state) even while another tab is selected. The marking clears the instant the build resolves; a rejection removes the tab outright instead (see [Async factories](#async-factories) below).
+
 A deferred registration accepts the same per-child constraints as any other `addComponent` call (including `closeable` and `glyph`). The constraints are stored on the entry and applied when the panel materializes.
 
 Eager and deferred registrations mix freely on the same `Tab`, and tab order always follows call order.
@@ -129,6 +131,26 @@ layout.on('exception', (error, label) => {
 A tab closed while its factory is still in flight is forgotten: when the promise later settles, nothing is attached and nothing is reported.
 
 An async factory is only meaningful where something can host the wait. Passing one to a container whose manager does not defer it — or declining deferral with `lazy: false` — throws, because there is no spinner and no owner for the pending state. See [which loading affordance applies](/components/ProgressSpinner#which-loading-affordance) for choosing between this and overlaying a component that already exists.
+
+### Busy tabs
+
+[`setTabBusy(content, busy)`](/api/layout/classes/Tab#settabbusy) marks the tab hosting an already-built `content` component as busy — the entry point for a consumer's own long operation on a tab the deferred machine no longer owns (a lazy tab is already marked automatically while it builds, above):
+
+```typescript
+tab.setTabBusy(ordersPanel, true);   // start the caller's own long operation
+// ...
+tab.setTabBusy(ordersPanel, false);  // the caller clears it when the operation ends
+```
+
+`isTabBusy(content)` reads the current state back. The `"busychange"` event fires whenever a tab's busy state actually changes, whichever side drove it:
+
+```typescript
+layout.on('busychange', (busy, label) => {
+    console.log(`${label} is now ${busy ? 'loading' : 'loaded'}`);
+});
+```
+
+There is no automatic clear for a flag `setTabBusy` set: the consumer owns clearing it, the same way [`ProgressSpinner.showOverlay`](/components/ProgressSpinner) is owned by its matching `hideOverlay`. See [`TabButton`'s busy state](/components/TabButton#busy-state) for the strip affordance itself.
 
 ## Tab-switch animation
 

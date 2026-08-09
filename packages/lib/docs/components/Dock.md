@@ -169,7 +169,7 @@ dock.addLazyPanel({
 });
 ```
 
-The tab appears at once — with its title, glyph and tooltip already correct — and a spinner holds the panel body for the whole wait. When the promise resolves the content fades in, in the same tab.
+The tab appears at once — with its title, glyph and tooltip already correct — and a spinner holds the panel body for the whole wait. When the promise resolves the content fades in, in the same tab. While the content loads, the panel's tab in the dock strip is also marked busy — see [`TabButton`'s busy state](/components/TabButton#busy-state) — so the load is visible from any other panel in that region, not only from the panel's own body. A panel torn off into a float shows only its in-body spinner.
 
 `addPanel` does **not** accept an async factory: an eagerly-built panel has no spinner and nothing to own the wait, so passing one throws. If the promise rejects, the whole docked panel closes and the dock emits [`exception`](#exception) after that panel's own `close`. A panel closed while its factory is still in flight is forgotten: when the promise later settles, nothing is added and nothing is reported.
 

@@ -58,6 +58,7 @@ The `"tearoffrequested"` / `"detach"` pair is driven purely by whether the drag 
 | `setActiveVisual(id)` | Visual-only re-select (button state + indicator), no emit — for re-selection after a close. |
 | `getEntryIds()` / `getActiveEntryId()` | The ordered cell ids / the active id. |
 | `setEntryContentId(id, contentId)` | Push the content's component id (feeds the drag payload and the button's `aria-controls`). |
+| `setEntryBusy(id, busy)` / `isEntryBusy(id)` | Push the cell's loading state (the owner pushes it by cell id, same as `setEntryContentId`) — shows the tab button's loading overlay. |
 | `isEntryCloseable(id)` / `getEntryName(id)` / `getEntryButtonId(id)` | Per-cell reads the owner needs (window title, ARIA `aria-labelledby`, …). |
 
 ## Layout

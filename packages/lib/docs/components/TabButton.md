@@ -14,6 +14,17 @@ if (tab.isCloseable()) {
 }
 ```
 
+## Busy state
+
+[`setBusy(true)`](/api/component/button/classes/TabButton#setbusy) shows a translucent pulsing wash over the whole button, marking its tab's content as still loading; [`isBusy()`](/api/component/button/classes/TabButton#isbusy) reports the current state. The overlay displaces nothing — the label, the identity glyph, and the close (×) affordance are all unchanged, and the button never resizes. `prefers-reduced-motion` swaps the pulse for a static tint.
+
+```typescript
+tab.setBusy(true);   // start the loading wash
+tab.setBusy(false);  // clear it
+```
+
+The wash colour reads `--ts-ui-tab-busy-color`, falling back to the strip's `--ts-ui-tab-indicator-color` accent when unset — override the former for a distinct busy colour without a full theme change.
+
 ## Notes
 
 - Extends `ToggleButton`, so it slots into a `ButtonGroup` and a roving tab index unchanged and exposes the inherited `setSelected` / `isSelected` selection state.
