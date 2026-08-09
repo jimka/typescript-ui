@@ -75,14 +75,32 @@ tree.on('loaderror', (node, error) => {
 
 If `loadChildren` rejects, the node reverts to a collapsed, unloaded caret — toggling it again retries the load — and the tree fires a `loaderror` event carrying the node and the rejection reason. A loader that resolves to an empty array succeeds: the node renders as an expanded, empty parent.
 
+## Expansion state
+
+`getExpandedNodes()` returns a snapshot of every currently expanded node, and the `"expand"` / `"collapse"` events fire whenever a single node's expansion changes — a caret click, `ArrowRight` / `ArrowLeft`, a double-click on a parent row, or a programmatic `expandNode(node)` / `expandNodeAsync(node)`. This is enough to persist which nodes are open and restore them: subscribe to both events, store `getExpandedNodes()`, and on reload `await expandNodeAsync(node)` per stored node — `expandNodeAsync` resolves only once the expansion has committed, including after an unloaded lazy node's `loadChildren` settles.
+
+```typescript
+tree.on('expand', node => saveExpanded(node));
+tree.on('collapse', node => saveCollapsed(node));
+
+for (const node of loadStoredExpandedNodes()) {
+    await tree.expandNodeAsync(node);
+}
+```
+
+`expandAll()` and `revealByPredicate()` change the expansion without emitting `"expand"` — call `getExpandedNodes()` after either to read what changed. `setNodes()` clears the expanded set (also silently), so a persisted set covers a single dataset instance.
+
 ## Common methods
 
 | Method | Purpose |
 | --- | --- |
 | `setNodes(nodes[])` | Replace the entire tree. |
 | `expandAll()` / `collapseAll()` | Bulk-toggle expansion. |
+| `getExpandedNodes()` | Snapshot the currently expanded nodes (see [Expansion state](#expansion-state)). |
+| `expandNodeAsync(node)` | Expand a node and resolve once the expansion has committed, including a lazy load (see [Expansion state](#expansion-state)). |
 | `on("selection", fn)` | Subscribe to user-driven selection changes. |
 | `on("loaderror", fn)` | Subscribe to lazy-load failures (see [Lazy loading](#lazy-loading)). |
+| `on("expand", fn)` / `on("collapse", fn)` | Subscribe to a single node's expansion changing (see [Expansion state](#expansion-state)). |
 | `setRendererFactory(fn)` | Replace the content renderer used for every row. |
 | `getRowOverflow()` / `setRowOverflow(mode)` | Get/set how a row wider than the viewport is handled — see [Row overflow](#row-overflow). |
 
