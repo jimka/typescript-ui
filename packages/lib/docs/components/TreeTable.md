@@ -139,6 +139,7 @@ A filter that drops a parent record drops its entire subtree from the flat view 
 - **Async lazy-load.** The store must already hold every record the user can expand into. A future plan can layer an "on-expand fetch" mode.
 - **Animation.** Expand / collapse is instant, matching [`Tree`](/components/Tree).
 - **Sibling reorder inside a directory.** The drag-and-drop integration reparents only; the store has no per-record order field, so dropping a sibling next to another sibling under the same directory is a no-op (rejected as "no change"). Adding an order field is a future plan.
+- **`setRowVisible`.** Inherited from [`Table`](/components/Table#row-visibility) but has no effect: a bare per-record predicate can't decide what to do with a hidden parent's children (keep them, drop them, re-parent them) — that needs the same kind of parent/child-aware pass the store's own [filter](#filtering) already does, and is a different, larger feature with no requester today.
 
 ## Related
 
