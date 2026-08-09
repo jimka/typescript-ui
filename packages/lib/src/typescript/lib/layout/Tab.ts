@@ -45,11 +45,14 @@ import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
  * of a surviving sibling;
  * `"exception"` fires when a deferred tab's asynchronous factory rejected
  * (carrying the rejection value and the tab's label), after that tab has already
- * been closed.
+ * been closed;
+ * `"busychange"` fires when a tab's busy state changes (carrying the new state
+ * and the tab's label) — driven automatically while a deferred tab's content
+ * builds, or by {@link Tab.setTabBusy} for a consumer's own long operation.
  *
  * @category Layouts
  */
-export type TabEvent = "tabclose" | "empty" | "detach" | "select" | "activate" | "dock" | "exception";
+export type TabEvent = "tabclose" | "empty" | "detach" | "select" | "activate" | "dock" | "exception" | "busychange";
 
 /**
  * How a torn-off tab's floating window hosts its content.
@@ -138,6 +141,8 @@ export interface TabOptions extends LayoutManagerOptions {
         empty?: () => void;
         /** Fires after a deferred tab's async factory rejected and its tab was closed. */
         exception?: (error: unknown, label: string) => void;
+        /** Fires when a tab's busy state changed, carrying the new state and the tab's label. */
+        busychange?: (busy: boolean, label: string) => void;
     };
 
     /** Tab-button width strategy; defaults to `"equal"`. */
@@ -1174,6 +1179,43 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Marks the tab hosting `content` as busy (or not). Its tab button shows a
+     * loading overlay until the flag is cleared or the tab is closed. Deferred
+     * tabs are driven automatically while their content builds; this is the
+     * entry point for a consumer's own long operation on a tab that is already
+     * built.
+     *
+     * @param content - The content component whose tab to mark.
+     * @param busy - True while the consumer's operation is running.
+     *
+     * @returns True when a matching tab was found, false when none matched.
+     */
+    setTabBusy(content: Component, busy: boolean): boolean {
+        const entry = this._contents.find(e => e.component === content);
+
+        if (!entry) {
+            return false;
+        }
+
+        this.setEntryBusy(entry, busy);
+
+        return true;
+    }
+
+    /**
+     * Reports whether the tab hosting `content` is marked busy.
+     *
+     * @param content - The content component whose tab to query.
+     *
+     * @returns True when that tab is busy; false when no tab matches.
+     */
+    isTabBusy(content: Component): boolean {
+        const entry = this._contents.find(e => e.component === content);
+
+        return entry ? this._bar.isEntryBusy(entry.id) : false;
+    }
+
+    /**
      * Strip `"dockrequested"` handler: a foreign tab was dropped here. Resolves the
      * live content from the shared registry and docks it as a new tab.
      *
@@ -1579,10 +1621,29 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Writes the busy flag onto a content entry's strip cell and reports the change.
+     * Every busy write — the deferred machine's and the public setter's — routes
+     * here, so `"busychange"` fires exactly once per real transition.
+     *
+     * @param entry - The content entry whose tab to mark.
+     * @param busy - The new busy state.
+     */
+    private setEntryBusy(entry: ContentEntry, busy: boolean): void {
+        if (this._bar.isEntryBusy(entry.id) === busy) {
+            return;
+        }
+
+        this._bar.setEntryBusy(entry.id, busy);
+        this.emit("busychange", busy, this._bar.getEntryName(entry.id));
+    }
+
+    /**
      * Mounts a spinner into the container, yields two animation frames so it
      * reaches the screen, then runs the entry's factory and fades the built
      * component in over the spinner. Re-entry while a build is in flight is
-     * suppressed via the entry's `state` field.
+     * suppressed via the entry's `state` field. The tab is marked busy in the
+     * strip for the whole build — from this state flip until `onReady` clears
+     * it — so a loading tab stays visible while another tab is selected.
      *
      * An asynchronous factory keeps the entry in `"building"` until its promise
      * settles, so the spinner covers the whole wait rather than construction
@@ -1617,6 +1678,11 @@ class Tab extends LayoutManager {
         entry.spinner = spinner;
         entry.state   = "building";
 
+        // The strip's half of the spinner: the panel body's spinner is only visible
+        // while this tab is selected, so mark the tab itself for as long as the build
+        // runs.
+        this.setEntryBusy(entry, true);
+
         entry.materializeAnimation?.cancel();
         entry.materializeAnimation = Animation.materialize({
             host:             container,
@@ -1646,6 +1712,8 @@ class Tab extends LayoutManager {
             isStale:          () => !this._contents.includes(entry),
             onError:          (error) => this.failEntry(entry, error),
             onReady:          (component) => {
+                this.setEntryBusy(entry, false);
+
                 entry.component = component;
                 entry.factory   = null;
                 entry.spinner   = null;
@@ -2378,6 +2446,18 @@ class Tab extends LayoutManager {
      * @returns This tab layout, for method chaining.
      */
     on(event: "exception", listener: (error: unknown, label: string) => void): this;
+    /**
+     * Registers a listener for the `"busychange"` event, which fires when a
+     * tab's busy state changes. A deferred tab is marked busy automatically for
+     * the whole build; {@link setTabBusy} drives it for a consumer's own long
+     * operation on a tab that is already built.
+     *
+     * @param event - The `"busychange"` event.
+     * @param listener - Invoked with the new busy state and the tab's label.
+     *
+     * @returns This tab layout, for method chaining.
+     */
+    on(event: "busychange", listener: (busy: boolean, label: string) => void): this;
     on(event: TabEvent,   listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -2413,6 +2493,7 @@ class Tab extends LayoutManager {
     protected emit(event: "activate", content: Component, index: number): void;
     protected emit(event: "dock",   content: Component): void;
     protected emit(event: "exception", error: unknown, label: string): void;
+    protected emit(event: "busychange", busy: boolean, label: string): void;
     protected emit(event: TabEvent,   ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }

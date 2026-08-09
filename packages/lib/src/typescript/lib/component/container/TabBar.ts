@@ -1463,6 +1463,32 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
+     * Marks the cell with `id` as busy (or not), showing the tab button's
+     * loading overlay. No-op for an unknown id.
+     *
+     * @param id - The cell id whose busy state changed.
+     * @param busy - True while the cell's content is loading.
+     *
+     * @returns This tab strip, for method chaining.
+     */
+    setEntryBusy(id: string, busy: boolean): this {
+        this.entryById(id)?.button.setBusy(busy);
+
+        return this;
+    }
+
+    /**
+     * Reports whether the cell with `id` is marked busy.
+     *
+     * @param id - The cell id to query.
+     *
+     * @returns True when the cell is busy; false for an unknown id.
+     */
+    isEntryBusy(id: string): boolean {
+        return this.entryById(id)?.button.isBusy() ?? false;
+    }
+
+    /**
      * Returns the id of the cell's tab button — the owner reads it to set the
      * content panel's ARIA `aria-labelledby` back to the button.
      *

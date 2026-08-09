@@ -144,6 +144,46 @@ describe('TabBar removeBarEntry', () => {
     });
 });
 
+describe('TabBar busy state', () => {
+    afterEach(() => DOM.reset());
+
+    it('setEntryBusy(id, true) marks the entry busy; setEntryBusy(id, false) clears it', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha');
+        bar.setEntryBusy('a', true);
+
+        expect(bar.isEntryBusy('a')).toBe(true);
+
+        bar.setEntryBusy('a', false);
+
+        expect(bar.isEntryBusy('a')).toBe(false);
+    });
+
+    it('setEntryBusy on an unknown id is a no-op and chainable; isEntryBusy is false', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new TabBar();
+
+        expect(bar.setEntryBusy('nope', true)).toBe(bar);
+        expect(bar.isEntryBusy('nope')).toBe(false);
+    });
+
+    it('removeBarEntry clears the busy read for that id', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha');
+        bar.setEntryBusy('a', true);
+        bar.removeBarEntry('a');
+
+        expect(bar.isEntryBusy('a')).toBe(false);
+    });
+});
+
 describe('TabBar entry metadata', () => {
     afterEach(() => DOM.reset());
 

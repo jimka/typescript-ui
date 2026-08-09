@@ -462,3 +462,109 @@ describe('Tab lazy activation events', () => {
         expect(seen).toEqual([['Eager', 0]]);
     });
 });
+
+describe('Tab busy state — the deferred machine', () => {
+
+    it('activating a lazy tab emits busychange(true, label) synchronously, within setActiveTabIndex', () => {
+        const { host, tab } = hostTab();
+        const seen: Array<[boolean, string]> = [];
+
+        host.getElement(true);
+        host.addComponent(() => new Component(), constraints({ name: 'Heavy' }));
+        tab.on('busychange', (busy, label) => seen.push([busy, label]));
+
+        tab.setActiveTabIndex(0);
+
+        // The entry flips to "building" (and the strip is marked) before the
+        // materialize helper's two-frame yield, so this is observable the
+        // instant setActiveTabIndex returns.
+        expect(seen).toEqual([[true, 'Heavy']]);
+    });
+
+    it('marks only the activated tab; an eager sibling stays not busy', () => {
+        const { host, tab } = hostTab();
+        const panel = new Component({ name: 'Eager' });
+        const seen: Array<[boolean, string]> = [];
+
+        host.getElement(true);
+        host.addComponent(panel);
+        host.addComponent(() => new Component(), constraints({ name: 'Heavy' }));
+        host.doLayout();
+        tab.on('busychange', (busy, label) => seen.push([busy, label]));
+
+        tab.setActiveTabIndex(1);
+
+        expect(tab.isTabBusy(panel)).toBe(false);
+        expect(seen).toEqual([[true, 'Heavy']]);
+    });
+
+    it('re-activating the same lazy tab while still building emits no second busychange', () => {
+        const { host, tab } = hostTab();
+        const seen: Array<[boolean, string]> = [];
+
+        host.getElement(true);
+        host.addComponent(() => new Component(), constraints({ name: 'Heavy' }));
+        tab.on('busychange', (busy, label) => seen.push([busy, label]));
+
+        tab.setActiveTabIndex(0);
+        tab.setActiveTabIndex(0);
+
+        expect(seen).toEqual([[true, 'Heavy']]);
+    });
+});
+
+describe('Tab busy state — the public API', () => {
+
+    it('setTabBusy(panel, true) marks an eager tab busy and emits busychange once', () => {
+        const { host, tab } = hostTab();
+        const panel = new Component({ name: 'Eager' });
+        const seen: Array<[boolean, string]> = [];
+
+        host.getElement(true);
+        host.addComponent(panel);
+        host.doLayout();
+        tab.on('busychange', (busy, label) => seen.push([busy, label]));
+
+        expect(tab.setTabBusy(panel, true)).toBe(true);
+        expect(tab.isTabBusy(panel)).toBe(true);
+        expect(seen).toEqual([[true, 'Eager']]);
+    });
+
+    it('setTabBusy(panel, true) again emits nothing; setTabBusy(panel, false) emits once', () => {
+        const { host, tab } = hostTab();
+        const panel = new Component({ name: 'Eager' });
+        const seen: Array<[boolean, string]> = [];
+
+        host.getElement(true);
+        host.addComponent(panel);
+        host.doLayout();
+
+        tab.setTabBusy(panel, true);
+        tab.on('busychange', (busy, label) => seen.push([busy, label]));
+
+        expect(tab.setTabBusy(panel, true)).toBe(true);
+        expect(seen).toEqual([]);
+
+        expect(tab.setTabBusy(panel, false)).toBe(true);
+        expect(seen).toEqual([[false, 'Eager']]);
+    });
+
+    it('setTabBusy on an unmatched component returns false, emits nothing, and leaves other tabs unchanged', () => {
+        const { host, tab } = hostTab();
+        const panel  = new Component({ name: 'Eager' });
+        const orphan = new Component();
+        const seen: Array<[boolean, string]> = [];
+
+        host.getElement(true);
+        host.addComponent(panel);
+        host.doLayout();
+
+        tab.setTabBusy(panel, true);
+        tab.on('busychange', (busy, label) => seen.push([busy, label]));
+
+        expect(tab.setTabBusy(orphan, true)).toBe(false);
+        expect(seen).toEqual([]);
+        expect(tab.isTabBusy(panel)).toBe(true);
+        expect(tab.isTabBusy(orphan)).toBe(false);
+    });
+});

@@ -5,6 +5,9 @@ import { ThemeManager } from "~/core/Theme.js";
 import { ToggleButton, ToggleButtonOptions } from "~/component/button/ToggleButton.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
 import { callable } from "~/core/Callable.js";
+import { StyleRule } from "~/core/StyleTarget.js";
+import { Component } from "~/core/Component.js";
+import { Animation } from "~/core/Animation.js";
 
 /**
  * Construction-time options for {@link TabButton}.
@@ -17,6 +20,60 @@ import { callable } from "~/core/Callable.js";
 export interface TabButtonOptions extends ToggleButtonOptions {
     /** When true, builds and overlays the close (✕) affordance. Default false. */
     closeable?: boolean;
+}
+
+const BUSY_PULSE_KEYFRAME = "ts-ui-tab-busy-pulse";
+// Peak alpha of the pulse. Low enough that the label and the identity glyph
+// stay legible through the wash on both the light and dark themes.
+const BUSY_STATIC_OPACITY = 0.22;
+
+StyleRule.ensureKeyframes(
+    BUSY_PULSE_KEYFRAME,
+    "0% { opacity: 0.10; } 50% { opacity: 0.30; } 100% { opacity: 0.10; }"
+);
+
+let _busyClassRule: StyleRule | null = null;
+
+/**
+ * Registers the shared `.TabBusyIndicator` class rule once on first use. It
+ * holds only the overlay geometry (absolute fill of the host button, no hit
+ * testing); the colour, opacity and animation are per-instance setter writes.
+ *
+ * Idempotent and module-local; safe across hot reloads.
+ */
+function ensureBusyIndicatorClassRule(): void {
+    if (_busyClassRule) {
+        return;
+    }
+
+    _busyClassRule = new StyleRule({
+        scope:  "class",
+        name:   "TabBusyIndicator",
+        styles: {
+            position:      "absolute",
+            top:           "0",
+            right:         "0",
+            bottom:        "0",
+            left:          "0",
+            pointerEvents: "none",
+        },
+    });
+}
+
+/**
+ * The per-tab loading wash: a translucent accent-coloured overlay filling its
+ * host {@link TabButton}, pulsing while the tab's content builds. Raw-appended
+ * onto the button's element rather than laid out, so it never changes the tab's
+ * size, and left at the default z-index so the overlaid close ✕ stays above it.
+ */
+class TabBusyIndicator extends Component {
+    constructor() {
+        ensureBusyIndicatorClassRule();
+
+        super();
+
+        this.setBackgroundColor("var(--ts-ui-tab-busy-color, var(--ts-ui-tab-indicator-color, #1a73e8))");
+    }
 }
 
 /**
@@ -77,6 +134,13 @@ class TabButton extends ToggleButton {
     // position/re-pin it each layout.
     private _closeButton: TabCloseButton | null = null;
 
+    // Whether this tab is marked busy. Runtime state (a load starts and ends), not
+    // configuration, so it carries no options-bag field.
+    private _busy: boolean = false;
+
+    // The busy wash, built on the first setBusy(true) and reused thereafter.
+    private _busyIndicator: TabBusyIndicator | null = null;
+
     /**
      * Builds a tab-styled toggle button with the given label, applying the
      * `--ts-ui-tab-button-*` fill/border/hover/selected styling and, when
@@ -132,13 +196,14 @@ class TabButton extends ToggleButton {
     }
 
     /**
-     * Disposes the overlaid close button, then runs the inherited teardown.
-     * `_closeButton` is raw-appended onto this button's own element rather than
-     * registered via `addComponent` (see `buildCloseButton`'s doc comment), so
-     * `super.destructor()`'s child recursion cannot reach it.
+     * Disposes the overlaid close button and busy indicator, then runs the
+     * inherited teardown. Both are raw-appended onto this button's own element
+     * rather than registered via `addComponent` (see `buildCloseButton`'s doc
+     * comment), so `super.destructor()`'s child recursion cannot reach them.
      */
     protected destructor(): void {
         this._closeButton?.dispose();
+        this._busyIndicator?.dispose();
 
         super.destructor();
     }
@@ -247,6 +312,62 @@ class TabButton extends ToggleButton {
      */
     isCloseable(): boolean {
         return this._closeable;
+    }
+
+    /**
+     * Shows or hides the busy overlay — a translucent pulsing wash over the
+     * whole button that marks this tab's content as still loading. Displaces
+     * nothing: the label, the glyph and the close affordance are unchanged and
+     * the button does not resize. Honours `prefers-reduced-motion` by painting
+     * a static wash instead of a pulse.
+     *
+     * @param busy - True to show the overlay, false to hide it.
+     *
+     * @returns This button, for method chaining.
+     */
+    setBusy(busy: boolean): this {
+        if (this._busy === busy) {
+            return this;
+        }
+
+        this._busy = busy;
+
+        if (!busy) {
+            // Drop the animation as well as the visibility: a hidden element with a
+            // live infinite keyframe keeps the compositor working for nothing.
+            this._busyIndicator?.clearAnimation();
+            this._busyIndicator?.setVisible(false);
+
+            return this;
+        }
+
+        if (!this._busyIndicator) {
+            this._busyIndicator = new TabBusyIndicator();
+
+            // Overlay it on this button's own element, the same way the close
+            // affordance is mounted; a laid-out child would resize the tab.
+            DOM.sink.appendChild(this.getElement(true)!, this._busyIndicator.getElement(true)!);
+        }
+
+        this._busyIndicator.setVisible(true);
+
+        if (Animation.isReducedMotion()) {
+            this._busyIndicator.clearAnimation();
+            this._busyIndicator.setOpacity(BUSY_STATIC_OPACITY);
+        } else {
+            this._busyIndicator.setAnimation(`${BUSY_PULSE_KEYFRAME} 1.2s ease-in-out infinite`);
+        }
+
+        return this;
+    }
+
+    /**
+     * Reports whether the busy overlay is currently shown.
+     *
+     * @returns True when this tab is marked busy.
+     */
+    isBusy(): boolean {
+        return this._busy;
     }
 }
 
