@@ -29,7 +29,7 @@ toolbar.addComponent(Button('Copy'));
 toolbar.addComponent(Button('Paste'));
 ```
 
-The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be passed to set `mode`, `spacing`, `stretching`, `overflowSizing`, and `justify` declaratively. The `setMode` / `setComponentSpacing` / `setStretching` / `setOverflowSizing` / `setJustify` setters work for runtime updates.
+The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be passed to set `mode`, `spacing`, `stretching`, `itemAlign`, `overflowSizing`, and `justify` declaratively. The `setMode` / `setComponentSpacing` / `setStretching` / `setItemAlign` / `setOverflowSizing` / `setJustify` setters work for runtime updates.
 
 ## Sizing modes
 
@@ -101,6 +101,24 @@ bar.addComponent(Button('Next'));
 
 `justify` is silently ignored when a `weight` cell is present (the weight cell already eats the slack) and when the row fills or overflows the inner width (it clamps to `"start"` so the leading child is never pushed out of view). It has no effect in `"equal"` mode, where the cells always tile the full width, and it acts only on the horizontal (main) axis — positioning a child within its row height stays the domain of `fill` / `anchor` constraints.
 
+## Item alignment
+
+By default `HBox` aligns children on their shared text baseline (see [Baseline alignment](#baseline-alignment) below). The `itemAlign` option ([`BoxItemAlign`](/api/layout/type-aliases/BoxItemAlign)) chooses a different cross-axis (vertical) placement for children that set no explicit per-child align-self:
+
+- `"baseline"` (default) — shared text baseline; see [Baseline alignment](#baseline-alignment).
+- `"start"` — top of the row.
+- `"center"` — centred in the row height.
+- `"end"` — bottom of the row.
+- `"stretch"` — fills the row height. This is what the deprecated `stretching: true` sets under the hood; `stretching` stays as a shorthand for `itemAlign: "stretch"` / `itemAlign: "baseline"`.
+
+```typescript
+import { HBox } from '@jimka/typescript-ui/layout';
+// Mixed-height controls centre vertically instead of baseline-aligning.
+bar.setLayoutManager(HBox({ itemAlign: "center", spacing: 8 }));
+```
+
+A per-child `anchor`/`fill` [align-self](#per-child-cross-axis-alignment-align-self) still overrides `itemAlign` for that one child.
+
 ## Per-child constraints
 
 [`LayoutConstraints`](/layouts/Constraints):
@@ -125,7 +143,7 @@ A single child can override the row's default cross-axis (vertical) placement wi
 - `anchor: AnchorType.SOUTH` (or `SOUTHWEST` / `SOUTHEAST`) — pin the child to the **bottom** of the row.
 - `fill: FillType.VERTICAL` (or `FillType.BOTH`) — stretch the child to the **full row height** (align-self: stretch), regardless of the box's row-wide `stretching`.
 
-`AnchorType.CENTER` and the main-axis-only anchors (`WEST` / `EAST`) carry no cross component and are **inert**: the child keeps the row's default placement (baseline alignment — see below). Only a north/south anchor edge or a vertical fill counts as an explicit align-self.
+`AnchorType.CENTER` and the main-axis-only anchors (`WEST` / `EAST`) carry no cross component and are **inert**: the child keeps the row's default `itemAlign` placement (baseline alignment by default — see below). Only a north/south anchor edge or a vertical fill counts as an explicit align-self.
 
 ```typescript
 import { FillType, AnchorType } from '@jimka/typescript-ui/layout';
@@ -135,7 +153,7 @@ row.addComponent(badge,   { anchor: AnchorType.NORTH });       // pinned to top
 row.addComponent(divider, { fill:   FillType.VERTICAL });      // full row height
 ```
 
-An explicit per-child cross intent overrides the box's global `stretching` for that child only: with `stretching: true`, a child carrying `anchor: AnchorType.SOUTH` shrinks to its preferred height and pins to the bottom while its siblings still fill the row.
+An explicit per-child cross intent overrides the box's global `itemAlign` for that child only: with `itemAlign: "center"`, a child carrying `anchor: AnchorType.SOUTH` pins to the bottom of the row while its siblings still centre.
 
 ## Common methods
 
@@ -143,7 +161,8 @@ An explicit per-child cross intent overrides the box's global `stretching` for t
 | --- | --- |
 | `setMode("preferred" | "equal")` | Switch the sizing strategy along the horizontal axis. |
 | `setComponentSpacing(px)` | Gap between children. |
-| `setStretching(boolean)` | When `true`, all children fill the row's full height. |
+| `setItemAlign("start" | "center" | "end" | "baseline" | "stretch")` | Cross-axis (vertical) placement for children with no per-child align-self; `"baseline"` is the default. |
+| `setStretching(boolean)` | *(deprecated, use `setItemAlign`)* Equivalent to `itemAlign: "stretch"` / `itemAlign: "baseline"`. |
 | `setOverflowSizing("preferred" | "min")` | Equal mode: cell width when an overflowing row scrolls — preferred width or min floor. |
 | `setJustify("start" | "center" | "end" | "between" | "around")` | Preferred mode: distribute leftover main-axis width along the row. |
 
@@ -158,12 +177,13 @@ Each component reports a baseline via `getBaseline()`:
 
 `HBox` picks the largest reported baseline in the row, augments it with half the tallest null-baseline child (so a tall graphical control like `ProgressSpinner` doesn't push the row off-screen), and offsets each child so the rule above holds. The row's preferred height grows to `ascent + descent` where `ascent` and `descent` each take the larger of the text-baseline contribution and the null-child half-height.
 
-If no child reports a baseline, `HBox` falls back to the legacy top-aligned layout. Baseline alignment is also skipped when `setStretching(true)` is enabled, since stretching forces every child to fill the row vertically and there is no shared baseline to align.
+If no child reports a baseline, `HBox` falls back to the legacy top-aligned layout. Baseline alignment applies only when `itemAlign` is `"baseline"` (the default) — any other `itemAlign` value, including the deprecated `setStretching(true)` (now `itemAlign: "stretch"`), uses that value's own cross placement instead and reports no shared baseline. See [Item alignment](#item-alignment) above.
 
-In `mode: "equal"` baseline alignment kicks in only when `stretching` is `false` (the default); passing `stretching: true` instead stretches every child to the row's full height.
+In `mode: "equal"` baseline alignment kicks in only when `itemAlign` is `"baseline"` (the default); other `itemAlign` values, including `stretching: true`, use their own cross placement instead.
 
 ## See also
 
 - [API: HBox](/api/layout/classes/HBox)
+- [`BoxItemAlign`](/api/layout/type-aliases/BoxItemAlign) — the `itemAlign` option values
 - [`VBox`](/layouts/VBox) — vertical equivalent, with the same `mode` option
 - [Layout constraints reference](/layouts/Constraints)

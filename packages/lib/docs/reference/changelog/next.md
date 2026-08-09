@@ -39,6 +39,18 @@ page resets to empty.
   loading joins the first load instead of triggering a second
   `loadChildren`. No consumer action is needed.
 
+### Layout
+
+- **`BoxLayout.itemAlign` / `BoxItemAlign`** — cross-axis alignment for
+  `HBox`/`VBox` children that set no per-child `anchor`/`fill` align-self:
+  `"start"`, `"center"`, `"end"`, `"baseline"` (the default), or `"stretch"`.
+  Mirrors `FlowLayout`'s existing `itemAlign`, letting an `HBox` vertically
+  centre a shorter control in a taller row (or a `VBox` centre a narrower
+  child in a wider column) without every sibling needing its own align-self.
+  `stretching` becomes a deprecated shorthand over `itemAlign: "stretch"` /
+  `"baseline"`; every existing `stretching` call site keeps working
+  unchanged.
+
 ## Fixed
 
 ### Editor
