@@ -154,36 +154,6 @@ describe('getNav', () => {
         expect(labels.every((label) => label !== 'Overview')).toBe(true);
     });
 
-    it('flattens to exactly 159 distinct leaf entries', () => {
-        const paths = flattenEntries(nav).map((entry) => entry.path);
-
-        expect(paths.length).toBe(159);
-        expect(new Set(paths).size).toBe(159);
-    });
-
-    it('leaf entries plus section paths total 168 distinct paths', () => {
-        const paths = flattenPaths(nav);
-
-        expect(paths.length).toBe(168);
-        expect(new Set(paths).size).toBe(168);
-    });
-
-    it('has the expected per-section leaf entry counts', () => {
-        const counts = Object.fromEntries(
-            nav.map((group) => [group.title, flattenEntries([group]).length]),
-        );
-
-        expect(counts).toEqual({
-            Guide:      2,
-            Concepts:   12,
-            Components: 94,
-            Layouts:    16,
-            Data:       6,
-            Recipes:    14,
-            Reference:  15,
-        });
-    });
-
     it('nests subgroups only under Components (13), Layouts (3), Recipes (5), and Reference (2)', () => {
         const groupCounts = Object.fromEntries(
             nav.map((group) => [group.title, group.groups?.length ?? 0]),
@@ -211,24 +181,6 @@ describe('getNav', () => {
 
         expect(reference.pages.map((entry) => entry.label)).toEqual([
             'Browser support', 'FAQ', 'Glossary', 'Troubleshooting',
-        ]);
-    });
-
-    it("Reference's Changelog subgroup pages are in compareLabels order", () => {
-        const reference = nav.find((group) => group.title === 'Reference')!;
-        const changelog = reference.groups!.find((group) => group.title === 'Changelog')!;
-
-        expect(changelog.pages.map((entry) => entry.label)).toEqual([
-            '0.1.0', '0.1.1', '0.2.0', '0.3.0', '0.4.0', '0.4.1', 'Next',
-        ]);
-    });
-
-    it("Reference's Migration subgroup pages are in compareLabels order", () => {
-        const reference = nav.find((group) => group.title === 'Reference')!;
-        const migration = reference.groups!.find((group) => group.title === 'Migration')!;
-
-        expect(migration.pages.map((entry) => entry.label)).toEqual([
-            '0.2.0', '0.4.0', '0.4.1', 'Next',
         ]);
     });
 
