@@ -7,10 +7,10 @@ import { callable } from "~/core/Callable.js";
 /**
  * A read-only renderer for numeric cell values.
  *
- * Displays the value right-aligned via a {@link Text}. Caches the last
- * value passed to {@link setValue} so {@link getValue} returns the exact
- * `Number | null` that was rendered — never the result of re-parsing the
- * DOM text, which silently coerces an empty cell back to `0`.
+ * Displays the value via a {@link Text}, right-aligned by default. Caches
+ * the last value passed to {@link setValue} so {@link getValue} returns the
+ * exact `Number | null` that was rendered — never the result of re-parsing
+ * the DOM text, which silently coerces an empty cell back to `0`.
  *
  * @category Components
  */
@@ -19,11 +19,18 @@ class NumberRenderer extends CellRenderer<Number | null> {
     private _text:  Text          = new Text();
     private _value: Number | null = null;
 
-    constructor() {
+    /**
+     * @param align - The text alignment to render with. Defaults to
+     *   `"right"`, the convention for a homogeneous numeric column;
+     *   {@link DynamicCell} passes `"left"` instead, since it renders a
+     *   number row alongside left-aligned rows of other types in the same
+     *   column.
+     */
+    constructor(align: "left" | "right" = "right") {
         super();
 
         this._text.setPointerEvents("none");
-        this._text.setTextAlign("right");
+        this._text.setTextAlign(align);
         this._text.setText("");
         this._text.setAutoMeasure(false);
 

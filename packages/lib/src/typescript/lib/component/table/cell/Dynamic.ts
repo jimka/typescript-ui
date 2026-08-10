@@ -225,7 +225,11 @@ class DynamicCell extends Cell<any> {
     private static buildRenderer(type: CellType, showSeconds: boolean): CellRenderer<any> {
         switch (type) {
             case 'number':
-                return new NumberRenderer();
+                // Left-aligned: unlike a homogeneous number column, a
+                // DynamicCell number row sits in a column that also shows
+                // left-aligned string/date/combo rows, and a lone
+                // right-aligned row read as jarring there.
+                return new NumberRenderer("left");
             case 'date':
                 return new DateRenderer();
             case 'time':

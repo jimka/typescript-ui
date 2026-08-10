@@ -34,6 +34,11 @@ function renderedText(renderer: unknown): string {
     return (renderer as any)._text.getText();
 }
 
+/** Reads the text alignment off a renderer's `_text` child. */
+function renderedAlign(renderer: unknown): string | null {
+    return (renderer as any)._text.getTextAlign();
+}
+
 describe('StringRenderer', () => {
     it('a fresh renderer caches null', () => {
         expect(new StringRenderer().getValue()).toBe(null);
@@ -96,6 +101,11 @@ describe('StringRenderer', () => {
 describe('NumberRenderer null-vs-zero contract', () => {
     it('a fresh renderer caches null', () => {
         expect(new NumberRenderer().getValue()).toBe(null);
+    });
+
+    it('defaults to right-aligned; DynamicCell requests "left" explicitly', () => {
+        expect(renderedAlign(new NumberRenderer())).toBe('right');
+        expect(renderedAlign(new NumberRenderer('left'))).toBe('left');
     });
 
     it('setValue(0) caches 0, NOT null, and renders the literal "0"', () => {
