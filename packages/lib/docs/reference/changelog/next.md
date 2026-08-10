@@ -5,6 +5,19 @@ tied to a version number yet. Once this release is tagged, its content moves
 onto its own numbered page (see [Changelog](/reference/changelog)) and this
 page resets to empty.
 
+## Changed
+
+### Table
+
+- **A `DynamicCell` number row (the rotated `\x`-style view, or any column
+  using `ColumnConfig.cellType`/`cellValues` for a per-row mixed-type
+  column) now renders left-aligned instead of right-aligned.** A
+  homogeneous `number`-typed column still right-aligns via `NumberCell` /
+  `NumberRenderer`'s default — only the mixed-type `DynamicCell` context
+  changes, since there a lone right-aligned number row sat oddly against
+  every other row's left-aligned string/date/combo text. No consumer action
+  is needed.
+
 ## Added
 
 ### Tree
