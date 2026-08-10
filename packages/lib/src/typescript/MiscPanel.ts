@@ -392,7 +392,68 @@ class MiscPanel extends Panel {
                 wideStore.add(rows);
                 wideStore.sync();
 
-                return widePanel;
+                // Demos setRowVisible at scale: one quick-search box filters
+                // across all 45 columns, entirely display-only. Each value is
+                // formatted the same way its cell renders (dates via
+                // toLocaleDateString(), matching what the date columns show)
+                // so the search matches what's on screen, not the raw value.
+                //
+                // getVisibleRecords() re-evaluates this predicate against the
+                // WHOLE store on every render pass -- including every scroll
+                // animation frame, not just on keystroke (see
+                // Body.getVisibleRecords) -- so formatting all 45 fields
+                // (several Intl-backed toLocaleDateString calls) per record on
+                // every frame is too expensive: measured at 100ms+ of blocked
+                // main thread per frame while scrolling with a filter active.
+                // Each record's searchable text is cached instead, built once
+                // per keystroke (the WeakMap is rebuilt fresh on each
+                // "change", so nothing stale survives past the predicate that
+                // built it) and reused on every later render pass until the
+                // next keystroke replaces the predicate.
+                const searchField = new TextField({ placeholder: 'Filter (all 45 columns)…' });
+
+                searchField.on("change", value => {
+                    const needle = value.trim().toLowerCase();
+
+                    if (needle === '') {
+                        widePanel.getTable().setRowVisible(null);
+                        return;
+                    }
+
+                    const textCache = new WeakMap<ModelRecord, string>();
+
+                    widePanel.getTable().setRowVisible(record => {
+                        let text = textCache.get(record);
+
+                        if (text === undefined) {
+                            text = fields.map(f => {
+                                const raw = record.get(f.name);
+
+                                if (raw == null) {
+                                    return '';
+                                }
+
+                                return (f.type === 'date' ? (raw as Date).toLocaleDateString() : String(raw)).toLowerCase();
+                            }).join(' ');
+
+                            textCache.set(record, text);
+                        }
+
+                        return text.includes(needle);
+                    });
+                });
+
+                const searchRow = new Component({ layoutManager: new HBox({ spacing: 8 }) })
+                    .addComponent(new Text("Filter:"))
+                    .addComponent(searchField);
+
+                return Panel({
+                    layoutManager: new VBox({ stretching: true }),
+                    components: [
+                        searchRow,
+                        { component: widePanel, constraints: { weight: 1 } },
+                    ]
+                });
             });
 
             win.show();
@@ -583,6 +644,67 @@ class MiscPanel extends Panel {
                 const addRowBtn = new Button("Add row (demos new-row + required outline)");
                 addRowBtn.on("action", () => { specTable.addRow({ Active: true }); });
 
+                // Demos setRowVisible as a client-side quick search: filters
+                // Name/Role/Notes/Manager/Joined/Meeting/LastSeen on every
+                // keystroke, entirely display-only (the store, selection, and
+                // pending edits are untouched — clearing the field restores
+                // every row). Role stores its short code ('dev'/'qa'/'pm') but
+                // displays the label ('Developer'/'QA Engineer'/'Project
+                // Manager'); Joined/Meeting/LastSeen store raw `Date`s whose
+                // own `toString()` doesn't match what's rendered. Both are
+                // resolved to their displayed text before matching — mirrors
+                // TableExporter.formatValue (kept `@internal` to the library,
+                // so replicated here rather than imported), so a search for
+                // the exact text on screen (e.g. "developer", or a date like
+                // "3/15/2021") hits.
+                const roleLabels = new Map(
+                    (spec.columns.find(c => c.field === 'Role')?.values ?? []).map(v =>
+                        typeof v === 'string' ? [v, v] : [v.value, v.label ?? v.value])
+                );
+
+                function formatDateLike(type: 'date' | 'time' | 'datetime', value: Date | null, showSeconds: boolean): string {
+                    if (!value) {
+                        return '';
+                    }
+
+                    switch (type) {
+                        case 'date':
+                            return value.toLocaleDateString();
+                        case 'time':
+                            return value.toLocaleTimeString(undefined, showSeconds
+                                ? { hour: '2-digit', minute: '2-digit', second: '2-digit' }
+                                : { hour: '2-digit', minute: '2-digit' });
+                        case 'datetime':
+                            return value.toLocaleString(undefined, showSeconds
+                                ? { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }
+                                : { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                    }
+                }
+
+                const searchField = new TextField({ placeholder: 'Filter (name, role, notes, manager, joined, meeting, lastSeen)…' });
+
+                searchField.on("change", value => {
+                    const needle = value.trim().toLowerCase();
+
+                    specTable.setRowVisible(needle === '' ? null : record => {
+                        const role = String(record.get('Role') ?? '');
+
+                        return [
+                            String(record.get('Name') ?? ''),
+                            roleLabels.get(role) ?? role,
+                            String(record.get('Notes') ?? ''),
+                            String(record.get('Manager') ?? ''),
+                            formatDateLike('date',     record.get('Joined')   as Date | null, false),
+                            formatDateLike('time',     record.get('Meeting')  as Date | null, true),
+                            formatDateLike('datetime', record.get('LastSeen') as Date | null, false),
+                        ].some(text => text.toLowerCase().includes(needle));
+                    });
+                });
+
+                const searchRow = new Component({ layoutManager: new HBox({ spacing: 8 }) })
+                    .addComponent(new Text("Filter:"))
+                    .addComponent(searchField);
+
                 // Demo the store's aggregation + grouping API: average/max over
                 // the numeric Score column, plus per-group counts bucketed by the
                 // Active flag. getGroups() keys are the String() of each value.
@@ -607,6 +729,7 @@ class MiscPanel extends Panel {
                 const wrapper = Panel({
                     layoutManager: new VBox({ stretching: true }),
                     components: [
+                        searchRow,
                         addRowBtn,
                         { component: specTable, constraints: { weight: 1 } },
                         statusBar
