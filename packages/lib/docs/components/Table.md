@@ -177,6 +177,7 @@ table.setDisplayMode("normal");   // back to one row per record
 - **The `field` and `value` columns stay compact** — each sizes to the displayed record's actual field labels and values, capped at a bounded maximum so a wide record does not stretch them across the whole table; a blank, expanding trailing column absorbs the leftover width, keeping the label and its value grouped on the left.
 - **Export always covers the source table** — `exportCSV()` / `exportJSON()` serialize every source record and column regardless of the active display mode, never the field/value projection.
 - `setColumnVisible` is a no-op while rotated (the projection's data columns are always shown), and the column-header context menu shows only the export entries.
+- `setRowVisible` is neutralized the same way while rotated (a predicate written against source records cannot apply to the field/value projection) and resumes filtering immediately on return to `"normal"` — even a predicate set while rotated is picked up then.
 
 ## Parent headers
 
@@ -279,6 +280,29 @@ table.on("cellclick", e => {
 | `setHeaderVisible(boolean)` / `setBodyVisible(boolean)` / `setFooterVisible(boolean)` | Toggle structural sections. |
 | `exportCSV(options?)` / `exportJSON(options?)` | Trigger a download of the current store view. |
 | `setExportMenuEnabled(boolean)` | Adds "Export as CSV" / "Export as JSON" entries to the column context menu. |
+| `setRowVisible(predicate)` | Hide rows that fail `predicate`, without touching the store. |
+
+## Row visibility
+
+`setRowVisible(predicate)` hides rows that fail a predicate, without touching the store — the primitive behind a client-side quick search over an already-loaded, editable grid: type in a search box, non-matching rows disappear instantly, no network round trip, and every add/delete/pending-edit keeps working underneath.
+
+```typescript
+import { Table } from '@jimka/typescript-ui/component/table';
+
+const table = Table(store);
+
+searchBox.on("change", value => {
+    const needle = value.trim().toLowerCase();
+
+    table.setRowVisible(needle === '' ? null : record =>
+        String(record.get('name')).toLowerCase().includes(needle));
+});
+```
+
+- **Display-only.** Hiding a row never touches `getStore()`'s records, the current selection, or a pending in-grid edit.
+- **Re-applied automatically.** The predicate is re-consulted on every render pass, so it stays in effect across scrolling, sorting, store events (`add` / `remove` / `datachange` / …), and column show/hide — call `setRowVisible` again only when the predicate itself changes.
+- **Neutralized while rotated** — see the note in [Rotated record view](#rotated-record-view) below.
+- **No effect on `TreeTable`** — see [`TreeTable`'s non-goals](/components/TreeTable#non-goals).
 
 ## Exporting
 

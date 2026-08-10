@@ -500,6 +500,12 @@ class TreeBody extends _Body {
      * row pool binds to.
      *
      * @returns The current flat-record list as plain `ModelRecord` array.
+     *
+     * @remarks Does not consult `_rowVisible` — `Table.setRowVisible`'s
+     * predicate is a documented no-op on `TreeTable` (see the `TreeTable`
+     * docs non-goal), because a flat per-record filter cannot decide what
+     * happens to a hidden parent's children without the parent/child index
+     * this method has no access to.
      */
     protected getVisibleRecords(): ModelRecord[] {
         return this._flatRows.map(f => f.record);
