@@ -114,10 +114,12 @@ store.sort('age', 'asc');
 
 store.filter('age', 25);                  // exact match
 store.filterBy({ type: 'gt', field: 'age', value: 20 });   // descriptor-based filter
+store.setFilter('ageFilter', { type: 'gt', field: 'age', value: 20 }); // keyed — replaces, doesn't stack
+store.getFilter('ageFilter');             // → the descriptor above, or null
 store.clearFilter();
 ```
 
-Multiple `filter` / `filterBy` calls **stack** — every active predicate must pass for a record to be visible. `clearFilter()` removes all active predicates at once.
+Multiple `filter` / `filterBy` calls **stack** — every active predicate must pass for a record to be visible. `setFilter(key, descriptor)` is the exception: it replaces whatever descriptor is currently stored under `key` instead of adding another one, so repeated calls with the same key (e.g. one key per UI control) never accumulate — pass `null` to remove that key's descriptor. A key can be any string and never collides with an anonymous `filter()` / `filterBy()` entry. `clearFilter()` removes every active predicate at once, keyed or anonymous.
 
 ### Multi-column sort
 
