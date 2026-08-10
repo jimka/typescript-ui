@@ -62,6 +62,180 @@ describe('VBox setters/getters', () => {
     it('doLayout() does not throw without a container', () => {
         expect(() => new VBox().doLayout()).not.toThrow();
     });
+
+    it('defaults itemAlign to "baseline"', () => {
+        expect(new VBox().getItemAlign()).toBe('baseline');
+    });
+
+    it('stretching:true option maps to itemAlign "stretch"', () => {
+        const vbox = new VBox({ stretching: true });
+
+        expect(vbox.getItemAlign()).toBe('stretch');
+        expect(vbox.isStretching()).toBe(true);
+    });
+
+    it('stretching:false option maps to itemAlign "baseline"', () => {
+        expect(new VBox({ stretching: false }).getItemAlign()).toBe('baseline');
+    });
+
+    it('setStretching toggles itemAlign between "stretch" and "baseline"', () => {
+        const vbox = new VBox();
+
+        vbox.setStretching(true);
+        expect(vbox.getItemAlign()).toBe('stretch');
+
+        vbox.setStretching(false);
+        expect(vbox.getItemAlign()).toBe('baseline');
+    });
+
+    it('setItemAlign updates isStretching', () => {
+        const vbox = new VBox();
+
+        vbox.setItemAlign('stretch');
+        expect(vbox.isStretching()).toBe(true);
+
+        vbox.setItemAlign('center');
+        expect(vbox.isStretching()).toBe(false);
+    });
+
+    it('an explicit itemAlign option wins over stretching (dispatched after)', () => {
+        const vbox = new VBox({ stretching: true, itemAlign: 'center' });
+
+        expect(vbox.getItemAlign()).toBe('center');
+    });
+
+    it('round-trips setItemAlign/getItemAlign', () => {
+        const vbox = new VBox();
+
+        vbox.setItemAlign('end');
+
+        expect(vbox.getItemAlign()).toBe('end');
+    });
+});
+
+describe('VBox itemAlign cross placement', () => {
+    afterEach(() => DOM.reset());
+
+    it('itemAlign "start" pins the child to the column\'s leading edge', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(24, 200, new VBox({ itemAlign: 'start' }));
+        const child = new Component({ preferredSize: { width: 16, height: 100 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getX()).toBe(0);
+        expect(child.getWidth()).toBe(16);
+    });
+
+    it('itemAlign "center" centres the child in the column', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(24, 200, new VBox({ itemAlign: 'center' }));
+        const child = new Component({ preferredSize: { width: 16, height: 100 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getX()).toBe(4); // (24 - 16) / 2
+        expect(child.getWidth()).toBe(16);
+    });
+
+    it('itemAlign "end" pins the child to the column\'s trailing edge', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(24, 200, new VBox({ itemAlign: 'end' }));
+        const child = new Component({ preferredSize: { width: 16, height: 100 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getX()).toBe(8); // 24 - 16
+        expect(child.getWidth()).toBe(16);
+    });
+
+    it('itemAlign "stretch" fills the column width', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(24, 200, new VBox({ itemAlign: 'stretch' }));
+        const child = new Component({ preferredSize: { width: 16, height: 100 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getX()).toBe(0);
+        expect(child.getWidth()).toBe(24);
+    });
+
+    it('the deprecated stretching:true option behaves identically to itemAlign "stretch"', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(24, 200, new VBox({ stretching: true }));
+        const child = new Component({ preferredSize: { width: 16, height: 100 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getX()).toBe(0);
+        expect(child.getWidth()).toBe(24);
+    });
+
+    it('the default itemAlign ("baseline" degrading to "start") keeps west-origin placement', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(24, 200, new VBox());
+        const child = new Component({ preferredSize: { width: 16, height: 100 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getX()).toBe(0);
+        expect(child.getWidth()).toBe(16);
+    });
+});
+
+describe('VBox itemAlign cross placement — mode: "equal"', () => {
+    afterEach(() => DOM.reset());
+
+    it('itemAlign "start" pins the child to the column\'s leading edge', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(24, 200, new VBox({ mode: 'equal', itemAlign: 'start' }));
+        const child = new Component({ preferredSize: { width: 16, height: 100 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getX()).toBe(0);
+        expect(child.getWidth()).toBe(16);
+    });
+
+    it('itemAlign "center" centres the child in the column', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(24, 200, new VBox({ mode: 'equal', itemAlign: 'center' }));
+        const child = new Component({ preferredSize: { width: 16, height: 100 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getX()).toBe(4); // (24 - 16) / 2
+        expect(child.getWidth()).toBe(16);
+    });
+
+    it('itemAlign "end" pins the child to the column\'s trailing edge', () => {
+        installTestDOM(CONFIG);
+
+        const host = hostVBox(24, 200, new VBox({ mode: 'equal', itemAlign: 'end' }));
+        const child = new Component({ preferredSize: { width: 16, height: 100 } });
+
+        host.addComponent(child);
+        host.doLayout();
+
+        expect(child.getX()).toBe(8); // 24 - 16
+        expect(child.getWidth()).toBe(16);
+    });
 });
 
 describe('VBox doLayout geometry', () => {

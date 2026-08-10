@@ -345,6 +345,10 @@ class VBox extends BoxLayout {
 
             if (cross) {
                 placements.push({ component, ...this.resolveBounds(component, cross.offset, y, cross.extent, cellHeight, FillType.BOTH) });
+            } else if (this._itemAlign === "start" || this._itemAlign === "center" || this._itemAlign === "end") {
+                const cx = crossLead + this.crossItemOffset(width, crossExtent);
+
+                placements.push({ component, ...this.resolveBounds(component, cx, y, width, cellHeight, FillType.BOTH) });
             } else {
                 placements.push({ component, ...this.resolveBounds(component, x, y, width, cellHeight, FillType.BOTH) });
             }
@@ -507,6 +511,10 @@ class VBox extends BoxLayout {
 
             if (cross) {
                 placements.push({ component, ...this.resolveBounds(component, cross.offset, y, cross.extent, heights[idx], FillType.BOTH) });
+            } else if (this._itemAlign === "start" || this._itemAlign === "center" || this._itemAlign === "end") {
+                const cx = crossLead + this.crossItemOffset(naturalWidth, crossExtent);
+
+                placements.push({ component, ...this.resolveBounds(component, cx, y, naturalWidth, heights[idx], FillType.BOTH) });
             } else {
                 placements.push({ component, ...this.resolveBounds(component, x, y, defaultWidth, heights[idx], FillType.BOTH) });
             }

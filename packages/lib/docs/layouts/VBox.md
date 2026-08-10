@@ -37,7 +37,7 @@ form.addComponent(Label('Email', emailField.getId()));
 form.addComponent(emailField);
 ```
 
-[`VBoxOptions`](/api/layout/interfaces/VBoxOptions) accepts `mode`, `spacing`, `stretching`, `overflowSizing`, and `justify` declaratively. The `setMode` / `setComponentSpacing` / `setStretching` / `setOverflowSizing` / `setJustify` setters work for runtime updates.
+[`VBoxOptions`](/api/layout/interfaces/VBoxOptions) accepts `mode`, `spacing`, `stretching`, `itemAlign`, `overflowSizing`, and `justify` declaratively. The `setMode` / `setComponentSpacing` / `setStretching` / `setItemAlign` / `setOverflowSizing` / `setJustify` setters work for runtime updates.
 
 ## Sizing modes
 
@@ -119,6 +119,24 @@ stack.addComponent(Button('Register'));
 
 `justify` is silently ignored when a `weight` cell is present (the weight cell already eats the slack) and when the column fills or overflows the inner height (it clamps to `"start"` so the top child is never pushed out of view). It has no effect in `"equal"` mode, where the cells always tile the full height, and it acts only on the vertical (main) axis — positioning a child within its column width stays the domain of `fill` / `anchor` constraints.
 
+## Item alignment
+
+By default `VBox` places children at the column's west edge, at their preferred width. The `itemAlign` option ([`BoxItemAlign`](/api/layout/type-aliases/BoxItemAlign)) chooses a different cross-axis (horizontal) placement for children that set no explicit per-child align-self:
+
+- `"start"` — left of the column (today's default placement).
+- `"center"` — centred in the column width.
+- `"end"` — right of the column.
+- `"baseline"` (default) — a column exposes no shared cross-axis text baseline, so this degrades to `"start"`, matching [`VFlow`](/layouts/VFlow#item-alignment).
+- `"stretch"` — fills the column width. This is what the deprecated `stretching: true` sets under the hood; `stretching` stays as a shorthand for `itemAlign: "stretch"` / `itemAlign: "baseline"`.
+
+```typescript
+import { VBox } from '@jimka/typescript-ui/layout';
+// Mixed-width controls centre horizontally instead of west-aligning.
+column.setLayoutManager(VBox({ itemAlign: "center", spacing: 8 }));
+```
+
+A per-child `anchor`/`fill` [align-self](#per-child-cross-axis-alignment-align-self) still overrides `itemAlign` for that one child.
+
 ## Per-child constraints
 
 [`LayoutConstraints`](/layouts/Constraints):
@@ -140,7 +158,7 @@ A single child can override the column's default cross-axis (horizontal) placeme
 - `anchor: AnchorType.EAST` (or `NORTHEAST` / `SOUTHEAST`) — pin the child to the **right** of the column.
 - `fill: FillType.HORIZONTAL` (or `FillType.BOTH`) — stretch the child to the **full column width** (align-self: stretch), regardless of the box's column-wide `stretching`.
 
-`AnchorType.CENTER` and the main-axis-only anchors (`NORTH` / `SOUTH`) carry no cross component and are **inert**: the child keeps the column's default WEST-origin placement. Only a west/east anchor edge or a horizontal fill counts as an explicit align-self.
+`AnchorType.CENTER` and the main-axis-only anchors (`NORTH` / `SOUTH`) carry no cross component and are **inert**: the child keeps the column's default `itemAlign` placement (WEST-origin by default — see [Item alignment](#item-alignment) above). Only a west/east anchor edge or a horizontal fill counts as an explicit align-self.
 
 ```typescript
 import { FillType, AnchorType } from '@jimka/typescript-ui/layout';
@@ -150,7 +168,7 @@ column.addComponent(badge, { anchor: AnchorType.EAST });         // pinned to th
 column.addComponent(rule,  { fill:   FillType.HORIZONTAL });     // full column width
 ```
 
-An explicit per-child cross intent overrides the box's global `stretching` for that child only: with `stretching: true`, a child carrying `anchor: AnchorType.EAST` shrinks to its preferred width and pins to the right while its siblings still fill the column.
+An explicit per-child cross intent overrides the box's global `itemAlign` for that child only: with `itemAlign: "center"`, a child carrying `anchor: AnchorType.EAST` pins to the right of the column while its siblings still centre.
 
 ## Baseline alignment
 
@@ -164,12 +182,14 @@ The first child's baseline is forwarded **verbatim**: if that first child is gra
 | --- | --- |
 | `setMode("preferred" | "equal")` | Switch the sizing strategy along the vertical axis. |
 | `setComponentSpacing(px)` | Gap between children. |
-| `setStretching(boolean)` | When `true`, all children fill the column's full width. |
+| `setItemAlign("start" | "center" | "end" | "baseline" | "stretch")` | Cross-axis (horizontal) placement for children with no per-child align-self; `"baseline"` (the default) degrades to `"start"`. |
+| `setStretching(boolean)` | *(deprecated, use `setItemAlign`)* Equivalent to `itemAlign: "stretch"` / `itemAlign: "baseline"`. |
 | `setOverflowSizing("preferred" | "min")` | Equal mode: cell height when an overflowing column scrolls — preferred height or min floor. |
 | `setJustify("start" | "center" | "end" | "between" | "around")` | Preferred mode: distribute leftover main-axis height along the column. |
 
 ## See also
 
 - [API: VBox](/api/layout/classes/VBox)
+- [`BoxItemAlign`](/api/layout/type-aliases/BoxItemAlign) — the `itemAlign` option values
 - [`HBox`](/layouts/HBox) — horizontal equivalent, with the same `mode` option
 - [Layout constraints reference](/layouts/Constraints)

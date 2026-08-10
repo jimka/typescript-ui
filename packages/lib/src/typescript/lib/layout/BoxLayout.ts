@@ -72,6 +72,24 @@ export type BoxOverflowSizing = "preferred" | "min";
 export type BoxJustify = AxisPosition | AxisSpread;
 
 /**
+ * Cross-axis alignment of a child within an {@link HBox} row / {@link VBox}
+ * column, when the child sets no explicit per-child cross intent (fill/anchor
+ * align-self). Mirrors {@link FlowLayout}'s `FlowItemAlign`, with the extra
+ * `"stretch"` a box can do.
+ *
+ * - `"start"` — leading cross-edge (HBox top, VBox left).
+ * - `"center"` — centred in the cross band.
+ * - `"end"` — trailing cross-edge (HBox bottom, VBox right).
+ * - `"baseline"` — HBox: shared text baseline (the default). VBox has no cross
+ *   text baseline, so it degrades to `"start"`.
+ * - `"stretch"` — fill the cross band (equivalent to the deprecated
+ *   `stretching`).
+ *
+ * @category Layouts
+ */
+export type BoxItemAlign = "start" | "center" | "end" | "baseline" | "stretch";
+
+/**
  * Construction-time options shared by {@link HBox} and {@link VBox}.
  *
  * @remarks `mode` selects the sizing strategy along the box's main axis.
@@ -86,7 +104,9 @@ export type BoxJustify = AxisPosition | AxisSpread;
  */
 export interface BoxLayoutOptions extends LayoutManagerOptions {
     spacing?:         number;
+    /** @deprecated Use `itemAlign` — `stretching: true` ≡ `itemAlign: "stretch"`. */
     stretching?:      boolean;
+    itemAlign?:       BoxItemAlign;
     mode?:            BoxMode;
     overflowSizing?:  BoxOverflowSizing;
     justify?:         BoxJustify;
@@ -108,7 +128,7 @@ export abstract class BoxLayout extends LayoutManager {
     // (getPreferredSize/getMinSize/getMaxSize/computeTotalMinSize/doLayout)
     // read these fields directly, so they must be visible to HBox/VBox.
     protected _spacing: number = 5;
-    protected _stretching: boolean = false;
+    protected _itemAlign: BoxItemAlign = "baseline";
     protected _mode: BoxMode = "preferred";
     protected _overflowSizing: BoxOverflowSizing = "preferred";
     protected _justify: BoxJustify = "start";
@@ -150,6 +170,10 @@ export abstract class BoxLayout extends LayoutManager {
             this.setStretching(options.stretching);
         }
 
+        if (options.itemAlign !== undefined) {
+            this.setItemAlign(options.itemAlign);
+        }
+
         if (options.overflowSizing !== undefined) {
             this.setOverflowSizing(options.overflowSizing);
         }
@@ -185,9 +209,11 @@ export abstract class BoxLayout extends LayoutManager {
      * Returns whether children stretch to fill the container's cross axis.
      *
      * @returns `true` if stretching is enabled.
+     *
+     * @deprecated Use `getItemAlign() === "stretch"`.
      */
     isStretching(): boolean {
-        return this._stretching || false;
+        return this._itemAlign === "stretch";
     }
 
     /**
@@ -196,9 +222,36 @@ export abstract class BoxLayout extends LayoutManager {
      * @param stretching - Pass `true` to enable cross-axis stretching.
      *
      * @returns This layout manager, for method chaining.
+     *
+     * @deprecated Use `setItemAlign("stretch" | "baseline")`.
      */
     setStretching(stretching: boolean): this {
-        this._stretching = !!stretching;
+        return this.setItemAlign(stretching ? "stretch" : "baseline");
+    }
+
+    /**
+     * Returns how a child is aligned within the cross axis when it sets no
+     * explicit per-child cross intent (fill/anchor align-self).
+     *
+     * @returns The current {@link BoxItemAlign}.
+     */
+    getItemAlign(): BoxItemAlign {
+        return this._itemAlign;
+    }
+
+    /**
+     * Sets how a child is aligned within the cross axis when it sets no
+     * explicit per-child cross intent (fill/anchor align-self).
+     *
+     * @param itemAlign - `"start"`/`"center"`/`"end"` pin to or centre within
+     *   the cross band, `"baseline"` (the default) aligns HBox rows on their
+     *   shared text baseline (degrading to `"start"` on VBox), and `"stretch"`
+     *   fills the cross band. See {@link BoxItemAlign}.
+     *
+     * @returns This layout manager, for method chaining.
+     */
+    setItemAlign(itemAlign: BoxItemAlign): this {
+        this._itemAlign = itemAlign;
 
         return this;
     }
@@ -422,6 +475,29 @@ export abstract class BoxLayout extends LayoutManager {
     }
 
     /**
+     * Computes the leading cross-axis offset for the `"start"`/`"center"`/
+     * `"end"` {@link BoxItemAlign} fallback — consulted only when a child sets
+     * no explicit per-child cross intent and `itemAlign` is not `"baseline"` or
+     * `"stretch"` (those keep their own, unchanged, placement paths). Mirrors
+     * {@link FlowLayout.crossOffset}'s `center`/`end` arms.
+     *
+     * @param childCross - The child's own cross extent.
+     * @param crossExtent - The full cross band extent.
+     * @returns The leading offset in pixels — `0` for `"start"`, and never negative.
+     */
+    protected crossItemOffset(childCross: number, crossExtent: number): number {
+        if (this._itemAlign === "center") {
+            return Math.max(0, (crossExtent - childCross) / 2);
+        }
+
+        if (this._itemAlign === "end") {
+            return Math.max(0, crossExtent - childCross);
+        }
+
+        return 0; // "start"
+    }
+
+    /**
      * Resolves a child's cross-axis offset and extent within the full cross
      * band, honouring an explicit per-child cross `fill`/`anchor` (align-self).
      * A cross-axis `fill` (`VERTICAL`/`BOTH` in an {@link HBox}, `HORIZONTAL`/
@@ -429,9 +505,11 @@ export abstract class BoxLayout extends LayoutManager {
      * cross-axis `anchor` edge (NORTH/SOUTH for HBox, WEST/EAST for VBox, plus
      * the corners carrying that component) pins the child's natural cross extent
      * to the leading or trailing edge. The main-axis `anchor` component and
-     * `CENTER` are deliberately inert — the box owns main-axis sequencing and
-     * each box's default cross placement (HBox baseline, VBox WEST origin) is
-     * more specific than geometric centring.
+     * `CENTER` are deliberately inert — the box owns main-axis sequencing, and
+     * when `itemAlign` is `"baseline"` (the default) each box's default cross
+     * placement (HBox baseline, VBox WEST origin) is more specific than
+     * geometric centring; other `itemAlign` values choose the cross offset in
+     * the caller.
      *
      * @param component - The child whose constraints supply the cross intent.
      * @param crossLead - The band's leading edge (`insets.top` for HBox,
