@@ -86,6 +86,7 @@ function render20At100(table: Table, scrollX: number = 0): void {
         viewportWidth:   250,
         columnHeight:    20,
         parentRowHeight: 0,
+        filterRowHeight: 0,
     });
 
     if (scrollX !== 0) {
@@ -457,6 +458,7 @@ describe('Header column window — parent row', () => {
             viewportWidth:   1000,
             columnHeight:    20,
             parentRowHeight: 20,
+            filterRowHeight: 0,
         });
 
         const spanned = header(table).getParentRow().getComponents()
@@ -642,6 +644,7 @@ describe('Header column window — geometry diffing', () => {
             viewportWidth:   250,
             columnHeight:    20,
             parentRowHeight: 0,
+            filterRowHeight: 0,
         });
 
         // Widening every column moves or resizes every surviving cell, so every
@@ -669,6 +672,7 @@ describe('Header column window — geometry diffing', () => {
             viewportWidth:   1000,
             columnHeight:    20,
             parentRowHeight: 20,
+            filterRowHeight: 0,
         };
 
         header(table).renderColumnWindow(geometry);
@@ -689,6 +693,7 @@ describe('Header column window — geometry diffing', () => {
             viewportWidth:   1000,
             columnHeight:    20,
             parentRowHeight: 20,
+            filterRowHeight: 0,
         });
 
         const parentCells = header(table).getParentRow().getComponents();
@@ -699,6 +704,7 @@ describe('Header column window — geometry diffing', () => {
             viewportWidth:   1000,
             columnHeight:    20,
             parentRowHeight: 30,
+            filterRowHeight: 0,
         });
 
         // A height change moves every parent cell, so the count is exact.
@@ -794,6 +800,7 @@ describe('Header column window — geometry diffing', () => {
             viewportWidth:   250,
             columnHeight:    20,
             parentRowHeight: 0,
+            filterRowHeight: 0,
         };
 
         // Deliberately no `getElement(true)` first: a cell with no element has

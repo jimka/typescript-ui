@@ -611,11 +611,16 @@ class MiscPanel extends Panel {
                 const spec: ColumnSpec = {
                     rowReadOnly: (r) => r.get('locked') === true,
                     columns: [
-                        { field: 'Name'    , minWidth: 150, headerGlyph: 'xmark', group: 'Identity', unhideable: true                                     },
+                        // Name/Score/Joined demo the header's filter row — one string
+                        // column (contains/startsWith/endsWith/eq/neq), one number
+                        // column (eq/neq/gt/gte/lt/lte), one date column (same
+                        // ordering set, matched by exact instant). Hidden until
+                        // toggled — see filterRowBtn below.
+                        { field: 'Name'    , minWidth: 150, headerGlyph: 'xmark', group: 'Identity', unhideable: true, filterable: true                    },
                         { field: 'Active'  , maxWidth: 100,                       group: 'Identity'                                                       },
-                        { field: 'Score'   , maxWidth: 100, cellReadOnly: (r) => r.get('Active') === false, requiredPredicate: (r) => r.get('Active') === true },
+                        { field: 'Score'   , maxWidth: 100, filterable: true, cellReadOnly: (r) => r.get('Active') === false, requiredPredicate: (r) => r.get('Active') === true },
                         { field: 'Role'    , minWidth: 140, required: true, values: [{ value: 'dev', label: 'Developer' }, { value: 'qa', label: 'QA Engineer' }, { value: 'pm', label: 'Project Manager' }] },
-                        { field: 'Joined'  , minWidth: 120, readOnly: true,       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
+                        { field: 'Joined'  , minWidth: 120, readOnly: true, filterable: true, group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'    },
                         { field: 'Meeting' , minWidth: 100, showSeconds: true,    group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
                         { field: 'LastSeen', minWidth: 160, requiredPredicate: (r) => r.get('Active') === true, group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)' },
                         { field: 'Manager' , minWidth: 120, renderer: () => new LinkCellRenderer()                                                        },
@@ -643,6 +648,15 @@ class MiscPanel extends Panel {
                 // of blue.
                 const addRowBtn = new Button("Add row (demos new-row + required outline)");
                 addRowBtn.on("action", () => { specTable.addRow({ Active: true }); });
+
+                // Demos the header's filter row: hidden by default even though
+                // Name/Score/Joined are filterable — toggle it on here, or via the
+                // header's right-click "Filter" entry, then type into a column's
+                // input and pick its operator from the button beside it.
+                const filterRowBtn = new Button("Toggle filter row");
+                filterRowBtn.on("action", () => {
+                    specTable.setFilterRowVisible(!specTable.isFilterRowVisible());
+                });
 
                 // Demos setRowVisible as a client-side quick search: filters
                 // Name/Role/Notes/Manager/Joined/Meeting/LastSeen on every
@@ -731,6 +745,7 @@ class MiscPanel extends Panel {
                     components: [
                         searchRow,
                         addRowBtn,
+                        filterRowBtn,
                         { component: specTable, constraints: { weight: 1 } },
                         statusBar
                     ]

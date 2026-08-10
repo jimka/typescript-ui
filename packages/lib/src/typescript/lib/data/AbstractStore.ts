@@ -173,7 +173,14 @@ export abstract class AbstractStore {
     // view. See applyView / loadData.
     private _viewAsync: boolean = false;
     private _pendingRemoved: ModelRecord[] = [];
-    private _activeFilters: FilterDescriptor[] = [];
+    // Keyed so a single column's filter can be replaced without stacking a new
+    // entry per keystroke and without touching another column's filter. Entries
+    // added by `filter()` / `filterBy()` / the `filters` option are keyed by a
+    // fresh `Symbol()`, which can never collide with a string key passed to
+    // `setFilter`; a `Map` preserves insertion order for both key kinds, and
+    // re-setting an existing key keeps its original position instead of
+    // reordering it to the end.
+    private _activeFilters: Map<string | symbol, FilterDescriptor> = new Map();
     private _activeSorters: SortDescriptor[] = [];
     private _listeners: ListenerBag<StoreEvent> = new ListenerBag<StoreEvent>();
 
@@ -266,7 +273,9 @@ export abstract class AbstractStore {
         }
 
         if (options.filters !== undefined && options.filters.length > 0) {
-            this._activeFilters = options.filters.slice();
+            for (const f of options.filters) {
+                this._activeFilters.set(Symbol(), f);
+            }
         }
 
         if (options.remoteSort !== undefined) {
@@ -385,7 +394,7 @@ export abstract class AbstractStore {
             params.sorters = this.getActiveSorters();
         }
 
-        if (this._remoteFilter && this._activeFilters.length > 0) {
+        if (this._remoteFilter && this._activeFilters.size > 0) {
             params.filters = this.getActiveFilters();
         }
 
@@ -1449,7 +1458,7 @@ export abstract class AbstractStore {
      * @returns A shallow-copy array of the active filter descriptors; empty when no filter is active.
      */
     getActiveFilters(): FilterDescriptor[] {
-        return this._activeFilters.map(f => ({ ...f }));
+        return [...this._activeFilters.values()].map(f => ({ ...f }));
     }
 
     /**
@@ -1494,7 +1503,7 @@ export abstract class AbstractStore {
      * the proxy filters the result set.
      */
     filter(property: string, value: any): Promise<void> {
-        this._activeFilters.push({ type: 'eq', field: property, value: value });
+        this._activeFilters.set(Symbol(), { type: 'eq', field: property, value: value });
 
         return this.applyFilterChange();
     }
@@ -1511,9 +1520,51 @@ export abstract class AbstractStore {
      * server-side pagination is enabled.
      */
     filterBy(descriptor: FilterDescriptor): Promise<void> {
-        this._activeFilters.push(descriptor);
+        this._activeFilters.set(Symbol(), descriptor);
 
         return this.applyFilterChange();
+    }
+
+    /**
+     * Replaces (or removes, when `descriptor` is `null`) the single filter
+     * stored under `key`, without disturbing any other active filter —
+     * keyed or anonymous. Intended for a UI surface with one filter per
+     * identity (e.g. one text input per table column), where re-typing
+     * must replace that column's descriptor rather than stack a new one
+     * per keystroke.
+     *
+     * @param key - Identifies the filter slot to replace. A caller-chosen
+     *   key (e.g. a field name) can never collide with the `Symbol()` keys
+     *   {@link filter} / {@link filterBy} / the `filters` option generate.
+     * @param descriptor - The new filter descriptor, or `null` to remove
+     *   whatever descriptor is currently stored under `key`.
+     *
+     * @remarks
+     * Reload behaviour is identical to {@link filterBy}'s: when `remoteFilter`
+     * is enabled, or when server-side pagination is enabled (the legacy
+     * trigger), this also resets to page 1 and reloads.
+     */
+    setFilter(key: string, descriptor: FilterDescriptor | null): Promise<void> {
+        if (descriptor === null) {
+            this._activeFilters.delete(key);
+        } else {
+            this._activeFilters.set(key, descriptor);
+        }
+
+        return this.applyFilterChange();
+    }
+
+    /**
+     * Returns the filter descriptor stored under `key` by {@link setFilter}.
+     *
+     * @param key - The key passed to {@link setFilter}.
+     * @returns A shallow copy of the stored descriptor, or `null` when `key`
+     *   holds no filter.
+     */
+    getFilter(key: string): FilterDescriptor | null {
+        const descriptor = this._activeFilters.get(key);
+
+        return descriptor ? { ...descriptor } : null;
     }
 
     /**
@@ -1551,7 +1602,7 @@ export abstract class AbstractStore {
      * context.
      */
     clearFilter(): Promise<void> {
-        this._activeFilters = [];
+        this._activeFilters.clear();
 
         return this.applyFilterChange();
     }
@@ -1831,7 +1882,7 @@ export abstract class AbstractStore {
 
         let view = this._allRecords.slice();
 
-        for (const descriptor of this._activeFilters) {
+        for (const descriptor of this._activeFilters.values()) {
             view = view.filter(r => matchesFilter(r, descriptor));
         }
 
@@ -1940,6 +1991,7 @@ export abstract class AbstractStore {
 
         const allRecordsRef = this._allRecords;
         const primary       = this._activeSorters[0];
+        const active        = [...this._activeFilters.values()];
 
         return snapshot
             .then(() => StoreWorkerClient.sortFilter(
@@ -1947,10 +1999,10 @@ export abstract class AbstractStore {
                 primary
                     ? { field: primary.field, direction: primary.dir, fieldType: this.model.getField(primary.field)?.getType() }
                     : undefined,
-                this._activeFilters.length > 0
-                    ? (this._activeFilters.length === 1
-                        ? this._activeFilters[0]
-                        : { type: 'and', filters: this._activeFilters })
+                active.length > 0
+                    ? (active.length === 1
+                        ? active[0]
+                        : { type: 'and', filters: active })
                     : undefined,
             ))
             .then(indices => {

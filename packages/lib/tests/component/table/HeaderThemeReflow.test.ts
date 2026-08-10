@@ -97,6 +97,7 @@ describe('Header column window — theme reflow', () => {
             viewportWidth:   250,
             columnHeight:    20,
             parentRowHeight: 0,
+            filterRowHeight: 0,
         };
 
         table.getHeader().renderColumnWindow(geometry);
@@ -130,6 +131,7 @@ describe('Header column window — theme reflow', () => {
             viewportWidth:   500,
             columnHeight:    20,
             parentRowHeight: 20,
+            filterRowHeight: 0,
         };
 
         table.getHeader().renderColumnWindow(geometry);

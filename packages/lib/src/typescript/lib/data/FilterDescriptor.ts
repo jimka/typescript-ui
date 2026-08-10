@@ -5,6 +5,9 @@
  * they can cross the worker boundary via structured clone (unlike arbitrary filter
  * functions, which can't). The same evaluator runs on either side.
  *
+ * `eq` / `neq` compare two `Date` operands by instant (`getTime()`) rather than by
+ * reference, since two distinct `Date` instances for the same moment are never `===`.
+ *
  * @category Data
  */
 export type FilterDescriptor =
@@ -12,6 +15,7 @@ export type FilterDescriptor =
     | { type: 'neq';        field: string; value: any }
     | { type: 'contains';   field: string; value: string; caseSensitive?: boolean }
     | { type: 'startsWith'; field: string; value: string; caseSensitive?: boolean }
+    | { type: 'endsWith';   field: string; value: string; caseSensitive?: boolean }
     | { type: 'gt';         field: string; value: number | string | Date }
     | { type: 'gte';        field: string; value: number | string | Date }
     | { type: 'lt';         field: string; value: number | string | Date }
@@ -40,11 +44,25 @@ function readField(record: any, field: string): any {
  */
 export function matchesFilter(record: any, descriptor: FilterDescriptor): boolean {
     switch (descriptor.type) {
-        case 'eq':
-            return readField(record, descriptor.field) === descriptor.value;
+        case 'eq': {
+            const raw = readField(record, descriptor.field);
 
-        case 'neq':
-            return readField(record, descriptor.field) !== descriptor.value;
+            if (raw instanceof Date && descriptor.value instanceof Date) {
+                return raw.getTime() === descriptor.value.getTime();
+            }
+
+            return raw === descriptor.value;
+        }
+
+        case 'neq': {
+            const raw = readField(record, descriptor.field);
+
+            if (raw instanceof Date && descriptor.value instanceof Date) {
+                return raw.getTime() !== descriptor.value.getTime();
+            }
+
+            return raw !== descriptor.value;
+        }
 
         case 'contains': {
             const raw = readField(record, descriptor.field);
@@ -60,6 +78,14 @@ export function matchesFilter(record: any, descriptor: FilterDescriptor): boolea
             const haystack = descriptor.caseSensitive ? String(raw) : String(raw).toLowerCase();
             const needle   = descriptor.caseSensitive ? descriptor.value : descriptor.value.toLowerCase();
             return haystack.indexOf(needle) === 0;
+        }
+
+        case 'endsWith': {
+            const raw = readField(record, descriptor.field);
+            if (raw == null) return false;
+            const haystack = descriptor.caseSensitive ? String(raw) : String(raw).toLowerCase();
+            const needle   = descriptor.caseSensitive ? descriptor.value : descriptor.value.toLowerCase();
+            return haystack.lastIndexOf(needle) === haystack.length - needle.length;
         }
 
         case 'gt':
