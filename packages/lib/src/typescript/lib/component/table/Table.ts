@@ -82,7 +82,11 @@ interface WidthPolicy {
 interface WidthReferences {
     /** Width of the widest digit glyph, "0" through "9". */
     digitPx: number;
-    /** Width of `REFERENCE_DATE` formatted, keyed by `${type}:${showSeconds}`. */
+    /**
+     * Widest digit-substituted variant of `REFERENCE_DATE` formatted, keyed
+     * by `${type}:${showSeconds}` — guards against a non-tabular font
+     * rendering some digit wider than `REFERENCE_DATE`'s own digits.
+     */
     datePx: Map<string, number>;
 }
 
@@ -739,6 +743,15 @@ class Table extends Component<TableOptions> {
 
             this._rotatedRecord = record;
             this.rebuildRotatedStore();
+
+            // The new record's field/value content may need a different width
+            // than the old one's; re-derive from getIntrinsicColumnWidths
+            // instead of leaving the next doLayout rescale the stale widths.
+            this._columnWidths      = [];
+            this._savedColumnWidths = new Map();
+            this._columnWidthTarget = 0;
+            this.doLayout();
+
             this.emit("selection", record ? [record] : []);
 
             return this;
@@ -988,6 +1001,11 @@ class Table extends Component<TableOptions> {
         }
 
         this.rebuildRotatedStore();
+
+        this._columnWidths      = [];
+        this._savedColumnWidths = new Map();
+        this._columnWidthTarget = 0;
+        this.doLayout();
     }
 
     /**
@@ -1453,10 +1471,11 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Returns whether `string`/`auto` columns are sized from sampled cell
-     * values. Always `false` in rotated mode — the projection's `field` /
-     * `value` / `filler` columns carry hand-tuned min/max widths already,
-     * and auto-sizing them is out of scope (see the plan's Non-Goals).
+     * Returns whether `string`/`auto` columns are sized from a sample of
+     * the source store's cell values — the normal-mode auto-sizing opt-in.
+     * Always `false` in rotated mode: the projection's `field`/`value`
+     * columns are always sized from the displayed record's content,
+     * independent of this flag; `filler` stays flex either way.
      *
      * @returns `true` when the spec declares `autoSizeColumns: true` AND
      *   the table is in normal (non-rotated) display mode.
@@ -1481,8 +1500,9 @@ class Table extends Component<TableOptions> {
     /**
      * Computes one starting width per visible column, in display order,
      * from each column's field-type policy, any declared `width` /
-     * `minWidth` / `maxWidth`, and — for `string`/`auto` columns under
-     * {@link isAutoSizeColumns} — a bounded sample of the store.
+     * `minWidth` / `maxWidth`, and content — for `string`/`auto` columns
+     * under {@link isAutoSizeColumns}, a bounded sample of the store; for
+     * the rotated `field`/`value` columns, the currently displayed record.
      *
      * @returns One entry per visible column. A number is a definite
      *   starting width; `null` means "no definite width — share the
@@ -1582,13 +1602,17 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Resolves the strings to measure for one `string`/`auto` column,
-     * falling back from sampled candidates to `values` option labels, to a
-     * `maxContentLength` probe string, in that order. Returns `null` for
-     * every other field type, for every `string`/`auto` column when
-     * {@link isAutoSizeColumns} is `false` (the whole chain is gated by the
-     * flag, not just the store sample), and for a `string`/`auto` column
-     * under auto-size with nothing to measure (the column stays flex).
+     * Resolves the strings to measure for one `string`/`auto` column. In
+     * rotated mode, delegates to {@link resolveRotatedContentCandidates}
+     * unconditionally — {@link isAutoSizeColumns} does not apply to the
+     * rotated projection. Otherwise falls back from sampled candidates to
+     * `values` option labels, to a `maxContentLength` probe string, in that
+     * order, gated by {@link isAutoSizeColumns}. Returns `null` for every
+     * other field type, for every `string`/`auto` column when
+     * {@link isAutoSizeColumns} is `false` in normal mode (the rest of the
+     * normal-mode chain is gated by the flag, not just the store sample),
+     * and for a `string`/`auto` column under auto-size with nothing to
+     * measure (the column stays flex).
      */
     private resolveContentCandidates(col: Column): string[] | null {
         const type = col.getField().getType();
@@ -1597,10 +1621,15 @@ class Table extends Component<TableOptions> {
             return null;
         }
 
-        // autoSizeColumns gates the whole fallback chain below, not just the
-        // store sample: with the flag off a string/auto column stays flex,
-        // exactly as before this feature, even when it declares `values` or
-        // `maxContentLength`.
+        if (this._displayMode === "rotated") {
+            return this.resolveRotatedContentCandidates(col);
+        }
+
+        // autoSizeColumns gates the rest of this normal-mode fallback chain,
+        // not just the store sample: with the flag off a string/auto column
+        // stays flex, exactly as before this feature, even when it declares
+        // `values` or `maxContentLength`. Rotated mode is handled above,
+        // unconditionally.
         if (!this.isAutoSizeColumns()) {
             return null;
         }
@@ -1627,6 +1656,83 @@ class Table extends Component<TableOptions> {
         }
 
         return null;
+    }
+
+    /**
+     * Content candidates for the rotated `field`/`value` columns, measured
+     * from the currently displayed record instead of a store sample — the
+     * rotated store holds at most one row per visible source field, so every
+     * row is used exactly, not a sampled subset.
+     *
+     * @param col - The rotated `field`, `value`, or `filler` column.
+     * @returns Up to `WIDEST_CANDIDATES` distinct candidate strings, longest
+     *   first, or `null` for `filler` (stays flex, absorbing the leftover
+     *   width) or when there is nothing to measure (no displayed record).
+     */
+    private resolveRotatedContentCandidates(col: Column): string[] | null {
+        const name = col.getField().getName();
+
+        if (name !== 'field' && name !== 'value') {
+            return null;
+        }
+
+        const records = this.ensureRotatedStore().getRecords();
+        const sourceColumns = name === 'value'
+            ? new Map(this.getSourceColumns().map(c => [c.getField().getName(), c]))
+            : null;
+        const list: string[] = [];
+
+        for (const record of records) {
+            const text = name === 'field'
+                ? String(record.get('field') ?? '')
+                : this.formatRotatedValueText(record, sourceColumns!);
+
+            if (text !== null) {
+                this.keepLongest(list, text);
+            }
+        }
+
+        return list.length > 0 ? list : null;
+    }
+
+    /**
+     * Formats one rotated `value` row's text the way its own resolved
+     * `DynamicCell` renderer actually displays it — mirrors
+     * {@link DynamicCell.bindRecord}'s variant resolution so the measured
+     * string matches the rendered one.
+     *
+     * @param record - One projection record (`field`/`value` pair).
+     * @param sourceColumns - Visible source columns keyed by field name.
+     * @returns The display text, or `null` for `boolean`/`glyph` rows (a
+     *   fixed-size control, not measurable text) or an unresolvable field.
+     */
+    private formatRotatedValueText(record: ModelRecord, sourceColumns: Map<string, Column>): string | null {
+        const cellType = this.rotatedCellType(record);
+
+        if (cellType === 'boolean' || cellType === 'glyph') {
+            return null;
+        }
+
+        if (cellType === 'combo') {
+            const labelByValue = new Map(normalizeComboOptions(this.rotatedCellValues(record) ?? []).map(o => [o.value, o.label]));
+            const value        = String(record.get('value') ?? '');
+
+            return labelByValue.get(value) ?? value;   // mirrors ComboRenderer.setValue
+        }
+
+        const sourceColumn = sourceColumns.get(record.get('field') as string);
+
+        if (!sourceColumn) {
+            return null;
+        }
+
+        // Empty configs map, not this._columnConfigs: the rotated `value`
+        // DynamicCell's own config never threads `showSeconds` through
+        // (ensureRotatedStore's spec doesn't set it on the `value` column), so
+        // every time/datetime row renders without seconds today regardless of
+        // the source column's own setting. Matching that here keeps the
+        // measured text the same length as what actually renders.
+        return String(TableExporter.formatValue(sourceColumn, record.get('value'), new Map()) ?? '');
     }
 
     /**
@@ -1782,7 +1888,7 @@ class Table extends Component<TableOptions> {
                     return { min, preferred: null };       // auto-size off, or nothing to measure — flex column
                 }
 
-                return { min, preferred: Math.max(min, contentPx, headerPx) };
+                return { min, preferred: Math.max(min, contentPx + CELL_CHROME_PX, headerPx) };
             }
         }
     }
@@ -1802,24 +1908,38 @@ class Table extends Component<TableOptions> {
 
         const digits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
         const keys   = this.dateReferenceKeys();
-        const widths = Util.measureTextWidths([...digits, ...keys.map(k => k.text)]);
+        const widths = Util.measureTextWidths([...digits, ...keys.flatMap(k => k.texts)]);
+
+        const datePx = new Map<string, number>();
+        let offset = digits.length;
+
+        for (const k of keys) {
+            datePx.set(k.key, Math.max(...widths.slice(offset, offset + k.texts.length)));
+            offset += k.texts.length;
+        }
 
         this._widthRefs = {
             digitPx: Math.max(...widths.slice(0, digits.length)),
-            datePx : new Map(keys.map((k, i) => [k.key, widths[digits.length + i]])),
+            datePx,
         };
 
         return this._widthRefs;
     }
 
     /**
-     * Walks the visible columns and builds one `{key, text}` reference pair
+     * Walks the visible columns and builds one `{key, texts}` reference pair
      * per distinct `(temporal type, showSeconds)` combination in use,
      * formatting {@link REFERENCE_DATE} the same way the matching cell
-     * renderer would (via `TableExporter.formatValue`).
+     * renderer would (via `TableExporter.formatValue`), then widening the
+     * probe with every digit position substituted by each of 0-9 in turn —
+     * guards against a non-tabular font rendering some other digit wider
+     * than `REFERENCE_DATE`'s own digits, mirroring the per-digit-max
+     * defense `digitPx` already applies to `number` columns. A no-op (all
+     * variants equal) under a tabular font.
      */
-    private dateReferenceKeys(): Array<{ key: string; text: string }> {
-        const seen = new Map<string, string>();
+    private dateReferenceKeys(): Array<{ key: string; texts: string[] }> {
+        const digitChars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+        const seen = new Map<string, string[]>();
 
         for (const col of this.getColumns()) {
             const type = col.getField().getType();
@@ -1831,11 +1951,13 @@ class Table extends Component<TableOptions> {
             const key = `${type}:${this.showsSeconds(col)}`;
 
             if (!seen.has(key)) {
-                seen.set(key, String(TableExporter.formatValue(col, REFERENCE_DATE, this._columnConfigs) ?? ""));
+                const base = String(TableExporter.formatValue(col, REFERENCE_DATE, this._columnConfigs) ?? "");
+
+                seen.set(key, [base, ...digitChars.map(d => base.replace(/\d/g, d))]);
             }
         }
 
-        return Array.from(seen, ([key, text]) => ({ key, text }));
+        return Array.from(seen, ([key, texts]) => ({ key, texts }));
     }
 
     /**

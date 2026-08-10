@@ -387,9 +387,125 @@ describe('Table rotated mode', () => {
         const widths = table.getColumnWidths();
 
         expect(widths.length).toBe(3);
-        expect(widths[0]).toBe(200);                  // field clamped to its max
-        expect(widths[1]).toBe(360);                  // value clamped to its max
+        expect(widths[0]).toBeGreaterThanOrEqual(80);
+        expect(widths[0]).toBeLessThan(200);           // short field names — below the cap
+        expect(widths[1]).toBeGreaterThanOrEqual(120);
+        expect(widths[1]).toBeLessThan(360);           // short values — below the cap
         expect(widths[2]).toBeGreaterThan(widths[1]); // filler is widest — took the slack
+    });
+
+    it('clamps the value column at its ceiling for pathologically long content', async () => {
+        const model = new Model([
+            { name: 'id',   type: 'number', order: 0 },
+            { name: 'note', type: 'string', order: 1 },
+        ]);
+        const store = new MemoryStore(model, [{ id: 1, note: 'x'.repeat(80) }]);
+        await store.load();
+        const table = makeTable(store);
+
+        table.selectRecord(store.getRecords()[0]);
+        table.setWidth(1200);
+        table.setHeight(400);
+        table.setDisplayMode('rotated');
+        table.doLayout();
+
+        const widths = table.getColumnWidths();
+
+        expect(widths[1]).toBeLessThanOrEqual(360);
+        expect(widths[1]).toBeGreaterThan(200);
+    });
+
+    it('re-derives the value column width on a record switch', async () => {
+        const model = new Model([
+            { name: 'id',   type: 'number', order: 0 },
+            { name: 'note', type: 'string', order: 1 },
+        ]);
+        const store = new MemoryStore(model, [
+            { id: 1, note: 'short' },
+            { id: 2, note: 'y'.repeat(80) },
+        ]);
+        await store.load();
+        const records = store.getRecords();
+        const table   = makeTable(store);
+
+        table.selectRecord(records[0]);
+        table.setWidth(1200);
+        table.setHeight(400);
+        table.setDisplayMode('rotated');
+        table.doLayout();
+
+        const widthsBefore = table.getColumnWidths();
+
+        table.selectRecord(records[1]);
+        table.doLayout();
+
+        const widthsAfter = table.getColumnWidths();
+
+        expect(widthsAfter[1]).toBeGreaterThan(widthsBefore[1]);
+    });
+
+    it('measures a combo-typed value row by its label, not its stored code', async () => {
+        const model = new Model([
+            { name: 'id',      type: 'number', order: 0 },
+            { name: 'country', type: 'string', order: 1 },
+        ]);
+        const spec = {
+            columns: [
+                {
+                    field:  'country',
+                    values: [{ value: 'AU', label: 'Commonwealth of Australia and its associated overseas territories' }],
+                },
+            ],
+        };
+        const store = new MemoryStore(model, [{ id: 1, country: 'AU' }]);
+        await store.load();
+        const table = new Table(store, spec);
+        table.getElement(true);
+
+        table.selectRecord(store.getRecords()[0]);
+        table.setWidth(1200);
+        table.setHeight(400);
+        table.setDisplayMode('rotated');
+        table.doLayout();
+
+        const widths = table.getColumnWidths();
+
+        expect(widths[1]).toBeGreaterThan(200);
+    });
+
+    it('skips boolean and glyph rows when measuring the value column', async () => {
+        // Both source fields resolve to a skipped cell type (no `values`
+        // config, so rotatedCellType falls through to the field's own
+        // boolean/glyph type) — if either row were measured as text (e.g.
+        // "true"/"false") instead of skipped, the value column would report
+        // a definite width instead of staying flex.
+        const model = new Model([
+            { name: 'flag', type: 'boolean', order: 0 },
+            { name: 'icon', type: 'glyph',   order: 1 },
+        ]);
+        const store = new MemoryStore(model, [{ flag: true, icon: 'caret-right' }]);
+        await store.load();
+        const table = makeTable(store);
+
+        table.selectRecord(store.getRecords()[0]);
+        table.setDisplayMode('rotated');
+
+        const widths = table.getIntrinsicColumnWidths();
+
+        expect(widths[1]).toBeNull();
+    });
+
+    it('leaves field/value flex like filler when rotating an empty store', async () => {
+        const store = new MemoryStore(MODEL, []);
+        await store.load();
+        const table = makeTable(store);
+
+        table.setDisplayMode('rotated');
+
+        const widths = table.getIntrinsicColumnWidths();
+
+        expect(widths[0]).toBeNull();
+        expect(widths[1]).toBeNull();
     });
 
     it('makes setColumnVisible inert while rotated', async () => {

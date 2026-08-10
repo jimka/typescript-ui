@@ -116,6 +116,62 @@ describe('TabButton hover fields', () => {
     });
 });
 
+describe('TabButton busy overlay', () => {
+    /** Counts recorded appendChild writes whose parent is `el`. */
+    function appendCountOnto(el: unknown): number {
+        return sink.writes.filter(w => w.op === 'appendChild' && w.args[0] === el).length;
+    }
+
+    it('defaults to not busy, with no indicator appended to its element', () => {
+        const btn = new TabButton('Home');
+        const el  = btn.getElement(true)!;
+
+        // Construction itself appends the button's own content row, so the
+        // baseline is not necessarily 0 — the busy overlay must add nothing
+        // beyond it until setBusy(true) is called.
+        const baseline = appendCountOnto(el);
+
+        expect(btn.isBusy()).toBe(false);
+        expect(appendCountOnto(el)).toBe(baseline);
+    });
+
+    it('setBusy(true) sets isBusy() and is chainable', () => {
+        const btn = new TabButton('Home');
+
+        expect(btn.setBusy(true)).toBe(btn);
+        expect(btn.isBusy()).toBe(true);
+    });
+
+    it('setBusy(true) twice builds exactly one indicator', () => {
+        const btn = new TabButton('Home');
+        const el  = btn.getElement(true)!;
+        const baseline = appendCountOnto(el);
+
+        btn.setBusy(true);
+        expect(appendCountOnto(el)).toBe(baseline + 1);
+
+        btn.setBusy(true);
+        expect(appendCountOnto(el)).toBe(baseline + 1);
+    });
+
+    it('setBusy(true) then setBusy(false) clears isBusy() and reuses the indicator on re-show', () => {
+        const btn = new TabButton('Home');
+        const el  = btn.getElement(true)!;
+        const baseline = appendCountOnto(el);
+
+        btn.setBusy(true);
+        btn.setBusy(false);
+
+        expect(btn.isBusy()).toBe(false);
+
+        btn.setBusy(true);
+
+        // A second append would mean setBusy(false) discarded the indicator
+        // instead of hiding it for reuse.
+        expect(appendCountOnto(el)).toBe(baseline + 1);
+    });
+});
+
 describe('TabButton listeners bag', () => {
     // ToggleButton routes on("action") to the DOM "change" event. A subclass
     // that takes its options after `super(text)` must wire the inherited

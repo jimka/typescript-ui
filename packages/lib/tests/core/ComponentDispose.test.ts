@@ -48,9 +48,17 @@ function ruleSnapshot(): Set<string> {
 // leak: excluded here the same way pre-existing module state is.
 const FRAMEWORK_SELECTOR = ':where(.ts-ui-component)';
 
-/** Rule-cache keys present now that were absent from `before`, excluding the permanent framework rule. */
+// `TabButton`'s busy overlay registers its `.TabBusyIndicator` geometry rule
+// the same way (module-level, first-use, never disposed — see TabButton.ts's
+// `ensureBusyIndicatorClassRule`). The "closes mid-build" test below is the
+// first in this file to mark a tab busy, so it legitimately sees this appear
+// too; not a per-instance leak, excluded for the same reason as the framework
+// selector above.
+const BUSY_INDICATOR_SELECTOR = '.TabBusyIndicator';
+
+/** Rule-cache keys present now that were absent from `before`, excluding permanent shared rules. */
 function leakedKeys(before: Set<string>): string[] {
-    return _ruleCacheKeys().filter((key) => !before.has(key) && key !== FRAMEWORK_SELECTOR);
+    return _ruleCacheKeys().filter((key) => !before.has(key) && key !== FRAMEWORK_SELECTOR && key !== BUSY_INDICATOR_SELECTOR);
 }
 
 /**

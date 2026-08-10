@@ -48,6 +48,9 @@ class TabDemoPanel extends Component {
         const addFailingBtn = new Button("Add Failing Tab");
         toolbar.addComponent(addFailingBtn);
 
+        const toggleBusyBtn = new Button("Toggle Busy");
+        toolbar.addComponent(toggleBusyBtn);
+
         const toggleBorderBtn = new Button("Toggle Under-border");
         toolbar.addComponent(toggleBorderBtn);
 
@@ -315,6 +318,18 @@ class TabDemoPanel extends Component {
 
         this.tabPanel.getTab().on("exception", (error, label) => {
             this.logText.setText(`Failed: ${label} — ${String(error)}`);
+        });
+
+        toggleBusyBtn.on("action", () => {
+            const content = this.tabPanel.getTab().getActiveContent();
+
+            if (content) {
+                this.tabPanel.getTab().setTabBusy(content, !this.tabPanel.getTab().isTabBusy(content));
+            }
+        });
+
+        this.tabPanel.getTab().on("busychange", (busy, label) => {
+            this.logText.setText(`${busy ? "Loading" : "Loaded"}: ${label}`);
         });
 
         toggleBorderBtn.on("action", () => {

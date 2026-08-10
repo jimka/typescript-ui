@@ -21,6 +21,7 @@ import { Util } from '~/core/Util';
 import { Table } from '~/component/table/Table';
 import { TablePanel } from '~/component/table/TablePanel';
 import { LinkCellRenderer } from '~/component/table/cell/renderer/Link';
+import { TableExporter } from '~/component/table/TableExporter';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ColumnSpec } from '~/component/table/ColumnConfig';
@@ -280,6 +281,18 @@ describe('Auto-size and content', () => {
         const widths  = table.getIntrinsicColumnWidths();
 
         expect(widths[1]).toBeGreaterThan(widths[0]!);
+    });
+
+    it('15b. content-driven width includes CELL_CHROME_PX beyond the raw measured text', async () => {
+        const model     = new Model([{ name: 'note', type: 'string', order: 0 }]);
+        const candidate = 'a'.repeat(20);
+        const records   = [{ note: candidate }];
+        const store     = await makeStore(model, records);
+        const table     = makeTable(store, { columns: [], autoSizeColumns: true });
+        const width     = table.getIntrinsicColumnWidths()[0]!;
+        const contentPx = Util.measureTextWidths([candidate])[0];
+
+        expect(width).toBe(contentPx + CELL_CHROME_PX);
     });
 
     it('16. cap', async () => {
@@ -746,5 +759,61 @@ describe('Regression: no room left for the flex columns', () => {
         table.doLayout();
 
         expect(table.getColumnWidths()[0]).toBeGreaterThan(table.getColumnMinWidth(col));
+    });
+});
+
+// `dateReferenceKeys` widens each date/time/datetime reference by
+// substituting every digit position with each of 0-9 and keeping the widest
+// variant — guards against a non-tabular font rendering some digit wider than
+// REFERENCE_DATE's own digits. Exercising that needs a font whose digit
+// advances genuinely differ, so this block overrides installTestDOM with its
+// own beforeEach rather than reusing the shared uniform-digit CONFIG above
+// (still a single-entry font table, per this file's own font() convention).
+describe('Date/time reference width under non-uniform digit metrics', () => {
+    const nonUniformFontMetrics = {
+        fonts: {
+            'NonUniformDigitTestFont': {
+                ascent:  13,
+                descent: 3,
+                capTop:  10,
+                advance: {
+                    ' ': 10, '/': 4,
+                    '0': 8, '1': 4, '2': 6, '3': 8, '4': 8,
+                    '5': 8, '6': 8, '7': 8, '8': 14, '9': 8,
+                },
+            },
+        },
+    };
+
+    beforeEach(() => installTestDOM({ ...CONFIG, fontMetrics: nonUniformFontMetrics }));
+    afterEach(() => DOM.reset());
+
+    it('D1. date column min width reflects the widest digit-substituted variant, not the raw reference text', async () => {
+        const model = new Model([{ name: 'd', type: 'date', order: 0 }]);
+        const store = await makeStore(model, []);
+        const table = makeTable(store);
+        const col   = table.getColumns()[0];
+
+        const min = table.getColumnMinWidth(col);
+
+        // Independently compute the expected floor via the same
+        // digit-substitution `dateReferenceKeys` performs: format the same
+        // reference instant Table.ts uses (REFERENCE_DATE), then re-measure
+        // with every digit position replaced by each of 0-9 in turn, keeping
+        // the widest variant.
+        const referenceDate = new Date(2000, 11, 31, 23, 59, 59);
+        const base          = String(TableExporter.formatValue(col, referenceDate, new Map()));
+        const digitChars    = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+        const variants       = [base, ...digitChars.map(d => base.replace(/\d/g, d))];
+        const widest         = Math.max(...Util.measureTextWidths(variants));
+
+        expect(min).toBe(widest + CELL_CHROME_PX);
+
+        // '8' (advance 14) is wider than every digit REFERENCE_DATE's own
+        // formatted text actually contains, so the widened floor must be
+        // strictly greater than the pre-fix (base-text-only) measurement.
+        const baseOnly = Util.measureTextWidths([base])[0];
+
+        expect(widest).toBeGreaterThan(baseOnly);
     });
 });

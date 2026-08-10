@@ -614,7 +614,16 @@ class Dock extends Container<DockOptions> {
                     this.failPanel(spec.id, error);
                 };
 
-                tab.on("exception", onFailed);
+                // The frame's Tab is a local and its strip is hidden, so this
+                // subscription is the only thing that can put a docked panel's
+                // load on screen. Named reference, not an inline arrow, per the
+                // listener rule in ARCHITECTURE.md.
+                const onBusyChanged: (busy: boolean) => void = (busy: boolean): void => {
+                    this.setFrameBusy(spec.id, busy);
+                };
+
+                tab.on("exception",  onFailed);
+                tab.on("busychange", onBusyChanged);
                 tab.addLazyTab(factory, spec.title ?? spec.id);
             } else {
                 // A normal panel builds its content now; the frame exists at once so
@@ -1545,6 +1554,31 @@ class Dock extends Container<DockOptions> {
         }
 
         this.emit("exception", { id, error });
+    }
+
+    /**
+     * Re-points a lazy panel's busy state from its hidden inner strip onto the tab
+     * that actually shows it: the panel's tab in whichever region hosts its frame.
+     * A no-op while the frame sits in no `Tab` region — registered but never
+     * docked, torn off into a float, or mid-teardown.
+     *
+     * @param id - The id of the panel whose content started or finished loading.
+     * @param busy - True while the panel's content factory is still in flight.
+     */
+    private setFrameBusy(id: string, busy: boolean): void {
+        const frame = this._frames.get(id);
+
+        if (!frame) {
+            return;
+        }
+
+        const region = this.regionForFrame(frame);
+
+        if (!region) {
+            return;
+        }
+
+        (region.getLayoutManager() as Tab).setTabBusy(frame, busy);
     }
 
     /**

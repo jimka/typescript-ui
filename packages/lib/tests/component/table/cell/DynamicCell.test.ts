@@ -93,6 +93,18 @@ describe('DynamicCell variant selection + editor keys', () => {
         expect(cell.getEditorKey()).toBe('number');
     });
 
+    it('left-aligns a number row, unlike a homogeneous NumberCell column', () => {
+        // A DynamicCell's number row sits in a column that also shows
+        // left-aligned string/date/combo rows; a lone right-aligned row
+        // reads as jarring there, so it opts out of NumberRenderer's default.
+        const cell = new DynamicCell('value', 'auto', config);
+
+        cell.bindRecord(recordFor('number', 42));
+
+        const text = (cell.getRenderer() as any)._text;
+        expect(text.getTextAlign()).toBe('left');
+    });
+
     it('resolves a combo row to a ComboRenderer with a field-namespaced combo editor key', () => {
         const cell = new DynamicCell('value', 'auto', config);
 

@@ -5,6 +5,19 @@ tied to a version number yet. Once this release is tagged, its content moves
 onto its own numbered page (see [Changelog](/reference/changelog)) and this
 page resets to empty.
 
+## Changed
+
+### Table
+
+- **A `DynamicCell` number row (the rotated `\x`-style view, or any column
+  using `ColumnConfig.cellType`/`cellValues` for a per-row mixed-type
+  column) now renders left-aligned instead of right-aligned.** A
+  homogeneous `number`-typed column still right-aligns via `NumberCell` /
+  `NumberRenderer`'s default — only the mixed-type `DynamicCell` context
+  changes, since there a lone right-aligned number row sat oddly against
+  every other row's left-aligned string/date/combo text. No consumer action
+  is needed.
+
 ## Added
 
 ### Tree
@@ -41,4 +54,10 @@ page resets to empty.
   growth-side bug: a genuine document/width change is required to shrink
   the editor again, the same trust rule growth already followed. No
   consumer action is needed.
+
+### Table
+
+**A `date`/`time`/`datetime` auto-sized column could truncate a real value with a trailing ellipsis even though its computed width looked correct.** The per-type width policy's cell-padding allowance was applied to every column type except the content-driven `string`/`auto` branch, and the date/time reference measurement compared only the reference instant's own formatted digits — missing a non-tabular font where some other digit renders wider. Both gaps are closed: the content-driven branch now adds the same cell padding every other branch already did, and the date/time/datetime floor is measured against the widest digit-substituted variant of the reference text. No consumer action is needed.
+
+**The rotated (`\x`-style) view's `field`/`value` columns no longer sit pinned at their maximum width regardless of what the displayed record holds.** Both columns now size from the actual field labels and formatted values on screen — measured the same way each cell's own renderer displays them, including a combo row's label rather than its stored code — and re-derive on every record switch. `field`/`value` still cap at their existing bounds (80–200px / 120–360px); a wide table's leftover space still goes to the trailing filler column. No consumer action is needed.
 

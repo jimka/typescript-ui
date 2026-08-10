@@ -895,6 +895,45 @@ describe('Dock addLazyPanel', () => {
         flush();
         expect(built).toBe(1);
     });
+
+    it('marks the panel busy on the outer region tab while it builds, and clears it on resolve', async () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        // Forces the materialize cross-fade to complete synchronously once the
+        // factory settles — offline there is no `transitionend` to end a real
+        // fade, so `onReady` (which clears the busy flag) never fires without
+        // this, mirroring Tab.lazy.test.ts's `useReducedMotion` helper.
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+
+        const dock = mountDock();
+        const content = new Component({});
+        let resolve: (c: Component) => void = () => {};
+
+        dock.addLazyPanel({
+            id:      'a',
+            title:   'A',
+            content: () => new Promise<Component>(res => { resolve = res; }),
+        });
+
+        flush();          // run the sweep so the region's "activate" listener is wired
+        dock.doLayout();  // realize the deferred active-set -> starts the inner Tab's build
+
+        const frame    = frameOf(dock, 'a');
+        const outerTab = rootTab(dock);
+
+        // materializeAsync flips the inner entry to "building" synchronously,
+        // before the two-rAF yield — Dock's onBusyChanged re-points that onto
+        // the panel's tab in the outer region, the strip the user actually sees.
+        expect(outerTab.isTabBusy(frame)).toBe(true);
+
+        flush(); // drain materialize's two-rAF yield so the factory runs
+        resolve(content);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(outerTab.isTabBusy(frame)).toBe(false);
+    });
 });
 
 // A dock with a placeholder so the empty-state tests can assert the placeholder
