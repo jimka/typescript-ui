@@ -26,3 +26,19 @@ page resets to empty.
   loading joins the first load instead of triggering a second
   `loadChildren`. No consumer action is needed.
 
+## Fixed
+
+### Editor
+
+- **A `CodeEditor` with `autoHeightMaxRows` set could collapse a live
+  editor's committed height to `0px` on certain document shrinks**, even
+  though the underlying document was intact and correct — for example,
+  growing to fit a 4-line document and then shrinking back to the original
+  3 lines. A chain of re-entrant CodeMirror geometry-remeasure events
+  against an unchanged document shape could each report a slightly smaller
+  content height than the last, with nothing stopping repeated events from
+  walking the committed height down to zero. This mirrors an already-fixed
+  growth-side bug: a genuine document/width change is required to shrink
+  the editor again, the same trust rule growth already followed. No
+  consumer action is needed.
+
