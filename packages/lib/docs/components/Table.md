@@ -181,6 +181,7 @@ table.setDisplayMode("normal");   // back to one row per record
 - `setColumnVisible` is a no-op while rotated (the projection's data columns are always shown), and the column-header context menu shows only the export entries.
 - `setRowVisible` is neutralized the same way while rotated (a predicate written against source records cannot apply to the field/value projection) and resumes filtering immediately on return to `"normal"` — even a predicate set while rotated is picked up then.
 - The [filter row](#column-filters) is absent while rotated, for the same reason: the projection has no per-column `filterable` field to filter on. The source store's filters stay applied underneath, and the row returns on return to `"normal"` with its toggle state and its previous operator/text intact.
+- **Grouped source columns get a separator row.** Entering rotated mode inserts a separator row before each [group](#parent-headers)'s contiguous run of field/value rows, labeled with the group name and tinted with `groupColor` when set. Separators are suppressed while the projection is sorted (clicking `field` or `value`) — a sort has no notion of group adjacency — and reappear as soon as the sort is cleared. Separator rows are not selectable, are not focusable, and are skipped by keyboard row navigation.
 
 ## Parent headers
 
@@ -205,6 +206,7 @@ const table = Table(store, {
 - Hiding all columns in a group collapses the parent cell automatically. When no visible column declares a `group` at all, the parent row collapses to zero height and the body fills the saved space.
 - Parent cells are non-interactive — no sort cycle, no resize handle. Click and resize gestures stay on the column-header row beneath.
 - `groupColor` is a plain CSS color string; the first non-null value in a contiguous run wins, so a partial annotation propagates across the whole run.
+- The same `group` / `groupColor` declarations also drive a separator row in the [rotated record view](#rotated-record-view).
 
 ## Column filters
 
