@@ -13,6 +13,7 @@ class DateRenderer extends CellRenderer<Date | null> {
 
     private _text: Text = new Text();
     private _value: Date | null = null;
+    private _display: string = "";
 
     constructor() {
         super();
@@ -28,10 +29,22 @@ class DateRenderer extends CellRenderer<Date | null> {
     }
 
     setValue(value: Date | null): this {
-        this._value = value ?? null;
-        this._text.setText(value ? value.toLocaleDateString() : "");
+        this._value   = value ?? null;
+        this._display = value ? value.toLocaleDateString() : "";
+        this._text.setText(this._display);
 
         return this;
+    }
+
+    /**
+     * Returns the exact text last rendered — the same string {@link setValue}
+     * pushed into the child {@link Text}. Computed from cached state, never
+     * the DOM.
+     *
+     * @returns The cell's current display text.
+     */
+    getDisplayText(): string {
+        return this._display;
     }
 }
 

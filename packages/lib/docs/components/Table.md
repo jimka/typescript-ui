@@ -121,6 +121,7 @@ const table = Table(store, {
 - The **value** — the option's `value` string — is what is stored on the record and round-tripped on commit. The cell shows the matching **label**; a stored value outside the option set renders as the raw value rather than blanking.
 - Double-clicking a combo cell opens the dropdown; picking an option (mouse or keyboard) commits it. The column honours `readOnly` / `cellReadOnly` / `rowReadOnly` like any other cell.
 - `values` keys are strings. A combo column over a numeric field stores the chosen key verbatim as a string; convert on read if you need a number.
+- The header's [filter row](#column-filters) matches the **label**, not the stored value — typing "Developer" finds every record whose `role` is `'dev'`.
 
 ## Per-cell cell types
 
@@ -238,12 +239,13 @@ The operators offered depend on the column's field type, and the first entry is 
 | `boolean` | Equals, Not equals, Is empty, Is not empty | Equals |
 
 - **Substring operators are case-insensitive**; Contains / Starts with / Ends with match regardless of case. Equals / Not equals are exact and case-sensitive.
-- **Equals on a temporal column matches the exact instant**, not the calendar day — filtering a `datetime` column for a whole day needs the `At least` / `Less than` pair over that day's bounds rather than `Equals`.
+- **Equals on a temporal column matches every value that displays the same**, not the exact instant — a `date` column's Equals covers the whole calendar day, and a `time`/`datetime` column's covers the displayed minute (or second, under `showSeconds`).
+- **A `time` filter's operand is typed as displayed** — `09:30`, `09:30:20`, or `09:30 AM` — and anchored to 1970-01-01, mirroring the normalisation the time cell editor commits. A `time` field whose stored values carry a different date anchor will not match.
 - **Typing debounces** for 200ms before writing to the store; picking a different operator, pressing Enter, or pressing Escape apply immediately, with no debounce wait.
 - **Local vs. remote evaluation follows the store's `remoteFilter` option** — the filter row adds no second switch. A store with `pageSize` set should also set `remoteFilter: true`, or a page comes back unfiltered from the proxy and is only shrunk locally afterward.
 - **Hiding a column leaves its filter active** — a filter is data state, not view state, so `setColumnVisible(field, false)` on a filtered column does not clear what it was filtering on. **Hiding the whole row is different**: `table.setFilterRowVisible(false)` clears every filter the row applied, since there is then no control left showing — or able to change — their criteria. Showing the row again starts every column back at its default operator with a blank input, not the criteria that were cleared.
 - Each filter writes through [`store.setFilter(key, descriptor)`](/data/store#sort-and-filter), keyed by field name, so retyping in one column replaces only that column's descriptor — it never stacks a new filter per keystroke, and never disturbs another column's filter or one added through [`filter()`](/api/data/classes/AbstractStore#filter) / [`filterBy()`](/api/data/classes/AbstractStore#filterBy).
-- **A filter matches the stored value, not necessarily the displayed one.** A [combo column](#combo-columns) can show a label that differs from the value on the record (`{ value: 'AU', label: 'Australia' }`), and the filter matches `'AU'`, not `'Australia'`; a custom `renderer` can likewise style or transform a value beyond recognition. Set `filterable: false` on a column where this would be confusing.
+- **A [combo column](#combo-columns) filters on its label**, not the stored value — see above. A column with a custom `renderer` still filters on the stored value: it declares no option domain to resolve a typed label against.
 
 ## Sorting and selection
 
@@ -324,6 +326,7 @@ table.on("cellclick", e => {
 | `setExportMenuEnabled(boolean)` | Adds "Export as CSV" / "Export as JSON" entries to the column context menu. |
 | `setRowVisible(predicate)` | Hide rows that fail `predicate`, without touching the store. |
 | `setFilterRowVisible(boolean)` | Show / hide the header's [filter row](#column-filters). |
+| `getCellText(field, record)` | The exact text a cell shows for `field` on `record` — the same string export and the filter row resolve a combo label or formatted date/time/datetime through. |
 
 ## Row visibility
 
@@ -338,10 +341,11 @@ searchBox.on("change", value => {
     const needle = value.trim().toLowerCase();
 
     table.setRowVisible(needle === '' ? null : record =>
-        String(record.get('name')).toLowerCase().includes(needle));
+        table.getCellText('name', record).toLowerCase().includes(needle));
 });
 ```
 
+- **Matches what's on screen.** [`getCellText(field, record)`](#common-methods) resolves a combo column's label and a date/time/datetime column's formatted text, so a search built on it (as above) matches the displayed value rather than the raw stored one — the same text `exportCSV()`/`exportJSON()` write and the filter row matches against.
 - **Display-only.** Hiding a row never touches `getStore()`'s records, the current selection, or a pending in-grid edit.
 - **Re-applied automatically.** The predicate is re-consulted on every render pass, so it stays in effect across scrolling, sorting, store events (`add` / `remove` / `datachange` / …), and column show/hide — call `setRowVisible` again only when the predicate itself changes.
 - **Neutralized while rotated** — see the note in [Rotated record view](#rotated-record-view) below.
@@ -373,7 +377,9 @@ serialize as the empty string (CSV) or `null` (JSON).
 Date, time, and datetime cells are formatted with the same `toLocaleDateString`
 / `toLocaleTimeString` / `toLocaleString` options the cell renderers use, so
 exports match what the user sees — including the `showSeconds` setting from
-the column spec.
+the column spec. A [combo column](#combo-columns) likewise exports its
+**label**, not the stored code — a behaviour change to account for if the
+export is meant to be re-imported.
 
 `TablePanel` exposes the same three methods (`setExportMenuEnabled`,
 `exportCSV`, `exportJSON`) as delegates to its inner `Table`.

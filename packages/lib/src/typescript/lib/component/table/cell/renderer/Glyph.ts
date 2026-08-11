@@ -69,6 +69,18 @@ class GlyphRenderer extends CellRenderer<String | null> {
 
         return this;
     }
+
+    /**
+     * Returns the registry glyph name currently displayed, or `""` when the
+     * cell is empty. Unlike the text renderers there is no `Text` child to
+     * mirror — the registry name is the cell's only textual handle, and it
+     * is what CSV export writes today.
+     *
+     * @returns The cell's current display text.
+     */
+    getDisplayText(): string {
+        return this._value === null ? "" : String(this._value);
+    }
 }
 
 const GlyphRendererCallable = callable(GlyphRenderer);

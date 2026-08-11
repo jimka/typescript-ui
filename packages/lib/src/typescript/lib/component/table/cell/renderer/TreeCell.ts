@@ -145,6 +145,16 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
     }
 
     /**
+     * Returns the delegate's display text — the toggle and indent columns
+     * carry no text of their own.
+     *
+     * @returns The delegate's current display text.
+     */
+    getDisplayText(): string {
+        return this._delegate.getDisplayText();
+    }
+
+    /**
      * Updates the tree state for this slot — depth, whether the bound
      * record has children, and whether it is currently expanded. The
      * toggle glyph is created or removed as needed, and the renderer's

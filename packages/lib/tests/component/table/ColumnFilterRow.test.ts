@@ -30,6 +30,7 @@ import type { ModelRecord } from '~/data/ModelRecord';
 import type { MenuItemConfig } from '~/component/container/MenuItem';
 import { Util } from '~/core/Util';
 import { Insets } from '~/primitive/Insets';
+import { TimeRenderer } from '~/component/table/cell/renderer/Time';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -705,5 +706,152 @@ describe('Column filter row — TreeTable', () => {
 
         const restored = (treeTable.getBody() as any).getVisibleRecords();
         expect(restored.map((r: ModelRecord) => r.get('name'))).toEqual(['src', 'main.ts', 'docs']);
+    });
+});
+
+// cell-display-text plan: combo and temporal columns filter on displayed
+// text. A second model/spec fixture carries a `string` field with `values`
+// (combo) and a `time` field with `showSeconds: true`, since MODEL above has
+// neither. Cases numbered per that plan's own `## Expected Behaviour` list
+// (27-34), independent of this file's pre-existing 20-40 sequence above.
+describe('Column filter row — combo and temporal filtering (cell-display-text)', () => {
+    afterEach(() => vi.useRealTimers());
+
+    const COMBO_TEMPORAL_MODEL = new Model([
+        { name: 'id',   type: 'string', order: 0 },
+        { name: 'role', type: 'string', order: 1 },
+        { name: 'meet', type: 'time',   order: 2 },
+    ], 'id');
+
+    const ROLE_VALUES = [
+        { value: 'dev', label: 'Developer' },
+        { value: 'qa',  label: 'QA Engineer' },
+        { value: 'pm',  label: 'Project Manager' },
+    ];
+
+    const COMBO_TEMPORAL_RECORDS = [
+        { id: '1', role: 'dev', meet: new Date(1970, 0, 1, 9, 30, 0) },
+        { id: '2', role: 'qa',  meet: new Date(1970, 0, 1, 14, 0, 0) },
+        { id: '3', role: 'pm',  meet: new Date(1970, 0, 1, 16, 45, 0) },
+        { id: '4', role: '',    meet: null },
+    ];
+
+    async function comboTemporalTable(): Promise<{ table: Table; store: MemoryStore }> {
+        const store = new MemoryStore(COMBO_TEMPORAL_MODEL, COMBO_TEMPORAL_RECORDS);
+        await store.load();
+
+        const table = new Table(store, {
+            columns: [
+                { field: 'role', values: ROLE_VALUES },
+                { field: 'meet', showSeconds: true },
+            ],
+        });
+        table.getElement(true);
+        table.setWidth(600);
+        table.setHeight(400);
+        table.doLayout();
+        table.setFilterRowVisible(true);
+
+        return { table, store };
+    }
+
+    function roleCell(table: Table): FilterCell {
+        return filterCells(table).find(c => c.getFieldName() === 'role')!;
+    }
+
+    function meetCell(table: Table): FilterCell {
+        return filterCells(table).find(c => c.getFieldName() === 'meet')!;
+    }
+
+    it('27. typing "Developer" (Equals) leaves only the record whose stored value is "dev" visible', async () => {
+        vi.useFakeTimers();
+        const { table, store } = await comboTemporalTable();
+
+        pickOperator(roleCell(table), 'Equals');
+        typeInto(roleCell(table), 'Developer');
+        vi.advanceTimersByTime(200);
+
+        expect(store.getFilter('role')).toEqual({ type: 'in', field: 'role', values: ['dev'] });
+        expect(visibleRecords(table).map(r => r.get('id'))).toEqual(['1']);
+    });
+
+    it('28. typing "eng" with the default Contains operator leaves only the "qa" record', async () => {
+        vi.useFakeTimers();
+        const { table } = await comboTemporalTable();
+
+        typeInto(roleCell(table), 'eng');
+        vi.advanceTimersByTime(200);
+
+        expect(visibleRecords(table).map(r => r.get('id'))).toEqual(['2']);
+    });
+
+    it('29. typing "Zzz" into the combo column leaves no rows visible', async () => {
+        vi.useFakeTimers();
+        const { table } = await comboTemporalTable();
+
+        typeInto(roleCell(table), 'Zzz');
+        vi.advanceTimersByTime(200);
+
+        expect(visibleRecords(table)).toEqual([]);
+    });
+
+    it('30. clearing the combo column\'s input restores every row', async () => {
+        vi.useFakeTimers();
+        const { table } = await comboTemporalTable();
+
+        typeInto(roleCell(table), 'Zzz');
+        vi.advanceTimersByTime(200);
+        expect(visibleRecords(table)).toEqual([]);
+
+        typeInto(roleCell(table), '');
+        vi.advanceTimersByTime(200);
+
+        expect(visibleRecords(table).length).toBe(4);
+    });
+
+    it('31. typing the exact displayed time (default Equals) leaves only that record visible', async () => {
+        vi.useFakeTimers();
+        const { table } = await comboTemporalTable();
+
+        // Built relationally from TimeRenderer's own output for record 2's
+        // value, never a locale literal — "type the time as displayed".
+        const displayed = new TimeRenderer(true);
+        displayed.setValue(new Date(1970, 0, 1, 14, 0, 0));
+
+        typeInto(meetCell(table), displayed.getDisplayText());
+        vi.advanceTimersByTime(200);
+
+        expect(visibleRecords(table).map(r => r.get('id'))).toEqual(['2']);
+    });
+
+    it('32. typing a time with Greater than leaves only the later records', async () => {
+        vi.useFakeTimers();
+        const { table } = await comboTemporalTable();
+
+        pickOperator(meetCell(table), 'Greater than');
+        typeInto(meetCell(table), '10:00');
+        vi.advanceTimersByTime(200);
+
+        expect(visibleRecords(table).map(r => r.get('id')).sort()).toEqual(['2', '3']);
+    });
+
+    it('33. the isEmpty operator on the combo column still selects records whose stored value is empty', async () => {
+        const { table } = await comboTemporalTable();
+
+        pickOperator(roleCell(table), 'Is empty');
+
+        expect(visibleRecords(table).map(r => r.get('id'))).toEqual(['4']);
+    });
+
+    it('34. a combo column with no filterable:false is offered the string operator set', async () => {
+        const { table } = await comboTemporalTable();
+
+        const cell     = roleCell(table);
+        const provider = renderer(cell).getOperatorButton().getMenuItems() as () => MenuItemConfig[];
+        const labels   = provider().map(i => i.text?.trim());
+
+        expect(labels).toEqual(
+            expect.arrayContaining(['Contains', 'Starts with', 'Ends with', 'Equals', 'Not equals', 'Is empty', 'Is not empty']));
+        expect(renderer(cell).getInput().isDisplayed()).toBe(true);
     });
 });

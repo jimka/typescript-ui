@@ -32,6 +32,9 @@
     "externalSymbolLinkMappings": {
         "typescript": {
             "MouseEvent": "https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent"
+        },
+        "@jimka/typescript-ui": {
+            "CellTextResolver": "#"
         }
     },
     "hideGenerator": true,

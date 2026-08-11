@@ -21,9 +21,10 @@ import { callable } from "~/core/Callable.js";
  */
 class ComboRenderer extends CellRenderer<String | null> {
 
-    private _text:  Text                = new Text();
-    private _map:   Map<string, string> = new Map();
-    private _value: String | null       = null;
+    private _text:    Text                = new Text();
+    private _map:     Map<string, string> = new Map();
+    private _value:   String | null       = null;
+    private _display: string              = "";
 
     /**
      * @param optionList - The column's option set; each entry is a plain
@@ -75,14 +76,27 @@ class ComboRenderer extends CellRenderer<String | null> {
         this._value = value ?? null;
 
         if (this._value === null) {
-            this._text.setText("");
+            this._display = "";
         } else {
             const key = String(this._value);
 
-            this._text.setText(this._map.get(key) ?? key);
+            this._display = this._map.get(key) ?? key;
         }
 
+        this._text.setText(this._display);
+
         return this;
+    }
+
+    /**
+     * Returns the exact text last rendered — the same string {@link setValue}
+     * pushed into the child {@link Text}. Computed from cached state, never
+     * the DOM.
+     *
+     * @returns The cell's current display text.
+     */
+    getDisplayText(): string {
+        return this._display;
     }
 
     /**

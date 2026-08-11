@@ -20,6 +20,7 @@ import { ColumnSpec, normalizeComboOptions } from "~/component/table/ColumnConfi
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { TableExporter, ExportOptions } from "~/component/table/TableExporter.js";
+import { CellTextResolver } from "~/component/table/cell/CellText.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
@@ -191,6 +192,10 @@ class Table extends Component<TableOptions> {
     // never re-scans the store — so `getColumnMinWidth` can consult it
     // without violating its "never samples the store" contract.
     private _sampledCandidates: Map<string, string[]> = new Map();
+    // Owner-held pool of unmounted renderers this table formats non-cell
+    // values through (export, quick search, width sampling). Disposed in
+    // `destructor`; see `CellText.ts` — mirrors `CellEditorPool`.
+    private _cellText         : CellTextResolver = new CellTextResolver();
 
     /**
      * Constructs a Table bound to the given store, optionally constrained by a
@@ -256,6 +261,7 @@ class Table extends Component<TableOptions> {
         if (spec) {
             this._columnConfigs = this.buildColumnConfigs(spec);
             this._body.setColumnConfigs(this._columnConfigs);
+            this._header.setColumnConfigs(this._columnConfigs);
         }
 
         this._body.setRowReadOnly(spec?.rowReadOnly ?? null);
@@ -1232,6 +1238,7 @@ class Table extends Component<TableOptions> {
         this._body.selectRecord(null);
         this._body.setStore(store);
         this._body.setColumnConfigs(configs);
+        this._header.setColumnConfigs(configs);
         this._body.setColumns(columns);
         this._body.setHiddenColumns(hidden);
         this._body.setRowReadOnly(rowReadOnly);
@@ -1263,6 +1270,7 @@ class Table extends Component<TableOptions> {
      */
     protected destructor(): void {
         this._columnContextMenu.dispose();
+        this._cellText.dispose();
 
         super.destructor();
     }
@@ -1387,7 +1395,7 @@ class Table extends Component<TableOptions> {
         const columns = this.getExportColumns(options?.includeHidden ?? false);
         const records = this._store.getRecords();
 
-        TableExporter.exportCSV(columns, records, this._columnConfigs, options);
+        TableExporter.exportCSV(columns, records, this._columnConfigs, this._cellText, options);
     }
 
     /**
@@ -1401,7 +1409,7 @@ class Table extends Component<TableOptions> {
         const columns = this.getExportColumns(options?.includeHidden ?? false);
         const records = this._store.getRecords();
 
-        TableExporter.exportJSON(columns, records, this._columnConfigs, options);
+        TableExporter.exportJSON(columns, records, this._columnConfigs, this._cellText, options);
     }
 
     /**
@@ -1412,6 +1420,28 @@ class Table extends Component<TableOptions> {
      */
     private getExportColumns(includeHidden: boolean): Column[] {
         return includeHidden ? this._resolvedColumns.slice() : this.getSourceColumns();
+    }
+
+    /**
+     * Returns the exact text a cell shows for `field` on `record` — the same
+     * string CSV/JSON export and the column filter row resolve a combo label
+     * or a formatted date/time/datetime through. Resolved against every
+     * resolved column, including a hidden one, so a quick search built on
+     * this method still matches a column the user has toggled off.
+     *
+     * @param field - The model field name to read and format.
+     * @param record - The record to read the field from.
+     * @returns The cell's display text, or `''` when `field` names no
+     *   resolved column or the record's value is `null`/`undefined`.
+     */
+    getCellText(field: string, record: ModelRecord): string {
+        const col = this._resolvedColumns.find(c => c.getField().getName() === field);
+
+        if (!col) {
+            return '';
+        }
+
+        return String(TableExporter.formatValue(col, record.get(field), this._columnConfigs, this._cellText) ?? '');
     }
 
     /**
@@ -1820,7 +1850,7 @@ class Table extends Component<TableOptions> {
         // every time/datetime row renders without seconds today regardless of
         // the source column's own setting. Matching that here keeps the
         // measured text the same length as what actually renders.
-        return String(TableExporter.formatValue(sourceColumn, record.get('value'), new Map()) ?? '');
+        return String(TableExporter.formatValue(sourceColumn, record.get('value'), new Map(), this._cellText) ?? '');
     }
 
     /**
@@ -1847,7 +1877,7 @@ class Table extends Component<TableOptions> {
 
                 const name = col.getField().getName();
                 const raw  = record.get(name);
-                const text = String(TableExporter.formatValue(col, raw, this._columnConfigs) ?? "");
+                const text = String(TableExporter.formatValue(col, raw, this._columnConfigs, this._cellText) ?? "");
                 const list = best.get(name) ?? [];
 
                 this.keepLongest(list, text);
@@ -2039,7 +2069,7 @@ class Table extends Component<TableOptions> {
             const key = `${type}:${this.showsSeconds(col)}`;
 
             if (!seen.has(key)) {
-                const base = String(TableExporter.formatValue(col, REFERENCE_DATE, this._columnConfigs) ?? "");
+                const base = String(TableExporter.formatValue(col, REFERENCE_DATE, this._columnConfigs, this._cellText) ?? "");
 
                 seen.set(key, [base, ...digitChars.map(d => base.replace(/\d/g, d))]);
             }

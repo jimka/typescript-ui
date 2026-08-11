@@ -16,8 +16,9 @@ import { callable } from "~/core/Callable.js";
  */
 class NumberRenderer extends CellRenderer<Number | null> {
 
-    private _text:  Text          = new Text();
-    private _value: Number | null = null;
+    private _text:    Text          = new Text();
+    private _value:   Number | null = null;
+    private _display: string        = "";
 
     /**
      * @param align - The text alignment to render with. Defaults to
@@ -59,10 +60,22 @@ class NumberRenderer extends CellRenderer<Number | null> {
      *   to clear the cell.
      */
     setValue(value: Number | null): this {
-        this._value = value ?? null;
-        this._text.setText(this._value === null ? "" : String(this._value));
+        this._value   = value ?? null;
+        this._display = this._value === null ? "" : String(this._value);
+        this._text.setText(this._display);
 
         return this;
+    }
+
+    /**
+     * Returns the exact text last rendered — the same string {@link setValue}
+     * pushed into the child {@link Text}. Computed from cached state, never
+     * the DOM.
+     *
+     * @returns The cell's current display text.
+     */
+    getDisplayText(): string {
+        return this._display;
     }
 }
 

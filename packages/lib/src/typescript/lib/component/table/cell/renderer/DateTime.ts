@@ -14,6 +14,7 @@ class DateTimeRenderer extends CellRenderer<Date | null> {
     private _text: Text = new Text();
     private _value: Date | null = null;
     private _showSeconds: boolean;
+    private _display: string = "";
 
     constructor(showSeconds: boolean = false) {
         super();
@@ -34,9 +35,21 @@ class DateTimeRenderer extends CellRenderer<Date | null> {
         const opts: Intl.DateTimeFormatOptions = this._showSeconds
             ? { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }
             : { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
-        this._text.setText(value ? value.toLocaleString(undefined, opts) : "");
+        this._display = value ? value.toLocaleString(undefined, opts) : "";
+        this._text.setText(this._display);
 
         return this;
+    }
+
+    /**
+     * Returns the exact text last rendered — the same string {@link setValue}
+     * pushed into the child {@link Text}. Computed from cached state, never
+     * the DOM.
+     *
+     * @returns The cell's current display text.
+     */
+    getDisplayText(): string {
+        return this._display;
     }
 }
 

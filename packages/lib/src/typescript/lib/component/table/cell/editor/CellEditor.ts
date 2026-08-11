@@ -152,4 +152,19 @@ export abstract class CellEditor<T> extends Component {
     getContentX(): number {
         return 0;
     }
+
+    /**
+     * Mirrors {@link CellRenderer.getDisplayText} so a `CellEditor` and a
+     * `CellRenderer` stay structurally compatible — {@link BooleanCell}
+     * uses a [`BooleanEditor`](/api/component/table/classes/BooleanEditor)
+     * as both renderer and editor, and TS would reject that pass if
+     * either base class declared a member the other didn't. Default
+     * returns `""`; editors do not currently report display text of
+     * their own.
+     *
+     * @returns Always `""`.
+     */
+    getDisplayText(): string {
+        return "";
+    }
 }
