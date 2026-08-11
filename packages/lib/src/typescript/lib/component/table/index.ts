@@ -34,6 +34,7 @@ export { DefaultCell } from '~/component/table/cell/Default.js';
 export { HeaderCell } from '~/component/table/cell/Header.js';
 export type { HeaderCellEvent } from '~/component/table/cell/Header.js';
 export { ParentHeaderCell } from '~/component/table/cell/ParentHeader.js';
+export { GroupSeparatorCell } from '~/component/table/cell/GroupSeparator.js';
 export { FilterCell } from '~/component/table/cell/Filter.js';
 export type { FilterCellEvent } from '~/component/table/cell/Filter.js';
 export { BooleanCell } from '~/component/table/cell/Boolean.js';

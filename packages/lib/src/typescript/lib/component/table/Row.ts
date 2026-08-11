@@ -8,6 +8,7 @@ import { ModelRecord } from "~/data/ModelRecord.js";
 import { Cell } from "~/component/table/cell/Cell.js";
 import { DynamicCell } from "~/component/table/cell/Dynamic.js";
 import { DefaultCell } from "~/component/table/cell/Default.js";
+import { GroupSeparatorCell } from "~/component/table/cell/GroupSeparator.js";
 import { StringCell } from "~/component/table/cell/String.js";
 import { BooleanCell } from "~/component/table/cell/Boolean.js";
 import { NumberCell } from "~/component/table/cell/Number.js";
@@ -58,6 +59,11 @@ class Row extends Component {
     // a column-set change (hide/show, config swap) can leave the range
     // unchanged while the cells behind it need to change.
     private _columnsDirty: boolean = false;
+    // Set by `renderSeparator` and cleared by `setColumnWindow`'s guard —
+    // this row currently shows a single group-separator cell instead of the
+    // usual per-column cells (rotated-mode group runs only). Not for
+    // consumer use.
+    private _separatorMode: boolean = false;
 
     constructor(
         model?: AbstractModel,
@@ -125,6 +131,20 @@ class Row extends Component {
      */
     getFieldNames(): string[] {
         return this._fieldNames;
+    }
+
+    /**
+     * Returns whether this row currently renders a single group-separator
+     * cell (see {@link renderSeparator}) instead of its usual per-column cells.
+     *
+     * @returns `true` while in separator mode.
+     *
+     * @remarks Not for consumer use — internal wiring consulted by `Body`
+     * (`bindAndPositionRows`, `onRowClick`) so a separator row is skipped by
+     * click selection and keyboard row navigation.
+     */
+    isSeparator(): boolean {
+        return this._separatorMode;
     }
 
     /**
@@ -258,6 +278,35 @@ class Row extends Component {
     }
 
     /**
+     * Discards this row's current cells and mounts a single
+     * {@link GroupSeparatorCell} spanning the whole row, labeling a
+     * contiguous run of a rotated table's grouped field/value rows. The
+     * row's own ARIA role switches to `'separator'` (from the default
+     * `'row'`); {@link setColumnWindow}'s guard reverses both the moment
+     * this pooled slot is asked to render a real field row again.
+     *
+     * @param label - The group label to display.
+     * @param color - Optional CSS color string for the separator's
+     *   background; `null` shows only its top divider.
+     *
+     * @remarks Not for consumer use — called by `Body.bindAndPositionRows`
+     * via the `Table`-supplied separator predicate.
+     */
+    renderSeparator(label: string, color: string | null): void {
+        this.disposeAllComponents();
+        this.addComponent(new GroupSeparatorCell(label, color));
+
+        this._separatorMode = true;
+        this._windowFirst    = 0;
+        this._fieldNames     = [];
+        this._cellKeys       = [];
+        this._treeCell       = null;
+        this._columnsDirty   = true;   // forces the next setColumnWindow to rebuild fully
+
+        this.getAria().setRole("separator");
+    }
+
+    /**
      * Reconciles the rendered cells to exactly the visible columns
      * `[firstCol, lastCol]`. A column keeps its existing cell when that
      * cell already presents the same field; otherwise it recycles a cell
@@ -271,6 +320,14 @@ class Row extends Component {
      * @returns `true` when the rendered cell set changed.
      */
     setColumnWindow(firstCol: number, lastCol: number): boolean {
+        if (this._separatorMode) {
+            this.disposeAllComponents();
+
+            this._separatorMode = false;
+            this._columnsDirty  = true;
+            this.getAria().setRole("row");
+        }
+
         // Clamp into this row's own visible-field range. A pooled row can be
         // asked to window against a range sized for a store the host `Body`
         // has already swapped to (`Table.bindView` calls `Body.setStore`,

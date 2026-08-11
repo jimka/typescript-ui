@@ -182,6 +182,14 @@ class Table extends Component<TableOptions> {
     private _rotatedColumns   : Column[] = [];
     private _rotatedConfigs   : Map<string, ColumnConfig> = new Map();
     private _rotatedFieldByName: Map<string, Field> = new Map();
+    // Identity map from a projection record just loaded into `_rotatedStore`
+    // to the group-separator label/color it represents — populated by
+    // `rebuildRotatedStore`, consulted by `Body` (via the `rowSeparator`
+    // predicate `bindView` forwards) to render that record as a
+    // `GroupSeparatorCell` row instead of an ordinary field/value row.
+    // Keyed by object identity (not by the record's `field` value) so a
+    // real field named the same as a group can never false-match.
+    private _rotatedSeparatorRecords: Map<ModelRecord, { label: string, color: string | null }> = new Map();
     private _sourceRefresh    : (() => void) | null = null;
     private _suppressSelectionForward: boolean = false;
     private _autoWidthsSampled: boolean = false;
@@ -410,10 +418,11 @@ class Table extends Component<TableOptions> {
             const rotatedStore = this.ensureRotatedStore();
 
             this.rebuildRotatedStore();
-            this.bindView(rotatedStore, this._rotatedColumns, this._rotatedConfigs, new Set(), () => true, null);
+            this.bindView(rotatedStore, this._rotatedColumns, this._rotatedConfigs, new Set(), () => true, null,
+                (record) => this._rotatedSeparatorRecords.get(record) ?? null);
             this.emit("selection", this._rotatedRecord ? [this._rotatedRecord] : []);
         } else {
-            this.bindView(this._store, this.getSourceColumns(), this._columnConfigs, this.getEffectiveHiddenSet(), this._spec?.rowReadOnly ?? null, this._rowVisible);
+            this.bindView(this._store, this.getSourceColumns(), this._columnConfigs, this.getEffectiveHiddenSet(), this._spec?.rowReadOnly ?? null, this._rowVisible, null);
             this._body.selectRecord(this._rotatedRecord);
         }
 
@@ -1115,6 +1124,12 @@ class Table extends Component<TableOptions> {
         };
 
         this._rotatedStore   = new MemoryStore(ROTATED_MODEL, []);
+        // Group separators are dropped from `rebuildRotatedStore`'s next
+        // rebuild whenever the projection is sorted, and restored once the
+        // sort is cleared — both `sort()` and `clearSort()` emit this event.
+        // `store.loadData` (called from inside `rebuildRotatedStore` itself)
+        // fires `'load'`, never `'sortchange'`, so this cannot re-enter.
+        this._rotatedStore.on('sortchange', () => this.rebuildRotatedStore());
         this._rotatedColumns = Column.resolve(ROTATED_MODEL.getFields(), spec);
         this._rotatedConfigs = this.buildColumnConfigs(spec);
 
@@ -1123,16 +1138,20 @@ class Table extends Component<TableOptions> {
 
     /**
      * Rebuilds the projection store's records from `_rotatedRecord` — one row
-     * per visible source field — and refreshes the `_rotatedFieldByName` map
+     * per visible source field, plus one group-separator row immediately
+     * before each contiguous grouped run (per {@link computeGroupRuns}) while
+     * the projection is unsorted — and refreshes the `_rotatedFieldByName` map
      * used by {@link rotatedCellType} / {@link rotatedCellValues} to resolve
      * each row's source field. Resolution is by the row's own `field` value
      * (not by index), so it stays correct after the projection is sorted by
-     * clicking a header.
+     * clicking a header. Also refreshes `_rotatedSeparatorRecords`, the
+     * identity map `Body` consults (via the `rowSeparator` predicate
+     * {@link bindView} forwards) to tell a separator record from a real one.
      */
     private rebuildRotatedStore(): void {
-        const store  = this.ensureRotatedStore();
-        const fields = this.getSourceColumns().map(c => c.getField());
-        const record = this._rotatedRecord;
+        const store   = this.ensureRotatedStore();
+        const columns = this.getSourceColumns();
+        const record  = this._rotatedRecord;
 
         // Refresh the field lookup BEFORE loadData. loadData fires the store's
         // `load` event synchronously, and while the body is already bound to
@@ -1142,11 +1161,101 @@ class Table extends Component<TableOptions> {
         // render resolving every value cell against a stale map: cellType fell
         // back to the column's `auto` type, the string renderer was swapped in
         // unlaid-out, and the value column stayed blank until the next scroll.
-        this._rotatedFieldByName = new Map(fields.map(f => [f.getName(), f]));
+        this._rotatedFieldByName = new Map(columns.map(c => [c.getField().getName(), c.getField()]));
 
-        store.loadData(record
-            ? fields.map(f => ({ field: f.getName(), value: record.get(f.getName()) }))
-            : []);
+        const rows: Array<{ field: string, value: unknown }> = [];
+        const separatorInfo: Array<{ label: string, color: string | null } | null> = [];
+
+        if (record) {
+            // Separators would scatter away from the group they label once
+            // the projection is sorted (a plain store sort has no notion of
+            // group adjacency) — suppressed entirely while a sort is active,
+            // and restored by the `'sortchange'` listener `ensureRotatedStore`
+            // wires once `sort()` / `clearSort()` rebuild this from scratch.
+            const runs = store.getActiveSorters().length === 0
+                ? this.computeGroupRuns(columns)
+                : new Map<number, { label: string, color: string | null }>();
+
+            for (let i = 0; i < columns.length; i++) {
+                const run = runs.get(i);
+
+                if (run) {
+                    rows.push({ field: run.label, value: null });
+                    separatorInfo.push(run);
+                }
+
+                const field = columns[i].getField();
+
+                rows.push({ field: field.getName(), value: record.get(field.getName()) });
+                separatorInfo.push(null);
+            }
+        }
+
+        store.loadData(rows);
+
+        this._rotatedSeparatorRecords = new Map();
+
+        store.getRecords().forEach((r, i) => {
+            const info = separatorInfo[i];
+
+            if (info) {
+                this._rotatedSeparatorRecords.set(r, info);
+            }
+        });
+    }
+
+    /**
+     * Finds each contiguous run of visible source columns sharing the same
+     * non-null {@link Column.getGroup} name, mirroring the adjacency rule
+     * {@link TableHeader}'s private `rebuildParentCells` uses for the
+     * parent-header band: non-adjacent columns sharing a group name are two
+     * separate runs, and a run's color is the first non-null
+     * {@link Column.getGroupColor} encountered, not the last. Unlike
+     * `rebuildParentCells`, which also emits a blank spanning cell for every
+     * *ungrouped* run so the parent-header band has no gap, this emits
+     * nothing for an ungrouped run — a rotated body row has no such
+     * continuity requirement.
+     *
+     * @param columns - The visible source columns to scan, in display order
+     *   (already sorted by field order — see {@link getSourceColumns}).
+     *
+     * @returns A map from a run's starting index into `columns` to its
+     *   label/color.
+     */
+    private computeGroupRuns(columns: Column[]): Map<number, { label: string, color: string | null }> {
+        const runs = new Map<number, { label: string, color: string | null }>();
+
+        if (columns.length === 0) {
+            return runs;
+        }
+
+        let runStart = 0;
+        let runKey   = columns[0].getGroup();
+        let runColor = columns[0].getGroupColor();
+
+        const flush = (): void => {
+            if (runKey !== null) {
+                runs.set(runStart, { label: runKey, color: runColor });
+            }
+        };
+
+        for (let i = 1; i < columns.length; i++) {
+            const nextKey = columns[i].getGroup();
+            const runContinues = runKey !== null && nextKey === runKey;
+
+            if (!runContinues) {
+                flush();
+                runStart = i;
+                runKey   = nextKey;
+                runColor = columns[i].getGroupColor();
+            } else if (runColor === null && columns[i].getGroupColor() !== null) {
+                runColor = columns[i].getGroupColor();
+            }
+        }
+
+        flush();
+
+        return runs;
     }
 
     /**
@@ -1199,6 +1308,9 @@ class Table extends Component<TableOptions> {
      * @param rowVisible - The row-visibility predicate, or `null`. Passed
      *   `null` on the rotated call site — a predicate written against
      *   source records cannot apply to the field/value projection.
+     * @param rowSeparator - The group-separator predicate, or `null`.
+     *   Passed `null` on the normal-mode call site — no separator concept
+     *   exists outside the rotated projection.
      *
      * @remarks `Body.setStore` re-renders with pool rows whose cells still
      * match the outgoing model; `setColumns` (called after `setStore`) is
@@ -1225,8 +1337,9 @@ class Table extends Component<TableOptions> {
         columns:     Column[],
         configs:     Map<string, ColumnConfig>,
         hidden:      Set<string>,
-        rowReadOnly: ((record: ModelRecord) => boolean) | null,
-        rowVisible:  ((record: ModelRecord) => boolean) | null,
+        rowReadOnly:  ((record: ModelRecord) => boolean) | null,
+        rowVisible:   ((record: ModelRecord) => boolean) | null,
+        rowSeparator: ((record: ModelRecord) => { label: string, color: string | null } | null) | null,
     ): void {
         this._suppressSelectionForward = true;
 
@@ -1243,6 +1356,7 @@ class Table extends Component<TableOptions> {
         this._body.setHiddenColumns(hidden);
         this._body.setRowReadOnly(rowReadOnly);
         this._body.setRowVisible(rowVisible);
+        this._body.setRowSeparator(rowSeparator);
         this._body.setStore(store);
 
         this._suppressSelectionForward = false;

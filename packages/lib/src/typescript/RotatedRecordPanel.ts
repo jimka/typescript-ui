@@ -5,6 +5,7 @@ import { Border } from '@jimka/typescript-ui/layout';
 import { Placement } from '@jimka/typescript-ui/primitive';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { Table } from '@jimka/typescript-ui/component/table';
+import type { ColumnSpec } from '@jimka/typescript-ui/component/table';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { ToolBar } from '@jimka/typescript-ui/component/menubar';
 import { Glyph } from '@jimka/typescript-ui/component/display';
@@ -23,6 +24,26 @@ const COUNTRIES   = ['USA', 'Canada', 'UK', 'Germany', 'Australia'];
 // normal (record-per-row) view means scrolling horizontally across the
 // whole width — the case the rotated view exists for.
 const RECORD_COUNT = 30;
+
+const GROUP_COLOR = 'rgba(30, 100, 200, 0.06)';
+
+// firstName/lastName/email grouped "Identity" (no color — divider only);
+// department/title/level grouped "Employment" with groupColor. Every other
+// field is auto-appended (default appendUnlisted). department/title and
+// level are non-adjacent in field order (age/salary/… sit between them), so
+// rotating renders three separators total: one "Identity" run and two
+// separate "Employment" runs — the same non-adjacent-group rule the
+// parent-header band already follows for `group`.
+const WIDE_SPEC: ColumnSpec = {
+    columns: [
+        { field: 'firstName',  group: 'Identity' },
+        { field: 'lastName',   group: 'Identity' },
+        { field: 'email',      group: 'Identity' },
+        { field: 'department', group: 'Employment', groupColor: GROUP_COLOR },
+        { field: 'title',      group: 'Employment', groupColor: GROUP_COLOR },
+        { field: 'level',      group: 'Employment', groupColor: GROUP_COLOR },
+    ],
+};
 
 const WIDE_MODEL = new Model([
     { name: 'id',           type: 'number'  },
@@ -90,6 +111,10 @@ function buildRecords(): Record<string, any>[] {
  * `table.selectRecord(...)` off `table.getStore().getRecords()`, clamped at
  * both ends — the consumer-wired stepper the mode intentionally ships
  * without.
+ *
+ * The spec also declares two `group`s (one with `groupColor`, one without),
+ * so rotating additionally demos the group-separator rows this inserts
+ * before each grouped run of field/value rows.
  */
 class RotatedRecordPanel extends Panel {
 
@@ -110,7 +135,7 @@ class RotatedRecordPanel extends Panel {
 
         store.loadData(records);
 
-        return Table(store);
+        return Table(store, WIDE_SPEC);
     }
 
     private buildToolbar(): Component {
