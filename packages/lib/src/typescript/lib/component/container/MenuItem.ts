@@ -48,6 +48,23 @@ export interface MenuItemConfig {
     /** Keyboard shortcut hint displayed on the right (e.g. `"Ctrl+S"`). */
     shortcut?: string;
     /**
+     * Marks this item as part of a checkable set (a toggle, or one option in
+     * a mutually-exclusive group) and whether it is currently checked. A
+     * checkmark renders in a dedicated leading zone, to the left of any
+     * `icon`/`glyph`, so a checked and an unchecked row's icon and label
+     * still start at the same x position — unlike hand-prefixing the
+     * checkmark onto `text`, whose leading whitespace collapses inconsistently
+     * under this component's `white-space: nowrap`.
+     *
+     * When at least one item in a menu sets `checked` (`true` or `false`),
+     * every item in that menu reserves the check column, so the whole menu's
+     * icon/title columns stay aligned even for items that omit `checked`.
+     *
+     * @remarks Omit entirely for a plain action item — this is opt-in per
+     * menu, not a default a plain item pays for.
+     */
+    checked?: boolean;
+    /**
      * Icon displayed on the left (e.g. a Unicode character).
      *
      * @remarks Prefer `glyph` for crisp SVG output from the framework's glyph
@@ -99,9 +116,11 @@ export interface MenuConfig {
 /**
  * A single row inside a [`Menu`](/api/overlay/classes/Menu) panel.
  *
- * Renders a four-zone layout: icon | text | shortcut | chevron. When
- * `config.separator` is true the item renders instead as a thin horizontal
- * rule and ignores all other config fields.
+ * Renders a five-zone layout: check | icon | text | shortcut | chevron. The
+ * check zone is reserved only when the menu has at least one checkable item
+ * (see {@link MenuItemConfig.checked}). When `config.separator` is true the
+ * item renders instead as a thin horizontal rule and ignores all other
+ * config fields.
  *
  * Mouse hover triggers the submenu open callback after a 150 ms delay.
  * Keyboard focus is applied programmatically via `setFocused`.
@@ -118,6 +137,8 @@ class MenuItem extends Component {
     static readonly TEXT_INSET: number = 8;
     /** Title left offset when the menu reserves an icon column. */
     static readonly ICON_ZONE: number = 24;
+    /** Width reserved for the leading checkmark column, when the menu has one. */
+    static readonly CHECK_ZONE: number = 16;
     /** Width reserved for a submenu chevron in the right zone. */
     static readonly CHEVRON_ZONE: number = 16;
     /** Padding after the right zone, at the panel's inner edge. */
@@ -133,6 +154,7 @@ class MenuItem extends Component {
     private readonly _onOpenSubmenu: (item: MenuItem) => void;
     private readonly _cssVarPrefix: MenuItemCSSVarPrefix;
 
+    private _checkText: Text | null = null;
     private _iconText: Text | null = null;
     private _iconGlyph: Glyph | null = null;
     private _titleText: Text | null = null;
@@ -140,9 +162,11 @@ class MenuItem extends Component {
     private _chevronText: Text | null = null;
 
     // Column geometry applied by the parent Menu so every item lines up: the
-    // title's left offset and the shared title-column width the right zone begins
-    // after. Null until the menu sets them (a standalone item falls back to its
-    // own natural metrics).
+    // check zone's width, the title's left offset (which already includes the
+    // check zone, when reserved), and the shared title-column width the right
+    // zone begins after. Null until the menu sets them (a standalone item
+    // falls back to its own natural metrics).
+    private _checkZone: number | null = null;
     private _iconStart: number | null = null;
     private _titleColumn: number | null = null;
 
@@ -212,6 +236,13 @@ class MenuItem extends Component {
                 `var(--ts-ui-${cssVarPrefix}-item-disabled-color, rgb(170, 170, 170))`
             );
             this.getAria().setDisabled(true);
+        }
+
+        if (config.checked !== undefined) {
+            this._checkText = new Text(config.checked ? "✓" : "");
+            this._checkText.setPointerEvents("none");
+            this._checkText.setTextAlign("center");
+            this.addComponent(this._checkText);
         }
 
         if (config.glyph) {
@@ -340,6 +371,11 @@ class MenuItem extends Component {
         return !!this._config.icon || !!this._config.glyph;
     }
 
+    /** True when the item declares `checked` (participates in a checkable set). */
+    hasCheck(): boolean {
+        return this._config.checked !== undefined;
+    }
+
     /** The item's measured title width, feeding the menu's shared title column. */
     titleTextWidth(): number {
         return Math.ceil(this._titleText?.getPreferredSize()?.width ?? 0);
@@ -355,15 +391,19 @@ class MenuItem extends Component {
     }
 
     /**
-     * Applies the menu-computed column geometry so every item lines up: the title
-     * left offset (icon column, or the bare inset) and the shared title-column
-     * width the shortcut/chevron right zone begins after.
+     * Applies the menu-computed column geometry so every item lines up: the
+     * check column's width, the title's left offset (icon column plus the
+     * check column, or the bare inset), and the shared title-column width the
+     * shortcut/chevron right zone begins after.
      *
-     * @param iconStart - The title's left offset in pixels.
+     * @param checkZone - Width reserved for the leading checkmark column, in
+     *   pixels; `0` when no item in the menu declares `checked`.
+     * @param iconStart - The title's left offset in pixels; already includes `checkZone`.
      * @param titleColumn - The shared title-column width across the menu's items.
      */
-    setColumns(iconStart: number, titleColumn: number): void {
-        this._iconStart = iconStart;
+    setColumns(checkZone: number, iconStart: number, titleColumn: number): void {
+        this._checkZone  = checkZone;
+        this._iconStart  = iconStart;
         this._titleColumn = titleColumn;
 
         this.scheduleLayout();
@@ -457,7 +497,7 @@ class MenuItem extends Component {
     }
 
     /**
-     * Re-pins the four labels' line boxes to the item's CONTENT height —
+     * Re-pins the five labels' line boxes to the item's CONTENT height —
      * `MenuItem.HEIGHT` less this item's own vertical chrome. `centerInHeight`
      * pins a label's minimum height as well as its line box, so a label pinned to
      * the outer height cannot shrink into a bordered item's content box and is
@@ -474,6 +514,7 @@ class MenuItem extends Component {
         // Optional chaining, not null checks: a separator has none of these, and a
         // border arriving through the options bag could in principle reach here
         // before the field initializers have run.
+        this._checkText?.centerInHeight(height);
         this._iconText?.centerInHeight(height);
         this._titleText?.centerInHeight(height);
         this._shortcutText?.centerInHeight(height);
@@ -509,7 +550,7 @@ class MenuItem extends Component {
     }
 
     /**
-     * Positions the four label zones within the item's content box.
+     * Positions the five label zones within the item's content box.
      *
      * @returns This component, for method chaining.
      */
@@ -536,20 +577,28 @@ class MenuItem extends Component {
         const hasSub = this.hasSubmenu();
 
         // The menu aligns every item into shared columns; a standalone item falls
-        // back to its own icon offset and natural title width.
-        const iconStart   = this._iconStart ?? (this.hasIcon() ? MenuItem.ICON_ZONE : MenuItem.TEXT_INSET);
+        // back to its own check/icon offsets and natural title width.
+        const checkZone   = this._checkZone ?? (this.hasCheck() ? MenuItem.CHECK_ZONE : 0);
+        const iconStart   = this._iconStart ?? (checkZone + (this.hasIcon() ? MenuItem.ICON_ZONE : MenuItem.TEXT_INSET));
         const titleColumn = this._titleColumn ?? this.titleTextWidth();
+
+        if (this._checkText) {
+            this._checkText.setX(box.x + 4);
+            this._checkText.setY(box.y);
+            this._checkText.setWidth(Math.max(0, checkZone - 4));
+            this._checkText.setHeight(H);
+        }
 
         if (this._iconGlyph) {
             const size  = this._iconGlyph.getPreferredSize() ?? { width: 16, height: 16 };
             const iconY = Math.max(0, Math.floor((H - size.height) / 2));
 
-            this._iconGlyph.setX(box.x + 4);
+            this._iconGlyph.setX(box.x + checkZone + 4);
             this._iconGlyph.setY(box.y + iconY);
             this._iconGlyph.setWidth(size.width);
             this._iconGlyph.setHeight(size.height);
         } else if (this._iconText) {
-            this._iconText.setX(box.x + 4);
+            this._iconText.setX(box.x + checkZone + 4);
             this._iconText.setY(box.y);
             this._iconText.setWidth(20);
             this._iconText.setHeight(H);

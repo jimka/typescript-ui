@@ -24,6 +24,18 @@ describe('matchesFilter', () => {
         expect(matchesFilter({ id: 1 }, { type: 'neq', field: 'id', value: 1 })).toBe(false);
         expect(matchesFilter({ id: 1 }, { type: 'neq', field: 'id', value: '1' })).toBe(true);
     });
+    it('eq compares two Date operands by instant, not by reference', () => {
+        expect(matchesFilter({ due: new Date('2024-01-15T00:00:00Z') },
+            { type: 'eq', field: 'due', value: new Date('2024-01-15T00:00:00Z') })).toBe(true);
+        expect(matchesFilter({ due: new Date('2024-01-16T00:00:00Z') },
+            { type: 'eq', field: 'due', value: new Date('2024-01-15T00:00:00Z') })).toBe(false);
+    });
+    it('neq is the exact inverse of eq for Date operands', () => {
+        expect(matchesFilter({ due: new Date('2024-01-15T00:00:00Z') },
+            { type: 'neq', field: 'due', value: new Date('2024-01-15T00:00:00Z') })).toBe(false);
+        expect(matchesFilter({ due: new Date('2024-01-16T00:00:00Z') },
+            { type: 'neq', field: 'due', value: new Date('2024-01-15T00:00:00Z') })).toBe(true);
+    });
 
     // --- contains ---
     it('contains is a case-insensitive substring match by default', () => {
@@ -49,6 +61,21 @@ describe('matchesFilter', () => {
     });
     it('startsWith returns false on a nullish field', () => {
         expect(matchesFilter({}, { type: 'startsWith', field: 'name', value: 'B' })).toBe(false);
+    });
+
+    // --- endsWith ---
+    it('endsWith anchors the (case-insensitive) match at the end', () => {
+        expect(matchesFilter({ name: 'Bob' }, { type: 'endsWith', field: 'name', value: 'ob' })).toBe(true);
+        expect(matchesFilter({ name: 'BOB' }, { type: 'endsWith', field: 'name', value: 'ob' })).toBe(true);
+        expect(matchesFilter({ name: 'Bobby' }, { type: 'endsWith', field: 'name', value: 'ob' })).toBe(false);
+    });
+    it('endsWith honours caseSensitive: true', () => {
+        expect(matchesFilter({ name: 'Bob' }, { type: 'endsWith', field: 'name', value: 'ob', caseSensitive: true })).toBe(true);
+        expect(matchesFilter({ name: 'BOB' }, { type: 'endsWith', field: 'name', value: 'ob', caseSensitive: true })).toBe(false);
+    });
+    it('endsWith returns false (never throws) on a nullish field', () => {
+        expect(matchesFilter({ name: null }, { type: 'endsWith', field: 'name', value: 'a' })).toBe(false);
+        expect(matchesFilter({}, { type: 'endsWith', field: 'name', value: 'a' })).toBe(false);
     });
 
     // --- relational gt / gte / lt / lte ---

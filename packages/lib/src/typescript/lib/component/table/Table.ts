@@ -172,6 +172,7 @@ class Table extends Component<TableOptions> {
     private _savedColumnWidths: Map<string, number> = new Map();
     private _columnConfigs    : Map<string, ColumnConfig> = new Map();
     private _exportMenuEnabled: boolean = false;
+    private _filterRowVisible : boolean = false;
     private _listeners        : ListenerBag<TableEvent> = new ListenerBag<TableEvent>();
     private _displayMode      : TableDisplayMode = "normal";
     private _rotatedRecord    : ModelRecord | null = null;
@@ -666,6 +667,37 @@ class Table extends Component<TableOptions> {
      */
     isHeaderVisible() {
         return this._headerVisible;
+    }
+
+    /**
+     * Returns whether the header's filter row is currently shown.
+     *
+     * @returns `true` when the filter row is visible.
+     */
+    isFilterRowVisible(): boolean {
+        return this._filterRowVisible;
+    }
+
+    /**
+     * Shows or hides the header's filter row. Also reachable from the
+     * header's right-click context menu via its checkbox-style **Filter**
+     * entry. Idempotent when `visible` already matches the current state.
+     * Hiding the row also clears every filter it applied — a column filter
+     * is only ever active while its control is visible and editable.
+     *
+     * @param visible - `true` to show the filter row, `false` to hide it.
+     * @returns This table, for method chaining.
+     */
+    setFilterRowVisible(visible: boolean): this {
+        if (visible === this._filterRowVisible) {
+            return this;
+        }
+
+        this._filterRowVisible = visible;
+        this._header.setFilterRowVisible(visible);
+        this.doLayout();
+
+        return this;
     }
 
     /**
@@ -1305,6 +1337,16 @@ class Table extends Component<TableOptions> {
             { separator: true },
             { text: 'Reset columns', action: () => this.resetColumns() }
         );
+
+        if (this._resolvedColumns.some(c => c.isFilterable())) {
+            items.push(
+                { separator: true },
+                {
+                    text:   (this._filterRowVisible ? '✓ ' : '  ') + 'Filter',
+                    action: () => this.setFilterRowVisible(!this._filterRowVisible),
+                },
+            );
+        }
 
         if (this._exportMenuEnabled) {
             items.push(

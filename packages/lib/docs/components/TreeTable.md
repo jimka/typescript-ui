@@ -133,6 +133,8 @@ const ok = tree.reparentRow(file, folder);
 
 A filter that drops a parent record drops its entire subtree from the flat view — the parent is no longer present in the index, so the recursive walk never enters its children. Orphan children whose parent id is filtered out are treated as roots and render at depth 0.
 
+`TreeTable` supports [`Table`'s column filters](/components/Table#column-filters) through this same store-level mechanism — unlike `setRowVisible` below, which is a display-only predicate the store never sees. A column filter goes through `store.setFilter`, so the subtree-drop and orphan-reparenting rules above are exactly what it produces.
+
 ## Non-goals
 
 - **Pinned columns.** Not yet supported on `TreeTable`.

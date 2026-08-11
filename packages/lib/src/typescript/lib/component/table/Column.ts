@@ -29,14 +29,17 @@ export class Column {
     private _group       : string | null;
     private _groupColor  : string | null;
     private _required    : boolean;
+    private _filterable  : boolean;
 
     /**
      * Constructs a Column from a field and an optional presentation config.
      *
      * @param field  - The model field this column represents.
      * @param config - Optional config; all constraint properties default to absent / false.
+     * @param specFilterable - Table-wide {@link ColumnSpec.filterable} default,
+     *   consulted when `config.filterable` is unset.
      */
-    constructor(field: Field, config?: ColumnConfig) {
+    constructor(field: Field, config?: ColumnConfig, specFilterable?: boolean) {
         this._field       = field;
         this._minWidth    = config?.minWidth;
         this._maxWidth    = config?.maxWidth;
@@ -50,6 +53,7 @@ export class Column {
         this._group       = config?.group ?? null;
         this._groupColor  = config?.groupColor ?? null;
         this._required    = config?.required ?? false;
+        this._filterable  = config?.filterable ?? specFilterable ?? false;
     }
 
     /**
@@ -206,6 +210,18 @@ export class Column {
     }
 
     /**
+     * Returns whether this column gets a filter input in the header's
+     * filter row, once the row itself is shown via
+     * {@link Table.setFilterRowVisible}.
+     *
+     * @returns `true` when the spec declared `filterable: true` for this
+     *   column, or left it unset while {@link ColumnSpec.filterable} is `true`.
+     */
+    isFilterable(): boolean {
+        return this._filterable;
+    }
+
+    /**
      * Resolves a {@link ColumnSpec} against a set of model fields into an ordered
      * array of {@link Column} instances.
      *
@@ -238,11 +254,11 @@ export class Column {
         if (spec.appendUnlisted === false) {
             return sorted
                 .filter(f => listedNames.has(f.getName()))
-                .map(f => new Column(f, configMap.get(f.getName())));
+                .map(f => new Column(f, configMap.get(f.getName()), spec.filterable));
         }
 
         // All fields in field order; apply config where one exists.
         // This keeps Column order in sync with the header, which also sorts by field.getOrder().
-        return sorted.map(f => new Column(f, configMap.get(f.getName())));
+        return sorted.map(f => new Column(f, configMap.get(f.getName()), spec.filterable));
     }
 }

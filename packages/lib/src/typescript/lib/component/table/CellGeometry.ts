@@ -37,6 +37,9 @@ interface CellGeometry {
  *   (`detachEditor` is private, reached from `commitEdit` and `cancelEdit`).
  * - `TreeCellRenderer.setTreeState` — a depth change moves the indent.
  * - `HeaderCell.setHeaderGlyph` — a glyph shifts the renderer's left inset.
+ * - `FilterCell.selectOperator` / `setFilterState` — an operator change
+ *   enables/disables the text input, which moves layout without moving
+ *   geometry.
  * - `GlyphRenderer.setValue` — replaces its child outright.
  * - A theme change, which rewrites the padding and border every cell is fitted
  *   against; both consumers {@link clear} on it.

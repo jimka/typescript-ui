@@ -8,6 +8,7 @@ import { Util } from "~/core/Util.js";
 import { UNBOUNDED } from "~/primitive/Size.js";
 import { DOM } from "~/core/DOM.js";
 import { ThemeManager } from "~/core/Theme.js";
+import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -17,6 +18,16 @@ import { callable } from "~/core/Callable.js";
  */
 interface TableLayoutOptions extends LayoutManagerOptions {
 }
+
+// The filter row's height is the filter input's own single-line box, not an
+// offset from `columnHeight`: the input's chrome (TextField's default 3px
+// top+bottom padding, `_defaultTextFieldOptions.padding`; zero border, since
+// FilterCellRenderer zeroes the input's border) is independent of the
+// table's own `theme.table.cell.padding`, which sizes columnHeight instead —
+// a non-default cell padding would make an offset-from-columnHeight formula
+// wrong in either direction.
+const FILTER_INPUT_PADDING = new Insets(3, 3, 3, 3);
+const NO_INSETS            = new Insets(0, 0, 0, 0);
 
 /**
  * A layout manager dedicated to the [`Table`](/api/component/table/classes/Table) component.
@@ -158,6 +169,14 @@ class Table extends LayoutManager {
             const hasParentRow    = header.hasParentRow();
             const parentRowHeight = hasParentRow ? columnHeight : 0;
 
+            // Same "does this row apply" gate as the parent row, but the
+            // height itself is NOT columnHeight-derived — the filter row
+            // holds a TextField, whose own chrome differs from the column
+            // row's plain text. See FILTER_INPUT_PADDING's comment.
+            const filterRowHeight = header.hasFilterRow()
+                ? Util.singleLineBoxHeight(NO_INSETS, FILTER_INPUT_PADDING, { top: 0, bottom: 0 })
+                : 0;
+
             // The band's bottom border is chrome outside the rows, so the
             // outer height is what the rows need PLUS the header's own
             // perimeter — the same "children plus the container perimeter"
@@ -165,7 +184,7 @@ class Table extends LayoutManager {
             // row instead would make a header cell shorter than the body row
             // it heads, by an amount the theme's border width decides.
             const headerPerimeter  = header.getPerimeterSize();
-            const headerBandHeight = parentRowHeight + columnHeight
+            const headerBandHeight = parentRowHeight + columnHeight + filterRowHeight
                                    + headerPerimeter.top + headerPerimeter.bottom;
 
             header.setAutoCommitStyle(false);
@@ -216,15 +235,27 @@ class Table extends LayoutManager {
             columnRow.setHeight(columnHeight);
             columnRow.setAutoCommitStyle(true);
 
+            // Filter row sits beneath the column row, collapsing to zero
+            // height (and zero cells, via `header.hasFilterRow()`) exactly
+            // like the parent row above when it has nothing to show.
+            const filterRow = header.getFilterRow();
+            filterRow.setAutoCommitStyle(false);
+            filterRow.setX(headerBox.x);
+            filterRow.setY(headerBox.y + parentRowHeight + columnHeight);
+            filterRow.setWidth(innerRowW);
+            filterRow.setHeight(filterRowHeight);
+            filterRow.setAutoCommitStyle(true);
+
             // Reconciles the header's rendered cells to the
             // horizontally-visible column range and positions every
-            // rendered cell in both rows — the header-side counterpart
+            // rendered cell in all three rows — the header-side counterpart
             // of `body.renderWindow` below.
             header.renderColumnWindow({
                 columnWidths,
                 viewportWidth: availableWidth,
                 columnHeight,
                 parentRowHeight,
+                filterRowHeight,
             });
 
             // Cover the vertical-scrollbar reservation at the header's

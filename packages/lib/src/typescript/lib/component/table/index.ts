@@ -9,6 +9,14 @@ export { TreeTablePanel } from '~/component/table/TreeTablePanel.js';
 export type { TreeTableSpec } from '~/component/table/TreeTableSpec.js';
 export { Column } from '~/component/table/Column.js';
 export type { CellType, ColumnConfig, ColumnSpec, ComboOption } from '~/component/table/ColumnConfig.js';
+export {
+    columnFilterOperators,
+    columnFilterOperatorLabel,
+    columnFilterOperatorGlyph,
+    columnFilterTakesOperand,
+    buildColumnFilter,
+} from '~/component/table/ColumnFilter.js';
+export type { ColumnFilterOperator, ColumnFilterState } from '~/component/table/ColumnFilter.js';
 export { TableExporter } from '~/component/table/TableExporter.js';
 export type { ExportOptions } from '~/component/table/TableExporter.js';
 export { TableHeader } from '~/component/table/Header.js';
@@ -26,6 +34,8 @@ export { DefaultCell } from '~/component/table/cell/Default.js';
 export { HeaderCell } from '~/component/table/cell/Header.js';
 export type { HeaderCellEvent } from '~/component/table/cell/Header.js';
 export { ParentHeaderCell } from '~/component/table/cell/ParentHeader.js';
+export { FilterCell } from '~/component/table/cell/Filter.js';
+export type { FilterCellEvent } from '~/component/table/cell/Filter.js';
 export { BooleanCell } from '~/component/table/cell/Boolean.js';
 export { NumberCell } from '~/component/table/cell/Number.js';
 export { StringCell } from '~/component/table/cell/String.js';
@@ -50,6 +60,7 @@ export { CellEditorPool } from '~/component/table/cell/editor/CellEditorPool.js'
 export type { CellEditorFactory } from '~/component/table/cell/editor/CellEditorPool.js';
 
 export { CellRenderer } from '~/component/table/cell/renderer/CellRenderer.js';
+export { FilterCellRenderer } from '~/component/table/cell/renderer/Filter.js';
 export { NumberRenderer } from '~/component/table/cell/renderer/Number.js';
 export { StringRenderer } from '~/component/table/cell/renderer/String.js';
 export { DateRenderer } from '~/component/table/cell/renderer/Date.js';

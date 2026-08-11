@@ -11,10 +11,21 @@ import { Field } from "~/data/Field.js";
 import { Column } from "~/component/table/Column.js";
 import { HeaderCell } from "~/component/table/cell/Header.js";
 import { ParentHeaderCell } from "~/component/table/cell/ParentHeader.js";
+import { FilterCell } from "~/component/table/cell/Filter.js";
 import { computeColumnWindow } from "~/component/table/Body.js";
 import { CellGeometryCache } from "~/component/table/CellGeometry.js";
 import type { ColumnWindow } from "~/component/table/Body.js";
+import { columnFilterOperators, buildColumnFilter } from "~/component/table/ColumnFilter.js";
+import type { ColumnFilterState } from "~/component/table/ColumnFilter.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * Debounce (ms) between a filter-cell keystroke and the store write it
+ * schedules. Matches `AutoCompleteField`'s default keystroke debounce.
+ * Picking an operator, pressing Enter, or pressing Escape bypass this and
+ * apply immediately.
+ */
+const COLUMN_FILTER_DEBOUNCE_MS = 200;
 
 // The header surface, themed via `--ts-ui-table-header-bg`. The value is
 // applied as BOTH a background-color and a background-image because the token
@@ -50,6 +61,8 @@ export interface HeaderColumnGeometry {
     columnHeight   : number;
     /** Height of the parent-header row, in pixels; `0` when it is collapsed. */
     parentRowHeight: number;
+    /** Height of the filter row, in pixels; `0` when it is collapsed. */
+    filterRowHeight: number;
 }
 
 /**
@@ -89,10 +102,27 @@ class TableHeader extends Component {
     // column-set change can leave the range unchanged while the cells
     // behind it need to change.
     private _columnsDirty : boolean = true;
-    private _geometry      : HeaderColumnGeometry = { columnWidths: [], viewportWidth: 0, columnHeight: 0, parentRowHeight: 0 };
+    private _geometry      : HeaderColumnGeometry = { columnWidths: [], viewportWidth: 0, columnHeight: 0, parentRowHeight: 0, filterRowHeight: 0 };
     // Geometry last written to each header cell, shared with the body's rows;
     // see `CellGeometryCache` for the invariant it rests on.
     private _cellGeom     : CellGeometryCache = new CellGeometryCache();
+
+    // Filter-row state. `_filterStates` is keyed per store (rather than held
+    // flat) so a round trip through rotated mode — which re-points this
+    // header at the projection store and back — restores the source store's
+    // filter text unchanged instead of showing one store's text over
+    // another's columns. See `filterState()`.
+    private _filterRowVisible : boolean = false;
+    private _filterStates      : WeakMap<AbstractStore, Map<string, ColumnFilterState>> = new WeakMap();
+    private _filterCellsDirty  : boolean = true;
+    private _filterWindowFirst : number = 0;
+    // The field whose write is still pending the debounce timer, or that a
+    // caller's `immediate` request is about to flush. Lives here rather than
+    // on the cell because a horizontal scroll can recycle the cell onto a
+    // different column while the write is still in flight.
+    private _pendingFilterField: string | null = null;
+    private _filterTimer       : ReturnType<typeof setTimeout> | null = null;
+    private _boundOnStoreFilterChange: () => void = () => this.onStoreFilterChange();
 
     constructor(model: AbstractModel, store: AbstractStore) {
         super({ tag: "thead" });
@@ -107,16 +137,21 @@ class TableHeader extends Component {
 
         this._model = model;
         this._store = store;
+        this._store.on('filterchange', this._boundOnStoreFilterChange);
 
-        // Two `Row` children — parent row at index 0, column row at index 1.
-        // The parent row collapses to zero height when no visible column
-        // declares a group; existing no-group tables remain byte-identical
-        // at runtime because `rebuildParentCells` produces no cells in
-        // that case and the layout manager zeroes the parent-row height.
+        // Three `Row` children — parent row at index 0, column row at index 1,
+        // filter row at index 2. The parent row collapses to zero height when
+        // no visible column declares a group; existing no-group tables remain
+        // byte-identical at runtime because `rebuildParentCells` produces no
+        // cells in that case and the layout manager zeroes the parent-row
+        // height. The filter row collapses the same way — via `hasFilterRow`
+        // — until a caller opts in through `setFilterRowVisible`.
         const parentRow = new Row();
         const row       = new Row();
+        const filterRow = new Row();
         this.addRow(parentRow);
         this.addRow(row);
+        this.addRow(filterRow);
 
         this.rebuildCells();
         this.rebuildParentCells();
@@ -152,7 +187,9 @@ class TableHeader extends Component {
      * bound store or display mode changes. Not for consumer use.
      */
     setStore(store: AbstractStore): this {
+        this._store.off('filterchange', this._boundOnStoreFilterChange);
         this._store = store;
+        this._store.on('filterchange', this._boundOnStoreFilterChange);
 
         return this;
     }
@@ -342,6 +379,88 @@ class TableHeader extends Component {
     }
 
     /**
+     * Returns the filter row hosting one {@link FilterCell} per
+     * horizontally-visible column. Always present, even when collapsed — in
+     * that case the row has zero cells and the layout manager collapses it
+     * to zero height.
+     *
+     * @returns The filter row.
+     */
+    getFilterRow(): Row {
+        return this.getComponents()[2] as Row;
+    }
+
+    /**
+     * Returns `true` when the table-level filter-row toggle
+     * ({@link setFilterRowVisible}) is on **and** at least one visible
+     * column is filterable — i.e. the filter row is rendered with non-zero
+     * height. Unlike {@link hasParentRow}, a filterable column alone is not
+     * enough: the toggle must also be on, so a table with `filterable`
+     * columns renders exactly as it does today until a caller opts in.
+     *
+     * @returns `true` when the filter row should be laid out, `false` when
+     *   it should collapse.
+     */
+    hasFilterRow(): boolean {
+        return this._filterRowVisible
+            && this._columns
+                   .filter(c => !this._hiddenColumns.has(c.getField().getName()))
+                   .some(c => c.isFilterable());
+    }
+
+    /**
+     * Shows or hides the filter row. Pushed down from
+     * {@link Table.setFilterRowVisible}; idempotent when `visible` already
+     * matches the current state. Hiding also clears every filter the row
+     * itself applied, so a hidden row never leaves an invisible predicate
+     * narrowing the view.
+     *
+     * @param visible - `true` to show the filter row, `false` to hide it.
+     * @returns This header, for method chaining.
+     */
+    setFilterRowVisible(visible: boolean): this {
+        if (visible === this._filterRowVisible) {
+            return this;
+        }
+
+        this._filterRowVisible = visible;
+        this._filterCellsDirty = true;
+
+        if (!visible) {
+            this.clearFilterRowState();
+        }
+
+        return this;
+    }
+
+    /**
+     * Cancels any in-flight debounced write and removes every descriptor the
+     * filter row itself applied to the store, discarding the row's cached
+     * `{ operator, text }` state along with it. Called when the row is
+     * hidden, so a column's filter never keeps narrowing the view once
+     * there is no longer any control showing — or letting the user change
+     * — its criteria.
+     */
+    private clearFilterRowState(): void {
+        if (this._filterTimer !== null) {
+            clearTimeout(this._filterTimer);
+            this._filterTimer = null;
+        }
+
+        this._pendingFilterField = null;
+
+        const states = this.filterState();
+
+        for (const fieldName of [...states.keys()]) {
+            states.delete(fieldName);
+
+            if (this._store.getFilter(fieldName) !== null) {
+                void this._store.setFilter(fieldName, null);
+            }
+        }
+    }
+
+    /**
      * Returns the cover element that masks the vertical-scrollbar reservation
      * band at the header's right edge. Created lazily on first access; sized
      * and positioned by the table layout. Carries the same gradient as the
@@ -438,6 +557,7 @@ class TableHeader extends Component {
     private rebuildCells(): void {
         this._visibleFields = this.computeVisibleFields(this._model);
         this._columnsDirty  = true;
+        this._filterCellsDirty = true;
 
         this.syncSortIndicators();
     }
@@ -792,8 +912,286 @@ class TableHeader extends Component {
     }
 
     /**
+     * Returns (creating on first use) the `{ operator, text }` map for the
+     * currently-bound store. Keyed per store, rather than held flat, so a
+     * round trip through rotated mode — which re-points this header at the
+     * projection store and back — restores the source store's filter row
+     * unchanged instead of showing one store's text over another's columns.
+     *
+     * @returns The current store's field-name-to-state map.
+     */
+    private filterState(): Map<string, ColumnFilterState> {
+        let map = this._filterStates.get(this._store);
+
+        if (!map) {
+            map = new Map();
+            this._filterStates.set(this._store, map);
+        }
+
+        return map;
+    }
+
+    /**
+     * Handles a `"filterchange"` event from a rendered {@link FilterCell}:
+     * caches the new state, flushes any other field's pending write first
+     * (a horizontal scroll can retarget the pending field's timer before it
+     * fires, but a *different* field changing while one is pending still
+     * needs the earlier one applied), then schedules — or, when `immediate`,
+     * applies — this field's write.
+     *
+     * @param fieldName - The field the change targets.
+     * @param state - The cell's new operator + text.
+     * @param immediate - `true` to bypass the debounce (operator pick, Enter, Escape).
+     */
+    private onFilterCellChange(fieldName: string, state: ColumnFilterState, immediate: boolean): void {
+        const cached    = this.filterState().get(fieldName);
+        const unchanged = !!cached && cached.operator === state.operator && cached.text === state.text;
+
+        // A repeat keystroke reporting the same state is dropped so it
+        // doesn't reschedule the debounce timer for no reason — but an
+        // `immediate` request (operator pick, Enter, Escape) must still
+        // flush even when the state matches what a still-pending debounced
+        // keystroke already cached; otherwise pressing Enter right after
+        // typing would silently do nothing, leaving the write to land only
+        // when the original timer eventually fires.
+        if (unchanged && !immediate) {
+            return;
+        }
+
+        this.filterState().set(fieldName, state);
+
+        if (this._pendingFilterField !== null && this._pendingFilterField !== fieldName) {
+            this.applyPendingFilter();
+        }
+
+        if (this._filterTimer !== null) {
+            clearTimeout(this._filterTimer);
+            this._filterTimer = null;
+        }
+
+        this._pendingFilterField = fieldName;
+
+        if (immediate) {
+            this.applyPendingFilter();
+        } else {
+            this._filterTimer = setTimeout(() => this.applyPendingFilter(), COLUMN_FILTER_DEBOUNCE_MS);
+        }
+    }
+
+    /**
+     * Clears the pending timer and writes the pending field's cached state to
+     * the store via {@link buildColumnFilter}, converting a blank or
+     * unparseable state to `null` (removing the field's filter) rather than
+     * writing a broken descriptor.
+     */
+    private applyPendingFilter(): void {
+        if (this._filterTimer !== null) {
+            clearTimeout(this._filterTimer);
+            this._filterTimer = null;
+        }
+
+        const fieldName = this._pendingFilterField;
+
+        if (fieldName === null) {
+            return;
+        }
+
+        this._pendingFilterField = null;
+
+        const state = this.filterState().get(fieldName);
+        const field = this._model.getField(fieldName);
+
+        if (!state || !field) {
+            return;
+        }
+
+        void this._store.setFilter(fieldName, buildColumnFilter(fieldName, field.getType(), state));
+    }
+
+    /**
+     * Registered on the store's `'filterchange'` event so an external
+     * mutation — `store.clearFilter()`, or a programmatic `setFilter` —
+     * re-syncs the filter row instead of leaving it showing stale text over
+     * unfiltered data.
+     *
+     * Deliberately only *drops* a cached entry once its column no longer
+     * has a matching filter in the store; it never reconstructs text from a
+     * descriptor (a temporal descriptor holds a `Date`, and formatting it
+     * back would rewrite what the user typed). The field with a debounced
+     * write still in flight is skipped, since its descriptor has not been
+     * written yet.
+     */
+    private onStoreFilterChange(): void {
+        const states = this.filterState();
+
+        for (const [fieldName, state] of states) {
+            if (fieldName === this._pendingFilterField) {
+                continue;
+            }
+
+            const field = this._model.getField(fieldName);
+
+            if (!field) {
+                continue;
+            }
+
+            const built = buildColumnFilter(fieldName, field.getType(), state);
+
+            if (built !== null && this._store.getFilter(fieldName) === null) {
+                states.delete(fieldName);
+            }
+        }
+
+        this._filterCellsDirty = true;
+        this.renderColumnWindow();
+    }
+
+    /**
+     * Wires the `"filterchange"` callback for one filter cell. Called
+     * exactly once per cell, at creation — mirroring {@link wireCell}.
+     *
+     * @param cell - The filter cell whose listener is being attached.
+     */
+    private wireFilterCell(cell: FilterCell): void {
+        cell.on("filterchange", (fieldName, state, immediate) => this.onFilterCellChange(fieldName, state, immediate));
+    }
+
+    /**
+     * Reconciles the filter row's rendered cells to the horizontally-visible
+     * column range `[firstCol, lastCol]`, mirroring
+     * {@link reconcileColumnCells}'s three-pass recycle algorithm and
+     * tracked by its own {@link _filterCellsDirty} flag and
+     * {@link _filterWindowFirst} offset. A column that is not filterable
+     * still gets a cell, so the row stays column-aligned; an empty operator
+     * list is what renders that cell blank.
+     *
+     * When {@link hasFilterRow} is `false` every cell is disposed and the
+     * row stays empty, mirroring {@link rebuildParentCells}'s own
+     * disabled-state handling.
+     *
+     * @param firstCol - The first visible-column index to render, inclusive.
+     * @param lastCol - The last visible-column index to render, inclusive.
+     * @returns `true` when the rendered cell set changed.
+     */
+    private reconcileFilterCells(firstCol: number, lastCol: number): boolean {
+        const row = this.getFilterRow();
+
+        if (!this.hasFilterRow()) {
+            if (row.getComponents().length === 0 && !this._filterCellsDirty) {
+                return false;
+            }
+
+            for (const cell of row.getComponents().slice() as FilterCell[]) {
+                row.removeComponent(cell);
+                cell.dispose();
+            }
+
+            this._filterCellsDirty = false;
+
+            return true;
+        }
+
+        if (!this._filterCellsDirty
+            && firstCol === this._filterWindowFirst
+            && lastCol === this._filterWindowFirst + row.getComponents().length - 1) {
+            return false;
+        }
+
+        const columnMap = new Map(this._columns.map(c => [c.getField().getName(), c]));
+        const existing  = row.getComponents().slice() as FilterCell[];
+        const byName    = new Map<string, FilterCell>();
+
+        for (const cell of existing) {
+            const lc    = row.getLayoutConstraints(cell);
+            const field = lc?.data as Field | undefined;
+
+            if (field) {
+                byName.set(field.getName(), cell);
+            }
+        }
+
+        const slotCount = lastCol - firstCol + 1;
+        const assigned: (FilterCell | undefined)[] = new Array(slotCount).fill(undefined);
+
+        // Pass 1 — keep a cell for its own field.
+        for (let col = firstCol; col <= lastCol; col++) {
+            const name = this._visibleFields[col].getName();
+            const cell = byName.get(name);
+
+            if (cell) {
+                assigned[col - firstCol] = cell;
+                byName.delete(name);
+            }
+        }
+
+        const free = Array.from(byName.values());
+
+        // Pass 2 — recycle a leftover, else build.
+        for (let col = firstCol; col <= lastCol; col++) {
+            const slot = col - firstCol;
+
+            if (assigned[slot] !== undefined) {
+                continue;
+            }
+
+            const field     = this._visibleFields[col];
+            const column    = columnMap.get(field.getName());
+            const operators = column?.isFilterable() ? columnFilterOperators(field.getType()) : [];
+            let   cell      = free.pop();
+
+            if (cell) {
+                row.setLayoutConstraints(cell, { data: field });
+            } else {
+                cell = new FilterCell(field.getName(), operators);
+
+                row.addComponent(cell, { data: field });
+
+                this.wireFilterCell(cell);
+            }
+
+            assigned[slot] = cell;
+        }
+
+        // Pass 3 — per-column state, re-applied to every rendered cell so a
+        // recycled cell never shows a trace of its previous column.
+        for (let col = firstCol; col <= lastCol; col++) {
+            const cell      = assigned[col - firstCol]!;
+            const field     = this._visibleFields[col];
+            const column    = columnMap.get(field.getName());
+            const operators = column?.isFilterable() ? columnFilterOperators(field.getType()) : [];
+
+            cell.setFieldName(field.getName());
+            cell.setColumnLabel(column?.getHeaderText() ?? field.getName());
+            cell.setOperators(operators);
+            cell.getAria().setColIndex(col + 1);
+
+            if (operators.length > 0) {
+                cell.setFilterState(this.filterState().get(field.getName())
+                    ?? { operator: operators[0], text: '' });
+            }
+        }
+
+        // Discard what is left over.
+        for (const cell of free) {
+            row.removeComponent(cell);
+            cell.dispose();
+        }
+
+        // Re-order to slot order, mirroring `reconcileColumnCells`.
+        const slotOf = new Map(assigned.map((cell, slot) => [cell, slot]));
+
+        row.sortComponents((c1, c2) =>
+            (slotOf.get(c1 as FilterCell) ?? 0) - (slotOf.get(c2 as FilterCell) ?? 0));
+
+        this._filterWindowFirst = firstCol;
+        this._filterCellsDirty  = false;
+
+        return true;
+    }
+
+    /**
      * Reconciles the rendered header cells to the horizontally-visible column
-     * range and positions every rendered cell in both rows.
+     * range and positions every rendered cell in all three rows.
      *
      * @param geometry - Replaces the cached geometry when supplied; the cached
      *   value is reused when omitted.
@@ -817,7 +1215,29 @@ class TableHeader extends Component {
         this.positionColumnCells(win, g.columnHeight);
         this.positionParentCells(win, g.parentRowHeight);
 
+        this.reconcileFilterCells(win.firstCol, win.lastCol);
+        this.positionFilterCells(win, g.filterRowHeight);
+
         return this;
+    }
+
+    /**
+     * Positions every rendered filter-row cell from the window's `lefts` /
+     * `widths` arrays, mirroring {@link positionColumnCells} — the filter
+     * row is windowed exactly like the column row, one cell per visible
+     * column.
+     *
+     * @param win - The column window computed by {@link renderColumnWindow}.
+     * @param filterRowHeight - The filter row's height in pixels; `0` when collapsed.
+     */
+    private positionFilterCells(win: ColumnWindow, filterRowHeight: number): void {
+        const cells = this.getFilterRow().getComponents();
+
+        for (let slot = 0; slot < cells.length; slot++) {
+            const col = win.firstCol + slot;
+
+            this._cellGeom.apply(cells[slot], win.lefts[col] ?? 0, win.widths[col] ?? 0, filterRowHeight);
+        }
     }
 
     /**
@@ -863,13 +1283,14 @@ class TableHeader extends Component {
     }
 
     /**
-     * Mirrors the body's horizontal scroll offset onto the header's two inner
-     * rows and re-renders the column window.
+     * Mirrors the body's horizontal scroll offset onto the header's three
+     * inner rows and re-renders the column window.
      *
-     * Translates the two inner rows (parent row + column row) rather than the
-     * header element itself — the header band stays pinned to the viewport
-     * width so its background covers the vertical-scrollbar reserve band on
-     * the right edge, and only the cells inside scroll with the body.
+     * Translates the three inner rows (parent row + column row + filter row)
+     * rather than the header element itself — the header band stays pinned
+     * to the viewport width so its background covers the vertical-scrollbar
+     * reserve band on the right edge, and only the cells inside scroll with
+     * the body.
      *
      * @param scrollLeft - The new horizontal scroll offset, in pixels.
      * @returns This header, for method chaining.
@@ -883,6 +1304,7 @@ class TableHeader extends Component {
 
         this.getParentRow().setTranslate(-scrollLeft, 0);
         this.getComponents()[1].setTranslate(-scrollLeft, 0);
+        this.getFilterRow().setTranslate(-scrollLeft, 0);
 
         this.renderColumnWindow();
 
@@ -926,6 +1348,21 @@ class TableHeader extends Component {
         for (let slot = 0; slot < cells.length; slot++) {
             cells[slot].setColumnFocused(this._windowFirst + slot === this._focusedCol);
         }
+    }
+
+    /**
+     * Clears the pending filter-write timer and detaches this header's store
+     * listener before the inherited teardown runs.
+     */
+    protected destructor(): void {
+        if (this._filterTimer !== null) {
+            clearTimeout(this._filterTimer);
+            this._filterTimer = null;
+        }
+
+        this._store.off('filterchange', this._boundOnStoreFilterChange);
+
+        super.destructor();
     }
 }
 

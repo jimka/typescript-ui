@@ -114,6 +114,14 @@ export interface ColumnConfig {
      */
     readOnly    ?: boolean;
     /**
+     * When `true`, this column gets a filter input in the header's filter
+     * row. Resolution: `ColumnConfig.filterable` wins when set; otherwise
+     * falls back to {@link ColumnSpec.filterable}; otherwise `false`.
+     * The row itself only ever appears when {@link Table.setFilterRowVisible}
+     * (or the header's context-menu **Filter** entry) is also on.
+     */
+    filterable ?: boolean;
+    /**
      * Per-cell read-only predicate, evaluated per record on every
      * rebind. Returns `true` to mark this column's cell read-only for
      * the given record. Composes with {@link ColumnConfig.readOnly} and
@@ -318,4 +326,9 @@ export interface ColumnSpec {
      * their type, whether or not this flag is set. Defaults to `false`.
      */
     autoSizeColumns ?: boolean;
+    /**
+     * Table-wide default for {@link ColumnConfig.filterable}. A column's own
+     * `filterable` still wins when set. Defaults to `false`.
+     */
+    filterable ?: boolean;
 }
