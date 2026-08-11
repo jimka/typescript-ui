@@ -11,6 +11,7 @@ import { TableExporter } from '~/component/table/TableExporter';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ModelRecord } from '~/data/ModelRecord';
+import type { ColumnSpec } from '~/component/table/ColumnConfig';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -153,5 +154,55 @@ describe('Column window — export and ARIA column count are scroll-independent'
 
         expect(cells.length).toBe(5);
         expect(cells.map((c: any) => c.getFieldName()).sort()).toEqual(['d0', 'd1', 'd2', 'd3', 'd4']);
+    });
+});
+
+describe('Table.getCellText', () => {
+    const CELL_TEXT_MODEL = new Model([
+        { name: 'id',   type: 'string', order: 0 },
+        { name: 'role', type: 'string', order: 1 },
+        { name: 'due',  type: 'date',   order: 2 },
+        { name: 'name', type: 'string', order: 3 },
+        { name: 'note', type: 'string', order: 4 },
+    ], 'id');
+
+    const SAMPLE_DATE = new Date(2021, 4, 17);
+
+    async function makeCellTextTable(spec?: ColumnSpec): Promise<Table> {
+        const store = new MemoryStore(CELL_TEXT_MODEL, [
+            { id: '1', role: 'dev', due: SAMPLE_DATE, name: 'Alice', note: null },
+        ]);
+        await store.load();
+
+        const table = new Table(store, spec);
+        table.getElement(true);
+
+        return table;
+    }
+
+    it('38. returns the combo label, the relationally-formatted date, and String(value) for a plain column', async () => {
+        const table = await makeCellTextTable({
+            columns: [{ field: 'role', values: [{ value: 'dev', label: 'Developer' }] }],
+        });
+        const record = table.getStore().getRecords()[0];
+
+        expect(table.getCellText('role', record)).toBe('Developer');
+        expect(table.getCellText('due',  record)).toBe(SAMPLE_DATE.toLocaleDateString());
+        expect(table.getCellText('name', record)).toBe('Alice');
+    });
+
+    it('39. returns "" for a null field value and for an unknown field name', async () => {
+        const table  = await makeCellTextTable();
+        const record = table.getStore().getRecords()[0];
+
+        expect(table.getCellText('note', record)).toBe('');
+        expect(table.getCellText('does-not-exist', record)).toBe('');
+    });
+
+    it('40. returns text for a column hidden via hidden: true', async () => {
+        const table = await makeCellTextTable({ columns: [{ field: 'name', hidden: true }] });
+        const record = table.getStore().getRecords()[0];
+
+        expect(table.getCellText('name', record)).toBe('Alice');
     });
 });

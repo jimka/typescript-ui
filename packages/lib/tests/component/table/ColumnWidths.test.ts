@@ -22,6 +22,7 @@ import { Table } from '~/component/table/Table';
 import { TablePanel } from '~/component/table/TablePanel';
 import { LinkCellRenderer } from '~/component/table/cell/renderer/Link';
 import { TableExporter } from '~/component/table/TableExporter';
+import { CellTextResolver } from '~/component/table/cell/CellText';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ColumnSpec } from '~/component/table/ColumnConfig';
@@ -802,7 +803,9 @@ describe('Date/time reference width under non-uniform digit metrics', () => {
         // with every digit position replaced by each of 0-9 in turn, keeping
         // the widest variant.
         const referenceDate = new Date(2000, 11, 31, 23, 59, 59);
-        const base          = String(TableExporter.formatValue(col, referenceDate, new Map()));
+        const display       = new CellTextResolver();
+        const base          = String(TableExporter.formatValue(col, referenceDate, new Map(), display));
+        display.dispose();
         const digitChars    = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
         const variants       = [base, ...digitChars.map(d => base.replace(/\d/g, d))];
         const widest         = Math.max(...Util.measureTextWidths(variants));

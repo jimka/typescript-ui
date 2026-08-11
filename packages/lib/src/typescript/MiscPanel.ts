@@ -394,9 +394,9 @@ class MiscPanel extends Panel {
 
                 // Demos setRowVisible at scale: one quick-search box filters
                 // across all 45 columns, entirely display-only. Each value is
-                // formatted the same way its cell renders (dates via
-                // toLocaleDateString(), matching what the date columns show)
-                // so the search matches what's on screen, not the raw value.
+                // resolved through Table.getCellText, the same text the cell
+                // itself renders, so the search matches what's on screen, not
+                // the raw value.
                 //
                 // getVisibleRecords() re-evaluates this predicate against the
                 // WHOLE store on every render pass -- including every scroll
@@ -426,15 +426,9 @@ class MiscPanel extends Panel {
                         let text = textCache.get(record);
 
                         if (text === undefined) {
-                            text = fields.map(f => {
-                                const raw = record.get(f.name);
-
-                                if (raw == null) {
-                                    return '';
-                                }
-
-                                return (f.type === 'date' ? (raw as Date).toLocaleDateString() : String(raw)).toLowerCase();
-                            }).join(' ');
+                            text = fields
+                                .map(f => widePanel.getTable().getCellText(f.name, record).toLowerCase())
+                                .join(' ');
 
                             textCache.set(record, text);
                         }
@@ -615,15 +609,12 @@ class MiscPanel extends Panel {
                         // demo the header's filter row — one string column
                         // (contains/startsWith/endsWith/eq/neq), one number
                         // column (eq/neq/gt/gte/lt/lte), one date column (same
-                        // ordering set, matched by exact instant). Hidden until
-                        // toggled — see filterRowBtn below.
+                        // ordering set; Equals matches the whole displayed day).
+                        // Hidden until toggled — see filterRowBtn below.
                         { field: 'Name'    , minWidth: 150, headerGlyph: 'xmark', group: 'Identity', unhideable: true                                      },
                         { field: 'Active'  , maxWidth: 100,                       group: 'Identity'                                                       },
                         { field: 'Score'   , maxWidth: 100, cellReadOnly: (r) => r.get('Active') === false, requiredPredicate: (r) => r.get('Active') === true },
-                        // filterable: false — Role's filter would match the
-                        // stored code ('dev'/'qa'/'pm'), not the label typed
-                        // into the box; see Table.md's "Column filters" gotcha.
-                        { field: 'Role'    , minWidth: 140, required: true, filterable: false, values: [{ value: 'dev', label: 'Developer' }, { value: 'qa', label: 'QA Engineer' }, { value: 'pm', label: 'Project Manager' }] },
+                        { field: 'Role'    , minWidth: 140, required: true, values: [{ value: 'dev', label: 'Developer' }, { value: 'qa', label: 'QA Engineer' }, { value: 'pm', label: 'Project Manager' }] },
                         { field: 'Joined'  , minWidth: 120, readOnly: true, group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'    },
                         { field: 'Meeting' , minWidth: 100, showSeconds: true,    group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
                         { field: 'LastSeen', minWidth: 160, requiredPredicate: (r) => r.get('Active') === true, group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)' },
@@ -654,10 +645,11 @@ class MiscPanel extends Panel {
                 addRowBtn.on("action", () => { specTable.addRow({ Active: true }); });
 
                 // Demos the header's filter row: hidden by default even though
-                // most columns are filterable (Role opts out — see its
-                // `filterable: false` above) — toggle it on here, or via the
-                // header's right-click "Filter" entry, then type into a column's
-                // input and pick its operator from the button beside it.
+                // every column here is filterable — toggle it on here, or via
+                // the header's right-click "Filter" entry, then type into a
+                // column's input and pick its operator from the button beside
+                // it. Role's filter matches its label ("Developer"), not the
+                // stored code ("dev").
                 const filterRowBtn = new Button("Toggle filter row");
                 filterRowBtn.on("action", () => {
                     specTable.setFilterRowVisible(!specTable.isFilterRowVisible());
@@ -667,57 +659,20 @@ class MiscPanel extends Panel {
                 // Name/Role/Notes/Manager/Joined/Meeting/LastSeen on every
                 // keystroke, entirely display-only (the store, selection, and
                 // pending edits are untouched — clearing the field restores
-                // every row). Role stores its short code ('dev'/'qa'/'pm') but
-                // displays the label ('Developer'/'QA Engineer'/'Project
-                // Manager'); Joined/Meeting/LastSeen store raw `Date`s whose
-                // own `toString()` doesn't match what's rendered. Both are
-                // resolved to their displayed text before matching — mirrors
-                // TableExporter.formatValue (kept `@internal` to the library,
-                // so replicated here rather than imported), so a search for
-                // the exact text on screen (e.g. "developer", or a date like
+                // every row). Each field is resolved through Table.getCellText
+                // before matching — the same text the cell itself renders, so
+                // Role matches its label ('Developer'/'QA Engineer'/'Project
+                // Manager') rather than its stored code, and a search for the
+                // exact text on screen (e.g. "developer", or a date like
                 // "3/15/2021") hits.
-                const roleLabels = new Map(
-                    (spec.columns.find(c => c.field === 'Role')?.values ?? []).map(v =>
-                        typeof v === 'string' ? [v, v] : [v.value, v.label ?? v.value])
-                );
-
-                function formatDateLike(type: 'date' | 'time' | 'datetime', value: Date | null, showSeconds: boolean): string {
-                    if (!value) {
-                        return '';
-                    }
-
-                    switch (type) {
-                        case 'date':
-                            return value.toLocaleDateString();
-                        case 'time':
-                            return value.toLocaleTimeString(undefined, showSeconds
-                                ? { hour: '2-digit', minute: '2-digit', second: '2-digit' }
-                                : { hour: '2-digit', minute: '2-digit' });
-                        case 'datetime':
-                            return value.toLocaleString(undefined, showSeconds
-                                ? { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }
-                                : { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-                    }
-                }
-
                 const searchField = new TextField({ placeholder: 'Filter (name, role, notes, manager, joined, meeting, lastSeen)…' });
+                const searchFields = ['Name', 'Role', 'Notes', 'Manager', 'Joined', 'Meeting', 'LastSeen'];
 
                 searchField.on("change", value => {
                     const needle = value.trim().toLowerCase();
 
-                    specTable.setRowVisible(needle === '' ? null : record => {
-                        const role = String(record.get('Role') ?? '');
-
-                        return [
-                            String(record.get('Name') ?? ''),
-                            roleLabels.get(role) ?? role,
-                            String(record.get('Notes') ?? ''),
-                            String(record.get('Manager') ?? ''),
-                            formatDateLike('date',     record.get('Joined')   as Date | null, false),
-                            formatDateLike('time',     record.get('Meeting')  as Date | null, true),
-                            formatDateLike('datetime', record.get('LastSeen') as Date | null, false),
-                        ].some(text => text.toLowerCase().includes(needle));
-                    });
+                    specTable.setRowVisible(needle === '' ? null : record =>
+                        searchFields.some(f => specTable.getCellText(f, record).toLowerCase().includes(needle)));
                 });
 
                 const searchRow = new Component({ layoutManager: new HBox({ spacing: 8 }) })

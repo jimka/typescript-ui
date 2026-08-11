@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { matchesFilter } from '~/data/FilterDescriptor';
+import type { FilterDescriptor } from '~/data/FilterDescriptor';
 
 // A minimal ModelRecord-like stub: the contract is that any object exposing a
 // `get(field)` method works, so no real ModelRecord import is needed.
@@ -152,5 +153,27 @@ describe('matchesFilter', () => {
             { type: 'eq', field: 'a', value: 1 },
             { type: 'not', filter: { type: 'eq', field: 'b', value: 99 } },
         ] })).toBe(true);
+    });
+
+    // --- half-open date/time range, pinned for ColumnFilter's `eq`/`neq` builder ---
+    it('41. an and(gte lo, lt hi) range over Date values includes lo, excludes hi, and includes a midpoint instant', () => {
+        const lo    = new Date(2021, 4, 17, 9, 30, 0);
+        const hi    = new Date(2021, 4, 17, 9, 31, 0);
+        const range: FilterDescriptor = {
+            type:    'and',
+            filters: [{ type: 'gte', field: 'meet', value: lo }, { type: 'lt', field: 'meet', value: hi }],
+        };
+
+        expect(matchesFilter({ meet: lo }, range)).toBe(true);
+        expect(matchesFilter({ meet: hi }, range)).toBe(false);
+        expect(matchesFilter({ meet: new Date(2021, 4, 17, 9, 30, 30) }, range)).toBe(true);
+    });
+
+    it('42. not(in field []) matches every record — the neq-with-no-matches case', () => {
+        const noMatches: FilterDescriptor = { type: 'not', filter: { type: 'in', field: 'role', values: [] } };
+
+        expect(matchesFilter({ role: 'dev' }, noMatches)).toBe(true);
+        expect(matchesFilter({ role: 'anything' }, noMatches)).toBe(true);
+        expect(matchesFilter({}, noMatches)).toBe(true);
     });
 });

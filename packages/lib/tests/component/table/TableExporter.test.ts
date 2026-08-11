@@ -16,6 +16,7 @@ import { Field } from '~/data/Field';
 import { Model } from '~/data/Model';
 import { MemoryStore } from '~/data/MemoryStore';
 import type { ColumnConfig } from '~/component/table/ColumnConfig';
+import { CellTextResolver } from '~/component/table/cell/CellText';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -26,12 +27,17 @@ const CONFIG = {
 };
 
 let sink: RecordingDOMSink;
+let display: CellTextResolver;
 
 beforeEach(() => {
-    sink = installTestDOM(CONFIG);
+    sink    = installTestDOM(CONFIG);
+    display = new CellTextResolver();
 });
 
-afterEach(() => DOM.reset());
+afterEach(() => {
+    display.dispose();
+    DOM.reset();
+});
 
 /** Reaches the private static escape helper. */
 function escapeCSVField(value: unknown): string {
@@ -40,7 +46,7 @@ function escapeCSVField(value: unknown): string {
 
 /** Reaches the private static value formatter. */
 function formatValue(column: Column, value: unknown, configs: Map<string, ColumnConfig>): unknown {
-    return (TableExporter as any).formatValue(column, value, configs);
+    return (TableExporter as any).formatValue(column, value, configs, display);
 }
 
 describe('TableExporter.escapeCSVField', () => {
@@ -161,6 +167,27 @@ describe('TableExporter.formatValue', () => {
         expect(formatValue(timeCol, SAMPLE, cfg))
             .toBe(SAMPLE.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
     });
+
+    describe('combo resolution', () => {
+        const roleField = new Field({ name: 'role', type: 'string' });
+        const roleCol    = new Column(roleField);
+        const comboCfg   = new Map<string, ColumnConfig>([['role', {
+            field:  'role',
+            values: [{ value: 'dev', label: 'Developer' }, { value: 'qa', label: 'QA Engineer' }],
+        }]]);
+
+        it('returns the label for a known value', () => {
+            expect(formatValue(roleCol, 'dev', comboCfg)).toBe('Developer');
+        });
+
+        it('returns the raw value for a value outside the declared set', () => {
+            expect(formatValue(roleCol, 'contractor', comboCfg)).toBe('contractor');
+        });
+
+        it('returns null for a null value, even on a combo-configured column', () => {
+            expect(formatValue(roleCol, null, comboCfg)).toBe(null);
+        });
+    });
 });
 
 describe('TableExporter.exportCSV / exportJSON (structural smoke)', () => {
@@ -183,14 +210,14 @@ describe('TableExporter.exportCSV / exportJSON (structural smoke)', () => {
     const configs = new Map<string, ColumnConfig>();
 
     it('exportCSV does not throw and triggers exactly one anchor click', () => {
-        expect(() => TableExporter.exportCSV(columns, records(), configs)).not.toThrow();
+        expect(() => TableExporter.exportCSV(columns, records(), configs, display)).not.toThrow();
 
         expect(sink.writes.filter(w => w.op === 'createElement' && w.args[0] === 'a').length).toBe(1);
         expect(sink.writes.filter(w => w.op === 'click').length).toBe(1);
     });
 
     it('exportJSON does not throw and triggers exactly one anchor click', () => {
-        expect(() => TableExporter.exportJSON(columns, records(), configs)).not.toThrow();
+        expect(() => TableExporter.exportJSON(columns, records(), configs, display)).not.toThrow();
 
         expect(sink.writes.filter(w => w.op === 'createElement' && w.args[0] === 'a').length).toBe(1);
         expect(sink.writes.filter(w => w.op === 'click').length).toBe(1);

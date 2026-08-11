@@ -4,7 +4,7 @@ import { DOM } from "~/core/DOM.js";
 import { Column } from "~/component/table/Column.js";
 import { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
-import { FieldType } from "~/data/Field.js";
+import type { CellTextResolver } from "~/component/table/cell/CellText.js";
 
 /**
  * Options controlling a {@link Table} export operation.
@@ -25,8 +25,8 @@ export interface ExportOptions {
  *
  * @remarks
  * Used internally by {@link Table.exportCSV} and {@link Table.exportJSON}.
- * Date, time, and datetime values are formatted with the same `toLocale*`
- * options the cell renderers use, so exports match what the user sees.
+ * Combo, date, time, and datetime values are formatted the same way the
+ * matching cell renderer displays them, so exports match what the user sees.
  */
 export class TableExporter {
 
@@ -35,13 +35,15 @@ export class TableExporter {
      *
      * @param columns       - The columns to include as fields in the CSV.
      * @param records       - The records to serialize as rows.
-     * @param columnConfigs - Per-field column config map (carries `showSeconds` for time/datetime).
+     * @param columnConfigs - Per-field column config map (carries `values` / `showSeconds`).
+     * @param display       - Resolver used to format combo/temporal values.
      * @param options       - Optional export options.
      */
     static exportCSV(
         columns      : Column[],
         records      : ModelRecord[],
         columnConfigs: Map<string, ColumnConfig>,
+        display      : CellTextResolver,
         options     ?: ExportOptions
     ): void {
         const header = columns
@@ -50,7 +52,7 @@ export class TableExporter {
 
         const rows = records.map(record =>
             columns
-                .map(c => TableExporter.escapeCSVField(TableExporter.formatValue(c, record.get(c.getField().getName()), columnConfigs)))
+                .map(c => TableExporter.escapeCSVField(TableExporter.formatValue(c, record.get(c.getField().getName()), columnConfigs, display)))
                 .join(',')
         );
 
@@ -64,20 +66,22 @@ export class TableExporter {
      *
      * @param columns       - The columns whose field names become the keys of each emitted object.
      * @param records       - The records to serialize.
-     * @param columnConfigs - Per-field column config map (carries `showSeconds` for time/datetime).
+     * @param columnConfigs - Per-field column config map (carries `values` / `showSeconds`).
+     * @param display       - Resolver used to format combo/temporal values.
      * @param options       - Optional export options.
      */
     static exportJSON(
         columns      : Column[],
         records      : ModelRecord[],
         columnConfigs: Map<string, ColumnConfig>,
+        display      : CellTextResolver,
         options     ?: ExportOptions
     ): void {
         const data = records.map(record =>
             Object.fromEntries(
                 columns.map(c => [
                     c.getField().getName(),
-                    TableExporter.formatValue(c, record.get(c.getField().getName()), columnConfigs)
+                    TableExporter.formatValue(c, record.get(c.getField().getName()), columnConfigs, display)
                 ])
             )
         );
@@ -88,36 +92,41 @@ export class TableExporter {
 
     /**
      * Formats a raw cell value the same way the matching cell renderer does.
+     * Only two shapes are reformatted — everything else, including `null` /
+     * `undefined`, a plain `number` / `string` / `boolean`, and a `Date` on a
+     * non-temporal column, passes through unchanged so JSON export keeps its
+     * types and a boolean column keeps exporting `true` / `false`.
      *
-     * @param column        - The column whose field type drives the formatting choice.
+     * @param column        - The column whose field type / config drives the formatting choice.
      * @param value         - The raw value read from the record.
-     * @param columnConfigs - Per-field config map; consulted for `showSeconds` on time/datetime.
+     * @param columnConfigs - Per-field config map; consulted for `values` and `showSeconds`.
+     * @param display       - Resolver used to format the combo/temporal shapes.
      * @returns The formatted value, or the original value when no formatting applies.
      *
      * @internal
      */
-    static formatValue(column: Column, value: any, columnConfigs: Map<string, ColumnConfig>): any {
-        if (value == null || !(value instanceof Date)) {
+    static formatValue(column: Column, value: any, columnConfigs: Map<string, ColumnConfig>, display: CellTextResolver): any {
+        if (value == null) {
             return value;
         }
 
-        const type        : FieldType = column.getField().getType();
-        const showSeconds : boolean   = columnConfigs.get(column.getField().getName())?.showSeconds ?? false;
+        const config = columnConfigs.get(column.getField().getName());
 
-        switch (type) {
-            case 'date':
-                return value.toLocaleDateString();
-            case 'time':
-                return value.toLocaleTimeString(undefined, showSeconds
-                    ? { hour: '2-digit', minute: '2-digit', second: '2-digit' }
-                    : { hour: '2-digit', minute: '2-digit' });
-            case 'datetime':
-                return value.toLocaleString(undefined, showSeconds
-                    ? { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }
-                    : { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-            default:
-                return value;
+        if (config?.values && config.values.length > 0) {
+            return display.text('combo', false, config.values, value);
         }
+
+        if (!(value instanceof Date)) {
+            return value;
+        }
+
+        const type = column.getField().getType();
+
+        if (type !== 'date' && type !== 'time' && type !== 'datetime') {
+            return value;
+        }
+
+        return display.text(type, config?.showSeconds ?? false, undefined, value);
     }
 
     /**

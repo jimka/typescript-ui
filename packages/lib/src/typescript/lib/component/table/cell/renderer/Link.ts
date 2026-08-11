@@ -52,6 +52,7 @@ class LinkCellRenderer extends CellRenderer<String | null> {
 
     private readonly _text: Text;
     private _value: String | null = null;
+    private _display: string = "";
 
     constructor(options?: LinkCellRendererOptions) {
         super();
@@ -95,8 +96,20 @@ class LinkCellRenderer extends CellRenderer<String | null> {
      * @param value - The value to display, or `null`/`undefined` to clear.
      */
     setValue(value: String | null): void {
-        this._value = value ?? null;
-        this._text.setText(this._value === null ? "" : String(this._value));
+        this._value   = value ?? null;
+        this._display = this._value === null ? "" : String(this._value);
+        this._text.setText(this._display);
+    }
+
+    /**
+     * Returns the exact text last rendered — the same string {@link setValue}
+     * pushed into the child {@link Link}. Computed from cached state, never
+     * the DOM.
+     *
+     * @returns The cell's current display text.
+     */
+    getDisplayText(): string {
+        return this._display;
     }
 }
 

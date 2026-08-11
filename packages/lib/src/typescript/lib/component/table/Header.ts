@@ -16,7 +16,9 @@ import { computeColumnWindow } from "~/component/table/Body.js";
 import { CellGeometryCache } from "~/component/table/CellGeometry.js";
 import type { ColumnWindow } from "~/component/table/Body.js";
 import { columnFilterOperators, buildColumnFilter } from "~/component/table/ColumnFilter.js";
-import type { ColumnFilterState } from "~/component/table/ColumnFilter.js";
+import type { ColumnFilterState, ColumnFilterTarget } from "~/component/table/ColumnFilter.js";
+import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
+import { CellTextResolver } from "~/component/table/cell/CellText.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -123,6 +125,12 @@ class TableHeader extends Component {
     private _pendingFilterField: string | null = null;
     private _filterTimer       : ReturnType<typeof setTimeout> | null = null;
     private _boundOnStoreFilterChange: () => void = () => this.onStoreFilterChange();
+
+    // Per-field column config, supplying `values` / `showSeconds` to
+    // `filterTarget`. Kept alongside a pooled resolver so a combo/temporal
+    // filter build can resolve display text without mounting a renderer.
+    private _columnConfigs: Map<string, ColumnConfig> = new Map();
+    private _cellText     : CellTextResolver          = new CellTextResolver();
 
     constructor(model: AbstractModel, store: AbstractStore) {
         super({ tag: "thead" });
@@ -270,6 +278,20 @@ class TableHeader extends Component {
 
         this.rebuildCells();
         this.rebuildParentCells();
+
+        return this;
+    }
+
+    /**
+     * Supplies the per-field column-config map, consulted internally when
+     * building a column's filter descriptor. Mirrors
+     * [`Body.setColumnConfigs`](/api/component/table/classes/Body#setcolumnconfigs).
+     *
+     * @param configs - The new column-config map keyed by field name.
+     * @returns This header, for method chaining.
+     */
+    setColumnConfigs(configs: Map<string, ColumnConfig>): this {
+        this._columnConfigs = configs;
 
         return this;
     }
@@ -979,6 +1001,27 @@ class TableHeader extends Component {
     }
 
     /**
+     * Resolves the {@link ColumnFilterTarget} {@link buildColumnFilter} needs
+     * for `fieldName` — the field's declared type plus its config's `values`
+     * / `showSeconds`.
+     *
+     * @param fieldName - The field to resolve a filter target for.
+     * @returns The resolved target, or `null` when the field is unknown to
+     *   the currently-bound model.
+     */
+    private filterTarget(fieldName: string): ColumnFilterTarget | null {
+        const field = this._model.getField(fieldName);
+
+        if (!field) {
+            return null;
+        }
+
+        const config = this._columnConfigs.get(fieldName);
+
+        return { type: field.getType(), values: config?.values, showSeconds: config?.showSeconds };
+    }
+
+    /**
      * Clears the pending timer and writes the pending field's cached state to
      * the store via {@link buildColumnFilter}, converting a blank or
      * unparseable state to `null` (removing the field's filter) rather than
@@ -998,14 +1041,14 @@ class TableHeader extends Component {
 
         this._pendingFilterField = null;
 
-        const state = this.filterState().get(fieldName);
-        const field = this._model.getField(fieldName);
+        const state  = this.filterState().get(fieldName);
+        const target = this.filterTarget(fieldName);
 
-        if (!state || !field) {
+        if (!state || !target) {
             return;
         }
 
-        void this._store.setFilter(fieldName, buildColumnFilter(fieldName, field.getType(), state));
+        void this._store.setFilter(fieldName, buildColumnFilter(fieldName, target, state, this._cellText));
     }
 
     /**
@@ -1029,13 +1072,13 @@ class TableHeader extends Component {
                 continue;
             }
 
-            const field = this._model.getField(fieldName);
+            const target = this.filterTarget(fieldName);
 
-            if (!field) {
+            if (!target) {
                 continue;
             }
 
-            const built = buildColumnFilter(fieldName, field.getType(), state);
+            const built = buildColumnFilter(fieldName, target, state, this._cellText);
 
             if (built !== null && this._store.getFilter(fieldName) === null) {
                 states.delete(fieldName);
@@ -1361,6 +1404,7 @@ class TableHeader extends Component {
         }
 
         this._store.off('filterchange', this._boundOnStoreFilterChange);
+        this._cellText.dispose();
 
         super.destructor();
     }

@@ -6,12 +6,8 @@ import type { ComboEditor } from "~/component/table/cell/editor/Combo.js";
 import { BooleanEditor } from "~/component/table/cell/editor/Boolean.js";
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 import { StringRenderer } from "~/component/table/cell/renderer/String.js";
-import { NumberRenderer } from "~/component/table/cell/renderer/Number.js";
-import { DateRenderer } from "~/component/table/cell/renderer/Date.js";
-import { TimeRenderer } from "~/component/table/cell/renderer/Time.js";
-import { DateTimeRenderer } from "~/component/table/cell/renderer/DateTime.js";
-import { GlyphRenderer } from "~/component/table/cell/renderer/Glyph.js";
 import { ComboRenderer } from "~/component/table/cell/renderer/Combo.js";
+import { buildCellRenderer } from "~/component/table/cell/CellText.js";
 import type { CellType, ColumnConfig, ComboOption } from "~/component/table/ColumnConfig.js";
 import type { ModelRecord } from "~/data/ModelRecord.js";
 import type { FieldType } from "~/data/Field.js";
@@ -223,26 +219,11 @@ class DynamicCell extends Cell<any> {
      * @returns A freshly constructed renderer for `type`.
      */
     private static buildRenderer(type: CellType, showSeconds: boolean): CellRenderer<any> {
-        switch (type) {
-            case 'number':
-                // Left-aligned: unlike a homogeneous number column, a
-                // DynamicCell number row sits in a column that also shows
-                // left-aligned string/date/combo rows, and a lone
-                // right-aligned row read as jarring there.
-                return new NumberRenderer("left");
-            case 'date':
-                return new DateRenderer();
-            case 'time':
-                return new TimeRenderer(showSeconds);
-            case 'datetime':
-                return new DateTimeRenderer(showSeconds);
-            case 'combo':
-                return new ComboRenderer([]);
-            case 'glyph':
-                return new GlyphRenderer();
-            default:
-                return new StringRenderer(); // 'string' | 'auto'
-        }
+        // Left-aligned: unlike a homogeneous number column, a DynamicCell
+        // number row sits in a column that also shows left-aligned
+        // string/date/combo rows, and a lone right-aligned row read as
+        // jarring there.
+        return buildCellRenderer(type, showSeconds, "left");
     }
 
     /**

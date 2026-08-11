@@ -16,7 +16,7 @@ export {
     columnFilterTakesOperand,
     buildColumnFilter,
 } from '~/component/table/ColumnFilter.js';
-export type { ColumnFilterOperator, ColumnFilterState } from '~/component/table/ColumnFilter.js';
+export type { ColumnFilterOperator, ColumnFilterState, ColumnFilterTarget } from '~/component/table/ColumnFilter.js';
 export { TableExporter } from '~/component/table/TableExporter.js';
 export type { ExportOptions } from '~/component/table/TableExporter.js';
 export { TableHeader } from '~/component/table/Header.js';

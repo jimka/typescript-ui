@@ -16,6 +16,11 @@ import { DateRenderer } from '~/component/table/cell/renderer/Date';
 import { TimeRenderer } from '~/component/table/cell/renderer/Time';
 import { DateTimeRenderer } from '~/component/table/cell/renderer/DateTime';
 import { GlyphRenderer } from '~/component/table/cell/renderer/Glyph';
+import { ComboRenderer } from '~/component/table/cell/renderer/Combo';
+import { LinkCellRenderer } from '~/component/table/cell/renderer/Link';
+import { TreeCellRenderer } from '~/component/table/cell/renderer/TreeCell';
+import { FilterCellRenderer } from '~/component/table/cell/renderer/Filter';
+import { BooleanEditor } from '~/component/table/cell/editor/Boolean';
 import { expectNoSelfReschedule } from '../../../helpers/layoutStability';
 
 const CONFIG = {
@@ -51,11 +56,13 @@ describe('StringRenderer', () => {
         r.setValue(null);
         expect(r.getValue()).toBe(null);
         expect(renderedText(r)).toBe('');
+        expect(r.getDisplayText()).toBe(renderedText(r));
 
         r.setValue('seed');
         r.setValue(undefined as any);
         expect(r.getValue()).toBe(null);
         expect(renderedText(r)).toBe('');
+        expect(r.getDisplayText()).toBe(renderedText(r));
     });
 
     it('setValue round-trips the exact string', () => {
@@ -64,6 +71,7 @@ describe('StringRenderer', () => {
         r.setValue('hello');
         expect(r.getValue()).toBe('hello');
         expect(renderedText(r)).toBe('hello');
+        expect(r.getDisplayText()).toBe(renderedText(r));
     });
 
     it('distinguishes an empty cell (cache null) from a rendered empty string', () => {
@@ -115,6 +123,7 @@ describe('NumberRenderer null-vs-zero contract', () => {
         r.setValue(0);
         expect(r.getValue()).toBe(0);
         expect(renderedText(r)).toBe('0');
+        expect(r.getDisplayText()).toBe(renderedText(r));
     });
 
     it('setValue(null/undefined) normalises to null and renders empty', () => {
@@ -124,6 +133,7 @@ describe('NumberRenderer null-vs-zero contract', () => {
         r.setValue(null);
         expect(r.getValue()).toBe(null);
         expect(renderedText(r)).toBe('');
+        expect(r.getDisplayText()).toBe(renderedText(r));
     });
 
     it('renders -1, NaN, and Infinity via String(value) — never "null"/"undefined"', () => {
@@ -154,6 +164,7 @@ describe('DateRenderer / TimeRenderer / DateTimeRenderer (relational format)', (
         r.setValue(SAMPLE);
         expect(r.getValue()).toBe(SAMPLE);
         expect(renderedText(r)).toBe(SAMPLE.toLocaleDateString());
+        expect(r.getDisplayText()).toBe(renderedText(r));
     });
 
     it('DateRenderer setValue(null) caches null and renders empty', () => {
@@ -163,6 +174,7 @@ describe('DateRenderer / TimeRenderer / DateTimeRenderer (relational format)', (
         r.setValue(null);
         expect(r.getValue()).toBe(null);
         expect(renderedText(r)).toBe('');
+        expect(r.getDisplayText()).toBe(renderedText(r));
     });
 
     it('TimeRenderer(false) renders hour:minute; TimeRenderer(true) is longer/different', () => {
@@ -177,6 +189,8 @@ describe('DateRenderer / TimeRenderer / DateTimeRenderer (relational format)', (
         expect(renderedText(withSecs))
             .toBe(SAMPLE.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
         expect(renderedText(withSecs)).not.toBe(renderedText(noSecs));
+        expect(noSecs.getDisplayText()).toBe(renderedText(noSecs));
+        expect(withSecs.getDisplayText()).toBe(renderedText(withSecs));
     });
 
     it('DateTimeRenderer(false) vs (true): seconds toggle drives the longer form', () => {
@@ -191,6 +205,8 @@ describe('DateRenderer / TimeRenderer / DateTimeRenderer (relational format)', (
         expect(renderedText(withSecs))
             .toBe(SAMPLE.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
         expect(renderedText(withSecs)).not.toBe(renderedText(noSecs));
+        expect(noSecs.getDisplayText()).toBe(renderedText(noSecs));
+        expect(withSecs.getDisplayText()).toBe(renderedText(withSecs));
     });
 
     it('DateTimeRenderer returns the exact Date instance set', () => {
@@ -240,6 +256,11 @@ describe('GlyphRenderer add/remove/idempotent', () => {
         r.setValue(NAME);
         expect(r.getValue()).toBe(NAME);
         expect(glyphChildCount(r)).toBe(1);
+        expect(r.getDisplayText()).toBe(NAME);
+    });
+
+    it('getDisplayText() returns "" for a cleared/never-set glyph', () => {
+        expect(new GlyphRenderer().getDisplayText()).toBe('');
     });
 
     it('setting the same name twice does not rebuild the glyph (idempotent)', () => {
@@ -274,5 +295,100 @@ describe('GlyphRenderer add/remove/idempotent', () => {
         r.setValue(null);
         expect(r.getValue()).toBe(null);
         expect(glyphChildCount(r)).toBe(0);
+        expect(r.getDisplayText()).toBe('');
+    });
+});
+
+// getDisplayText() coverage for the renderers with no prior describe block
+// above (ComboRenderer, LinkCellRenderer, TreeCellRenderer, FilterCellRenderer),
+// plus the "never rendered" and structural-mirror cases from the plan's
+// `## Expected Behaviour`.
+describe('ComboRenderer.getDisplayText()', () => {
+    const OPTIONS = [{ value: 'dev', label: 'Developer' }];
+
+    it('resolves the option label for a known value', () => {
+        const r = new ComboRenderer(OPTIONS);
+
+        r.setValue('dev');
+        expect(r.getDisplayText()).toBe('Developer');
+        expect(r.getDisplayText()).toBe(renderedText(r));
+    });
+
+    it('falls back to the raw value for an out-of-set value', () => {
+        const r = new ComboRenderer(OPTIONS);
+
+        r.setValue('unknown');
+        expect(r.getDisplayText()).toBe('unknown');
+    });
+
+    it('returns "" for a null value', () => {
+        const r = new ComboRenderer(OPTIONS);
+
+        r.setValue(null);
+        expect(r.getDisplayText()).toBe('');
+    });
+
+    it('setOptions re-resolves the cached value against the new list', () => {
+        const r = new ComboRenderer(OPTIONS);
+
+        r.setValue('dev');
+        expect(r.getDisplayText()).toBe('Developer');
+
+        r.setOptions([{ value: 'dev', label: 'Software Engineer' }]);
+        expect(r.getDisplayText()).toBe('Software Engineer');
+    });
+
+    it('answers correctly on a renderer that is constructed, fed a value, and never rendered', () => {
+        const r = new ComboRenderer(OPTIONS);
+
+        r.setValue('dev');
+        expect(r.getElement()).toBeNull();
+        expect(r.getDisplayText()).toBe('Developer');
+    });
+});
+
+describe('TimeRenderer.getDisplayText() on an unmounted instance', () => {
+    it('answers correctly on a renderer that is constructed, fed a value, and never rendered', () => {
+        const SAMPLE = new Date(2021, 4, 17, 13, 45, 9);
+        const r      = new TimeRenderer(false);
+
+        r.setValue(SAMPLE);
+        expect(r.getElement()).toBeNull();
+        expect(r.getDisplayText())
+            .toBe(SAMPLE.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
+    });
+});
+
+describe('LinkCellRenderer.getDisplayText()', () => {
+    it('mirrors the rendered link text', () => {
+        const r = new LinkCellRenderer();
+
+        r.setValue('people' as any);
+        expect(r.getDisplayText()).toBe('people');
+    });
+});
+
+describe('TreeCellRenderer.getDisplayText()', () => {
+    it('delegates to the wrapped renderer', () => {
+        const delegate = new StringRenderer();
+        const r         = new TreeCellRenderer(delegate);
+
+        r.setValue('leaf' as any);
+        expect(r.getDisplayText()).toBe('leaf');
+    });
+});
+
+describe('FilterCellRenderer.getDisplayText()', () => {
+    it('returns the base default "" even with text in its input', () => {
+        const r = new FilterCellRenderer();
+
+        r.setValue('typed text');
+        expect(r.getDisplayText()).toBe('');
+    });
+});
+
+describe('CellEditor.getDisplayText() structural mirror', () => {
+    it('BooleanEditor (a CellEditor) returns "" — never overridden', () => {
+        expect(new BooleanEditor().getDisplayText()).toBe('');
     });
 });

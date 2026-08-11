@@ -75,6 +75,24 @@ export abstract class CellRenderer<T> extends Component {
     }
 
     /**
+     * Returns the exact text this cell shows the user — the string the
+     * cell's own `Text` child was last given, computed from state cached in
+     * {@link setValue} and never read from the DOM. Safe to call on a
+     * renderer that was constructed, fed a value, and never rendered.
+     *
+     * Defaults to `""`. Every built-in renderer overrides this to return
+     * its actual displayed text; the default is what a consumer-authored
+     * `CellRenderer` subclass answers until it opts in, and the honest
+     * answer for a renderer that draws no text at all (e.g. a chart or
+     * badge renderer).
+     *
+     * @returns The cell's current display text.
+     */
+    getDisplayText(): string {
+        return "";
+    }
+
+    /**
      * Runs the Fit layout, then synchronises the Text child's `line-height`
      * to its own element height. A single-line `<span>` whose `line-height`
      * matches its block height renders the text glyphs vertically centered;
