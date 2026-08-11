@@ -200,6 +200,37 @@ describe('Menu content-based width', () => {
         expect(columns[0]).toBeGreaterThan(0);
     });
 
+    it('reserves a leading check column when any item declares `checked`, aligning every row\'s title', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(0, 0, [
+            { text: 'One', checked: true },
+            { text: 'Two', checked: false },
+            { text: 'Three' }, // omits `checked` — still reserves the column; the menu opts in as a whole
+        ]);
+
+        const items      = (menu as any)._menuItems.filter((i: any) => i instanceof MenuItem && !i.isSeparator());
+        const iconStarts = items.map((i: any) => i._iconStart);
+        const checkZones = items.map((i: any) => i._checkZone);
+
+        expect(checkZones.every((z: number) => z === MenuItem.CHECK_ZONE)).toBe(true);
+        expect(new Set(iconStarts).size).toBe(1);
+        expect(iconStarts[0]).toBe(MenuItem.CHECK_ZONE + MenuItem.TEXT_INSET);
+    });
+
+    it('reserves no check column when no item declares `checked`', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(0, 0, [{ text: 'One' }, { text: 'Two' }]);
+
+        const items = (menu as any)._menuItems.filter((i: any) => i instanceof MenuItem && !i.isSeparator());
+
+        expect(items.every((i: any) => i._checkZone === 0)).toBe(true);
+        expect(items[0]._iconStart).toBe(MenuItem.TEXT_INSET);
+    });
+
     it('sizes a rebuild menu to its content, clamped to the min/max bounds', () => {
         installTestDOM(CONFIG);
 

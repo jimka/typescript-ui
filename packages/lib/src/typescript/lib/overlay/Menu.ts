@@ -187,12 +187,15 @@ class Menu extends Component implements DismissableLayer {
 
     /**
      * Lays the menu's items into aligned columns and returns the panel width.
-     * Every title shares one column sized to the widest title; the shortcut/chevron
-     * right zone is the widest of the shortcut column and a submenu chevron, so
-     * shortcuts left-justify in a column and chevrons right-justify at the edge.
-     * The width is clamped to `[MIN_MENU_WIDTH, MAX_MENU_WIDTH]`; when the ceiling
-     * bites, the title column shrinks and its titles ellipsize. Measured from the
-     * items directly so a menu reused across shows re-measures its new content.
+     * A leading check column is reserved when any item declares `checked`, so
+     * a checked and an unchecked row's icon and title still start at the same
+     * x position. Every title shares one column sized to the widest title;
+     * the shortcut/chevron right zone is the widest of the shortcut column
+     * and a submenu chevron, so shortcuts left-justify in a column and
+     * chevrons right-justify at the edge. The width is clamped to
+     * `[MIN_MENU_WIDTH, MAX_MENU_WIDTH]`; when the ceiling bites, the title
+     * column shrinks and its titles ellipsize. Measured from the items
+     * directly so a menu reused across shows re-measures its new content.
      *
      * @returns The clamped panel width in pixels.
      */
@@ -201,7 +204,8 @@ class Menu extends Component implements DismissableLayer {
             (i): i is MenuItem => i instanceof MenuItem && !i.isSeparator()
         );
 
-        const iconStart    = items.some(i => i.hasIcon()) ? MenuItem.ICON_ZONE : MenuItem.TEXT_INSET;
+        const checkZone    = items.some(i => i.hasCheck()) ? MenuItem.CHECK_ZONE : 0;
+        const iconStart    = checkZone + (items.some(i => i.hasIcon()) ? MenuItem.ICON_ZONE : MenuItem.TEXT_INSET);
         const maxTitle     = items.reduce((m, i) => Math.max(m, i.titleTextWidth()), 0);
         const maxShortcut  = items.reduce((m, i) => Math.max(m, i.shortcutTextWidth()), 0);
         const hasChevron   = items.some(i => i.hasSubmenu());
@@ -216,7 +220,7 @@ class Menu extends Component implements DismissableLayer {
         const titleColumn = Math.min(maxTitle, width - iconStart - rightReserve - MenuItem.RIGHT_PAD);
 
         for (const item of items) {
-            item.setColumns(iconStart, titleColumn);
+            item.setColumns(checkZone, iconStart, titleColumn);
         }
 
         return width;

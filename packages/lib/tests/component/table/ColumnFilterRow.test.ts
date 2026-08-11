@@ -184,6 +184,40 @@ describe('Column filter row — sizing and operator-button legibility', () => {
         expect(glyph).not.toBeNull();
         expect(glyph!.getGlyphName()).toBe('magnifying-glass'); // default operator: 'contains'
     });
+
+    it('the operator button\'s title names the current mode for its hover tooltip, without showing on its face', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell  = filterCells(table).find(c => c.getFieldName() === 'name')!;
+        const opBtn = renderer(cell).getOperatorButton();
+
+        expect(opBtn.isShowText()).toBe(false);
+        expect(opBtn.getText()).toBe('Contains'); // default operator
+
+        pickOperator(cell, 'Starts with');
+
+        expect(opBtn.getText()).toBe('Starts with');
+    });
+
+    it('the operator menu lists each operator\'s icon alongside its label', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell     = filterCells(table).find(c => c.getFieldName() === 'name')!;
+        const provider = renderer(cell).getOperatorButton().getMenuItems() as () => MenuItemConfig[];
+        const items    = provider();
+
+        const containsItem = items.find(i => i.text?.trim().endsWith('Contains'))!;
+        const startsItem   = items.find(i => i.text?.trim().endsWith('Starts with'))!;
+
+        expect(containsItem.glyph).toBe('magnifying-glass');
+        expect(startsItem.glyph).toBe('align-left');
+        // `checked` (not a hand-rolled '✓ ' text prefix) marks the active operator,
+        // so the menu's own check column — not FilterCell — owns the checkmark's position.
+        expect(containsItem.checked).toBe(true); // default operator
+        expect(startsItem.checked).toBe(false);
+    });
 });
 
 describe('Column filter row — geometry-diff self-layout', () => {

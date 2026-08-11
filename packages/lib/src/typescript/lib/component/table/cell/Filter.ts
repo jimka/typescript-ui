@@ -77,9 +77,13 @@ class FilterCell extends Cell<string | null> {
         renderer.getInput().on("keydown", (e: KeyboardEvent) => this.onInputKeyDown(e));
 
         // Provider form, so the checkmark tracks the current operator on every open.
+        // `checked` renders the checkmark in its own leading column (left of the
+        // glyph), so a checked and an unchecked row's glyph and label still align.
         renderer.getOperatorButton().setMenuItems(() => this._operators.map(op => ({
-            text:   (op === this._operator ? '✓ ' : '  ') + columnFilterOperatorLabel(op),
-            action: () => this.selectOperator(op),
+            text:    columnFilterOperatorLabel(op),
+            glyph:   columnFilterOperatorGlyph(op),
+            checked: op === this._operator,
+            action:  () => this.selectOperator(op),
         })));
 
         this.setOperators(operators);
@@ -88,6 +92,21 @@ class FilterCell extends Cell<string | null> {
     /** Returns this cell's renderer, narrowed to its concrete type. */
     private filterRenderer(): FilterCellRenderer {
         return this.getRenderer() as FilterCellRenderer;
+    }
+
+    /**
+     * Writes the operator button's glyph face and its title — the title stays
+     * off the visible face (`FilterCellRenderer` sets `showText: false`) but
+     * still drives the button's hover tooltip and accessible name, so
+     * hovering the button reports which mode the filter is currently in.
+     *
+     * @param op - The operator to represent.
+     */
+    private applyOperatorFace(op: ColumnFilterOperator): void {
+        const button = this.filterRenderer().getOperatorButton();
+
+        button.setGlyph(columnFilterOperatorGlyph(op));
+        button.setText(columnFilterOperatorLabel(op));
     }
 
     /**
@@ -142,7 +161,7 @@ class FilterCell extends Cell<string | null> {
             this._operator = operators[0];
         }
 
-        renderer.getOperatorButton().setGlyph(columnFilterOperatorGlyph(this._operator));
+        this.applyOperatorFace(this._operator);
         renderer.getInput().setEnabled(columnFilterTakesOperand(this._operator));
 
         return this;
@@ -173,7 +192,7 @@ class FilterCell extends Cell<string | null> {
 
         const renderer = this.filterRenderer();
 
-        renderer.getOperatorButton().setGlyph(columnFilterOperatorGlyph(state.operator));
+        this.applyOperatorFace(state.operator);
         renderer.getInput().setEnabled(columnFilterTakesOperand(state.operator));
         renderer.setValue(state.text === "" ? null : state.text);
 
@@ -212,7 +231,7 @@ class FilterCell extends Cell<string | null> {
         const renderer  = this.filterRenderer();
         const takesText = columnFilterTakesOperand(op);
 
-        renderer.getOperatorButton().setGlyph(columnFilterOperatorGlyph(op));
+        this.applyOperatorFace(op);
         renderer.getInput().setEnabled(takesText);
 
         if (!takesText) {

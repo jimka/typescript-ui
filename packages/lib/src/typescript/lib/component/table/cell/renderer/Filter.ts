@@ -15,6 +15,10 @@ import { callable } from "~/core/Callable.js";
  * disable Button's own content-derived sizing (see `Button.getPreferredSize`),
  * which is what keeps the button no wider than its glyph needs. `flat` +
  * `compact` additionally give it the tightest glyph-only inset perimeter.
+ * `showText: false` keeps the button glyph-only on its face while its title —
+ * set by {@link FilterCell} to the current operator's label — still drives
+ * the hover tooltip and accessible name (`Button.setText`'s documented
+ * `showText:false` behaviour).
  *
  * @category Components
  */
@@ -32,6 +36,7 @@ class FilterCellRenderer extends CellRenderer<string | null> {
 
         this._operatorButton.setFlat(true);
         this._operatorButton.setCompact(true);
+        this._operatorButton.setShowText(false);
 
         this.addComponent(this._input, { weight: 1 });
         this.addComponent(this._operatorButton);
