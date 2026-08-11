@@ -1,6 +1,6 @@
 # MenuItem
 
-[`MenuItem`](/api/component/container/classes/MenuItem) is a single row inside a [`Menu`](/components/Menu). Renders a four-zone layout: icon | text | shortcut | chevron. Hovering opens an attached submenu after a 150 ms delay (persistent-mode menus only).
+[`MenuItem`](/api/component/container/classes/MenuItem) is a single row inside a [`Menu`](/components/Menu). Renders a five-zone layout: check | icon | text | shortcut | chevron. The check zone only appears when at least one item in the menu declares `checked`. Hovering opens an attached submenu after a 150 ms delay (persistent-mode menus only).
 
 You usually pass [`MenuItemConfig`](/api/component/container/interfaces/MenuItemConfig) objects to [`MenuBar`](/components/MenuBar) or `Menu.show(...)` instead of constructing `MenuItem`s directly.
 
@@ -15,16 +15,31 @@ You usually pass [`MenuItemConfig`](/api/component/container/interfaces/MenuItem
 | `enabled` | Defaults to `true`. Disabled items are dimmed and non-interactive. |
 | `shortcut` | Hint string displayed on the right. |
 | `icon` | Glyph displayed on the left. |
+| `checked` | Marks the item as part of a checkable set and whether it's currently checked. When at least one item in the menu sets this (`true` or `false`), every item reserves a leading check column, so icons and titles stay aligned across checked and unchecked rows — see [Checkable items](#checkable-items). |
 | `submenu` | Nested [`MenuConfig`](/api/component/container/interfaces/MenuConfig); opens a submenu instead of firing `action` (persistent-mode only). |
 | `separator` | When `true`, render as a horizontal rule and ignore other fields. |
 
 ## Layout
 
 ```
-[ icon ] [ text ······························ ] [ shortcut ] [ ▶ ]
+[ ✓ ] [ icon ] [ text ······························ ] [ shortcut ] [ ▶ ]
 ```
 
-The chevron only appears for items with a `submenu`.
+The check zone only appears when at least one item in the menu declares `checked`; the chevron only appears for items with a `submenu`.
+
+## Checkable items
+
+Use `checked` for the active choice in a set of mutually-exclusive options (e.g. the current sort direction, or — as [`Table`](/components/Table)'s per-column filter row does — the currently-selected filter operator), rather than hand-prefixing `'✓ '` / `'  '` onto `text`. The title renders with `white-space: nowrap`, which collapses consecutive plain-ASCII spaces to one — a checked row's `'✓ '` prefix and an unchecked row's `'  '` prefix end up different rendered widths, so the label text drifts out of alignment between rows. `checked` avoids this: the checkmark lives in its own reserved column, to the left of any `icon`/`glyph`, so every row's icon and label start at the same x regardless of which item is checked.
+
+```typescript
+menuItems: options.map(opt => ({
+    text:    opt.label,
+    checked: opt.value === current,
+    action:  () => select(opt.value),
+}))
+```
+
+An item that omits `checked` entirely still reserves the column when a sibling item in the same menu declares it — the column is a per-menu decision, not a per-item one.
 
 ## Theming
 
