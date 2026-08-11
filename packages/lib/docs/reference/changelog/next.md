@@ -17,8 +17,31 @@ page resets to empty.
   changes, since there a lone right-aligned number row sat oddly against
   every other row's left-aligned string/date/combo text. No consumer action
   is needed.
+- **`Equals` on a `date`/`time`/`datetime` column filter now matches by
+  displayed value rather than exact instant** — a `date` column's `Equals`
+  covers the whole calendar day, and a `time`/`datetime` column's covers the
+  displayed minute (or second, under `showSeconds`). Programmatic
+  `store.setFilter(field, { type: 'eq', value })` is unaffected; only the
+  header filter row's build step changes.
+- **`exportCSV()` / `exportJSON()` write a combo column's label rather than
+  its stored code**, matching what the cell and the filter row show. Flag
+  this if the export is meant to be re-imported.
 
 ## Added
+
+### Table
+
+- **`CellRenderer.getDisplayText()`** returns the exact text a cell renderer
+  currently shows, computed from cached state rather than the DOM — safe to
+  call on a renderer that was constructed, fed a value, and never rendered.
+  Every built-in renderer overrides it; a consumer-authored `CellRenderer`
+  subclass inherits the `""` default until it opts in. No consumer action is
+  needed.
+- **`Table.getCellText(field, record)`** returns the exact text a cell shows
+  for a field on a record — a combo column's label, a formatted
+  date/time/datetime, or `String(value)` — the same resolution export and
+  the filter row use. Built for a quick search that matches what's on
+  screen; see [Row visibility](/components/Table#row-visibility).
 
 ### Tree
 
@@ -72,4 +95,8 @@ page resets to empty.
 **A `date`/`time`/`datetime` auto-sized column could truncate a real value with a trailing ellipsis even though its computed width looked correct.** The per-type width policy's cell-padding allowance was applied to every column type except the content-driven `string`/`auto` branch, and the date/time reference measurement compared only the reference instant's own formatted digits — missing a non-tabular font where some other digit renders wider. Both gaps are closed: the content-driven branch now adds the same cell padding every other branch already did, and the date/time/datetime floor is measured against the widest digit-substituted variant of the reference text. No consumer action is needed.
 
 **The rotated (`\x`-style) view's `field`/`value` columns no longer sit pinned at their maximum width regardless of what the displayed record holds.** Both columns now size from the actual field labels and formatted values on screen — measured the same way each cell's own renderer displays them, including a combo row's label rather than its stored code — and re-derive on every record switch. `field`/`value` still cap at their existing bounds (80–200px / 120–360px); a wide table's leftover space still goes to the trailing filler column. No consumer action is needed.
+
+**A [combo column](/components/Table#combo-columns)'s header filter was unusable — it matched the stored code against text typed for the label, so filtering "Role" for "Developer" found nothing.** The filter row now resolves each declared option's label the same way the cell renders it and matches against that; `Contains` / `Starts with` / `Ends with` / `Equals` / `Not equals` all resolve to the matching stored value(s). A column no longer needs `filterable: false` to work around this. No consumer action is needed.
+
+**A `time` column's header filter silently applied nothing, so every row stayed visible regardless of what was typed.** The operand parse only understood a full `Date`-parseable string, and a bare time like `09:30 AM` isn't one. The parser now also accepts `HH:MM[:SS]` with an optional `AM`/`PM` suffix, anchored to 1970-01-01 the same way the time cell editor normalises its own value. No consumer action is needed.
 
