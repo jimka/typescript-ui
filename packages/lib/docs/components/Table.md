@@ -64,7 +64,7 @@ const table = Table(store, {
 | `headerGlyph` | Registry glyph name shown to the left of the header text. |
 | `group` | Parent-header group name. See [Parent headers](#parent-headers). |
 | `groupColor` | Optional background color for the parent-header cell. |
-| `filterable` | When `true`, this column gets a filter input in the header's opt-in filter row. See [Column filters](#column-filters). |
+| `filterable` | When `false`, this column gets no filter input in the header's opt-in filter row. Defaults to `true`. See [Column filters](#column-filters). |
 
 `appendUnlisted` (default `true`) controls whether fields not in the `columns` array are auto-generated after the listed ones. `ColumnSpec.filterable` sets the table-wide default for `ColumnConfig.filterable`; a column's own `filterable` still wins when set.
 
@@ -207,19 +207,25 @@ const table = Table(store, {
 
 ## Column filters
 
-Mark columns `filterable: true` and the header gets a third row — a text input plus an operator-picker button per filterable column — wired straight to the store's own filter system. It is **opt-in**: hidden by default even on a table where every column is `filterable`. A user reveals it by right-clicking the header and checking **Filter** in the column context menu; a caller can do the same programmatically:
+Every column is filterable by default: the header gets a third row — a text input plus an operator-picker button per filterable column — wired straight to the store's own filter system. It is the *row's visibility*, not filterability, that is opt-in: the row stays hidden by default, even on a table where every column is filterable. A user reveals it by right-clicking the header and checking **Filter** in the column context menu; a caller can do the same programmatically:
 
 ```typescript
 import { Table } from '@jimka/typescript-ui/component/table';
-const table = Table(store, {
-    columns: [
-        { field: 'name', filterable: true },
-        { field: 'age',  filterable: true },
-    ],
-});
+const table = Table(store, { columns: [{ field: 'name' }, { field: 'age' }] });
 
 table.setFilterRowVisible(true);   // show the filter row
 table.isFilterRowVisible();        // true
+```
+
+Set `filterable: false` on a column — or `ColumnSpec.filterable: false` to change the table-wide default — to leave that column's cell blank in the filter row (it still renders, empty, so the row stays column-aligned):
+
+```typescript
+const table = Table(store, {
+    columns: [
+        { field: 'name' },
+        { field: 'notes', filterable: false }, // free-text blob, not worth filtering on
+    ],
+});
 ```
 
 The operators offered depend on the column's field type, and the first entry is that type's default:
@@ -237,6 +243,7 @@ The operators offered depend on the column's field type, and the first entry is 
 - **Local vs. remote evaluation follows the store's `remoteFilter` option** — the filter row adds no second switch. A store with `pageSize` set should also set `remoteFilter: true`, or a page comes back unfiltered from the proxy and is only shrunk locally afterward.
 - **Hiding a column leaves its filter active** — a filter is data state, not view state, so `setColumnVisible(field, false)` on a filtered column does not clear what it was filtering on. **Hiding the whole row is different**: `table.setFilterRowVisible(false)` clears every filter the row applied, since there is then no control left showing — or able to change — their criteria. Showing the row again starts every column back at its default operator with a blank input, not the criteria that were cleared.
 - Each filter writes through [`store.setFilter(key, descriptor)`](/data/store#sort-and-filter), keyed by field name, so retyping in one column replaces only that column's descriptor — it never stacks a new filter per keystroke, and never disturbs another column's filter or one added through [`filter()`](/api/data/classes/AbstractStore#filter) / [`filterBy()`](/api/data/classes/AbstractStore#filterBy).
+- **A filter matches the stored value, not necessarily the displayed one.** A [combo column](#combo-columns) can show a label that differs from the value on the record (`{ value: 'AU', label: 'Australia' }`), and the filter matches `'AU'`, not `'Australia'`; a custom `renderer` can likewise style or transform a value beyond recognition. Set `filterable: false` on a column where this would be confusing.
 
 ## Sorting and selection
 

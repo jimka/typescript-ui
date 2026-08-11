@@ -35,7 +35,8 @@ export class Column {
      * Constructs a Column from a field and an optional presentation config.
      *
      * @param field  - The model field this column represents.
-     * @param config - Optional config; all constraint properties default to absent / false.
+     * @param config - Optional config; all constraint properties default to
+     *   absent / false, except `filterable`, which defaults to `true`.
      * @param specFilterable - Table-wide {@link ColumnSpec.filterable} default,
      *   consulted when `config.filterable` is unset.
      */
@@ -53,7 +54,7 @@ export class Column {
         this._group       = config?.group ?? null;
         this._groupColor  = config?.groupColor ?? null;
         this._required    = config?.required ?? false;
-        this._filterable  = config?.filterable ?? specFilterable ?? false;
+        this._filterable  = config?.filterable ?? specFilterable ?? true;
     }
 
     /**
@@ -212,10 +213,11 @@ export class Column {
     /**
      * Returns whether this column gets a filter input in the header's
      * filter row, once the row itself is shown via
-     * {@link Table.setFilterRowVisible}.
+     * {@link Table.setFilterRowVisible}. Filterable by default.
      *
-     * @returns `true` when the spec declared `filterable: true` for this
-     *   column, or left it unset while {@link ColumnSpec.filterable} is `true`.
+     * @returns `false` only when the spec declared `filterable: false` for
+     *   this column, or left it unset while {@link ColumnSpec.filterable} is
+     *   `false`.
      */
     isFilterable(): boolean {
         return this._filterable;

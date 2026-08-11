@@ -132,7 +132,7 @@ describe('Column filter row — opt-in visibility', () => {
     });
 
     it('22. toggling on with no filterable column anywhere leaves the row empty', async () => {
-        const { table } = await makeTable({ columns: [] });
+        const { table } = await makeTable({ columns: [], filterable: false });
 
         table.setFilterRowVisible(true);
 
@@ -151,6 +151,27 @@ describe('Column filter row — opt-in visibility', () => {
 
         expect(renderer(idCell).getInput().isDisplayed()).toBe(false);
         expect(renderer(idCell).getOperatorButton().isDisplayed()).toBe(false);
+    });
+
+    it('columns are filterable by default, with no `filterable` set anywhere in the spec', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'name' }] });
+
+        table.setFilterRowVisible(true);
+
+        const nameCell = filterCells(table).find(c => c.getFieldName() === 'name')!;
+
+        expect(renderer(nameCell).getInput().isDisplayed()).toBe(true);
+        expect(renderer(nameCell).getOperatorButton().isDisplayed()).toBe(true);
+    });
+
+    it('a column-level filterable: true is unnecessary now but still opts a column in under a false table-wide default', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }], filterable: false });
+
+        table.setFilterRowVisible(true);
+
+        const nameCell = filterCells(table).find(c => c.getFieldName() === 'name')!;
+
+        expect(renderer(nameCell).getInput().isDisplayed()).toBe(true);
     });
 });
 
@@ -609,7 +630,7 @@ describe('Column filter row — header context-menu toggle', () => {
     });
 
     it('36. no Filter entry appears when no column is filterable', async () => {
-        const { table } = await makeTable({ columns: [] });
+        const { table } = await makeTable({ columns: [], filterable: false });
 
         const items = capturedMenuItems(table);
 

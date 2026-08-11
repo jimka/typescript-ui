@@ -1101,6 +1101,11 @@ class Table extends Component<TableOptions> {
                 { field: 'filler', headerText: '', minWidth: 0, unhideable: true },
             ],
             rowReadOnly: () => true,
+            // The projection has no per-column filterable field to filter on
+            // (see `hasFilterRow`'s doc) — filterable now defaults to `true`,
+            // so this must say so explicitly rather than relying on the
+            // library-wide default.
+            filterable:  false,
         };
 
         this._rotatedStore   = new MemoryStore(ROTATED_MODEL, []);

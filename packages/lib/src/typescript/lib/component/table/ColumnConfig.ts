@@ -114,9 +114,9 @@ export interface ColumnConfig {
      */
     readOnly    ?: boolean;
     /**
-     * When `true`, this column gets a filter input in the header's filter
+     * When `false`, this column gets no filter input in the header's filter
      * row. Resolution: `ColumnConfig.filterable` wins when set; otherwise
-     * falls back to {@link ColumnSpec.filterable}; otherwise `false`.
+     * falls back to {@link ColumnSpec.filterable}; otherwise `true`.
      * The row itself only ever appears when {@link Table.setFilterRowVisible}
      * (or the header's context-menu **Filter** entry) is also on.
      */
@@ -328,7 +328,7 @@ export interface ColumnSpec {
     autoSizeColumns ?: boolean;
     /**
      * Table-wide default for {@link ColumnConfig.filterable}. A column's own
-     * `filterable` still wins when set. Defaults to `false`.
+     * `filterable` still wins when set. Defaults to `true`.
      */
     filterable ?: boolean;
 }
