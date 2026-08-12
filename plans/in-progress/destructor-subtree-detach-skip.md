@@ -218,3 +218,127 @@ The fourth case guards against a regression that would silently leak handles: sk
 [^portaled-evidence]: Verified by reading both construction sites: [`Dialog.ts:641`](packages/lib/src/typescript/lib/overlay/Dialog.ts#L641) assigns `this._backdrop = new DialogBackdrop()` with no `addComponent` call anywhere near it; [`AutoCompleteField.ts:124`](packages/lib/src/typescript/lib/component/input/AutoCompleteField.ts#L124) assigns `this._dropdown = new AutoCompleteDropdown(...)`, again never passed to `addComponent`. Both are `Position.FIXED` components mounted via [`LayerManager.mount()`](packages/lib/src/typescript/lib/core/LayerManager.ts#L245), which physically reparents the element to `DOM.source.getDocumentElement()` — a real DOM move, not just a CSS positioning trick — so their elements are genuinely outside the DOM subtree of whatever component owns them.
 
 [^rowpool-evidence]: [`VirtualRowView.destructor()`](packages/lib/src/typescript/lib/component/shared/VirtualRowView.ts#L125) disposes `_rowPool` in a manual loop because pooled rows are raw-appended to the scroller's rows container and never registered via `addComponent`, so the base recursion cannot reach them — its own doc comment says so. In isolation (calling `body.dispose()` directly) this loop would still perform one real removal per pooled row, since nothing has removed `Body`'s own element yet at that point. But [`Table.ts:243` and `:248`](packages/lib/src/typescript/lib/component/table/Table.ts#L243) register both `_header` and `_body` via `addComponent`, so `table.dispose()` reaches `Body` through the normal `_components` recursion — by which point `Table`'s own element (if connected) has already been removed as a single native call, taking `Body`'s element, its rows container, and every pooled row with it. Each pooled row's own `destructor()` (via `Row`, which has no `destructor()` override and so runs the base class's own `isConnected` check directly) then finds itself already disconnected and skips.
+
+---
+
+## Implementation Notes
+
+Implemented as designed, then audited (`audit` skill, two rounds). The plan's
+Architecture Decision "Gate the native removal on `DOM.source.isConnected()`"
+was **not** shipped — round 1 found, and round 2 independently reproduced, a
+confirmed correctness regression it caused; round 2 also found the fix that
+resolves it while keeping the rest of the plan intact. Both rounds' findings
+and the final resolution are recorded here.
+
+**Round 1 finding, fixed and folded into the code commit:** moving
+`clearContentFrame()` up alongside `clearClipFrame()` and the own-element
+removal (as the plan's "New order" block specified) made its
+child-reparenting loop — `for (const component of this._components) { ...
+DOM.sink.appendChild(element, node); }` — do real, wasted work, since
+`_components` was still fully populated at that point instead of already
+cleared. Fix: `clearContentFrame()` alone runs right after the `for (const
+child of this._components)` recursion and `this._components = [];`
+(`Component.ts:821`) — earlier than its original position (after the
+layout-manager detach and theme cleanup, immediately before the own-element
+removal), but still after the point where the loop is a no-op exactly as it
+always was. `clearClipFrame()` (no such loop) and the own-element removal
+move up further still, ahead of the child recursion, as the plan specified.
+
+**Round 1 finding, root cause of the deviation below:** the `isConnected`
+gate assumes a disconnected element was disconnected *by this exact
+`dispose()` call* (an ancestor within the same synchronous chain already
+removed itself, cascading this element out natively). That assumption fails
+whenever an element is disconnected for an unrelated, earlier reason while
+its owning component stays alive and is reused: `Menu.showAnchored()`
+(`overlay/Menu.ts:284`) calls `disposeAllComponents()` on the menu's old
+`MenuItem`s while the panel itself sits detached-but-cached from an earlier
+`fadeOutAndDetach()` (`overlay/Menu.ts:655`, via `AnimatedDropdown.ts`'s
+`fadeHideAndDetach`) — the same shape recurs in `Menu.rebuildPersistentItems()`
+(`overlay/Menu.ts:911`) and `AbstractCalendarDropdown`'s day-grid rebuild
+(`component/input/AbstractCalendarDropdown.ts:702,971` via
+`PickerColumn.clearCells()`). Each disposed child's `isConnected` read
+`false` (correctly — the whole panel is off-document) so `destructor()`
+skipped its native removal; the follow-up `unwireChild()` → `removeElement()`
+(`Component.ts:5005`) couldn't recover either, because `destructor()` already
+cleared `_element`, and `getElement()`'s only fallback,
+`DOM.source.getElementById()` (native `document.getElementById` in
+production), cannot find a disconnected node. Round 2 independently
+reproduced this against a production-faithful `getElementById` model and
+confirmed it fails on this branch and passes on `master`.
+
+**Deviation from the plan, forced by the finding above:** the `isConnected`
+condition is dropped entirely — `destructor()` calls
+`DOM.sink.removeElement(element)` unconditionally whenever `element` exists,
+exactly as it always did, just now positioned before the child recursion
+instead of after. Round 1 explored a private-flag alternative to the raw
+`isConnected` read; every variant either fell back to the same bare
+`isConnected` read for the unflagged default case (reproducing the bug) or,
+to avoid that fallback, had to contradict the plan's own `## Expected
+Behaviour` row for a never-connected subtree. Round 2 identified the fix
+actually shipped: **keep the reorder, drop the gate.** Without the gate, the
+plan's literal "skip a redundant call" mechanism is gone, but its underlying
+performance goal survives: a still-connected ancestor's removal — now first
+— is the one call in the subtree that costs a live style/layout invalidation
+and natively cascades the whole subtree out of the document; every
+descendant's own subsequent `removeElement()` call still runs, but against
+an already-detached node, which is a cheap pointer unlink, not a
+rendering-affecting operation. I confirmed the fix resolves the regression by
+temporarily restoring the `isConnected` condition and re-running the new
+test suite: the ordering test still passes, but both the whole-subtree count
+test and the Menu regression-guard test fail exactly as round 1/2 predicted;
+restoring the fix makes all four pass again.
+
+**Consequence for the plan's `## Expected Behaviour` table:** its four rows
+(call counts of 1/0/2, gated on hand-seeded `isConnected`) no longer describe
+this branch's shipped behaviour, since the gate they depend on was removed.
+`destructor-subtree-detach-skip.test.ts` was rewritten to pin the contract
+actually shipped instead: (1) own-element removal happens before either
+descendant's, asserted on `DOM.sink.removeElement` call order via a spy
+rather than the harness's `writes` log (which doesn't carry the target
+handle for this op); (2) every component's own removal still runs
+unconditionally in a whole-subtree dispose (count equals handle count, not a
+skip count); (3) the Menu regression guard — a component disposed while its
+own container survives (not itself disposed) still has its element detached
+from that container — asserted on `DOM.source.getParentNode()`, which
+`RecordingDOMSink`/`ModelledDOMSource` track faithfully via
+`setParent`/`appendChild`, unlike the hand-seeded `isConnected` the original
+tests relied on; (4) handle-release bookkeeping still runs per component,
+unchanged from round 1.
+
+**Also folded in from round 2:** the layout-manager-detach comment
+(`Component.ts:823-829`) read as self-contradictory — "this is defensive,
+not proven necessary… so this order was originally chosen to detach before
+removal" appeared directly under "detach the layout manager *after* the
+element is removed," with "this order" ambiguous between the two. Reworded
+to state plainly that detaching first was the *original* method's choice,
+not the current one. The changelog entry (`docs/reference/changelog/next.md`)
+was rewritten to match the shipped (reorder-without-skip) behaviour instead
+of the originally-planned skip.
+
+**Round 3 (final):** an independent reviewer reproduced the round-1/2
+regression against a temporarily-restored `isConnected` gate (3 of the new
+test file's 4 cases fail with it back, none with the shipped fix), confirming
+the fix is load-bearing and the shipped `destructor()` is otherwise
+semantically identical to `master` for element removal — only reordered.
+Verdict: no code-correctness defect remains. It found four record-accuracy
+issues, all fixed here without further code changes: (a) two of the citations
+above (`AbstractCalendarDropdown.ts` and `Component.ts`) had drifted, now
+corrected; (b) the "original position" claim above for `clearContentFrame()`
+was imprecise, now corrected; (c) the changelog entry's "every other piece of
+teardown is unaffected" omitted the layout-manager-detach reorder — the
+plan's own "one behavior inversion" — now called out explicitly; (d) the
+three commits' messages, written before round-2's pivot, still described the
+original skip-based mechanism after `--fixup` folding changed their content
+without touching their messages — reworded to describe what actually ships.
+An advisory (not blocking) from the same round: the Menu regression-guard
+test calls `child.dispose()` directly rather than routing through
+`disposeAllComponents()`, because the offline harness's non-evicting
+`getElementById` would make the guard pass vacuously through that path even
+with the gate restored — the test comment now says so explicitly.
+
+**Net effect:** the plan's real goal — cheaper disposal of a large, connected
+subtree like a `Table` — is delivered, and the `Menu`/`AbstractCalendarDropdown`
+regression the `isConnected` gate would have shipped is fully resolved, not
+merely documented. The one thing not delivered is the plan's literal
+mechanism (a per-descendant skip) and its associated call-count acceptance
+criteria, which were superseded for correctness reasons recorded above.
