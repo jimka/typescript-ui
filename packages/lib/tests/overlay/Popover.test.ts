@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Popover, PopoverPlacement } from '~/overlay/Popover';
 import { LayerManager } from '~/core/LayerManager';
+import { Component } from '~/core/Component';
 import { DOM, type Rect } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -203,5 +204,81 @@ describe('Popover lifecycle / getters', () => {
 
         popover.setDismissOn('click-outside');
         expect(popover.getDismissMode()).toBe('click-outside');
+    });
+});
+
+describe('Popover re-measures while open', () => {
+    afterEach(() => DOM.reset());
+
+    /** Mounts a bare anchor handle at a fixed rect directly under the document
+     *  root — mirrors how `LayerManager.mount` itself portals a shown surface,
+     *  without needing a full component tree just to give the popover
+     *  something non-zero to anchor against. */
+    function mountAnchor(): ReturnType<typeof DOM.sink.createElement> {
+        const anchor = DOM.sink.createElement('div');
+
+        DOM.sink.apply(anchor, { style: { left: '100px', top: '100px', width: '40px', height: '20px' } });
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), anchor);
+
+        return anchor;
+    }
+
+    it('setBody while open grows the popover to the new body\'s preferred size', () => {
+        installTestDOM(CONFIG);
+
+        const popover = new Popover({ placement: 'bottom' });
+
+        // Bracket-access the private attach seam (mirrors this file's existing
+        // resolvePlacement idiom above) rather than attachToComponent, which
+        // needs a full Component — a bare mounted handle is enough to give
+        // `show()` a non-zero anchor rect to resolve against.
+        (popover as any)._attachToElement(mountAnchor());
+
+        popover.setBody(new Component({ preferredSize: { width: 120, height: 20 } }));
+        popover.show();
+
+        const openedHeight = popover.getHeight();
+
+        // A taller body than the one shown with: without setBody triggering a
+        // reposition, getHeight() would keep reporting the opened height until
+        // an unrelated resize/scroll happened to run _reposition() next.
+        popover.setBody(new Component({ preferredSize: { width: 120, height: 300 } }));
+
+        expect(popover.getHeight()).toBeGreaterThan(openedHeight);
+        expect(popover.getHeight()).toBe(popover.getPreferredSize()!.height);
+    });
+
+    it('setBody before the first show() does not reposition (no anchor rect to resolve against yet)', () => {
+        installTestDOM(CONFIG);
+
+        const popover = new Popover({ placement: 'bottom' });
+
+        (popover as any)._attachToElement(mountAnchor());
+
+        const reposition = vi.spyOn(popover as any, '_reposition');
+
+        popover.setBody(new Component({ preferredSize: { width: 120, height: 20 } }));
+
+        expect(reposition).not.toHaveBeenCalled();
+
+        reposition.mockRestore();
+    });
+
+    it('setTitle while open re-measures the popover for the added title row', () => {
+        installTestDOM(CONFIG);
+
+        const popover = new Popover({ placement: 'bottom' });
+
+        (popover as any)._attachToElement(mountAnchor());
+
+        popover.setBody(new Component({ preferredSize: { width: 120, height: 20 } }));
+        popover.show();
+
+        const openedHeight = popover.getHeight();
+
+        popover.setTitle('A title row');
+
+        expect(popover.getHeight()).toBeGreaterThan(openedHeight);
+        expect(popover.getHeight()).toBe(popover.getPreferredSize()!.height);
     });
 });

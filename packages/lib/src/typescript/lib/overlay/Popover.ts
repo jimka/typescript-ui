@@ -328,6 +328,8 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
             this._titleComponent.setText(text);
         }
 
+        this._reflowIfOpen();
+
         return this;
     }
 
@@ -352,6 +354,8 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         }
 
         this._title = null;
+
+        this._reflowIfOpen();
 
         return this;
     }
@@ -380,6 +384,8 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         const titleOffset   = this._titleComponent ? 1 : 0;
 
         this.insertComponent(next, titleOffset);
+
+        this._reflowIfOpen();
 
         return this;
     }
@@ -635,6 +641,27 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         this._arrowComponent  = null;
 
         super.destructor();
+    }
+
+    /**
+     * Re-measures and repositions the popover after a content mutation
+     * (`setTitle` / `clearTitle` / `setBody`) — but only while the popover is
+     * currently shown. `insertComponent` / `removeComponent` only *schedule*
+     * a layout pass (next animation frame), so without this the bubble keeps
+     * its old preferred size — and stays anchored at the old `x`/`y` derived
+     * from it — until an unrelated `window` resize or ancestor scroll happens
+     * to run `_reposition()` next. Mirrors the same "measure, then position"
+     * pair `show()` runs on first open. A no-op before the first `show()`,
+     * matching every other content setter's tolerance for being called on an
+     * unshown popover.
+     */
+    private _reflowIfOpen(): void {
+        if (!this._isOpen) {
+            return;
+        }
+
+        this.doLayout();
+        this._reposition();
     }
 
     /**
