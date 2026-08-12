@@ -752,8 +752,9 @@ class TableHeader extends Component {
     /**
      * Removes all existing parent-header cells and recreates one
      * {@link ParentHeaderCell} per contiguous run of visible columns
-     * sharing the same group key. Ungrouped columns each produce a
-     * blank spanning cell so the parent row's surface stays continuous.
+     * sharing the same group key. A run of adjacent ungrouped columns
+     * shares one blank spanning cell so the parent row's surface stays
+     * continuous.
      *
      * The visible-column order is read from `_columns` filtered by
      * `_hiddenColumns` and sorted by {@link Field.getOrder} — same
@@ -806,11 +807,10 @@ class TableHeader extends Component {
 
         for (let i = 1; i < visibleCols.length; i++) {
             const nextKey = visibleCols[i].getGroup();
-            // Ungrouped columns (group === null) each get their own blank
-            // span — they never merge with adjacent ungrouped columns.
-            // A run continues only when both sides share the same
-            // non-null group key.
-            const runContinues = runKey !== null && nextKey === runKey;
+            // A run continues when both sides share the same group key —
+            // including two adjacent ungrouped columns, which share `null`
+            // and so merge into one blank spanning cell.
+            const runContinues = nextKey === runKey;
 
             if (!runContinues) {
                 flush(i);

@@ -47,8 +47,7 @@ describe('TableHeader.rebuildParentCells — disposes replaced parent cells', ()
 
         const header = table.getHeader();
         const parentCellsBefore = header.getParentRow().getComponents();
-        // One run for the grouped c0/c1 pair, one blank run for ungrouped c2
-        // (ungrouped columns never merge with adjacent ungrouped columns).
+        // One run for the grouped c0/c1 pair, one blank run for ungrouped c2.
         expect(parentCellsBefore.length).toBe(2);
 
         const oldCell = parentCellsBefore[0];
