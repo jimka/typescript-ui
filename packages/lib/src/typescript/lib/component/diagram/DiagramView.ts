@@ -506,15 +506,18 @@ class DiagramView extends Panel<DiagramViewOptions> {
     }
 
     /**
-     * Swaps the incoming set in for the shown one: removes the shown
-     * components from the content host, promotes the incoming maps, clears
-     * the selection and the node emphasis, then mounts and reveals every
-     * promoted component together — this is the first time an incoming
-     * component is added to the content host at all.
+     * Swaps the incoming set in for the shown one: removes and disposes the
+     * shown components (they are being discarded, not re-parented, so a bare
+     * `removeComponent` would leak their listeners/theme subscriptions/style
+     * rules — see `Component.destructor`), promotes the incoming maps,
+     * clears the selection and the node emphasis, then mounts and reveals
+     * every promoted component together — this is the first time an
+     * incoming component is added to the content host at all.
      */
     private promoteIncomingNodes(): void {
         for (const component of this._nodeComponents.values()) {
             this._contentHost.removeComponent(component);
+            component.dispose();
         }
 
         this._nodeComponents  = this._incomingComponents;

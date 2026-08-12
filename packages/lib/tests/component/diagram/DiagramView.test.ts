@@ -2414,6 +2414,26 @@ describe('DiagramView — disposal', () => {
         // attaches a `.catch`.
         expect(view._incomingComponents.size).toBe(2);
     });
+
+    it('D5: a setData that swaps out a node generation disposes the evicted components, not just detaches them', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+        await flush();
+
+        const nodeA = view._nodeComponents.get('a');
+        const nodeB = view._nodeComponents.get('b');
+        const disposeA = vi.spyOn(nodeA, 'dispose');
+        const disposeB = vi.spyOn(nodeB, 'dispose');
+
+        view.setData({ nodes: [{ id: 'c' }, { id: 'd' }], edges: [] });
+        await flush();
+
+        expect(disposeA).toHaveBeenCalledTimes(1);
+        expect(disposeB).toHaveBeenCalledTimes(1);
+        expect(view._contentHost.getComponents()).not.toContain(nodeA);
+        expect(view._contentHost.getComponents()).not.toContain(nodeB);
+    });
 });
 
 describe('DiagramView — resetView targets the focus node', () => {
