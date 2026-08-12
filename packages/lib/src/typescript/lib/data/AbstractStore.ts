@@ -1555,6 +1555,41 @@ export abstract class AbstractStore {
     }
 
     /**
+     * Replaces (or removes) several keyed filters in one pass, rebuilding the
+     * view and firing its change events exactly once for the whole batch
+     * rather than once per entry. Intended for a UI surface that changes more
+     * than one column's filter in the same user action — e.g. hiding a
+     * table's filter row, which must clear every column's descriptor
+     * together. Calling {@link setFilter} once per key instead would still be
+     * correct, but fires one reload per call whenever `remoteFilter` or
+     * pagination is enabled, turning an N-column clear into N sequential
+     * round-trips.
+     *
+     * @param entries - The `[key, descriptor]` pairs to apply, in order. A
+     *   `null` descriptor removes whatever is stored under that key, exactly
+     *   like a `null` argument to {@link setFilter}.
+     *
+     * @returns A promise that resolves once the local view has been rebuilt.
+     *
+     * @remarks
+     * Reload behaviour mirrors {@link setFilter}'s: when `remoteFilter` is
+     * enabled, or when server-side pagination is enabled (the legacy
+     * trigger), this also resets to page 1 and reloads — once, regardless of
+     * how many entries were passed.
+     */
+    setFilters(entries: Array<[key: string, descriptor: FilterDescriptor | null]>): Promise<void> {
+        for (const [key, descriptor] of entries) {
+            if (descriptor === null) {
+                this._activeFilters.delete(key);
+            } else {
+                this._activeFilters.set(key, descriptor);
+            }
+        }
+
+        return this.applyFilterChange();
+    }
+
+    /**
      * Returns the filter descriptor stored under `key` by {@link setFilter}.
      *
      * @param key - The key passed to {@link setFilter}.

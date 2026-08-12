@@ -179,6 +179,39 @@ describe('Column filter row — opt-in visibility', () => {
         expect(filterCells(table).length).toBe(0);
     });
 
+    it('hiding the row with several active column filters clears them in one batch, not one store call per column', async () => {
+        vi.useFakeTimers();
+
+        const { table, store } = await makeTable({ columns: [{ field: 'name', filterable: true }, { field: 'age', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const nameFilterCell = filterCells(table).find(c => c.getFieldName() === 'name')!;
+        const ageFilterCell  = filterCells(table).find(c => c.getFieldName() === 'age')!;
+
+        typeInto(nameFilterCell, 'ali');
+        vi.advanceTimersByTime(200);
+        typeInto(ageFilterCell, '30');
+        vi.advanceTimersByTime(200);
+
+        expect(store.getFilter('name')).not.toBeNull();
+        expect(store.getFilter('age')).not.toBeNull();
+
+        const setFilters = vi.spyOn(store, 'setFilters');
+        const setFilter  = vi.spyOn(store, 'setFilter');
+
+        table.setFilterRowVisible(false);
+
+        expect(store.getFilter('name')).toBeNull();
+        expect(store.getFilter('age')).toBeNull();
+        // One batched call for both columns, not one `setFilter` call per column.
+        expect(setFilters).toHaveBeenCalledOnce();
+        expect(setFilter).not.toHaveBeenCalled();
+
+        setFilters.mockRestore();
+        setFilter.mockRestore();
+        vi.useRealTimers();
+    });
+
     it('22. toggling on with no filterable column anywhere leaves the row empty', async () => {
         const { table } = await makeTable({ columns: [], filterable: false });
 

@@ -117,6 +117,46 @@ describe('AbstractStore keyed filters (setFilter / getFilter)', () => {
         expect(store.getRecords().map(r => r.get('id'))).toEqual([1]);
     });
 
+    it('setFilters() applies a whole batch and runs applyFilterChange exactly once', async () => {
+        const store = new MemoryStore(MODEL, []);
+        store.loadData([{ id: 1, name: 'Bob', age: 40 }, { id: 2, name: 'Amy', age: 20 }]);
+
+        await store.setFilter('age', { type: 'gt', field: 'age', value: 10 });
+        await store.setFilter('name', { type: 'contains', field: 'name', value: 'a' });
+
+        const events: string[] = [];
+        store.on('filterchange', () => events.push('filterchange'));
+        store.on('datachange',   () => events.push('datachange'));
+
+        await store.setFilters([
+            ['age',  null],
+            ['name', { type: 'contains', field: 'name', value: 'b' }],
+        ]);
+
+        expect(store.getFilter('age')).toBeNull();
+        expect(store.getFilter('name')).toEqual({ type: 'contains', field: 'name', value: 'b' });
+        // One filterchange/datachange pair for the whole batch, not one per entry.
+        expect(events).toEqual(['filterchange', 'datachange']);
+    });
+
+    it('setFilters() with remoteFilter/pagination triggers exactly one reload for a multi-key clear', async () => {
+        const proxy = new RecordingProxy();
+        const store = new Store({ model: MODEL, proxy, remoteFilter: true });
+
+        await store.setFilter('age',  { type: 'gt', field: 'age', value: 20 });
+        await store.setFilter('name', { type: 'contains', field: 'name', value: 'a' });
+
+        const callsBefore = proxy.calls.length;
+
+        await store.setFilters([['age', null], ['name', null]]);
+
+        // Exactly one read() for the whole batch clear, not one per key.
+        expect(proxy.calls.length).toBe(callsBefore + 1);
+        // buildReadParams omits `filters` entirely once no filter is active.
+        expect(proxy.calls.at(-1)?.filters).toBeUndefined();
+        expect(store.getPage()).toBe(1);
+    });
+
     describe('above the worker threshold', () => {
         afterEach(() => vi.restoreAllMocks());
 
