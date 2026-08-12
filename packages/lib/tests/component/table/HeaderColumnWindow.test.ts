@@ -461,8 +461,10 @@ describe('Header column window — parent row', () => {
             filterRowHeight: 0,
         });
 
+        // spanFrom 2, spanTo 3 — the second built cell (c0/c1 share one
+        // merged blank cell built first).
         const spanned = header(table).getParentRow().getComponents()
-            .find((_, i) => i === 2)!; // spanFrom 2, spanTo 3 — the third built cell
+            .find((_, i) => i === 1)!;
 
         expect(spanned.getX()).toBe(160);
         expect(spanned.getWidth()).toBe(260);
