@@ -73,6 +73,9 @@ export const BaseTheme: DeepPartial<Theme> = {
         sortBadge: {
             fontSize: '-4px',           // base − 4 → 10px at the 14px base
         },
+        filterClauseBadge: {
+            fontSize: '-4px',           // base − 4 → 10px at the 14px base
+        },
     },
     menuBar: {
         panel: { minWidth: '160px' },

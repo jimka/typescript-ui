@@ -154,6 +154,10 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
             background: 'rgba(255, 255, 255, 0.2)',
             color     : 'inherit',
         },
+        filterClauseBadge: {
+            background: 'rgba(255, 255, 255, 0.2)',
+            color     : 'inherit',
+        },
     },
     contextMenu: {
         background    : 'rgb(45, 45, 45)',

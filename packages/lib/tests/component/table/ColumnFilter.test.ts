@@ -6,8 +6,9 @@ import {
     columnFilterOperators,
     columnFilterTakesOperand,
     buildColumnFilter,
+    columnFilterStatesEqual,
 } from '~/component/table/ColumnFilter';
-import type { ColumnFilterTarget } from '~/component/table/ColumnFilter';
+import type { ColumnFilterTarget, ColumnFilterState } from '~/component/table/ColumnFilter';
 import { CellTextResolver } from '~/component/table/cell/CellText';
 import { matchesFilter } from '~/data/FilterDescriptor';
 import type { FilterDescriptor } from '~/data/FilterDescriptor';
@@ -31,6 +32,11 @@ afterEach(() => {
     display.dispose();
     DOM.reset();
 });
+
+/** Builds a one-clause `ColumnFilterState`, matching the pre-multi-clause call shape. */
+function oneClause(operator: ColumnFilterState['clauses'][number]['operator'], text: string): ColumnFilterState {
+    return { clauses: [{ operator, text }] };
+}
 
 describe('columnFilterOperators', () => {
     it('defaults string/auto/glyph columns to contains, with no ordering operator', () => {
@@ -68,60 +74,151 @@ describe('columnFilterTakesOperand', () => {
 
 describe('buildColumnFilter', () => {
     it('string contains with text builds a contains descriptor', () => {
-        expect(buildColumnFilter('name', { type: 'string' }, { operator: 'contains', text: 'ali' }, display))
+        expect(buildColumnFilter('name', { type: 'string' }, oneClause('contains', 'ali'), display))
             .toEqual({ type: 'contains', field: 'name', value: 'ali' });
     });
 
     it('string endsWith with text builds an endsWith descriptor', () => {
-        expect(buildColumnFilter('name', { type: 'string' }, { operator: 'endsWith', text: 'son' }, display))
+        expect(buildColumnFilter('name', { type: 'string' }, oneClause('endsWith', 'son'), display))
             .toEqual({ type: 'endsWith', field: 'name', value: 'son' });
     });
 
     it('string contains with blank text builds nothing', () => {
-        expect(buildColumnFilter('name', { type: 'string' }, { operator: 'contains', text: '' }, display)).toBeNull();
+        expect(buildColumnFilter('name', { type: 'string' }, oneClause('contains', ''), display)).toBeNull();
     });
 
     it('isEmpty ignores the text and builds an "in" descriptor over null/undefined/empty-string', () => {
-        expect(buildColumnFilter('name', { type: 'string' }, { operator: 'isEmpty', text: '' }, display))
+        expect(buildColumnFilter('name', { type: 'string' }, oneClause('isEmpty', ''), display))
             .toEqual({ type: 'in', field: 'name', values: [null, undefined, ''] });
         // Same descriptor whatever the (ignored) text holds.
-        expect(buildColumnFilter('name', { type: 'string' }, { operator: 'isEmpty', text: 'anything' }, display))
+        expect(buildColumnFilter('name', { type: 'string' }, oneClause('isEmpty', 'anything'), display))
             .toEqual({ type: 'in', field: 'name', values: [null, undefined, ''] });
     });
 
     it('isNotEmpty ignores the text and wraps the isEmpty descriptor in "not"', () => {
-        expect(buildColumnFilter('name', { type: 'string' }, { operator: 'isNotEmpty', text: '' }, display)).toEqual({
+        expect(buildColumnFilter('name', { type: 'string' }, oneClause('isNotEmpty', ''), display)).toEqual({
             type: 'not',
             filter: { type: 'in', field: 'name', values: [null, undefined, ''] },
         });
     });
 
     it('number gt with a parseable number builds a gt descriptor', () => {
-        expect(buildColumnFilter('age', { type: 'number' }, { operator: 'gt', text: '30' }, display))
+        expect(buildColumnFilter('age', { type: 'number' }, oneClause('gt', '30'), display))
             .toEqual({ type: 'gt', field: 'age', value: 30 });
     });
 
     it('number gt with unparseable text builds nothing', () => {
-        expect(buildColumnFilter('age', { type: 'number' }, { operator: 'gt', text: 'abc' }, display)).toBeNull();
+        expect(buildColumnFilter('age', { type: 'number' }, oneClause('gt', 'abc'), display)).toBeNull();
     });
 
     it('boolean eq with a recognised token builds an eq descriptor with the coerced boolean', () => {
-        expect(buildColumnFilter('active', { type: 'boolean' }, { operator: 'eq', text: 'yes' }, display))
+        expect(buildColumnFilter('active', { type: 'boolean' }, oneClause('eq', 'yes'), display))
             .toEqual({ type: 'eq', field: 'active', value: true });
     });
 
     it('boolean eq with an unrecognised token builds nothing', () => {
-        expect(buildColumnFilter('active', { type: 'boolean' }, { operator: 'eq', text: 'maybe' }, display)).toBeNull();
+        expect(buildColumnFilter('active', { type: 'boolean' }, oneClause('eq', 'maybe'), display)).toBeNull();
     });
 
     it('date gte with a parseable date builds a gte descriptor with a Date value', () => {
-        const result = buildColumnFilter('due', { type: 'date' }, { operator: 'gte', text: '2024-01-15' }, display);
+        const result = buildColumnFilter('due', { type: 'date' }, oneClause('gte', '2024-01-15'), display);
 
         expect(result).toEqual({ type: 'gte', field: 'due', value: new Date('2024-01-15') });
     });
 
     it('date gte with an unparseable date builds nothing', () => {
-        expect(buildColumnFilter('due', { type: 'date' }, { operator: 'gte', text: 'not-a-date' }, display)).toBeNull();
+        expect(buildColumnFilter('due', { type: 'date' }, oneClause('gte', 'not-a-date'), display)).toBeNull();
+    });
+
+    // --- multi-clause composition (## Expected Behaviour, cases 1-7) ---
+    describe('multi-clause composition', () => {
+        it('1. one clause builds the bare leaf descriptor, unchanged', () => {
+            expect(buildColumnFilter('age', { type: 'number' }, oneClause('gte', '18'), display))
+                .toEqual({ type: 'gte', field: 'age', value: 18 });
+        });
+
+        it('2. two clauses build an "and" of both, in clause order', () => {
+            const state: ColumnFilterState = {
+                clauses: [{ operator: 'gte', text: '18' }, { operator: 'lte', text: '65' }],
+            };
+
+            expect(buildColumnFilter('age', { type: 'number' }, state, display)).toEqual({
+                type:    'and',
+                filters: [
+                    { type: 'gte', field: 'age', value: 18 },
+                    { type: 'lte', field: 'age', value: 65 },
+                ],
+            });
+        });
+
+        it('3. three clauses build an "and" of three, in clause order', () => {
+            const state: ColumnFilterState = {
+                clauses: [
+                    { operator: 'gte', text: '18' },
+                    { operator: 'lte', text: '65' },
+                    { operator: 'neq', text: '30' },
+                ],
+            };
+
+            expect(buildColumnFilter('age', { type: 'number' }, state, display)).toEqual({
+                type:    'and',
+                filters: [
+                    { type: 'gte', field: 'age', value: 18 },
+                    { type: 'lte', field: 'age', value: 65 },
+                    { type: 'neq', field: 'age', value: 30 },
+                ],
+            });
+        });
+
+        it('4. a blank first clause is dropped; the sole survivor is unwrapped, not "and"-wrapped', () => {
+            const state: ColumnFilterState = {
+                clauses: [{ operator: 'gte', text: '' }, { operator: 'lte', text: '65' }],
+            };
+
+            expect(buildColumnFilter('age', { type: 'number' }, state, display))
+                .toEqual({ type: 'lte', field: 'age', value: 65 });
+        });
+
+        it('5. every clause blank builds nothing', () => {
+            const state: ColumnFilterState = {
+                clauses: [{ operator: 'gte', text: '' }, { operator: 'lte', text: '' }],
+            };
+
+            expect(buildColumnFilter('age', { type: 'number' }, state, display)).toBeNull();
+        });
+
+        it('6. a combo column with two clauses builds an "and" of each clause\'s own combo resolution', () => {
+            const role: ColumnFilterTarget = {
+                type:   'string',
+                values: [
+                    { value: 'dev', label: 'Developer' },
+                    { value: 'qa',  label: 'QA Engineer' },
+                ],
+            };
+            const state: ColumnFilterState = {
+                clauses: [{ operator: 'contains', text: 'eng' }, { operator: 'neq', text: 'Developer' }],
+            };
+
+            expect(buildColumnFilter('Role', role, state, display)).toEqual({
+                type:    'and',
+                filters: [
+                    { type: 'in',  field: 'Role', values: ['qa'] },
+                    { type: 'not', filter: { type: 'in', field: 'Role', values: ['dev'] } },
+                ],
+            });
+        });
+
+        it('7. a single temporal-equality clause still builds the direct and(gte, lt) bucket, not double-wrapped', () => {
+            const target: ColumnFilterTarget = { type: 'time', showSeconds: true };
+
+            expect(buildColumnFilter('meet', target, oneClause('eq', '09:30:20'), display)).toEqual({
+                type:    'and',
+                filters: [
+                    { type: 'gte', field: 'meet', value: new Date(1970, 0, 1, 9, 30, 20) },
+                    { type: 'lt',  field: 'meet', value: new Date(1970, 0, 1, 9, 30, 21) },
+                ],
+            });
+        });
     });
 
     // --- combo columns (Architecture Decisions worked table) ---
@@ -136,41 +233,41 @@ describe('buildColumnFilter', () => {
         };
 
         it('19a. contains "eng" matches "QA Engineer" -> in [qa]', () => {
-            expect(buildColumnFilter('Role', ROLE, { operator: 'contains', text: 'eng' }, display))
+            expect(buildColumnFilter('Role', ROLE, oneClause('contains', 'eng'), display))
                 .toEqual({ type: 'in', field: 'Role', values: ['qa'] });
         });
 
         it('19b. startsWith "pro" matches "Project Manager" -> in [pm]', () => {
-            expect(buildColumnFilter('Role', ROLE, { operator: 'startsWith', text: 'pro' }, display))
+            expect(buildColumnFilter('Role', ROLE, oneClause('startsWith', 'pro'), display))
                 .toEqual({ type: 'in', field: 'Role', values: ['pm'] });
         });
 
         it('19c. eq "Developer" (exact, case-sensitive) -> in [dev]', () => {
-            expect(buildColumnFilter('Role', ROLE, { operator: 'eq', text: 'Developer' }, display))
+            expect(buildColumnFilter('Role', ROLE, oneClause('eq', 'Developer'), display))
                 .toEqual({ type: 'in', field: 'Role', values: ['dev'] });
         });
 
         it('19d. eq "developer" (wrong case) matches nothing -> in []', () => {
-            expect(buildColumnFilter('Role', ROLE, { operator: 'eq', text: 'developer' }, display))
+            expect(buildColumnFilter('Role', ROLE, oneClause('eq', 'developer'), display))
                 .toEqual({ type: 'in', field: 'Role', values: [] });
         });
 
         it('19e. neq "Developer" -> not(in [dev])', () => {
-            expect(buildColumnFilter('Role', ROLE, { operator: 'neq', text: 'Developer' }, display)).toEqual({
+            expect(buildColumnFilter('Role', ROLE, oneClause('neq', 'Developer'), display)).toEqual({
                 type:   'not',
                 filter: { type: 'in', field: 'Role', values: ['dev'] },
             });
         });
 
         it('19f. contains "zzz" matches nothing -> in []', () => {
-            expect(buildColumnFilter('Role', ROLE, { operator: 'contains', text: 'zzz' }, display))
+            expect(buildColumnFilter('Role', ROLE, oneClause('contains', 'zzz'), display))
                 .toEqual({ type: 'in', field: 'Role', values: [] });
         });
 
         it('20. isEmpty/isNotEmpty on a combo column still test the stored value\'s emptiness, not a label', () => {
-            expect(buildColumnFilter('Role', ROLE, { operator: 'isEmpty', text: '' }, display))
+            expect(buildColumnFilter('Role', ROLE, oneClause('isEmpty', ''), display))
                 .toEqual({ type: 'in', field: 'Role', values: [null, undefined, ''] });
-            expect(buildColumnFilter('Role', ROLE, { operator: 'isNotEmpty', text: '' }, display)).toEqual({
+            expect(buildColumnFilter('Role', ROLE, oneClause('isNotEmpty', ''), display)).toEqual({
                 type:   'not',
                 filter: { type: 'in', field: 'Role', values: [null, undefined, ''] },
             });
@@ -182,7 +279,7 @@ describe('buildColumnFilter', () => {
                 values: [{ value: '1', label: 'One' }, { value: '2', label: 'Two' }],
             };
 
-            expect(buildColumnFilter('rank', NUMERIC_COMBO, { operator: 'gt', text: '1' }, display))
+            expect(buildColumnFilter('rank', NUMERIC_COMBO, oneClause('gt', '1'), display))
                 .toEqual({ type: 'gt', field: 'rank', value: 1 });
         });
     });
@@ -192,7 +289,7 @@ describe('buildColumnFilter', () => {
         it('22a. time (showSeconds: true) eq "09:30:20" -> and(gte 09:30:20, lt 09:30:21)', () => {
             const target: ColumnFilterTarget = { type: 'time', showSeconds: true };
 
-            expect(buildColumnFilter('meet', target, { operator: 'eq', text: '09:30:20' }, display)).toEqual({
+            expect(buildColumnFilter('meet', target, oneClause('eq', '09:30:20'), display)).toEqual({
                 type:    'and',
                 filters: [
                     { type: 'gte', field: 'meet', value: new Date(1970, 0, 1, 9, 30, 20) },
@@ -204,7 +301,7 @@ describe('buildColumnFilter', () => {
         it('22b. time (showSeconds: false) eq "09:30" -> and(gte 09:30:00, lt 09:31:00)', () => {
             const target: ColumnFilterTarget = { type: 'time', showSeconds: false };
 
-            expect(buildColumnFilter('meet', target, { operator: 'eq', text: '09:30' }, display)).toEqual({
+            expect(buildColumnFilter('meet', target, oneClause('eq', '09:30'), display)).toEqual({
                 type:    'and',
                 filters: [
                     { type: 'gte', field: 'meet', value: new Date(1970, 0, 1, 9, 30, 0) },
@@ -223,7 +320,7 @@ describe('buildColumnFilter', () => {
             const expectedLo  = new Date(operand.getFullYear(), operand.getMonth(), operand.getDate());
             const expectedHi  = new Date(expectedLo.getFullYear(), expectedLo.getMonth(), expectedLo.getDate() + 1);
 
-            expect(buildColumnFilter('due', target, { operator: 'eq', text: '2021-05-17' }, display)).toEqual({
+            expect(buildColumnFilter('due', target, oneClause('eq', '2021-05-17'), display)).toEqual({
                 type:    'and',
                 filters: [
                     { type: 'gte', field: 'due', value: expectedLo },
@@ -235,22 +332,22 @@ describe('buildColumnFilter', () => {
         it('22d. time gt "10:00" stays value-typed -> gt (not a range)', () => {
             const target: ColumnFilterTarget = { type: 'time' };
 
-            expect(buildColumnFilter('meet', target, { operator: 'gt', text: '10:00' }, display))
+            expect(buildColumnFilter('meet', target, oneClause('gt', '10:00'), display))
                 .toEqual({ type: 'gt', field: 'meet', value: new Date(1970, 0, 1, 10, 0, 0) });
         });
 
         it('22e. date gte with unparseable text builds nothing, unchanged', () => {
             const target: ColumnFilterTarget = { type: 'date' };
 
-            expect(buildColumnFilter('due', target, { operator: 'gte', text: 'not-a-date' }, display)).toBeNull();
+            expect(buildColumnFilter('due', target, oneClause('gte', 'not-a-date'), display)).toBeNull();
         });
 
         it('23. eq on a time column accepts "09:30 AM", "09:30", and "9:30 am" identically', () => {
             const target: ColumnFilterTarget = { type: 'time' };
 
-            const a = buildColumnFilter('meet', target, { operator: 'eq', text: '09:30 AM' }, display);
-            const b = buildColumnFilter('meet', target, { operator: 'eq', text: '09:30' }, display);
-            const c = buildColumnFilter('meet', target, { operator: 'eq', text: '9:30 am' }, display);
+            const a = buildColumnFilter('meet', target, oneClause('eq', '09:30 AM'), display);
+            const b = buildColumnFilter('meet', target, oneClause('eq', '09:30'), display);
+            const c = buildColumnFilter('meet', target, oneClause('eq', '9:30 am'), display);
 
             expect(a).toEqual(b);
             expect(b).toEqual(c);
@@ -259,12 +356,12 @@ describe('buildColumnFilter', () => {
         it('24. eq on a time column with unparseable text ("half past nine") returns null', () => {
             const target: ColumnFilterTarget = { type: 'time' };
 
-            expect(buildColumnFilter('meet', target, { operator: 'eq', text: 'half past nine' }, display)).toBeNull();
+            expect(buildColumnFilter('meet', target, oneClause('eq', 'half past nine'), display)).toBeNull();
         });
 
         it('25. eq on a date column produces an interval one calendar day wide', () => {
             const target: ColumnFilterTarget = { type: 'date' };
-            const result = buildColumnFilter('due', target, { operator: 'eq', text: '2021-05-17' }, display) as
+            const result = buildColumnFilter('due', target, oneClause('eq', '2021-05-17'), display) as
                 Extract<FilterDescriptor, { type: 'and' }>;
 
             const lo = (result.filters[0] as any).value as Date;
@@ -295,38 +392,61 @@ describe('buildColumnFilter', () => {
         }
 
         it('26a. combo "in" descriptor', () => {
-            const d = buildColumnFilter('Role', ROLE, { operator: 'eq', text: 'Developer' }, display);
+            const d = buildColumnFilter('Role', ROLE, oneClause('eq', 'Developer'), display);
             assertCloneSafe(d, { Role: 'dev' });
         });
 
         it('26b. combo "not"-"in" descriptor', () => {
-            const d = buildColumnFilter('Role', ROLE, { operator: 'neq', text: 'Developer' }, display);
+            const d = buildColumnFilter('Role', ROLE, oneClause('neq', 'Developer'), display);
             assertCloneSafe(d, { Role: 'dev' });
         });
 
         it('26c. temporal "and(gte, lt)" descriptor', () => {
-            const d = buildColumnFilter('meet', { type: 'time' }, { operator: 'eq', text: '09:30' }, display);
+            const d = buildColumnFilter('meet', { type: 'time' }, oneClause('eq', '09:30'), display);
             assertCloneSafe(d, { meet: new Date(1970, 0, 1, 9, 30, 30) });
         });
 
         it('26d. temporal "not"-"and" descriptor', () => {
-            const d = buildColumnFilter('meet', { type: 'time' }, { operator: 'neq', text: '09:30' }, display);
+            const d = buildColumnFilter('meet', { type: 'time' }, oneClause('neq', '09:30'), display);
             assertCloneSafe(d, { meet: new Date(1970, 0, 1, 9, 30, 30) });
         });
 
         it('26e. "contains" descriptor', () => {
-            const d = buildColumnFilter('name', { type: 'string' }, { operator: 'contains', text: 'ali' }, display);
+            const d = buildColumnFilter('name', { type: 'string' }, oneClause('contains', 'ali'), display);
             assertCloneSafe(d, { name: 'Alice' });
         });
 
         it('26f. "eq" descriptor', () => {
-            const d = buildColumnFilter('active', { type: 'boolean' }, { operator: 'eq', text: 'yes' }, display);
+            const d = buildColumnFilter('active', { type: 'boolean' }, oneClause('eq', 'yes'), display);
             assertCloneSafe(d, { active: true });
         });
 
         it('26g. "gt" descriptor', () => {
-            const d = buildColumnFilter('age', { type: 'number' }, { operator: 'gt', text: '30' }, display);
+            const d = buildColumnFilter('age', { type: 'number' }, oneClause('gt', '30'), display);
             assertCloneSafe(d, { age: 40 });
         });
+    });
+});
+
+describe('columnFilterStatesEqual', () => {
+    it('8a. equal single-clause states are equal', () => {
+        expect(columnFilterStatesEqual(oneClause('contains', 'a'), oneClause('contains', 'a'))).toBe(true);
+    });
+
+    it('8b. a clause-count mismatch is not equal', () => {
+        const one: ColumnFilterState  = { clauses: [{ operator: 'contains', text: 'a' }] };
+        const two: ColumnFilterState  = {
+            clauses: [{ operator: 'contains', text: 'a' }, { operator: 'eq', text: 'b' }],
+        };
+
+        expect(columnFilterStatesEqual(one, two)).toBe(false);
+    });
+
+    it('8c. an operator mismatch at any index is not equal', () => {
+        expect(columnFilterStatesEqual(oneClause('contains', 'a'), oneClause('startsWith', 'a'))).toBe(false);
+    });
+
+    it('8d. a text mismatch at any index is not equal', () => {
+        expect(columnFilterStatesEqual(oneClause('contains', 'a'), oneClause('contains', 'b'))).toBe(false);
     });
 });

@@ -155,6 +155,10 @@ export const ClassicTheme: Theme = defineTheme(BaseTheme, {
             background: 'rgba(0, 0, 0, 0.15)',
             color     : 'inherit',
         },
+        filterClauseBadge: {
+            background: 'rgba(0, 0, 0, 0.15)',
+            color     : 'inherit',
+        },
     },
     contextMenu: {
         background    : 'rgb(255, 255, 255)',

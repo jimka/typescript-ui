@@ -373,6 +373,11 @@ export interface Theme {
             color     : string;
             fontSize? : FontSizeToken;
         };
+        filterClauseBadge: {
+            background: string;
+            color     : string;
+            fontSize? : FontSizeToken;
+        };
     };
 
     contextMenu: {
@@ -1072,6 +1077,9 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-sort-badge-bg'                    : theme.table.sortBadge.background,
         '--ts-ui-sort-badge-color'                 : theme.table.sortBadge.color,
         '--ts-ui-sort-badge-font-size'             : resolveFontSizeToken(theme.table.sortBadge.fontSize),
+        '--ts-ui-filter-clause-badge-bg'           : theme.table.filterClauseBadge.background,
+        '--ts-ui-filter-clause-badge-color'        : theme.table.filterClauseBadge.color,
+        '--ts-ui-filter-clause-badge-font-size'    : resolveFontSizeToken(theme.table.filterClauseBadge.fontSize),
         '--ts-ui-color-scheme'                     : theme.colorScheme,
         '--ts-ui-context-menu-bg'                  : theme.contextMenu.background,
         '--ts-ui-context-menu-border'              : theme.contextMenu.border,
