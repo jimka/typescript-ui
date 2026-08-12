@@ -205,6 +205,8 @@ class Body extends VirtualRowView<Row> {
     private _columnConfigs   : Map<string, ColumnConfig> = new Map();
     private _rowReadOnly     : ((record: ModelRecord) => boolean) | null = null;
     private _rowVisible      : ((record: ModelRecord) => boolean) | null = null;
+    private _rowSeparator    : ((record: ModelRecord) => { label: string, color: string | null } | null) | null = null;
+    private _rowIndented     : ((record: ModelRecord) => boolean) | null = null;
     private _cellGeom        : CellGeometryCache         = new CellGeometryCache();
     private _lastBodyWidth   : number                    = 0;
     private _lastColumnWidths: number[]                  = [];
@@ -587,6 +589,47 @@ class Body extends VirtualRowView<Row> {
      */
     setRowReadOnly(predicate: ((record: ModelRecord) => boolean) | null): this {
         this._rowReadOnly = predicate;
+
+        return this;
+    }
+
+    /**
+     * Sets the predicate that marks a record as a group-separator row for
+     * rotated mode, forwarded from `Table`'s internal view-binding step.
+     * Cleared by passing `null`. That step is already followed by
+     * `setStore` / `doLayout`, so — unlike {@link setRowVisible} — this
+     * setter forces no render of its own.
+     *
+     * @param predicate - Returns the separator's label/color for a
+     *   separator record, or `null` for an ordinary field/value record.
+     *   Called on every rebind; must be O(1) and pure.
+     * @returns This body, for method chaining.
+     *
+     * @remarks Internal wiring called by {@link Table} — not for
+     * consumer use.
+     */
+    setRowSeparator(predicate: ((record: ModelRecord) => { label: string, color: string | null } | null) | null): this {
+        this._rowSeparator = predicate;
+
+        return this;
+    }
+
+    /**
+     * Sets the predicate that marks a record as a rotated-mode group
+     * member, forwarded from `Table`'s internal view-binding step. Cleared
+     * by passing `null`. Mirrors {@link setRowSeparator}'s shape and, like
+     * it, forces no render of its own.
+     *
+     * @param predicate - Returns `true` when the record's `field`-name cell
+     *   should render indented (see {@link Row.setFieldIndent}). Called on
+     *   every rebind; must be O(1) and pure.
+     * @returns This body, for method chaining.
+     *
+     * @remarks Internal wiring called by {@link Table} — not for
+     * consumer use.
+     */
+    setRowIndented(predicate: ((record: ModelRecord) => boolean) | null): this {
+        this._rowIndented = predicate;
 
         return this;
     }
@@ -1060,7 +1103,25 @@ class Body extends VirtualRowView<Row> {
         const rowHeight = this._rowHeight;
 
         for (let i = 0; i < windowSize; i++) {
-            const row = this._rowPool[i];
+            const row       = this._rowPool[i];
+            const dataIndex = firstRow + i;
+            const separator = this._rowSeparator?.(records[dataIndex]) ?? null;
+
+            if (separator) {
+                const wasRebound = this._boundIndices[i] !== dataIndex;
+
+                if (wasRebound || !row.isSeparator()) {
+                    row.renderSeparator(separator.label, separator.color);
+                    this._boundIndices[i] = dataIndex;
+                    this.computeRowAria(row, dataIndex);
+                }
+
+                this.positionRow(i, dataIndex * rowHeight, rowWidth);
+                this._cellGeom.apply(row.getComponents()[0], 0, rowWidth, rowHeight);
+
+                continue;
+            }
+
             const windowChanged = row.setColumnWindow(columns.firstCol, columns.lastCol);
 
             if (windowChanged) {
@@ -1072,7 +1133,6 @@ class Body extends VirtualRowView<Row> {
                 this.wireRowCells(row);
             }
 
-            const dataIndex = firstRow + i;
             const wasRebound = this._boundIndices[i] !== dataIndex;
 
             if (wasRebound) {
@@ -1086,6 +1146,7 @@ class Body extends VirtualRowView<Row> {
 
             if (wasRebound || windowChanged) {
                 this.applyReadOnlyState(row, records[dataIndex]);
+                row.setFieldIndent(this._rowIndented?.(records[dataIndex]) ?? false);
             }
 
             this.afterRowBound(row, dataIndex, wasRebound);
@@ -1152,6 +1213,10 @@ class Body extends VirtualRowView<Row> {
      * @param e - The mouse event.
      */
     private onRowClick(row: Row, e: MouseEvent): void {
+        if (row.isSeparator()) {
+            return;
+        }
+
         const record = row.getData() ?? null;
         if (!record) return;
 
@@ -1612,6 +1677,45 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
+     * Steps `index` in `direction` past every separator record (per
+     * {@link setRowSeparator}'s predicate), returning the nearest real-row
+     * index. Only reachable when a separator predicate is active.
+     *
+     * A separator is always immediately followed by at least one real row
+     * (a group run is never empty) and the projection's last row can never
+     * be a separator, so a forward (`+1`) search always terminates without
+     * needing the fallback below. Only a backward (`-1`) search can run off
+     * the array — when a group sits at the very first row — in which case
+     * the fallback retries forward from the original index so the anchor
+     * still lands on a real row instead of the clamp re-selecting the
+     * separator it just walked off.
+     *
+     * @param records - The current visible-records list.
+     * @param index - The candidate index to start from.
+     * @param direction - The direction the caller's key already moves:
+     *   `1` for ArrowDown/PageDown/Home, `-1` for ArrowUp/PageUp/End.
+     *
+     * @returns The nearest index in `records` that is not a separator.
+     */
+    private skipSeparators(records: ModelRecord[], index: number, direction: 1 | -1): number {
+        let i = index;
+
+        while (i >= 0 && i < records.length && this._rowSeparator?.(records[i])) {
+            i += direction;
+        }
+
+        if (i < 0 || i >= records.length) {
+            i = index;
+
+            while (i < records.length && this._rowSeparator?.(records[i])) {
+                i++;
+            }
+        }
+
+        return Math.max(0, Math.min(i, records.length - 1));
+    }
+
+    /**
      * Handles keyboard navigation: ArrowUp/Down/Home/End move row selection; ArrowLeft/Right
      * move column focus; PageUp/Down move by a viewport-height page; Enter starts cell edit.
      *
@@ -1703,19 +1807,30 @@ class Body extends VirtualRowView<Row> {
         const currentIdx = this._anchorRecord ? records.indexOf(this._anchorRecord) : -1;
         const pageSize = this.computePageSize();
         let newIdx: number;
+        let direction: 1 | -1;
 
         if (e.key === 'ArrowDown') {
             newIdx = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, records.length - 1);
+            direction = 1;
         } else if (e.key === 'ArrowUp') {
             newIdx = currentIdx < 0 ? 0 : Math.max(currentIdx - 1, 0);
+            direction = -1;
         } else if (e.key === 'PageDown') {
             newIdx = currentIdx < 0 ? 0 : Math.min(currentIdx + pageSize, records.length - 1);
+            direction = 1;
         } else if (e.key === 'PageUp') {
             newIdx = currentIdx < 0 ? 0 : Math.max(currentIdx - pageSize, 0);
+            direction = -1;
         } else if (e.key === 'Home') {
             newIdx = 0;
+            direction = 1;
         } else {
             newIdx = records.length - 1;
+            direction = -1;
+        }
+
+        if (this._rowSeparator) {
+            newIdx = this.skipSeparators(records, newIdx, direction);
         }
 
         const newAnchor = records[newIdx];
