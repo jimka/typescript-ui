@@ -10,6 +10,7 @@ import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
 import { GroupSeparatorCell } from '~/component/table/cell/GroupSeparator';
+import { DEFAULT_INDENT_PX } from '~/component/table/cell/renderer/TreeCell';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ModelRecord } from '~/data/ModelRecord';
@@ -78,6 +79,17 @@ function describeRows(table: Table, rows: ModelRecord[]): string[] {
     const seps = separatorMap(table);
 
     return rows.map(r => seps.has(r) ? `sep:${r.get('field')}` : String(r.get('field')));
+}
+
+/** Finds the pooled row currently bound to the given source field's projection record. */
+function rowFor(table: Table, fieldName: string): any {
+    return (table as any)._body.getRowPool()
+        .find((r: any) => !r.isSeparator() && r.getData()?.get('field') === fieldName);
+}
+
+/** Returns a row's `field`-name cell — the one `Row.setFieldIndent` indents. */
+function fieldCellOf(row: any): any {
+    return row.getComponents()[row.getFieldNames().indexOf('field')];
 }
 
 describe('Table rotated mode — group separators', () => {
@@ -301,5 +313,68 @@ describe('Table rotated mode — group separators', () => {
 
         table.setRowVisible(() => false);
         expect(rotatedRows(table).length).toBe(5);
+    });
+
+    it("indents a group member's field cell, leaves an ungrouped row's flush-left", async () => {
+        const { store, records } = await makeStore();
+        const table = makeTable(store);
+
+        table.selectRecord(records[0]);
+        table.setDisplayMode('rotated');
+        table.setWidth(600);
+        table.setHeight(400);
+        table.doLayout();
+
+        expect(fieldCellOf(rowFor(table, 'street')).getInsets().getLeft()).toBe(DEFAULT_INDENT_PX);
+        expect(fieldCellOf(rowFor(table, 'cost')).getInsets().getLeft()).toBe(0);
+    });
+
+    it('suppresses the indent while sorted, restores it once the sort is cleared', async () => {
+        const { store, records } = await makeStore();
+        const table = makeTable(store);
+
+        table.selectRecord(records[0]);
+        table.setDisplayMode('rotated');
+        table.setWidth(600);
+        table.setHeight(400);
+        table.doLayout();
+
+        await (table as any)._rotatedStore.sort([{ field: 'value', dir: 'asc' }]);
+        table.doLayout();
+
+        expect(fieldCellOf(rowFor(table, 'street')).getInsets().getLeft()).toBe(0);
+
+        await (table as any)._rotatedStore.clearSort();
+        table.doLayout();
+
+        expect(fieldCellOf(rowFor(table, 'street')).getInsets().getLeft()).toBe(DEFAULT_INDENT_PX);
+    });
+
+    it("reserves indent space in the field column's derived width when a group exists", async () => {
+        // Both models declare the same single field, so the raw measured
+        // text width is identical between the two tables — any width
+        // difference must come from the indent allowance, not content.
+        const model = new Model([{ name: 'HelloWorldHelloWorld', type: 'string', order: 0 }]);
+        const record = { HelloWorldHelloWorld: 'x' };
+
+        const groupedStore = new MemoryStore(model, [record]);
+        await groupedStore.load();
+        const groupedTable = makeTable(groupedStore, { columns: [{ field: 'HelloWorldHelloWorld', group: 'G' }] });
+        groupedTable.selectRecord(groupedStore.getRecords()[0]);
+        groupedTable.setDisplayMode('rotated');
+        groupedTable.setWidth(900);
+        groupedTable.setHeight(400);
+        groupedTable.doLayout();
+
+        const plainStore = new MemoryStore(model, [record]);
+        await plainStore.load();
+        const plainTable = makeTable(plainStore, { columns: [{ field: 'HelloWorldHelloWorld' }] });
+        plainTable.selectRecord(plainStore.getRecords()[0]);
+        plainTable.setDisplayMode('rotated');
+        plainTable.setWidth(900);
+        plainTable.setHeight(400);
+        plainTable.doLayout();
+
+        expect(groupedTable.getColumnWidths()[0]).toBe(plainTable.getColumnWidths()[0] + DEFAULT_INDENT_PX);
     });
 });

@@ -21,6 +21,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { TableExporter, ExportOptions } from "~/component/table/TableExporter.js";
 import { CellTextResolver } from "~/component/table/cell/CellText.js";
+import { DEFAULT_INDENT_PX } from "~/component/table/cell/renderer/TreeCell.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
@@ -190,6 +191,14 @@ class Table extends Component<TableOptions> {
     // Keyed by object identity (not by the record's `field` value) so a
     // real field named the same as a group can never false-match.
     private _rotatedSeparatorRecords: Map<ModelRecord, { label: string, color: string | null }> = new Map();
+    // Identity set of every projection record whose underlying source
+    // column has a non-null `getGroup()` — populated by
+    // `rebuildRotatedStore` alongside `_rotatedSeparatorRecords`,
+    // suppressed the same way while sorted, and consulted by `Body` (via
+    // the `rowIndented` predicate `bindView` forwards) to indent that
+    // row's `field`-name cell, visually nesting it under its group's
+    // separator.
+    private _rotatedIndentedRecords: Set<ModelRecord> = new Set();
     private _sourceRefresh    : (() => void) | null = null;
     private _suppressSelectionForward: boolean = false;
     private _autoWidthsSampled: boolean = false;
@@ -419,10 +428,11 @@ class Table extends Component<TableOptions> {
 
             this.rebuildRotatedStore();
             this.bindView(rotatedStore, this._rotatedColumns, this._rotatedConfigs, new Set(), () => true, null,
-                (record) => this._rotatedSeparatorRecords.get(record) ?? null);
+                (record) => this._rotatedSeparatorRecords.get(record) ?? null,
+                (record) => this._rotatedIndentedRecords.has(record));
             this.emit("selection", this._rotatedRecord ? [this._rotatedRecord] : []);
         } else {
-            this.bindView(this._store, this.getSourceColumns(), this._columnConfigs, this.getEffectiveHiddenSet(), this._spec?.rowReadOnly ?? null, this._rowVisible, null);
+            this.bindView(this._store, this.getSourceColumns(), this._columnConfigs, this.getEffectiveHiddenSet(), this._spec?.rowReadOnly ?? null, this._rowVisible, null, null);
             this._body.selectRecord(this._rotatedRecord);
         }
 
@@ -1146,7 +1156,10 @@ class Table extends Component<TableOptions> {
      * (not by index), so it stays correct after the projection is sorted by
      * clicking a header. Also refreshes `_rotatedSeparatorRecords`, the
      * identity map `Body` consults (via the `rowSeparator` predicate
-     * {@link bindView} forwards) to tell a separator record from a real one.
+     * {@link bindView} forwards) to tell a separator record from a real
+     * one, and `_rotatedIndentedRecords`, the identity set `Body` consults
+     * (via the `rowIndented` predicate) to indent a group member's
+     * `field`-name cell.
      */
     private rebuildRotatedStore(): void {
         const store   = this.ensureRotatedStore();
@@ -1165,6 +1178,7 @@ class Table extends Component<TableOptions> {
 
         const rows: Array<{ field: string, value: unknown }> = [];
         const separatorInfo: Array<{ label: string, color: string | null } | null> = [];
+        const indentInfo: boolean[] = [];
 
         if (record) {
             // Separators would scatter away from the group they label once
@@ -1172,7 +1186,11 @@ class Table extends Component<TableOptions> {
             // group adjacency) — suppressed entirely while a sort is active,
             // and restored by the `'sortchange'` listener `ensureRotatedStore`
             // wires once `sort()` / `clearSort()` rebuild this from scratch.
-            const runs = store.getActiveSorters().length === 0
+            // The member-row indent is suppressed the same way and for the
+            // same reason — nesting rows under a label that no longer sits
+            // next to them would misrepresent the grouping.
+            const unsorted = store.getActiveSorters().length === 0;
+            const runs = unsorted
                 ? this.computeGroupRuns(columns)
                 : new Map<number, { label: string, color: string | null }>();
 
@@ -1182,24 +1200,31 @@ class Table extends Component<TableOptions> {
                 if (run) {
                     rows.push({ field: run.label, value: null });
                     separatorInfo.push(run);
+                    indentInfo.push(false);
                 }
 
                 const field = columns[i].getField();
 
                 rows.push({ field: field.getName(), value: record.get(field.getName()) });
                 separatorInfo.push(null);
+                indentInfo.push(unsorted && columns[i].getGroup() !== null);
             }
         }
 
         store.loadData(rows);
 
         this._rotatedSeparatorRecords = new Map();
+        this._rotatedIndentedRecords  = new Set();
 
         store.getRecords().forEach((r, i) => {
             const info = separatorInfo[i];
 
             if (info) {
                 this._rotatedSeparatorRecords.set(r, info);
+            }
+
+            if (indentInfo[i]) {
+                this._rotatedIndentedRecords.add(r);
             }
         });
     }
@@ -1311,6 +1336,9 @@ class Table extends Component<TableOptions> {
      * @param rowSeparator - The group-separator predicate, or `null`.
      *   Passed `null` on the normal-mode call site — no separator concept
      *   exists outside the rotated projection.
+     * @param rowIndented - The group-member indent predicate, or `null`.
+     *   Passed `null` on the normal-mode call site, for the same reason
+     *   as `rowSeparator`.
      *
      * @remarks `Body.setStore` re-renders with pool rows whose cells still
      * match the outgoing model; `setColumns` (called after `setStore`) is
@@ -1340,6 +1368,7 @@ class Table extends Component<TableOptions> {
         rowReadOnly:  ((record: ModelRecord) => boolean) | null,
         rowVisible:   ((record: ModelRecord) => boolean) | null,
         rowSeparator: ((record: ModelRecord) => { label: string, color: string | null } | null) | null,
+        rowIndented:  ((record: ModelRecord) => boolean) | null,
     ): void {
         this._suppressSelectionForward = true;
 
@@ -1357,6 +1386,7 @@ class Table extends Component<TableOptions> {
         this._body.setRowReadOnly(rowReadOnly);
         this._body.setRowVisible(rowVisible);
         this._body.setRowSeparator(rowSeparator);
+        this._body.setRowIndented(rowIndented);
         this._body.setStore(store);
 
         this._suppressSelectionForward = false;
@@ -2120,7 +2150,21 @@ class Table extends Component<TableOptions> {
                     return { min, preferred: null };       // auto-size off, or nothing to measure — flex column
                 }
 
-                return { min, preferred: Math.max(min, contentPx + CELL_CHROME_PX, headerPx) };
+                // A rotated group member's `field`-name cell renders
+                // indented by DEFAULT_INDENT_PX (see `Row.setFieldIndent`);
+                // reserve that space here too, or an indented row's text
+                // would overflow a column sized purely from raw text width.
+                // Reserved whenever ANY row is currently indented, not
+                // per-candidate — `_rotatedIndentedRecords` is empty
+                // whenever the projection is sorted or has no groups, so
+                // this adds nothing then.
+                const indent = this._displayMode === "rotated"
+                    && col.getField().getName() === "field"
+                    && this._rotatedIndentedRecords.size > 0
+                    ? DEFAULT_INDENT_PX
+                    : 0;
+
+                return { min, preferred: Math.max(min, contentPx + CELL_CHROME_PX + indent, headerPx) };
             }
         }
     }

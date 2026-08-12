@@ -206,6 +206,7 @@ class Body extends VirtualRowView<Row> {
     private _rowReadOnly     : ((record: ModelRecord) => boolean) | null = null;
     private _rowVisible      : ((record: ModelRecord) => boolean) | null = null;
     private _rowSeparator    : ((record: ModelRecord) => { label: string, color: string | null } | null) | null = null;
+    private _rowIndented     : ((record: ModelRecord) => boolean) | null = null;
     private _cellGeom        : CellGeometryCache         = new CellGeometryCache();
     private _lastBodyWidth   : number                    = 0;
     private _lastColumnWidths: number[]                  = [];
@@ -609,6 +610,26 @@ class Body extends VirtualRowView<Row> {
      */
     setRowSeparator(predicate: ((record: ModelRecord) => { label: string, color: string | null } | null) | null): this {
         this._rowSeparator = predicate;
+
+        return this;
+    }
+
+    /**
+     * Sets the predicate that marks a record as a rotated-mode group
+     * member, forwarded from `Table`'s internal view-binding step. Cleared
+     * by passing `null`. Mirrors {@link setRowSeparator}'s shape and, like
+     * it, forces no render of its own.
+     *
+     * @param predicate - Returns `true` when the record's `field`-name cell
+     *   should render indented (see {@link Row.setFieldIndent}). Called on
+     *   every rebind; must be O(1) and pure.
+     * @returns This body, for method chaining.
+     *
+     * @remarks Internal wiring called by {@link Table} — not for
+     * consumer use.
+     */
+    setRowIndented(predicate: ((record: ModelRecord) => boolean) | null): this {
+        this._rowIndented = predicate;
 
         return this;
     }
@@ -1125,6 +1146,7 @@ class Body extends VirtualRowView<Row> {
 
             if (wasRebound || windowChanged) {
                 this.applyReadOnlyState(row, records[dataIndex]);
+                row.setFieldIndent(this._rowIndented?.(records[dataIndex]) ?? false);
             }
 
             this.afterRowBound(row, dataIndex, wasRebound);

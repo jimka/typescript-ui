@@ -18,9 +18,10 @@ import { DateTimeCell } from "~/component/table/cell/DateTime.js";
 import { GlyphCell } from "~/component/table/cell/Glyph.js";
 import { ComboCell } from "~/component/table/cell/Combo.js";
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
-import { TreeCellRenderer } from "~/component/table/cell/renderer/TreeCell.js";
+import { TreeCellRenderer, DEFAULT_INDENT_PX } from "~/component/table/cell/renderer/TreeCell.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
+import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -145,6 +146,31 @@ class Row extends Component {
      */
     isSeparator(): boolean {
         return this._separatorMode;
+    }
+
+    /**
+     * Indents this row's `field`-name cell by `DEFAULT_INDENT_PX` (from
+     * `TreeCellRenderer` — the same per-level indent Tree uses) so a
+     * rotated-mode group's member rows read as visually nested under their
+     * {@link GroupSeparatorCell}, or restores it flush-left. A no-op when
+     * this row has no `field` cell in its current window (outside rotated
+     * mode, or a separator row).
+     *
+     * @param indented - `true` to indent, `false` to restore flush-left.
+     *
+     * @remarks Not for consumer use — called by `Body.bindAndPositionRows`
+     * via the `Table`-supplied indent predicate.
+     */
+    setFieldIndent(indented: boolean): void {
+        const slot = this._fieldNames.indexOf('field');
+
+        if (slot === -1) {
+            return;
+        }
+
+        const cell = this.getComponents()[slot] as Cell<any>;
+
+        cell.setInsets(new Insets(0, 0, 0, indented ? DEFAULT_INDENT_PX : 0));
     }
 
     /**
