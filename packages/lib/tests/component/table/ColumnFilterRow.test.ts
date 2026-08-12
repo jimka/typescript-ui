@@ -1053,6 +1053,73 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
         expect(rows[1].getComponents().length).toBe(3); // operator button + text field + remove control
     });
 
+    it('clicking the operator button opens the default menu for 0/1 clauses, and vetoes it once the column has 2+', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell   = nameCell(table);
+        const opBtn  = renderer(cell).getOperatorButton() as any;
+
+        // The single-clause default: MenuButton's own internal toggle is let through.
+        expect(cell.getFilterState().clauses.length).toBe(1);
+        expect(opBtn.shouldToggleMenu()).toBe(true);
+
+        addCondition(cell); // now 2 clauses
+
+        expect(opBtn.shouldToggleMenu()).toBe(false);
+    });
+
+    it('clicking the operator button with 2+ clauses opens the clauses popover directly instead of the menu', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell = nameCell(table);
+
+        // With one clause, the click handler is a no-op — MenuButton's own
+        // (unvetoed) toggle is what opens the operator menu for that case,
+        // and no popover has been created yet.
+        (cell as any).onOperatorButtonClick();
+        expect((cell as any)._clausesPopover).toBeNull();
+
+        addCondition(cell); // 2 clauses; addCondition's own call already opened the popover
+        const popover = clausesPopover(cell);
+        (popover as any).hide();
+        expect(popover.isOpen()).toBe(false);
+
+        // Simulates the button's own click with 2+ clauses now in effect:
+        // MenuButton's internal toggle is vetoed (proven by the previous
+        // test), so this handler is the only thing that runs for the click,
+        // and it must reopen the popover.
+        (cell as any).onOperatorButtonClick();
+        expect(popover.isOpen()).toBe(true);
+    });
+
+    it('a 2+ clause column states the actual conditions on the badge and the operator button, not just a count', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'age', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell = filterCells(table).find(c => c.getFieldName() === 'age')!;
+
+        addCondition(cell);
+        pickRowOperator(popoverRows(cell)[0], 'At least');
+        typeIntoRow(popoverRows(cell)[0], '18');
+        pickRowOperator(popoverRows(cell)[1], 'At most');
+        typeIntoRow(popoverRows(cell)[1], '65');
+
+        const expected = 'age At least "18" AND age At most "65"';
+
+        expect((cell as any)._badge.getAccessibleDescription()).toBe(expected);
+        expect(renderer(cell).getOperatorButton().getDescription()?.getText().valueOf()).toBe(expected);
+
+        // The description never renders on the glyph-only face — only the tooltip.
+        expect(renderer(cell).getOperatorButton().isShowDescription()).toBe(false);
+
+        // Dropping back to one clause clears both.
+        (cell as any).removeClause(1);
+        expect((cell as any)._badge.getAccessibleDescription()).toBeNull();
+        expect(renderer(cell).getOperatorButton().getDescription()).toBeNull();
+    });
+
     it('13. typing into a popover row updates the store on the same shared per-field debounce timer', async () => {
         vi.useFakeTimers();
 

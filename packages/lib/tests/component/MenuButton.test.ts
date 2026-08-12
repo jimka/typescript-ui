@@ -149,6 +149,67 @@ describe('MenuButton unattached', () => {
     });
 });
 
+describe('MenuButton shouldToggleMenu hook', () => {
+    afterEach(() => DOM.reset());
+
+    /** A subclass vetoing the default toggle whenever `veto` is true, recording every call. */
+    class VetoableMenuButton extends MenuButton {
+        veto = false;
+        calls = 0;
+
+        protected shouldToggleMenu(): boolean {
+            this.calls += 1;
+
+            return !this.veto;
+        }
+    }
+
+    it('defaults to true on a plain MenuButton — the base class always toggles', () => {
+        installTestDOM(CONFIG);
+
+        expect((new MenuButton() as any).shouldToggleMenu()).toBe(true);
+    });
+
+    it('a subclass returning false vetoes the open — no menu, no LayerManager registration', () => {
+        installTestDOM(CONFIG);
+
+        const btn = new VetoableMenuButton({ menuItems: [{ text: 'A' }] });
+        btn.getElement(true);
+        btn.veto = true;
+
+        (btn as any).toggleMenu();
+
+        expect(btn.calls).toBe(1);
+        expect(LayerManager.getTopLayer()).toBeNull();
+    });
+
+    it('flipping the veto off mid-life restores the default open on the next click', () => {
+        installTestDOM(CONFIG);
+
+        const btn = new VetoableMenuButton({ menuItems: [{ text: 'A' }] });
+        btn.getElement(true);
+        btn.veto = true;
+
+        (btn as any).toggleMenu();
+        expect(LayerManager.getTopLayer()).toBeNull();
+
+        btn.veto = false;
+        (btn as any).toggleMenu();
+        expect(LayerManager.getTopLayer()).not.toBeNull();
+
+        (btn as any).toggleMenu(); // cleanup close, so this test leaves no menu registered behind it
+    });
+
+    // A vetoed click still fires the button's own "action" event — only the
+    // internal `toggleMenu()` call is skipped by `shouldToggleMenu`'s early
+    // return, and `Event`'s dispatcher runs every listener registered for a
+    // component + type regardless of an earlier one's disposition (see
+    // core/Event.ts's `baseListener`), so a consumer's own `on("action", …)`
+    // is unaffected by this hook. Not exercised here via a real `.click()`
+    // dispatch — see the file-level comment on why that stays confined to
+    // the first describe block above.
+});
+
 describe('MenuButton opening the dropdown', () => {
     afterEach(() => DOM.reset());
 

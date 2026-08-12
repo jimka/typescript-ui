@@ -78,6 +78,12 @@ class FilterClauseBadge extends Component<FilterClauseBadgeOptions> {
     declare private _count: number | null;
 
     /**
+     * The accessible description last written via
+     * {@link setAccessibleDescription}, or `null` when none is set.
+     */
+    private _description: string | null = null;
+
+    /**
      * Constructs a filter-clause-count badge. The badge starts hidden until
      * {@link setCount} writes a count of 2 or greater.
      *
@@ -135,6 +141,46 @@ class FilterClauseBadge extends Component<FilterClauseBadgeOptions> {
      */
     getCount(): number | null {
         return this._count;
+    }
+
+    /**
+     * Returns the accessible description last written via
+     * {@link setAccessibleDescription}, or `null`.
+     *
+     * @returns The current description, or null when none has been set.
+     */
+    getAccessibleDescription(): string | null {
+        return this._description;
+    }
+
+    /**
+     * Sets (or clears) `aria-label`, so a column carrying several
+     * AND-combined conditions states what those conditions actually are —
+     * the numeric count alone reports *how many* apply, not *which*.
+     *
+     * @remarks
+     * Deliberately **not** a mouse-hover {@link Tooltip}: the badge's class
+     * rule sets `pointer-events: none` (so a click landing in its corner
+     * still reaches the operator button underneath), which also makes the
+     * badge unable to ever receive the `mouseover`/`mouseout` events a
+     * `Tooltip` attachment depends on. The equivalent hover text lives on
+     * `FilterCell`'s operator button instead (`Button.setDescription`),
+     * which sits right beside the badge and — unlike the badge — already
+     * accepts pointer events.
+     *
+     * @param text - The description text, or `null` to remove it.
+     * @returns This component, for method chaining.
+     */
+    setAccessibleDescription(text: string | null): this {
+        this._description = text;
+
+        if (text) {
+            this.getAria().setLabel(text);
+        } else {
+            this.getAria().clearLabel();
+        }
+
+        return this;
     }
 
     /**

@@ -100,6 +100,7 @@ class FilterCell extends Cell<string | null> {
 
         renderer.getInput().on("change", () => {
             this._clauses[0].text = renderer.getValue() ?? '';
+            this.syncBadge();
             this.fireFilterChange(false);
         });
         renderer.getInput().on("keydown", (e: KeyboardEvent) => this.onInputKeyDown(e));
@@ -120,6 +121,16 @@ class FilterCell extends Cell<string | null> {
             { separator: true as const },
             { text: 'Add condition…', glyph: 'plus', action: () => this.addConditionAndOpenPopover() },
         ]);
+
+        // A column with 2+ clauses substitutes the clauses popover for the
+        // default operator menu on click — the menu only makes sense as a
+        // single-clause editor (it names one operator's worth of checkmarks),
+        // and a returning user with several conditions wants straight back
+        // into the popover that lists them, not a menu for clause 0 alone.
+        // The predicate is re-evaluated on every click, so it always reflects
+        // the current clause count without needing to be re-armed elsewhere.
+        renderer.setMenuOpenPredicate(() => this._clauses.length < 2);
+        renderer.getOperatorButton().on("action", () => this.onOperatorButtonClick());
 
         this.setOperators(operators);
     }
@@ -303,6 +314,7 @@ class FilterCell extends Cell<string | null> {
         }
 
         this.doLayout();
+        this.syncBadge();
 
         this.fireFilterChange(true);
     }
@@ -321,7 +333,23 @@ class FilterCell extends Cell<string | null> {
         } else if (e.key === "Escape") {
             this._clauses[0].text = '';
             this.filterRenderer().setValue(null);
+            this.syncBadge();
             this.fireFilterChange(true);
+        }
+    }
+
+    /**
+     * Handles every click on the operator button. A column with 0 or 1
+     * clauses has already had its default operator menu opened by
+     * {@link MenuButton}'s own internal click wiring by the time this runs —
+     * the `setMenuOpenPredicate` guard registered in the constructor let that
+     * toggle through, so this is a no-op for that case. A column with 2+
+     * clauses had that internal toggle vetoed instead, so this opens the
+     * clauses popover directly, which is the only thing that click should do.
+     */
+    private onOperatorButtonClick(): void {
+        if (this._clauses.length >= 2) {
+            this.openClausesPopover();
         }
     }
 
@@ -476,6 +504,7 @@ class FilterCell extends Cell<string | null> {
         }
 
         this.refreshClausesPopoverBody();
+        this.syncBadge();
         this.fireFilterChange(true);
     }
 
@@ -495,6 +524,7 @@ class FilterCell extends Cell<string | null> {
             this.filterRenderer().setValue(text === "" ? null : text);
         }
 
+        this.syncBadge();
         this.fireFilterChange(false);
     }
 
@@ -527,12 +557,48 @@ class FilterCell extends Cell<string | null> {
     /**
      * Shows the corner clause-count badge once there are 2 or more clauses,
      * hides it otherwise — mirroring {@link SortPriorityBadge}'s own
-     * hidden-below-2 threshold. Called at the end of every mutation that can
-     * change the clause count, or after {@link setFilterState} rehydrates
-     * the clause list.
+     * hidden-below-2 threshold. Also keeps the badge's accessible description
+     * and the operator button's hover-tooltip description in sync: the
+     * numeric badge alone reports *how many* conditions are active, not
+     * *which* — hovering the operator button (or, for assistive tech, the
+     * badge's `aria-label`) states them in words. Called at the end of every
+     * mutation that can change the clause count *or* an existing clause's
+     * operator/text (so the description never goes stale while a clause is
+     * being edited), and after {@link setFilterState} rehydrates the clause
+     * list.
      */
     private syncBadge(): void {
-        this._badge.setCount(this._clauses.length >= 2 ? this._clauses.length : null);
+        const multi       = this._clauses.length >= 2;
+        const description = multi ? this.describeClauses() : null;
+        const opButton    = this.filterRenderer().getOperatorButton();
+
+        this._badge.setCount(multi ? this._clauses.length : null);
+        this._badge.setAccessibleDescription(description);
+
+        if (description) {
+            opButton.setDescription(description);
+        } else {
+            opButton.clearDescription();
+        }
+    }
+
+    /**
+     * Composes every current clause into one human-readable line, in clause
+     * order, joined by `" AND "` — e.g. `age At least "18" AND age At most
+     * "65"`. Used as both the badge's accessible description and the
+     * operator button's hover-tooltip description once a column carries 2+
+     * clauses.
+     *
+     * @returns The composed description.
+     */
+    private describeClauses(): string {
+        const label = this._columnLabel || this._fieldName;
+
+        return this._clauses
+            .map(c => columnFilterTakesOperand(c.operator)
+                ? `${label} ${columnFilterOperatorLabel(c.operator)} "${c.text}"`
+                : `${label} ${columnFilterOperatorLabel(c.operator)}`)
+            .join(' AND ');
     }
 
     /**
