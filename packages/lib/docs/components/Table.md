@@ -249,6 +249,8 @@ The operators offered depend on the column's field type, and the first entry is 
 - Each filter writes through [`store.setFilter(key, descriptor)`](/data/store#sort-and-filter), keyed by field name, so retyping in one column replaces only that column's descriptor — it never stacks a new filter per keystroke, and never disturbs another column's filter or one added through [`filter()`](/api/data/classes/AbstractStore#filter) / [`filterBy()`](/api/data/classes/AbstractStore#filterBy).
 - **A [combo column](#combo-columns) filters on its label**, not the stored value — see above. A column with a custom `renderer` still filters on the stored value: it declares no option domain to resolve a typed label against.
 
+A column is no longer limited to one operator and one value: open a column's operator menu and pick **Add condition…** to add a second (or third, or more) AND-combined condition — `age ≥ 18 AND age ≤ 65`, or `name starts with "A" AND name contains "smith"`. The always-visible text input and operator button keep editing the first condition; every extra condition lives in a popover opened from the operator button, with its own operator picker, text field, and a remove control (the first condition is only ever clearable, never removable, matching the single-condition row). A small corner badge shows the count once a column carries two or more conditions, and disappears again — along with the popover — once it is trimmed back down to one, at which point the column looks exactly as it did before any extra condition was added.
+
 ## Sorting and selection
 
 - Click a column header to cycle through sort directions: ascending → descending → no sort.
