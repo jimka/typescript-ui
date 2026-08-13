@@ -163,6 +163,35 @@ export function columnFilterTakesOperand(operator: ColumnFilterOperator): boolea
 }
 
 /**
+ * Returns whether `clause` would actually contribute a filter once built —
+ * `true` for `isEmpty` / `isNotEmpty` (which need no text and always apply),
+ * or any other operator with non-blank `text`. The single rule behind both
+ * {@link buildColumnFilter}'s own per-clause null-exclusion and
+ * {@link effectiveClauseCount}'s count, so a caller displaying "how many
+ * conditions are active" can never drift out of sync with what the store
+ * actually filters on.
+ *
+ * @param clause - The clause to check.
+ * @returns `true` when the clause would contribute a filter.
+ */
+export function isClauseEffective(clause: ColumnFilterClause): boolean {
+    return !columnFilterTakesOperand(clause.operator) || clause.text !== '';
+}
+
+/**
+ * Returns how many clauses in `clauses` would actually contribute a filter —
+ * see {@link isClauseEffective}. Used by a column's clause-count badge so a
+ * still-blank "Add condition…" row (added but not yet typed into) never
+ * inflates the displayed count beyond what {@link buildColumnFilter} applies.
+ *
+ * @param clauses - The clause list to count.
+ * @returns The number of effective clauses.
+ */
+export function effectiveClauseCount(clauses: ColumnFilterClause[]): number {
+    return clauses.filter(isClauseEffective).length;
+}
+
+/**
  * Parses `text` as a time of day — `HH:MM[:SS]` with an optional trailing
  * `AM`/`PM` — anchored to 1970-01-01 local, mirroring the normalisation
  * [`TimeEditor`](/api/component/table/classes/TimeEditor) commits and
@@ -364,7 +393,11 @@ function buildClauseFilter(
         return { type: 'not', filter: { type: 'in', field, values: [null, undefined, ''] } };
     }
 
-    if (text === '') {
+    // Every other operator needs an operand, so `isClauseEffective` reduces
+    // to the same `text === ''` check this line replaced — routed through
+    // the shared helper so this null-exclusion and `effectiveClauseCount`'s
+    // own counting rule can never drift apart.
+    if (!isClauseEffective(clause)) {
         return null;
     }
 

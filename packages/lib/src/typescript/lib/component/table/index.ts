@@ -14,6 +14,8 @@ export {
     columnFilterOperatorLabel,
     columnFilterOperatorGlyph,
     columnFilterTakesOperand,
+    isClauseEffective,
+    effectiveClauseCount,
     buildColumnFilter,
     columnFilterStatesEqual,
 } from '~/component/table/ColumnFilter.js';

@@ -7,6 +7,8 @@ import {
     columnFilterOperatorLabel,
     columnFilterOperatorGlyph,
     columnFilterTakesOperand,
+    isClauseEffective,
+    effectiveClauseCount,
 } from "~/component/table/ColumnFilter.js";
 import type { ColumnFilterOperator, ColumnFilterClause, ColumnFilterState } from "~/component/table/ColumnFilter.js";
 import { Component } from "~/core/Component.js";
@@ -555,24 +557,31 @@ class FilterCell extends Cell<string | null> {
     }
 
     /**
-     * Shows the corner clause-count badge once there are 2 or more clauses,
-     * hides it otherwise — mirroring {@link SortPriorityBadge}'s own
-     * hidden-below-2 threshold. Also keeps the badge's accessible description
-     * and the operator button's hover-tooltip description in sync: the
-     * numeric badge alone reports *how many* conditions are active, not
-     * *which* — hovering the operator button (or, for assistive tech, the
-     * badge's `aria-label`) states them in words. Called at the end of every
-     * mutation that can change the clause count *or* an existing clause's
-     * operator/text (so the description never goes stale while a clause is
-     * being edited), and after {@link setFilterState} rehydrates the clause
-     * list.
+     * Shows the corner clause-count badge once there are 2 or more
+     * *effective* clauses ({@link effectiveClauseCount} — the same
+     * would-this-contribute-a-filter rule {@link buildColumnFilter} builds
+     * with), hides it otherwise — mirroring {@link SortPriorityBadge}'s own
+     * hidden-below-2 threshold. A clause added via "Add condition…" but not
+     * yet typed into (blank text, on an operator that needs one) is not
+     * effective, so it is never counted: the badge always reports how many
+     * conditions are actually applied to the store, never the raw row count
+     * a still-blank popover row would otherwise inflate it to. Also keeps
+     * the badge's accessible description and the operator button's
+     * hover-tooltip description in sync: the numeric badge alone reports
+     * *how many* conditions are active, not *which* — hovering the operator
+     * button (or, for assistive tech, the badge's `aria-label`) states them
+     * in words. Called at the end of every mutation that can change the
+     * clause count *or* an existing clause's operator/text (so the
+     * description never goes stale while a clause is being edited), and
+     * after {@link setFilterState} rehydrates the clause list.
      */
     private syncBadge(): void {
-        const multi       = this._clauses.length >= 2;
+        const count       = effectiveClauseCount(this._clauses);
+        const multi       = count >= 2;
         const description = multi ? this.describeClauses() : null;
         const opButton    = this.filterRenderer().getOperatorButton();
 
-        this._badge.setCount(multi ? this._clauses.length : null);
+        this._badge.setCount(multi ? count : null);
         this._badge.setAccessibleDescription(description);
 
         if (description) {
@@ -583,11 +592,13 @@ class FilterCell extends Cell<string | null> {
     }
 
     /**
-     * Composes every current clause into one human-readable line, in clause
-     * order, joined by `" AND "` — e.g. `age At least "18" AND age At most
-     * "65"`. Used as both the badge's accessible description and the
-     * operator button's hover-tooltip description once a column carries 2+
-     * clauses.
+     * Composes every *effective* current clause ({@link isClauseEffective})
+     * into one human-readable line, in clause order, joined by `" AND "` —
+     * e.g. `age At least "18" AND age At most "65"`. A still-blank clause is
+     * skipped, so the composed line never names a condition the badge's own
+     * count doesn't include. Used as both the badge's accessible description
+     * and the operator button's hover-tooltip description once a column
+     * carries 2+ effective clauses.
      *
      * @returns The composed description.
      */
@@ -595,6 +606,7 @@ class FilterCell extends Cell<string | null> {
         const label = this._columnLabel || this._fieldName;
 
         return this._clauses
+            .filter(isClauseEffective)
             .map(c => columnFilterTakesOperand(c.operator)
                 ? `${label} ${columnFilterOperatorLabel(c.operator)} "${c.text}"`
                 : `${label} ${columnFilterOperatorLabel(c.operator)}`)

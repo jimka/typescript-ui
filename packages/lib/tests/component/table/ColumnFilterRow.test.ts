@@ -551,6 +551,37 @@ describe('Column filter row — recycling and external sync', () => {
         ]);
     });
 
+    // Regression for a live-testing report that a still-blank clause was
+    // being "disposed of" somewhere along a header horizontal-scroll
+    // recycle. `setFilterState`/`getFilterState` clone verbatim with no
+    // pruning, so this pins that a blank clause (never typed into) survives
+    // the exact recycle path test 17 above exercises with a filled one.
+    it('a blank clause (never typed into) survives a scroll-out recycle and reopen — nothing prunes it', async () => {
+        const table = await wideTable(20);
+        render20At100(table, 0); // window 0..2
+
+        const c0 = filterCells(table).find(c => c.getFieldName() === 'c0')!;
+        addCondition(c0); // clause 1: blank, left untouched
+
+        expect(c0.getFilterState().clauses).toEqual([
+            { operator: 'contains', text: '' },
+            { operator: 'contains', text: '' },
+        ]);
+
+        render20At100(table, 1000); // scroll far enough that c0 leaves the window
+        expect(filterCells(table).some(c => c.getFieldName() === 'c0')).toBe(false);
+
+        render20At100(table, 0); // scroll back — c0 re-enters
+        const recycled = filterCells(table).find(c => c.getFieldName() === 'c0')!;
+
+        // Still 2 clauses, the second one still blank — nothing disposed of
+        // it or collapsed the cell back to a single clause on recycle.
+        expect(recycled.getFilterState().clauses).toEqual([
+            { operator: 'contains', text: '' },
+            { operator: 'contains', text: '' },
+        ]);
+    });
+
     it('21. a recycle onto a different field closes an open popover; a same-field resync leaves it open', async () => {
         const table = await wideTable(20);
         render20At100(table, 0); // window 0..2
@@ -1034,7 +1065,7 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
         expect(items[items.length - 1].glyph).toBe('plus');
     });
 
-    it('12. invoking "Add condition…" once adds a second blank clause, shows the badge, and opens a two-row popover', async () => {
+    it('12. invoking "Add condition…" once adds a second blank clause and opens a two-row popover', async () => {
         const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
         table.setFilterRowVisible(true);
 
@@ -1044,7 +1075,11 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
 
         expect(cell.getFilterState().clauses.length).toBe(2);
         expect(cell.getFilterState().clauses[1]).toEqual({ operator: 'contains', text: '' });
-        expect((cell as any)._badge.getCount()).toBe(2);
+        // Neither clause has text yet, so nothing is actually applied to the
+        // store — the badge stays hidden rather than showing a misleading
+        // "2" for a column with zero active conditions (see the dedicated
+        // effective-count badge tests below).
+        expect((cell as any)._badge.getCount()).toBeNull();
         expect(clausesPopover(cell).isOpen()).toBe(true);
 
         const rows = popoverRows(cell);
@@ -1118,6 +1153,91 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
         (cell as any).removeClause(1);
         expect((cell as any)._badge.getAccessibleDescription()).toBeNull();
         expect(renderer(cell).getOperatorButton().getDescription()).toBeNull();
+    });
+
+    // Regression for a live-testing bug report: the badge counted every
+    // clause in `_clauses`, including a row added via "Add condition…" but
+    // not yet typed into, so a column with one real condition plus one
+    // still-blank row showed "2" when only 1 condition was actually applied
+    // to the store. The fix routes the badge's count through
+    // `effectiveClauseCount` — the same would-this-clause-contribute-a-filter
+    // rule `buildClauseFilter` already used to exclude a blank clause from
+    // what's actually sent to the store — so the two can't drift apart again.
+    describe('the badge counts only effective clauses (buildClauseFilter\'s own null-exclusion rule)', () => {
+        it('a real condition plus one still-blank added row does not show "2" — the badge stays hidden below 2 effective clauses', async () => {
+            const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
+            table.setFilterRowVisible(true);
+
+            const cell = nameCell(table);
+            typeInto(cell, 'ali');  // clause 0: one real, effective condition
+            addCondition(cell);     // clause 1: blank, not yet typed into
+
+            expect(cell.getFilterState().clauses.length).toBe(2);
+            expect((cell as any)._badge.getCount()).toBeNull();
+            expect((cell as any)._badge.isVisible()).toBe(false);
+
+            // Typing into the blank row makes it effective too — now both
+            // conditions are actually applied, and the badge reports it.
+            typeIntoRow(popoverRows(cell)[1], 'ce');
+
+            expect((cell as any)._badge.getCount()).toBe(2);
+            expect((cell as any)._badge.isVisible()).toBe(true);
+        });
+
+        it('isEmpty / isNotEmpty clauses count as effective with no typed text, same as buildClauseFilter', async () => {
+            const { table } = await makeTable({ columns: [{ field: 'age', filterable: true }] });
+            table.setFilterRowVisible(true);
+
+            const cell = filterCells(table).find(c => c.getFieldName() === 'age')!;
+
+            addCondition(cell);
+            pickRowOperator(popoverRows(cell)[0], 'At least');
+            typeIntoRow(popoverRows(cell)[0], '18');
+            pickRowOperator(popoverRows(cell)[1], 'Is empty'); // no text needed
+
+            expect((cell as any)._badge.getCount()).toBe(2);
+        });
+
+        it('a third, still-blank added clause does not inflate the badge past the number of effective clauses', async () => {
+            const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
+            table.setFilterRowVisible(true);
+
+            const cell = nameCell(table);
+            typeInto(cell, 'ali');
+            addCondition(cell);
+            typeIntoRow(popoverRows(cell)[1], 'Bob');
+            (cell as any).onAddConditionButtonClick(); // clause 2: blank
+
+            expect(cell.getFilterState().clauses.length).toBe(3);
+            expect((cell as any)._badge.getCount()).toBe(2);
+        });
+    });
+
+    // Regression for a live-testing report that a blank clause was being
+    // "disposed of" somewhere — reading through Filter.ts, Header.ts's
+    // filter-state caching, and getFilterState()/setFilterState() found no
+    // code path that prunes a blank clause; these tests pin that by testing
+    // it live rather than purely by inspection.
+    it('a blank added clause (never typed into) survives closing/reopening the popover and editing another clause', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell = nameCell(table);
+        typeInto(cell, 'ali');
+        addCondition(cell); // clause 1: blank, left untouched from here on
+
+        // Close and reopen the popover — a blank row is not pruned on close.
+        (cell as any)._clausesPopover.hide();
+        (cell as any).openClausesPopover();
+
+        expect(popoverRows(cell).length).toBe(2);
+        expect(popoverRows(cell)[1].getComponents()[1].getValue()).toBe('');
+
+        // Editing clause 0 — a wholly different clause — doesn't touch
+        // clause 1's still-blank state either.
+        pickOperator(cell, 'Starts with');
+
+        expect(cell.getFilterState().clauses[1]).toEqual({ operator: 'contains', text: '' });
     });
 
     it('13. typing into a popover row updates the store on the same shared per-field debounce timer', async () => {
@@ -1245,7 +1365,9 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
         table.setFilterRowVisible(true);
 
         const cell = nameCell(table);
+        typeInto(cell, 'ali');
         addCondition(cell);
+        typeIntoRow(popoverRows(cell)[1], 'Bob');
         expect((cell as any)._badge.getCount()).toBe(2);
 
         cell.setOperators([]);
