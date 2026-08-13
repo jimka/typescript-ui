@@ -30,7 +30,7 @@ export type CollapseDirection = "north" | "south" | "east" | "west";
  *
  * @category Components
  */
-export type CollapseButtonEvent = "collapse";
+export type CollapseButtonEvent = "collapse" | "contextmenu";
 
 /**
  * Construction-time options for {@link CollapseButton}.
@@ -44,7 +44,9 @@ export interface CollapseButtonOptions extends ComponentOptions {
      * construction time.
      */
     listeners?: {
-        collapse?: () => void;
+        collapse?:    () => void;
+        /** Fires when the chevron is right-clicked, receiving the pointer's viewport coordinates. */
+        contextmenu?: (x: number, y: number) => void;
     };
 }
 
@@ -156,6 +158,7 @@ class CollapseButton extends Component<CollapseButtonOptions> {
 
         Event.addListener(this, "dblclick", this.onDoubleClick);
         Event.addListener(this, "mousedown", this.onMouseDown);
+        Event.addListener(this, "contextmenu", this.onContextMenu);
     }
 
     /**
@@ -246,11 +249,13 @@ class CollapseButton extends Component<CollapseButtonOptions> {
      * Registers a listener for this button's `collapse` event, fired on a
      * double-click.
      *
-     * @param event - Always `"collapse"`.
-     * @param listener - The callback to invoke on double-click.
+     * @param event - `"collapse"` on double-click; `"contextmenu"` on right-click,
+     *   receiving the pointer's viewport coordinates.
+     * @param listener - The callback to invoke.
      * @returns This component, for method chaining.
      */
     on(event: "collapse", listener: () => void): this;
+    on(event: "contextmenu", listener: (x: number, y: number) => void): this;
     on(event: CollapseButtonEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -275,9 +280,12 @@ class CollapseButton extends Component<CollapseButtonOptions> {
      * Fires every listener registered for `event`, in registration order.
      *
      * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
      */
-    protected emit(event: CollapseButtonEvent): void {
-        this._listeners.fire(event);
+    protected emit(event: "collapse"): void;
+    protected emit(event: "contextmenu", x: number, y: number): void;
+    protected emit(event: CollapseButtonEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
     }
 
     /**
@@ -302,6 +310,20 @@ class CollapseButton extends Component<CollapseButtonOptions> {
      */
     private onMouseDown(_evnt: MouseEvent): Event.ListenerResult {
         return true;
+    }
+
+    /**
+     * Emits `contextmenu` with the pointer's viewport coordinates on a
+     * right-click, consuming the press and suppressing the browser's own
+     * context menu.
+     *
+     * @param evnt - The contextmenu event; its `clientX`/`clientY` seed the emit.
+     * @returns Stops propagation and prevents the browser's default context menu.
+     */
+    private onContextMenu(evnt: MouseEvent): Event.ListenerResult {
+        this.emit("contextmenu", evnt.clientX, evnt.clientY);
+
+        return { stop: true, prevent: true };
     }
 
 }

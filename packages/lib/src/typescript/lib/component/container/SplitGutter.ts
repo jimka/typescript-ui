@@ -15,7 +15,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export type SplitGutterEvent = "dragstart" | "drag" | "dragend" | "collapse";
+export type SplitGutterEvent = "dragstart" | "drag" | "dragend" | "collapse" | "contextmenu";
 
 /**
  * Maps each chevron direction to its opposite, used to flip the single
@@ -42,7 +42,7 @@ export interface SplitGutterOptions extends ComponentOptions {
     /**
      * Whether the gutter wires drag-to-resize listeners. `Split` leaves this
      * `true`; `Border` passes `false` for a fixed, non-draggable gutter.
-     * Defaults to `true`. Read once at construction.
+     * Defaults to `true`.
      */
     movable?: boolean;
     /**
@@ -67,10 +67,12 @@ export interface SplitGutterOptions extends ComponentOptions {
      * construction time.
      */
     listeners?: {
-        dragstart?: (position: number) => void;
-        drag?:      (position: number) => void;
-        dragend?:   () => void;
-        collapse?:  () => void;
+        dragstart?:   (position: number) => void;
+        drag?:        (position: number) => void;
+        dragend?:     () => void;
+        collapse?:    () => void;
+        /** Fires when the gutter's chevron is right-clicked, receiving the pointer's viewport coordinates. */
+        contextmenu?: (x: number, y: number) => void;
     };
 }
 
@@ -153,7 +155,10 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
         this._collapseButton = new CollapseButton({
             direction: this._collapseDirection,
-            listeners: { collapse: () => this.emit("collapse") },
+            listeners: {
+                collapse:    () => this.emit("collapse"),
+                contextmenu: (x, y) => this.emit("contextmenu", x, y),
+            },
         });
 
         this._collapseButton.setVisible(this._collapsible);
@@ -171,13 +176,13 @@ class SplitGutter extends Component<SplitGutterOptions> {
             this.setPointerEvents("none");
         }
 
-        // Drag wiring lives here, gated on `movable`, NOT in `applyOptions`:
-        // Component's constructor runs applyOptions from inside super(), and
-        // the listener machinery (`_listeners`) is only live after super().
-        // Border's fixed gutters pass `movable: false` and skip the wiring.
-        if (this._movable) {
-            Event.addListener(this, 'mousedown', this.onDragStart);
-        }
+        // Drag wiring lives here, NOT in `applyOptions`: Component's constructor
+        // runs applyOptions from inside super(), and the listener machinery
+        // (`_listeners`) is only live after super(). Wired unconditionally —
+        // `movable` is checked live inside `onDragStart` instead of gating the
+        // wiring itself, so `setMovable` takes effect at any time, on any
+        // gutter (including one Border constructed with `movable: false`).
+        Event.addListener(this, 'mousedown', this.onDragStart);
 
         this.applyListeners(options?.listeners);
 
@@ -268,16 +273,18 @@ class SplitGutter extends Component<SplitGutterOptions> {
     }
 
     /**
-     * Records whether the gutter is draggable. The actual `mousedown` drag
-     * wiring is established once in the constructor from this flag (a fixed
-     * Border gutter never wires it); this setter seeds the cached value during
-     * the options cascade.
+     * Sets whether the gutter is draggable. Live: the `mousedown` drag wiring
+     * is always in place, and `onDragStart` checks this flag on each press, so
+     * toggling it at any time enables or disables dragging and the resize
+     * cursor immediately.
      *
-     * @param value - True for a draggable gutter, false for a fixed one.
+     * @param value - True for a draggable gutter, false for a locked one.
      * @returns This gutter, for method chaining.
      */
     setMovable(value: boolean): this {
         this._movable = value;
+
+        this.applyCursor();
 
         return this;
     }
@@ -437,7 +444,8 @@ class SplitGutter extends Component<SplitGutterOptions> {
      *   during a drag, receiving the absolute pointer coordinate in that axis;
      *   `"dragend"` fires once the drag ends (mouseup, touchend, or
      *   touchcancel); `"collapse"` fires when the gutter's chevron is
-     *   double-clicked.
+     *   double-clicked; `"contextmenu"` fires when the gutter's chevron is
+     *   right-clicked, receiving the pointer's viewport coordinates.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This gutter, for method chaining.
@@ -446,6 +454,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
     on(event: "drag",            listener: (position: number) => void): this;
     on(event: "dragend",         listener: () => void): this;
     on(event: "collapse",        listener: () => void): this;
+    on(event: "contextmenu",     listener: (x: number, y: number) => void): this;
     on(event: SplitGutterEvent,  listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -478,6 +487,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
     protected emit(event: "drag",            position: number): void;
     protected emit(event: "dragend"): void;
     protected emit(event: "collapse"): void;
+    protected emit(event: "contextmenu",     x: number, y: number): void;
     protected emit(event: SplitGutterEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
@@ -514,9 +524,10 @@ class SplitGutter extends Component<SplitGutterOptions> {
      *   drag origin in the gutter's axis.
      */
     onDragStart(evnt: MouseEvent) {
-        // A gutter in its collapsed strip state is not a resize handle — the
-        // pane behind it is hidden, so a drag would corrupt its stored size.
-        if (this._opaque) {
+        // A locked gutter never drags. A gutter in its collapsed strip state is
+        // also not a resize handle — the pane behind it is hidden, so a drag
+        // would corrupt its stored size.
+        if (!this._movable || this._opaque) {
             return;
         }
 
