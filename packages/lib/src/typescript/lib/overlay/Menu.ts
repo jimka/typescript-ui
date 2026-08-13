@@ -292,7 +292,12 @@ class Menu extends Component implements DismissableLayer {
                     config,
                     () => {
                         config.action?.();
-                        this.hide();
+
+                        if (config.closeOnActivate === false) {
+                            this.closeOpenSubmenu();
+                        } else {
+                            this.hide();
+                        }
                     },
                     (hoveredItem) => { this.handleItemOpenSubmenu(hoveredItem); },
                     "context-menu"
@@ -924,7 +929,15 @@ class Menu extends Component implements DismissableLayer {
         for (const config of items) {
             const item = new MenuItem(
                 config,
-                () => { config.action?.(); this._onClose!(); },
+                () => {
+                    config.action?.();
+
+                    if (config.closeOnActivate === false) {
+                        this.closeOpenSubmenu();
+                    } else {
+                        this._onClose!();
+                    }
+                },
                 (hoveredItem) => { this.handleItemOpenSubmenu(hoveredItem); }
             );
 

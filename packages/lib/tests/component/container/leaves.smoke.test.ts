@@ -6,7 +6,7 @@
 // construction smoke test at most — no invented behavioural assertions — plus a
 // couple of cheap pure-getter round-trips where the getter does not touch native
 // metrics. See each comment for why deeper coverage needs a browser.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Legend } from '~/component/container/Legend';
 import { MenuSeparator } from '~/component/container/MenuSeparator';
 import { MenuItem } from '~/component/container/MenuItem';
@@ -129,5 +129,51 @@ describe('MenuItem glyph colour', () => {
 
         expect(tinted._iconGlyph.getForegroundColor()).toBe('rgb(1, 2, 3)');
         expect(plain._iconGlyph.getForegroundColor()).toBeNull();
+    });
+});
+
+describe('MenuItem checkmark self-toggle', () => {
+    afterEach(() => DOM.reset());
+
+    it('closeOnActivate: false + checked toggles isChecked() back and forth on repeated activation', () => {
+        installTestDOM(CONFIG);
+
+        const item = new MenuItem({ text: 'A', checked: false, closeOnActivate: false }, () => {}, () => {}) as any;
+
+        expect(item.isChecked()).toBe(false);
+        expect(item._checkText.getText()).toBe('');
+
+        item.activate();
+        expect(item.isChecked()).toBe(true);
+        expect(item._checkText.getText()).toBe('✓');
+
+        item.activate();
+        expect(item.isChecked()).toBe(false);
+        expect(item._checkText.getText()).toBe('');
+    });
+
+    it('closeOnActivate: false without checked never becomes checkable', () => {
+        installTestDOM(CONFIG);
+
+        const item = new MenuItem({ text: 'A', closeOnActivate: false }, () => {}, () => {});
+
+        expect(() => item.activate()).not.toThrow();
+        expect(item.hasCheck()).toBe(false);
+        expect(item.isChecked()).toBe(false);
+
+        item.activate();
+        expect(item.hasCheck()).toBe(false);
+        expect(item.isChecked()).toBe(false);
+    });
+
+    it('default closeOnActivate + checked still calls onActivate exactly once', () => {
+        installTestDOM(CONFIG);
+
+        const onActivate = vi.fn();
+        const item = new MenuItem({ text: 'A', checked: false }, onActivate, () => {});
+
+        item.activate();
+
+        expect(onActivate).toHaveBeenCalledOnce();
     });
 });

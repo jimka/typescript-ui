@@ -171,6 +171,133 @@ describe('Menu rebuild-mode submenus', () => {
     });
 });
 
+describe('Menu closeOnActivate', () => {
+    afterEach(() => DOM.reset());
+
+    /** The submenu MenuItem built by a rebuild-mode show(). Mirrors the
+     *  helper in 'Menu rebuild-mode submenus'. */
+    function submenuItem(menu: Menu): any {
+        return (menu as any)._menuItems.find(
+            (i: any) => typeof i.hasSubmenu === 'function' && i.hasSubmenu()
+        );
+    }
+
+    it('default (omitted) still closes the menu and runs action once (rebuild mode)', () => {
+        installTestDOM(CONFIG);
+
+        const action = vi.fn();
+        const menu = new Menu();
+
+        menu.show(0, 0, [{ text: 'A', action }]);
+        expect(LayerManager.getTopLayer()).toBe(menu);
+
+        (menu as any)._menuItems[0].activate();
+
+        expect(action).toHaveBeenCalledOnce();
+        expect(LayerManager.getTopLayer()).not.toBe(menu);
+    });
+
+    it('closeOnActivate: false runs action and leaves the menu open (rebuild mode)', () => {
+        installTestDOM(CONFIG);
+
+        const action = vi.fn();
+        const menu = new Menu();
+
+        menu.show(0, 0, [{ text: 'A', closeOnActivate: false, action }]);
+
+        (menu as any)._menuItems[0].activate();
+
+        expect(action).toHaveBeenCalledOnce();
+        expect(LayerManager.getTopLayer()).toBe(menu);
+    });
+
+    it('toggleFor still toggle-shuts on a second press after a closeOnActivate: false activation', () => {
+        installTestDOM(CONFIG);
+
+        const menu    = new Menu();
+        const openerA = DOM.sink.createElement('div');
+        const trigger = rect(100, 100, 200, 124);
+        const action  = vi.fn();
+        const configs: MenuItemConfig[] = [{ text: 'A', checked: false, closeOnActivate: false, action }];
+
+        menu.toggleFor(openerA, trigger, configs);
+        expect(LayerManager.getTopLayer()).toBe(menu);
+
+        (menu as any)._menuItems[0].activate();
+        expect(LayerManager.getTopLayer()).toBe(menu); // still open, per the previous test
+
+        menu.toggleFor(openerA, trigger, configs);
+        expect(LayerManager.getTopLayer()).not.toBe(menu);
+    });
+
+    it('activating a closeOnActivate: false sibling still tears down an open submenu (rebuild mode)', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.show(0, 0, [
+            { text: 'Export', submenu: { label: 'Export', items: [{ text: 'CSV', action: () => {} }] } },
+            { text: 'Bold', checked: false, closeOnActivate: false, action: () => {} },
+        ]);
+
+        const exportItem = submenuItem(menu);
+        const boldItem = (menu as any)._menuItems[1];
+
+        exportItem._onOpenSubmenu(exportItem);
+        expect((menu as any)._openSubmenuPanel).toBeInstanceOf(Menu);
+
+        boldItem.activate();
+
+        expect((menu as any)._openSubmenuPanel).toBeNull();
+        expect(LayerManager.getTopLayer()).toBe(menu);
+    });
+
+    it('closeOnActivate: false runs action and does not call onClose (persistent mode)', () => {
+        installTestDOM(CONFIG);
+
+        const onClose = vi.fn();
+        const action = vi.fn();
+        const menu = new Menu([{ text: 'A', checked: false, closeOnActivate: false, action }], onClose);
+
+        menu.focusItem(0);
+        menu.activateFocused();
+
+        expect(action).toHaveBeenCalledOnce();
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('a closeOnActivate: false leaf inside an open submenu leaves the submenu open (persistent mode)', () => {
+        installTestDOM(CONFIG);
+
+        const onClose = vi.fn();
+        const action = vi.fn();
+        const menu = new Menu([
+            { text: 'Export', submenu: { label: 'Export', items: [{ text: 'CSV', checked: false, closeOnActivate: false, action }] } },
+        ], onClose);
+
+        const exportItem = submenuItem(menu);
+
+        exportItem._onOpenSubmenu(exportItem);
+
+        const childPanel = (menu as any)._openSubmenuPanel;
+        expect(childPanel).toBeInstanceOf(Menu);
+
+        // The child submenu is itself a persistent-mode Menu whose onClose is
+        // `() => parentMenu.dismissAll()` (handleItemOpenSubmenu); activate its
+        // own closeOnActivate: false leaf directly, mirroring buildMenu's
+        // focusItem/activateFocused pattern above but via the child's own item.
+        childPanel._menuItems[0].activate();
+
+        // dismissAll() was not reached, so neither the parent's onClose nor the
+        // teardown that would null out _openSubmenuPanel ran; the child is still
+        // the registered, open top layer.
+        expect(action).toHaveBeenCalledOnce();
+        expect(onClose).not.toHaveBeenCalled();
+        expect((menu as any)._openSubmenuPanel).toBe(childPanel);
+        expect(LayerManager.getTopLayer()).toBe(childPanel);
+    });
+});
+
 describe('Menu content-based width', () => {
     afterEach(() => DOM.reset());
 

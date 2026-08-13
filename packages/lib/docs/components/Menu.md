@@ -26,7 +26,7 @@ Event.addListener(myComponent, 'contextmenu', (e: MouseEvent) => {
 });
 ```
 
-Reuse one `Menu` instance across the app — `show()` disposes the previous items and rebuilds. The menu closes itself on item click, outside click, or when the browser window loses focus (clicking another application or alt-tabbing); you don't need to call `hide()`. Pass an optional fourth `onClose` argument to `show(x, y, items, onClose)` to be notified once when the menu next closes — useful for reverting an open-state affordance such as a rotated dropdown chevron. An optional fifth `excludeEl` argument names an element exempt from the outside-click-to-close check; pass the trigger that opened the menu so a mousedown on it does not self-close the menu before that trigger's own click can toggle it shut.
+Reuse one `Menu` instance across the app — `show()` disposes the previous items and rebuilds. The menu closes itself on item click, outside click, or when the browser window loses focus (clicking another application or alt-tabbing); you don't need to call `hide()` — except for an item with `closeOnActivate: false`, which runs its `action` and leaves the menu open. Pass an optional fourth `onClose` argument to `show(x, y, items, onClose)` to be notified once when the menu next closes — useful for reverting an open-state affordance such as a rotated dropdown chevron. An optional fifth `excludeEl` argument names an element exempt from the outside-click-to-close check; pass the trigger that opened the menu so a mousedown on it does not self-close the menu before that trigger's own click can toggle it shut.
 
 For a **left-click dropdown trigger** — a [`SplitButton`](/components/SplitButton) chevron, a [`ToolBar`](/components/ToolBar) overflow button — call `toggleFor(openerEl, anchorRect, items, onClose?)` instead of `show()`. It excludes `openerEl` and remembers it, so pressing the *same* opener again closes the menu (rather than the close-then-reopen flash a bare `show()` would produce), while pressing a *different* opener switches to it. The anchored form opens below `anchorRect` and **flips above it** when the room below is short, right-aligning to it when the left-aligned width would overflow. An empty `items` list opens nothing (still firing `onClose`, so an opener can revert an optimistic open-state affordance), whereas `show()` mounts whatever it is given, including an empty list. Use plain `show()` for right-click context menus, which should reposition — not close — on a repeat trigger. [`MenuButton`](/components/MenuButton) is a ready-made `Button` wrapper around this pattern.
 
@@ -62,6 +62,7 @@ Each entry follows [`MenuItemConfig`](/api/component/container/interfaces/MenuIt
 | --- | --- |
 | `text` | Display label. |
 | `action` | Called on click or Enter (rebuild mode only auto-calls on click; persistent mode wires it through). |
+| `closeOnActivate` | When `false`, the item runs `action` but the menu stays open; pairs with `checked` for a multi-select menu. Defaults to `true`. |
 | `enabled` | Defaults to `true`. Disabled items are dimmed and non-interactive. |
 | `shortcut` | Hint string displayed on the right (persistent mode renders it). |
 | `icon` | Glyph displayed on the left. |
