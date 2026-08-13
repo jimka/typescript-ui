@@ -454,6 +454,87 @@ class MiscPanel extends Panel {
         });
         leftColumn.addComponent(buttonWideTable);
 
+        // Past COLUMN_MENU_DIALOG_THRESHOLD (20), with 60% of its columns spread
+        // across four header groups — demos the show/hide-columns dialog's
+        // multi-column layout and grouping. At 25 columns the dialog splits
+        // 13 + 12 (15 checkboxes max per column); Financials (4 members)
+        // straddles that split, so its section header repeats at the top of
+        // the second dialog column.
+        let buttonGroupedWideTable = new Button("Show window with grouped wide table (25 columns, 4 groups)!");
+        buttonGroupedWideTable.on("action", function () {
+            let win = new Window("Employee directory (grouped, wide)");
+
+            win.setX(120);
+            win.setY(140);
+            win.setWidth(900);
+            win.setHeight(600);
+
+            win.setContentFactory(() => {
+                const FIELDS: Array<{ name: string, type: "string" | "number" | "date" | "datetime" | "boolean", group?: string }> = [
+                    { name: 'employee_id',    type: 'string',   group: 'Identity'   },
+                    { name: 'first_name',     type: 'string',   group: 'Identity'   },
+                    { name: 'last_name',      type: 'string',   group: 'Identity'   },
+                    { name: 'department',     type: 'string',   group: 'Identity'   },
+                    { name: 'status',         type: 'string'                       },
+                    { name: 'email',          type: 'string'                       },
+                    { name: 'hire_date',      type: 'date',     group: 'Activity'   },
+                    { name: 'last_review',    type: 'date',     group: 'Activity'   },
+                    { name: 'last_promotion', type: 'date',     group: 'Activity'   },
+                    { name: 'last_login',     type: 'datetime', group: 'Activity'   },
+                    { name: 'manager',        type: 'string'                       },
+                    { name: 'location',       type: 'string'                       },
+                    { name: 'base_salary',    type: 'number',   group: 'Financials' },
+                    { name: 'bonus',          type: 'number',   group: 'Financials' },
+                    { name: 'currency',       type: 'string',   group: 'Financials' },
+                    { name: 'cost_center',    type: 'string',   group: 'Financials' },
+                    { name: 'tax_id',         type: 'string'                       },
+                    { name: 'notes',          type: 'string'                       },
+                    { name: 'created_by',     type: 'string',   group: 'Metadata'   },
+                    { name: 'created_at',     type: 'datetime', group: 'Metadata'   },
+                    { name: 'updated_at',     type: 'datetime', group: 'Metadata'   },
+                    { name: 'tags',           type: 'string'                       },
+                    { name: 'priority',       type: 'string'                       },
+                    { name: 'archived',       type: 'boolean'                      },
+                    { name: 'external_ref',   type: 'string'                       },
+                ];
+
+                const groupedModel = new Model(FIELDS.map((f, i) => ({ name: f.name, type: f.type, order: i })));
+                const groupedStore = new MemoryStore(groupedModel);
+
+                const spec: ColumnSpec = {
+                    columns: FIELDS.map(f => f.group ? { field: f.name, group: f.group } : { field: f.name }),
+                };
+
+                const groupedPanel = new TablePanel(groupedStore, spec);
+
+                groupedPanel.setExportMenuEnabled(true);
+
+                const rows = Array.from({ length: 40 }, (_, r) => {
+                    const row: Record<string, unknown> = {};
+
+                    FIELDS.forEach((f, i) => {
+                        switch (f.type) {
+                            case 'number':   row[f.name] = Math.round((r + 1) * (i + 3) * 1.7);                    break;
+                            case 'boolean':  row[f.name] = (r + i) % 4 === 0;                                      break;
+                            case 'date':     row[f.name] = new Date(2022 + (i % 3), i % 12, (r % 27) + 1);         break;
+                            case 'datetime': row[f.name] = new Date(2024, i % 12, (r % 27) + 1, (r * 7) % 24, (i * 11) % 60); break;
+                            default:         row[f.name] = `${f.name} ${r + 1}`;
+                        }
+                    });
+
+                    return row;
+                });
+
+                groupedStore.add(rows);
+                groupedStore.sync();
+
+                return groupedPanel;
+            });
+
+            win.show();
+        });
+        leftColumn.addComponent(buttonGroupedWideTable);
+
         // Demonstrates the store's sync-error surface: with syncErrorPolicy
         // 'continue', a failing create emits 'exception' and the run proceeds, so
         // the sibling record still commits. The terminal 'sync' event reports the

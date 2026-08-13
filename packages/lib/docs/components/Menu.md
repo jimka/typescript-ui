@@ -73,7 +73,7 @@ Each entry follows [`MenuItemConfig`](/api/component/container/interfaces/MenuIt
 - The menu is appended to `document.documentElement` so it always layers above the rest of the UI.
 - A menu taller than the room available at its anchor is clamped to that room and scrolls its items vertically, so every item stays reachable however large the list or however little screen space is left. Every rebuild-mode menu grows down-right from its anchor — the trigger's bottom-left corner for `toggleFor()`, the cursor for `show()` — and flips per axis when the room runs short: vertically its bottom ends at the anchor's top; horizontally its right edge aligns with the anchor's right. A cursor is a zero-size anchor, so a context menu opened near the bottom-right of the viewport ends **at** the cursor and never covers it. The clamp tracks the viewport size at open time; a menu open during a window resize keeps its original clamp and re-measures on the next open.
 - Rebuild-mode coordinates are in viewport space (`clientX` / `clientY`).
-- Submenus inside right-click context menus are not in scope — submenu config is honoured only in persistent mode.
+- Submenus work in both modes: `showAnchored` wires up `submenu` on every rebuild-mode item too, not just persistent-mode ones. A submenu panel is built fresh each time it opens.
 - Rebuild mode reads the `--ts-ui-context-menu-*` theme tokens; persistent mode reads `--ts-ui-menu-bar-panel-*` tokens. The visual style of each mode therefore matches its host.
 - Opens and closes with a 120 ms opacity fade via [`Animation`](/api/core/classes/Animation). A fresh `show()` / `open()` during a fade-out cancels the deferred detach, so a quick close-then-reopen keeps the panel mounted. Honours `prefers-reduced-motion: reduce`.
 
