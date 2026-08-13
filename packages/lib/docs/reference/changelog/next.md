@@ -75,6 +75,9 @@ page resets to empty.
   date/time/datetime, or `String(value)` — the same resolution export and
   the filter row use. Built for a quick search that matches what's on
   screen; see [Row visibility](/components/Table#row-visibility).
+- **A `date` / `time` / `datetime` column's header filter now offers
+  Contains / Starts with / Ends with**, matching the displayed text rather
+  than the raw `Date`. No consumer action is needed.
 
 ### Tree
 

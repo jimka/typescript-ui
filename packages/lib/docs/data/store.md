@@ -119,7 +119,7 @@ store.getFilter('ageFilter');             // → the descriptor above, or null
 store.clearFilter();
 ```
 
-Multiple `filter` / `filterBy` calls **stack** — every active predicate must pass for a record to be visible. `setFilter(key, descriptor)` is the exception: it replaces whatever descriptor is currently stored under `key` instead of adding another one, so repeated calls with the same key (e.g. one key per UI control) never accumulate — pass `null` to remove that key's descriptor. A key can be any string and never collides with an anonymous `filter()` / `filterBy()` entry. `clearFilter()` removes every active predicate at once, keyed or anonymous.
+Multiple `filter` / `filterBy` calls **stack** — every active predicate must pass for a record to be visible. `setFilter(key, descriptor)` is the exception: it replaces whatever descriptor is currently stored under `key` instead of adding another one, so repeated calls with the same key (e.g. one key per UI control) never accumulate — pass `null` to remove that key's descriptor. A key can be any string and never collides with an anonymous `filter()` / `filterBy()` entry. `clearFilter()` removes every active predicate at once, keyed or anonymous. A `contains` / `startsWith` / `endsWith` descriptor over a `Date`-valued field can carry `temporal: { type, showSeconds }`, which makes local evaluation match the value's rendered text; without it the raw `Date` string is matched, which is what a hand-built descriptor gets by default.
 
 ### Multi-column sort
 
