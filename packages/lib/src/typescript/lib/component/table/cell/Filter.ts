@@ -411,11 +411,41 @@ class FilterCell extends Cell<string | null> {
      */
     private ensureClausesPopover(): Popover {
         if (!this._clausesPopover) {
-            this._clausesPopover = new Popover({ placement: 'auto', dismissOn: 'click-outside' });
+            this._clausesPopover = new Popover({
+                placement: 'auto',
+                dismissOn: 'click-outside',
+                // Fires once whenever the popover closes, whether via "Done"
+                // or a click-outside dismissal (the manager's `requestClose`
+                // routes through the same `hide()`) — the only path that can
+                // catch a click-outside close, since Popover exposes no other
+                // close event.
+                onClose:   () => this.pruneBlankClauses(),
+            });
             this._clausesPopover.addAction('Done', () => this._clausesPopover!.hide());
         }
 
         return this._clausesPopover;
+    }
+
+    /**
+     * Drops every clause at index ≥ 1 that is not {@link isClauseEffective} —
+     * added via "Add condition…" / "Add condition" but never given text (or
+     * an operator that needs none). Run once whenever the clauses popover
+     * closes ({@link ensureClausesPopover}'s `onClose`), so a blank row
+     * doesn't linger in `_clauses` forever and reappear on the next
+     * {@link openClausesPopover} → {@link buildClausesBody} redraw.
+     *
+     * Never calls `syncBadge` or `fireFilterChange`: a pruned clause was by
+     * definition not effective, so it was never counted in the badge or
+     * included in the built filter ({@link buildColumnFilter} /
+     * `buildClauseFilter` already exclude a non-effective clause) — pruning
+     * it changes nothing either observes. `_clauses[0]` is always kept
+     * unconditionally; it is the always-visible inline clause and carries no
+     * remove control (see {@link buildClauseRow}), so it is never a pruning
+     * candidate regardless of whether it is itself effective.
+     */
+    private pruneBlankClauses(): void {
+        this._clauses = [this._clauses[0], ...this._clauses.slice(1).filter(isClauseEffective)];
     }
 
     /**

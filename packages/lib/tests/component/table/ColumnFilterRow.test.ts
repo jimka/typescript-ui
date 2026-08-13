@@ -1121,6 +1121,11 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
         expect((cell as any)._clausesPopover).toBeNull();
 
         addCondition(cell); // 2 clauses; addCondition's own call already opened the popover
+        // Give clause 1 real text — otherwise closing the popover below
+        // would prune it back down to 1 clause (round 3's blank-clause
+        // pruning fix), defeating the "2+ clauses" premise this test needs.
+        typeIntoRow(popoverRows(cell)[1], 'Bob');
+
         const popover = clausesPopover(cell);
         (popover as any).hide();
         expect(popover.isOpen()).toBe(false);
@@ -1229,31 +1234,47 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
         });
     });
 
-    // Regression for a live-testing report that a blank clause was being
-    // "disposed of" somewhere — reading through Filter.ts, Header.ts's
-    // filter-state caching, and getFilterState()/setFilterState() found no
-    // code path that prunes a blank clause; these tests pin that by testing
-    // it live rather than purely by inspection.
-    it('a blank added clause (never typed into) survives closing/reopening the popover and editing another clause', async () => {
+    // A blank clause (added but never typed into) is a popover-only
+    // artifact while the popover stays open — editing a wholly different
+    // clause must not disturb it.
+    it('editing clause 0 does not disturb a still-open, still-blank clause 1', async () => {
         const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
         table.setFilterRowVisible(true);
 
         const cell = nameCell(table);
         typeInto(cell, 'ali');
-        addCondition(cell); // clause 1: blank, left untouched from here on
+        addCondition(cell); // clause 1: blank
 
-        // Close and reopen the popover — a blank row is not pruned on close.
-        (cell as any)._clausesPopover.hide();
-        (cell as any).openClausesPopover();
-
-        expect(popoverRows(cell).length).toBe(2);
-        expect(popoverRows(cell)[1].getComponents()[1].getValue()).toBe('');
-
-        // Editing clause 0 — a wholly different clause — doesn't touch
-        // clause 1's still-blank state either.
         pickOperator(cell, 'Starts with');
 
         expect(cell.getFilterState().clauses[1]).toEqual({ operator: 'contains', text: '' });
+    });
+
+    // Round 3 live-testing fix: a still-blank clause used to survive forever,
+    // including a close/reopen of the popover (see the prior round's now-
+    // superseded test this one replaces) — reopening kept showing the same
+    // stale blank rows. `pruneBlankClauses`, wired into `Popover`'s new
+    // `onClose`, now drops every non-effective clause at index ≥ 1 exactly
+    // once per close, whether the close came from "Done" or an outside-click
+    // dismissal. Clause 0 (the always-visible, never-removable inline
+    // clause) is always kept regardless of its own effectiveness.
+    it('closing the popover (Done) prunes blank clauses added but never typed into; reopening shows only the effective ones', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell = nameCell(table);
+        typeInto(cell, 'ali');                     // clause 0: effective
+        addCondition(cell);                        // clause 1: blank ("Add condition…")
+        (cell as any).onAddConditionButtonClick();  // clause 2: blank (popover's own "Add condition")
+
+        expect(cell.getFilterState().clauses.length).toBe(3);
+
+        // "Done" -> Popover.hide() -> onClose -> pruneBlankClauses().
+        (cell as any)._clausesPopover.hide();
+        (cell as any).openClausesPopover();
+
+        expect(cell.getFilterState().clauses).toEqual([{ operator: 'contains', text: 'ali' }]);
+        expect(popoverRows(cell).length).toBe(1);
     });
 
     // A disabled popover-row text field is easy to miss the reason for —

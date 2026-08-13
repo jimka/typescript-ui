@@ -35,6 +35,22 @@ function resolve(p: Popover, anchor: Rect, w: number, h: number): PopoverPlaceme
     return (p as any).resolvePlacement(anchor, w, h, VP);
 }
 
+/** Mounts a bare anchor handle at a fixed non-zero rect directly under the
+ *  document root — mirrors how `LayerManager.mount` itself portals a shown
+ *  surface, without needing a full component tree just to give the popover
+ *  something to anchor against. A zero-size anchor would make `_reposition`
+ *  treat it as "removed from the DOM" and immediately `hide()` again (see
+ *  `_reposition`'s own comment), so every non-zero-size caller shares this
+ *  one helper rather than risking a zero-size ad hoc element. */
+function mountAnchor(): ReturnType<typeof DOM.sink.createElement> {
+    const anchor = DOM.sink.createElement('div');
+
+    DOM.sink.apply(anchor, { style: { left: '100px', top: '100px', width: '40px', height: '20px' } });
+    DOM.sink.appendChild(DOM.source.getDocumentElement(), anchor);
+
+    return anchor;
+}
+
 describe('Popover.resolvePlacement', () => {
     afterEach(() => DOM.reset());
 
@@ -210,19 +226,6 @@ describe('Popover lifecycle / getters', () => {
 describe('Popover re-measures while open', () => {
     afterEach(() => DOM.reset());
 
-    /** Mounts a bare anchor handle at a fixed rect directly under the document
-     *  root — mirrors how `LayerManager.mount` itself portals a shown surface,
-     *  without needing a full component tree just to give the popover
-     *  something non-zero to anchor against. */
-    function mountAnchor(): ReturnType<typeof DOM.sink.createElement> {
-        const anchor = DOM.sink.createElement('div');
-
-        DOM.sink.apply(anchor, { style: { left: '100px', top: '100px', width: '40px', height: '20px' } });
-        DOM.sink.appendChild(DOM.source.getDocumentElement(), anchor);
-
-        return anchor;
-    }
-
     it('setBody while open grows the popover to the new body\'s preferred size', () => {
         installTestDOM(CONFIG);
 
@@ -280,5 +283,59 @@ describe('Popover re-measures while open', () => {
 
         expect(popover.getHeight()).toBeGreaterThan(openedHeight);
         expect(popover.getHeight()).toBe(popover.getPreferredSize()!.height);
+    });
+});
+
+// Mirrors Menu.test.ts's own "requestClose() ... fires its ... onClose"
+// coverage: `onClose` fires once whenever the popover closes, whether via an
+// explicit `hide()` or the manager's advisory `requestClose()` (the path an
+// outside-click dismissal drives — LayerManager calls `requestClose()`
+// directly, so invoking it here exercises exactly what a real outside click
+// would trigger, without needing a simulated pointerdown).
+describe('Popover onClose', () => {
+    afterEach(() => DOM.reset());
+
+    it('hide() fires onClose exactly once per open→close transition', () => {
+        installTestDOM(CONFIG);
+
+        const onClose = vi.fn();
+        const popover = new Popover({ onClose });
+
+        (popover as any)._attachToElement(mountAnchor());
+        popover.show();
+
+        popover.hide();
+        expect(onClose).toHaveBeenCalledOnce();
+
+        // hide() while already closed is a no-op (the `_isOpen` guard), so a
+        // second call must not refire the callback.
+        popover.hide();
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('requestClose() (the manager\'s outside-click / advisory close path) fires onClose exactly once', () => {
+        installTestDOM(CONFIG);
+
+        const onClose = vi.fn();
+        const popover = new Popover({ onClose });
+
+        (popover as any)._attachToElement(mountAnchor());
+        popover.show();
+
+        popover.requestClose();
+
+        expect(onClose).toHaveBeenCalledOnce();
+        expect(popover.isOpen()).toBe(false);
+    });
+
+    it('a popover with no onClose configured closes without throwing', () => {
+        installTestDOM(CONFIG);
+
+        const popover = new Popover();
+
+        (popover as any)._attachToElement(mountAnchor());
+        popover.show();
+
+        expect(() => popover.hide()).not.toThrow();
     });
 });
