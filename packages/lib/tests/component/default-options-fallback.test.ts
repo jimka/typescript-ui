@@ -37,6 +37,7 @@ import { StatusBar } from '~/component/container/StatusBar';
 import { TabBar } from '~/component/container/TabBar';
 import { MenuSeparator } from '~/component/container/MenuSeparator';
 import { SortPriorityBadge } from '~/component/table/cell/SortPriorityBadge';
+import { FilterClauseBadge } from '~/component/table/cell/FilterClauseBadge';
 import { Scrollbar } from '~/component/container/Scrollbar';
 import { ToolBarSeparator } from '~/component/menubar/ToolBarSeparator';
 import { ChartLegend } from '~/component/chart/ChartLegend';
@@ -288,6 +289,8 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'MenuSeparator backgroundColor', resolve: () => new MenuSeparator().getBackgroundColor(),                  expected: 'transparent' },
     { label: 'SortPriorityBadge backgroundColor', resolve: () => new SortPriorityBadge().getBackgroundColor(),          expected: 'var(--ts-ui-sort-badge-bg, rgba(0,0,0,0.15))' },
     { label: 'SortPriorityBadge foregroundColor', resolve: () => new SortPriorityBadge().getForegroundColor(),          expected: 'var(--ts-ui-sort-badge-color, inherit)' },
+    { label: 'FilterClauseBadge backgroundColor', resolve: () => new FilterClauseBadge().getBackgroundColor(),          expected: 'var(--ts-ui-filter-clause-badge-bg, rgba(0,0,0,0.15))' },
+    { label: 'FilterClauseBadge foregroundColor', resolve: () => new FilterClauseBadge().getForegroundColor(),          expected: 'var(--ts-ui-filter-clause-badge-color, inherit)' },
     { label: 'Scrollbar backgroundColor',    resolve: () => new Scrollbar().getBackgroundColor(),                       expected: 'var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))' },
     { label: 'Scrollbar touchAction',        resolve: () => new Scrollbar().getTouchAction(),                           expected: 'none' },
     { label: 'ToolBarSeparator backgroundColor', resolve: () => new ToolBarSeparator().getBackgroundColor(),            expected: 'var(--ts-ui-toolbar-separator-color, rgb(220, 220, 220))' },
@@ -451,13 +454,15 @@ describe('an explicit value wins over a class default', () => {
         expect(new TabButton('x').getBackgroundImage()).toBe('var(--ts-ui-tab-button-bg, #b8b8c3)');
     });
 
-    it('a caller-supplied backgroundColor/foregroundColor wins for StatusBar, TabBar, MenuSeparator, SortPriorityBadge', () => {
+    it('a caller-supplied backgroundColor/foregroundColor wins for StatusBar, TabBar, MenuSeparator, SortPriorityBadge, FilterClauseBadge', () => {
         expect(new StatusBar({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
         expect(new StatusBar({ foregroundColor: 'blue' }).getForegroundColor()).toBe('blue');
         expect(new TabBar({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
         expect(new MenuSeparator(undefined, { backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
         expect(new SortPriorityBadge({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
         expect(new SortPriorityBadge({ foregroundColor: 'blue' }).getForegroundColor()).toBe('blue');
+        expect(new FilterClauseBadge({ backgroundColor: 'red' }).getBackgroundColor()).toBe('red');
+        expect(new FilterClauseBadge({ foregroundColor: 'blue' }).getForegroundColor()).toBe('blue');
     });
 
     it('a caller-supplied backgroundColor/foregroundColor wins for Scrollbar, ToolBarSeparator, ChartLegend, Popover', () => {

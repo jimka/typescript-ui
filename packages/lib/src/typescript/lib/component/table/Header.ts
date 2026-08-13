@@ -15,7 +15,7 @@ import { FilterCell } from "~/component/table/cell/Filter.js";
 import { computeColumnWindow } from "~/component/table/Body.js";
 import { CellGeometryCache } from "~/component/table/CellGeometry.js";
 import type { ColumnWindow } from "~/component/table/Body.js";
-import { columnFilterOperators, buildColumnFilter } from "~/component/table/ColumnFilter.js";
+import { columnFilterOperators, buildColumnFilter, columnFilterStatesEqual } from "~/component/table/ColumnFilter.js";
 import type { ColumnFilterState, ColumnFilterTarget } from "~/component/table/ColumnFilter.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { CellTextResolver } from "~/component/table/cell/CellText.js";
@@ -458,10 +458,16 @@ class TableHeader extends Component {
     /**
      * Cancels any in-flight debounced write and removes every descriptor the
      * filter row itself applied to the store, discarding the row's cached
-     * `{ operator, text }` state along with it. Called when the row is
-     * hidden, so a column's filter never keeps narrowing the view once
-     * there is no longer any control showing — or letting the user change
-     * — its criteria.
+     * clause-list state along with it. Called when the row is hidden, so a
+     * column's filter never keeps narrowing the view once there is no
+     * longer any control showing — or letting the user change — its
+     * criteria.
+     *
+     * Clears every column in a single {@link AbstractStore.setFilters} call
+     * rather than looping {@link AbstractStore.setFilter} once per column —
+     * a consuming store with `pageSize` set (or `remoteFilter` enabled)
+     * reloads once per `setFilter` call, so an N-column loop would fire N
+     * sequential reloads for what is one user action.
      */
     private clearFilterRowState(): void {
         if (this._filterTimer !== null) {
@@ -471,14 +477,19 @@ class TableHeader extends Component {
 
         this._pendingFilterField = null;
 
-        const states = this.filterState();
+        const states  = this.filterState();
+        const entries: Array<[string, null]> = [];
 
         for (const fieldName of [...states.keys()]) {
             states.delete(fieldName);
 
             if (this._store.getFilter(fieldName) !== null) {
-                void this._store.setFilter(fieldName, null);
+                entries.push([fieldName, null]);
             }
+        }
+
+        if (entries.length > 0) {
+            void this._store.setFilters(entries);
         }
     }
 
@@ -967,7 +978,7 @@ class TableHeader extends Component {
      */
     private onFilterCellChange(fieldName: string, state: ColumnFilterState, immediate: boolean): void {
         const cached    = this.filterState().get(fieldName);
-        const unchanged = !!cached && cached.operator === state.operator && cached.text === state.text;
+        const unchanged = !!cached && columnFilterStatesEqual(cached, state);
 
         // A repeat keystroke reporting the same state is dropped so it
         // doesn't reschedule the debounce timer for no reason — but an
@@ -1210,7 +1221,7 @@ class TableHeader extends Component {
 
             if (operators.length > 0) {
                 cell.setFilterState(this.filterState().get(field.getName())
-                    ?? { operator: operators[0], text: '' });
+                    ?? { clauses: [{ operator: operators[0], text: '' }] });
             }
         }
 

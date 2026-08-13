@@ -14,9 +14,12 @@ export {
     columnFilterOperatorLabel,
     columnFilterOperatorGlyph,
     columnFilterTakesOperand,
+    isClauseEffective,
+    effectiveClauseCount,
     buildColumnFilter,
+    columnFilterStatesEqual,
 } from '~/component/table/ColumnFilter.js';
-export type { ColumnFilterOperator, ColumnFilterState, ColumnFilterTarget } from '~/component/table/ColumnFilter.js';
+export type { ColumnFilterOperator, ColumnFilterClause, ColumnFilterState, ColumnFilterTarget } from '~/component/table/ColumnFilter.js';
 export { TableExporter } from '~/component/table/TableExporter.js';
 export type { ExportOptions } from '~/component/table/TableExporter.js';
 export { TableHeader } from '~/component/table/Header.js';

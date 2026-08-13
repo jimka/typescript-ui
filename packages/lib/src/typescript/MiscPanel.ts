@@ -730,7 +730,11 @@ class MiscPanel extends Panel {
                 // the header's right-click "Filter" entry, then type into a
                 // column's input and pick its operator from the button beside
                 // it. Role's filter matches its label ("Developer"), not the
-                // stored code ("dev").
+                // stored code ("dev"). Open a column's operator menu and pick
+                // "Add condition…" to AND a second (or further) condition
+                // onto that column — e.g. Score "At least" 60 AND "At most"
+                // 90 — via the popover that opens under the operator button;
+                // a small corner badge tracks the count once there are 2+.
                 const filterRowBtn = new Button("Toggle filter row");
                 filterRowBtn.on("action", () => {
                     specTable.setFilterRowVisible(!specTable.isFilterRowVisible());

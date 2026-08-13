@@ -167,15 +167,34 @@ class MenuButton<TOptions extends MenuButtonOptions = MenuButtonOptions> extends
     }
 
     /**
+     * Hook consulted at the start of every {@link toggleMenu} call, before the
+     * dropdown is created or toggled. Returns `true` by default. Override in a
+     * subclass to veto the default open/close for some clicks — e.g. a button
+     * that substitutes a different overlay once some external condition holds
+     * — while leaving every other click's default dropdown behaviour
+     * untouched. The `"action"` event still fires for a vetoed click; only
+     * the internal menu toggle is skipped, so a subclass (or an external
+     * listener registered via {@link Button.on}) is free to run its own
+     * behaviour for that same click.
+     *
+     * @returns `true` to proceed with the normal toggle; `false` to leave the
+     *   dropdown untouched for this click.
+     */
+    protected shouldToggleMenu(): boolean {
+        return true;
+    }
+
+    /**
      * Toggles the menu anchored under the button's bottom-left corner, flipping
      * above the button when the room below is short. No-op when the button is not
-     * yet attached (no anchor rect to read), or when the items resolve to an empty
-     * list — `Menu.toggleFor` owns that suppression, so no check is needed here.
+     * yet attached (no anchor rect to read), when {@link shouldToggleMenu} vetoes
+     * the toggle, or when the items resolve to an empty list — `Menu.toggleFor`
+     * owns that last suppression, so no check is needed here.
      */
     private toggleMenu(): void {
         const el = this.getElement();
 
-        if (!el) {
+        if (!el || !this.shouldToggleMenu()) {
             return;
         }
 

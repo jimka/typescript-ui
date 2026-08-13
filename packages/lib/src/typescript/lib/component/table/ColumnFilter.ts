@@ -20,16 +20,29 @@ export type ColumnFilterOperator =
     | 'isEmpty' | 'isNotEmpty';
 
 /**
- * The operator plus raw text a filter cell currently holds, before it is
- * turned into a {@link FilterDescriptor} by {@link buildColumnFilter}.
+ * One operator + raw text pair — a single condition within a column's filter
+ * clause list. Ignored by `isEmpty` / `isNotEmpty`'s `text`, same as before
+ * this type was split out of {@link ColumnFilterState}.
+ *
+ * @category Components
+ */
+export interface ColumnFilterClause {
+    /** The comparison selected for this clause. */
+    operator: ColumnFilterOperator;
+    /** The raw text typed for this clause; ignored by `isEmpty` / `isNotEmpty`. */
+    text:     string;
+}
+
+/**
+ * The list of clauses a filter cell currently holds, before it is turned
+ * into a {@link FilterDescriptor} by {@link buildColumnFilter}. Always at
+ * least one entry; two or more are combined with AND.
  *
  * @category Components
  */
 export interface ColumnFilterState {
-    /** The comparison currently selected for this column. */
-    operator: ColumnFilterOperator;
-    /** The raw text typed into the filter input; ignored by `isEmpty` / `isNotEmpty`. */
-    text:     string;
+    /** Always at least one entry. Combined with AND when there is more than one. */
+    clauses: ColumnFilterClause[];
 }
 
 /**
@@ -147,6 +160,35 @@ export function columnFilterOperatorGlyph(operator: ColumnFilterOperator): strin
  */
 export function columnFilterTakesOperand(operator: ColumnFilterOperator): boolean {
     return operator !== 'isEmpty' && operator !== 'isNotEmpty';
+}
+
+/**
+ * Returns whether `clause` would actually contribute a filter once built —
+ * `true` for `isEmpty` / `isNotEmpty` (which need no text and always apply),
+ * or any other operator with non-blank `text`. The single rule behind both
+ * {@link buildColumnFilter}'s own per-clause null-exclusion and
+ * {@link effectiveClauseCount}'s count, so a caller displaying "how many
+ * conditions are active" can never drift out of sync with what the store
+ * actually filters on.
+ *
+ * @param clause - The clause to check.
+ * @returns `true` when the clause would contribute a filter.
+ */
+export function isClauseEffective(clause: ColumnFilterClause): boolean {
+    return !columnFilterTakesOperand(clause.operator) || clause.text !== '';
+}
+
+/**
+ * Returns how many clauses in `clauses` would actually contribute a filter —
+ * see {@link isClauseEffective}. Used by a column's clause-count badge so a
+ * still-blank "Add condition…" row (added but not yet typed into) never
+ * inflates the displayed count beyond what {@link buildColumnFilter} applies.
+ *
+ * @param clauses - The clause list to count.
+ * @returns The number of effective clauses.
+ */
+export function effectiveClauseCount(clauses: ColumnFilterClause[]): number {
+    return clauses.filter(isClauseEffective).length;
 }
 
 /**
@@ -311,12 +353,12 @@ function buildComboFilter(
 }
 
 /**
- * Builds the {@link FilterDescriptor} for one column's current filter state,
- * or `null` when the state produces no filter — blank text on an operator
- * that takes an operand, or text that fails to parse to `target.type` (so a
- * half-typed number never blanks the table).
+ * Builds the {@link FilterDescriptor} for one clause of a column's filter
+ * state, or `null` when the clause produces no filter — blank text on an
+ * operator that takes an operand, or text that fails to parse to
+ * `target.type` (so a half-typed number never blanks the table).
  *
- * `isEmpty` / `isNotEmpty` ignore `state.text` entirely and reuse the
+ * `isEmpty` / `isNotEmpty` ignore `clause.text` entirely and reuse the
  * existing `in` / `not` descriptor algebra rather than becoming new
  * descriptor variants. A combo column (`target.values` non-empty) resolves
  * `contains` / `startsWith` / `endsWith` / `eq` / `neq` against its option
@@ -330,18 +372,18 @@ function buildComboFilter(
  *
  * @param field - The model field name this filter targets.
  * @param target - The column's type plus its `values` / `showSeconds`.
- * @param state - The column's current operator + text.
+ * @param clause - The single operator + text pair to build.
  * @param display - Resolver used to render a combo option's label or a
  *   temporal value's displayed text.
- * @returns The built descriptor, or `null` when the state produces no filter.
+ * @returns The built descriptor, or `null` when the clause produces no filter.
  */
-export function buildColumnFilter(
+function buildClauseFilter(
     field:   string,
     target:  ColumnFilterTarget,
-    state:   ColumnFilterState,
+    clause:  ColumnFilterClause,
     display: CellTextResolver,
 ): FilterDescriptor | null {
-    const { operator, text } = state;
+    const { operator, text } = clause;
 
     if (operator === 'isEmpty') {
         return { type: 'in', field, values: [null, undefined, ''] };
@@ -351,7 +393,11 @@ export function buildColumnFilter(
         return { type: 'not', filter: { type: 'in', field, values: [null, undefined, ''] } };
     }
 
-    if (text === '') {
+    // Every other operator needs an operand, so `isClauseEffective` reduces
+    // to the same `text === ''` check this line replaced — routed through
+    // the shared helper so this null-exclusion and `effectiveClauseCount`'s
+    // own counting rule can never drift apart.
+    if (!isClauseEffective(clause)) {
         return null;
     }
 
@@ -402,4 +448,64 @@ export function buildColumnFilter(
         case 'lt':  return { type: 'lt',  field, value: ordered };
         case 'lte': return { type: 'lte', field, value: ordered };
     }
+}
+
+/**
+ * Builds the {@link FilterDescriptor} for one column's current filter state,
+ * or `null` when every clause produces no filter.
+ *
+ * Each clause is resolved independently, using the same per-clause logic
+ * this function used before it supported more than one clause (blank text,
+ * or text that fails to parse, drops that clause without touching the
+ * others). The survivors are then combined: zero survivors builds `null`
+ * (the existing blank-input case); exactly one survivor is returned
+ * directly, with no `and` wrapper, so a column carrying its original single
+ * clause builds byte-identical output to before this function supported
+ * multiple clauses; two or more survivors are combined into
+ * `{ type: 'and', filters: [...] }`, in clause order.
+ *
+ * @param field - The model field name this filter targets.
+ * @param target - The column's type plus its `values` / `showSeconds`.
+ * @param state - The column's current clause list.
+ * @param display - Resolver used to render a combo option's label or a
+ *   temporal value's displayed text.
+ * @returns The built descriptor, or `null` when the state produces no filter.
+ */
+export function buildColumnFilter(
+    field:   string,
+    target:  ColumnFilterTarget,
+    state:   ColumnFilterState,
+    display: CellTextResolver,
+): FilterDescriptor | null {
+    const survivors = state.clauses
+        .map(clause => buildClauseFilter(field, target, clause, display))
+        .filter((descriptor): descriptor is FilterDescriptor => descriptor !== null);
+
+    if (survivors.length === 0) {
+        return null;
+    }
+
+    if (survivors.length === 1) {
+        return survivors[0];
+    }
+
+    return { type: 'and', filters: survivors };
+}
+
+/**
+ * Compares two {@link ColumnFilterState}s for equality — same clause count,
+ * same operator and text at every index, in order. Used to suppress a
+ * redundant debounce reschedule when a repeat keystroke reports state
+ * unchanged from what is already cached.
+ *
+ * @param a - The first state to compare.
+ * @param b - The second state to compare.
+ * @returns `true` when both states hold the same clauses in the same order.
+ */
+export function columnFilterStatesEqual(a: ColumnFilterState, b: ColumnFilterState): boolean {
+    if (a.clauses.length !== b.clauses.length) {
+        return false;
+    }
+
+    return a.clauses.every((c, i) => c.operator === b.clauses[i].operator && c.text === b.clauses[i].text);
 }

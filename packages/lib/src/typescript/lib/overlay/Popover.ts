@@ -89,6 +89,10 @@ export interface PopoverOptions extends ContainerOptions {
     showArrow?: boolean;
     /** Optional title row rendered above the body. */
     title?:     string;
+    /** Callback invoked once whenever the popover closes, for any reason
+     *  (an explicit `hide()` or an outside-click `requestClose()`). Mirrors
+     *  [`Menu`](/api/overlay/classes/Menu)'s persistent-mode `onClose`. */
+    onClose?:   () => void;
 }
 
 /**
@@ -160,6 +164,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
     declare private _showArrow:         boolean;
     declare private _title:             string | null;
     declare private _titleComponent:    Text | null;
+    declare private _onClose:           (() => void) | null;
     private _bodyComponent:             Component | null = null;
     private _actionsRow:        Component | null = null;
 
@@ -208,12 +213,14 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         this._onWindowResize = () => this._reposition();
         this._onScroll       = () => this._reposition();
 
-        // Seed the `declare`-d title fields after the cascade has had its
-        // chance to write them via setTitle. Without a `title` option the
-        // cascade dispatch above skips setTitle entirely, so the fields
-        // would otherwise remain undefined (declare allocates no default).
+        // Seed the `declare`-d title/onClose fields after the cascade has had
+        // its chance to write them via setTitle / applyOptions. Without a
+        // `title` (or `onClose`) option the cascade dispatch above skips
+        // writing it entirely, so the field would otherwise remain undefined
+        // (declare allocates no default).
         this._title          ??= null;
         this._titleComponent ??= null;
+        this._onClose        ??= null;
     }
 
     /**
@@ -233,6 +240,10 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         this.setDismissOn(options.dismissOn ?? this.getDismissOn());
         this.setShowArrow(options.showArrow ?? this.isShowArrow());
         if (options.title !== undefined) this.setTitle(options.title);
+        // onClose has no setter (it's a plain callback, not a rendered/
+        // resolvable field), so it's assigned directly, same as title has no
+        // class default to fall back to.
+        if (options.onClose !== undefined) this._onClose = options.onClose;
 
         return this;
     }
@@ -328,6 +339,8 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
             this._titleComponent.setText(text);
         }
 
+        this._reflowIfOpen();
+
         return this;
     }
 
@@ -352,6 +365,8 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         }
 
         this._title = null;
+
+        this._reflowIfOpen();
 
         return this;
     }
@@ -380,6 +395,8 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         const titleOffset   = this._titleComponent ? 1 : 0;
 
         this.insertComponent(next, titleOffset);
+
+        this._reflowIfOpen();
 
         return this;
     }
@@ -500,8 +517,9 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
     }
 
     /**
-     * Plays the exit fade, detaches the popover from the DOM, and removes
-     * every dismiss / reposition listener.
+     * Plays the exit fade, detaches the popover from the DOM, removes every
+     * dismiss / reposition listener, and fires `onClose` (if configured)
+     * once for this open→close transition.
      *
      * @returns This popover, for method chaining.
      */
@@ -519,6 +537,11 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
 
         this._fadeHideAnimation?.cancel();
         this._fadeHideAnimation = fadeHideAndDetach(this, { durationMs: POPOVER_FADE_DURATION_MS });
+
+        // The `_isOpen` guard above already makes this method run at most
+        // once per open→close transition, so `onClose` needs no separate
+        // re-entrancy guard of its own.
+        this._onClose?.();
 
         return this;
     }
@@ -633,8 +656,30 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         this._bodyComponent   = null;
         this._actionsRow      = null;
         this._arrowComponent  = null;
+        this._onClose         = null;
 
         super.destructor();
+    }
+
+    /**
+     * Re-measures and repositions the popover after a content mutation
+     * (`setTitle` / `clearTitle` / `setBody`) — but only while the popover is
+     * currently shown. `insertComponent` / `removeComponent` only *schedule*
+     * a layout pass (next animation frame), so without this the bubble keeps
+     * its old preferred size — and stays anchored at the old `x`/`y` derived
+     * from it — until an unrelated `window` resize or ancestor scroll happens
+     * to run `_reposition()` next. Mirrors the same "measure, then position"
+     * pair `show()` runs on first open. A no-op before the first `show()`,
+     * matching every other content setter's tolerance for being called on an
+     * unshown popover.
+     */
+    private _reflowIfOpen(): void {
+        if (!this._isOpen) {
+            return;
+        }
+
+        this.doLayout();
+        this._reposition();
     }
 
     /**
