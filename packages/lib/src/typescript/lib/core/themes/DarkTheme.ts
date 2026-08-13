@@ -154,9 +154,17 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
             background: 'rgba(255, 255, 255, 0.2)',
             color     : 'inherit',
         },
+        // Solid (not translucent) and independent of `color: inherit` — this
+        // badge sits on the operator button's own glyph (`fill: currentColor`),
+        // so inheriting `color` risks the digit rendering the same shade as
+        // the glyph beneath/around it. The theme's own (brightened) blue
+        // accent (matching the focus ring — see the chart palette comment
+        // below) needs a dark, not white, digit for real contrast: white on
+        // this lighter blue is only ~2.4:1, while the body's own dark
+        // background tone on it is ~7:1.
         filterClauseBadge: {
-            background: 'rgba(255, 255, 255, 0.2)',
-            color     : 'inherit',
+            background: 'rgb(120, 170, 240)',
+            color     : 'rgb(30, 30, 30)',
         },
     },
     contextMenu: {

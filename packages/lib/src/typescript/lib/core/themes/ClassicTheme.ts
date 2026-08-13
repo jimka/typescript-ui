@@ -155,9 +155,16 @@ export const ClassicTheme: Theme = defineTheme(BaseTheme, {
             background: 'rgba(0, 0, 0, 0.15)',
             color     : 'inherit',
         },
+        // Solid (not translucent) and independent of `color: inherit` — this
+        // badge sits on the operator button's own glyph (`fill: currentColor`),
+        // so inheriting `color` risks the digit rendering the same shade as
+        // the glyph beneath/around it. The theme's own blue accent (matching
+        // the focus ring — see the chart palette comment below) on white
+        // gives a guaranteed ~5.7:1 contrast ratio, independent of whatever
+        // sits behind it.
         filterClauseBadge: {
-            background: 'rgba(0, 0, 0, 0.15)',
-            color     : 'inherit',
+            background: 'rgb(30, 100, 200)',
+            color     : 'rgb(255, 255, 255)',
         },
     },
     contextMenu: {
