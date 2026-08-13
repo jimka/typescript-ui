@@ -65,9 +65,13 @@ export interface ColumnFilterTarget {
 const STRING_OPERATORS: ColumnFilterOperator[] =
     ['contains', 'startsWith', 'endsWith', 'eq', 'neq', 'isEmpty', 'isNotEmpty'];
 
-/** Operators offered for a `number` / `date` / `time` / `datetime` column, in menu order. */
+/** Operators offered for a `number` column, in menu order. */
 const ORDERED_OPERATORS: ColumnFilterOperator[] =
     ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'isEmpty', 'isNotEmpty'];
+
+/** Operators offered for a `date` / `time` / `datetime` column, in menu order. */
+const TEMPORAL_OPERATORS: ColumnFilterOperator[] =
+    ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'startsWith', 'endsWith', 'isEmpty', 'isNotEmpty'];
 
 /** Operators offered for a `boolean` column, in menu order. */
 const BOOLEAN_OPERATORS: ColumnFilterOperator[] = ['eq', 'neq', 'isEmpty', 'isNotEmpty'];
@@ -123,10 +127,12 @@ export function columnFilterOperators(type: FieldType): ColumnFilterOperator[] {
             return BOOLEAN_OPERATORS;
 
         case 'number':
+            return ORDERED_OPERATORS;
+
         case 'date':
         case 'time':
         case 'datetime':
-            return ORDERED_OPERATORS;
+            return TEMPORAL_OPERATORS;
     }
 }
 
@@ -367,8 +373,11 @@ function buildComboFilter(
  * column's `eq` / `neq` matches every instant that **displays** the same as
  * the typed text, not the exact instant — built as the half-open range of
  * instants that renders identically (`and(gte, lt)`, `neq` wraps it in
- * `not`). Every other operator keeps comparing a parsed operand against the
- * raw stored value.
+ * `not`). That same column's `contains` / `startsWith` / `endsWith`
+ * descriptor carries the column's display hint (`temporal: { type,
+ * showSeconds }`), so the operator matches the field's displayed text rather
+ * than its raw `Date` form. Every other operator keeps comparing a parsed
+ * operand against the raw stored value.
  *
  * @param field - The model field name this filter targets.
  * @param target - The column's type plus its `values` / `showSeconds`.
@@ -425,6 +434,15 @@ function buildClauseFilter(
     }
 
     if (operator === 'contains' || operator === 'startsWith' || operator === 'endsWith') {
+        if (target.type === 'date' || target.type === 'time' || target.type === 'datetime') {
+            return {
+                type:     operator,
+                field,
+                value:    text,
+                temporal: { type: target.type, showSeconds: target.showSeconds ?? false },
+            };
+        }
+
         return { type: operator, field, value: text };
     }
 

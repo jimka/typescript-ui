@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { matchesFilter } from '~/data/FilterDescriptor';
 import type { FilterDescriptor } from '~/data/FilterDescriptor';
+import { temporalDisplayText } from '~/data/temporalText';
+import type { TemporalFieldType } from '~/data/temporalText';
 
 // A minimal ModelRecord-like stub: the contract is that any object exposing a
 // `get(field)` method works, so no real ModelRecord import is needed.
@@ -77,6 +79,112 @@ describe('matchesFilter', () => {
     it('endsWith returns false (never throws) on a nullish field', () => {
         expect(matchesFilter({ name: null }, { type: 'endsWith', field: 'name', value: 'a' })).toBe(false);
         expect(matchesFilter({}, { type: 'endsWith', field: 'name', value: 'a' })).toBe(false);
+    });
+
+    // --- substring operators over a Date field, via the `temporal` display hint ---
+    describe('substring operators with a temporal display hint', () => {
+        const D     = new Date(2021, 4, 17, 14, 30, 20);
+        const shown = (type: TemporalFieldType, showSeconds: boolean) => temporalDisplayText(type, showSeconds, D);
+
+        it('16. contains matches the displayed date text under the date hint', () => {
+            expect(matchesFilter({ due: D }, {
+                type: 'contains', field: 'due', value: shown('date', false),
+                temporal: { type: 'date', showSeconds: false },
+            })).toBe(true);
+        });
+
+        it('17. regression: contains "GMT" does not match under the date hint, even though String(D) contains GMT', () => {
+            expect(matchesFilter({ due: D }, {
+                type: 'contains', field: 'due', value: 'GMT',
+                temporal: { type: 'date', showSeconds: false },
+            })).toBe(false);
+        });
+
+        it('18. contains "GMT" matches with no temporal member — the pre-existing raw-value behaviour is untouched', () => {
+            expect(matchesFilter({ due: D }, { type: 'contains', field: 'due', value: 'GMT' })).toBe(true);
+        });
+
+        it('19. startsWith matches the displayed prefix under the date hint, not the native-form prefix', () => {
+            const displayed = shown('date', false);
+
+            expect(matchesFilter({ due: D }, {
+                type: 'startsWith', field: 'due', value: displayed.slice(0, 3),
+                temporal: { type: 'date', showSeconds: false },
+            })).toBe(true);
+            expect(matchesFilter({ due: D }, {
+                type: 'startsWith', field: 'due', value: String(D).slice(0, 3),
+                temporal: { type: 'date', showSeconds: false },
+            })).toBe(false);
+        });
+
+        it('20. endsWith matches the displayed suffix under the date hint, not the native-form suffix', () => {
+            const displayed = shown('date', false);
+
+            expect(matchesFilter({ due: D }, {
+                type: 'endsWith', field: 'due', value: displayed.slice(-3),
+                temporal: { type: 'date', showSeconds: false },
+            })).toBe(true);
+            expect(matchesFilter({ due: D }, {
+                type: 'endsWith', field: 'due', value: String(D).slice(-3),
+                temporal: { type: 'date', showSeconds: false },
+            })).toBe(false);
+        });
+
+        it('21. showSeconds is honoured: a longer needle matches only the showSeconds:true rendering', () => {
+            const withSeconds = shown('datetime', true);
+
+            expect(matchesFilter({ due: D }, {
+                type: 'contains', field: 'due', value: withSeconds,
+                temporal: { type: 'datetime', showSeconds: true },
+            })).toBe(true);
+            expect(matchesFilter({ due: D }, {
+                type: 'contains', field: 'due', value: withSeconds,
+                temporal: { type: 'datetime', showSeconds: false },
+            })).toBe(false);
+        });
+
+        it('22. type is honoured: a datetime-shaped needle does not match under the date hint', () => {
+            expect(matchesFilter({ due: D }, {
+                type: 'contains', field: 'due', value: shown('datetime', false),
+                temporal: { type: 'date', showSeconds: false },
+            })).toBe(false);
+        });
+
+        it('23. contains matches the displayed time text under the time hint', () => {
+            expect(matchesFilter({ due: D }, {
+                type: 'contains', field: 'due', value: shown('time', false),
+                temporal: { type: 'time', showSeconds: false },
+            })).toBe(true);
+        });
+
+        it('24. the hint is inert for a non-Date value — the raw string is matched, not reformatted', () => {
+            expect(matchesFilter({ due: '2021-05-17' }, {
+                type: 'contains', field: 'due', value: '2021',
+                temporal: { type: 'date', showSeconds: false },
+            })).toBe(true);
+            expect(matchesFilter({ due: '2021-05-17' }, {
+                type: 'contains', field: 'due', value: 'GMT',
+                temporal: { type: 'date', showSeconds: false },
+            })).toBe(false);
+        });
+
+        it('25. a nullish field returns false for all three operators, never throwing, even with a hint present', () => {
+            const temporal = { type: 'date' as const, showSeconds: false };
+
+            expect(matchesFilter({ due: null }, { type: 'contains', field: 'due', value: 'x', temporal })).toBe(false);
+            expect(matchesFilter({}, { type: 'contains', field: 'due', value: 'x', temporal })).toBe(false);
+            expect(matchesFilter({ due: null }, { type: 'startsWith', field: 'due', value: 'x', temporal })).toBe(false);
+            expect(matchesFilter({}, { type: 'startsWith', field: 'due', value: 'x', temporal })).toBe(false);
+            expect(matchesFilter({ due: null }, { type: 'endsWith', field: 'due', value: 'x', temporal })).toBe(false);
+            expect(matchesFilter({}, { type: 'endsWith', field: 'due', value: 'x', temporal })).toBe(false);
+        });
+
+        it('26. an invalid Date still matches "Invalid" under the date hint, mirroring what the cell shows', () => {
+            expect(matchesFilter({ due: new Date(NaN) }, {
+                type: 'contains', field: 'due', value: 'Invalid',
+                temporal: { type: 'date', showSeconds: false },
+            })).toBe(true);
+        });
     });
 
     // --- relational gt / gte / lt / lte ---

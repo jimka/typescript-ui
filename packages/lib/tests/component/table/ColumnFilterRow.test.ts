@@ -880,54 +880,57 @@ describe('Column filter row — TreeTable', () => {
 // (combo) and a `time` field with `showSeconds: true`, since MODEL above has
 // neither. Cases numbered per that plan's own `## Expected Behaviour` list
 // (27-34), independent of this file's pre-existing 20-40 sequence above.
+// The fixture and its two cell finders are module-scoped (rather than local
+// to this describe block) so the date-column-filter-string-operators block
+// below can reuse the same `meet` column instead of duplicating it.
+const COMBO_TEMPORAL_MODEL = new Model([
+    { name: 'id',   type: 'string', order: 0 },
+    { name: 'role', type: 'string', order: 1 },
+    { name: 'meet', type: 'time',   order: 2 },
+], 'id');
+
+const ROLE_VALUES = [
+    { value: 'dev', label: 'Developer' },
+    { value: 'qa',  label: 'QA Engineer' },
+    { value: 'pm',  label: 'Project Manager' },
+];
+
+const COMBO_TEMPORAL_RECORDS = [
+    { id: '1', role: 'dev', meet: new Date(1970, 0, 1, 9, 30, 0) },
+    { id: '2', role: 'qa',  meet: new Date(1970, 0, 1, 14, 0, 0) },
+    { id: '3', role: 'pm',  meet: new Date(1970, 0, 1, 16, 45, 0) },
+    { id: '4', role: '',    meet: null },
+];
+
+async function comboTemporalTable(): Promise<{ table: Table; store: MemoryStore }> {
+    const store = new MemoryStore(COMBO_TEMPORAL_MODEL, COMBO_TEMPORAL_RECORDS);
+    await store.load();
+
+    const table = new Table(store, {
+        columns: [
+            { field: 'role', values: ROLE_VALUES },
+            { field: 'meet', showSeconds: true },
+        ],
+    });
+    table.getElement(true);
+    table.setWidth(600);
+    table.setHeight(400);
+    table.doLayout();
+    table.setFilterRowVisible(true);
+
+    return { table, store };
+}
+
+function roleCell(table: Table): FilterCell {
+    return filterCells(table).find(c => c.getFieldName() === 'role')!;
+}
+
+function meetCell(table: Table): FilterCell {
+    return filterCells(table).find(c => c.getFieldName() === 'meet')!;
+}
+
 describe('Column filter row — combo and temporal filtering (cell-display-text)', () => {
     afterEach(() => vi.useRealTimers());
-
-    const COMBO_TEMPORAL_MODEL = new Model([
-        { name: 'id',   type: 'string', order: 0 },
-        { name: 'role', type: 'string', order: 1 },
-        { name: 'meet', type: 'time',   order: 2 },
-    ], 'id');
-
-    const ROLE_VALUES = [
-        { value: 'dev', label: 'Developer' },
-        { value: 'qa',  label: 'QA Engineer' },
-        { value: 'pm',  label: 'Project Manager' },
-    ];
-
-    const COMBO_TEMPORAL_RECORDS = [
-        { id: '1', role: 'dev', meet: new Date(1970, 0, 1, 9, 30, 0) },
-        { id: '2', role: 'qa',  meet: new Date(1970, 0, 1, 14, 0, 0) },
-        { id: '3', role: 'pm',  meet: new Date(1970, 0, 1, 16, 45, 0) },
-        { id: '4', role: '',    meet: null },
-    ];
-
-    async function comboTemporalTable(): Promise<{ table: Table; store: MemoryStore }> {
-        const store = new MemoryStore(COMBO_TEMPORAL_MODEL, COMBO_TEMPORAL_RECORDS);
-        await store.load();
-
-        const table = new Table(store, {
-            columns: [
-                { field: 'role', values: ROLE_VALUES },
-                { field: 'meet', showSeconds: true },
-            ],
-        });
-        table.getElement(true);
-        table.setWidth(600);
-        table.setHeight(400);
-        table.doLayout();
-        table.setFilterRowVisible(true);
-
-        return { table, store };
-    }
-
-    function roleCell(table: Table): FilterCell {
-        return filterCells(table).find(c => c.getFieldName() === 'role')!;
-    }
-
-    function meetCell(table: Table): FilterCell {
-        return filterCells(table).find(c => c.getFieldName() === 'meet')!;
-    }
 
     it('27. typing "Developer" (Equals) leaves only the record whose stored value is "dev" visible', async () => {
         vi.useFakeTimers();
@@ -1019,6 +1022,67 @@ describe('Column filter row — combo and temporal filtering (cell-display-text)
         expect(labels).toEqual(
             expect.arrayContaining(['Contains', 'Starts with', 'Ends with', 'Equals', 'Not equals', 'Is empty', 'Is not empty']));
         expect(renderer(cell).getInput().isDisplayed()).toBe(true);
+    });
+});
+
+// date-column-filter-string-operators: a temporal column's filter row now
+// also offers Contains/Starts with/Ends with, matching the displayed text
+// rather than the raw Date. Case numbered per that plan's own
+// `## Expected Behaviour` list (31 — originally a manual-only case; the
+// offline harness above (cell-display-text's `comboTemporalTable`) can
+// exercise it directly, so it is covered here instead of only by hand).
+// Reuses the `meet` column fixture (a `time` field with `showSeconds: true`)
+// from the describe block above.
+describe('Column filter row — temporal substring operators (date-column-filter-string-operators)', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('31a. the meet column\'s operator menu offers Contains/Starts with/Ends with directly after At most and before Is empty', async () => {
+        const { table } = await comboTemporalTable();
+
+        const provider = renderer(meetCell(table)).getOperatorButton().getMenuItems() as () => MenuItemConfig[];
+        const labels   = provider().map(i => i.text?.trim()).filter((t): t is string => t !== undefined);
+
+        expect(labels).toEqual(
+            expect.arrayContaining(['Equals', 'Not equals', 'Greater than', 'At least', 'Less than', 'At most',
+                'Contains', 'Starts with', 'Ends with', 'Is empty', 'Is not empty']));
+
+        const atMostIndex    = labels.indexOf('At most');
+        const containsIndex  = labels.indexOf('Contains');
+        const startsWithIndex = labels.indexOf('Starts with');
+        const endsWithIndex   = labels.indexOf('Ends with');
+        const isEmptyIndex    = labels.indexOf('Is empty');
+
+        expect(containsIndex).toBe(atMostIndex + 1);
+        expect(startsWithIndex).toBe(containsIndex + 1);
+        expect(endsWithIndex).toBe(startsWithIndex + 1);
+        expect(isEmptyIndex).toBe(endsWithIndex + 1);
+    });
+
+    it('31b. picking Contains and typing a fragment of the displayed time narrows to the matching record', async () => {
+        vi.useFakeTimers();
+        const { table } = await comboTemporalTable();
+
+        // Built relationally from TimeRenderer's own output, never a locale
+        // literal — "type a fragment of what the cell shows".
+        const displayed = new TimeRenderer(true);
+        displayed.setValue(new Date(1970, 0, 1, 14, 0, 0));
+
+        pickOperator(meetCell(table), 'Contains');
+        typeInto(meetCell(table), displayed.getDisplayText().slice(0, 5));
+        vi.advanceTimersByTime(200);
+
+        expect(visibleRecords(table).map(r => r.get('id'))).toEqual(['2']);
+    });
+
+    it('31c. Contains "GMT" matches nothing — the native Date.toString() form is never matched', async () => {
+        vi.useFakeTimers();
+        const { table } = await comboTemporalTable();
+
+        pickOperator(meetCell(table), 'Contains');
+        typeInto(meetCell(table), 'GMT');
+        vi.advanceTimersByTime(200);
+
+        expect(visibleRecords(table)).toEqual([]);
     });
 });
 

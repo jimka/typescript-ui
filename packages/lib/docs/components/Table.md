@@ -237,11 +237,12 @@ The operators offered depend on the column's field type, and the first entry is 
 | --- | --- | --- |
 | `string`, `auto`, `glyph` | Contains, Starts with, Ends with, Equals, Not equals, Is empty, Is not empty | Contains |
 | `number` | Equals, Not equals, Greater than, At least, Less than, At most, Is empty, Is not empty | Equals |
-| `date`, `time`, `datetime` | Equals, Not equals, Greater than, At least, Less than, At most, Is empty, Is not empty | Equals |
+| `date`, `time`, `datetime` | Equals, Not equals, Greater than, At least, Less than, At most, Contains, Starts with, Ends with, Is empty, Is not empty | Equals |
 | `boolean` | Equals, Not equals, Is empty, Is not empty | Equals |
 
 - **Substring operators are case-insensitive**; Contains / Starts with / Ends with match regardless of case. Equals / Not equals are exact and case-sensitive.
 - **Equals on a temporal column matches every value that displays the same**, not the exact instant — a `date` column's Equals covers the whole calendar day, and a `time`/`datetime` column's covers the displayed minute (or second, under `showSeconds`).
+- **Contains / Starts with / Ends with on a `date`/`time`/`datetime` column match the displayed text** — the same string the cell shows, including its locale format and its `showSeconds` setting — not the underlying `Date`'s raw form.
 - **A `time` filter's operand is typed as displayed** — `09:30`, `09:30:20`, or `09:30 AM` — and anchored to 1970-01-01, mirroring the normalisation the time cell editor commits. A `time` field whose stored values carry a different date anchor will not match.
 - **Typing debounces** for 200ms before writing to the store; picking a different operator, pressing Enter, or pressing Escape apply immediately, with no debounce wait.
 - **Local vs. remote evaluation follows the store's `remoteFilter` option** — the filter row adds no second switch. A store with `pageSize` set should also set `remoteFilter: true`, or a page comes back unfiltered from the proxy and is only shrunk locally afterward.

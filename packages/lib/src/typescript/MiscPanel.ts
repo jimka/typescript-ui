@@ -690,8 +690,10 @@ class MiscPanel extends Panel {
                         // demo the header's filter row — one string column
                         // (contains/startsWith/endsWith/eq/neq), one number
                         // column (eq/neq/gt/gte/lt/lte), one date column (same
-                        // ordering set; Equals matches the whole displayed day).
-                        // Hidden until toggled — see filterRowBtn below.
+                        // ordering set plus contains/startsWith/endsWith on
+                        // the displayed day; Equals matches the whole
+                        // displayed day). Hidden until toggled — see
+                        // filterRowBtn below.
                         { field: 'Name'    , minWidth: 150, headerGlyph: 'xmark', group: 'Identity', unhideable: true                                      },
                         { field: 'Active'  , maxWidth: 100,                       group: 'Identity'                                                       },
                         { field: 'Score'   , maxWidth: 100, cellReadOnly: (r) => r.get('Active') === false, requiredPredicate: (r) => r.get('Active') === true },

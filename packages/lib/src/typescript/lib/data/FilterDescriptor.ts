@@ -1,5 +1,20 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import type { TemporalFieldType } from "~/data/temporalText.js";
+import { temporalDisplayText } from "~/data/temporalText.js";
+
+/**
+ * How a substring operator renders a `Date`-valued field before matching.
+ * Absent means "match the raw value", which is the behaviour every descriptor
+ * built before this member existed still gets.
+ *
+ * @category Data
+ */
+export interface TemporalDisplay {
+    type:        TemporalFieldType;
+    showSeconds: boolean;
+}
+
 /**
  * Serializable filter algebra for {@link AbstractStore}. Descriptors are plain objects so
  * they can cross the worker boundary via structured clone (unlike arbitrary filter
@@ -8,14 +23,20 @@
  * `eq` / `neq` compare two `Date` operands by instant (`getTime()`) rather than by
  * reference, since two distinct `Date` instances for the same moment are never `===`.
  *
+ * A `contains` / `startsWith` / `endsWith` descriptor over a `Date`-valued field renders
+ * the field through its optional `temporal` hint before matching, so the operator agrees
+ * with what the cell displays; when the hint is absent, or the field's value is not a
+ * `Date`, the raw value is matched unchanged, exactly as every descriptor built before
+ * this member existed.
+ *
  * @category Data
  */
 export type FilterDescriptor =
     | { type: 'eq';         field: string; value: any }
     | { type: 'neq';        field: string; value: any }
-    | { type: 'contains';   field: string; value: string; caseSensitive?: boolean }
-    | { type: 'startsWith'; field: string; value: string; caseSensitive?: boolean }
-    | { type: 'endsWith';   field: string; value: string; caseSensitive?: boolean }
+    | { type: 'contains';   field: string; value: string; caseSensitive?: boolean; temporal?: TemporalDisplay }
+    | { type: 'startsWith'; field: string; value: string; caseSensitive?: boolean; temporal?: TemporalDisplay }
+    | { type: 'endsWith';   field: string; value: string; caseSensitive?: boolean; temporal?: TemporalDisplay }
     | { type: 'gt';         field: string; value: number | string | Date }
     | { type: 'gte';        field: string; value: number | string | Date }
     | { type: 'lt';         field: string; value: number | string | Date }
@@ -35,6 +56,31 @@ function readField(record: any, field: string): any {
         return record.get(field);
     }
     return record ? record[field] : undefined;
+}
+
+/** The three descriptor members a substring operator can appear as. */
+type SubstringDescriptor = Extract<FilterDescriptor, { type: 'contains' | 'startsWith' | 'endsWith' }>;
+
+/**
+ * The haystack/needle pair a substring operator compares, or `null` when the
+ * field is nullish and no match is possible. A `Date` field is rendered
+ * through `descriptor.temporal` when that hint is present; every other value
+ * keeps the plain `String(raw)` coercion.
+ */
+function substringOperands(record: any, descriptor: SubstringDescriptor): { haystack: string; needle: string } | null {
+    const raw = readField(record, descriptor.field);
+
+    if (raw == null) {
+        return null;
+    }
+
+    const text = raw instanceof Date && descriptor.temporal
+        ? temporalDisplayText(descriptor.temporal.type, descriptor.temporal.showSeconds, raw)
+        : String(raw);
+
+    return descriptor.caseSensitive
+        ? { haystack: text,               needle: descriptor.value }
+        : { haystack: text.toLowerCase(), needle: descriptor.value.toLowerCase() };
 }
 
 /**
@@ -65,27 +111,22 @@ export function matchesFilter(record: any, descriptor: FilterDescriptor): boolea
         }
 
         case 'contains': {
-            const raw = readField(record, descriptor.field);
-            if (raw == null) return false;
-            const haystack = descriptor.caseSensitive ? String(raw) : String(raw).toLowerCase();
-            const needle   = descriptor.caseSensitive ? descriptor.value : descriptor.value.toLowerCase();
-            return haystack.indexOf(needle) !== -1;
+            const operands = substringOperands(record, descriptor);
+
+            return operands !== null && operands.haystack.indexOf(operands.needle) !== -1;
         }
 
         case 'startsWith': {
-            const raw = readField(record, descriptor.field);
-            if (raw == null) return false;
-            const haystack = descriptor.caseSensitive ? String(raw) : String(raw).toLowerCase();
-            const needle   = descriptor.caseSensitive ? descriptor.value : descriptor.value.toLowerCase();
-            return haystack.indexOf(needle) === 0;
+            const operands = substringOperands(record, descriptor);
+
+            return operands !== null && operands.haystack.indexOf(operands.needle) === 0;
         }
 
         case 'endsWith': {
-            const raw = readField(record, descriptor.field);
-            if (raw == null) return false;
-            const haystack = descriptor.caseSensitive ? String(raw) : String(raw).toLowerCase();
-            const needle   = descriptor.caseSensitive ? descriptor.value : descriptor.value.toLowerCase();
-            return haystack.lastIndexOf(needle) === haystack.length - needle.length;
+            const operands = substringOperands(record, descriptor);
+
+            return operands !== null
+                && operands.haystack.lastIndexOf(operands.needle) === operands.haystack.length - operands.needle.length;
         }
 
         case 'gt':

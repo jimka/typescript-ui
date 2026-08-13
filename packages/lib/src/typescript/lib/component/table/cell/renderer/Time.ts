@@ -3,12 +3,15 @@
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 import { Text } from "~/component/input/Text.js";
 import { callable } from "~/core/Callable.js";
+import { temporalDisplayText } from "~/data/temporalText.js";
 
 /**
  * A read-only renderer for time cell values.
  *
- * Displays the time portion of a `Date` via a {@link Text} formatted with
- * `Date.toLocaleTimeString`.
+ * Displays the time portion of a `Date` via a {@link Text} formatted by the
+ * shared temporal display-text formatter, so its text stays in step with
+ * what a `contains` / `startsWith` / `endsWith` filter over this column
+ * matches against.
  */
 class TimeRenderer extends CellRenderer<Date | null> {
 
@@ -32,11 +35,8 @@ class TimeRenderer extends CellRenderer<Date | null> {
     }
 
     setValue(value: Date | null): this {
-        this._value = value ?? null;
-        const opts: Intl.DateTimeFormatOptions = this._showSeconds
-            ? { hour: '2-digit', minute: '2-digit', second: '2-digit' }
-            : { hour: '2-digit', minute: '2-digit' };
-        this._display = value ? value.toLocaleTimeString(undefined, opts) : "";
+        this._value   = value ?? null;
+        this._display = value ? temporalDisplayText('time', this._showSeconds, value) : "";
         this._text.setText(this._display);
 
         return this;

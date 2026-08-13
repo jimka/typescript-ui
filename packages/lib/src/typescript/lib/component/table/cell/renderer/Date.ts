@@ -3,11 +3,14 @@
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 import { Text } from "~/component/input/Text.js";
 import { callable } from "~/core/Callable.js";
+import { temporalDisplayText } from "~/data/temporalText.js";
 
 /**
  * A read-only renderer for date cell values.
  *
- * Displays the value via a {@link Text} formatted with `Date.toLocaleDateString`.
+ * Displays the value via a {@link Text} formatted by the shared temporal
+ * display-text formatter, so its text stays in step with what a `contains` /
+ * `startsWith` / `endsWith` filter over this column matches against.
  */
 class DateRenderer extends CellRenderer<Date | null> {
 
@@ -30,7 +33,7 @@ class DateRenderer extends CellRenderer<Date | null> {
 
     setValue(value: Date | null): this {
         this._value   = value ?? null;
-        this._display = value ? value.toLocaleDateString() : "";
+        this._display = value ? temporalDisplayText('date', false, value) : "";
         this._text.setText(this._display);
 
         return this;
