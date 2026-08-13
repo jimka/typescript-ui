@@ -24,6 +24,16 @@ page resets to empty.
   element still being connected. No built-in `LayoutManager` depends on this,
   so no consumer action is needed unless a custom manager's `detach()`
   override reads the container's connected element.
+  
+### Split
+
+- **`SplitGutter.setMovable` is now live at runtime**, instead of taking
+  effect only at construction. Toggling it on an already-constructed gutter
+  now enables or disables dragging (and its resize cursor) immediately.
+- **`Split.setPaneResizeWeight` now accepts `weight: number | undefined`.**
+  Passing `undefined` clears a previously-set pin, restoring the pane to
+  ratio-based persistence in `getPaneSizes`. Existing callers passing a
+  number are unaffected.
 
 ### Table
 
@@ -96,6 +106,18 @@ page resets to empty.
   `stretching` becomes a deprecated shorthand over `itemAlign: "stretch"` /
   `"baseline"`; every existing `stretching` call site keeps working
   unchanged.
+
+### Split
+
+- **A gutter's right-click context menu** — lock the gutter against
+  dragging, pin either neighbouring pane's size against container resizes,
+  and choose which neighbour the gutter collapses. Rebuilt from live state
+  on every open; see [Gutter context menu](/layouts/Split#gutter-context-menu).
+  `Border`'s fixed gutters build no menu.
+- **`SplitGutter` / `CollapseButton` `"contextmenu"` event**, fired when the
+  gutter's chevron is right-clicked, receiving the pointer's viewport
+  coordinates. `Split` subscribes to it internally to open the new menu; a
+  consumer can also listen directly.
 
 ## Fixed
 

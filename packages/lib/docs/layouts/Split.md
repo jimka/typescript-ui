@@ -80,7 +80,9 @@ split.setPaneCollapsed(0, false);  // restore it
 
 A pane and its neighbour share the gutter between them, so opting the trailing
 pane into `east` claims that gutter and makes the leading pane non-collapsible
-(only one of the two can fold into a given gutter).
+(only one of the two can fold into a given gutter). A gutter's
+[context menu](#gutter-context-menu) offers the same choice interactively,
+without editing constraints by hand.
 
 The chevron is a [`CollapseButton`](/api/component/container/classes/CollapseButton)
 carried by the [`SplitGutter`](/api/component/container/classes/SplitGutter); the
@@ -101,6 +103,33 @@ split.addComponent(content, { collapsible: false }); // drag to resize, never co
 Note the default is the **opposite** of [`Border`](/layouts/Border), where a
 region is non-collapsible until it opts in with `collapsible: true`; the two
 managers read the same constraint field with opposite defaults.
+
+## Gutter context menu
+
+Right-clicking a gutter's chevron opens a context menu, rebuilt from live state
+on every open, with three groups of controls:
+
+- **Lock gutter** — disables dragging (and the resize cursor) on that gutter
+  without affecting its collapse chevron. Wraps
+  [`SplitGutter.setMovable`](/api/component/container/classes/SplitGutter#setmovable),
+  which is live at runtime.
+- **Fix `<lead>` pane `<extent>`** / **Fix `<next>` pane `<extent>`** — pins
+  either neighbouring pane's size against container resizes, equivalent to
+  `setPaneResizeWeight(pane, 0)`. Toggling a checked row off clears the pin
+  (`setPaneResizeWeight(pane, undefined)`) and restores proportional resizing.
+  A toggle produces no immediate visual change — the pin only bites on the next
+  container resize.
+- **Collapse `<lead>` pane** / **Collapse `<next>` pane** — chooses which
+  neighbour this gutter collapses, by writing the neighbour's
+  `collapseDirection` constraint (see [Collapsible panels](#collapsible-panels))
+  and re-syncing the chevron on the next layout pass. Disabled for a
+  `collapsible: false` neighbour, and both disabled while the gutter itself is
+  a collapsed strip.
+
+Row labels follow the split's orientation: `left`/`right`/`width` on a
+horizontal split, `top`/`bottom`/`height` on a vertical one. [`Border`](/layouts/Border)'s
+gutters build no menu — right-clicking one shows nothing, since none of the
+six rows has a meaningful analog on a fixed, placement-driven region.
 
 ## Saving and restoring layout
 
@@ -139,6 +168,7 @@ A saved array whose length or per-index unit no longer matches the live panes (e
 | `isPaneCollapsed(index)` | Whether the pane at `index` is collapsed. |
 | `getPaneSizes()` | Weight-aware, mixed-unit sizes for cross-session persistence. See [Saving and restoring layout](#saving-and-restoring-layout). |
 | `applyPaneSizes(sizes)` | Restore sizes captured by `getPaneSizes`. |
+| `setPaneResizeWeight(pane, weight)` | Pin (`0`) or weight a pane's share of a container resize; `undefined` clears the pin. |
 
 ## Notes
 
