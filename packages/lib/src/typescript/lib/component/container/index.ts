@@ -15,6 +15,8 @@ export { MenuSeparator } from '~/component/container/MenuSeparator.js';
 export type { MenuSeparatorOptions } from '~/component/container/MenuSeparator.js';
 export { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow.js';
 export type { CheckboxMenuRowOptions, CheckboxMenuRowEvent } from '~/component/container/CheckboxMenuRow.js';
+export { RadioMenuRow } from '~/component/container/RadioMenuRow.js';
+export type { RadioMenuRowOptions, RadioMenuRowEvent } from '~/component/container/RadioMenuRow.js';
 export { Scrollbar } from '~/component/container/Scrollbar.js';
 export type { ScrollbarListener, ScrollbarOptions, ScrollbarEvent } from '~/component/container/Scrollbar.js';
 export { ScrollStrip } from '~/component/container/ScrollStrip.js';

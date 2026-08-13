@@ -16,6 +16,7 @@ import type { AxisOrientation } from "~/primitive/Axis.js";
 import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
+import { RadioMenuRow } from "~/component/container/RadioMenuRow.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 
 // Pixel thickness of a single draggable gutter. The main-axis sizing math
@@ -1107,16 +1108,16 @@ class Split extends LayoutManager {
 
         const target = this.gutterTargetPane(gutterIndex, components);
 
-        let collapseLeadRow: CheckboxMenuRow | null = null;
-        let collapseNextRow: CheckboxMenuRow | null = null;
+        let collapseLeadRow: RadioMenuRow | null = null;
+        let collapseNextRow: RadioMenuRow | null = null;
 
-        // The two collapse rows are one choice with no "collapses neither"
-        // state to un-check into, so each toggle recomputes the live target
-        // and writes BOTH rows' checked state — including the row that was
-        // just clicked, restoring its own checkbox when it was already the
-        // target. The optional calls cover a test that builds one factory
-        // without the other; `Menu` always calls every factory before the
-        // panel is interactive.
+        // The two collapse rows are one choice, and a RadioMenuRow click only ever
+        // selects, so right after a click BOTH rows read as selected until this
+        // runs: it recomputes the live target and writes both rows from it, which
+        // clears the sibling — and puts the clicked row back if the retarget did
+        // not take (a container or pane lookup that bailed). The optional calls
+        // cover a test that builds one factory without the other; `Menu` always
+        // calls every factory before the panel is interactive.
         const syncCollapseRows = (): void => {
             const live = this.gutterTargetPane(gutterIndex, components);
 
@@ -1162,7 +1163,7 @@ class Split extends LayoutManager {
             { separator: true },
             {
                 row: () => {
-                    const row = new CheckboxMenuRow({
+                    const row = new RadioMenuRow({
                         text:    `Collapse ${leadWord} pane`,
                         checked: target === gutterIndex,
                         enabled: !gutter.isOpaque() && this.paneCollapsible(lead),
@@ -1180,7 +1181,7 @@ class Split extends LayoutManager {
             },
             {
                 row: () => {
-                    const row = new CheckboxMenuRow({
+                    const row = new RadioMenuRow({
                         text:    `Collapse ${nextWord} pane`,
                         checked: target === gutterIndex + 1,
                         enabled: !gutter.isOpaque() && this.paneCollapsible(next),
