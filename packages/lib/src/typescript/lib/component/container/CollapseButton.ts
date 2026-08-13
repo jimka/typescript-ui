@@ -26,6 +26,14 @@ const HANDLE_ALONG = 40;
 export type CollapseDirection = "north" | "south" | "east" | "west";
 
 /**
+ * The gesture that activates a {@link CollapseButton}: `"dblclick"` (the
+ * default) or `"click"` for a single click.
+ *
+ * @category Components
+ */
+export type CollapseTrigger = "click" | "dblclick";
+
+/**
  * String-literal union of the events emitted by {@link CollapseButton}.
  *
  * @category Components
@@ -39,6 +47,11 @@ export type CollapseButtonEvent = "collapse" | "contextmenu";
  */
 export interface CollapseButtonOptions extends ComponentOptions {
     direction?: CollapseDirection;
+    /**
+     * The gesture that fires `collapse`: `"dblclick"` (the default,
+     * preserving today's behaviour) or `"click"` for a single click.
+     */
+    trigger?: CollapseTrigger;
     /**
      * Multi-event listener bag dispatched to {@link CollapseButton.on} at
      * construction time.
@@ -119,9 +132,11 @@ function ensureCollapseButtonClassRule(): void {
  * that triggers a collapse in the gutter's divider state or a restore in its
  * collapsed-strip state.
  *
- * Activation is a **double-click**, never a single click, so grabbing the button
- * for a drag can never collapse by accident — a drag produces no `dblclick`, and
- * the button's `mousedown` is stopped from reaching the host so it never begins
+ * Activation defaults to a **double-click**; `trigger: "click"` switches it to
+ * a single click instead. In either mode, grabbing the button for a drag can
+ * never activate it by accident — a genuine drag (press, move, release
+ * elsewhere) produces neither `click` nor `dblclick`, and the button's
+ * `mousedown` is separately stopped from reaching the host so it never begins
  * a gutter resize.
  *
  * @category Components
@@ -129,14 +144,15 @@ function ensureCollapseButtonClassRule(): void {
 class CollapseButton extends Component<CollapseButtonOptions> {
 
     declare private _direction: CollapseDirection;
+    private _trigger: CollapseTrigger = "dblclick";
     private _listeners: ListenerBag<CollapseButtonEvent> = new ListenerBag<CollapseButtonEvent>();
 
     /**
      * Constructs a collapse button. The chevron points east unless
      * `options.direction` says otherwise.
      *
-     * @param options - Optional configuration bag (chevron direction, listener
-     *   bag, plus common Component fields).
+     * @param options - Optional configuration bag (chevron direction,
+     *   activation trigger, listener bag, plus common Component fields).
      */
     constructor(options?: CollapseButtonOptions) {
         ensureCollapseButtonClassRule();
@@ -148,6 +164,7 @@ class CollapseButton extends Component<CollapseButtonOptions> {
         super({ tag: "span", cursor: "pointer", ...(options ?? {}) });
 
         this._direction ??= "east";
+        this._trigger = options?.trigger ?? "dblclick";
 
         this.applyRotation();
 
@@ -156,7 +173,7 @@ class CollapseButton extends Component<CollapseButtonOptions> {
         // before the class-field `_listeners` initializer has run.
         this.applyListeners(options?.listeners);
 
-        Event.addListener(this, "dblclick", this.onDoubleClick);
+        Event.addListener(this, this._trigger === "click" ? "click" : "dblclick", this.onActivate);
         Event.addListener(this, "mousedown", this.onMouseDown);
         Event.addListener(this, "contextmenu", this.onContextMenu);
     }
@@ -232,6 +249,15 @@ class CollapseButton extends Component<CollapseButtonOptions> {
     }
 
     /**
+     * Returns the configured activation trigger.
+     *
+     * @returns `"dblclick"` (the default) or `"click"`.
+     */
+    getTrigger(): CollapseTrigger {
+        return this._trigger;
+    }
+
+    /**
      * Sets the chevron direction, rotating the glyph to match.
      *
      * @param direction - The direction the chevron should point.
@@ -246,11 +272,13 @@ class CollapseButton extends Component<CollapseButtonOptions> {
     }
 
     /**
-     * Registers a listener for this button's `collapse` event, fired on a
-     * double-click.
+     * Registers a listener for this button's `collapse` event, fired on the
+     * configured activation trigger (double-click by default, or a single
+     * click when `trigger: "click"` was set).
      *
-     * @param event - `"collapse"` on double-click; `"contextmenu"` on right-click,
-     *   receiving the pointer's viewport coordinates.
+     * @param event - `"collapse"` on the configured activation trigger
+     *   (double-click by default, or a single click); `"contextmenu"` on
+     *   right-click, receiving the pointer's viewport coordinates.
      * @param listener - The callback to invoke.
      * @returns This component, for method chaining.
      */
@@ -289,13 +317,14 @@ class CollapseButton extends Component<CollapseButtonOptions> {
     }
 
     /**
-     * Emits `collapse` on a double-click.
+     * Emits `collapse` on whichever DOM event `_trigger` registered
+     * (`click` or `dblclick`).
      *
-     * @param _evnt - The dblclick event; propagation is stopped so the host
-     *   never also reacts.
-     * @returns `true`, consuming the double-click so it does not also reach the header behind the button.
+     * @param _evnt - The click/dblclick event; propagation is stopped so the
+     *   host never also reacts.
+     * @returns `true`, consuming the event so it does not also reach the header behind the button.
      */
-    private onDoubleClick(_evnt: MouseEvent): Event.ListenerResult {
+    private onActivate(_evnt: MouseEvent): Event.ListenerResult {
         this.emit("collapse");
 
         return true;

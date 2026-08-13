@@ -2,7 +2,7 @@
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { SplitGutter } from "~/component/container/SplitGutter.js";
-import { CollapseDirection } from "~/component/container/CollapseButton.js";
+import { CollapseDirection, CollapseTrigger } from "~/component/container/CollapseButton.js";
 import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { FillType } from "~/layout/FillType.js";
@@ -69,6 +69,14 @@ export interface SplitOptions extends LayoutManagerOptions {
     /** Pane sizes to restore on first layout; discarded whole when stale. */
     paneSizes?: LayoutSize[];
     /**
+     * The gutters' chevron activation gesture: `"dblclick"` (the default,
+     * preserving today's behaviour) or `"click"`. Forwarded to every
+     * {@link SplitGutter} this manager creates, via its own
+     * `collapseTrigger` option. Read once at construction; changing it
+     * after gutters exist has no effect on them.
+     */
+    collapseTrigger?: CollapseTrigger;
+    /**
      * Multi-event listener bag dispatched to {@link Split.on} at
      * construction time.
      */
@@ -88,6 +96,7 @@ export interface SplitOptions extends LayoutManagerOptions {
 class Split extends LayoutManager {
 
     private _orientation: AxisOrientation = "horizontal";
+    private _collapseTrigger: CollapseTrigger = "dblclick";
     private _sizes: Map<Component, number> = new Map<Component, number>();
     private _gutters: Array<SplitGutter> = [];
 
@@ -171,6 +180,10 @@ class Split extends LayoutManager {
 
         if (options.orientation !== undefined) {
             this.setOrientation(options.orientation);
+        }
+
+        if (options.collapseTrigger !== undefined) {
+            this._collapseTrigger = options.collapseTrigger;
         }
 
         if (options.collapsedPanes !== undefined) {
@@ -1353,7 +1366,7 @@ class Split extends LayoutManager {
             // Transparent divider track (like Border): only the chevron grip
             // shows in the expanded state; the gutter paints itself only once
             // collapsed into its button-styled strip.
-            let gutter = new SplitGutter(this._orientation, { expandedBackground: "transparent" });
+            let gutter = new SplitGutter(this._orientation, { expandedBackground: "transparent", collapseTrigger: this._collapseTrigger });
             let gutterIndex = i;
 
             gutter.on("dragstart", function (position: number) {
