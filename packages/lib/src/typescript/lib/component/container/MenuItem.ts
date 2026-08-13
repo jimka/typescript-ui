@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "~/core/Component.js";
+import { ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { BorderOptions } from "~/primitive/Border.js";
+import { MenuRow } from "~/component/container/MenuRow.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -101,6 +102,15 @@ export interface MenuItemConfig {
     submenu?: MenuConfig;
     /** When `true` the item renders as a separator; all other fields are ignored. */
     separator?: true;
+    /**
+     * A zero-argument factory returning a [`MenuRow`](/api/component/container/classes/MenuRow)
+     * to render in place of this config's own `MenuItem`. When set, `separator`
+     * still wins if also set; otherwise every other field on this config is
+     * ignored. The factory is called once per menu build, so it must never
+     * return a shared instance — `Menu` disposes its whole item list on every
+     * rebuild, which would leave a reused instance dead after the first show.
+     */
+    row?: () => MenuRow;
 }
 
 /**
@@ -141,10 +151,10 @@ export interface MenuConfig {
  *
  * @category Components
  */
-class MenuItem extends Component {
+class MenuItem extends MenuRow {
 
     /** Fixed pixel height for every non-separator menu item. */
-    static readonly HEIGHT: number = 24;
+    static readonly HEIGHT: number = MenuRow.HEIGHT;
 
     private static readonly SEPARATOR_HEIGHT: number = 9;
     /** Title left inset when the menu reserves no icon column. */
@@ -166,7 +176,6 @@ class MenuItem extends Component {
     private readonly _config: MenuItemConfig;
     private readonly _onActivate: () => void;
     private readonly _onOpenSubmenu: (item: MenuItem) => void;
-    private readonly _cssVarPrefix: MenuItemCSSVarPrefix;
 
     // The item's own live checkmark state, decoupled from `_config.checked`
     // (the caller-owned initial value) so `activateLeaf` can flip it without
@@ -217,7 +226,7 @@ class MenuItem extends Component {
         this._config = config;
         this._onActivate = onActivate;
         this._onOpenSubmenu = onOpenSubmenu;
-        this._cssVarPrefix = cssVarPrefix;
+        this.setCssVarPrefix(cssVarPrefix);
 
         if (config.separator) {
             this.setHeight(MenuItem.SEPARATOR_HEIGHT);
@@ -449,27 +458,23 @@ class MenuItem extends Component {
     }
 
     /**
-     * Applies or removes the keyboard-focus highlight background.
-     *
-     * @param focused - `true` to highlight, `false` to clear.
-     */
-    setFocused(focused: boolean): this {
-        this.setBackgroundColor(
-            focused
-                ? `var(--ts-ui-${this._cssVarPrefix}-item-hover-bg, rgba(30, 100, 200, 0.12))`
-                : "transparent"
-        );
-
-        return this;
-    }
-
-    /**
      * Returns `true` when this item was constructed with `separator: true`.
      *
      * @returns Whether this item is a non-interactive separator row.
      */
     isSeparator(): boolean {
         return !!this._config.separator;
+    }
+
+    /**
+     * True for any item the menu's arrow-key highlight may land on — every
+     * item except a separator. A disabled item is still navigable; `activate`
+     * is what refuses to run for it.
+     *
+     * @returns Whether the roving highlight may land on this item.
+     */
+    isNavigable(): boolean {
+        return !this.isSeparator();
     }
 
     /**

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
+import { LayerManager } from "~/core/LayerManager.js";
 import { MenuBarButton, MENU_BAR_BUTTON_HEIGHT } from "~/component/menubar/MenuBarButton.js";
 import { Menu } from "~/overlay/Menu.js";
 import { MenuConfig } from "~/component/container/MenuItem.js";
@@ -94,6 +96,17 @@ class MenuBar extends Component {
             }
 
             const panel = this._panels[this._openIndex];
+
+            // A focusable control inside a custom menu row holds real DOM
+            // focus, so the key belongs to it, not to the bar's roving
+            // navigation. Escape still closes the panel — LayerManager's own
+            // keydown handler owns that. No config-built row is focusable, so
+            // this never fires for a plain MenuItemConfig menu.
+            const target = e.target === null ? null : DOM.source.intern(e.target);
+
+            if (LayerManager.containsAcrossLayers(panel, target)) {
+                return;
+            }
 
             switch (e.key) {
                 case "Escape":

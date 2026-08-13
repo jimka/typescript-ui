@@ -106,6 +106,7 @@ export const groups = [
         { task: "Modal dialog (alert/confirm/prompt/custom)", symbol: "Dialog" },
         { task: "Edge-anchored sliding drawer", symbol: "Drawer" },
         { task: "Context / dropdown menu", symbol: "Menu" },
+        { task: "Checkbox row in a menu", symbol: "CheckboxMenuRow" },
         { task: "Anchored floating popover", symbol: "Popover" },
         { task: "Hover tooltip", symbol: "Tooltip" },
         { task: "Transient toast notification", symbol: "Notification" },

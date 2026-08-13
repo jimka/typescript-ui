@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MenuBar } from '~/component/menubar/MenuBar';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { Event } from '~/core/Event';
+import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -148,5 +149,65 @@ describe('MenuBar outside-click exclusion', () => {
 describe('MenuBar ARIA', () => {
     it('reports role="menubar"', () => {
         expect(new MenuBar().getAria().getRole()).toBe('menubar');
+    });
+});
+
+describe('MenuBar key yielding', () => {
+    // Invokes the private `_onKeyDown` handler directly with a makeEvent(...)
+    // sentinel, mirroring Tree.test.ts's `_handleClick(makeEvent(...))` and
+    // DiagramView.test.ts's identical pattern for testing a private
+    // DOM-event handler offline. `_onKeyDown` is registered as a viewport
+    // listener (Event.addViewportListener), whose window-level registration
+    // is gated on module state that outlives DOM.reset() and this file's own
+    // earlier tests (several open a menu without closing it) — so a real
+    // window dispatch is not reliably routed here; calling the handler
+    // directly exercises the same guard logic without depending on that
+    // shared, cross-test registration state.
+    //
+    // Because the call is direct, the dispatcher's disposition-translation
+    // layer (`applyDisposition`, which turns a returned `{ prevent: true }`
+    // into an actual `event.preventDefault()` call) never runs — so
+    // "does not preventDefault" is asserted on `_onKeyDown`'s own returned
+    // disposition (its documented contract) rather than on the event object.
+    function keyDown(bar: MenuBar, target: ReturnType<typeof DOM.sink.createElement>, key: string): Event.ListenerResult {
+        const event = makeEvent(target, 'keydown', { key });
+
+        return (bar as any)._onKeyDown(event);
+    }
+
+    it('ArrowDown with the event target outside the panel moves the focused index and returns a stop+prevent disposition (unchanged behaviour)', () => {
+        const bar = new MenuBar();
+
+        bar.setMenus(MENUS);
+        bar.getElement(true);
+        bar.openMenu(0);
+
+        const panel   = (bar as any)._panels[0];
+        const outside = DOM.sink.createElement('div');
+
+        const result = keyDown(bar, outside, 'ArrowDown');
+
+        expect(panel.getFocusedIndex()).toBe(0);
+        expect(result).toEqual({ stop: true, prevent: true });
+
+        bar.closeMenu();
+    });
+
+    it('ArrowDown with the event target inside the open panel leaves the focused index unchanged and returns no disposition', () => {
+        const bar = new MenuBar();
+
+        bar.setMenus(MENUS);
+        bar.getElement(true);
+        bar.openMenu(0);
+
+        const panel   = (bar as any)._panels[0];
+        const panelEl = panel.getElement(true)!;
+
+        const result = keyDown(bar, panelEl, 'ArrowDown');
+
+        expect(panel.getFocusedIndex()).toBe(-1);
+        expect(result).toBeUndefined();
+
+        bar.closeMenu();
     });
 });

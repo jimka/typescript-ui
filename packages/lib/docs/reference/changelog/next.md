@@ -131,6 +131,13 @@ page resets to empty.
   automatically on each activation, turning a menu into a multi-select
   control. Defaults to `true` (today's behaviour). No consumer action is
   needed.
+- **`MenuRow`**, a new base class letting a `MenuItemConfig` carry
+  `row: () => MenuRow` so a menu can host arbitrary component content in
+  place of a `MenuItem`. Existing configs are unaffected; `MenuItem` and
+  `MenuSeparator` now extend it, with no public-surface change.
+- **`CheckboxMenuRow`**, a menu row hosting a real `Checkbox` that toggles
+  without closing the menu — the worked example for `MenuRow`, and a
+  ready-made way to build a multi-select menu.
 
 ## Fixed
 

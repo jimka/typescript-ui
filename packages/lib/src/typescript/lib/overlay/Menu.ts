@@ -12,6 +12,7 @@ import type { Size } from "~/primitive/Size.js";
 import { VBox } from "~/layout/VBox.js";
 import { MenuItem, MenuItemConfig } from "~/component/container/MenuItem.js";
 import { MenuSeparator } from "~/component/container/MenuSeparator.js";
+import { MenuRow } from "~/component/container/MenuRow.js";
 import { callable } from "~/core/Callable.js";
 import { Util } from "~/core/Util.js";
 
@@ -122,7 +123,7 @@ class Menu extends Component implements DismissableLayer {
     // plain fields, never added as children), so an ancestor's `destructor()`
     // recursion can never reach a `Menu` at all. The loop was removed simply
     // because it was redundant, not because the guard made it unsafe.)
-    private _menuItems: Array<MenuItem | MenuSeparator> = [];
+    private _menuItems: MenuRow[] = [];
 
     // In-flight fades, cancelled on teardown so their fallback timers cannot
     // fire against this menu's released element handle.
@@ -195,32 +196,41 @@ class Menu extends Component implements DismissableLayer {
      * chevrons right-justify at the edge. The width is clamped to
      * `[MIN_MENU_WIDTH, MAX_MENU_WIDTH]`; when the ceiling bites, the title
      * column shrinks and its titles ellipsize. Measured from the items
-     * directly so a menu reused across shows re-measures its new content.
+     * directly so a menu reused across shows re-measures its new content. A
+     * custom row (built from a `MenuItemConfig.row` factory) contributes no
+     * title/shortcut metrics by default, so the panel's natural width is
+     * floored with the widest row's own `getContentWidth()` report.
      *
      * @returns The clamped panel width in pixels.
      */
     private layOutColumns(): number {
-        const items = this._menuItems.filter(
-            (i): i is MenuItem => i instanceof MenuItem && !i.isSeparator()
-        );
+        const rows = this._menuItems.filter(row => !row.isSeparator());
 
-        const checkZone    = items.some(i => i.hasCheck()) ? MenuItem.CHECK_ZONE : 0;
-        const iconStart    = checkZone + (items.some(i => i.hasIcon()) ? MenuItem.ICON_ZONE : MenuItem.TEXT_INSET);
-        const maxTitle     = items.reduce((m, i) => Math.max(m, i.titleTextWidth()), 0);
-        const maxShortcut  = items.reduce((m, i) => Math.max(m, i.shortcutTextWidth()), 0);
-        const hasChevron   = items.some(i => i.hasSubmenu());
+        const checkZone    = rows.some(r => r.hasCheck()) ? MenuItem.CHECK_ZONE : 0;
+        const iconStart    = checkZone + (rows.some(r => r.hasIcon()) ? MenuItem.ICON_ZONE : MenuItem.TEXT_INSET);
+        const maxTitle     = rows.reduce((m, r) => Math.max(m, r.titleTextWidth()), 0);
+        const maxShortcut  = rows.reduce((m, r) => Math.max(m, r.shortcutTextWidth()), 0);
+        const hasChevron   = rows.some(r => r.hasSubmenu());
         const rightZone    = Math.max(maxShortcut, hasChevron ? MenuItem.CHEVRON_ZONE : 0);
         const rightReserve = rightZone > 0 ? MenuItem.TEXT_GAP + rightZone : 0;
+        // A custom row contributes no title/shortcut metrics, so the panel
+        // would be too narrow for it; floor the natural width with the widest
+        // row's own report instead. `getContentWidth()` excludes any left
+        // inset of its own — a row cannot know at this point whether a
+        // sibling row widens the shared `iconStart` via `hasCheck()` /
+        // `hasIcon()` — so `iconStart` (just computed above) is added here,
+        // uniformly, on Menu's side.
+        const maxContent   = iconStart + rows.reduce((m, r) => Math.max(m, r.getContentWidth()), 0);
 
-        const natural = iconStart + maxTitle + rightReserve + MenuItem.RIGHT_PAD;
+        const natural = Math.max(iconStart + maxTitle + rightReserve + MenuItem.RIGHT_PAD, maxContent);
         const width   = Math.min(MAX_MENU_WIDTH, Math.max(MIN_MENU_WIDTH, natural));
 
         // When the ceiling bites, the title column absorbs the shortfall (titles
         // ellipsize); otherwise it is the full widest-title width.
         const titleColumn = Math.min(maxTitle, width - iconStart - rightReserve - MenuItem.RIGHT_PAD);
 
-        for (const item of items) {
-            item.setColumns(checkZone, iconStart, titleColumn);
+        for (const row of rows) {
+            row.setColumns(checkZone, iconStart, titleColumn);
         }
 
         return width;
@@ -286,9 +296,16 @@ class Menu extends Component implements DismissableLayer {
         this.pauseLayout();
 
         for (const config of configs) {
-            const item: MenuItem | MenuSeparator = config.separator === true
-                ? new MenuSeparator("context-menu")
-                : new MenuItem(
+            let row: MenuRow;
+
+            if (config.separator === true) {
+                row = new MenuSeparator("context-menu");
+            } else if (config.row) {
+                row = config.row();
+                row.setCssVarPrefix("context-menu");
+                row.setMenuCloseHandler(() => { this.dismissAll(); });
+            } else {
+                row = new MenuItem(
                     config,
                     () => {
                         config.action?.();
@@ -302,9 +319,10 @@ class Menu extends Component implements DismissableLayer {
                     (hoveredItem) => { this.handleItemOpenSubmenu(hoveredItem); },
                     "context-menu"
                 );
+            }
 
-            this.addComponent(item);
-            this._menuItems.push(item);
+            this.addComponent(row);
+            this._menuItems.push(row);
         }
 
         this.resumeLayout();
@@ -636,9 +654,9 @@ class Menu extends Component implements DismissableLayer {
      * reappears the next time the menu opens.
      */
     private clearItemHighlights(): void {
-        for (const item of this._menuItems) {
-            if (item instanceof MenuItem) {
-                item.setFocused(false);
+        for (const row of this._menuItems) {
+            if (row.isNavigable()) {
+                row.setFocused(false);
             }
         }
     }
@@ -712,14 +730,14 @@ class Menu extends Component implements DismissableLayer {
 
         let next = this._focusedIndex + 1;
 
-        while (next < this._menuItems.length && this.isItemSeparator(next)) {
+        while (next < this._menuItems.length && this.isItemSkipped(next)) {
             next++;
         }
 
         if (next >= this._menuItems.length) {
             next = 0;
 
-            while (next < this._menuItems.length && this.isItemSeparator(next)) {
+            while (next < this._menuItems.length && this.isItemSkipped(next)) {
                 next++;
             }
         }
@@ -738,14 +756,14 @@ class Menu extends Component implements DismissableLayer {
 
         let prev = this._focusedIndex - 1;
 
-        while (prev >= 0 && this.isItemSeparator(prev)) {
+        while (prev >= 0 && this.isItemSkipped(prev)) {
             prev--;
         }
 
         if (prev < 0) {
             prev = this._menuItems.length - 1;
 
-            while (prev >= 0 && this.isItemSeparator(prev)) {
+            while (prev >= 0 && this.isItemSkipped(prev)) {
                 prev--;
             }
         }
@@ -766,10 +784,10 @@ class Menu extends Component implements DismissableLayer {
             return;
         }
 
-        const item = this._menuItems[this._focusedIndex];
+        const row = this._menuItems[this._focusedIndex];
 
-        if (item instanceof MenuItem && !item.isSeparator() && item.isEnabled()) {
-            item.activate();
+        if (row.isNavigable() && row.isEnabled()) {
+            row.activate();
         }
     }
 
@@ -927,22 +945,36 @@ class Menu extends Component implements DismissableLayer {
         this.pauseLayout();
 
         for (const config of items) {
-            const item = new MenuItem(
-                config,
-                () => {
-                    config.action?.();
+            let row: MenuRow;
 
-                    if (config.closeOnActivate === false) {
-                        this.closeOpenSubmenu();
-                    } else {
-                        this._onClose!();
-                    }
-                },
-                (hoveredItem) => { this.handleItemOpenSubmenu(hoveredItem); }
-            );
+            // `separator` wins over `row`, mirroring rebuild mode's
+            // precedence (see `showAnchored`'s loop and the config-entry
+            // table in the plan's Architecture Decisions): MenuItem's own
+            // constructor already renders a separator config as a rule
+            // regardless of `row`, via the `else` branch below.
+            if (config.row && config.separator !== true) {
+                row = config.row();
+                // The default, made explicit so both build loops read alike.
+                row.setCssVarPrefix("menu-bar");
+                row.setMenuCloseHandler(() => { this.dismissAll(); });
+            } else {
+                row = new MenuItem(
+                    config,
+                    () => {
+                        config.action?.();
 
-            this.addComponent(item);
-            this._menuItems.push(item);
+                        if (config.closeOnActivate === false) {
+                            this.closeOpenSubmenu();
+                        } else {
+                            this._onClose!();
+                        }
+                    },
+                    (hoveredItem) => { this.handleItemOpenSubmenu(hoveredItem); }
+                );
+            }
+
+            this.addComponent(row);
+            this._menuItems.push(row);
         }
 
         this.resumeLayout();
@@ -959,7 +991,7 @@ class Menu extends Component implements DismissableLayer {
         if (this._focusedIndex >= 0 && this._focusedIndex < this._menuItems.length) {
             const prev = this._menuItems[this._focusedIndex];
 
-            if (prev instanceof MenuItem) {
+            if (prev.isNavigable()) {
                 prev.setFocused(false);
             }
         }
@@ -969,30 +1001,23 @@ class Menu extends Component implements DismissableLayer {
         if (index >= 0 && index < this._menuItems.length) {
             const next = this._menuItems[index];
 
-            if (next instanceof MenuItem) {
+            if (next.isNavigable()) {
                 next.setFocused(true);
             }
         }
     }
 
     /**
-     * Returns `true` if the item at the given index should be skipped during focus traversal.
+     * Returns `true` when the row at the given index must be skipped by the
+     * arrow-key highlight — a separator, or a custom row that owns its own
+     * focus (see [`MenuRow`](/api/component/container/classes/MenuRow)'s
+     * navigable flag).
      *
-     * @param index - Zero-based item index.
-     * @returns Whether the item is a separator (or [`MenuSeparator`](/api/component/container/classes/MenuSeparator) instance).
+     * @param index - Zero-based row index.
+     * @returns Whether focus traversal skips this row.
      */
-    private isItemSeparator(index: number): boolean {
-        const item = this._menuItems[index];
-
-        if (item instanceof MenuSeparator) {
-            return true;
-        }
-
-        if (item instanceof MenuItem) {
-            return item.isSeparator();
-        }
-
-        return false;
+    private isItemSkipped(index: number): boolean {
+        return !this._menuItems[index].isNavigable();
     }
 
     /**
