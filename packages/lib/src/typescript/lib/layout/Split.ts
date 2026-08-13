@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions, ResolvedPlacement } from "~/layout/LayoutManager.js";
 import { SplitGutter } from "~/component/container/SplitGutter.js";
 import { CollapseDirection, CollapseTrigger } from "~/component/container/CollapseButton.js";
 import { Component } from "~/core/Component.js";
@@ -84,6 +84,15 @@ export interface SplitOptions extends LayoutManagerOptions {
         paneresize?:   PaneResizeCallback;
         panecollapse?: PaneCollapseCallback;
     };
+}
+
+/**
+ * A pane's resolved bounds plus the `clip-path` to write after committing them —
+ * the hand-off between {@link Split.doLayout}'s placement loop and its commit
+ * pass. `clipPath` is `null` for a pane that carries no clip.
+ */
+interface SplitPlacement extends ResolvedPlacement {
+    clipPath: string | null;
 }
 
 /**
@@ -1409,6 +1418,7 @@ class Split extends LayoutManager {
         // hidden afterward — e.g. the trailing gutter of a pane collapsed
         // toward the end, whose strip is the leading gutter instead.
         const placed = new Set<number>();
+        const placements: SplitPlacement[] = [];
 
         for (let idx = 0; idx < components.length; idx += 1) {
             const component  = components[idx];
@@ -1424,7 +1434,7 @@ class Split extends LayoutManager {
 
                 gutter.setCollapseDirection(this.paneDirection(component));
                 gutter.setCollapsible(true);
-                this.placeGutterAsStrip(gutter, component, x, y, crossSize, horizontal, this.paneDirection(component));
+                placements.push(this.placeGutterAsStrip(gutter, component, x, y, crossSize, horizontal, this.paneDirection(component)));
                 placed.add(servingIdx);
 
                 if (horizontal) {
@@ -1440,19 +1450,14 @@ class Split extends LayoutManager {
 
             component.setVisible(true);
 
-            this.placeComponent(
-                component,
-                x,
-                y,
-                horizontal ? mainSize  : crossSize,
-                horizontal ? crossSize : mainSize,
-                FillType.BOTH
-            );
-
             // A collapsible pane keeps `inset(0)` as the expanded keyframe so a
             // restore animates its clip back open; a pane that can't collapse
             // carries no clip-path at all.
-            component.setClipPath(servingIdx >= 0 ? "inset(0 0 0 0)" : null);
+            placements.push({
+                component,
+                ...this.resolveBounds(component, x, y, horizontal ? mainSize : crossSize, horizontal ? crossSize : mainSize, FillType.BOTH),
+                clipPath: servingIdx >= 0 ? "inset(0 0 0 0)" : null
+            });
 
             if (horizontal) {
                 x += mainSize;
@@ -1500,6 +1505,8 @@ class Split extends LayoutManager {
             }
         }
 
+        this.commitPanes(placements);
+
         for (let i = 0; i < this._gutters.length; i += 1) {
             if (!placed.has(i)) {
                 this._gutters[i].setVisible(false);
@@ -1520,8 +1527,9 @@ class Split extends LayoutManager {
      * @param crossSize - The container's cross-axis extent.
      * @param horizontal - Whether the split runs horizontally.
      * @param direction - The pane's collapse heading, fixing the clip edge.
+     * @returns The pane's resolved placement, for the caller to commit.
      */
-    private placeGutterAsStrip(gutter: SplitGutter, pane: Component, x: number, y: number, crossSize: number, horizontal: boolean, direction: CollapseDirection): void {
+    private placeGutterAsStrip(gutter: SplitGutter, pane: Component, x: number, y: number, crossSize: number, horizontal: boolean, direction: CollapseDirection): SplitPlacement {
         gutter.setOpaque(true);
         gutter.setVisible(true);
         gutter.setX(x);
@@ -1545,15 +1553,31 @@ class Split extends LayoutManager {
 
         pane.setVisible(true);
 
+        let placement: SplitPlacement;
+
         if (horizontal) {
             const paneX = towardStart ? x : x + COLLAPSE_STRIP_SIZE - fullMain;
-            this.placeComponent(pane, paneX, y, fullMain, crossSize, FillType.BOTH);
+            placement = { component: pane, ...this.resolveBounds(pane, paneX, y, fullMain, crossSize, FillType.BOTH), clipPath: this.paneClipInset(direction) };
         } else {
             const paneY = towardStart ? y : y + COLLAPSE_STRIP_SIZE - fullMain;
-            this.placeComponent(pane, x, paneY, crossSize, fullMain, FillType.BOTH);
+            placement = { component: pane, ...this.resolveBounds(pane, x, paneY, crossSize, fullMain, FillType.BOTH), clipPath: this.paneClipInset(direction) };
         }
 
-        pane.setClipPath(this.paneClipInset(direction));
+        return placement;
+    }
+
+    /**
+     * Commits a collapsed-branch pane's resolved bounds, then its `clip-path` —
+     * the hand-off from {@link Split.placeGutterAsStrip}'s resolve step.
+     *
+     * @param placements - The resolved pane placements to commit, in placement order.
+     */
+    private commitPanes(placements: SplitPlacement[]): void {
+        for (const placement of placements) {
+            this.commitBounds(placement.component, placement.x, placement.y, placement.width, placement.height);
+
+            placement.component.setClipPath(placement.clipPath);
+        }
     }
 
     /**

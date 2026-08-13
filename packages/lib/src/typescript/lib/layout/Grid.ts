@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions, ResolvedPlacement } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import { GridTrack } from "~/layout/GridTrack.js";
@@ -35,6 +35,16 @@ export interface GridOptions extends LayoutManagerOptions {
 
     /** Per-row sizing tracks; see {@link GridTrack}. */
     rowTracks?: GridTrack[];
+}
+
+/**
+ * A child's resolved bounds plus the clip-frame decision made for it — the
+ * hand-off between {@link Grid.layoutOccupancy}'s resolve pass and its commit
+ * pass. `clipFrame` is the cell rect to clip the child to, or `null` to clear
+ * any frame the child carries.
+ */
+interface GridPlacement extends ResolvedPlacement {
+    clipFrame: { x: number; y: number; width: number; height: number } | null;
 }
 
 /**
@@ -734,6 +744,7 @@ class Grid extends LayoutManager {
             }
         }
 
+        const placements: ResolvedPlacement[] = [];
         let y = containerInsets.getTop();
 
         for (let row = 0; row < rows; row += 1) {
@@ -765,21 +776,15 @@ class Grid extends LayoutManager {
                     cellY = y;
                 }
 
-                this.placeComponent(
-                    cell.component,
-                    x,
-                    cellY,
-                    width,
-                    cell.height,
-                    this._defaultFill,
-                    this._defaultAnchor
-                );
+                placements.push({ component: cell.component, ...this.resolveBounds(cell.component, x, cellY, width, cell.height, this._defaultFill, this._defaultAnchor) });
             }
 
             const baselineHeight = rowAscent !== null ? rowAscent + rowDescent : 0;
 
             y += Math.max(rowExtents[row] ?? 0, baselineHeight) + spacing;
         }
+
+        this.commitPlacements(placements);
     }
 
     /**
@@ -959,7 +964,7 @@ class Grid extends LayoutManager {
             owners.push(new Array(cols).fill(null));
         }
 
-        const placeAt = (component: Component, r: number, c: number, rowSpan: number, colSpan: number): void => {
+        const resolveAt = (component: Component, r: number, c: number, rowSpan: number, colSpan: number): GridPlacement => {
             let x = insets.getLeft();
 
             for (let i = 0; i < c; i += 1) {
@@ -1004,18 +1009,18 @@ class Grid extends LayoutManager {
                 const childWidth  = min.width  > w ? (pref ? pref.width  : min.width)  : resolved.width;
                 const childHeight = min.height > h ? (pref ? pref.height : min.height) : resolved.height;
 
-                component.setClipFrame(x, y, w, h);
-                this.commitBounds(component, resolved.x - x, resolved.y - y, childWidth, childHeight);
+                return { component, x: resolved.x - x, y: resolved.y - y, width: childWidth, height: childHeight, clipFrame: { x, y, width: w, height: h } };
             } else {
                 // The child fits: resolve its bounds honouring its own
                 // fill/anchor over the grid defaults, then commit the result so
                 // a non-filling child shrinks and anchors within its cell.
                 const resolved = this.resolveBounds(component, x, y, w, h, this._defaultFill, this._defaultAnchor);
 
-                component.clearClipFrame();
-                this.commitBounds(component, resolved.x, resolved.y, resolved.width, resolved.height);
+                return { component, x: resolved.x, y: resolved.y, width: resolved.width, height: resolved.height, clipFrame: null };
             }
         };
+
+        const placements: GridPlacement[] = [];
 
         // Pass 1 — reserve explicitly-positioned children.
         for (const component of components) {
@@ -1041,7 +1046,7 @@ class Grid extends LayoutManager {
                 }
             }
 
-            placeAt(component, r, c, rowSpan, colSpan);
+            placements.push(resolveAt(component, r, c, rowSpan, colSpan));
         }
 
         // Pass 2 — auto-flow the remaining children into free cells.
@@ -1068,7 +1073,27 @@ class Grid extends LayoutManager {
                 }
             }
 
-            placeAt(component, slot.r, slot.c, rowSpan, colSpan);
+            placements.push(resolveAt(component, slot.r, slot.c, rowSpan, colSpan));
+        }
+
+        this.commitGridPlacements(placements);
+    }
+
+    /**
+     * Commits an occupancy-pass child's clip-frame decision, then its resolved
+     * bounds — the hand-off from {@link Grid.layoutOccupancy}'s `resolveAt` closure.
+     *
+     * @param placements - The resolved placements to commit, in placement order.
+     */
+    private commitGridPlacements(placements: GridPlacement[]): void {
+        for (const placement of placements) {
+            if (placement.clipFrame) {
+                placement.component.setClipFrame(placement.clipFrame.x, placement.clipFrame.y, placement.clipFrame.width, placement.clipFrame.height);
+            } else {
+                placement.component.clearClipFrame();
+            }
+
+            this.commitBounds(placement.component, placement.x, placement.y, placement.width, placement.height);
         }
     }
 

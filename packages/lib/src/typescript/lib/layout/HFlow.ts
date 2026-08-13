@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { FlowLayout, FlowLayoutOptions } from "~/layout/FlowLayout.js";
+import type { ResolvedPlacement } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 import { Component } from "~/core/Component.js";
@@ -291,7 +292,9 @@ class HFlow extends FlowLayout {
 
         const rows = this.groupIntoRows(components, innerSize.width, insets.getTop(), spacing, lineSpacing, uniformWidth, uniformHeight, extents);
 
-        this.placeRows(rows, insets.getLeft(), innerSize.width, spacing);
+        const placements = this.resolveRows(rows, insets.getLeft(), innerSize.width, spacing);
+
+        this.commitPlacements(placements);
 
         // Only a wrap run against a real width says anything. Before the first
         // sizing pass getInnerSize() is NaN-wide, every `> NaN` comparison is
@@ -319,7 +322,7 @@ class HFlow extends FlowLayout {
      * @param uniformWidth - Whether cells take the uniform width.
      * @param uniformHeight - Whether cells take the uniform height.
      * @param extents - The uniform cell extents, when a uniform mode is active.
-     * @returns The ordered rows ready for {@link HFlow.placeRows}.
+     * @returns The ordered rows ready for {@link HFlow.resolveRows}.
      */
     private groupIntoRows(components: Component[], innerWidth: number, topInset: number, spacing: number, lineSpacing: number, uniformWidth: boolean, uniformHeight: boolean, extents: Size): HFlowRow[] {
         const rows: HFlowRow[] = [];
@@ -360,16 +363,19 @@ class HFlow extends FlowLayout {
     /**
      * Phase 2 of {@link HFlow.doLayout}: distributes each row's cells along the
      * main axis per the `justify` mode (or packs them at the `align` offset when
-     * `justify` is `"start"`), and positions each cell within the row height per
-     * the `itemAlign` mode. Each child keeps its preferred size (`FillType.NONE`);
-     * its own {@link AnchorType} positions it within its cell.
+     * `justify` is `"start"`), and resolves each cell's bounds within the row
+     * height per the `itemAlign` mode. Each child keeps its preferred size
+     * (`FillType.NONE`); its own {@link AnchorType} positions it within its cell.
      *
      * @param rows - The rows produced by {@link HFlow.groupIntoRows}.
      * @param leftInset - The container's left content inset (the row's leading edge).
      * @param innerWidth - The container's inner width (for the alignment residual).
      * @param spacing - Inter-item horizontal spacing in pixels.
+     * @returns The resolved placements, ready for {@link LayoutManager.commitPlacements}.
      */
-    private placeRows(rows: HFlowRow[], leftInset: number, innerWidth: number, spacing: number): void {
+    private resolveRows(rows: HFlowRow[], leftInset: number, innerWidth: number, spacing: number): ResolvedPlacement[] {
+        const placements: ResolvedPlacement[] = [];
+
         for (const row of rows) {
             // Row text metrics for "baseline" itemAlign (cheap; only used then).
             const heights   = row.cells.map(cell => cell.height);
@@ -390,11 +396,13 @@ class HFlow extends FlowLayout {
             for (const cell of row.cells) {
                 const y = row.y + this.crossOffset(cell.height, row.rowHeight, cell.baseline, rowAscent, rowDescent);
 
-                this.placeComponent(cell.component, x, y, cell.width, cell.height, FillType.NONE);
+                placements.push({ component: cell.component, ...this.resolveBounds(cell.component, x, y, cell.width, cell.height, FillType.NONE) });
 
                 x += cell.width + gap;
             }
         }
+
+        return placements;
     }
 
     /**
