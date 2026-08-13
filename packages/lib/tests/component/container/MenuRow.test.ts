@@ -174,4 +174,78 @@ describe('CheckboxMenuRow', () => {
         standalone.dispose();
         aligned.dispose();
     });
+
+    it('isEnabled() defaults to true, whether enabled is omitted or explicit', () => {
+        installTestDOM(CONFIG);
+
+        const omitted  = new CheckboxMenuRow({ text: 'Bold' });
+        const explicit = new CheckboxMenuRow({ text: 'Bold', enabled: true });
+
+        expect(omitted.isEnabled()).toBe(true);
+        expect(explicit.isEnabled()).toBe(true);
+
+        omitted.dispose();
+        explicit.dispose();
+    });
+
+    it('an enabled row makes neither disabled write', () => {
+        installTestDOM(CONFIG);
+
+        const row = new CheckboxMenuRow({ text: 'Bold' });
+
+        expect(row.getOpacity()).toBeNull();
+        expect(row.getPointerEvents()).toBeNull();
+
+        row.dispose();
+    });
+
+    it('enabled: false reports isEnabled() false, dims the row, and makes it pointer-inert', () => {
+        installTestDOM(CONFIG);
+
+        const row = new CheckboxMenuRow({ text: 'Bold', enabled: false });
+
+        expect(row.isEnabled()).toBe(false);
+        expect(row.getOpacity()).toBe(0.5);
+        expect(row.getPointerEvents()).toBe('none');
+
+        row.dispose();
+    });
+
+    it('activate() on a disabled row leaves isChecked() unchanged', () => {
+        installTestDOM(CONFIG);
+
+        const uncheckedDisabled = new CheckboxMenuRow({ text: 'Bold', enabled: false });
+        const checkedDisabled   = new CheckboxMenuRow({ text: 'Bold', enabled: false, checked: true });
+
+        uncheckedDisabled.activate();
+        checkedDisabled.activate();
+
+        expect(uncheckedDisabled.isChecked()).toBe(false);
+        expect(checkedDisabled.isChecked()).toBe(true);
+
+        uncheckedDisabled.dispose();
+        checkedDisabled.dispose();
+    });
+
+    it('a click at a disabled row leaves isChecked() unchanged', () => {
+        installTestDOM(CONFIG);
+
+        const row = new CheckboxMenuRow({ text: 'Bold', enabled: false });
+
+        click(row);
+
+        expect(row.isChecked()).toBe(false);
+
+        row.dispose();
+    });
+
+    it('a disabled row still reports isNavigable() === true', () => {
+        installTestDOM(CONFIG);
+
+        const row = new CheckboxMenuRow({ text: 'Bold', enabled: false });
+
+        expect(row.isNavigable()).toBe(true);
+
+        row.dispose();
+    });
 });
