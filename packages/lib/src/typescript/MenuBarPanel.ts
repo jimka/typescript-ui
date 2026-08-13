@@ -4,6 +4,7 @@ import { callable, Panel } from '@jimka/typescript-ui/core';
 import { VBox }            from '@jimka/typescript-ui/layout';
 import { Text }            from '@jimka/typescript-ui/component/input';
 import { MenuBar }         from '@jimka/typescript-ui/component/menubar';
+import { CheckboxMenuRow } from '@jimka/typescript-ui/component/container';
 import { Glyph }           from '@jimka/typescript-ui/component/display';
 // Glyphs are imported per-file rather than from the `glyphs/solid` barrel.
 // The barrel re-exports ~2,000 individual modules; Vite's dev server fetches
@@ -23,16 +24,19 @@ import { eye }                  from '@jimka/typescript-ui/glyphs/solid/eye';
 import { arrows_rotate }        from '@jimka/typescript-ui/glyphs/solid/arrows_rotate';
 import { maximize }             from '@jimka/typescript-ui/glyphs/solid/maximize';
 import { circle_info }          from '@jimka/typescript-ui/glyphs/solid/circle_info';
+import { sliders }              from '@jimka/typescript-ui/glyphs/solid/sliders';
 
 Glyph.register(
     file, pen_to_square, circle_check, angles_right, angle_left, angle_right,
-    ban, plus, minus, eye, arrows_rotate, maximize, circle_info,
+    ban, plus, minus, eye, arrows_rotate, maximize, circle_info, sliders,
 );
 /**
  * Demo panel showcasing the `MenuBar` component.
  *
  * Demonstrates: top-level menus, separators, disabled items, keyboard shortcut hints,
- * submenu nesting, quick-switch hover, and keyboard navigation.
+ * submenu nesting, quick-switch hover, keyboard navigation, multi-select toggle items
+ * that keep the menu open (`checked` + `closeOnActivate: false`), and custom rows
+ * hosting a real `Checkbox` (`CheckboxMenuRow`).
  */
 class MenuBarPanel extends Panel {
 
@@ -50,6 +54,12 @@ class MenuBarPanel extends Panel {
         const status = (msg: string): void => {
             statusText.setText("Last action: " + msg);
         };
+
+        // Independently-toggled preferences, each reflected by its own menu
+        // item — the app owns the state, the item just self-manages its checkmark.
+        let showToolbar = true;
+        let showSidebar = true;
+        let showStatusBar = false;
 
         bar.setMenus([
             {
@@ -101,6 +111,48 @@ class MenuBarPanel extends Panel {
                     { text: "Reset Zoom", glyph: "arrows-rotate",   shortcut: "Ctrl+0", action: () => status("View → Reset Zoom") },
                     { separator: true },
                     { text: "Full Screen", glyph: "maximize", shortcut: "F11",   action: () => status("View → Full Screen") },
+                ],
+            },
+            {
+                label: "Options",
+                glyph: "sliders",
+                items: [
+                    {
+                        text: "Show Toolbar", checked: showToolbar, closeOnActivate: false,
+                        action: () => {
+                            showToolbar = !showToolbar;
+                            status(`Options → Show Toolbar ${showToolbar ? "shown" : "hidden"}`);
+                        },
+                    },
+                    {
+                        text: "Show Sidebar", checked: showSidebar, closeOnActivate: false,
+                        action: () => {
+                            showSidebar = !showSidebar;
+                            status(`Options → Show Sidebar ${showSidebar ? "shown" : "hidden"}`);
+                        },
+                    },
+                    {
+                        text: "Show Status Bar", checked: showStatusBar, closeOnActivate: false,
+                        action: () => {
+                            showStatusBar = !showStatusBar;
+                            status(`Options → Show Status Bar ${showStatusBar ? "shown" : "hidden"}`);
+                        },
+                    },
+                    { separator: true },
+                    {
+                        row: () => {
+                            const row = new CheckboxMenuRow({ text: "Enable Notifications", checked: true });
+                            row.on("action", () => status(`Options → Notifications ${row.isChecked() ? "enabled" : "disabled"}`));
+                            return row;
+                        },
+                    },
+                    {
+                        row: () => {
+                            const row = new CheckboxMenuRow({ text: "Auto-Save" });
+                            row.on("action", () => status(`Options → Auto-Save ${row.isChecked() ? "enabled" : "disabled"}`));
+                            return row;
+                        },
+                    },
                 ],
             },
             {
