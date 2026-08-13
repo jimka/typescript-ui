@@ -13,6 +13,9 @@ import { DOM } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { LayoutSize, LayoutSizeUnit, toLayoutSizes, fromLayoutSizes, isRestorableSizes, normalizeRatios } from "~/layout/LayoutSizes.js";
 import type { AxisOrientation } from "~/primitive/Axis.js";
+import { Menu } from "~/overlay/Menu.js";
+import { MenuItemConfig } from "~/component/container/MenuItem.js";
+import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 
 // Pixel thickness of a single draggable gutter. The main-axis sizing math
 // subtracts the gutters' combined footprint before dividing space among
@@ -109,6 +112,13 @@ class Split extends LayoutManager {
     private _pendingCollapsed: number[] = [];
 
     private _listeners: ListenerBag<SplitEvent> = new ListenerBag<SplitEvent>();
+
+    // The gutter right-click context menu, created lazily on first open (mirrors
+    // MenuButton.toggleMenu's `??=`) and disposed + nulled in `detach()`. `Split`
+    // has no destructor of its own — `detach()` is its only teardown hook, and it
+    // can run on a manager swap followed by a re-attach, so eager re-allocation
+    // here would leak a `Menu` on a disposed `Split`.
+    private _contextMenu: Menu | null = null;
 
     // Sizes to restore on the first connected layout, taken from the
     // `paneSizes` option (or a direct `applyPaneSizes` call before the
@@ -471,11 +481,18 @@ class Split extends LayoutManager {
      * at construction, and this setter takes precedence over that constraint.
      *
      * @param pane - The pane whose resize weight to set.
-     * @param weight - The resize weight; `0` pins, positive absorbs.
+     * @param weight - The resize weight; `0` pins, positive absorbs. `undefined`
+     *   clears the explicit entry, returning the pane to ratio-based persistence
+     *   in {@link getPaneSizes} (resolved through the `weight` constraint or the
+     *   pane's stored size, exactly as before any weight was ever set).
      * @returns This layout manager, for method chaining.
      */
-    setPaneResizeWeight(pane: Component, weight: number): this {
-        this._weights.set(pane, weight);
+    setPaneResizeWeight(pane: Component, weight: number | undefined): this {
+        if (weight === undefined) {
+            this._weights.delete(pane);
+        } else {
+            this._weights.set(pane, weight);
+        }
 
         return this;
     }
@@ -1031,6 +1048,148 @@ class Split extends LayoutManager {
     }
 
     /**
+     * Builds and shows a gutter's right-click context menu: lock the gutter
+     * against dragging, pin either neighbouring pane's size against container
+     * resizes, and choose which neighbour the gutter collapses. Rows are
+     * assembled fresh from live state on every open, so `checked`/`enabled`
+     * always reflect the current gutter and pane state. A no-op when the split
+     * has no container, or when the gutter index has no pane on one side (a
+     * non-displayed pane can shift `getLaidOutComponents()` against the
+     * gutter's creation-time index — the same exposure the sibling `collapse`
+     * handler already carries).
+     *
+     * @param gutter - The gutter that was right-clicked.
+     * @param gutterIndex - The gutter's index between panes `gutterIndex` and `gutterIndex + 1`.
+     * @param x - Horizontal viewport coordinate of the click.
+     * @param y - Vertical viewport coordinate of the click.
+     */
+    private openGutterMenu(gutter: SplitGutter, gutterIndex: number, x: number, y: number): void {
+        const container = this.getContainer();
+        if (!container) {
+            return;
+        }
+
+        const components = container.getLaidOutComponents();
+        const lead = components[gutterIndex];
+        const next = components[gutterIndex + 1];
+
+        if (!lead || !next) {
+            return;
+        }
+
+        const horizontal = this._orientation === "horizontal";
+        const leadWord    = horizontal ? "left"  : "top";
+        const nextWord    = horizontal ? "right" : "bottom";
+        const extentWord  = horizontal ? "width" : "height";
+
+        const target = this.gutterTargetPane(gutterIndex, components);
+
+        const configs: MenuItemConfig[] = [
+            {
+                text:    "Lock gutter",
+                checked: !gutter.isMovable(),
+                action:  () => gutter.setMovable(!gutter.isMovable()),
+            },
+            { separator: true },
+            {
+                text:    `Fix ${leadWord} pane ${extentWord}`,
+                checked: this.getPaneResizeWeight(lead) === 0,
+                action:  () => this.togglePaneResizePin(lead),
+            },
+            {
+                text:    `Fix ${nextWord} pane ${extentWord}`,
+                checked: this.getPaneResizeWeight(next) === 0,
+                action:  () => this.togglePaneResizePin(next),
+            },
+            { separator: true },
+            {
+                text:    `Collapse ${leadWord} pane`,
+                checked: target === gutterIndex,
+                enabled: !gutter.isOpaque() && this.paneCollapsible(lead),
+                action:  () => this.retargetGutterCollapse(gutterIndex, gutterIndex),
+            },
+            {
+                text:    `Collapse ${nextWord} pane`,
+                checked: target === gutterIndex + 1,
+                enabled: !gutter.isOpaque() && this.paneCollapsible(next),
+                action:  () => this.retargetGutterCollapse(gutterIndex, gutterIndex + 1),
+            },
+        ];
+
+        this._contextMenu ??= new Menu();
+        this._contextMenu.show(x, y, configs);
+    }
+
+    /**
+     * Toggles a pane's resize pin: pins it at its current size (`weight: 0`)
+     * when unpinned, or clears the pin (restoring proportional resizing) when
+     * already pinned. Mirrors the exact inverse the menu row checks —
+     * {@link getPaneResizeWeight}`(pane) === 0` — so the checkbox can never get
+     * stuck checked.
+     *
+     * @param pane - The pane whose resize pin to toggle.
+     */
+    private togglePaneResizePin(pane: Component): void {
+        this.setPaneResizeWeight(pane, this.getPaneResizeWeight(pane) === 0 ? undefined : 0);
+    }
+
+    /**
+     * Repoints a gutter's collapse target between its two neighbours by writing
+     * their `collapseDirection` constraint, then schedules a layout so the
+     * chevron re-syncs through `doLayout`'s existing `setCollapseDirection`
+     * calls (the single place that writes it). Targeting the leading pane also
+     * pushes the trailing neighbour's direction back to the leading heading —
+     * `gutterTargetPane` tests the trailing neighbour first, so it would
+     * otherwise keep claiming the gutter.
+     *
+     * @param gutterIndex - The gutter between panes `gutterIndex` and `gutterIndex + 1`.
+     * @param targetIndex - The pane index the gutter should collapse: `gutterIndex` or `gutterIndex + 1`.
+     */
+    private retargetGutterCollapse(gutterIndex: number, targetIndex: number): void {
+        const container = this.getContainer();
+        if (!container) {
+            return;
+        }
+
+        const components = container.getLaidOutComponents();
+        const lead = components[gutterIndex];
+        const next = components[gutterIndex + 1];
+
+        if (!lead || !next) {
+            return;
+        }
+
+        const leadingHeading  = this._orientation === "horizontal" ? "west" : "north";
+        const trailingHeading = this._orientation === "horizontal" ? "east" : "south";
+
+        if (targetIndex === gutterIndex) {
+            this.setPaneCollapseDirection(lead, leadingHeading);
+            this.setPaneCollapseDirection(next, leadingHeading);
+        } else {
+            this.setPaneCollapseDirection(next, trailingHeading);
+        }
+
+        container.scheduleLayout();
+    }
+
+    /**
+     * Writes a pane's `collapseDirection` constraint in place, preserving every
+     * other field the caller set (`collapsible`, `weight`, …) on that pane's
+     * `LayoutConstraints`. A pane with no constraints yet gets a fresh,
+     * otherwise-inert one.
+     *
+     * @param pane - The pane whose collapse heading to set.
+     * @param direction - The collapse heading to write.
+     */
+    private setPaneCollapseDirection(pane: Component, direction: CollapseDirection): void {
+        const constraints = this.getLayoutConstraints(pane) ?? new LayoutConstraints();
+
+        constraints.collapseDirection = direction;
+
+        this.setLayoutConstraints(pane, constraints);
+    }
+
+    /**
      * Detaches from the container and removes all gutter elements from the DOM.
      */
     detach() : this {
@@ -1066,6 +1225,9 @@ class Split extends LayoutManager {
         }
 
         this._gutters = [];
+
+        this._contextMenu?.dispose();
+        this._contextMenu = null;
 
         return this;
     }
@@ -1209,6 +1371,9 @@ class Split extends LayoutManager {
                 if (target >= 0) {
                     me.setPaneCollapsed(target, !me.isPaneCollapsed(target));
                 }
+            });
+            gutter.on("contextmenu", function (x: number, y: number) {
+                me.openGutterMenu(gutter, gutterIndex, x, y);
             });
 
             this._gutters.push(gutter);
