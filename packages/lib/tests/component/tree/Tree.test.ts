@@ -1093,6 +1093,28 @@ describe('Tree rowOverflow', () => {
     });
 });
 
+describe('Tree expandTrigger', () => {
+    it('defaults to "dblclick"', () => {
+        const tree = new _Tree();
+
+        expect(tree.getExpandTrigger()).toBe('dblclick');
+    });
+
+    it('can be set at construction time', () => {
+        const tree = new _Tree({ expandTrigger: 'click' });
+
+        expect(tree.getExpandTrigger()).toBe('click');
+    });
+
+    it('setExpandTrigger changes what getExpandTrigger reports', () => {
+        const tree = new _Tree();
+
+        tree.setExpandTrigger('click');
+
+        expect(tree.getExpandTrigger()).toBe('click');
+    });
+});
+
 // ---------------------------------------------------------------------------
 // Virtual-scroll reconciliation characterization (Phase A of the data-view
 // virtualization consolidation). These pin the current behaviour of the shared
@@ -1315,5 +1337,266 @@ describe('Tree — ctrl/cmd-click selection event fires only on a real change', 
         expect(fired).toHaveLength(2);
         expect(fired[0]).toEqual([]);
         expect(fired[1]).toEqual([nodeA]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// expandTrigger's row-body toggle in _handleClick. Mounted for the same
+// reason as the ctrl/cmd-click block above: the toggle branch resolves the
+// clicked node from a real bound row element. `fruitTree()`'s 'Hello' is
+// expandable, 'World' is a leaf.
+// ---------------------------------------------------------------------------
+describe('Tree — expandTrigger row-body toggle (_handleClick)', () => {
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => DOM.reset());
+
+    function mount(options?: { expandTrigger?: 'dblclick' | 'click' }): _Tree {
+        const tree = new _Tree(options);
+        tree.getElement(true);
+        tree.setWidth(200);
+        tree.setHeight(200);
+        tree.setNodes(fruitTree());
+        (tree as any).renderWindow();
+        return tree;
+    }
+
+    it('default mode: a plain click on an expandable row\'s body selects it and leaves _expandedNodes untouched', () => {
+        const tree = mount();
+        const p = tree as any;
+        const nodeHello = p._flatRows[0].node;
+        const rowHello = p._rowPool.find((r: any) => r.getNode() === nodeHello);
+
+        p._handleClick(makeEvent(rowHello.getElement(), 'click'));
+
+        expect(p._selectedNodes.has(nodeHello)).toBe(true);
+        expect(p._expandedNodes.has(nodeHello)).toBe(false);
+    });
+
+    it('"click" mode: a plain click on an expandable row\'s body selects it and adds it to _expandedNodes; the same click on an already-expanded row removes it', () => {
+        const tree = mount({ expandTrigger: 'click' });
+        const p = tree as any;
+        const nodeHello = p._flatRows[0].node;
+        const rowHello = p._rowPool.find((r: any) => r.getNode() === nodeHello);
+
+        p._handleClick(makeEvent(rowHello.getElement(), 'click'));
+        expect(p._selectedNodes.has(nodeHello)).toBe(true);
+        expect(p._expandedNodes.has(nodeHello)).toBe(true);
+
+        p._handleClick(makeEvent(rowHello.getElement(), 'click'));
+        expect(p._expandedNodes.has(nodeHello)).toBe(false);
+    });
+
+    it('"click" mode: a plain click on a leaf row\'s body selects it; _expandedNodes stays empty', () => {
+        const tree = mount({ expandTrigger: 'click' });
+        const p = tree as any;
+        const nodeWorld = p._flatRows.find((r: any) => r.node.label === 'World').node;
+        const rowWorld = p._rowPool.find((r: any) => r.getNode() === nodeWorld);
+
+        p._handleClick(makeEvent(rowWorld.getElement(), 'click'));
+
+        expect(p._selectedNodes.has(nodeWorld)).toBe(true);
+        expect(p._expandedNodes.size).toBe(0);
+    });
+
+    it('"click" mode: a Ctrl/Cmd-click on an expandable row\'s body toggles selection membership only; _expandedNodes stays untouched', () => {
+        const tree = mount({ expandTrigger: 'click' });
+        const p = tree as any;
+        const nodeHello = p._flatRows[0].node;
+        const rowHello = p._rowPool.find((r: any) => r.getNode() === nodeHello);
+
+        p._handleClick(makeEvent(rowHello.getElement(), 'click', { ctrlKey: true }));
+
+        expect(p._selectedNodes.has(nodeHello)).toBe(true);
+        expect(p._expandedNodes.has(nodeHello)).toBe(false);
+    });
+
+    it('"click" mode: a Shift-click on an expandable row\'s body with an anchor already set range-selects only; _expandedNodes stays untouched', () => {
+        const tree = mount({ expandTrigger: 'click' });
+        const p = tree as any;
+        const nodeWorld = p._flatRows.find((r: any) => r.node.label === 'World').node;
+        const nodeHello = p._flatRows[0].node;
+        const rowHello = p._rowPool.find((r: any) => r.getNode() === nodeHello);
+
+        p._anchorNode = nodeWorld;
+
+        p._handleClick(makeEvent(rowHello.getElement(), 'click', { shiftKey: true }));
+
+        expect(p._selectedNodes.has(nodeHello)).toBe(true);
+        expect(p._expandedNodes.has(nodeHello)).toBe(false);
+    });
+
+    it('"click" mode: a Shift-click on an expandable row\'s body with no anchor set behaves like a plain click — selects and toggles', () => {
+        const tree = mount({ expandTrigger: 'click' });
+        const p = tree as any;
+        const nodeHello = p._flatRows[0].node;
+        const rowHello = p._rowPool.find((r: any) => r.getNode() === nodeHello);
+
+        expect(p._anchorNode).toBeNull();
+
+        p._handleClick(makeEvent(rowHello.getElement(), 'click', { shiftKey: true }));
+
+        expect(p._selectedNodes.has(nodeHello)).toBe(true);
+        expect(p._expandedNodes.has(nodeHello)).toBe(true);
+    });
+
+    it('default mode: a click on the caret still toggles unconditionally', () => {
+        const tree = mount();
+        const p = tree as any;
+        const nodeHello = p._flatRows[0].node;
+        const rowHello = p._rowPool.find((r: any) => r.getNode() === nodeHello);
+
+        p._handleClick(makeEvent(rowHello.getToggle().getElement(), 'click'));
+
+        expect(p._expandedNodes.has(nodeHello)).toBe(true);
+    });
+
+    it('"click" mode: a click on the caret still toggles unconditionally', () => {
+        const tree = mount({ expandTrigger: 'click' });
+        const p = tree as any;
+        const nodeHello = p._flatRows[0].node;
+        const rowHello = p._rowPool.find((r: any) => r.getNode() === nodeHello);
+
+        p._handleClick(makeEvent(rowHello.getToggle().getElement(), 'click'));
+
+        expect(p._expandedNodes.has(nodeHello)).toBe(true);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// expandTrigger's effect on _handleDblClick's own row-body toggle skip.
+// `_handleDblClick` had no prior test coverage at all, so the default-mode
+// case here is this path's first-ever regression net, not just coverage for
+// the new mode.
+// ---------------------------------------------------------------------------
+describe('Tree — expandTrigger and _handleDblClick', () => {
+    beforeEach(() => installTestDOM(CONFIG));
+    afterEach(() => DOM.reset());
+
+    function mount(options?: { expandTrigger?: 'dblclick' | 'click' }): _Tree {
+        const tree = new _Tree(options);
+        tree.getElement(true);
+        tree.setWidth(200);
+        tree.setHeight(200);
+        tree.setNodes(fruitTree());
+        (tree as any).renderWindow();
+        return tree;
+    }
+
+    it('default mode: a double-click on an expandable row\'s body emits "dblclick" with the node and toggles _expandedNodes once', () => {
+        const tree = mount();
+        const p = tree as any;
+        const nodeHello = p._flatRows[0].node;
+        const rowHello = p._rowPool.find((r: any) => r.getNode() === nodeHello);
+
+        const fired: TreeNode[] = [];
+        tree.on('dblclick', (node: TreeNode) => fired.push(node));
+
+        p._handleDblClick(makeEvent(rowHello.getElement(), 'dblclick'));
+
+        expect(fired).toEqual([nodeHello]);
+        expect(p._expandedNodes.has(nodeHello)).toBe(true);
+    });
+
+    it('"click" mode: a full double-click (two _handleClick calls, then _handleDblClick) emits "dblclick" but leaves _expandedNodes in the same membership state it had before the gesture', () => {
+        const tree = mount({ expandTrigger: 'click' });
+        const p = tree as any;
+        const nodeHello = p._flatRows[0].node;
+        const rowHello = p._rowPool.find((r: any) => r.getNode() === nodeHello);
+
+        expect(p._expandedNodes.has(nodeHello)).toBe(false);
+
+        const fired: TreeNode[] = [];
+        tree.on('dblclick', (node: TreeNode) => fired.push(node));
+
+        p._handleClick(makeEvent(rowHello.getElement(), 'click'));
+        p._handleClick(makeEvent(rowHello.getElement(), 'click'));
+        p._handleDblClick(makeEvent(rowHello.getElement(), 'dblclick'));
+
+        expect(fired).toEqual([nodeHello]);
+        expect(p._expandedNodes.has(nodeHello)).toBe(false);
+    });
+
+    it('default mode: a double-click on a leaf row\'s body emits "dblclick" and never touches _expandedNodes', () => {
+        const tree = mount();
+        const p = tree as any;
+        const nodeWorld = p._flatRows.find((r: any) => r.node.label === 'World').node;
+        const rowWorld = p._rowPool.find((r: any) => r.getNode() === nodeWorld);
+
+        const fired: TreeNode[] = [];
+        tree.on('dblclick', (node: TreeNode) => fired.push(node));
+
+        p._handleDblClick(makeEvent(rowWorld.getElement(), 'dblclick'));
+
+        expect(fired).toEqual([nodeWorld]);
+        expect(p._expandedNodes.size).toBe(0);
+    });
+
+    it('"click" mode: a double-click on a leaf row\'s body emits "dblclick" and never touches _expandedNodes', () => {
+        const tree = mount({ expandTrigger: 'click' });
+        const p = tree as any;
+        const nodeWorld = p._flatRows.find((r: any) => r.node.label === 'World').node;
+        const rowWorld = p._rowPool.find((r: any) => r.getNode() === nodeWorld);
+
+        const fired: TreeNode[] = [];
+        tree.on('dblclick', (node: TreeNode) => fired.push(node));
+
+        p._handleClick(makeEvent(rowWorld.getElement(), 'click'));
+        p._handleDblClick(makeEvent(rowWorld.getElement(), 'dblclick'));
+
+        expect(fired).toEqual([nodeWorld]);
+        expect(p._expandedNodes.size).toBe(0);
+    });
+
+    it('default mode: a double-click on the caret emits "dblclick" and does not toggle a third time', () => {
+        const tree = mount();
+        const p = tree as any;
+        const nodeHello = p._flatRows[0].node;
+        const rowHello = p._rowPool.find((r: any) => r.getNode() === nodeHello);
+
+        const fired: TreeNode[] = [];
+        tree.on('dblclick', (node: TreeNode) => fired.push(node));
+
+        // This is a white-box unit test of `_handleDblClick`'s skip-condition
+        // logic, not a faithful reproduction of what a real caret double-click
+        // delivers: `setRowData` (TreeRow.ts:144,167,171) tears down and
+        // recreates `_toggle` on every expand/collapse rebind, and a browser
+        // freezes a native "dblclick" event's target to whatever the second
+        // click's own pre-handler hit-test resolved — which that same click's
+        // handler then detaches by rebinding again. A detached target has no
+        // ancestors to bubble through, so `Event.addSubtreeListener`'s
+        // delegated dblclick listener likely never receives it in a real
+        // browser, meaning `_handleDblClick` (Tree.ts:1225) may not even run
+        // for a genuine caret double-click, in either `expandTrigger` mode.
+        // This is a pre-existing gap in the caret's own dblclick delivery,
+        // predating and unrelated to `expandTrigger` — see the plan's
+        // Implementation Notes. Re-reading the toggle element fresh before
+        // each dispatch (rather than caching it) exercises the skip condition
+        // itself, which is what this test pins.
+        p._handleClick(makeEvent(rowHello.getToggle().getElement(), 'click'));
+        p._handleClick(makeEvent(rowHello.getToggle().getElement(), 'click'));
+        p._handleDblClick(makeEvent(rowHello.getToggle().getElement(), 'dblclick'));
+
+        expect(fired).toEqual([nodeHello]);
+        expect(p._expandedNodes.has(nodeHello)).toBe(false);
+    });
+
+    it('"click" mode: a double-click on the caret emits "dblclick" and does not toggle a third time', () => {
+        const tree = mount({ expandTrigger: 'click' });
+        const p = tree as any;
+        const nodeHello = p._flatRows[0].node;
+        const rowHello = p._rowPool.find((r: any) => r.getNode() === nodeHello);
+
+        const fired: TreeNode[] = [];
+        tree.on('dblclick', (node: TreeNode) => fired.push(node));
+
+        // See the default-mode test above for why this is a white-box unit
+        // test of the skip condition rather than a faithful reproduction of
+        // real caret dblclick delivery.
+        p._handleClick(makeEvent(rowHello.getToggle().getElement(), 'click'));
+        p._handleClick(makeEvent(rowHello.getToggle().getElement(), 'click'));
+        p._handleDblClick(makeEvent(rowHello.getToggle().getElement(), 'dblclick'));
+
+        expect(fired).toEqual([nodeHello]);
+        expect(p._expandedNodes.has(nodeHello)).toBe(false);
     });
 });

@@ -374,6 +374,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'Tree preferredSize (no constraint; height is content-derived)', resolve: () => new Tree().getPreferredSizeConstraint(), expected: null },
     { label: 'Tree maxSize',                 resolve: () => new Tree().getMaxSizeConstraint(),                          expected: { width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER } },
     { label: 'Tree rowOverflow',             resolve: () => new Tree().getRowOverflow(),                                expected: 'scroll' },
+    { label: 'Tree expandTrigger',           resolve: () => new Tree().getExpandTrigger(),                              expected: 'dblclick' },
     { label: 'TabBar preferredSize',         resolve: () => new TabBar().getPreferredSizeConstraint(),                  expected: { width: 0, height: 30 } },
     // The active theme in the test harness (Modern) has tab.underBorderFullWidth
     // false, so applyUnderBorder()'s early-return branch clears the border —
