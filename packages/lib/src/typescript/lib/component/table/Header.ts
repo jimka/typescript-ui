@@ -15,7 +15,7 @@ import { FilterCell } from "~/component/table/cell/Filter.js";
 import { computeColumnWindow } from "~/component/table/Body.js";
 import { CellGeometryCache } from "~/component/table/CellGeometry.js";
 import type { ColumnWindow } from "~/component/table/Body.js";
-import { columnFilterOperators, buildColumnFilter, columnFilterStatesEqual } from "~/component/table/ColumnFilter.js";
+import { columnFilterOperators, buildColumnFilter, columnFilterStatesEqual, columnFilterTakesNumericOperand } from "~/component/table/ColumnFilter.js";
 import type { ColumnFilterState, ColumnFilterTarget } from "~/component/table/ColumnFilter.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { CellTextResolver } from "~/component/table/cell/CellText.js";
@@ -1217,6 +1217,10 @@ class TableHeader extends Component {
             cell.setFieldName(field.getName());
             cell.setColumnLabel(column?.getHeaderText() ?? field.getName());
             cell.setOperators(operators);
+
+            const target = this.filterTarget(field.getName());
+
+            cell.setNumericOnly(target !== null && columnFilterTakesNumericOperand(target));
             cell.getAria().setColIndex(col + 1);
 
             if (operators.length > 0) {

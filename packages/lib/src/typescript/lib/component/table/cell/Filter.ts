@@ -7,6 +7,7 @@ import {
     columnFilterOperatorLabel,
     columnFilterOperatorGlyph,
     columnFilterTakesOperand,
+    columnFilterAcceptsNumericKey,
     isClauseEffective,
     effectiveClauseCount,
 } from "~/component/table/ColumnFilter.js";
@@ -14,6 +15,7 @@ import type { ColumnFilterOperator, ColumnFilterClause, ColumnFilterState } from
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import { Event } from "~/core/Event.js";
 import { callable } from "~/core/Callable.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Popover } from "~/overlay/Popover.js";
@@ -74,6 +76,12 @@ class FilterCell extends Cell<string | null> {
 
     private _fieldName: string;
     private _operators: ColumnFilterOperator[] = [];
+    // Whether this cell's filter inputs are currently restricted to
+    // characters that can appear in a number — see `setNumericOnly` and
+    // `numericKeyDisposition`. Consulted at keydown time (never cached onto
+    // the DOM), so a cell recycled onto a non-numeric column never carries a
+    // stale restriction.
+    private _numericOnly: boolean = false;
     // The full clause list; always at least one entry. `_clauses[0]` is the
     // single source of truth for the always-visible inline input + operator
     // button — every path that changes clause 0 writes into `_clauses[0]`
@@ -272,6 +280,21 @@ class FilterCell extends Cell<string | null> {
     }
 
     /**
+     * Restricts this cell's filter inputs to characters that can appear in a
+     * number, or lifts that restriction.
+     *
+     * @param numeric - `true` to restrict the inline input and every
+     *   popover clause row's field to digits, `-`, and `.`; `false` to
+     *   accept any text.
+     * @returns This cell, for method chaining.
+     */
+    setNumericOnly(numeric: boolean): this {
+        this._numericOnly = numeric;
+
+        return this;
+    }
+
+    /**
      * Sets the accessible name of the text input to `"Filter " + label` —
      * `label` is the column's header text. Also cached for the clauses
      * popover's title.
@@ -359,14 +382,45 @@ class FilterCell extends Cell<string | null> {
     }
 
     /**
-     * Handles a keydown on the text input: Enter applies the current text
-     * immediately (the preceding `"change"` event already updated
-     * `_clauses[0].text`); Escape clears the text and applies that
-     * immediately too.
+     * The keydown disposition for this cell's filter inputs. Returns
+     * `{ prevent: true }` for a keystroke that would type a character a
+     * number cannot contain into a numeric column's field, and `false` for
+     * everything else — every key on a non-numeric column, every editing
+     * and navigation key (whose `key` is a multi-character name), and every
+     * keystroke with a modifier held, which is a shortcut rather than
+     * typing.
      *
      * @param e - The keydown event.
+     * @returns `{ prevent: true }` to refuse the keystroke, `false` to
+     *   allow it.
      */
-    private onInputKeyDown(e: KeyboardEvent): void {
+    private numericKeyDisposition(e: KeyboardEvent): Event.ListenerResult {
+        if (!this._numericOnly || e.ctrlKey || e.metaKey || e.altKey) {
+            return false;
+        }
+
+        return columnFilterAcceptsNumericKey(e.key) ? false : { prevent: true };
+    }
+
+    /**
+     * Handles a keydown on the text input: first the numeric-restriction
+     * gate ({@link numericKeyDisposition}), which — when it refuses the
+     * keystroke — returns immediately without reaching the handling below.
+     * Otherwise, Enter applies the current text immediately (the preceding
+     * `"change"` event already updated `_clauses[0].text`); Escape clears
+     * the text and applies that immediately too.
+     *
+     * @param e - The keydown event.
+     * @returns The gate's refusal, when the keystroke is refused; `false`
+     *   otherwise.
+     */
+    private onInputKeyDown(e: KeyboardEvent): Event.ListenerResult {
+        const refusal = this.numericKeyDisposition(e);
+
+        if (refusal) {
+            return refusal;
+        }
+
         if (e.key === "Enter") {
             this.fireFilterChange(true);
         } else if (e.key === "Escape") {
@@ -375,6 +429,8 @@ class FilterCell extends Cell<string | null> {
             this.syncBadge();
             this.fireFilterChange(true);
         }
+
+        return false;
     }
 
     /**
@@ -530,6 +586,7 @@ class FilterCell extends Cell<string | null> {
         field.setValue(clause.text);
         this.applyOperandAvailability(field, clause.operator);
         field.on("change", () => this.onRowTextChange(index, field.getValue()));
+        field.on("keydown", (e: KeyboardEvent) => this.numericKeyDisposition(e));
 
         const row = new Component({ layoutManager: new HBox({ spacing: 4, itemAlign: "stretch" }) });
 

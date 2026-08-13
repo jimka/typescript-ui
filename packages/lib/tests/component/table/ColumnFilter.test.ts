@@ -7,6 +7,8 @@ import {
     columnFilterOperatorLabel,
     columnFilterOperatorGlyph,
     columnFilterTakesOperand,
+    columnFilterTakesNumericOperand,
+    columnFilterAcceptsNumericKey,
     buildColumnFilter,
     columnFilterStatesEqual,
 } from '~/component/table/ColumnFilter';
@@ -101,6 +103,71 @@ describe('columnFilterTakesOperand', () => {
         for (const op of others) {
             expect(columnFilterTakesOperand(op)).toBe(true);
         }
+    });
+});
+
+describe('columnFilterTakesNumericOperand', () => {
+    it('1. a number column takes a numeric operand', () => {
+        expect(columnFilterTakesNumericOperand({ type: 'number' })).toBe(true);
+    });
+
+    it('2. every non-number column type does not', () => {
+        const types = ['string', 'auto', 'glyph', 'boolean', 'date', 'time', 'datetime'] as const;
+
+        for (const type of types) {
+            expect(columnFilterTakesNumericOperand({ type })).toBe(false);
+        }
+    });
+
+    it('3. a combo column over a number field does not — the operand matches labels', () => {
+        expect(columnFilterTakesNumericOperand({ type: 'number', values: ['Low', 'High'] })).toBe(false);
+    });
+
+    it('4. an empty values array is not a combo column', () => {
+        expect(columnFilterTakesNumericOperand({ type: 'number', values: [] })).toBe(true);
+    });
+
+    it('5. a combo column over a string field does not', () => {
+        expect(columnFilterTakesNumericOperand({ type: 'string', values: ['Low', 'High'] })).toBe(false);
+    });
+});
+
+describe('columnFilterAcceptsNumericKey', () => {
+    it('6. every digit 0-9 is allowed', () => {
+        for (const digit of '0123456789') {
+            expect(columnFilterAcceptsNumericKey(digit)).toBe(true);
+        }
+    });
+
+    it('7. "-" and "." are allowed', () => {
+        expect(columnFilterAcceptsNumericKey('-')).toBe(true);
+        expect(columnFilterAcceptsNumericKey('.')).toBe(true);
+    });
+
+    it('8. a non-numeric single character is refused', () => {
+        for (const key of ['a', 'A', 'e', '+', ',', '/', ' ']) {
+            expect(columnFilterAcceptsNumericKey(key)).toBe(false);
+        }
+    });
+
+    it('9. every editing/navigation key (a multi-character key name) is allowed', () => {
+        const keys = [
+            'Backspace', 'Delete', 'Tab', 'Enter', 'Escape',
+            'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Shift', 'Control', 'F5',
+        ];
+
+        for (const key of keys) {
+            expect(columnFilterAcceptsNumericKey(key)).toBe(true);
+        }
+    });
+
+    it('10. IME composition keys ("Unidentified" / "Process") are allowed', () => {
+        expect(columnFilterAcceptsNumericKey('Unidentified')).toBe(true);
+        expect(columnFilterAcceptsNumericKey('Process')).toBe(true);
+    });
+
+    it('11. an empty key string is allowed — "not exactly one character" never refuses it', () => {
+        expect(columnFilterAcceptsNumericKey('')).toBe(true);
     });
 });
 
