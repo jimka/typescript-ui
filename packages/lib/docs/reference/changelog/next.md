@@ -44,6 +44,11 @@ page resets to empty.
 - **`exportCSV()` / `exportJSON()` write a combo column's label rather than
   its stored code**, matching what the cell and the filter row show. Flag
   this if the export is meant to be re-imported.
+- **The header context menu's per-column show/hide toggles now live in a
+  "Show/hide columns" submenu**, or a "Show/hide columns" modal dialog once
+  a table has more than 20 resolved columns, instead of one row per column
+  at the menu's top level. The dialog splits its checkboxes into side-by-side
+  columns of up to 15 each. No consumer action is needed.
 
 ## Added
 

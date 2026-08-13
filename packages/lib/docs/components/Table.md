@@ -253,8 +253,31 @@ The operators offered depend on the column's field type, and the first entry is 
 
 - Click a column header to cycle through sort directions: ascending → descending → no sort.
 - **Shift-click** a column header to compose a multi-column sort: each shift-click appends or toggles that column inside the current sort list (asc → desc → removed). When more than one column is active, a small priority badge (`2`, `3`, …) is shown on each non-primary column header.
-- Right-click a column header to toggle column visibility via a context menu.
+- Right-click a column header to toggle column visibility via a context menu — see [Showing and hiding columns](#showing-and-hiding-columns) below.
 - `table.getSelectedRecord()` / `getSelectedRecords()` return the user's selection.
+
+### Showing and hiding columns
+
+The column header's right-click context menu lists every resolved column's
+visibility as a checkable "Show/hide columns" submenu, one row per column in
+field order. A grouped column's row sits under its group name, rendered as a
+disabled section header above the group's members. An `unhideable` column is
+still listed, but its row is disabled — it can never be turned off. Toggling
+a row hides or shows that column immediately and closes the menu.
+
+Past 20 resolved columns the trigger opens a modal dialog instead of the
+submenu, so a wide table's toggles stay comfortable to scan and scroll
+rather than filling a very tall panel. The dialog lists the same rows as
+checkboxes — with group names as bold section headers — split into as many
+side-by-side columns as it takes to keep each one to 15 checkboxes, sized as
+evenly as possible; a group split across two dialog columns repeats its
+section header at the top of the second. Nothing is written to the table as
+you toggle checkboxes: **Apply** commits every change at once, while
+**Cancel**, the dialog's own close button, and <kbd>Escape</kbd> all discard
+every staged change and leave the table exactly as it was.
+
+Toggle a column programmatically with
+[`setColumnVisible`](/api/component/table/classes/Table#setcolumnvisible).
 
 ### Resizing columns
 
