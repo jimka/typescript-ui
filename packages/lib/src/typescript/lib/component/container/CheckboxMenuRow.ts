@@ -140,18 +140,17 @@ class CheckboxMenuRow extends MenuRow<CheckboxMenuRowOptions> {
 
     /**
      * Returns the row's own content width — the checkbox's natural width
-     * plus its own fallback left inset and right padding. Read by
-     * `Menu.layOutColumns` **before** {@link setColumns} runs, so this must
-     * never depend on the injected `iconStart`.
+     * plus right padding, excluding any left inset of its own (`Menu` adds
+     * the shared `iconStart` uniformly; see {@link MenuRow.getContentWidth}).
+     * Read by `Menu.layOutColumns` **before** {@link setColumns} runs, so
+     * this must never depend on the injected `iconStart` value itself.
      *
      * @returns The row's preferred content width in pixels.
      */
     getContentWidth(): number {
         const width = Math.ceil(this._checkbox.getPreferredSize()?.width ?? 0);
 
-        // Its own fallback inset, never the injected `iconStart`: the menu
-        // reads this width before it computes and pushes the columns.
-        return MenuItem.TEXT_INSET + width + MenuItem.RIGHT_PAD;
+        return width + MenuItem.RIGHT_PAD;
     }
 
     /**

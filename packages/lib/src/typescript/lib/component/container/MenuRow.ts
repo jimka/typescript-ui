@@ -164,10 +164,14 @@ export abstract class MenuRow<TOptions extends ComponentOptions = ComponentOptio
     }
 
     /**
-     * This row's own content width. Read by `Menu.layOutColumns` **before**
-     * {@link setColumns} is called, so an override must derive it from the
-     * row's own content and its own fallback inset rather than from injected
-     * columns. Floors the panel's natural width, so a row contributing no
+     * This row's own content width, measured to the right of wherever
+     * `Menu` positions the row's content — exclude any left-inset
+     * assumption of your own; `Menu` adds the shared `iconStart` uniformly
+     * across every row when reserving panel width, since a row cannot know
+     * here whether a sibling row widens it via `hasCheck()` / `hasIcon()`.
+     * Read by `Menu.layOutColumns` **before** {@link setColumns} is called,
+     * so an override must not depend on the injected `iconStart` value
+     * itself. Floors the panel's natural width, so a row contributing no
      * title/shortcut metrics still gets enough room to render.
      *
      * @returns `0` by default.

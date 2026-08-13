@@ -215,8 +215,12 @@ class Menu extends Component implements DismissableLayer {
         const rightReserve = rightZone > 0 ? MenuItem.TEXT_GAP + rightZone : 0;
         // A custom row contributes no title/shortcut metrics, so the panel
         // would be too narrow for it; floor the natural width with the widest
-        // row's own report instead.
-        const maxContent   = rows.reduce((m, r) => Math.max(m, r.getContentWidth()), 0);
+        // row's own report instead. `getContentWidth()` excludes any left
+        // inset of its own — a row cannot know at this point whether a
+        // sibling row widens the shared `iconStart` via `hasCheck()` /
+        // `hasIcon()` — so `iconStart` (just computed above) is added here,
+        // uniformly, on Menu's side.
+        const maxContent   = iconStart + rows.reduce((m, r) => Math.max(m, r.getContentWidth()), 0);
 
         const natural = Math.max(iconStart + maxTitle + rightReserve + MenuItem.RIGHT_PAD, maxContent);
         const width   = Math.min(MAX_MENU_WIDTH, Math.max(MIN_MENU_WIDTH, natural));

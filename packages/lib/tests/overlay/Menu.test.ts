@@ -1267,28 +1267,47 @@ describe('Menu custom rows', () => {
     });
 
     describe('column geometry', () => {
-        it('floors the panel width with the widest custom row content, clamped to the ceiling', () => {
+        it('floors the panel width with iconStart plus the widest custom row content, clamped to the ceiling', () => {
             installTestDOM(CONFIG);
 
             // { text: 'Bold' } + a row reporting 300: the MenuItem-only natural
-            // width is well under 300, so the custom row's report wins.
+            // width is well under it, so the custom row's report wins. Neither
+            // row declares `checked`/an icon, so iconStart is bare TEXT_INSET —
+            // getContentWidth() excludes that inset, and Menu adds it back.
             const menu300 = new Menu();
             menu300.show(0, 0, [{ text: 'Bold' }, { row: () => new TestRow({ contentWidth: 300 }) }]);
-            expect(menu300.getMenuWidth()).toBe(300);
+            expect(menu300.getMenuWidth()).toBe(MenuItem.TEXT_INSET + 300);
 
-            // A row reporting 900 clamps to the MAX_MENU_WIDTH ceiling (360).
+            // A row reporting 900 clamps to the MAX_MENU_WIDTH ceiling (360)
+            // regardless of iconStart.
             const menu900 = new Menu();
             menu900.show(0, 0, [{ text: 'Bold' }, { row: () => new TestRow({ contentWidth: 900 }) }]);
             expect(menu900.getMenuWidth()).toBe(360);
 
-            // A row reporting 0 contributes nothing: the width is whatever the
-            // MenuItem alone produced.
+            // A row reporting 0 contributes nothing past iconStart: the width
+            // is whatever the MenuItem alone produced.
             const itemOnly = new Menu();
             itemOnly.show(0, 0, [{ text: 'Bold' }]);
 
             const itemPlusZero = new Menu();
             itemPlusZero.show(0, 0, [{ text: 'Bold' }, { row: () => new TestRow({ contentWidth: 0 }) }]);
             expect(itemPlusZero.getMenuWidth()).toBe(itemOnly.getMenuWidth());
+        });
+
+        it('a custom row\'s content is measured past the ACTUAL iconStart, widened by a sibling\'s `checked`', () => {
+            installTestDOM(CONFIG);
+
+            // A checkable sibling MenuItem widens the shared iconStart by
+            // CHECK_ZONE beyond the row's own bare-TEXT_INSET assumption —
+            // getContentWidth() must not bake in TEXT_INSET itself, or the
+            // panel undershoots by CHECK_ZONE and the row's real content clips.
+            const menu = new Menu();
+            menu.show(0, 0, [
+                { text: 'Bold', checked: true },
+                { row: () => new TestRow({ contentWidth: 300 }) },
+            ]);
+
+            expect(menu.getMenuWidth()).toBe(MenuItem.CHECK_ZONE + MenuItem.TEXT_INSET + 300);
         });
 
         it('every non-separator row receives the same setColumns triple, custom rows included', () => {
