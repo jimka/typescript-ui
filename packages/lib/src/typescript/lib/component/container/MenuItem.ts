@@ -43,6 +43,18 @@ export interface MenuItemConfig {
     text?: string;
     /** Called when the item is activated (click or Enter). Ignored when `submenu` is set. */
     action?: () => void;
+    /**
+     * When `false`, activating this item runs `action` but leaves the menu
+     * open — the menu still closes on an outside click, Escape, or window
+     * blur. Defaults to `true` (close on activation, today's behaviour).
+     * Ignored for a submenu-opening item (see `submenu`), which never calls
+     * `action`.
+     *
+     * Pair with {@link MenuItemConfig.checked} for a multi-select menu: each
+     * activation flips that item's own checkmark without dismissing the
+     * panel, so the user can pick several items in one open.
+     */
+    closeOnActivate?: boolean;
     /** Defaults to `true`. Disabled items are dimmed and non-interactive. */
     enabled?: boolean;
     /** Keyboard shortcut hint displayed on the right (e.g. `"Ctrl+S"`). */
@@ -61,7 +73,9 @@ export interface MenuItemConfig {
      * icon/title columns stay aligned even for items that omit `checked`.
      *
      * @remarks Omit entirely for a plain action item — this is opt-in per
-     * menu, not a default a plain item pays for.
+     * menu, not a default a plain item pays for. Paired with
+     * `closeOnActivate: false`, the checkmark also flips automatically on
+     * each activation — see `closeOnActivate`.
      */
     checked?: boolean;
     /**
@@ -154,6 +168,11 @@ class MenuItem extends Component {
     private readonly _onOpenSubmenu: (item: MenuItem) => void;
     private readonly _cssVarPrefix: MenuItemCSSVarPrefix;
 
+    // The item's own live checkmark state, decoupled from `_config.checked`
+    // (the caller-owned initial value) so `activateLeaf` can flip it without
+    // mutating a config object the caller still holds a reference to.
+    private _checked: boolean = false;
+
     private _checkText: Text | null = null;
     private _iconText: Text | null = null;
     private _iconGlyph: Glyph | null = null;
@@ -239,6 +258,7 @@ class MenuItem extends Component {
         }
 
         if (config.checked !== undefined) {
+            this._checked = config.checked;
             this._checkText = new Text(config.checked ? "✓" : "");
             this._checkText.setPointerEvents("none");
             this._checkText.setTextAlign("center");
@@ -317,7 +337,7 @@ class MenuItem extends Component {
 
         this._onClick = () => {
             if (enabled && !this.hasSubmenu()) {
-                this._onActivate();
+                this.activateLeaf();
             }
         };
 
@@ -374,6 +394,16 @@ class MenuItem extends Component {
     /** True when the item declares `checked` (participates in a checkable set). */
     hasCheck(): boolean {
         return this._config.checked !== undefined;
+    }
+
+    /**
+     * Returns the item's current checkmark state. Meaningless when
+     * `hasCheck()` is `false` — there is no checkmark to report.
+     *
+     * @returns Whether the checkmark is currently shown.
+     */
+    isChecked(): boolean {
+        return this._checked;
     }
 
     /** The item's measured title width, feeding the menu's shared title column. */
@@ -452,6 +482,22 @@ class MenuItem extends Component {
     }
 
     /**
+     * Shared leaf-activation path for a pointer click and {@link activate}.
+     * A checkable item that keeps the menu open (`closeOnActivate: false`)
+     * flips its own checkmark first; a checkable item that closes the menu
+     * (the default) is left alone here, since the menu tears the item down
+     * immediately after and there is nothing left to keep in sync.
+     */
+    private activateLeaf(): void {
+        if (this.hasCheck() && this._config.closeOnActivate === false) {
+            this._checked = !this._checked;
+            this._checkText?.setText(this._checked ? "✓" : "");
+        }
+
+        this._onActivate();
+    }
+
+    /**
      * Activates this item as if the user clicked or pressed Enter.
      *
      * For submenu items, calls `onOpenSubmenu` immediately (skipping the hover delay).
@@ -465,7 +511,7 @@ class MenuItem extends Component {
         if (this.hasSubmenu()) {
             this._onOpenSubmenu(this);
         } else {
-            this._onActivate();
+            this.activateLeaf();
         }
     }
 
