@@ -1153,10 +1153,22 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
         // The description never renders on the glyph-only face — only the tooltip.
         expect(renderer(cell).getOperatorButton().isShowDescription()).toBe(false);
 
-        // Dropping back to one clause clears both.
+        // Round 3: with 2+ effective conditions the tooltip's title line (the
+        // button's own text, off-face per showText: false) must name "how
+        // many", not clause 0's operator alone — a bare "At least" would
+        // misrepresent the AND-combined set as just its first clause.
+        expect(renderer(cell).getOperatorButton().getText()).toBe('2 conditions');
+
+        // Dropping back to one clause clears both...
         (cell as any).removeClause(1);
         expect((cell as any)._badge.getAccessibleDescription()).toBeNull();
         expect(renderer(cell).getOperatorButton().getDescription()).toBeNull();
+        // ...and restores the single-operator title (clause 0's own operator,
+        // "At least" — changed away from the field's default "Equals" above
+        // via the popover row's own operator pick) — `removeClause` never
+        // goes through `applyOperatorFace`, so `syncBadge` is what must
+        // restore it.
+        expect(renderer(cell).getOperatorButton().getText()).toBe('At least');
     });
 
     // Regression for a live-testing bug report: the badge counted every

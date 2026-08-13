@@ -621,6 +621,17 @@ class FilterCell extends Cell<string | null> {
         this._badge.setCount(multi ? count : null);
         this._badge.setAccessibleDescription(description);
 
+        // Single source of truth for the operator button's tooltip *title*
+        // (the hover tooltip's first line): `applyOperatorFace` writes a
+        // single-operator title unconditionally from clause 0's operator
+        // alone, which would misrepresent a 2+-condition column as just its
+        // first clause. Written unconditionally here — even when `multi` is
+        // `false` — because `removeClause` can drop the effective count from
+        // 2 back to 1 without going through `applyOperatorFace` at all, so
+        // this is the only path guaranteed to run on every count change and
+        // restore the single-operator title.
+        opButton.setText(multi ? `${count} conditions` : columnFilterOperatorLabel(this._clauses[0].operator));
+
         if (description) {
             opButton.setDescription(description);
         } else {
