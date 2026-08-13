@@ -424,6 +424,45 @@ From `packages/lib`:
 
 ---
 
+## Implementation Notes
+
+- **Step 8's `String(raw)` grep finds two matches, not one.** The plan calls
+  for `grep -n "String(raw)" packages/lib/src/typescript/lib/data/FilterDescriptor.ts`
+  to return "exactly one match, inside `substringOperands`" ([^extract-substring-helper]
+  and `## Verification`). The plan's own `## Internal Structure` mandates
+  `substringOperands`'s JSDoc verbatim, and that JSDoc itself contains the
+  phrase "keeps the plain `String(raw)` coercion" — so the grep necessarily
+  matches that comment line in addition to the actual coercion call two
+  lines below it, two matches total. The module-level JSDoc sentence added
+  in step 6 (whose wording the plan left open) was phrased to avoid the
+  literal string, keeping the count at this minimum. The substantive claim
+  the check exists to pin — exactly one place in the file still falls back
+  to `String(raw)` — holds; only the literal grep count differs from what
+  the plan's `## Verification` section states.
+
+- **Case 31 is automated instead of manual-only, and touches two files
+  outside `## Files to Create / Modify / Delete`.** The plan classifies case
+  31 (the operator menu's order, and that Contains narrows rows while
+  matching only displayed text) as needing a browser, and calls for a
+  manual run as its only verification (`## Expected Behaviour` case 31,
+  `## Verification`'s "Manual: run the docs/demo app and exercise case
+  31"). That manual run was performed (confirmed against the docs/demo app:
+  the operator menu shows Contains/Starts with/Ends with between At most
+  and Is empty; typing a year narrowed rows on the `LastSeen` column;
+  typing `GMT` matched none). Independently, `packages/lib/tests/component/table/ColumnFilterRow.test.ts`
+  already has an offline harness (`comboTemporalTable`, built for the
+  `cell-display-text` plan) that can drive the same menu-then-type flow
+  without a browser, so cases 31a-31c were added there instead of leaving
+  case 31 as manual-only — a strictly stronger regression guard than the
+  plan called for. Adding them required hoisting the `comboTemporalTable`
+  fixture and its `roleCell`/`meetCell` finders from describe-local scope
+  to module scope in that file, so the new describe block could reuse them.
+  Separately, `packages/lib/src/typescript/MiscPanel.ts`'s filter-row demo
+  comment (naming which operators each demoed column type offers) was
+  updated to keep describing the `Joined` date column accurately once it
+  gained the three substring operators. Both files are outside the plan's
+  file table because the plan did not anticipate either edit.
+
 ## Notes
 
 [^time-in-scope]: The live-testing report that prompted this plan named "date and datetime filters", because those are the columns the tester exercised — not because `time` was considered and excluded. Including `time` costs nothing and excluding it costs a branch: all three types share one operator list, one `displayBucket` rule, one renderer family, and one `ColumnFilterTarget` shape today, so carving `time` out would split a currently-unified `switch` case and leave `time` as the only column type whose `Equals` matches displayed text while its substring operators are unavailable. A `time` cell displaying `02:30 PM` is also a natural target for `endsWith "PM"`. If a later decision does exclude `time`, it is a one-line change to the switch, not a redesign.
