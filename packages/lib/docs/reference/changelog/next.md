@@ -34,9 +34,11 @@ page resets to empty.
   Passing `undefined` clears a previously-set pin, restoring the pane to
   ratio-based persistence in `getPaneSizes`. Existing callers passing a
   number are unaffected.
-- **The gutter context menu's five toggles are now `CheckboxMenuRow` rows**,
-  so the menu stays open across a toggle instead of closing on every click —
-  several controls can be flipped in one open. No consumer action is needed.
+- **The gutter context menu's five toggles stay open across a click instead
+  of closing on every one** — Lock gutter and the two Fix-pane pins are
+  `CheckboxMenuRow` rows, and the collapse pair is `RadioMenuRow`, which
+  reads as the single choice it is. Several controls can be flipped in one
+  open. No consumer action is needed.
 
 ### Table
 
@@ -157,6 +159,11 @@ page resets to empty.
   without closing the menu — the worked example for `MenuRow`, and a
   ready-made way to build a multi-select menu. Its `enabled` option (default
   `true`) dims a disabled row and makes it ignore clicks and Enter.
+- **`RadioMenuRow`**, a menu row hosting a real `RadioButton` for a
+  single-choice group of rows. Selecting is one-way — a click on an
+  already-selected row changes nothing — and the row does not deselect its
+  siblings, so the caller owns clearing the rest of the group. Shares
+  `CheckboxMenuRow`'s `enabled` option.
 
 ## Fixed
 

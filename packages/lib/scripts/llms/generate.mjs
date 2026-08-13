@@ -56,8 +56,12 @@ const GITHUB_BLOB = "https://github.com/jimka/typescript-ui/blob/master/";
  * one further minimally-worded row (task + capped summary + link) still crossed
  * the prior ceiling. Nudged up by the minimum needed rather than trimming
  * existing hand-authored catalog wording to make room.
+ *
+ * Raised again from 6100: the RadioMenuRow catalog entry pushed the site
+ * variant to ~6106/6100, for the same reason as the CheckboxMenuRow raise
+ * above — one more minimally-worded row.
  */
-const TOKEN_BUDGET = 6100;
+const TOKEN_BUDGET = 6110;
 
 /** Max summary length (chars). Bounds a single row so the catalog stays under budget. */
 const SUMMARY_CAP = 140;

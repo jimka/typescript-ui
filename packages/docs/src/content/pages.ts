@@ -253,6 +253,7 @@ export function getNav(): NavGroup[] {
         { path: '/components/MenuItem',        label: 'MenuItem' },
         { path: '/components/MenuSeparator',   label: 'MenuSeparator' },
         { path: '/components/CheckboxMenuRow', label: 'CheckboxMenuRow' },
+        { path: '/components/RadioMenuRow',    label: 'RadioMenuRow' },
     ];
     const componentsTree: NavEntry[] = [
         { path: '/components/Tree', label: 'Tree' },

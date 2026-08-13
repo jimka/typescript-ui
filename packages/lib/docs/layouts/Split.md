@@ -117,9 +117,11 @@ managers read the same constraint field with opposite defaults.
 ## Gutter context menu
 
 Right-clicking a gutter's chevron opens a context menu, rebuilt from live state
-on every open, with three groups of controls. Every row is a real
-[`CheckboxMenuRow`](/components/CheckboxMenuRow), so the menu stays open across
-a toggle — several controls can be flipped in one open:
+on every open, with three groups of controls. The menu stays open across a
+click either way: the first three rows are real
+[`CheckboxMenuRow`](/components/CheckboxMenuRow)s, and the collapse pair is a
+real [`RadioMenuRow`](/components/RadioMenuRow) each — so several controls can
+be flipped in one open:
 
 - **Lock gutter** — disables dragging (and the resize cursor) on that gutter
   without affecting its collapse chevron. Wraps
@@ -136,10 +138,11 @@ a toggle — several controls can be flipped in one open:
   `collapseDirection` constraint (see [Collapsible panels](#collapsible-panels))
   and re-syncing the chevron on the next layout pass. Disabled for a
   `collapsible: false` neighbour, and both disabled while the gutter itself is
-  a collapsed strip. The two rows remain one choice, not two independent
-  toggles: checking one unchecks the other, including when the just-clicked
-  row was already the target, which restores its own checkbox rather than
-  leaving it unchecked.
+  a collapsed strip. The two rows are radio rows, not independent toggles:
+  picking one clears the other, and clicking the already-selected one changes
+  nothing. A gutter whose neighbours' `collapseDirection` constraints leave it
+  collapsing neither pane starts with both rows unselected until one is
+  picked.
 
 Row labels follow the split's orientation: `left`/`right`/`width` on a
 horizontal split, `top`/`bottom`/`height` on a vertical one. [`Border`](/layouts/Border)'s

@@ -91,7 +91,7 @@ menu.show(0, 0, [
 ]);
 ```
 
-See [`CheckboxMenuRow`](/components/CheckboxMenuRow) for the full worked example — a menu row hosting a real [`Checkbox`](/components/Checkbox), toggling on click or Enter without closing the panel.
+See [`CheckboxMenuRow`](/components/CheckboxMenuRow) for the full worked example — a menu row hosting a real [`Checkbox`](/components/Checkbox), toggling on click or Enter without closing the panel. [`RadioMenuRow`](/components/RadioMenuRow) is the equivalent for a single-choice group of rows — selecting is one-way, and the caller deselects the siblings.
 
 **Known limitation:** hovering a custom row does not close a sibling item's already-open submenu — only `MenuItem`'s hover wires that signal. A submenu opened from a neighbouring item can stay visible over the panel until a click elsewhere resolves it.
 

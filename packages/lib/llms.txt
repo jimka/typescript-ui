@@ -87,6 +87,7 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Edge-anchored sliding drawer → **Drawer** · `@jimka/typescript-ui/overlay` · An edge-anchored panel that rests off-screen against a viewport edge and slides into view when opened, overlaying the rest of the UI. · docs/components/Drawer.md
 - Context / dropdown menu → **Menu** · `@jimka/typescript-ui/overlay` · A floating menu panel that operates in one of two modes: · docs/components/Menu.md
 - Checkbox row in a menu → **CheckboxMenuRow** · `@jimka/typescript-ui/component/container` · A `Menu` row hosting a real `Checkbox`, for a multi-select menu. · docs/components/CheckboxMenuRow.md
+- Radio row in a menu → **RadioMenuRow** · `@jimka/typescript-ui/component/container` · A `Menu` row hosting a real `RadioButton`, for a single-choice menu. · docs/components/RadioMenuRow.md
 - Anchored floating popover → **Popover** · `@jimka/typescript-ui/overlay` · An anchored, non-modal floating bubble with a directional arrow tail. Use `Popover` for click-triggered, interactive content (title, body,… · docs/components/Popover.md
 - Hover tooltip → **Tooltip** · `@jimka/typescript-ui/overlay` · A singleton floating tooltip that appears near the cursor after a short delay. · docs/components/Tooltip.md
 - Transient toast notification → **Notification** · `@jimka/typescript-ui/overlay` · A lightweight toast-style notification that appears in the bottom-right corner of the viewport and auto-dismisses after a configurable dura… · docs/components/Notification.md
