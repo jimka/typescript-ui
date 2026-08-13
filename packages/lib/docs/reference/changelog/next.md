@@ -62,6 +62,10 @@ page resets to empty.
 - **A `number` column's header filter input now refuses non-numeric
   characters as they are typed** instead of accepting them and silently
   applying no filter. No consumer action is needed.
+- **The header context menu's Filter toggle and its "Show/hide columns"
+  submenu rows are now `CheckboxMenuRow` rows**, so toggling Filter or a
+  column no longer closes the menu — several columns can be flipped in one
+  open. No consumer action is needed.
 
 ## Added
 
