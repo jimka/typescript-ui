@@ -3,7 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
-import { CollapseButton, CollapseDirection } from "~/component/container/CollapseButton.js";
+import { CollapseButton, CollapseDirection, CollapseTrigger } from "~/component/container/CollapseButton.js";
 import { Event } from "~/core/Event.js";
 import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -56,6 +56,13 @@ export interface SplitGutterOptions extends ComponentOptions {
      * Defaults to `west` for a horizontal gutter, `north` for a vertical one.
      */
     collapseDirection?: CollapseDirection;
+    /**
+     * The chevron's activation gesture: `"dblclick"` (the default,
+     * preserving today's behaviour) or `"click"`. Forwarded to the
+     * {@link CollapseButton}'s own `trigger` option. Read once at
+     * construction.
+     */
+    collapseTrigger?: CollapseTrigger;
     /**
      * The background painted in the expanded (divider) state, restored when
      * {@link SplitGutter.setOpaque} is cleared. Defaults to the gutter token;
@@ -115,6 +122,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
     declare private _collapseButton: CollapseButton;
     private _opaque: boolean = false;
     private _collapseDirection: CollapseDirection = "west";
+    private _collapseTrigger: CollapseTrigger = "dblclick";
     private _expandedBackground: string = "var(--ts-ui-gutter-bg, #AAAAAA)";
     private _tooltipText: string = "";
     private _listeners: ListenerBag<SplitGutterEvent> = new ListenerBag<SplitGutterEvent>();
@@ -152,9 +160,11 @@ class SplitGutter extends Component<SplitGutterOptions> {
         // axis (Split's leading pane is west/north); Border overrides per
         // placement. The restore heading is its opposite, applied by setOpaque.
         this._collapseDirection = options?.collapseDirection ?? (this._direction === "horizontal" ? "west" : "north");
+        this._collapseTrigger = options?.collapseTrigger ?? "dblclick";
 
         this._collapseButton = new CollapseButton({
             direction: this._collapseDirection,
+            trigger:   this._collapseTrigger,
             listeners: {
                 collapse:    () => this.emit("collapse"),
                 contextmenu: (x, y) => this.emit("contextmenu", x, y),
@@ -369,11 +379,12 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
     /**
      * Refreshes the hover tooltip on the gutter and its chevron to describe the
-     * double-click action for the current state: which way the gutter will
-     * collapse when expanded, or that it will expand back when collapsed. Both
-     * the gutter body (hovered on a draggable `Split` divider) and the chevron
-     * handle (the always-visible grip) carry it. No-op when the text is
-     * unchanged so repeated layouts don't re-wire the hover listeners.
+     * configured activation gesture for the current state: which way the
+     * gutter will collapse when expanded, or that it will expand back when
+     * collapsed. Both the gutter body (hovered on a draggable `Split` divider)
+     * and the chevron handle (the always-visible grip) carry it. No-op when
+     * the text is unchanged so repeated layouts don't re-wire the hover
+     * listeners.
      */
     private updateTooltip(): void {
         // A non-collapsible gutter carries no chevron and cannot collapse, so it
@@ -394,9 +405,10 @@ class SplitGutter extends Component<SplitGutterOptions> {
             return;
         }
 
+        const verb      = this._collapseTrigger === "click" ? "Click" : "Double-click";
         const action    = this._opaque ? "expand" : "collapse";
         const direction = this._opaque ? OPPOSITE_DIRECTION[this._collapseDirection] : this._collapseDirection;
-        const text      = `Double-click to ${action} ${direction}ward`;
+        const text      = `${verb} to ${action} ${direction}ward`;
 
         if (text === this._tooltipText) {
             return;
@@ -444,8 +456,10 @@ class SplitGutter extends Component<SplitGutterOptions> {
      *   during a drag, receiving the absolute pointer coordinate in that axis;
      *   `"dragend"` fires once the drag ends (mouseup, touchend, or
      *   touchcancel); `"collapse"` fires when the gutter's chevron is
-     *   double-clicked; `"contextmenu"` fires when the gutter's chevron is
-     *   right-clicked, receiving the pointer's viewport coordinates.
+     *   activated (double-clicked by default, or single-clicked when
+     *   `collapseTrigger: "click"` is set); `"contextmenu"` fires when the
+     *   gutter's chevron is right-clicked, receiving the pointer's viewport
+     *   coordinates.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This gutter, for method chaining.

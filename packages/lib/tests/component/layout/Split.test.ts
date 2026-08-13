@@ -57,6 +57,24 @@ describe('Split orientation', () => {
     });
 });
 
+describe('Split collapseTrigger', () => {
+    afterEach(() => DOM.reset());
+
+    it('forwards collapseTrigger to each gutter\'s CollapseButton, defaulting to dblclick', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = hostSplit(new Split({ collapseTrigger: 'click' }), 2);
+        host.doLayout();
+
+        expect((split as any)._gutters[0]._collapseButton.getTrigger()).toBe('click');
+
+        const { host: defaultHost, split: defaultSplit } = hostSplit(new Split(), 2);
+        defaultHost.doLayout();
+
+        expect((defaultSplit as any)._gutters[0]._collapseButton.getTrigger()).toBe('dblclick');
+    });
+});
+
 describe('Split pane ratios', () => {
     afterEach(() => DOM.reset());
 

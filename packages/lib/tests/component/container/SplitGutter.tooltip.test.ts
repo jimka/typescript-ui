@@ -20,6 +20,11 @@ function hasTooltip(id: string): boolean {
     return (Tooltip as any).attachments.has(id);
 }
 
+// Reads the attached hint's text via the same private attachment registry.
+function tooltipText(id: string): string | undefined {
+    return (Tooltip as any).attachments.get(id)?.text;
+}
+
 describe('SplitGutter collapse tooltip gating', () => {
     afterEach(() => {
         const timer = (Tooltip as any).showTimer;
@@ -79,5 +84,48 @@ describe('SplitGutter collapse tooltip gating', () => {
 
         expect(hasTooltip(gutter.getId())).toBe(false);
         expect(hasTooltip(button.getId())).toBe(false);
+    });
+});
+
+describe('SplitGutter collapse tooltip text', () => {
+    afterEach(() => {
+        const timer = (Tooltip as any).showTimer;
+
+        if (timer !== null) {
+            clearTimeout(timer);
+            (Tooltip as any).showTimer = null;
+        }
+
+        (Tooltip as any).instance = null;
+        (Tooltip as any).watching = false;
+        (Tooltip as any).activeElement = null;
+
+        DOM.reset();
+    });
+
+    it('defaults to the double-click hint text', () => {
+        installTestDOM(CONFIG);
+
+        const gutter = new SplitGutter('horizontal');
+
+        expect(tooltipText(gutter.getId())).toBe('Double-click to collapse westward');
+    });
+
+    it('reads "Click to …" when collapseTrigger is click', () => {
+        installTestDOM(CONFIG);
+
+        const gutter = new SplitGutter('horizontal', { collapseTrigger: 'click' });
+
+        expect(tooltipText(gutter.getId())).toBe('Click to collapse westward');
+    });
+
+    it('keeps the "Click" verb when the gutter flips to the expand hint', () => {
+        installTestDOM(CONFIG);
+
+        const gutter = new SplitGutter('horizontal', { collapseTrigger: 'click' });
+
+        gutter.setOpaque(true);
+
+        expect(tooltipText(gutter.getId())).toBe('Click to expand eastward');
     });
 });
