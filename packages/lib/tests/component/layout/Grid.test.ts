@@ -215,3 +215,45 @@ describe('Grid overflow inflation', () => {
         expect(observed.getWidth()).toBe(100); // container width, not the 300 totalMin
     });
 });
+
+describe('Grid occupancy clip frame', () => {
+    afterEach(() => DOM.reset());
+
+    // A child whose min exceeds its cell on the occupancy path is clipped to
+    // the cell rather than resized: `layoutOccupancy` installs a clip frame
+    // and commits the child inside it at its natural (overflowing) extent.
+    it('clips a child whose min exceeds its cell, and leaves an unaffected sibling as a direct child', () => {
+        installTestDOM(CONFIG);
+
+        const grid = new Grid({
+            rows:         1,
+            columns:      2,
+            spacing:      0,
+            columnTracks: [{ mode: 'fixed' as const, value: 50 }, { mode: 'weight' as const, value: 1 }],
+        });
+        const host = hostGrid(200, 100, grid);
+
+        const a = new Component({ preferredSize: { width: 150, height: 20 } });
+        a.setMinSize({ width: 150, height: 20 });
+        const b = new Component({ preferredSize: { width: 20, height: 20 } });
+
+        host.addComponent(a);
+        host.addComponent(b);
+
+        host.doLayout();
+
+        // a's min (150) exceeds its fixed 50-wide cell: clipped to the cell,
+        // committed inside the frame at its natural width and the
+        // cell-resolved (fill: BOTH) height.
+        expect(a.getX()).toBe(0);
+        expect(a.getY()).toBe(0);
+        expect(a.getWidth()).toBe(150);
+        expect(a.getHeight()).toBe(100);
+        expect(DOM.source.getParentNode(a.getElement()!)).not.toBe(host.getElement());
+
+        // b fits its 150-wide weight column: unaffected, no frame.
+        expect(b.getX()).toBe(50);
+        expect(b.getWidth()).toBe(150);
+        expect(DOM.source.getParentNode(b.getElement()!)).toBe(host.getElement());
+    });
+});

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions, ResolvedPlacement } from "~/layout/LayoutManager.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -45,6 +45,7 @@ class Absolute extends LayoutManager {
         }
 
         const components = container.getLaidOutComponents();
+        const placements: ResolvedPlacement[] = [];
 
         for (const component of components) {
             const preferredSize = component.getPreferredSize();
@@ -56,8 +57,10 @@ class Absolute extends LayoutManager {
             const x = component.getX();
             const y = component.getY();
 
-            this.commitBounds(component, x, y, width, height);
+            placements.push({ component, x, y, width, height });
         }
+
+        this.commitPlacements(placements);
     }
 }
 

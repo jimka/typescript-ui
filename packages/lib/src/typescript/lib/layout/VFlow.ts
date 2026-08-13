@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { FlowLayout, FlowLayoutOptions } from "~/layout/FlowLayout.js";
+import type { ResolvedPlacement } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 import { Component } from "~/core/Component.js";
@@ -275,7 +276,9 @@ class VFlow extends FlowLayout {
 
         const columns = this.groupIntoColumns(components, innerSize.height, insets.getLeft(), spacing, lineSpacing, uniformWidth, uniformHeight, extents);
 
-        this.placeColumns(columns, insets.getTop(), innerSize.height, spacing);
+        const placements = this.resolveColumns(columns, insets.getTop(), innerSize.height, spacing);
+
+        this.commitPlacements(placements);
 
         // Only a wrap run against a real height says anything. Before the first
         // sizing pass getInnerSize() is NaN-tall, every `> NaN` comparison is
@@ -303,7 +306,7 @@ class VFlow extends FlowLayout {
      * @param uniformWidth - Whether cells take the uniform width.
      * @param uniformHeight - Whether cells take the uniform height.
      * @param extents - The uniform cell extents, when a uniform mode is active.
-     * @returns The ordered columns ready for {@link VFlow.placeColumns}.
+     * @returns The ordered columns ready for {@link VFlow.resolveColumns}.
      */
     private groupIntoColumns(components: Component[], innerHeight: number, leftInset: number, spacing: number, lineSpacing: number, uniformWidth: boolean, uniformHeight: boolean, extents: Size): VFlowColumn[] {
         const columns: VFlowColumn[] = [];
@@ -344,18 +347,21 @@ class VFlow extends FlowLayout {
     /**
      * Phase 2 of {@link VFlow.doLayout}: distributes each column's cells along
      * the main axis per the `justify` mode (or packs them at the `align` offset
-     * when `justify` is `"start"`), and positions each cell within the column
-     * width per the `itemAlign` mode. The cross axis is width, which has no text
-     * baseline, so `"baseline"` degrades to `"start"`. Each child keeps its
-     * preferred size (`FillType.NONE`); its own {@link AnchorType} positions it
-     * within its cell.
+     * when `justify` is `"start"`), and resolves each cell's bounds within the
+     * column width per the `itemAlign` mode. The cross axis is width, which has
+     * no text baseline, so `"baseline"` degrades to `"start"`. Each child keeps
+     * its preferred size (`FillType.NONE`); its own {@link AnchorType} positions
+     * it within its cell.
      *
      * @param columns - The columns produced by {@link VFlow.groupIntoColumns}.
      * @param topInset - The container's top content inset (the column's leading edge).
      * @param innerHeight - The container's inner height (for the alignment residual).
      * @param spacing - Inter-item vertical spacing in pixels.
+     * @returns The resolved placements, ready for {@link LayoutManager.commitPlacements}.
      */
-    private placeColumns(columns: VFlowColumn[], topInset: number, innerHeight: number, spacing: number): void {
+    private resolveColumns(columns: VFlowColumn[], topInset: number, innerHeight: number, spacing: number): ResolvedPlacement[] {
+        const placements: ResolvedPlacement[] = [];
+
         for (const column of columns) {
             const { lead, gap } = this.justifyGaps(column.cells.length, this.cellsMainExtent(column), innerHeight, spacing);
 
@@ -371,11 +377,13 @@ class VFlow extends FlowLayout {
                 // rowAscent null → "baseline" degrades to "start"; cross axis is width.
                 const x = column.x + this.crossOffset(cell.width, column.columnWidth, null, null, 0);
 
-                this.placeComponent(cell.component, x, y, cell.width, cell.height, FillType.NONE);
+                placements.push({ component: cell.component, ...this.resolveBounds(cell.component, x, y, cell.width, cell.height, FillType.NONE) });
 
                 y += cell.height + gap;
             }
         }
+
+        return placements;
     }
 
     /**

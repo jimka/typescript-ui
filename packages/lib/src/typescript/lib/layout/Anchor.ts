@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions, ResolvedPlacement } from "~/layout/LayoutManager.js";
 import { AnchorConstraints } from "~/layout/AnchorConstraints.js";
 import { callable } from "~/core/Callable.js";
 
@@ -46,7 +46,7 @@ interface AxisResult {
  * `width` / `height`. Any offset or size may be a pixel `number` or an
  * {@link AnchorValue} percentage of the container's inner extent.
  *
- * Like `Absolute`, `Anchor` commits rects directly through `commitBounds`,
+ * Like `Absolute`, `Anchor` commits rects directly through `commitPlacements`,
  * bypassing the cell clamp — a child sized larger than the container is
  * committed at its computed size and may overflow, which a host `Panel` with
  * `autoScroll: "auto"` scrolls natively. It imposes no intrinsic preferred,
@@ -134,7 +134,7 @@ class Anchor extends LayoutManager {
     /**
      * Resolves each child's rect from its {@link AnchorConstraints} against the
      * container's current inner size and insets, then commits via the base
-     * `commitBounds` (bypassing the cell clamp). Bails before the container
+     * `commitPlacements` (bypassing the cell clamp). Bails before the container
      * connects, when `getInnerSize` is still `null`.
      */
     doLayout(): void {
@@ -153,6 +153,7 @@ class Anchor extends LayoutManager {
         const insets = container.getContentInsets();
         const originX = insets.getLeft();
         const originY = insets.getTop();
+        const placements: ResolvedPlacement[] = [];
 
         for (const component of container.getLaidOutComponents()) {
             const cons = this.getLayoutConstraints(component) as AnchorConstraints | undefined;
@@ -170,8 +171,10 @@ class Anchor extends LayoutManager {
                 this.resolve(cons?.bottom, inner.height), this.resolve(cons?.height, inner.height),
                 inner.height, prefH, component.getY(), originY);
 
-            this.commitBounds(component, xAxis.start, yAxis.start, xAxis.extent, yAxis.extent);
+            placements.push({ component, x: xAxis.start, y: yAxis.start, width: xAxis.extent, height: yAxis.extent });
         }
+
+        this.commitPlacements(placements);
     }
 }
 
