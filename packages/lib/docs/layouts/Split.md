@@ -48,17 +48,26 @@ Each panel starts at its **preferred size** (explicit or class-default), clamped
 
 ## Collapsible panels
 
-Each gutter carries a small chevron grip. **Double-clicking** it collapses the
-adjacent pane: the gutter slides to that pane's outer edge and widens into a
-themed, button-styled strip (cross-fading its fill in), while the collapsing pane
-keeps its full size and reveals away under a clip-path, and the freed space is
-redistributed to the remaining panes. The whole pass is one coordinated
-animation — the toggled pane clip-reveals while every other pane and the gutters
-interpolate their geometry together, re-laying out their contents each frame so
-nothing snaps — mirroring [`Accordion`](/layouts/Accordion). A single click or a drag never collapses —
-only a `dblclick` does, so resizing is never ambiguous. Double-clicking the same
-chevron on the strip slides the gutter back and restores the pane to its previous
-ratio. Collapsed state is in-memory only.
+Each gutter carries a small chevron grip. By default (`collapseTrigger:
+'dblclick'`), **double-clicking** it collapses the adjacent pane: the gutter
+slides to that pane's outer edge and widens into a themed, button-styled strip
+(cross-fading its fill in), while the collapsing pane keeps its full size and
+reveals away under a clip-path, and the freed space is redistributed to the
+remaining panes. The whole pass is one coordinated animation — the toggled
+pane clip-reveals while every other pane and the gutters interpolate their
+geometry together, re-laying out their contents each frame so nothing snaps —
+mirroring [`Accordion`](/layouts/Accordion). A drag never collapses — only the
+configured trigger does, so resizing is never ambiguous. Repeating the gesture
+on the same chevron once it's a strip slides the gutter back and restores the
+pane to its previous ratio. Collapsed state is in-memory only.
+
+Pass `collapseTrigger: 'click'` to switch every gutter's chevron to a single
+click instead — useful when double-click is already claimed by something else
+in the pane:
+
+```typescript
+workspace.setLayoutManager(Split({ orientation: 'horizontal', collapseTrigger: 'click' }));
+```
 
 By default a pane collapses toward the split's leading edge (`west`/`north`),
 using the gutter on its **trailing** side. Set `collapseDirection` on a pane's
@@ -93,8 +102,9 @@ strip fill and chevron colour are themed via the `collapse` tokens — see
 
 Set `collapsible: false` on a pane's constraint to keep its gutter a plain
 **draggable divider** — it still resizes, but shows no chevron and cannot be
-collapsed by double-click, `setPaneCollapsed`/`setPaneCollapsedImmediate`, or the
-`collapsedPanes` option. Panes are collapsible by default; this is the opt-out.
+collapsed by the chevron gesture, `setPaneCollapsed`/`setPaneCollapsedImmediate`,
+or the `collapsedPanes` option. Panes are collapsible by default; this is the
+opt-out.
 
 ```typescript
 split.addComponent(content, { collapsible: false }); // drag to resize, never collapses

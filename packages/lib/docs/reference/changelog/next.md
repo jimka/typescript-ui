@@ -111,6 +111,11 @@ page resets to empty.
   `stretching` becomes a deprecated shorthand over `itemAlign: "stretch"` /
   `"baseline"`; every existing `stretching` call site keeps working
   unchanged.
+- **`SplitOptions.collapseTrigger` / `SplitGutterOptions.collapseTrigger` /
+  `CollapseButtonOptions.trigger`** — switches a gutter's collapse chevron
+  from the default double-click activation to a single click. Defaults to
+  `"dblclick"` everywhere, so no existing call site changes behaviour. No
+  consumer action is needed.
 
 ### Split
 
