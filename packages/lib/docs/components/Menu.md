@@ -68,6 +68,32 @@ Each entry follows [`MenuItemConfig`](/api/component/container/interfaces/MenuIt
 | `icon` | Glyph displayed on the left. |
 | `submenu` | Nested [`MenuConfig`](/api/component/container/interfaces/MenuConfig) (persistent mode only). |
 | `separator` | When `true`, render as a horizontal rule and ignore other fields. |
+| `row` | A zero-argument factory returning a [`MenuRow`](/api/component/container/classes/MenuRow); the menu renders that component instead of a `MenuItem` and ignores every other field. See [Custom rows](#custom-rows). |
+
+## Custom rows
+
+Most menus are built entirely from `MenuItemConfig` fields, but an entry can carry a `row: () => MenuRow` factory instead — the menu calls the factory and renders whatever component comes back in place of a `MenuItem`. This is how a menu hosts a real interactive control: a checkbox, a text field, anything else in the framework.
+
+`MenuItem` and `MenuSeparator` both extend the abstract [`MenuRow`](/api/component/container/classes/MenuRow) base class, which `Menu` drives through a fixed set of methods. Every method has a working default, so a custom row overrides only what it needs:
+
+- **The factory runs once per menu build, never a prebuilt instance.** `Menu` disposes its whole item list on every rebuild (`show()`, or a provider-sourced dropdown re-opening), so a row instance built once and reused across shows would be dead after the first one. Return a fresh `new YourRow()` from the factory every time.
+- **`isNavigable()` defaults to `false`.** A custom row is left out of the menu's roving arrow-key highlight by default, exactly like a separator — the row is expected to own its own DOM focus and keys. Override it to `true` for a row that behaves like a menu item instead (no embedded focusable control): the highlight then lands on it, and Enter calls its `activate()`.
+- **The row opts out of the shared check/icon/title/shortcut column grid by default** and renders across the row's full width. A row that wants to line up with the `MenuItem`s around it overrides `setColumns(checkZone, iconStart, titleColumn)` and positions its content from the injected `iconStart`. Because a row contributing no title/shortcut metrics would otherwise leave the panel too narrow, override `getContentWidth()` to report the row's own natural width — read **before** `setColumns` runs, so it must not depend on the injected columns.
+- **Dismissing the menu from inside a custom row** goes through the protected `closeMenu()` helper, backed by a close callback `Menu` injects into every factory-built row right after constructing it — a factory row has no other reference to the menu hosting it.
+
+```typescript
+import { CheckboxMenuRow } from '@jimka/typescript-ui/component/container';
+
+menu.show(0, 0, [
+    { text: 'Bold',   action: () => toggleBold() },
+    { separator: true },
+    { row: () => new CheckboxMenuRow({ text: 'Show gridlines', checked: gridlinesOn }) },
+]);
+```
+
+See [`CheckboxMenuRow`](/components/CheckboxMenuRow) for the full worked example — a menu row hosting a real [`Checkbox`](/components/Checkbox), toggling on click or Enter without closing the panel.
+
+**Known limitation:** hovering a custom row does not close a sibling item's already-open submenu — only `MenuItem`'s hover wires that signal. A submenu opened from a neighbouring item can stay visible over the panel until a click elsewhere resolves it.
 
 ## Notes
 

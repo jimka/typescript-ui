@@ -50,8 +50,14 @@ const GITHUB_BLOB = "https://github.com/jimka/typescript-ui/blob/master/";
 /**
  * Hard token ceiling per output file. The manifest is always-loaded context for an
  * agent, so its cost must stay bounded as the catalog grows; the build fails past this.
+ *
+ * Raised from 6000: the site variant (longer absolute URLs than the fs variant)
+ * was already at ~5994/6000 before the CheckboxMenuRow catalog entry, so adding
+ * one further minimally-worded row (task + capped summary + link) still crossed
+ * the prior ceiling. Nudged up by the minimum needed rather than trimming
+ * existing hand-authored catalog wording to make room.
  */
-const TOKEN_BUDGET = 6000;
+const TOKEN_BUDGET = 6100;
 
 /** Max summary length (chars). Bounds a single row so the catalog stays under budget. */
 const SUMMARY_CAP = 140;

@@ -247,11 +247,12 @@ export function getNav(): NavGroup[] {
         { path: '/components/ToolBarSeparator', label: 'ToolBarSeparator' },
     ];
     const componentsMenus: NavEntry[] = [
-        { path: '/components/MenuBar',       label: 'MenuBar' },
-        { path: '/components/MenuBarButton', label: 'MenuBarButton' },
-        { path: '/components/Menu',          label: 'Menu' },
-        { path: '/components/MenuItem',      label: 'MenuItem' },
-        { path: '/components/MenuSeparator', label: 'MenuSeparator' },
+        { path: '/components/MenuBar',         label: 'MenuBar' },
+        { path: '/components/MenuBarButton',   label: 'MenuBarButton' },
+        { path: '/components/Menu',            label: 'Menu' },
+        { path: '/components/MenuItem',        label: 'MenuItem' },
+        { path: '/components/MenuSeparator',   label: 'MenuSeparator' },
+        { path: '/components/CheckboxMenuRow', label: 'CheckboxMenuRow' },
     ];
     const componentsTree: NavEntry[] = [
         { path: '/components/Tree', label: 'Tree' },
