@@ -34,6 +34,9 @@ page resets to empty.
   Passing `undefined` clears a previously-set pin, restoring the pane to
   ratio-based persistence in `getPaneSizes`. Existing callers passing a
   number are unaffected.
+- **The gutter context menu's five toggles are now `CheckboxMenuRow` rows**,
+  so the menu stays open across a toggle instead of closing on every click —
+  several controls can be flipped in one open. No consumer action is needed.
 
 ### Table
 
