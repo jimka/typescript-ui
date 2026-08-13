@@ -7,6 +7,24 @@ page resets to empty.
 
 ## Changed
 
+### Core
+
+- **Disposing a large, currently-mounted component subtree — a `Table` with
+  many rows and columns, for example — is cheaper.** `Component.destructor()`
+  now removes its own element before recursing into its children instead of
+  after. A still-connected ancestor's removal is the one call in the subtree
+  that costs a live style/layout invalidation, and it already detaches the
+  whole subtree from the document in one native step; every descendant's own
+  removal still runs (nothing is skipped), but now against an
+  already-detached node, which is a cheap pointer unlink rather than a
+  rendering-affecting operation. Theme cleanup, style-rule disposal, and
+  handle release are unaffected. One relative order inverts: a custom
+  `LayoutManager.detach()` override now runs after the container's own
+  element is removed instead of before, so it can no longer rely on that
+  element still being connected. No built-in `LayoutManager` depends on this,
+  so no consumer action is needed unless a custom manager's `detach()`
+  override reads the container's connected element.
+
 ### Table
 
 - **A `DynamicCell` number row (the rotated `\x`-style view, or any column

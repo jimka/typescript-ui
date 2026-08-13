@@ -778,6 +778,33 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // the bottom of this method.
         Event.purgeComponent(this.getId());
 
+        // Tear any active clip frame down, then remove this component's own
+        // element — before recursing into children below, rather than after.
+        // A still-connected element's removal here is the one call in this
+        // subtree that costs a live style/layout invalidation; it also
+        // natively detaches the whole subtree from the document in one step.
+        // Every descendant reached afterward (through the `_components`
+        // recursion below, or through any other component-owned disposal loop
+        // elsewhere) still runs its own `DOM.sink.removeElement()` call — never
+        // skipped, since a descendant can be reached by a path (e.g.
+        // `disposeAllComponents()` on the still-live children of a container
+        // that is itself merely detached-and-cached, not being disposed —
+        // see `Menu.showAnchored()`) where nothing above it in *this* call
+        // ever actually performed the removal — but that call now runs
+        // against an already-detached node, which is a cheap pointer unlink,
+        // not a rendering-affecting operation. `clearContentFrame()` stays
+        // below, after the child recursion clears `_components` — unlike the
+        // clip frame, its wrapper teardown re-parents every child (via
+        // `getAttachNode()`) back onto this element first, which would be
+        // real, wasted DOM work against every about-to-be-destroyed child
+        // still in `_components` if it ran here.
+        this.clearClipFrame();
+
+        let element = this.getElement();
+        if (element) {
+            DOM.sink.removeElement(element);
+        }
+
         // Discard the subtree eagerly — a destroyed container destroys its
         // children too. `removeComponent` never calls destructor (a removed
         // child may be re-parented by a move), so recursion here only reaches
@@ -787,31 +814,40 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
         this._components = [];
 
-        // Detach the layout manager before the element is removed below.
-        // This is defensive, not proven necessary: a `LayoutManager.detach()`
+        // Tear down any active content frame now that `_components` is empty
+        // (mirroring `removeElement()`) so the wrapper is removed from the DOM
+        // and its handle untracked and released, without its child-reparenting
+        // loop doing pointless work against children this method just destroyed.
+        this.clearContentFrame();
+
+        // Detach the layout manager after the element is removed above.
+        // Detaching before removal, as this method originally did, was a
+        // defensive choice, not a proven-necessary one: a `LayoutManager.detach()`
         // override could touch the container's element through `getElement()`
-        // — whose `getElementById` fallback needs a connected document — so
-        // detaching first is the safer order. But no current override
-        // demonstrably requires it: `Accordion.detach()` and `Split.detach()`
-        // (the two overrides three successive review cycles pointed to as
-        // the reason) both resolve their header / panel-wrapper / gutter
-        // elements through `getElement()` calls that never reach the
-        // fallback, because those components cache `_element` at creation
-        // via `getElement(true)` (`Accordion.ts:1357-1358`, `Split.ts:1185`).
-        // The offline test harness cannot settle the question either way:
-        // its modelled `getElementById` (`TestHandleTable._byId`) is never
-        // evicted on `removeElement`, so a stale id keeps resolving
-        // regardless of ordering. Reordering this to run after element
-        // removal left the full suite green — the ordering is not known to
-        // matter today, kept this way only as a defensive default. This is
-        // also what makes `Tab.detach()` reachable on this path at all — it
-        // disposes the raw-appended `TabBar` (`Tab.attach()` appends it
-        // directly to the container element instead of registering it as a
-        // child), which the child-destruction loop above cannot reach on its
-        // own. Resolved directly against `_options` / `_defaultOptions`,
-        // rather than through `getLayoutManager()`, whose lazy-attach branch
-        // would re-attach (and then immediately re-detach) a manager that was
-        // never actually in use — which would break idempotency on a second
+        // — whose `getElementById` fallback needs a connected document — which
+        // is what motivated running detach first. But no current override
+        // demonstrably requires a connected element at
+        // detach time: `Accordion.detach()` and `Split.detach()` (the two
+        // overrides three successive review cycles pointed to as the reason)
+        // both resolve their header / panel-wrapper / gutter elements through
+        // `getElement()` calls that never reach the fallback, because those
+        // components cache `_element` at creation via `getElement(true)`
+        // (`Accordion.ts:1357-1358`, `Split.ts:1185`). The offline test
+        // harness cannot settle the question either way: its modelled
+        // `getElementById` (`TestHandleTable._byId`) is never evicted on
+        // `removeElement`, so a stale id keeps resolving regardless of
+        // ordering. A prior investigation into this exact ordering question
+        // reordered detach to run after element removal and left the full
+        // suite green, so detach running after removal — as it now does — is
+        // not known to require an override. This is also what makes
+        // `Tab.detach()` reachable on this path at all — it disposes the
+        // raw-appended `TabBar` (`Tab.attach()` appends it directly to the
+        // container element instead of registering it as a child), which the
+        // child-destruction loop above cannot reach on its own. Resolved
+        // directly against `_options` / `_defaultOptions`, rather than
+        // through `getLayoutManager()`, whose lazy-attach branch would
+        // re-attach (and then immediately re-detach) a manager that was never
+        // actually in use — which would break idempotency on a second
         // `destructor()` call by re-attaching every time.
         const layoutManager = (this._options.layoutManager as LayoutManager | undefined)
             ?? (this._defaultLayoutManager ??= new Absolute());
@@ -825,17 +861,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             dispose();
         }
         this._themeCleanups.length = 0;
-
-        // Tear any active clip / content frame down first (mirroring
-        // removeElement) so each frame's wrapper is removed from the DOM and its
-        // handle untracked and released.
-        this.clearClipFrame();
-        this.clearContentFrame();
-
-        let element = this.getElement();
-        if (element) {
-            DOM.sink.removeElement(element);
-        }
 
         // Dispose this component's own style rules before the handle-release
         // block below (rule disposal doesn't touch handles, so order relative
