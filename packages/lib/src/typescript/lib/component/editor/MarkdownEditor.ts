@@ -173,6 +173,11 @@ class WysiwygSurface extends Component {
         // in `_options.cursor`, which `applyStyle` replays, so it survives both
         // detached construction and Lexical's mount.
         this.setCursor("text");
+        // Matches the read-only Markdown viewer's own root-level override
+        // (Markdown.ts) so the edited prose reads at the same leading as the
+        // preview instead of falling back to the tighter UI-control line-height
+        // the theme applies to <html>.
+        this.setElementCSSRule("lineHeight", "var(--ts-ui-md-line-height, 1.8)");
 
         this.onFirstLayout(() => this._onReady());
     }

@@ -603,7 +603,7 @@ class Markdown extends Component<MarkdownOptions> {
         // for scanned single-line text), so it wants looser leading. Inherits
         // to every prose descendant; code/pre reset it back to "normal" via
         // their own class rules.
-        this.setElementCSSRule("lineHeight", "var(--ts-ui-md-line-height, 1.6)");
+        this.setElementCSSRule("lineHeight", "var(--ts-ui-md-line-height, 1.8)");
 
         // Caps the prose column to a comfortable reading measure regardless of
         // how wide the assigned layout box is; oversized tables/code fall back

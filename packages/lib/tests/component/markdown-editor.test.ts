@@ -13,7 +13,7 @@ import { $getRoot } from 'lexical';
 import type { LexicalEditor } from 'lexical';
 import { lexer } from 'marked';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../dom/TestDOM';
+import { installTestDOM, ruleStyleWrites, type RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -71,6 +71,13 @@ function codeEditorOf(editor: MarkdownEditor): { getReadOnly(): boolean; getValu
     return (editor as unknown as { _codeEditor: { getReadOnly(): boolean; getValue(): string } })._codeEditor;
 }
 
+/** Reaches the private WYSIWYG contenteditable surface for white-box style assertions. */
+function wysiwygOf(editor: MarkdownEditor): { getElement(createIfMissing?: boolean): unknown; getId(): string } {
+    return (editor as unknown as {
+        _wysiwyg: { getElement(createIfMissing?: boolean): unknown; getId(): string };
+    })._wysiwyg;
+}
+
 /** Places a collapsed range selection at the start of the document, so a block command has a selection to act on. */
 function selectStart(editor: MarkdownEditor): void {
     lexicalOf(editor).update(() => { $getRoot().selectStart(); }, { discrete: true });
@@ -120,6 +127,21 @@ describe('MarkdownEditor offline value', () => {
     it('setContentEditable defaults to true and survives construction', () => {
         expect(new MarkdownEditor().getContentEditable()).toBe(true);
         expect(new MarkdownEditor(undefined, {}).getContentEditable()).toBe(true);
+    });
+});
+
+describe('MarkdownEditor WYSIWYG surface line-height', () => {
+    it('carries the same --ts-ui-md-line-height token the read-only Markdown viewer sets (Markdown.ts:606)', () => {
+        const editor = new MarkdownEditor('# Hi');
+        const surface = wysiwygOf(editor);
+
+        editor.getElement(true);
+        surface.getElement(true);
+
+        const rows = ruleStyleWrites(DOM.sink as RecordingDOMSink)
+            .filter((w) => w.selector.includes(surface.getId()) && w.key === 'lineHeight');
+
+        expect(rows.some((w) => w.value === 'var(--ts-ui-md-line-height, 1.8)')).toBe(true);
     });
 });
 
