@@ -689,10 +689,12 @@ class MiscPanel extends Panel {
                         // Columns are filterable by default; Name/Score/Joined
                         // demo the header's filter row — one string column
                         // (contains/startsWith/endsWith/eq/neq), one number
-                        // column (eq/neq/gt/gte/lt/lte), one date column (same
-                        // ordering set plus contains/startsWith/endsWith on
-                        // the displayed day; Equals matches the whole
-                        // displayed day). Hidden until toggled — see
+                        // column (eq/neq/gt/gte/lt/lte; its filter input also
+                        // refuses a keystroke that can never appear in a
+                        // number — try typing a letter into it), one date
+                        // column (same ordering set plus contains/startsWith/
+                        // endsWith on the displayed day; Equals matches the
+                        // whole displayed day). Hidden until toggled — see
                         // filterRowBtn below.
                         { field: 'Name'    , minWidth: 150, headerGlyph: 'xmark', group: 'Identity', unhideable: true                                      },
                         { field: 'Active'  , maxWidth: 100,                       group: 'Identity'                                                       },

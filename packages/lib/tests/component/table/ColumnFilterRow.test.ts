@@ -16,6 +16,7 @@
 // same private-method-invocation idiom).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
+import { Event } from '~/core/Event';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
@@ -88,9 +89,13 @@ function typeInto(cell: FilterCell, text: string): void {
     (input as any).onInput();
 }
 
-/** Simulates pressing `key` (Enter/Escape) in a filter cell's input. */
-function pressKey(cell: FilterCell, key: string): void {
-    (cell as any).onInputKeyDown({ key });
+/**
+ * Simulates pressing `key` (optionally with modifiers) in a filter cell's
+ * input, returning the disposition `onInputKeyDown` reports. `extra` carries
+ * `ctrlKey` / `metaKey` / `altKey` for a modified keystroke.
+ */
+function pressKey(cell: FilterCell, key: string, extra: Partial<KeyboardEvent> = {}): unknown {
+    return (cell as any).onInputKeyDown({ key, ...extra });
 }
 
 /** Picks an operator on a filter cell by its menu label (e.g. "Contains"). */
@@ -1591,5 +1596,157 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
 
         expect(() => table.dispose()).not.toThrow();
         expect((popover as any).isOpen()).toBe(false);
+    });
+});
+
+describe('Column filter row — numeric input restriction (filter-numeric-input-restriction)', () => {
+    afterEach(() => vi.useRealTimers());
+
+    function ageCell(table: Table): FilterCell {
+        return filterCells(table).find(c => c.getFieldName() === 'age')!;
+    }
+
+    function nameCell(table: Table): FilterCell {
+        return filterCells(table).find(c => c.getFieldName() === 'name')!;
+    }
+
+    it('12. a non-numeric single character is refused on a number column', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'age', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        expect(pressKey(ageCell(table), 'a')).toEqual({ prevent: true });
+    });
+
+    it('13. digits, "-", and "." are allowed on a number column', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'age', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell = ageCell(table);
+
+        expect(pressKey(cell, '5')).toBe(false);
+        expect(pressKey(cell, '-')).toBe(false);
+        expect(pressKey(cell, '.')).toBe(false);
+    });
+
+    it('14. the gate is stateless — a second "-" is still allowed after text already holds one', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'age', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell = ageCell(table);
+
+        typeInto(cell, '-1');
+
+        expect(pressKey(cell, '-')).toBe(false);
+    });
+
+    it('15. editing and navigation keys are allowed on a number column', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'age', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell = ageCell(table);
+
+        expect(pressKey(cell, 'Backspace')).toBe(false);
+        expect(pressKey(cell, 'ArrowLeft')).toBe(false);
+    });
+
+    it('16. a modified keystroke is a shortcut, never refused', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'age', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell = ageCell(table);
+
+        expect(pressKey(cell, 'v', { ctrlKey: true } as Partial<KeyboardEvent>)).toBe(false);
+        expect(pressKey(cell, 'a', { metaKey: true } as Partial<KeyboardEvent>)).toBe(false);
+    });
+
+    it('17. a refused keystroke changes nothing else — state unchanged, no "filterchange" fired', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'age', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell    = ageCell(table);
+        const before  = cell.getFilterState();
+        const onChange = vi.fn();
+
+        cell.on('filterchange', onChange);
+        pressKey(cell, 'a');
+
+        expect(cell.getFilterState()).toEqual(before);
+        expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('18. Enter and Escape still work on a numeric column, unchanged', async () => {
+        vi.useFakeTimers();
+
+        const { table, store } = await makeTable({ columns: [{ field: 'age', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell = ageCell(table);
+
+        typeInto(cell, '30');
+        pressKey(cell, 'Enter');
+
+        expect(store.getFilter('age')).toEqual({ type: 'eq', field: 'age', value: 30 });
+
+        pressKey(cell, 'Escape');
+
+        expect(cell.getFilterState().clauses[0].text).toBe('');
+        expect(store.getFilter('age')).toBeNull();
+    });
+
+    it('19. a string column\'s filter input still takes arbitrary text', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        expect(pressKey(nameCell(table), 'a')).toBe(false);
+    });
+
+    it('20. setNumericOnly is live — either order leaves the last call in effect', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell = nameCell(table);
+
+        cell.setNumericOnly(true);
+        cell.setNumericOnly(false);
+        expect(pressKey(cell, 'a')).toBe(false);
+
+        cell.setNumericOnly(false);
+        cell.setNumericOnly(true);
+        expect(pressKey(cell, 'a')).toEqual({ prevent: true });
+    });
+
+    it('21. a combo column over a numeric field is not restricted — a label can still be typed', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'age', values: ['30', '25'] }] });
+        table.setFilterRowVisible(true);
+
+        expect(pressKey(ageCell(table), 'a')).toBe(false);
+    });
+
+    it('22. a popover clause row carries the same gate', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'age', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell = ageCell(table);
+        const spy  = vi.spyOn(Event, 'addListener');
+
+        addCondition(cell);
+
+        const rowField = popoverRows(cell)[1].getComponents()[1];
+        const registration = spy.mock.calls.find(c => c[0] === rowField && c[1] === 'keydown');
+
+        spy.mockRestore();
+
+        expect(registration).toBeDefined();
+
+        const listener = registration![2] as (e: KeyboardEvent) => unknown;
+
+        expect(listener({ key: 'a' } as KeyboardEvent)).toEqual({ prevent: true });
+        expect(listener({ key: '5' } as KeyboardEvent)).toBe(false);
+
+        // `addCondition`'s immediate `fireFilterChange(true)` kicks off an
+        // async `store.setFilter` write (see this file's test 20 comment);
+        // let it settle before the test ends so its later emission does not
+        // land against a later test's freshly reset DOM.
+        await new Promise(resolve => setTimeout(resolve, 0));
     });
 });

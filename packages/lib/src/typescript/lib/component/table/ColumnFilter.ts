@@ -197,6 +197,49 @@ export function effectiveClauseCount(clauses: ColumnFilterClause[]): number {
     return clauses.filter(isClauseEffective).length;
 }
 
+/** The characters a numeric filter operand can be built from. */
+const NUMERIC_FILTER_KEY = /^[0-9.-]$/;
+
+/**
+ * Whether `target` declares a combo column — one whose filter text is matched
+ * against option labels rather than the stored value. The single rule behind
+ * both {@link buildClauseFilter}'s combo routing and
+ * {@link columnFilterTakesNumericOperand}, so the two can never drift apart.
+ *
+ * @param target - The column's type plus its `values` / `showSeconds`.
+ * @returns `true` when `target` declares one or more combo options.
+ */
+function isComboTarget(target: ColumnFilterTarget): boolean {
+    return target.values !== undefined && target.values.length > 0;
+}
+
+/**
+ * Whether a column's filter operand has to be a number — `true` for a
+ * `number` column that is not a combo column (a combo column matches typed
+ * text against option labels, which are text no matter the field's type).
+ *
+ * @param target - The column's type plus its `values` / `showSeconds`.
+ * @returns `true` when the column's filter operand is parsed as a number.
+ * @internal
+ */
+export function columnFilterTakesNumericOperand(target: ColumnFilterTarget): boolean {
+    return target.type === 'number' && !isComboTarget(target);
+}
+
+/**
+ * Whether a `KeyboardEvent.key` may be typed into a numeric filter input.
+ * Allowed when it is not exactly one character (every editing and
+ * navigation key reports a multi-character `key`) or when it is one of
+ * `0`-`9`, `-`, `.`.
+ *
+ * @param key - The `KeyboardEvent.key` to check.
+ * @returns `true` when the key may be typed into a numeric filter input.
+ * @internal
+ */
+export function columnFilterAcceptsNumericKey(key: string): boolean {
+    return key.length !== 1 || NUMERIC_FILTER_KEY.test(key);
+}
+
 /**
  * Parses `text` as a time of day — `HH:MM[:SS]` with an optional trailing
  * `AM`/`PM` — anchored to 1970-01-01 local, mirroring the normalisation
@@ -410,10 +453,10 @@ function buildClauseFilter(
         return null;
     }
 
-    if (target.values && target.values.length > 0
+    if (isComboTarget(target)
         && (operator === 'contains' || operator === 'startsWith' || operator === 'endsWith'
          || operator === 'eq' || operator === 'neq')) {
-        return buildComboFilter(field, target.values, operator, text, display);
+        return buildComboFilter(field, target.values!, operator, text, display);
     }
 
     if ((target.type === 'date' || target.type === 'time' || target.type === 'datetime')

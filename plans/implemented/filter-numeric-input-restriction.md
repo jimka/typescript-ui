@@ -350,6 +350,37 @@ From `packages/lib`:
 
 ---
 
+## Implementation Notes
+
+- **Case 23's manual verification was performed in a browser**, not just
+  declared out of scope. From `packages/lib`, `npm run dev`, MiscPanel's
+  "Table with column spec" window, filter row revealed via "Toggle filter
+  row": typing `abc` into the Score column's inline filter input left it
+  empty (confirmed by reading the live `<input>`'s `.value`, not just the
+  accessibility snapshot); typing `-12.5` appeared and, on Enter, filtered
+  the table to zero matching rows. Backspace, Home (caret-to-start then
+  typing to confirm mid-text insertion), and Ctrl+A-then-retype (confirming
+  a legitimate leading `-` survives a select-all-and-retype, the scenario
+  [^why-stateless-gate] argues the stateless gate must not break) all
+  behaved normally inside the restricted field. Opening a second condition
+  from the operator menu showed the popover row's own field refusing `abc`
+  identically, while accepting digits. The `Name` (string) column's filter
+  input still accepted `abc` unrestricted. No console errors were logged
+  during any of this.
+- **`packages/lib/src/typescript/MiscPanel.ts` is edited but not listed in
+  `## Files to Create / Modify / Delete`.** Its filter-row demo comment,
+  which already names each demoed column's operator set, gained one clause
+  noting that the Score column's filter input now refuses a keystroke that
+  can never appear in a number. This is the same situation the sibling
+  [`date-column-filter-string-operators.md`](implemented/date-column-filter-string-operators.md)
+  plan hit and documented in its own `## Implementation Notes`: the file
+  is outside the table because the plan did not anticipate the edit, and
+  `implement/worker.md`'s Work Instructions step 7 ("add a demo/example of
+  the new feature to the project's demo or example surface, if it has one")
+  calls for it regardless.
+
+---
+
 ## Notes
 
 [^why-not-native-number]: `<input type="number">` was the obvious first candidate — `TextInput.setType` exists ([`TextInput.ts:257`](../packages/lib/src/typescript/lib/component/input/TextInput.ts#L257)) and it would be a one-line change — and it fails on its own terms. It does not actually prevent the keystrokes: browsers accept `e`, `+`, and `-` in a number input, so the reported "letters do nothing" case is only partly addressed. Worse, HTML's value-sanitization rule makes the element's `value` property return the empty string whenever its content is not a valid floating-point number, so `TextInput.onInput`'s `DOM.source.getValue(element)` would read `""` while the user is looking at `12e`, silently desynchronising `_clauses[0].text` from what is on screen and clearing the column's filter mid-typing. It also adds spin buttons and wheel-to-change inside a header cell, and it would have to be written and unwritten on every recycle. The two numeric inputs already in this codebase both decline it: `NumberSpinner` builds its inner field as plain text and reverts on blur, and `NumberEditor` caches `Number(raw)` on input and commits `null` when it does not parse.

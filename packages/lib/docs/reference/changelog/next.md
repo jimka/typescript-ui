@@ -59,6 +59,9 @@ page resets to empty.
   a table has more than 20 resolved columns, instead of one row per column
   at the menu's top level. The dialog splits its checkboxes into side-by-side
   columns of up to 15 each. No consumer action is needed.
+- **A `number` column's header filter input now refuses non-numeric
+  characters as they are typed** instead of accepting them and silently
+  applying no filter. No consumer action is needed.
 
 ## Added
 
