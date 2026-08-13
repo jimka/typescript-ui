@@ -42,12 +42,15 @@ menu.show(0, 0, [
 
 Stacking several `CheckboxMenuRow` entries turns a menu into a multi-select control — the panel stays open across clicks, so the user can flip several rows in one open. See [Menu's Custom rows section](/components/Menu#custom-rows) for the `MenuRow` contract this row implements.
 
+`enabled` is construction-time only — there is no `setEnabled`. A menu rebuilds its rows from scratch on every open (via each config's `row:` factory), so a row's enabled state is simply whatever the factory computes each time it runs; there is nothing to keep in sync between opens.
+
 ## Options
 
 | Field | Purpose |
 | --- | --- |
 | `text` | Row label, rendered beside the checkbox graphic. |
 | `checked` | Initial checked state. Defaults to `false`. |
+| `enabled` | Whether the row is interactive. Defaults to `true`. A disabled row is dimmed and ignores clicks and Enter. |
 | `listeners.action` | Construction-time listener, equivalent to `on("action", fn)`. |
 
 ## Methods
@@ -55,6 +58,7 @@ Stacking several `CheckboxMenuRow` entries turns a menu into a multi-select cont
 | Method | Purpose |
 | --- | --- |
 | `isChecked()` / `setChecked(boolean)` | Read / write the checked state. |
+| `isEnabled()` | Whether the row is interactive — the construction-time `enabled` option. |
 | `on("action", fn)` / `off("action", fn)` | Subscribe to each toggle — fires after the row's own state has already flipped, so the handler reads the new value from `isChecked()`. |
 
 ## See also

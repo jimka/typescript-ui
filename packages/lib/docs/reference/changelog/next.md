@@ -148,7 +148,8 @@ page resets to empty.
   `MenuSeparator` now extend it, with no public-surface change.
 - **`CheckboxMenuRow`**, a menu row hosting a real `Checkbox` that toggles
   without closing the menu — the worked example for `MenuRow`, and a
-  ready-made way to build a multi-select menu.
+  ready-made way to build a multi-select menu. Its `enabled` option (default
+  `true`) dims a disabled row and makes it ignore clicks and Enter.
 
 ## Fixed
 
