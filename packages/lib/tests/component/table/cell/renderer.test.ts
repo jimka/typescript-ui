@@ -22,6 +22,7 @@ import { TreeCellRenderer } from '~/component/table/cell/renderer/TreeCell';
 import { FilterCellRenderer } from '~/component/table/cell/renderer/Filter';
 import { BooleanEditor } from '~/component/table/cell/editor/Boolean';
 import { expectNoSelfReschedule } from '../../../helpers/layoutStability';
+import { temporalDisplayText } from '~/data/temporalText';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -214,6 +215,22 @@ describe('DateRenderer / TimeRenderer / DateTimeRenderer (relational format)', (
 
         r.setValue(SAMPLE);
         expect(r.getValue()).toBe(SAMPLE);
+    });
+
+    it('30. every renderer\'s display text matches temporalDisplayText — the guard against the cell and the filter drifting apart', () => {
+        expect(new DateRenderer().setValue(SAMPLE).getDisplayText())
+            .toBe(temporalDisplayText('date', false, SAMPLE));
+
+        for (const showSeconds of [true, false]) {
+            expect(new TimeRenderer(showSeconds).setValue(SAMPLE).getDisplayText())
+                .toBe(temporalDisplayText('time', showSeconds, SAMPLE));
+            expect(new DateTimeRenderer(showSeconds).setValue(SAMPLE).getDisplayText())
+                .toBe(temporalDisplayText('datetime', showSeconds, SAMPLE));
+        }
+
+        expect(new DateRenderer().setValue(null).getDisplayText()).toBe('');
+        expect(new TimeRenderer().setValue(null).getDisplayText()).toBe('');
+        expect(new DateTimeRenderer().setValue(null).getDisplayText()).toBe('');
     });
 });
 

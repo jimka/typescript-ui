@@ -3,11 +3,14 @@
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 import { Text } from "~/component/input/Text.js";
 import { callable } from "~/core/Callable.js";
+import { temporalDisplayText } from "~/data/temporalText.js";
 
 /**
  * A read-only renderer for date-time cell values.
  *
- * Displays a `Date` via a {@link Text} formatted with `Date.toLocaleString`.
+ * Displays a `Date` via a {@link Text} formatted by the shared temporal
+ * display-text formatter, so its text stays in step with what a `contains` /
+ * `startsWith` / `endsWith` filter over this column matches against.
  */
 class DateTimeRenderer extends CellRenderer<Date | null> {
 
@@ -31,11 +34,8 @@ class DateTimeRenderer extends CellRenderer<Date | null> {
     }
 
     setValue(value: Date | null): this {
-        this._value = value ?? null;
-        const opts: Intl.DateTimeFormatOptions = this._showSeconds
-            ? { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }
-            : { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
-        this._display = value ? value.toLocaleString(undefined, opts) : "";
+        this._value   = value ?? null;
+        this._display = value ? temporalDisplayText('datetime', this._showSeconds, value) : "";
         this._text.setText(this._display);
 
         return this;

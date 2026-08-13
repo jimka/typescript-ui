@@ -20,7 +20,8 @@ export type { AjaxStoreOptions } from '~/data/AjaxStore.js';
 export { TreeStore } from '~/data/TreeStore.js';
 export type { TreeStoreOptions, TreeStoreEvent, TreeExpandEvent, TreeCollapseEvent, TreeAppendEvent, TreeRemoveEvent } from '~/data/TreeStore.js';
 export { TreeNode } from '~/data/TreeNode.js';
-export type { FilterDescriptor } from '~/data/FilterDescriptor.js';
+export type { FilterDescriptor, TemporalDisplay } from '~/data/FilterDescriptor.js';
+export type { TemporalFieldType } from '~/data/temporalText.js';
 
 export { Proxy } from '~/data/proxy/Proxy.js';
 export type { ReadParams } from '~/data/proxy/Proxy.js';

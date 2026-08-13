@@ -4,6 +4,8 @@ import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import {
     columnFilterOperators,
+    columnFilterOperatorLabel,
+    columnFilterOperatorGlyph,
     columnFilterTakesOperand,
     buildColumnFilter,
     columnFilterStatesEqual,
@@ -54,6 +56,36 @@ describe('columnFilterOperators', () => {
 
     it('boolean columns get eq/neq/isEmpty/isNotEmpty only, no ordering operator', () => {
         expect(columnFilterOperators('boolean')).toEqual(['eq', 'neq', 'isEmpty', 'isNotEmpty']);
+    });
+
+    it('1. date/time/datetime each offer the full ordered + substring + emptiness list, in order', () => {
+        const expected = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'startsWith', 'endsWith', 'isEmpty', 'isNotEmpty'];
+
+        expect(columnFilterOperators('date')).toEqual(expected);
+        expect(columnFilterOperators('time')).toEqual(expected);
+        expect(columnFilterOperators('datetime')).toEqual(expected);
+    });
+
+    it('2. the default operator for a temporal column is still eq', () => {
+        expect(columnFilterOperators('date')[0]).toBe('eq');
+    });
+
+    it('3. number columns get no substring operator', () => {
+        expect(columnFilterOperators('number'))
+            .toEqual(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'isEmpty', 'isNotEmpty']);
+    });
+
+    it('4. string and boolean columns are unchanged', () => {
+        expect(columnFilterOperators('string'))
+            .toEqual(['contains', 'startsWith', 'endsWith', 'eq', 'neq', 'isEmpty', 'isNotEmpty']);
+        expect(columnFilterOperators('boolean')).toEqual(['eq', 'neq', 'isEmpty', 'isNotEmpty']);
+    });
+
+    it('5. every operator offered for a date column has a non-empty label and glyph', () => {
+        for (const op of columnFilterOperators('date')) {
+            expect(columnFilterOperatorLabel(op)).not.toBe('');
+            expect(columnFilterOperatorGlyph(op)).not.toBe('');
+        }
     });
 });
 
@@ -374,6 +406,106 @@ describe('buildColumnFilter', () => {
             expect(hi.getHours()).toBe(0);
             expect(hi.getTime()).toBe(expectedHi.getTime());
         });
+
+        it('6. date contains "17" builds a temporal-hinted contains descriptor', () => {
+            const target: ColumnFilterTarget = { type: 'date' };
+
+            expect(buildColumnFilter('due', target, oneClause('contains', '17'), display)).toEqual({
+                type: 'contains', field: 'due', value: '17',
+                temporal: { type: 'date', showSeconds: false },
+            });
+        });
+
+        it('7. date startsWith / endsWith build the same hinted shape with the matching type', () => {
+            const target: ColumnFilterTarget = { type: 'date' };
+
+            expect(buildColumnFilter('due', target, oneClause('startsWith', '17'), display)).toEqual({
+                type: 'startsWith', field: 'due', value: '17',
+                temporal: { type: 'date', showSeconds: false },
+            });
+            expect(buildColumnFilter('due', target, oneClause('endsWith', '17'), display)).toEqual({
+                type: 'endsWith', field: 'due', value: '17',
+                temporal: { type: 'date', showSeconds: false },
+            });
+        });
+
+        it('8. datetime with showSeconds: true carries showSeconds through the hint', () => {
+            const target: ColumnFilterTarget = { type: 'datetime', showSeconds: true };
+
+            expect(buildColumnFilter('due', target, oneClause('contains', 'x'), display)).toEqual({
+                type: 'contains', field: 'due', value: 'x',
+                temporal: { type: 'datetime', showSeconds: true },
+            });
+        });
+
+        it('9. time with showSeconds unset resolves the hint to showSeconds: false', () => {
+            const target: ColumnFilterTarget = { type: 'time' };
+
+            expect(buildColumnFilter('meet', target, oneClause('contains', 'x'), display)).toEqual({
+                type: 'contains', field: 'meet', value: 'x',
+                temporal: { type: 'time', showSeconds: false },
+            });
+        });
+
+        it('10. a string column\'s contains descriptor carries no temporal key', () => {
+            const result = buildColumnFilter('name', { type: 'string' }, oneClause('contains', 'ali'), display);
+
+            expect(result).toEqual({ type: 'contains', field: 'name', value: 'ali' });
+            expect('temporal' in (result as object)).toBe(false);
+        });
+
+        it('11. a combo column declared over a date field still takes the combo path, with no temporal key', () => {
+            const target: ColumnFilterTarget = {
+                type:   'date',
+                values: [{ value: '2021-05-17', label: 'May 17' }],
+            };
+            const result = buildColumnFilter('due', target, oneClause('contains', 'x'), display);
+
+            expect(result).toEqual({ type: 'in', field: 'due', values: [] });
+            expect('temporal' in (result as object)).toBe(false);
+        });
+
+        it('12. date eq/neq still build the unchanged and(gte, lt) bucket, with no temporal key', () => {
+            const target: ColumnFilterTarget = { type: 'date' };
+            const eqResult = buildColumnFilter('due', target, oneClause('eq', '2021-05-17'), display);
+
+            expect((eqResult as { type: string }).type).toBe('and');
+            expect('temporal' in (eqResult as object)).toBe(false);
+
+            const neqResult = buildColumnFilter('due', target, oneClause('neq', '2021-05-17'), display);
+
+            expect(neqResult).toEqual({ type: 'not', filter: eqResult });
+        });
+
+        it('13. a temporal column with an eq clause plus a contains clause combines both, in clause order', () => {
+            const target: ColumnFilterTarget = { type: 'date' };
+            const state: ColumnFilterState = {
+                clauses: [{ operator: 'eq', text: '2021-05-17' }, { operator: 'contains', text: '17' }],
+            };
+            const eqBucket = buildColumnFilter('due', target, oneClause('eq', '2021-05-17'), display);
+
+            expect(buildColumnFilter('due', target, state, display)).toEqual({
+                type:    'and',
+                filters: [
+                    eqBucket,
+                    { type: 'contains', field: 'due', value: '17', temporal: { type: 'date', showSeconds: false } },
+                ],
+            });
+        });
+
+        it('14. a blank temporal contains clause builds nothing; the sole survivor unwraps without an "and" wrapper', () => {
+            const target: ColumnFilterTarget = { type: 'date' };
+
+            expect(buildColumnFilter('due', target, oneClause('contains', ''), display)).toBeNull();
+
+            const state: ColumnFilterState = {
+                clauses: [{ operator: 'eq', text: '' }, { operator: 'contains', text: '17' }],
+            };
+
+            expect(buildColumnFilter('due', target, state, display)).toEqual({
+                type: 'contains', field: 'due', value: '17', temporal: { type: 'date', showSeconds: false },
+            });
+        });
     });
 
     // --- worker safety: every emittable shape survives structured clone ---
@@ -424,6 +556,11 @@ describe('buildColumnFilter', () => {
         it('26g. "gt" descriptor', () => {
             const d = buildColumnFilter('age', { type: 'number' }, oneClause('gt', '30'), display);
             assertCloneSafe(d, { age: 40 });
+        });
+
+        it('15. temporal "contains" descriptor with a display hint', () => {
+            const d = buildColumnFilter('due', { type: 'date' }, oneClause('contains', '17'), display);
+            assertCloneSafe(d, { due: new Date(2021, 4, 17, 14, 30, 20) });
         });
     });
 });
