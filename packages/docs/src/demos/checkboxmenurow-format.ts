@@ -16,8 +16,6 @@ import { CheckboxMenuRow } from '@jimka/typescript-ui/component/container';
  */
 export const height: number = 64;
 
-const LABELS: Record<string, string> = { bold: 'Bold', italic: 'Italic', underline: 'Underline' };
-
 /**
  * A `MenuBar` "Format" menu built entirely from `CheckboxMenuRow` entries — a
  * real `Checkbox` per row instead of `MenuItem`'s text checkmark — so
@@ -27,17 +25,21 @@ const LABELS: Record<string, string> = { bold: 'Bold', italic: 'Italic', underli
  * @returns The demo's component tree.
  */
 export function create(): Component {
+    const labels: Record<string, string> = {
+        bold: 'Bold', italic: 'Italic', underline: 'Underline',
+    };
     const selected = new Set<string>(['bold']);
     const selectionText = Text('Selected: Bold');
 
     function updateSelectionText(): void {
-        const active = Object.keys(LABELS).filter(key => selected.has(key)).map(key => LABELS[key]);
+        const active = Object.keys(labels).filter(key => selected.has(key)).map(key => labels[key]);
+        const text = active.length > 0 ? `Selected: ${active.join(', ')}` : 'Selected: (none)';
 
-        selectionText.setText(active.length > 0 ? `Selected: ${active.join(', ')}` : 'Selected: (none)');
+        selectionText.setText(text);
     }
 
     function formatRow(key: string): CheckboxMenuRow {
-        const row = new CheckboxMenuRow({ text: LABELS[key], checked: selected.has(key) });
+        const row = new CheckboxMenuRow({ text: labels[key], checked: selected.has(key) });
 
         // Fires after the row's own state has already flipped, so isChecked()
         // here reads the new value.

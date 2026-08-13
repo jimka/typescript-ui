@@ -277,7 +277,7 @@ side-by-side columns as it takes to keep each one to 15 checkboxes, sized as
 evenly as possible; a group split across two dialog columns repeats its
 section header at the top of the second. Nothing is written to the table as
 you toggle checkboxes: **Apply** commits every change at once, while
-**Cancel**, the dialog's own close button, and <kbd>Escape</kbd> all discard
+**Cancel**, the dialog's own close button, and Escape all discard
 every staged change and leave the table exactly as it was.
 
 Toggle a column programmatically with
