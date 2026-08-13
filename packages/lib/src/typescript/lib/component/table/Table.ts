@@ -13,6 +13,7 @@ import { Model } from "~/data/Model.js";
 import type { Field } from "~/data/Field.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Menu } from "~/overlay/Menu.js";
+import { Dialog, DialogButtons } from "~/overlay/Dialog.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { Column } from "~/component/table/Column.js";
 import type { CellType, ColumnConfig, ComboOption } from "~/component/table/ColumnConfig.js";
@@ -22,6 +23,10 @@ import { Util } from "~/core/Util.js";
 import { TableExporter, ExportOptions } from "~/component/table/TableExporter.js";
 import { CellTextResolver } from "~/component/table/cell/CellText.js";
 import { DEFAULT_INDENT_PX } from "~/component/table/cell/renderer/TreeCell.js";
+import { Checkbox } from "~/component/input/Checkbox.js";
+import { Text } from "~/component/input/Text.js";
+import { HBox } from "~/layout/HBox.js";
+import { VBox } from "~/layout/VBox.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
@@ -69,6 +74,15 @@ const REFERENCE_DATE = new Date(2000, 11, 31, 23, 59, 59);
 // instead of recording a target the layout would treat as already-grown).
 // The same 0.5 the file's existing width comparisons use (see setColumnVisible).
 const WIDTH_TARGET_EPSILON_PX = 0.5;
+
+// Column show/hide entries. At or below the threshold they live in a submenu of
+// the header context menu; past it a leaf row opens a modal dialog instead,
+// which lists far more rows comfortably and scrolls.
+const COLUMN_MENU_DIALOG_THRESHOLD     = 20;   // Resolved columns above which the dialog replaces the submenu.
+const COLUMN_DIALOG_MAX_PER_COLUMN     = 15;   // Checkboxes per dialog column before wrapping to another.
+const COLUMN_DIALOG_COLUMN_GAP_PX      = 24;   // Horizontal gap between dialog columns.
+const COLUMN_DIALOG_INSET_PX           = 16;   // Body inset, matching the padding Dialog gives its own message text.
+const COLUMN_DIALOG_GROUP_INDENT_PX    = 16;   // One nesting level, matching the submenu's group indent.
 
 /**
  * The floor and starting width a column's field type implies, before any
@@ -155,6 +169,9 @@ class Table extends Component<TableOptions> {
     private _resolvedColumns  : Column[] = [];
     private _hiddenColumns    : Set<string> = new Set();
     private _columnContextMenu: Menu = new Menu();
+    // The open column dialog, or null. A LayerManager-mounted overlay, never a
+    // registered child, so `destructor()` disposes it explicitly.
+    private _columnDialog     : Dialog | null = null;
     private _headerVisible    : boolean;
     private _header           : TableHeader;
     private _body             : Body;
@@ -1407,12 +1424,14 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Disposes the column context menu, then runs the inherited teardown.
-     * `_columnContextMenu` is a LayerManager-mounted panel, never a
-     * registered child (see Menu.ts's class comment), so
-     * `super.destructor()`'s child recursion cannot reach it.
+     * Disposes the column context menu and the column dialog (if open), then
+     * runs the inherited teardown. `_columnContextMenu` and `_columnDialog`
+     * are both LayerManager-mounted panels, never registered children (see
+     * Menu.ts's class comment), so `super.destructor()`'s child recursion
+     * cannot reach either.
      */
     protected destructor(): void {
+        this._columnDialog?.dispose();
         this._columnContextMenu.dispose();
         this._cellText.dispose();
 
@@ -1442,53 +1461,19 @@ class Table extends Component<TableOptions> {
             return;
         }
 
-        const columns = this._resolvedColumns
-            .slice()
-            .sort((a, b) => a.getField().getOrder() - b.getField().getOrder());
-
+        const columns = this.columnsInMenuOrder();
         const items: MenuItemConfig[] = [];
-        let lastGroup: string | null | undefined = undefined;
 
-        // Walk in display order, emitting a disabled section header
-        // each time the group changes. Ungrouped columns sit flush
-        // (no section header above them); transitioning back to an
-        // ungrouped column from a grouped run is treated as "end of
-        // group" — the next ungrouped item just appears with no
-        // preceding header. Field-list order matches the parent
-        // header band above, so the menu reads as a vertical
-        // restatement of what the user sees on screen.
-        //
-        // The indent uses non-breaking spaces (` `) because the
-        // menu item renders text with the default `white-space: nowrap`
-        // setting, which still collapses runs of ASCII spaces — regular
-        // `'    '` would render as a single space.
-        const GROUP_INDENT = "    ";
-
-        columns.forEach(col => {
-            const fieldName = col.getField().getName();
-            const visible   = !this._hiddenColumns.has(fieldName);
-            const group     = col.getGroup();
-
-            if (group !== null && group !== lastGroup) {
-                items.push({ text: group, enabled: false });
-            }
-
-            const indent = group !== null ? GROUP_INDENT : "";
-
-            // An unhideable column is currently visible (since it
-            // cannot be hidden) — the menu entry stays in the list so
-            // the user sees the column's identity but is disabled to
-            // signal it can't be toggled.
-            const hideable = !col.isUnhideable();
-
-            items.push({
-                text:    indent + (visible ? '✓ ' : '  ') + fieldName,
-                action:  () => this.setColumnVisible(fieldName, !visible),
-                enabled: hideable,
-            });
-
-            lastGroup = group;
-        });
+        if (columns.length > 0) {
+            items.push(
+                columns.length > COLUMN_MENU_DIALOG_THRESHOLD
+                    ? { text: 'Show/hide columns', action: () => this.showColumnDialog() }
+                    : {
+                        text:    'Show/hide columns',
+                        submenu: { label: 'Show/hide columns', items: this.buildColumnMenuItems(columns) },
+                    }
+            );
+        }
 
         items.push(
             { separator: true },
@@ -1514,6 +1499,225 @@ class Table extends Component<TableOptions> {
         }
 
         this._columnContextMenu.show(x, y, items);
+    }
+
+    /**
+     * Resolved columns in display order — the order the header and body
+     * render them in, and the order both the show/hide submenu and dialog
+     * list them in.
+     *
+     * @returns Resolved columns sorted by {@link Field.getOrder}.
+     */
+    private columnsInMenuOrder(): Column[] {
+        return this._resolvedColumns
+            .slice()
+            .sort((a, b) => a.getField().getOrder() - b.getField().getOrder());
+    }
+
+    /**
+     * Builds the show/hide submenu's item list: one checkable row per
+     * `columns` entry, with a disabled section-header row and a preceding
+     * separator at each group boundary.
+     *
+     * @param columns - Resolved columns in display order, from {@link columnsInMenuOrder}.
+     * @returns The submenu's `MenuItemConfig` array.
+     */
+    private buildColumnMenuItems(columns: Column[]): MenuItemConfig[] {
+        const items: MenuItemConfig[] = [];
+        let lastGroup: string | null | undefined = undefined;
+
+        // The indent uses non-breaking spaces (` `) because the
+        // menu item renders text with the default `white-space: nowrap`
+        // setting, which still collapses runs of ASCII spaces — regular
+        // `'    '` would render as a single space.
+        const GROUP_INDENT = "    ";
+
+        for (const col of columns) {
+            const fieldName = col.getField().getName();
+            const visible   = !this._hiddenColumns.has(fieldName);
+            const group     = col.getGroup();
+
+            if (group !== lastGroup) {
+                if (items.length > 0) {
+                    items.push({ separator: true });
+                }
+
+                if (group !== null) {
+                    items.push({ text: group, enabled: false });
+                }
+            }
+
+            items.push({
+                text:    (group !== null ? GROUP_INDENT : "") + fieldName,
+                checked: visible,
+                action:  () => this.setColumnVisible(fieldName, !visible),
+                enabled: !col.isUnhideable(),
+            });
+
+            lastGroup = group;
+        }
+
+        return items;
+    }
+
+    /**
+     * Opens the show/hide-columns dialog: a checkbox per resolved column,
+     * staged in a local copy of `_hiddenColumns` and only written back to the
+     * table on Apply. Cancel, the title-bar ×, Escape, and a dispose-while-open
+     * all resolve without writing anything.
+     */
+    private showColumnDialog(): void {
+        const columns  = this.columnsInMenuOrder();
+        const snapshot = new Set(this._hiddenColumns);
+        const staged   = new Set(snapshot);
+        const body     = this.buildColumnDialogBody(columns, staged);
+
+        // Sized from the body's own measured content — Dialog's width is fixed at
+        // construction and never re-derived from content (unlike height, see
+        // resizeToContent) — so a tight width here is the only way to avoid a
+        // dialog wider than the checkbox columns actually need.
+        const width = Math.ceil(body.getPreferredSize()?.width ?? 0);
+
+        const dialog = new Dialog({
+            title:            'Show/hide columns',
+            contentComponent: body,
+            width,
+            buttons: [
+                DialogButtons.Cancel,
+                { ...DialogButtons.Confirm, text: 'Apply', primary: true },
+            ],
+        });
+
+        this._columnDialog = dialog;
+
+        void dialog.show().then(result => {
+            this._columnDialog = null;
+
+            if (result !== 'confirm') {
+                return;
+            }
+
+            for (const col of columns) {
+                const fieldName = col.getField().getName();
+
+                if (staged.has(fieldName) !== snapshot.has(fieldName)) {
+                    this.setColumnVisible(fieldName, !staged.has(fieldName));
+                }
+            }
+        });
+    }
+
+    /**
+     * The number of side-by-side checkbox columns the show/hide dialog uses
+     * for `checkboxCount` resolved columns, capped at
+     * {@link COLUMN_DIALOG_MAX_PER_COLUMN} rows per column.
+     *
+     * @param checkboxCount - Total resolved columns to lay out.
+     * @returns The column count, at least `1`.
+     */
+    private dialogColumnCount(checkboxCount: number): number {
+        return Math.max(1, Math.ceil(checkboxCount / COLUMN_DIALOG_MAX_PER_COLUMN));
+    }
+
+    /**
+     * Splits `columns` into {@link dialogColumnCount} slices, in display
+     * order, as evenly sized as possible — e.g. 22 columns over 2 dialog
+     * columns is `[11, 11]`, not `[15, 7]`.
+     *
+     * @param columns - Resolved columns in display order, from {@link columnsInMenuOrder}.
+     * @returns One slice of `columns` per dialog column.
+     */
+    private splitIntoDialogColumns(columns: Column[]): Column[][] {
+        const numColumns = this.dialogColumnCount(columns.length);
+        const base       = Math.floor(columns.length / numColumns);
+        const remainder  = columns.length % numColumns;
+
+        const slices: Column[][] = [];
+        let cursor = 0;
+
+        for (let i = 0; i < numColumns; i++) {
+            const size = base + (i < remainder ? 1 : 0);
+
+            slices.push(columns.slice(cursor, cursor + size));
+            cursor += size;
+        }
+
+        return slices;
+    }
+
+    /**
+     * Builds the show/hide-columns dialog body: {@link splitIntoDialogColumns}'
+     * slices laid out side by side, each built by {@link buildColumnDialogColumn}.
+     *
+     * @param columns - Resolved columns in display order, from {@link columnsInMenuOrder}.
+     * @param staged  - The dialog's local copy of `_hiddenColumns`, mutated as the user toggles checkboxes.
+     * @returns The dialog's `contentComponent`.
+     */
+    private buildColumnDialogBody(columns: Column[], staged: Set<string>): Component {
+        const columnComponents = this.splitIntoDialogColumns(columns)
+            .map(slice => this.buildColumnDialogColumn(slice, staged));
+
+        return new Component({
+            // The dialog is sized to this body's own preferred width (see
+            // showColumnDialog), so `justify: "center"` is normally a no-op — it
+            // only centers the columns when Dialog's own MIN_DIALOG_WIDTH floor
+            // (320px) leaves leftover space, e.g. a couple of short-named columns.
+            layoutManager: new HBox({ itemAlign: "start", justify: "center", spacing: COLUMN_DIALOG_COLUMN_GAP_PX }),
+            insets:        new Insets(COLUMN_DIALOG_INSET_PX, COLUMN_DIALOG_INSET_PX, COLUMN_DIALOG_INSET_PX, COLUMN_DIALOG_INSET_PX),
+            components:    columnComponents,
+        });
+    }
+
+    /**
+     * Builds one column of the show/hide-columns dialog: one `Checkbox` per
+     * `columns` entry, indented and grouped under a bold `Text` header for
+     * each grouped run — a group split across dialog columns repeats its
+     * header at the top of the next one. Every checkbox's `change` listener
+     * mutates `staged` only — nothing here writes to the table.
+     *
+     * @param columns - The slice of resolved columns this dialog column lists.
+     * @param staged  - The dialog's local copy of `_hiddenColumns`, mutated as the user toggles checkboxes.
+     * @returns A single dialog column, ready to sit beside its siblings.
+     */
+    private buildColumnDialogColumn(columns: Column[], staged: Set<string>): Component {
+        const rows: Component[] = [];
+        let lastGroup: string | null | undefined = undefined;
+
+        for (const col of columns) {
+            const fieldName = col.getField().getName();
+            const group     = col.getGroup();
+
+            if (group !== lastGroup && group !== null) {
+                const groupHeader = new Text(group, { fontWeight: "bold" });
+
+                rows.push(groupHeader);
+            }
+
+            rows.push(new Checkbox({
+                label:     fieldName,
+                selected:  !staged.has(fieldName),
+                enabled:   !col.isUnhideable(),
+                insets:    group !== null
+                    ? new Insets(0, 0, 0, COLUMN_DIALOG_GROUP_INDENT_PX)
+                    : undefined,
+                listeners: {
+                    change: (on: boolean) => {
+                        if (on) {
+                            staged.delete(fieldName);
+                        } else {
+                            staged.add(fieldName);
+                        }
+                    },
+                },
+            }));
+
+            lastGroup = group;
+        }
+
+        return new Component({
+            layoutManager: new VBox({ itemAlign: "stretch" }),
+            components:    rows,
+        });
     }
 
     /**
