@@ -437,11 +437,15 @@ describe('Column filter row — typing filters the store (debounced)', () => {
         pickOperator(cell, 'Is empty');
 
         expect(renderer(cell).getInput().isEnabled()).toBe(false);
+        // A disabled input with no explanation just looks broken — the
+        // placeholder states why it won't take text.
+        expect(renderer(cell).getInput().getPlaceholder()).toBe('No value needed');
         expect(store.getFilter('name')).toEqual({ type: 'in', field: 'name', values: [null, undefined, ''] });
 
         pickOperator(cell, 'Contains');
 
         expect(renderer(cell).getInput().isEnabled()).toBe(true);
+        expect(renderer(cell).getInput().getPlaceholder()).toBeNull();
         expect(store.getFilter('name')).toBeNull();
     });
 
@@ -1238,6 +1242,32 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
         pickOperator(cell, 'Starts with');
 
         expect(cell.getFilterState().clauses[1]).toEqual({ operator: 'contains', text: '' });
+    });
+
+    // A disabled popover-row text field is easy to miss the reason for —
+    // same fix as the inline input's own isEmpty/isNotEmpty case (test 28
+    // above), applied to `buildClauseRow`'s own field.
+    it('a popover row\'s text field explains itself with a placeholder when its operator takes no operand', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'age', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell = filterCells(table).find(c => c.getFieldName() === 'age')!;
+
+        addCondition(cell);
+        const row1Field = () => popoverRows(cell)[1].getComponents()[1];
+
+        expect(row1Field().isEnabled()).toBe(true);
+        expect(row1Field().getPlaceholder()).toBeNull();
+
+        pickRowOperator(popoverRows(cell)[1], 'Is empty');
+
+        expect(row1Field().isEnabled()).toBe(false);
+        expect(row1Field().getPlaceholder()).toBe('No value needed');
+
+        pickRowOperator(popoverRows(cell)[1], 'Equals');
+
+        expect(row1Field().isEnabled()).toBe(true);
+        expect(row1Field().getPlaceholder()).toBeNull();
     });
 
     it('13. typing into a popover row updates the store on the same shared per-field debounce timer', async () => {

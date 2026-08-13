@@ -51,6 +51,14 @@ Glyph.register(
 export type FilterCellEvent = CellEvent | "filterchange";
 
 /**
+ * Placeholder shown on a clause's text field while it is disabled because
+ * the selected operator ignores text ({@link columnFilterTakesOperand} is
+ * `false` for `isEmpty` / `isNotEmpty`) — otherwise a disabled field with no
+ * explanation just looks broken.
+ */
+const NO_OPERAND_PLACEHOLDER = "No value needed";
+
+/**
  * A header-band cell hosting one column's filter input and operator picker,
  * plus (once a second condition is added) a corner badge and a popover
  * listing every AND-combined condition.
@@ -158,6 +166,35 @@ class FilterCell extends Cell<string | null> {
     }
 
     /**
+     * Enables or disables a clause's text field for whether `op` reads it
+     * ({@link columnFilterTakesOperand}), and mirrors that in the field's
+     * placeholder so a disabled field explains itself instead of just going
+     * grey with no indication why it won't take input. Applied to both the
+     * always-visible inline input and each popover row's own field — every
+     * `setEnabled` call gated on `columnFilterTakesOperand` routes through
+     * here so the two can never drift apart.
+     *
+     * A placeholder rather than a hover tooltip: `setEnabled(false)` writes
+     * the input's native `disabled` attribute, and browsers do not reliably
+     * dispatch hover events to a disabled form control, so a tooltip
+     * attached to one is not a dependable way to explain it.
+     *
+     * @param field - The text field to update.
+     * @param op - The operator now selected for that field's clause.
+     */
+    private applyOperandAvailability(field: TextField, op: ColumnFilterOperator): void {
+        const takesText = columnFilterTakesOperand(op);
+
+        field.setEnabled(takesText);
+
+        if (takesText) {
+            field.clearPlaceholder();
+        } else {
+            field.setPlaceholder(NO_OPERAND_PLACEHOLDER);
+        }
+    }
+
+    /**
      * Re-targets this cell at another column's model field. Used by the
      * header's filter-row reconciler when recycling a cell whose column
      * left the window for one entering it. Closes an open clauses popover
@@ -228,7 +265,7 @@ class FilterCell extends Cell<string | null> {
 
         this._clauses = [{ operator: operators[0], text: '' }];
         this.applyOperatorFace(operators[0]);
-        renderer.getInput().setEnabled(columnFilterTakesOperand(operators[0]));
+        this.applyOperandAvailability(renderer.getInput(), operators[0]);
         this.syncBadge();
 
         return this;
@@ -265,7 +302,7 @@ class FilterCell extends Cell<string | null> {
         const renderer = this.filterRenderer();
 
         this.applyOperatorFace(this._clauses[0].operator);
-        renderer.getInput().setEnabled(columnFilterTakesOperand(this._clauses[0].operator));
+        this.applyOperandAvailability(renderer.getInput(), this._clauses[0].operator);
         renderer.setValue(this._clauses[0].text === "" ? null : this._clauses[0].text);
         this.syncBadge();
 
@@ -308,7 +345,7 @@ class FilterCell extends Cell<string | null> {
         const takesText = columnFilterTakesOperand(op);
 
         this.applyOperatorFace(op);
-        renderer.getInput().setEnabled(takesText);
+        this.applyOperandAvailability(renderer.getInput(), op);
 
         if (!takesText) {
             renderer.setValue(null);
@@ -456,7 +493,7 @@ class FilterCell extends Cell<string | null> {
         const field = new TextField();
 
         field.setValue(clause.text);
-        field.setEnabled(columnFilterTakesOperand(clause.operator));
+        this.applyOperandAvailability(field, clause.operator);
         field.on("change", () => this.onRowTextChange(index, field.getValue()));
 
         const row = new Component({ layoutManager: new HBox({ spacing: 4, itemAlign: "stretch" }) });
@@ -496,7 +533,7 @@ class FilterCell extends Cell<string | null> {
 
         if (index === 0) {
             this.applyOperatorFace(op);
-            this.filterRenderer().getInput().setEnabled(takesText);
+            this.applyOperandAvailability(this.filterRenderer().getInput(), op);
 
             if (!takesText) {
                 this.filterRenderer().setValue(null);
