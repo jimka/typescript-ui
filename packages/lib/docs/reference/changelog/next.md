@@ -94,6 +94,11 @@ page resets to empty.
   expansion with no way to await it. A second call for a node already
   loading joins the first load instead of triggering a second
   `loadChildren`. No consumer action is needed.
+- **New option `expandTrigger`** lets a row's body toggle expansion on a
+  plain click (`"click"`) instead of the default double-click
+  (`"dblclick"`) — the IDE-sidebar convention. The caret keeps toggling on
+  a single click either way, and Ctrl/Cmd-click and an anchored
+  Shift-click never toggle. No consumer action is needed.
 
 ### Layout
 

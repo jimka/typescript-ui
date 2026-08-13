@@ -37,6 +37,9 @@ export type TreeEvent = "selection" | "loaderror" | "contextmenu" | "dblclick" |
  */
 export type TreeRowOverflow = "scroll" | "clip";
 
+/** Which click gesture on a row's body expands or collapses it. Default `"dblclick"`. */
+export type TreeExpandTrigger = "dblclick" | "click";
+
 /** Pixels of indentation added per depth level. */
 const INDENT_PX = 16;
 
@@ -71,6 +74,9 @@ export interface TreeOptions extends ComponentOptions {
     /** How a row wider than the viewport is handled. Default `"scroll"`. See {@link TreeRowOverflow}. */
     rowOverflow?: TreeRowOverflow;
 
+    /** Which click gesture on a row's body expands/collapses it. Default `"dblclick"`. See {@link TreeExpandTrigger}. */
+    expandTrigger?: TreeExpandTrigger;
+
     /**
      * Multi-event listener bag dispatched to {@link Tree.on} at
      * construction time.
@@ -91,6 +97,7 @@ const _defaultTreeOptions: Partial<TreeOptions> = {
     overflow:      "hidden",
     maxSize:       { width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER },
     rowOverflow:   "scroll",
+    expandTrigger: "dblclick",
 };
 
 /**
@@ -155,8 +162,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
-     * Dispatches {@link TreeOptions.rowOverflow}; every other option is
-     * inherited from {@link Component}.
+     * Dispatches {@link TreeOptions.rowOverflow} and
+     * {@link TreeOptions.expandTrigger}; every other option is inherited from
+     * {@link Component}.
      *
      * @param options - The options bag carrying the values to apply.
      * @returns This tree, for method chaining.
@@ -166,6 +174,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
         if (options.rowOverflow !== undefined) {
             this.setRowOverflow(options.rowOverflow);
+        }
+
+        if (options.expandTrigger !== undefined) {
+            this.setExpandTrigger(options.expandTrigger);
         }
 
         return this;
@@ -190,6 +202,31 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      */
     setRowOverflow(rowOverflow: TreeRowOverflow): this {
         this._options.rowOverflow = rowOverflow;
+
+        return this;
+    }
+
+    /**
+     * Which click gesture on a row's body expands or collapses it.
+     *
+     * @returns The cached {@link TreeOptions.expandTrigger}, or the class default when never set.
+     */
+    getExpandTrigger(): TreeExpandTrigger {
+        return this._options.expandTrigger ?? this._defaultOptions.expandTrigger ?? "dblclick";
+    }
+
+    /**
+     * Sets which click gesture on a row's body expands or collapses it.
+     *
+     * @param expandTrigger - `"dblclick"` requires a double-click on the row
+     *   body to toggle it, the file-explorer convention; `"click"` toggles it
+     *   on a plain single click, the IDE-sidebar convention. The caret always
+     *   toggles on a single click regardless of this setting. See
+     *   {@link TreeExpandTrigger}.
+     * @returns This tree, for method chaining.
+     */
+    setExpandTrigger(expandTrigger: TreeExpandTrigger): this {
+        this._options.expandTrigger = expandTrigger;
 
         return this;
     }
@@ -1078,6 +1115,11 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * - Ctrl/Cmd+click: toggle the clicked node without disturbing others
      * - Shift+click: range-select from the anchor to the clicked node
      *
+     * When {@link getExpandTrigger} is `"click"`, a plain click (no
+     * modifiers) on an expandable row's body also toggles its expansion
+     * after selection is applied; Ctrl/Cmd-click and an anchored Shift-click
+     * never toggle; the caret always toggles regardless of this setting.
+     *
      * @param e - The click event whose target is inside the tree's DOM subtree.
      */
     private _handleClick(e: MouseEvent): void {
@@ -1122,6 +1164,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
                 this._notifySelectionChange(before);
             } else {
                 this._selectAtIndex(clickedIdx);
+
+                if (this.getExpandTrigger() === "click" && this._isExpandable(node)) {
+                    this._onToggle(node);
+                }
             }
 
             return;
@@ -1170,7 +1216,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * pair has already run through {@link _handleClick} and set the selection, so
      * this only layers an activation signal on top — it does not re-select.
      * `preventDefault` suppresses the browser's double-click text selection of the
-     * row label.
+     * row label. When {@link getExpandTrigger} is `"click"`, the row-body toggle
+     * below is skipped too, for the same reason the caret's is — each click of
+     * the pair already toggled it via {@link _handleClick}.
      *
      * @param e - The dblclick event whose target is inside the tree's subtree.
      */
@@ -1195,14 +1243,17 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             // file-explorer convention. A double-click on the toggle caret is
             // skipped: `_handleClick` already fired `_onToggle` on each of the
             // two clicks, so its net state is unchanged and toggling again here
-            // would flip it a third time. Leaf nodes have nothing to expand, so
-            // their `"dblclick"` stays a pure activation signal.
+            // would flip it a third time. The row body is skipped the same way
+            // when `expandTrigger` is `"click"` — there too, each of the two
+            // clicks already toggled it via `_handleClick`. Leaf nodes have
+            // nothing to expand, so their `"dblclick"` stays a pure activation
+            // signal.
             const toggle   = row.getToggle();
             const toggleEl = toggle ? toggle.getElement() : undefined;
             const onToggle = !!toggleEl
                 && (target === toggleEl || DOM.source.contains(toggleEl, target));
 
-            if (!onToggle && this._isExpandable(node)) {
+            if (!onToggle && this._isExpandable(node) && this.getExpandTrigger() === "dblclick") {
                 this._onToggle(node);
             }
 

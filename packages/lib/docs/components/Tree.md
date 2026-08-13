@@ -103,6 +103,7 @@ for (const node of loadStoredExpandedNodes()) {
 | `on("expand", fn)` / `on("collapse", fn)` | Subscribe to a single node's expansion changing (see [Expansion state](#expansion-state)). |
 | `setRendererFactory(fn)` | Replace the content renderer used for every row. |
 | `getRowOverflow()` / `setRowOverflow(mode)` | Get/set how a row wider than the viewport is handled — see [Row overflow](#row-overflow). |
+| `getExpandTrigger()` / `setExpandTrigger(mode)` | Get/set which click gesture on a row's body expands it — see [Expand trigger](#expand-trigger). |
 
 ## Row overflow
 
@@ -115,6 +116,18 @@ const tree = Tree({ rowOverflow: 'clip' });
 ```
 
 A custom [`TreeNodeRenderer`](#custom-row-renderers) opts into the same behaviour by clamping its own content to the `width` its `layoutChildren(width, height)` receives, the way `LabelTreeNodeRenderer` clamps its label to `Math.min(getContentWidth(), width)` — under `"scroll"` this is a no-op (the row is never narrower than `getContentWidth()` there), so an existing renderer that ignores `width` keeps its current behaviour either way.
+
+## Expand trigger
+
+By default (`expandTrigger: "dblclick"`), a row's body expands or collapses it only on a double-click — the file-explorer convention. The caret always toggles on a single click regardless of this setting.
+
+Pass `expandTrigger: "click"` to switch a row's body to the IDE-sidebar convention of toggling on a plain click instead:
+
+```typescript
+const tree = Tree({ expandTrigger: 'click' });
+```
+
+Ctrl/Cmd-click and an anchored Shift-click never toggle in either mode — they keep their existing selection-only meaning. A Shift-click with no anchor set falls back to plain-click behaviour and does toggle, the same as an unmodified click.
 
 ## Preferred size
 
