@@ -1092,6 +1092,28 @@ describe('Column filter row — multiple conditions (table-column-filter-multi-c
         expect(rows[1].getComponents().length).toBe(3); // operator button + text field + remove control
     });
 
+    // Round 3 live-testing fix: a popover row's operator button was built
+    // `setFlat(true)`, which strips its border/background/shadow — next to
+    // the popover's own non-flat "Add condition" Button it read as
+    // unclickable chrome. Not flat now (Button's own default), while staying
+    // compact and glyph-only — compact wins over flat for the inset/sizing
+    // calculation, so the button's size is unaffected. The always-visible
+    // inline operator button (a different control, FilterOperatorButton) is
+    // untouched and stays flat, per its own dedicated test above.
+    it('a popover row\'s operator button is compact and glyph-only, but not flat — it must read as clickable', async () => {
+        const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
+        table.setFilterRowVisible(true);
+
+        const cell = nameCell(table);
+        addCondition(cell);
+
+        const rowOpButton = popoverRows(cell)[0].getComponents()[0];
+
+        expect(rowOpButton.isFlat()).toBe(false);
+        expect(rowOpButton.isCompact()).toBe(true);
+        expect(rowOpButton.isShowText()).toBe(false);
+    });
+
     it('clicking the operator button opens the default menu for 0/1 clauses, and vetoes it once the column has 2+', async () => {
         const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
         table.setFilterRowVisible(true);

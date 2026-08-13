@@ -508,7 +508,12 @@ class FilterCell extends Cell<string | null> {
 
         const opButton = new MenuButton();
 
-        opButton.setFlat(true);
+        // Not flat: this row sits beside the popover's non-flat "Add
+        // condition" Button, and `setFlat(true)`'s stripped border/
+        // background/shadow chrome doesn't read as clickable next to it.
+        // Compact still wins over flat for the inset/sizing calculation
+        // (`Button._resolveInsets`), so this doesn't change the button's
+        // size or padding — only restores its bordered/background chrome.
         opButton.setCompact(true);
         opButton.setShowText(false);
         opButton.setGlyph(columnFilterOperatorGlyph(clause.operator));
