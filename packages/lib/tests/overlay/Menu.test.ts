@@ -1,6 +1,9 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Menu } from '~/overlay/Menu';
 import { MenuItem, MenuItemConfig } from '~/component/container/MenuItem';
+import { MenuSeparator } from '~/component/container/MenuSeparator';
+import { MenuRow } from '~/component/container/MenuRow';
+import { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
 import { DOM } from '~/core/DOM';
 import type { Rect } from '~/core/DOM';
 import { LayerManager } from '~/core/LayerManager';
@@ -1130,5 +1133,271 @@ describe('Menu item teardown — disposes every replaced item, separators includ
         ]);
 
         expect(ids.some((id: string) => _ruleCacheKeys().some((k: string) => k.startsWith('#' + id)))).toBe(false);
+    });
+});
+
+/**
+ * A bare MenuRow subclass with test-configurable navigability, check-column
+ * participation, and content width; also records every `setColumns` call so
+ * the column-geometry tests can compare the triple a custom row received
+ * against its sibling MenuItems'.
+ */
+class TestRow extends MenuRow {
+    activateCalls: number = 0;
+    setColumnsCalls: Array<[number, number, number]> = [];
+
+    private readonly _navigable: boolean;
+    private readonly _check: boolean;
+    private readonly _contentWidth: number;
+
+    constructor(opts?: { navigable?: boolean; hasCheck?: boolean; contentWidth?: number }) {
+        super();
+
+        this._navigable    = opts?.navigable ?? false;
+        this._check        = opts?.hasCheck ?? false;
+        this._contentWidth = opts?.contentWidth ?? 0;
+    }
+
+    isNavigable(): boolean {
+        return this._navigable;
+    }
+
+    hasCheck(): boolean {
+        return this._check;
+    }
+
+    getContentWidth(): number {
+        return this._contentWidth;
+    }
+
+    setColumns(checkZone: number, iconStart: number, titleColumn: number): void {
+        this.setColumnsCalls.push([checkZone, iconStart, titleColumn]);
+    }
+
+    activate(): void {
+        this.activateCalls++;
+    }
+}
+
+/** Exposes the protected `closeMenu()`, for the injected-close-handler assertion. */
+class ClosingTestRow extends MenuRow {
+    triggerClose(): void {
+        this.closeMenu();
+    }
+}
+
+describe('Menu custom rows', () => {
+    afterEach(() => DOM.reset());
+
+    it('builds the row from the factory exactly once and registers it as a child', () => {
+        installTestDOM(CONFIG);
+
+        const factory = vi.fn(() => new TestRow());
+        const menu = new Menu();
+
+        menu.show(0, 0, [{ row: factory }]);
+
+        expect(factory).toHaveBeenCalledOnce();
+
+        const row = factory.mock.results[0].value;
+        expect(menu.getComponents()).toContain(row);
+        expect((menu as any)._menuItems).toContain(row);
+    });
+
+    it('disposes the previous factory row and calls the new factory on reshow', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.show(0, 0, [{ row: () => new TestRow() }]);
+
+        const oldRow = (menu as any)._menuItems[0];
+        oldRow.getElement(true);
+        const id = oldRow.getId();
+        expect(_ruleCacheKeys().some((k: string) => k.startsWith('#' + id))).toBe(true);
+
+        const secondFactory = vi.fn(() => new TestRow());
+        menu.show(0, 0, [{ row: secondFactory }]);
+
+        expect(_ruleCacheKeys().some((k: string) => k.startsWith('#' + id))).toBe(false);
+        expect(secondFactory).toHaveBeenCalledOnce();
+    });
+
+    it('separator wins over row: builds a MenuSeparator and never calls the factory', () => {
+        installTestDOM(CONFIG);
+
+        const factory = vi.fn(() => new TestRow());
+        const menu = new Menu();
+
+        menu.show(0, 0, [{ separator: true, row: factory }]);
+
+        expect(factory).not.toHaveBeenCalled();
+        expect((menu as any)._menuItems[0]).toBeInstanceOf(MenuSeparator);
+    });
+
+    it('separator wins over row in persistent mode too: builds a separator-rendering MenuItem and never calls the factory', () => {
+        installTestDOM(CONFIG);
+
+        // Persistent mode never builds a MenuSeparator instance — it always
+        // builds MenuItem, which renders itself as a rule when
+        // config.separator is set (a pre-existing asymmetry with rebuild
+        // mode, left alone). The precedence under test here is only that
+        // `row` does not preempt that path when both fields are set.
+        const factory = vi.fn(() => new TestRow());
+        const menu = new Menu([{ separator: true, row: factory }], () => {});
+
+        const row = (menu as any)._menuItems[0];
+
+        expect(factory).not.toHaveBeenCalled();
+        expect(row).toBeInstanceOf(MenuItem);
+        expect(row.isSeparator()).toBe(true);
+    });
+
+    it('row wins over the plain-item fields: builds the factory row and never calls action', () => {
+        installTestDOM(CONFIG);
+
+        const action  = vi.fn();
+        const factory = vi.fn(() => new TestRow());
+        const menu    = new Menu();
+
+        menu.show(0, 0, [{ row: factory, text: 'Bold', action }]);
+
+        expect((menu as any)._menuItems[0]).toBe(factory.mock.results[0].value);
+        expect(action).not.toHaveBeenCalled();
+    });
+
+    describe('column geometry', () => {
+        it('floors the panel width with the widest custom row content, clamped to the ceiling', () => {
+            installTestDOM(CONFIG);
+
+            // { text: 'Bold' } + a row reporting 300: the MenuItem-only natural
+            // width is well under 300, so the custom row's report wins.
+            const menu300 = new Menu();
+            menu300.show(0, 0, [{ text: 'Bold' }, { row: () => new TestRow({ contentWidth: 300 }) }]);
+            expect(menu300.getMenuWidth()).toBe(300);
+
+            // A row reporting 900 clamps to the MAX_MENU_WIDTH ceiling (360).
+            const menu900 = new Menu();
+            menu900.show(0, 0, [{ text: 'Bold' }, { row: () => new TestRow({ contentWidth: 900 }) }]);
+            expect(menu900.getMenuWidth()).toBe(360);
+
+            // A row reporting 0 contributes nothing: the width is whatever the
+            // MenuItem alone produced.
+            const itemOnly = new Menu();
+            itemOnly.show(0, 0, [{ text: 'Bold' }]);
+
+            const itemPlusZero = new Menu();
+            itemPlusZero.show(0, 0, [{ text: 'Bold' }, { row: () => new TestRow({ contentWidth: 0 }) }]);
+            expect(itemPlusZero.getMenuWidth()).toBe(itemOnly.getMenuWidth());
+        });
+
+        it('every non-separator row receives the same setColumns triple, custom rows included', () => {
+            installTestDOM(CONFIG);
+
+            const menu = new Menu();
+            menu.show(0, 0, [
+                { text: 'Short' },
+                { text: 'A much longer title' },
+                { row: () => new TestRow() },
+            ]);
+
+            const rows    = (menu as any)._menuItems;
+            const testRow = rows.find((r: any) => r instanceof TestRow) as TestRow;
+            const items   = rows.filter((r: any) => r instanceof MenuItem);
+
+            const [checkZone, iconStart, titleColumn] = testRow.setColumnsCalls.at(-1)!;
+
+            expect(items.every((i: any) =>
+                i._checkZone === checkZone && i._iconStart === iconStart && i._titleColumn === titleColumn
+            )).toBe(true);
+        });
+
+        it('a custom row reporting hasCheck() widens the sibling MenuItems’ iconStart by CHECK_ZONE', () => {
+            installTestDOM(CONFIG);
+
+            const withoutCheck = new Menu();
+            withoutCheck.show(0, 0, [{ text: 'Bold' }]);
+            const baseIconStart = (withoutCheck as any)._menuItems[0]._iconStart;
+
+            const withCheck = new Menu();
+            withCheck.show(0, 0, [{ text: 'Bold' }, { row: () => new TestRow({ hasCheck: true }) }]);
+            const widenedItem = (withCheck as any)._menuItems.find((r: any) => r instanceof MenuItem);
+
+            expect(widenedItem._iconStart).toBe(baseIconStart + MenuItem.CHECK_ZONE);
+        });
+    });
+
+    describe('keyboard traversal (persistent mode)', () => {
+        function buildMenuWithRow(navigable: boolean): { menu: Menu; row: TestRow } {
+            const row = new TestRow({ navigable });
+            const configs: MenuItemConfig[] = [
+                { text: 'A' },
+                { row: () => row },
+                { text: 'B' },
+            ];
+
+            return { menu: new Menu(configs, () => {}), row };
+        }
+
+        it('focusNext/focusPrev skip a non-navigable custom row', () => {
+            installTestDOM(CONFIG);
+
+            const { menu } = buildMenuWithRow(false);
+
+            menu.focusItem(0);
+            menu.focusNext();
+            expect(menu.getFocusedIndex()).toBe(2);
+
+            menu.focusItem(2);
+            menu.focusPrev();
+            expect(menu.getFocusedIndex()).toBe(0);
+        });
+
+        it('focusNext lands on a navigable custom row, and activateFocused calls its activate()', () => {
+            installTestDOM(CONFIG);
+
+            const { menu, row } = buildMenuWithRow(true);
+
+            menu.focusItem(0);
+            menu.focusNext();
+            expect(menu.getFocusedIndex()).toBe(1);
+
+            menu.activateFocused();
+            expect(row.activateCalls).toBe(1);
+        });
+
+        it('activateFocused calls nothing for a non-navigable custom row even when directly focused', () => {
+            installTestDOM(CONFIG);
+
+            const { menu, row } = buildMenuWithRow(false);
+
+            menu.focusItem(1);
+            menu.activateFocused();
+
+            expect(row.activateCalls).toBe(0);
+        });
+    });
+
+    it('activating a CheckboxMenuRow leaves an open rebuild-mode menu open; the injected close handler does close it', () => {
+        installTestDOM(CONFIG);
+
+        let closingRow!: ClosingTestRow;
+        const menu = new Menu();
+
+        menu.show(0, 0, [
+            { row: () => new CheckboxMenuRow({ text: 'Bold' }) },
+            { row: () => { closingRow = new ClosingTestRow(); return closingRow; } },
+        ]);
+
+        expect(LayerManager.getTopLayer()).toBe(menu);
+
+        const checkboxRow = (menu as any)._menuItems[0];
+        checkboxRow.activate();
+
+        expect(LayerManager.getTopLayer()).toBe(menu);
+
+        closingRow.triggerClose();
+
+        expect(LayerManager.getTopLayer()).not.toBe(menu);
     });
 });

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "~/core/Component.js";
+import { ComponentOptions } from "~/core/Component.js";
 import type { MenuItemCSSVarPrefix } from "~/component/container/MenuItem.js";
+import { MenuRow } from "~/component/container/MenuRow.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -26,7 +27,7 @@ const _defaultMenuSeparatorOptions: Partial<MenuSeparatorOptions> = {
  *
  * @category Components
  */
-class MenuSeparator extends Component<MenuSeparatorOptions> {
+class MenuSeparator extends MenuRow<MenuSeparatorOptions> {
 
     /** Fixed pixel height of every separator. */
     static readonly HEIGHT: number = 9;
@@ -55,6 +56,15 @@ class MenuSeparator extends Component<MenuSeparatorOptions> {
         );
         this.setElementCSSRule("margin", "4px 0");
         this.getAria().setRole("separator");
+    }
+
+    /**
+     * Returns `true` — a `MenuSeparator` is always a separator row.
+     *
+     * @returns `true`.
+     */
+    isSeparator(): boolean {
+        return true;
     }
 }
 
