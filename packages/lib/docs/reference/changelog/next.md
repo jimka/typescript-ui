@@ -124,6 +124,14 @@ page resets to empty.
   coordinates. `Split` subscribes to it internally to open the new menu; a
   consumer can also listen directly.
 
+### Menu
+
+- **`MenuItemConfig.closeOnActivate`** lets an item run its `action` without
+  closing the menu; paired with `checked`, the item's own checkmark toggles
+  automatically on each activation, turning a menu into a multi-select
+  control. Defaults to `true` (today's behaviour). No consumer action is
+  needed.
+
 ## Fixed
 
 ### Editor

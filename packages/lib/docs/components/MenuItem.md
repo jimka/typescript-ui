@@ -12,6 +12,7 @@ You usually pass [`MenuItemConfig`](/api/component/container/interfaces/MenuItem
 | --- | --- |
 | `text` | Display label. |
 | `action` | Called on click or Enter. Ignored when `submenu` is set. |
+| `closeOnActivate` | When `false`, the item runs `action` but the menu stays open; pairs with `checked` for a multi-select menu. Defaults to `true`. |
 | `enabled` | Defaults to `true`. Disabled items are dimmed and non-interactive. |
 | `shortcut` | Hint string displayed on the right. |
 | `icon` | Glyph displayed on the left. |
@@ -40,6 +41,17 @@ menuItems: options.map(opt => ({
 ```
 
 An item that omits `checked` entirely still reserves the column when a sibling item in the same menu declares it — the column is a per-menu decision, not a per-item one.
+
+Pair `checked` with `closeOnActivate: false` to turn a menu into a multi-select control: the user clicks several rows and the panel stays open, since the menu no longer closes on activation. Each activation flips that item's own checkmark automatically, so there's nothing to push back into the config. The panel still closes via an outside click, Escape, or window blur.
+
+```typescript
+menuItems: options.map(opt => ({
+    text:            opt.label,
+    checked:         selected.has(opt.value),
+    closeOnActivate: false,
+    action:          () => toggle(opt.value),
+}))
+```
 
 ## Theming
 
