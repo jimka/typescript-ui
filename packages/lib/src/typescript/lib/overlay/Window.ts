@@ -52,6 +52,7 @@ class Window extends AbstractWindow {
     private _headerDragShift: boolean = false;
     private _headerDragComponentId: string = "";
     private readonly _boundCaptureHeaderShift: (e: MouseEvent) => void = (e: MouseEvent) => this.captureHeaderShift(e);
+    private readonly _boundOnHeaderMouseDown: (e: MouseEvent) => void = (e: MouseEvent) => this.onHeaderMouseDown(e);
 
     /**
      * Builds a header window: a `Border` layout with a {@link WindowHeader} in
@@ -150,7 +151,9 @@ class Window extends AbstractWindow {
         // targets that wrapper, not the bare header element, so an exact-target
         // listener would miss it. Matches the drag source below, which already
         // observes the whole header subtree via addMouseDownSubtreeListener.
-        Event.addSubtreeListener(this._header, "mousedown", (e: MouseEvent) => this.onMouseDown(e));
+        // Vetoes a press on the trailing minimize/maximize/close buttons — those
+        // own their own click handlers and must not also start a window move.
+        Event.addSubtreeListener(this._header, "mousedown", this._boundOnHeaderMouseDown);
 
         // Shift-drag the header to re-dock the window's body content onto a Tab
         // strip. The capture listener records the modifier (registered before the
@@ -262,6 +265,22 @@ class Window extends AbstractWindow {
     }
 
     // ----- header-specific gestures -----
+
+    /**
+     * Starts a window move from a header press, unless the press lands on one
+     * of the trailing minimize/maximize/close buttons — those own their own
+     * click handlers and must not also drag the window.
+     *
+     * @param e - The header `mousedown` event.
+     */
+    private onHeaderMouseDown(e: MouseEvent): void {
+        const target = e.target === null ? null : DOM.source.intern(e.target);
+        if (target && this.targetIsInTrailingButton(target)) {
+            return;
+        }
+
+        this.onMouseDown(e);
+    }
 
     /**
      * Handles `dblclick` on the header bar. When minimized, restores to the
