@@ -11,6 +11,8 @@ export { Tooltip } from '~/overlay/Tooltip.js';
 export type { TooltipColors } from '~/overlay/Tooltip.js';
 export { Popover } from '~/overlay/Popover.js';
 export type { PopoverOptions, PopoverPlacement, PopoverDismissMode } from '~/overlay/Popover.js';
+export { PopupPanel } from '~/overlay/PopupPanel.js';
+export type { PopupPanelOptions } from '~/overlay/PopupPanel.js';
 export { Notification } from '~/overlay/Notification.js';
 export type { NotificationType, NotificationRecord } from '~/overlay/Notification.js';
 export { NotificationHistoryButton } from '~/overlay/NotificationHistoryButton.js';
