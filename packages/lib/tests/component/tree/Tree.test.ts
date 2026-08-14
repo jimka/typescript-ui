@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, beforeAll, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { _Tree } from '~/component/tree/Tree';
 import type { TreeNode } from '~/component/tree/TreeNode';
@@ -1231,6 +1231,30 @@ describe('Tree virtual-scroll — characterization', () => {
         p.setScrollY(0);
         p.scrollRowIntoView(0);
         expect(p._scroller.getScrollY()).toBe(0);
+    });
+
+    // Same mechanism as Body (they share VirtualRowView), tested through the
+    // sibling subclass so a refactor that relocates the fix can't leave Tree
+    // in the pre-fix state. See Body.test.ts's "single-row scroll pool
+    // rebind" test for the full rationale.
+    it('a single-row scroll rebinds and repositions only the entering row', () => {
+        const p = mount(100, 200) as any;
+
+        p._scroller.setScrollY(20 * ROW_HEIGHT);
+        p.renderWindow();
+
+        const pool = p._rowPool as Array<{ setRowData(...args: unknown[]): unknown, setTranslate(...args: unknown[]): unknown }>;
+        const setRowDataSpies   = pool.map((row) => vi.spyOn(row, 'setRowData'));
+        const setTranslateSpies = pool.map((row) => vi.spyOn(row, 'setTranslate'));
+
+        p._scroller.setScrollY(21 * ROW_HEIGHT);
+        p.renderWindow();
+
+        const totalRebinds     = setRowDataSpies.reduce((n, s) => n + s.mock.calls.length, 0);
+        const totalRepositions = setTranslateSpies.reduce((n, s) => n + s.mock.calls.length, 0);
+
+        expect(totalRebinds).toBe(1);
+        expect(totalRepositions).toBe(1);
     });
 });
 

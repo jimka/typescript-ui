@@ -1363,6 +1363,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
         const poolTarget = this.computePoolTarget(win.windowSize, visibleHeight, totalRows);
         this.growRowPool(poolTarget);
+        this.alignPoolWindow(win.firstRow);
 
         const { reboundFlags, maxContentWidth } =
             this._bindAndMeasure(win.firstRow, win.windowSize);

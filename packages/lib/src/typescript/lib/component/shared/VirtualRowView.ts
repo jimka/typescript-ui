@@ -9,6 +9,11 @@ import { isFirstLayoutHeld } from "~/core/FirstLayoutGate.js";
 /** Number of off-screen rows to render above and below the visible viewport. */
 const SCROLL_BUFFER = 2;
 
+/** Rotates `arr` left by `shift` in place: `arr[i]` becomes what was at `arr[(i + shift) % arr.length]`. */
+function rotateLeft<T>(arr: T[], shift: number): void {
+    arr.push(...arr.splice(0, shift));
+}
+
 /**
  * Shared transform-windowed virtual-scroll base for the data views —
  * `table/Body` and `tree/Tree` are its only two subclasses. It owns the
@@ -49,6 +54,9 @@ abstract class VirtualRowView<
     protected _rowGeom      : Array<{ ty: number, w: number, h: number } | null> = [];
     protected _rowDisplayed : boolean[]                                          = [];
     protected _scroller     : VirtualScroller | null                             = null;
+
+    /** The data index pool slot 0 was aligned to on the last render, for {@link alignPoolWindow} to derive the scroll delta. `null` before the first render. */
+    private _lastWindowStart: number | null = null;
 
     /** Whether the startup font gate skipped a render pass that still owes a run. */
     private _renderDeferred: boolean = false;
@@ -347,6 +355,41 @@ abstract class VirtualRowView<
 
         DOM.sink.appendChild(rowsContainer, growFragment);
         DOM.sink.release(growFragment);
+    }
+
+    /**
+     * Rotates the pool bookkeeping arrays so each slot keeps tracking the
+     * same data index it held before the window moved, instead of being
+     * rebound to whichever index now falls at that slot's window-relative
+     * position.
+     *
+     * @param firstRow - The new window's first data index.
+     *
+     * @remarks Both subclasses key a pool slot by its offset within the
+     * window (`firstRow + i`), so without this a one-row scroll shifts every
+     * slot's data index by one and forces every pooled row — including the
+     * off-screen `SCROLL_BUFFER` rows — through a full rebind and
+     * reposition on every tick, instead of just the one row entering the
+     * window. Call once per render, after {@link growRowPool} and before the
+     * bind pass reads `_rowPool` / `_boundIndices` / `_rowGeom` /
+     * `_rowDisplayed` by slot index.
+     */
+    protected alignPoolWindow(firstRow: number): void {
+        const delta = this._lastWindowStart === null ? 0 : firstRow - this._lastWindowStart;
+
+        this._lastWindowStart = firstRow;
+
+        const n = this._rowPool.length;
+        if (delta === 0 || n === 0) {
+            return;
+        }
+
+        const shift = ((delta % n) + n) % n;
+
+        rotateLeft(this._rowPool, shift);
+        rotateLeft(this._boundIndices, shift);
+        rotateLeft(this._rowGeom, shift);
+        rotateLeft(this._rowDisplayed, shift);
     }
 
     /**

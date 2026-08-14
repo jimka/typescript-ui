@@ -10,7 +10,7 @@
 // offline. The column-width cache (normally filled by the live-geometry render
 // tier the offline source zeroes) is injected white-box, mirroring the
 // editor.test pattern of poking a private to exercise a real contract.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -224,6 +224,43 @@ describe('Body virtual-scroll — hideExcessPoolRows', () => {
             expect(p._boundIndices[i]).toBe(-1);
             expect(p._rowGeom[i]).toBeNull();
         }
+    });
+});
+
+describe('Body virtual-scroll — single-row scroll pool rebind', () => {
+    // Chrome's paint-flashing overlay lit up rows OUTSIDE the visible
+    // viewport on every scroll tick. Root cause: the pool slot a row occupies
+    // was mapped to its window-relative position (`firstRow + i`), not
+    // recycled by data identity — so a one-row scroll shifted every slot's
+    // bound data index by one, forcing every pooled row (including the
+    // off-screen SCROLL_BUFFER rows) through a full rebind + reposition each
+    // tick. A single row of scroll should touch exactly the one row entering
+    // the window; every other pooled row already shows the right data at the
+    // right position and must be left untouched.
+    it('rebinds and repositions only the row entering the window, not the whole pool', async () => {
+        const { b } = await bodyWith(100, 200);
+        const p = b as any;
+        const rh = p._rowHeight;
+
+        // Scroll to mid-dataset first so the next one-row step isn't absorbed
+        // by the top-of-data clamp (`Math.max(0, firstRow - SCROLL_BUFFER)`).
+        p._scroller.setScrollY(20 * rh);
+        b.renderWindow(300, [100, 100, 100]);
+
+        const pool = p.getRowPool() as Array<{ setData(...args: unknown[]): unknown, setTranslate(...args: unknown[]): unknown }>;
+        const setDataSpies      = pool.map((row) => vi.spyOn(row, 'setData'));
+        const setTranslateSpies = pool.map((row) => vi.spyOn(row, 'setTranslate'));
+
+        // Exactly one row's worth of scroll: one data index leaves the
+        // window and one enters, so exactly one pool slot should rebind.
+        p._scroller.setScrollY(21 * rh);
+        b.renderWindow(300, [100, 100, 100]);
+
+        const totalRebinds     = setDataSpies.reduce((n, s) => n + s.mock.calls.length, 0);
+        const totalRepositions = setTranslateSpies.reduce((n, s) => n + s.mock.calls.length, 0);
+
+        expect(totalRebinds).toBe(1);
+        expect(totalRepositions).toBe(1);
     });
 });
 
@@ -1168,11 +1205,14 @@ describe('Column window — geometry diffing', () => {
         b.setHeight(200);
         b.renderWindow(400, [100, 100]);
 
-        const row  = (b as any).getRowPool()[0] as { getComponents(): Array<any> };
-        const cell = row.getComponents()[0];
-        const glyph = () => cell.getRenderer().getComponents()[0];
+        // The pool now recycles rows by data identity rather than by window
+        // slot (see VirtualRowView.alignPoolWindow), so slot 0's occupant can
+        // be a different physical row object after a scroll — re-fetch it
+        // rather than holding a reference across the render below.
+        const cellAtSlot0 = () => ((b as any).getRowPool()[0] as { getComponents(): Array<any> }).getComponents()[0];
+        const glyph = (cell: any) => cell.getRenderer().getComponents()[0];
 
-        expect(glyph().getWidth()).toBeGreaterThan(0);
+        expect(glyph(cellAtSlot0()).getWidth()).toBeGreaterThan(0);
 
         // A vertical scroll rebinds this slot to a record whose glyph differs,
         // so the renderer discards its child and builds a new one. Rebuilding a
@@ -1181,8 +1221,9 @@ describe('Column window — geometry diffing', () => {
         (b as any)._scroller.setScrollY(24 * 23);
         b.renderWindow(400, [100, 100]);
 
+        const cell = cellAtSlot0();
         expect(cell.getRenderer().getValue()).toBe('caret-down');
-        expect(glyph().getWidth()).toBeGreaterThan(0);
+        expect(glyph(cell).getWidth()).toBeGreaterThan(0);
     });
 
     it('a cell re-pointed at a different column at identical geometry is not left stale', async () => {

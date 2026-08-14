@@ -1102,6 +1102,8 @@ class Body extends VirtualRowView<Row> {
     protected bindAndPositionRows(firstRow: number, windowSize: number, rowWidth: number, records: ModelRecord[], columns: ColumnWindow): void {
         const rowHeight = this._rowHeight;
 
+        this.alignPoolWindow(firstRow);
+
         for (let i = 0; i < windowSize; i++) {
             const row       = this._rowPool[i];
             const dataIndex = firstRow + i;
