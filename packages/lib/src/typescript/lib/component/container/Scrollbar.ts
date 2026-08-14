@@ -4,6 +4,7 @@ import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { AutoRepeat } from "~/core/AutoRepeat.js";
@@ -305,6 +306,51 @@ const _defaultScrollbarOptions: Partial<ScrollbarOptions> = {
     backgroundColor: "var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))",
     touchAction:     "none",
 };
+
+/**
+ * The DOM class every {@link Scrollbar} root element carries. `Component.init`
+ * stamps `this.constructor.name` on every component's element unconditionally
+ * (alongside the shared `ts-ui-component` class), and this is the literal that
+ * produces for a `Scrollbar` instance.
+ */
+const SCROLLBAR_ROOT_CLASS = "Scrollbar";
+
+/**
+ * Returns whether `e`'s target lies inside a {@link Scrollbar}'s own DOM
+ * subtree (track, thumb, or arrow buttons). Scrollbars are raw-appended by
+ * `Panel.installOverlayScrollbars` outside the Component tree (never through
+ * `addComponent`), so a caller can't recognise one by walking
+ * `getParentComponent()` — this walks the live DOM instead.
+ *
+ * This exists for callers that install a blanket `pointerdown` guard over a
+ * whole subtree (e.g. a dropdown panel's focus-loss protection, which calls
+ * `preventDefault()` so clicking inside the panel doesn't blur the host
+ * input before a click is delivered). Calling `preventDefault()` on a
+ * `pointerdown` whose target is inside a Scrollbar is exactly what breaks
+ * it: per the Pointer Events spec, that suppresses the browser's synthesized
+ * `mousedown` compatibility event for a real mouse pointer, and the thumb
+ * drag / track-page handlers (`_onDragStart` / `_onTrackClick`) are wired to
+ * `mousedown` — so the scrollbar goes dead to mouse input. A blanket guard
+ * must check this and skip `preventDefault()` when it's true; doing so can't
+ * reintroduce the focus-loss bug the guard exists for, since a Scrollbar
+ * never holds DOM focus.
+ *
+ * @param e - The DOM event to test.
+ * @returns True when the event originated inside a Scrollbar's element.
+ */
+export function isScrollbarTarget(e: Event): boolean {
+    if (!DOM.source.isNode(e.target)) {
+        return false;
+    }
+
+    for (let handle: Handle | null = DOM.source.intern(e.target); handle; handle = DOM.source.getParentElement(handle)) {
+        if (DOM.source.matches(handle, "." + SCROLLBAR_ROOT_CLASS)) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 /**
  * A custom virtual scrollbar overlay.

@@ -1,9 +1,9 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Component } from '~/core/Component';
-import { Scrollbar } from '~/component/container/Scrollbar';
+import { Scrollbar, isScrollbarTarget } from '~/component/container/Scrollbar';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -433,5 +433,50 @@ describe('Scrollbar thumb cursor', () => {
 
         drive(bar)._onDragEnd({} as Event);
         expect(styleFor('HTML')).toEqual({ cursor: '' });
+    });
+});
+
+// isScrollbarTarget is the carve-out a blanket ancestor pointerdown guard
+// (e.g. a dropdown panel's focus-loss protection) must consult before calling
+// preventDefault(): doing so on a pointerdown that lands on a Scrollbar
+// suppresses the browser's synthesized `mousedown` compatibility event for a
+// real mouse pointer, which is what the thumb/track drag above is wired to
+// (Event.addListener(this._thumb, "mousedown", ...)) — breaking the drag.
+// TestDOM has no selector engine (DOM.source.matches is an unconditional
+// `false` stub), so the `.Scrollbar`-class match a real browser performs is
+// mocked here, mirroring how other tests in this suite mock DOM.source reads;
+// the ancestor walk itself (getParentElement) runs against the harness's real
+// modelled parent/child structure, unmocked.
+describe('isScrollbarTarget', () => {
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    it('recognises a target inside the Scrollbar subtree (the thumb) once the class match resolves', () => {
+        installTestDOM(CONFIG);
+
+        const bar         = new Scrollbar('vertical');
+        const root         = bar.getElement(true);
+        const thumbElement = thumb(bar).getElement(true);
+
+        vi.spyOn(DOM.source, 'matches').mockImplementation(
+            (h: unknown, selector: string) => selector === '.Scrollbar' && h === root
+        );
+
+        expect(isScrollbarTarget(makeEvent(thumbElement!, 'pointerdown'))).toBe(true);
+    });
+
+    it('returns false for a target outside any Scrollbar', () => {
+        installTestDOM(CONFIG);
+
+        const other = new Component();
+
+        vi.spyOn(DOM.source, 'matches').mockReturnValue(false);
+
+        expect(isScrollbarTarget(makeEvent(other.getElement(true)!, 'pointerdown'))).toBe(false);
+    });
+
+    it('returns false for a non-node target', () => {
+        installTestDOM(CONFIG);
+
+        expect(isScrollbarTarget({ target: null } as unknown as Event)).toBe(false);
     });
 });

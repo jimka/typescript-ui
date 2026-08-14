@@ -7,6 +7,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Fit } from "~/layout/Fit.js";
 import { TimeColumns } from "~/component/input/TimeColumns.js";
+import { isScrollbarTarget } from "~/component/container/Scrollbar.js";
 import { callable } from "~/core/Callable.js";
 
 /** Pixel width of the time picker panel (Hour + Minute). */
@@ -82,11 +83,19 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
 
     /**
      * Suppresses focus loss anywhere inside the panel so the host input
-     * doesn't blur before a cell click is delivered.
+     * doesn't blur before a cell click is delivered — but lets a pointerdown
+     * on a {@link TimeColumns} scrollbar through, since preventing it there
+     * would suppress the compatibility `mousedown` the thumb/track drag
+     * relies on (see {@link isScrollbarTarget}) and a scrollbar never holds
+     * focus, so there's nothing to guard.
      *
      * @param e - The pointerdown event.
      */
     private onPointerDown(e: PointerEvent): void {
+        if (isScrollbarTarget(e)) {
+            return;
+        }
+
         e.preventDefault();
     }
 

@@ -6,9 +6,9 @@
 // the panel past the viewport. TestDOM gives the layout pass real geometry; the
 // internal TimeColumns/columns are reached by `any` cast (not barrel-exported,
 // held in private fields) the same way the sibling value-math tests do.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { TimePickerDropdown } from '~/component/input/TimePickerDropdown';
 import { PICKER_CELL_HEIGHT } from '~/component/input/PickerColumn';
@@ -93,5 +93,63 @@ describe('TimePickerDropdown column scrolling', () => {
         expect(dd.getHeight()).toBe(PANEL_HEIGHT);
         expect(list.getHeight()).toBeGreaterThan(0);
         expect(list.getHeight()).toBeLessThan(contentHeight);
+    });
+});
+
+// Regression: onPointerDown's blanket preventDefault() (added to keep the host
+// input from blurring before a cell click lands) also fired for a pointerdown
+// on the hour column's overlay Scrollbar. preventDefault()ing a pointerdown
+// suppresses the browser's synthesized `mousedown` compatibility event for a
+// real mouse pointer, and the Scrollbar thumb/track drag is wired to
+// `mousedown` (Scrollbar.ts's `_onDragStart` / `_onTrackClick`) — so the
+// scrollbar became undraggable. TestDOM has no selector engine (DOM.source
+// .matches is an unconditional `false` stub — see TestDOM.ts), so the actual
+// `.Scrollbar`-class match a real browser performs is mocked here the same
+// way PanelOverlayScrollbar.test.ts mocks getScrollMetrics; the ancestor walk
+// itself (getParentElement) is the harness's real modelled parent/child
+// structure, not mocked.
+describe('TimePickerDropdown.onPointerDown — scrollbar guard', () => {
+    afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
+
+    function hourList(dd: any): any {
+        return dd._timeColumns._hourColumn.getCellList();
+    }
+
+    it('does not preventDefault a pointerdown that lands on the column scrollbar', () => {
+        installTestDOM(CONFIG);
+
+        const dd    = layOutPanel(140, false);
+        const list  = hourList(dd);
+        const bar   = list._scrollbarV;
+        const thumb = bar._thumb.getElement(true);
+        const root  = bar.getElement(true);
+
+        vi.spyOn(DOM.source, 'matches').mockImplementation(
+            (h: unknown, selector: string) => selector === '.Scrollbar' && h === root
+        );
+
+        const e = makeEvent(thumb, 'pointerdown');
+        const preventDefault = vi.spyOn(e, 'preventDefault');
+
+        dd.onPointerDown(e);
+
+        expect(preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('still preventDefaults a pointerdown elsewhere in the panel (e.g. a cell)', () => {
+        installTestDOM(CONFIG);
+
+        const dd   = layOutPanel(140, false);
+        const list = hourList(dd);
+        const cell = list.getComponents()[0].getElement(true);
+
+        vi.spyOn(DOM.source, 'matches').mockReturnValue(false);
+
+        const e = makeEvent(cell, 'pointerdown');
+        const preventDefault = vi.spyOn(e, 'preventDefault');
+
+        dd.onPointerDown(e);
+
+        expect(preventDefault).toHaveBeenCalled();
     });
 });

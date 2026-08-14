@@ -17,6 +17,7 @@ import { VBox } from "~/layout/VBox.js";
 import { Grid } from "~/layout/Grid.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { PickerCell, PickerColumn } from "~/component/input/PickerColumn.js";
+import { isScrollbarTarget } from "~/component/container/Scrollbar.js";
 
 Glyph.register(chevron_left);
 Glyph.register(chevron_right);
@@ -605,12 +606,20 @@ abstract class AbstractCalendarDropdown<
      * Suppresses focus loss while the user is interacting with the panel — but
      * lets a `pointerdown` on a focusable `<input>` through (e.g. the embedded
      * time field in the date-time picker) so the user can place the caret and
-     * type. The day/year cells are not inputs, so they stay guarded.
+     * type, and lets one on the year scroller's {@link PickerColumn} scrollbar
+     * through too, since preventing it there would suppress the compatibility
+     * `mousedown` the thumb/track drag relies on (see {@link isScrollbarTarget})
+     * and a scrollbar never holds focus, so there's nothing to guard. The
+     * day/year cells are neither, so they stay guarded.
      *
      * @param e - The pointerdown event.
      */
     private onPointerDown(e: PointerEvent): void {
         if (DOM.source.isNode(e.target) && DOM.source.getTagName(DOM.source.intern(e.target)) === "INPUT") {
+            return;
+        }
+
+        if (isScrollbarTarget(e)) {
             return;
         }
 
