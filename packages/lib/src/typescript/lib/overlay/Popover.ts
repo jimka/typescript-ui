@@ -5,7 +5,7 @@ import { Event } from "~/core/Event.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
 import { Util } from "~/core/Util.js";
-import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
+import { fadeShow, fadeHideAndDetach } from "~/core/OverlayFade.js";
 import type { Animation } from "~/core/Animation.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
 import type { Edge } from "~/primitive/Edge.js";

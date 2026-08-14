@@ -5,7 +5,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle, Rect } from "~/core/DOM.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { positionAligned, positionFlexibleAnchored } from "~/core/OverlayPosition.js";
-import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
+import { fadeShow, fadeHideAndDetach } from "~/core/OverlayFade.js";
 import type { Animation } from "~/core/Animation.js";
 import { Insets } from "~/primitive/Insets.js";
 import type { Size } from "~/primitive/Size.js";
