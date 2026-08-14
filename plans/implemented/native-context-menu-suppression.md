@@ -232,6 +232,12 @@ Manual verification (run `npm run dev`, app on `localhost:8015`):
 
 ---
 
+## Implementation Notes
+
+**`BodyContextMenu.test.ts`'s `afterEach` needed one more call than the plan specified.** The plan mandated `Body.getInstance().setNativeContextMenu(true); DOM.reset();`, in that order. Every `Body.init({})` call in the new tests leaves `favicon` unconfigured, so it installs the default favicon as a side effect; `Favicon` caches the handle it wrote through in module-level state (`Favicon._link`), which survives across `it` blocks in the same file. That handle does not resolve against the fresh `TestHandleTable` `DOM.reset()` installs for the next case, so the second test to reach `Body.init` threw `TestHandleTable: handle N is not registered`. Added `Favicon._reset()` as the first statement in the `afterEach` — the exact guard `tests/core/Favicon.test.ts` already uses, for the reason its own doc comment states: "a suite that resets the DOM between cases must reset this too." No production code or public API changed; this is test-file-only.
+
+---
+
 ## Notes
 
 [^init-not-constructor]: `Body`'s private constructor runs from the static field initializer `private static readonly INSTANCE: Body = new Body()` at module import — before an app has had a chance to pass options, and before a test harness has installed its DOM seams. Registering from the constructor would therefore attach the window listener to whatever sink happened to be installed at import time and would ignore `nativeContextMenu` entirely. `Body` already hit this with the favicon and solved it the same way; the comment at `Body.ts:79-82` states the reasoning. The instance-level `protected init()` at `Body.ts:154` is no better — it is called from that same constructor.

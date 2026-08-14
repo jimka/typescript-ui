@@ -118,7 +118,7 @@ A node with a non-empty `children` is a *container*: ELK computes its size and p
 | `whenLaidOut()` | Resolves once the layout pass in flight has placed its nodes; resolves at once when idle, and never rejects. |
 | `on('selection', fn)` | Fires when the selected node changes (a click), with the selected node data. |
 | `on('layout', fn)` | Fires after each successful ELK layout pass. |
-| `on('contextmenu', fn)` | Fires when a node is right-clicked, with the node data and the originating `MouseEvent`; suppresses the browser's native menu. A right-click on empty canvas is left to the browser. |
+| `on('contextmenu', fn)` | Fires when a node is right-clicked, with the node data and the originating `MouseEvent`; suppresses the browser's native menu. `DiagramView` does not suppress it on empty canvas — [`Body`](/components/Body)'s page-wide default does, unless the app set `nativeContextMenu: true`. |
 | `setEdgeEmphasis(ids)` / `getEdgeEmphasis()` | Dim every edge outside the given set, so the named ones stand out; `null` clears. Reset by the next layout. |
 | `setNodeEmphasis(ids)` / `getNodeEmphasis()` | Dim every node outside the given set; `null` clears. Reset by the next layout. |
 | `on('edgehover', fn)` | Fires with **every** model edge within the pointer's hit tolerance and the originating `MouseEvent` — several where routes overlap. |

@@ -24,6 +24,13 @@ page resets to empty.
   element still being connected. No built-in `LayoutManager` depends on this,
   so no consumer action is needed unless a custom manager's `detach()`
   override reads the container's connected element.
+- **The browser's own right-click menu no longer appears in an app that
+  mounts with `Body.init`**, including on text inputs — cut / copy / paste /
+  spellcheck no longer show there either. `Body.init` now registers a single
+  page-wide `contextmenu` suppression by default; every existing
+  library-level context menu (`Tree`, `DiagramView`, `TabBar`, a `Split`
+  gutter's chevron, a `Table` column header, …) keeps working unchanged. Opt
+  back in with `Body.init({ nativeContextMenu: true })`.
   
 ### Split
 
