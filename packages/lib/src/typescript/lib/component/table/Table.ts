@@ -191,7 +191,7 @@ class Table extends Component<TableOptions> {
     private _columnWidthTarget: number = 0;
     private _savedColumnWidths: Map<string, number> = new Map();
     private _columnConfigs    : Map<string, ColumnConfig> = new Map();
-    private _exportMenuEnabled: boolean = false;
+    private _exportMenuEnabled: boolean = true;
     private _filterRowVisible : boolean = false;
     private _listeners        : ListenerBag<TableEvent> = new ListenerBag<TableEvent>();
     private _displayMode      : TableDisplayMode = "normal";
