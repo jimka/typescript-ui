@@ -91,6 +91,12 @@ page resets to empty.
   other read-only text a reader might want to quote. No consumer action is
   needed.
 
+### Overlay
+
+- **A `Dialog`'s plain-text `message` can now be selected and copied.** A
+  dialog built with a custom `contentComponent` is unaffected — that
+  content controls its own selectability. No consumer action is needed.
+
 ## Added
 
 ### Table
