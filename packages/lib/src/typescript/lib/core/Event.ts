@@ -349,7 +349,9 @@ export namespace Event {
         }
 
         let idx = compFunc.listeners.indexOf(listener);
-        compFunc.listeners.splice(idx, 1);
+        if (idx >= 0) {
+            compFunc.listeners.splice(idx, 1);
+        }
 
         if (compFunc.listeners.length == 0) {
             typeMap.delete(component.getId());
@@ -631,7 +633,9 @@ export namespace Event {
         }
 
         let idx = compFunc.listeners.indexOf(listener);
-        compFunc.listeners.splice(idx, 1);
+        if (idx >= 0) {
+            compFunc.listeners.splice(idx, 1);
+        }
 
         if (compFunc.listeners.length == 0) {
             typeMap.delete(component.getId());

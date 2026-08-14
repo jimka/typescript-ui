@@ -168,6 +168,46 @@ describe('Event.addSubtreeListener / addViewportListener accounting', () => {
     });
 });
 
+describe('removeListener / removeViewportListener no-op on an unregistered listener', () => {
+    afterEach(() => DOM.reset());
+
+    // Regression test: indexOf returns -1 for a listener that was never added,
+    // and splice(-1, 1) removes the LAST element instead of nothing — silently
+    // dropping an unrelated, still-registered listener.
+    it('removeListener does not drop the real listener when passed a stray one', () => {
+        const sink = installTestDOM(CONFIG);
+        const type = uniqueType();
+        const comp = new Component({});
+        const real = (): void => {};
+        const stray = (): void => {};
+
+        Event.addListener(comp, type, real);
+        Event.removeListener(comp, type, stray);
+
+        // A no-op removal must not uninstall the base listener the real one still needs.
+        expect(countWrites(sink, 'removeListener', type)).toBe(0);
+
+        Event.removeListener(comp, type, real);
+        expect(countWrites(sink, 'removeListener', type)).toBe(1);
+    });
+
+    it('removeViewportListener does not drop the real listener when passed a stray one', () => {
+        const sink = installTestDOM(CONFIG);
+        const type = uniqueType();
+        const comp = new Component({});
+        const real = (): void => {};
+        const stray = (): void => {};
+
+        Event.addViewportListener(comp, type, real);
+        Event.removeViewportListener(comp, type, stray);
+
+        expect(countWrites(sink, 'removeListener', type)).toBe(0);
+
+        Event.removeViewportListener(comp, type, real);
+        expect(countWrites(sink, 'removeListener', type)).toBe(1);
+    });
+});
+
 describe('Event.purgeComponent', () => {
     afterEach(() => DOM.reset());
 
