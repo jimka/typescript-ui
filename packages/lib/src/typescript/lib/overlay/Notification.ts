@@ -199,6 +199,7 @@ export class Notification extends Component {
         this._messageText.setLineClamp(2);
         this._messageText.setWhiteSpace("normal");
         this._messageText.setWordBreak("break-word");
+        this._messageText.setUserSelect("text");
         this.addComponent(this._messageText);
 
         this._closeButton = new Button({ glyph: "xmark" });
@@ -512,6 +513,7 @@ export class Notification extends Component {
         content.setWhiteSpace("pre-wrap");
         content.setWordBreak("break-word");
         content.setPadding(new Insets(16, 16, 16, 16));
+        content.setUserSelect("text");
 
         const dialog = new _Dialog({
             title:            DETAIL_TITLE[type],
