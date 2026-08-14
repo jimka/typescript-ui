@@ -64,6 +64,14 @@ class FilterCellRenderer extends CellRenderer<string | null> {
         this.setLayoutManager(new HBox({ spacing: 2, itemAlign: "stretch", mode: "preferred" }));
 
         this._input.setBorder({ border: "0px solid transparent" });
+        // Transparent, not a second copy of the tint: `FilterCell` already
+        // paints `--ts-ui-table-filter-row-bg` behind this renderer, and that
+        // color is translucent. Painting it again here would stack two
+        // translucent layers and read visibly stronger than the cell itself.
+        // Letting the cell's single layer show through instead is exactly
+        // how the operator button matches it too — `setFlat(true)` below
+        // leaves its own resting background transparent.
+        this._input.setBackgroundColor("transparent");
 
         this._operatorButton.setFlat(true);
         this._operatorButton.setCompact(true);

@@ -147,6 +147,9 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
             border                    : 'none',
             editorBorderColor         : 'rgba(30, 100, 200, 0.8)',
         },
+        filterRow: {
+            background: 'rgba(255, 200, 0, 0.28)',
+        },
         resizeHandle: {
             color : 'rgba(255, 255, 255, 0.25)',
         },

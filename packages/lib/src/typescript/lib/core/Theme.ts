@@ -363,6 +363,10 @@ export interface Theme {
             border                    : string;
             editorBorderColor         : string;
         };
+        filterRow: {
+            /** Tint applied to the filter row's text inputs and operator buttons. */
+            background: string;
+        };
         resizeHandle: {
             width : string;
             color : string;
@@ -1071,6 +1075,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-table-cell-color'                 : theme.table.cell.color,
         '--ts-ui-table-cell-border'                : theme.table.cell.border,
         '--ts-ui-table-cell-editor-border'         : theme.table.cell.editorBorderColor,
+        '--ts-ui-table-filter-row-bg'              : theme.table.filterRow.background,
         '--ts-ui-table-resize-handle-width'        : theme.table.resizeHandle.width,
         '--ts-ui-table-resize-handle-color'        : theme.table.resizeHandle.color,
         '--ts-ui-table-resize-handle-cursor'       : theme.table.resizeHandle.cursor,

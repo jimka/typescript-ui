@@ -110,9 +110,18 @@ class FilterCell extends Cell<string | null> {
         this._badge = new FilterClauseBadge();
 
         this.getAria().setRole("columnheader");
-        // The header band's gradient shows through unaltered, matching
-        // ParentHeaderCell's own transparent-background write.
-        this.setBackgroundColor("transparent");
+        // Tints the whole cell — not just the input/button inside it — so
+        // the filter row reads as one continuous band with no untinted gaps
+        // at the cell edges or between the two controls.
+        this.setBackgroundColor("var(--ts-ui-table-filter-row-bg, rgba(255, 200, 0, 0.2))");
+
+        // Inter-column divider, in the same resize-handle gray that separates
+        // the column header row above — see ParentHeaderCell's own identical
+        // write for why this is `setShadow`, not `setBorder`: `Cell`'s
+        // theme-change listener re-runs `setBorder('var(--ts-ui-table-cell-
+        // border, none)')` on every theme toggle and would wipe a
+        // border-based divider.
+        this.setShadow("inset -1px 0 0 0 var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))");
 
         const renderer = this.filterRenderer();
 

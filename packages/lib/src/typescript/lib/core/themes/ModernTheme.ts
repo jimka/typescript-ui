@@ -162,6 +162,9 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
             border                    : 'none',
             editorBorderColor         : 'rgba(30, 100, 200, 0.6)',
         },
+        filterRow: {
+            background: 'rgba(255, 200, 0, 0.2)',
+        },
         resizeHandle: {
             color : 'rgba(0, 0, 0, 0.2)',
         },
