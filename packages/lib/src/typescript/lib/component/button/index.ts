@@ -12,3 +12,5 @@ export { SplitButton } from '~/component/button/SplitButton.js';
 export type { SplitButtonOptions } from '~/component/button/SplitButton.js';
 export { MenuButton } from '~/component/button/MenuButton.js';
 export type { MenuButtonOptions } from '~/component/button/MenuButton.js';
+export { PopupButton } from '~/component/button/PopupButton.js';
+export type { PopupButtonOptions } from '~/component/button/PopupButton.js';

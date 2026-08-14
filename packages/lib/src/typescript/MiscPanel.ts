@@ -21,6 +21,7 @@ import {
     Notification,
     NotificationHistoryButton,
     Popover,
+    PopupPanel,
     Rail,
     Tooltip,
     Window
@@ -48,6 +49,7 @@ import {
 } from '@jimka/typescript-ui/data';
 import {
     AutoCompleteField,
+    Checkbox,
     ComboBox,
     DateField,
     DateTimeField,
@@ -58,7 +60,7 @@ import {
     TextField,
     TimeField
 } from '@jimka/typescript-ui/component/input';
-import { Button } from '@jimka/typescript-ui/component/button';
+import { Button, PopupButton } from '@jimka/typescript-ui/component/button';
 import {
     Canvas,
     Glyph,
@@ -1754,6 +1756,25 @@ class MiscPanel extends Panel {
         fieldsRow.addComponent(animatedDateTime);
 
         rightColumn.addComponent(fieldsRow);
+
+        // ── PopupButton: a custom popup panel built from ordinary components ──
+        const popupButton: PopupButton = new PopupButton("Filters (PopupPanel)", {
+            panel: () => {
+                const showArchived = new Checkbox({ label: "Show archived" });
+                const onlyMine     = new Checkbox({ label: "Only mine" });
+                const apply        = new Button("Apply");
+
+                const panel = new PopupPanel({
+                    layoutManager: new VBox({ spacing: 4, stretching: true }),
+                    components:    [showArchived, onlyMine, apply],
+                });
+
+                apply.on("action", () => { panel.hideAnimated(); });
+
+                return panel;
+            },
+        });
+        rightColumn.addComponent(popupButton);
 
         // ── Item renderers: a glyph beside each entry (List + ComboBox) ──
         // One GlyphListItemRenderer factory drives the ComboBox dropdown rows,
