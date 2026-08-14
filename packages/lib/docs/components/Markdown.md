@@ -6,6 +6,8 @@ Parsing uses the [`marked`](https://marked.js.org/) library's **lexer only** —
 
 Use this to render authored copy (help text, release notes, a README-style panel) without hand-building the element tree.
 
+Rendered prose is selectable and copyable, like any other read-only text a reader might want to quote.
+
 <!-- demo: markdown-preview -->
 > **Live demo** — a `TextArea` of Markdown source with a `Markdown` panel
 > below it that re-renders live as you type.

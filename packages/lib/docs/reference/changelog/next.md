@@ -79,6 +79,12 @@ page resets to empty.
   column no longer closes the menu — several columns can be flipped in one
   open. No consumer action is needed.
 
+### Display
+
+- **Rendered `Markdown` prose can now be selected and copied**, like any
+  other read-only text a reader might want to quote. No consumer action is
+  needed.
+
 ## Added
 
 ### Table
