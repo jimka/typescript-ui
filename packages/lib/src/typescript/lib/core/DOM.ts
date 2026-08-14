@@ -1153,6 +1153,14 @@ export interface DOMSource {
     getLocationPathname(): string;
 
     /**
+     * The current `location.search`, boxed so the raw global never escapes
+     * the seam.
+     *
+     * @returns The query string including its leading `"?"`, or `""` when empty.
+     */
+    getLocationSearch(): string;
+
+    /**
      * Whether a node is the ancestor of (or equal to) another node.
      *
      * @param ancestor - The candidate ancestor handle.
@@ -2207,6 +2215,11 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getLocationPathname(): string {
         return location.pathname;
+    }
+
+    /** @inheritDoc */
+    getLocationSearch(): string {
+        return location.search;
     }
 
     /** @inheritDoc */

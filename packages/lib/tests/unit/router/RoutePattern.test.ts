@@ -4,7 +4,7 @@
 // normalization, pattern compilation (including the ambiguity key), match +
 // param extraction, and specificity ranking. No DOM seam involved.
 import { describe, it, expect } from 'vitest';
-import { normalizePath, splitPath, splitFragment, compilePattern, matchPattern, selectPattern, normalizeBase, stripBase, joinBase, type CompiledPattern } from '~/router/RoutePattern';
+import { normalizePath, splitPath, splitFragment, splitQuery, parseQuery, formatQuery, sameQuery, compilePattern, matchPattern, selectPattern, normalizeBase, stripBase, joinBase, type CompiledPattern } from '~/router/RoutePattern';
 
 describe('normalizePath', () => {
     it.each([
@@ -39,6 +39,79 @@ describe('splitFragment', () => {
         ['',                                    '',                 ''],
     ])('splits %j into path %j and fragment %j', (input, path, fragment) => {
         expect(splitFragment(input)).toEqual({ path, fragment });
+    });
+});
+
+describe('splitQuery', () => {
+    it.each([
+        ['/guide?a=1',   '/guide', 'a=1'],
+        ['/guide',       '/guide', ''],
+        ['/guide?',      '/guide', ''],
+        ['?a=1',         '',       'a=1'],
+        ['/a?b=1?c=2',   '/a',     'b=1?c=2'],
+        ['',             '',       ''],
+    ])('splits %j into path %j and query %j', (input, path, query) => {
+        expect(splitQuery(input)).toEqual({ path, query });
+    });
+});
+
+describe('parseQuery', () => {
+    it.each([
+        ['',        {}],
+        ['?',       {}],
+        ['a=1&b=2', { a: '1', b: '2' }],
+        ['?a=1',    { a: '1' }],
+        ['rotated', { rotated: '' }],
+        ['a=',      { a: '' }],
+        ['a=1&a=2', { a: '2' }],
+        ['a=1&&b=2', { a: '1', b: '2' }],
+        ['=5',      {}],
+        ['a=1=2',   { a: '1=2' }],
+        ['q=a%20b', { q: 'a b' }],
+        ['q=%zz',   { q: '%zz' }],
+        ['q=a+b',   { q: 'a+b' }],
+        ['a%20b=1', { 'a b': '1' }],
+    ])('parses %j to %j', (input, expected) => {
+        expect(parseQuery(input)).toEqual(expected);
+    });
+});
+
+describe('formatQuery', () => {
+    it.each([
+        [{},                  ''],
+        [{ a: '1', b: '2' },  'a=1&b=2'],
+        [{ b: '2', a: '1' },  'b=2&a=1'],
+        [{ a: '' },           'a='],
+        [{ q: 'a b' },        'q=a%20b'],
+        [{ q: 'a+b' },        'q=a%2Bb'],
+        [{ 'a&b': 'c=d' },    'a%26b=c%3Dd'],
+    ])('formats %j to %j', (input, expected) => {
+        expect(formatQuery(input)).toBe(expected);
+    });
+
+    it.each<Record<string, string>>([
+        {},
+        { a: '1', b: '2' },
+        { b: '2', a: '1' },
+        { a: '' },
+        { q: 'a b' },
+        { q: 'a+b' },
+        { 'a&b': 'c=d' },
+    ])('round-trips through parseQuery: %j', (query) => {
+        expect(parseQuery(formatQuery(query))).toEqual(query);
+    });
+});
+
+describe('sameQuery', () => {
+    it.each([
+        [{},                    {},                    true],
+        [{ a: '1' },            { a: '1' },            true],
+        [{ a: '1', b: '2' },    { b: '2', a: '1' },    true],
+        [{ a: '1' },            { a: '2' },            false],
+        [{ a: '1' },            { a: '1', b: '2' },    false],
+        [{ a: '1' },            { b: '1' },            false],
+    ])('sameQuery(%j, %j) is %j', (a, b, expected) => {
+        expect(sameQuery(a, b)).toBe(expected);
     });
 });
 

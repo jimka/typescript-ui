@@ -117,6 +117,8 @@ class TestHandleTable {
     private _locationHash = '';
     /** The modelled `location.pathname`, seeded `'/'`. Shared so a sink write is visible to a source read. */
     private _locationPathname = '/';
+    /** The modelled `location.search`, seeded empty. Shared so a sink write is visible to a source read. */
+    private _locationSearch = '';
 
     /**
      * Mints a fresh handle for a created element / interned target.
@@ -326,6 +328,24 @@ class TestHandleTable {
      */
     setLocationPathname(pathname: string): void {
         this._locationPathname = pathname;
+    }
+
+    /**
+     * Returns the modelled `location.search`.
+     *
+     * @returns The current search, including its leading `"?"`, or `""` when empty.
+     */
+    locationSearch(): string {
+        return this._locationSearch;
+    }
+
+    /**
+     * Writes the modelled `location.search`.
+     *
+     * @param search - The new search, including its leading `"?"`.
+     */
+    setLocationSearch(search: string): void {
+        this._locationSearch = search;
     }
 }
 
@@ -549,10 +569,10 @@ export class RecordingDOMSink implements DOMSink {
     }
 
     /**
-     * Writes the modelled pathname and hash, splitting `url` at its first
-     * `"#"` the way a real `pushState` URL splits across
-     * `location.pathname` / `location.hash`. Dispatches nothing, mirroring
-     * `history.pushState`.
+     * Writes the modelled pathname, search, and hash, splitting `url` at its
+     * first `"#"` and then its first `"?"` the way a real `pushState` URL
+     * splits across `location.pathname` / `location.search` /
+     * `location.hash`. Dispatches nothing, mirroring `history.pushState`.
      */
     pushHistoryPath(url: string): void {
         this.record('pushHistoryPath', url);
@@ -566,9 +586,12 @@ export class RecordingDOMSink implements DOMSink {
     }
 
     private writeHistoryPath(url: string): void {
-        const hashIndex = url.indexOf('#');
+        const hashIndex  = url.indexOf('#');
+        const beforeHash = hashIndex === -1 ? url : url.slice(0, hashIndex);
+        const queryIndex = beforeHash.indexOf('?');
 
-        _table.setLocationPathname(hashIndex === -1 ? url : url.slice(0, hashIndex));
+        _table.setLocationPathname(queryIndex === -1 ? beforeHash : beforeHash.slice(0, queryIndex));
+        _table.setLocationSearch(queryIndex === -1 ? '' : beforeHash.slice(queryIndex));
         _table.setLocationHash(hashIndex === -1 ? '' : url.slice(hashIndex));
     }
 
@@ -1116,6 +1139,11 @@ export class ModelledDOMSource implements DOMSource {
     /** Reads the modelled pathname written by {@link RecordingDOMSink.pushHistoryPath} / `replaceHistoryPath`. */
     getLocationPathname(): string {
         return _table.locationPathname();
+    }
+
+    /** Reads the modelled search written by {@link RecordingDOMSink.pushHistoryPath} / `replaceHistoryPath`. */
+    getLocationSearch(): string {
+        return _table.locationSearch();
     }
 
     /** Climbs `node`'s recorded parents looking for `ancestor` (inclusive). */
