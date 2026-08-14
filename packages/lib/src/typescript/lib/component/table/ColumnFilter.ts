@@ -67,11 +67,11 @@ const STRING_OPERATORS: ColumnFilterOperator[] =
 
 /** Operators offered for a `number` column, in menu order. */
 const ORDERED_OPERATORS: ColumnFilterOperator[] =
-    ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'isEmpty', 'isNotEmpty'];
+    ['contains', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'isEmpty', 'isNotEmpty'];
 
 /** Operators offered for a `date` / `time` / `datetime` column, in menu order. */
 const TEMPORAL_OPERATORS: ColumnFilterOperator[] =
-    ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'startsWith', 'endsWith', 'isEmpty', 'isNotEmpty'];
+    ['contains', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'startsWith', 'endsWith', 'isEmpty', 'isNotEmpty'];
 
 /** Operators offered for a `boolean` column, in menu order. */
 const BOOLEAN_OPERATORS: ColumnFilterOperator[] = ['eq', 'neq', 'isEmpty', 'isNotEmpty'];

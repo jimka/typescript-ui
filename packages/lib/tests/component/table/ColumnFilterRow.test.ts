@@ -413,7 +413,7 @@ describe('Column filter row — typing filters the store (debounced)', () => {
         vi.advanceTimersByTime(200);
 
         expect(store.getFilter('name')).toBeNull();
-        expect(store.getFilter('age')).toEqual({ type: 'eq', field: 'age', value: 25 });
+        expect(store.getFilter('age')).toEqual({ type: 'contains', field: 'age', value: '25' });
     });
 
     it('27. picking an operator applies immediately, replacing the same key', async () => {
@@ -630,7 +630,7 @@ describe('Column filter row — recycling and external sync', () => {
         const numberCell = filterCells(table).find(c => c.getFieldName() === 'c7')!;
 
         expect(numberCell.getFilterState().clauses[0].operator).not.toBe('startsWith');
-        expect(['eq', 'neq', 'gt', 'gte', 'lt', 'lte']).toContain(numberCell.getFilterState().clauses[0].operator);
+        expect(['contains', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte']).toContain(numberCell.getFilterState().clauses[0].operator);
     });
 
     it('31. store.clearFilter() called programmatically blanks the rendered inputs on the next render pass', async () => {
@@ -1062,24 +1062,23 @@ describe('Column filter row — combo and temporal filtering (cell-display-text)
 describe('Column filter row — temporal substring operators (date-column-filter-string-operators)', () => {
     afterEach(() => vi.useRealTimers());
 
-    it('31a. the meet column\'s operator menu offers Contains/Starts with/Ends with directly after At most and before Is empty', async () => {
+    it('31a. the meet column\'s operator menu leads with Contains and offers Starts with/Ends with directly after At most and before Is empty', async () => {
         const { table } = await comboTemporalTable();
 
         const provider = renderer(meetCell(table)).getOperatorButton().getMenuItems() as () => MenuItemConfig[];
         const labels   = provider().map(i => i.text?.trim()).filter((t): t is string => t !== undefined);
 
         expect(labels).toEqual(
-            expect.arrayContaining(['Equals', 'Not equals', 'Greater than', 'At least', 'Less than', 'At most',
-                'Contains', 'Starts with', 'Ends with', 'Is empty', 'Is not empty']));
+            expect.arrayContaining(['Contains', 'Equals', 'Not equals', 'Greater than', 'At least', 'Less than', 'At most',
+                'Starts with', 'Ends with', 'Is empty', 'Is not empty']));
 
-        const atMostIndex    = labels.indexOf('At most');
-        const containsIndex  = labels.indexOf('Contains');
+        const atMostIndex     = labels.indexOf('At most');
         const startsWithIndex = labels.indexOf('Starts with');
         const endsWithIndex   = labels.indexOf('Ends with');
         const isEmptyIndex    = labels.indexOf('Is empty');
 
-        expect(containsIndex).toBe(atMostIndex + 1);
-        expect(startsWithIndex).toBe(containsIndex + 1);
+        expect(labels[0]).toBe('Contains');
+        expect(startsWithIndex).toBe(atMostIndex + 1);
         expect(endsWithIndex).toBe(startsWithIndex + 1);
         expect(isEmptyIndex).toBe(endsWithIndex + 1);
     });
@@ -1706,7 +1705,7 @@ describe('Column filter row — numeric input restriction (filter-numeric-input-
         typeInto(cell, '30');
         pressKey(cell, 'Enter');
 
-        expect(store.getFilter('age')).toEqual({ type: 'eq', field: 'age', value: 30 });
+        expect(store.getFilter('age')).toEqual({ type: 'contains', field: 'age', value: '30' });
 
         pressKey(cell, 'Escape');
 

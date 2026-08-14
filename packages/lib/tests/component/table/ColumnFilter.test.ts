@@ -48,9 +48,9 @@ describe('columnFilterOperators', () => {
         expect(columnFilterOperators('string')).not.toContain('gt');
     });
 
-    it('defaults number/date/time/datetime columns to eq, with the ordering operators', () => {
+    it('defaults number/date/time/datetime columns to contains, with the ordering operators', () => {
         for (const type of ['number', 'date', 'time', 'datetime'] as const) {
-            expect(columnFilterOperators(type)[0]).toBe('eq');
+            expect(columnFilterOperators(type)[0]).toBe('contains');
             expect(columnFilterOperators(type)).toEqual(
                 expect.arrayContaining(['gt', 'gte', 'lt', 'lte']));
         }
@@ -61,20 +61,20 @@ describe('columnFilterOperators', () => {
     });
 
     it('1. date/time/datetime each offer the full ordered + substring + emptiness list, in order', () => {
-        const expected = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'startsWith', 'endsWith', 'isEmpty', 'isNotEmpty'];
+        const expected = ['contains', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'startsWith', 'endsWith', 'isEmpty', 'isNotEmpty'];
 
         expect(columnFilterOperators('date')).toEqual(expected);
         expect(columnFilterOperators('time')).toEqual(expected);
         expect(columnFilterOperators('datetime')).toEqual(expected);
     });
 
-    it('2. the default operator for a temporal column is still eq', () => {
-        expect(columnFilterOperators('date')[0]).toBe('eq');
+    it('2. the default operator for a temporal column is contains', () => {
+        expect(columnFilterOperators('date')[0]).toBe('contains');
     });
 
-    it('3. number columns get no substring operator', () => {
+    it('3. number columns get a substring operator', () => {
         expect(columnFilterOperators('number'))
-            .toEqual(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'isEmpty', 'isNotEmpty']);
+            .toEqual(['contains', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'isEmpty', 'isNotEmpty']);
     });
 
     it('4. string and boolean columns are unchanged', () => {
