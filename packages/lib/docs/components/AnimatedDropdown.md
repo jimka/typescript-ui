@@ -4,6 +4,8 @@
 
 Positioning math (anchor rect, viewport clamping, flip-above-anchor) stays in the host component or in a subclass — `AnimatedDropdown` does not presume anything about where it should appear.
 
+Reaching for `AnimatedDropdown` directly to build a custom popup is usually unnecessary: [`PopupPanel`](/components/PopupPanel) already supplies content measurement, anchored placement, and a height cap on top of this base class, so most "button that opens a custom panel" needs are a `PopupPanel` (or a [`PopupButton`](/components/PopupButton)) away rather than a new subclass.
+
 The following framework components use this base class:
 
 - [`AutoCompleteDropdown`](/api/component/input/classes/AutoCompleteDropdown) (typeahead panel)
@@ -62,3 +64,4 @@ Hosts that compose this dropdown alongside a focusable element whose `blur` comm
 - [`Menu`](/components/Menu) — uses the free-function form
 - [`AutoCompleteField`](/components/AutoCompleteField) — typeahead built on `AnimatedDropdown`
 - [`ComboBox`](/components/ComboBox), [`DateField`](/components/DateField), [`TimeField`](/components/TimeField), [`DateTimeField`](/components/DateTimeField)
+- [`PopupPanel`](/components/PopupPanel) — ready-made content-sized popup built on this base class

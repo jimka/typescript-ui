@@ -60,8 +60,11 @@ const GITHUB_BLOB = "https://github.com/jimka/typescript-ui/blob/master/";
  * Raised again from 6100: the RadioMenuRow catalog entry pushed the site
  * variant to ~6106/6100, for the same reason as the CheckboxMenuRow raise
  * above — one more minimally-worded row.
+ *
+ * Raised again from 6110: the PopupPanel + PopupButton catalog entries
+ * pushed the site variant to ~6258/6110 — two more minimally-worded rows.
  */
-const TOKEN_BUDGET = 6110;
+const TOKEN_BUDGET = 6260;
 
 /** Max summary length (chars). Bounds a single row so the catalog stays under budget. */
 const SUMMARY_CAP = 140;
