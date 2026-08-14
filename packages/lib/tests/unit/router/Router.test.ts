@@ -7,7 +7,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
-import { Router, type RouteMatch, type RouteParams } from '~/router/Router';
+import { Router, type RouteMatch, type RouteParams, type RouteQuery } from '~/router/Router';
 import { normalizePath } from '~/router/RoutePattern';
 
 const CONFIG = {
@@ -89,7 +89,7 @@ describe('Router — lifecycle and navigation', () => {
         router.start();
 
         expect(calls).toEqual([{ params: {}, path: '/settings' }]);
-        expect(navigateEvents).toEqual([{ pattern: '/settings', params: {}, path: '/settings', fragment: '' }]);
+        expect(navigateEvents).toEqual([{ pattern: '/settings', params: {}, path: '/settings', fragment: '', query: {} }]);
     });
 
     it('runs the "/" handler when the hash is empty before start()', () => {
@@ -271,7 +271,7 @@ describe('Router — lifecycle and navigation', () => {
 
         router.start();
 
-        expect(navigateEvents).toEqual([{ pattern: '/settings', params: {}, path: '/settings', fragment: '' }]);
+        expect(navigateEvents).toEqual([{ pattern: '/settings', params: {}, path: '/settings', fragment: '', query: {} }]);
     });
 });
 
@@ -539,7 +539,7 @@ describe('Router — History mode', () => {
         DOM.sink.dispatchCustomEvent(DOM.source.getWindow(), 'popstate');
 
         expect(calls).toEqual([{ sel: '5' }]);
-        expect(navigateEvents.at(-1)).toEqual({ pattern: '/data/rows/:sel', params: { sel: '5' }, path: '/data/rows/5', fragment: '' });
+        expect(navigateEvents.at(-1)).toEqual({ pattern: '/data/rows/:sel', params: { sel: '5' }, path: '/data/rows/5', fragment: '', query: {} });
     });
 
     it('a popstate dispatched after the modelled pathname and hash change calls the handler with both the new path and the new fragment', () => {
@@ -560,7 +560,7 @@ describe('Router — History mode', () => {
         DOM.sink.dispatchCustomEvent(DOM.source.getWindow(), 'popstate');
 
         expect(calls).toEqual([{ path: '/data/rows/5', fragment: 'detail' }]);
-        expect(navigateEvents.at(-1)).toEqual({ pattern: '/data/rows/:sel', params: { sel: '5' }, path: '/data/rows/5', fragment: 'detail' });
+        expect(navigateEvents.at(-1)).toEqual({ pattern: '/data/rows/:sel', params: { sel: '5' }, path: '/data/rows/5', fragment: 'detail', query: {} });
     });
 
     it('start() registers a popstate listener and no hashchange listener; stop() removes it', () => {
@@ -599,5 +599,382 @@ describe('Router — History mode', () => {
 
         expect(router.getHref('/guide')).toBe('/guide');
         expect(router.getPath()).toBe('/guide');
+    });
+});
+
+describe('Router — query parameters', () => {
+    describe('getQuery', () => {
+        it('hash mode reads the query embedded in the hash, and getPath() ignores it', () => {
+            installTestDOM(CONFIG);
+            DOM.sink.setLocationHash('#/settings?tab=advanced');
+
+            const router = new Router();
+
+            expect(router.getQuery()).toEqual({ tab: 'advanced' });
+            expect(router.getPath()).toBe('/settings');
+        });
+
+        it('hash mode with no query is {}', () => {
+            installTestDOM(CONFIG);
+            DOM.sink.setLocationHash('#/settings');
+
+            const router = new Router();
+
+            expect(router.getQuery()).toEqual({});
+        });
+
+        it('hash mode with an explicit href reads that href\'s query', () => {
+            installTestDOM(CONFIG);
+
+            const router = new Router();
+
+            expect(router.getQuery('#/x?a=1')).toEqual({ a: '1' });
+        });
+
+        it('History mode reads location.search, alongside the fragment and path', () => {
+            const sink = installTestDOM(CONFIG);
+            sink.pushHistoryPath('/typescript-ui/x?a=1#frag');
+
+            const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+            expect(router.getQuery()).toEqual({ a: '1' });
+            expect(router.getFragment()).toBe('frag');
+            expect(router.getPath()).toBe('/x');
+        });
+
+        it('History mode with an explicit href reads that href\'s query', () => {
+            installTestDOM(CONFIG);
+
+            const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+            expect(router.getQuery('/typescript-ui/concepts/sizing?depth=2#anchor')).toEqual({ depth: '2' });
+        });
+
+        it('History mode: a "?" only inside the fragment is not a query, because the fragment splits off first', () => {
+            installTestDOM(CONFIG);
+
+            const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+            expect(router.getQuery('/typescript-ui/x#a?b=1')).toEqual({});
+        });
+
+        it('History mode with no search is {}', () => {
+            installTestDOM(CONFIG);
+
+            const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+            expect(router.getQuery()).toEqual({});
+        });
+    });
+
+    describe('getHref', () => {
+        it('back-compat: a bare path is unaffected in both modes', () => {
+            installTestDOM(CONFIG);
+
+            const historyRouter = new Router({ mode: 'history', base: '/typescript-ui/' });
+            const hashRouter    = new Router();
+
+            expect(hashRouter.getHref('/guide')).toBe('#/guide');
+            expect(historyRouter.getHref('/guide')).toBe('/typescript-ui/guide');
+        });
+
+        it('hash mode: an explicit query record is appended', () => {
+            installTestDOM(CONFIG);
+            const router = new Router();
+
+            expect(router.getHref('/table/users', { rotated: 'true' })).toBe('#/table/users?rotated=true');
+        });
+
+        it('hash mode: a query embedded in the path is preserved', () => {
+            installTestDOM(CONFIG);
+            const router = new Router();
+
+            expect(router.getHref('/table/users?rotated=true')).toBe('#/table/users?rotated=true');
+        });
+
+        it('hash mode: an explicit record replaces an embedded query rather than merging', () => {
+            installTestDOM(CONFIG);
+            const router = new Router();
+
+            expect(router.getHref('/x?a=1', { b: '2' })).toBe('#/x?b=2');
+        });
+
+        it('hash mode: an explicit empty record is still a replacement', () => {
+            installTestDOM(CONFIG);
+            const router = new Router();
+
+            expect(router.getHref('/x?a=1', {})).toBe('#/x');
+        });
+
+        it('hash mode: the fragment is dropped but the query is not', () => {
+            installTestDOM(CONFIG);
+            const router = new Router();
+
+            expect(router.getHref('/guide?a=1#intro')).toBe('#/guide?a=1');
+        });
+
+        it('History mode: query comes before fragment', () => {
+            installTestDOM(CONFIG);
+            const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+            expect(router.getHref('/concepts/sizing#anchor', { depth: '2' })).toBe('/typescript-ui/concepts/sizing?depth=2#anchor');
+        });
+
+        it('History mode: an embedded query and fragment are preserved', () => {
+            installTestDOM(CONFIG);
+            const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+            expect(router.getHref('/concepts/sizing?depth=2#anchor')).toBe('/typescript-ui/concepts/sizing?depth=2#anchor');
+        });
+
+        it('percent-encodes both the key and the value', () => {
+            installTestDOM(CONFIG);
+            const router = new Router();
+
+            expect(router.getHref('/a b', { 'x y': 'p&q' })).toBe('#/a%20b?x%20y=p%26q');
+        });
+
+        it('round-trips through getQuery and getPath, in both modes', () => {
+            installTestDOM(CONFIG);
+
+            const historyRouter = new Router({ mode: 'history', base: '/typescript-ui/' });
+            const hashRouter    = new Router();
+            const path          = '/a b';
+            const query: RouteQuery = { 'x y': 'p&q' };
+
+            for (const router of [historyRouter, hashRouter]) {
+                const href = router.getHref(path, query);
+
+                expect(router.getQuery(href)).toEqual(query);
+                expect(router.getPath(href)).toBe(normalizePath(path));
+            }
+        });
+    });
+
+    describe('navigate', () => {
+        it('hash mode: an explicit query is written into the hash', () => {
+            const sink   = installTestDOM(CONFIG);
+            const router = new Router();
+
+            router.navigate('/x', { query: { a: '1' } });
+
+            expect(sink.writes.some((w) => w.op === 'setLocationHash' && w.args[0] === '#/x?a=1')).toBe(true);
+        });
+
+        it('hash mode: an embedded query with { replace: true } writes via replaceLocationHash only', () => {
+            const sink   = installTestDOM(CONFIG);
+            const router = new Router();
+
+            router.navigate('/x?a=1', { replace: true });
+
+            expect(sink.writes.some((w) => w.op === 'replaceLocationHash' && w.args[0] === '#/x?a=1')).toBe(true);
+            expect(sink.writes.some((w) => w.op === 'setLocationHash')).toBe(false);
+        });
+
+        it('hash mode never writes the real location.search', () => {
+            installTestDOM(CONFIG);
+            const router = new Router();
+
+            router.navigate('/x', { query: { a: '1' } });
+
+            expect(DOM.source.getLocationSearch()).toBe('');
+        });
+
+        it('hash mode: an embedded query in the path is written as-is', () => {
+            const sink   = installTestDOM(CONFIG);
+            const router = new Router();
+
+            router.navigate('/guide?a=1#intro');
+
+            expect(sink.writes.some((w) => w.op === 'setLocationHash' && w.args[0] === '#/guide?a=1')).toBe(true);
+        });
+
+        it('hash mode back-compat: no query writes no trailing "?"', () => {
+            const sink   = installTestDOM(CONFIG);
+            const router = new Router();
+
+            router.navigate('/settings');
+
+            expect(sink.writes.some((w) => w.op === 'setLocationHash' && w.args[0] === '#/settings')).toBe(true);
+        });
+
+        it('History mode: an explicit query writes exactly one pushHistoryPath and runs the handler once', () => {
+            const sink = installTestDOM(CONFIG);
+
+            let runs = 0;
+            const router = new Router({ mode: 'history', base: '/typescript-ui/', routes: { '/concepts/sizing': () => { runs += 1; } } });
+
+            router.navigate('/concepts/sizing', { query: { depth: '2' } });
+
+            expect(sink.writes.filter((w) => w.op === 'pushHistoryPath')).toEqual([
+                { op: 'pushHistoryPath', args: ['/typescript-ui/concepts/sizing?depth=2'] },
+            ]);
+            expect(runs).toBe(1);
+        });
+
+        it('History mode: navigating to the same path with the same query records no write and re-runs no handler', () => {
+            const sink = installTestDOM(CONFIG);
+            sink.pushHistoryPath('/typescript-ui/x?a=1');
+
+            let runs = 0;
+            const router = new Router({ mode: 'history', base: '/typescript-ui/', routes: { '/x': () => { runs += 1; } } });
+
+            router.start();
+            expect(runs).toBe(1);
+
+            const writesBefore = sink.writes.length;
+            router.navigate('/x', { query: { a: '1' } });
+
+            expect(sink.writes.length).toBe(writesBefore);
+            expect(runs).toBe(1);
+        });
+
+        it('History mode: key order does not count as a change', () => {
+            const sink = installTestDOM(CONFIG);
+            sink.pushHistoryPath('/typescript-ui/x?a=1&b=2');
+
+            let runs = 0;
+            const router = new Router({ mode: 'history', base: '/typescript-ui/', routes: { '/x': () => { runs += 1; } } });
+
+            router.start();
+            expect(runs).toBe(1);
+
+            const writesBefore = sink.writes.length;
+            router.navigate('/x', { query: { b: '2', a: '1' } });
+
+            expect(sink.writes.length).toBe(writesBefore);
+        });
+
+        it('History mode: a changed query value writes and re-runs the handler', () => {
+            const sink = installTestDOM(CONFIG);
+            sink.pushHistoryPath('/typescript-ui/x?a=1');
+
+            let runs = 0;
+            const router = new Router({ mode: 'history', base: '/typescript-ui/', routes: { '/x': () => { runs += 1; } } });
+
+            router.start();
+            expect(runs).toBe(1);
+
+            const writesBefore = sink.writes.length;
+            router.navigate('/x', { query: { a: '2' } });
+
+            expect(sink.writes.length).toBe(writesBefore + 1);
+            expect(runs).toBe(2);
+        });
+
+        it('History mode: an omitted query clears an existing one, writing and re-running the handler', () => {
+            const sink = installTestDOM(CONFIG);
+            sink.pushHistoryPath('/typescript-ui/x?a=1');
+
+            let runs = 0;
+            const router = new Router({ mode: 'history', base: '/typescript-ui/', routes: { '/x': () => { runs += 1; } } });
+
+            router.start();
+            expect(runs).toBe(1);
+
+            router.navigate('/x');
+
+            expect(sink.writes.filter((w) => w.op === 'pushHistoryPath').at(-1)).toEqual(
+                { op: 'pushHistoryPath', args: ['/typescript-ui/x'] },
+            );
+            expect(runs).toBe(2);
+        });
+
+        it('History mode back-compat: navigate with no query writes the plain path', () => {
+            const sink = installTestDOM(CONFIG);
+            const router = new Router({ mode: 'history', base: '/typescript-ui/' });
+
+            router.navigate('/settings');
+
+            expect(sink.writes.filter((w) => w.op === 'pushHistoryPath')).toEqual([
+                { op: 'pushHistoryPath', args: ['/typescript-ui/settings'] },
+            ]);
+        });
+    });
+
+    describe('handler and RouteMatch', () => {
+        it('hash mode: the handler receives the query as its fourth argument, and RouteMatch carries it', () => {
+            installTestDOM(CONFIG);
+            DOM.sink.setLocationHash('#/data/rows/5?depth=3');
+
+            const calls: Array<[RouteParams, string, string, RouteQuery]> = [];
+            const navigateEvents: RouteMatch[] = [];
+            const router = new Router({
+                routes: { '/data/rows/:sel': (params, path, fragment, query) => calls.push([params, path, fragment, query]) },
+            });
+
+            router.on('navigate', (match) => navigateEvents.push(match));
+            router.start();
+
+            expect(calls).toEqual([[{ sel: '5' }, '/data/rows/5', '', { depth: '3' }]]);
+            expect(navigateEvents).toEqual([
+                { pattern: '/data/rows/:sel', params: { sel: '5' }, path: '/data/rows/5', fragment: '', query: { depth: '3' } },
+            ]);
+        });
+
+        it('hash mode with no query: the fourth argument and RouteMatch.query are both {}', () => {
+            installTestDOM(CONFIG);
+            DOM.sink.setLocationHash('#/data/rows/5');
+
+            const calls: RouteQuery[] = [];
+            const navigateEvents: RouteMatch[] = [];
+            const router = new Router({
+                routes: { '/data/rows/:sel': (_params, _path, _fragment, query) => calls.push(query) },
+            });
+
+            router.on('navigate', (match) => navigateEvents.push(match));
+            router.start();
+
+            expect(calls).toEqual([{}]);
+            expect(navigateEvents[0]?.query).toEqual({});
+        });
+
+        it('History mode: a popstate after a query- and fragment-bearing pathname change calls the handler with both', () => {
+            const sink = installTestDOM(CONFIG);
+
+            const calls: Array<[RouteParams, string, string, RouteQuery]> = [];
+            const router = new Router({
+                mode:   'history',
+                base:   '/typescript-ui/',
+                routes: { '/data/rows/:sel': (params, path, fragment, query) => calls.push([params, path, fragment, query]) },
+            });
+
+            router.start();
+            sink.pushHistoryPath('/typescript-ui/data/rows/5?depth=3#detail');
+            DOM.sink.dispatchCustomEvent(DOM.source.getWindow(), 'popstate');
+
+            expect(calls).toEqual([[{ sel: '5' }, '/data/rows/5', 'detail', { depth: '3' }]]);
+        });
+
+        it('a handler declared with only three parameters still compiles and runs', () => {
+            installTestDOM(CONFIG);
+            DOM.sink.setLocationHash('#/settings?tab=advanced');
+
+            let ran = false;
+            const router = new Router({
+                routes: { '/settings': (_params, _path, _fragment) => { ran = true; } },
+            });
+
+            router.start();
+
+            expect(ran).toBe(true);
+        });
+
+        it('the query never affects which pattern wins', () => {
+            installTestDOM(CONFIG);
+            DOM.sink.setLocationHash('#/x?id=9');
+
+            const calls: RouteParams[] = [];
+            const router = new Router({
+                routes: {
+                    '/x':      (params) => calls.push(params),
+                    '/x/:id':  (params) => calls.push(params),
+                },
+            });
+
+            router.start();
+
+            expect(calls).toEqual([{}]);
+        });
     });
 });

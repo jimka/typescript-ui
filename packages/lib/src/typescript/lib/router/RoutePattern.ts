@@ -34,14 +34,9 @@ export interface CompiledPattern {
  * @returns The normalized path.
  */
 export function normalizePath(input: string): string {
-    let path = input.startsWith("#") ? input.slice(1) : input;
-    const queryIndex = path.indexOf("?");
+    const withoutHash = input.startsWith("#") ? input.slice(1) : input;
 
-    if (queryIndex >= 0) {
-        path = path.slice(0, queryIndex);
-    }
-
-    return "/" + splitPath(path).join("/");
+    return "/" + splitPath(splitQuery(withoutHash).path).join("/");
 }
 
 /**
@@ -71,6 +66,84 @@ export function splitFragment(input: string): { path: string; fragment: string }
     }
 
     return { path: input.slice(0, hashIndex), fragment: input.slice(hashIndex + 1) };
+}
+
+/**
+ * Splits a URL-ish string at its first `"?"`: the part before, and the query
+ * without its `"?"`. Everything after the first `"?"` is the query verbatim —
+ * a second `"?"` stays part of it.
+ *
+ * @param input - The raw href or path, with or without a query.
+ * @returns The part before the first `"?"`, and the query without it.
+ */
+export function splitQuery(input: string): { path: string; query: string } {
+    const queryIndex = input.indexOf("?");
+
+    if (queryIndex === -1) {
+        return { path: input, query: "" };
+    }
+
+    return { path: input.slice(0, queryIndex), query: input.slice(queryIndex + 1) };
+}
+
+/**
+ * Parses a query string into decoded key/value pairs. Tolerates one leading
+ * `"?"`. Later duplicates of a key win; pairs that are empty or have an empty
+ * key are skipped.
+ *
+ * @param query - The raw query string, with or without its leading `"?"`.
+ * @returns The decoded key/value pairs.
+ */
+export function parseQuery(query: string): Record<string, string> {
+    const body   = query.startsWith("?") ? query.slice(1) : query;
+    const result: Record<string, string> = {};
+
+    for (const pair of body.split("&")) {
+        if (pair.length === 0) {
+            continue;
+        }
+
+        const equalsIndex = pair.indexOf("=");
+        const rawKey      = equalsIndex === -1 ? pair : pair.slice(0, equalsIndex);
+        const rawValue    = equalsIndex === -1 ? ""   : pair.slice(equalsIndex + 1);
+        const key         = decodeSegment(rawKey);
+
+        if (key.length === 0) {
+            continue;
+        }
+
+        result[key] = decodeSegment(rawValue);
+    }
+
+    return result;
+}
+
+/**
+ * Serializes key/value pairs into a query string, without a leading `"?"`.
+ * Keys come out in `Object.keys` order — insertion order, except that
+ * integer-like keys come first, in ascending order.
+ *
+ * @param query - The key/value pairs to serialize.
+ * @returns The query string, or `""` for an empty record.
+ */
+export function formatQuery(query: Record<string, string>): string {
+    return Object.keys(query)
+        .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(query[key])}`)
+        .join("&");
+}
+
+/**
+ * Whether two query records hold the same keys with the same values,
+ * regardless of key order.
+ *
+ * @param a - The first query record.
+ * @param b - The second query record.
+ * @returns `true` when both records hold the same key/value pairs.
+ */
+export function sameQuery(a: Record<string, string>, b: Record<string, string>): boolean {
+    const aKeys = Object.keys(a);
+
+    return aKeys.length === Object.keys(b).length && aKeys.every((key) => a[key] === b[key]);
 }
 
 /**
@@ -201,8 +274,8 @@ export function matchPattern(compiled: CompiledPattern, segments: string[]): Rec
 }
 
 /**
- * Decodes a captured path segment, falling back to the raw text when it
- * carries a malformed percent-escape.
+ * Decodes a captured path segment or query part, falling back to the raw
+ * text when it carries a malformed percent-escape.
  *
  * @param value - The raw segment text.
  * @returns The decoded value, or `value` unchanged on a decode failure.

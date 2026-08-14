@@ -2,13 +2,16 @@
 
 import { DOM } from '~/core/DOM.js';
 import { ListenerBag } from '~/core/ListenerBag.js';
-import { compilePattern, normalizePath, splitPath, splitFragment, selectPattern, normalizeBase, stripBase, joinBase, type CompiledPattern } from '~/router/RoutePattern.js';
+import { compilePattern, normalizePath, splitPath, splitFragment, splitQuery, parseQuery, formatQuery, sameQuery, selectPattern, normalizeBase, stripBase, joinBase, type CompiledPattern } from '~/router/RoutePattern.js';
 
 /** Params extracted from a matched pattern's `:name` segments. */
 export type RouteParams = Record<string, string>;
 
+/** Query parameters of a navigation, decoded. Empty when the URL carries none. */
+export type RouteQuery = Record<string, string>;
+
 /** A registered route's callback: drives whatever it fronts, never builds it. */
-export type RouteHandler = (params: RouteParams, path: string, fragment: string) => void;
+export type RouteHandler = (params: RouteParams, path: string, fragment: string, query: RouteQuery) => void;
 
 /** The events a {@link Router} emits. */
 export type RouterEvent = "navigate" | "nomatch";
@@ -25,6 +28,8 @@ export interface RouteMatch {
     path:    string;
     /** The URL fragment without its `"#"`, or `""` when there is none. Always `""` in hash mode. */
     fragment: string;
+    /** The query parameters the URL carried, decoded. `{}` when there are none. */
+    query:    RouteQuery;
 }
 
 /** Construction options for {@link Router}. */
@@ -56,6 +61,13 @@ type CompiledRoute = CompiledPattern & { handler: RouteHandler };
  * `popstate`) listener; call it once the app has built its component tree
  * and before the first layout pass runs, so the routed section is already
  * selected when that pass runs. {@link stop} removes the listener.
+ *
+ * A navigation may also carry query parameters — view-mode properties
+ * layered on top of a route that already matched, never part of pattern
+ * matching. In hash mode the query is embedded in the hash; in History mode
+ * it is the real `location.search`. `getQuery` reads it, `getHref` and
+ * `navigate` write it, and each matched route's handler receives it as a
+ * fourth argument alongside {@link RouteMatch}'s `query` field.
  *
  * It is a plain class (no DOM element, so not `callable()`-wrapped) — it
  * follows the shape of a data store: an options bag, a private listener bag,
@@ -168,22 +180,27 @@ export class Router {
      * spent on the route); in History mode this writes `location.pathname`
      * and `location.hash` via `pushState` / `replaceState` and — since
      * neither fires an event — applies the matching route itself. Either
-     * way, navigating to the path (and, in History mode, fragment) already
-     * current is a same-value write: no history entry is written and no
-     * handler re-runs.
+     * way, navigating to the path (and, in History mode, fragment and query)
+     * already current is a same-value write: no history entry is written and
+     * no handler re-runs.
+     *
+     * `options.query` sets the query explicitly, replacing (never merging)
+     * any query embedded in `path`; an omitted query falls back to whatever
+     * `path` embeds, and both default to no query at all.
      *
      * @param path - The path to navigate to, e.g. `"/settings"` or, in
-     * History mode, `"/settings#section"`.
+     * History mode, `"/settings#section"`. May embed a `?query`.
      * @param options - `replace` to replace the current history entry instead
-     * of pushing a new one.
+     * of pushing a new one; `query` to set the query explicitly.
      * @returns This router, for chaining.
      */
-    navigate(path: string, options?: { replace?: boolean }): this {
-        const split = splitFragment(path);
+    navigate(path: string, options?: { replace?: boolean; query?: RouteQuery }): this {
+        const split        = splitFragment(path);
+        const withoutQuery = splitQuery(split.path);
+        const query        = options?.query ?? parseQuery(withoutQuery.query);
 
         if (this._mode === "hash") {
-            const segments = splitPath(normalizePath(split.path));
-            const hash = "#/" + segments.map((segment) => encodeURIComponent(segment)).join("/");
+            const hash = this.getHref(path, query);
 
             if (options?.replace === true) {
                 DOM.sink.replaceLocationHash(hash);
@@ -194,14 +211,14 @@ export class Router {
             return this;
         }
 
-        const target   = normalizePath(split.path);
+        const target   = normalizePath(withoutQuery.path);
         const fragment = split.fragment;
 
-        if (target === this.getPath() && fragment === this.getFragment()) {
+        if (target === this.getPath() && fragment === this.getFragment() && sameQuery(query, this.getQuery())) {
             return this;
         }
 
-        const url = this.getHref(fragment === "" ? target : `${target}#${fragment}`);
+        const url = this.getHref(fragment === "" ? target : `${target}#${fragment}`, query);
 
         if (options?.replace === true) {
             DOM.sink.replaceHistoryPath(url);
@@ -220,23 +237,33 @@ export class Router {
      * mode. Each segment is percent-encoded. A `#fragment` in `path` is
      * dropped first and, in History mode only, re-appended verbatim
      * (unencoded, so it keeps matching a heading `id`) after the encoded
-     * path — hash mode has nowhere to put it, since its own `#` is already
-     * spent on the route.
+     * path and query — hash mode has nowhere to put it, since its own `#`
+     * is already spent on the route.
+     *
+     * `path` may embed a `?query`; `query` sets it explicitly instead,
+     * replacing (never merging) whatever `path` embeds. The result is
+     * ordered path, then `?query`, then `#fragment`.
      *
      * @param path - The route path to format, e.g. `"/guide/installation"`
-     * or, in History mode, `"/guide/installation#section"`.
+     * or, in History mode, `"/guide/installation#section"`. May embed a
+     * `?query`.
+     * @param query - The query to use instead of whatever `path` embeds.
      * @returns The formatted href.
      */
-    getHref(path: string): string {
-        const split = splitFragment(path);
-        const segments = splitPath(normalizePath(split.path)).map((segment) => encodeURIComponent(segment));
-        const encodedPath = "/" + segments.join("/");
+    getHref(path: string, query?: RouteQuery): string {
+        const split        = splitFragment(path);
+        const withoutQuery = splitQuery(split.path);
+        const effective    = query ?? parseQuery(withoutQuery.query);
+        const segments     = splitPath(normalizePath(withoutQuery.path)).map((segment) => encodeURIComponent(segment));
+        const encodedPath  = "/" + segments.join("/");
+        const queryString  = formatQuery(effective);
+        const suffix       = queryString === "" ? "" : "?" + queryString;
 
         if (this._mode === "hash") {
-            return "#" + encodedPath;
+            return "#" + encodedPath + suffix;
         }
 
-        const href = joinBase(this._base, encodedPath);
+        const href = joinBase(this._base, encodedPath) + suffix;
 
         return split.fragment === "" ? href : `${href}#${split.fragment}`;
     }
@@ -285,6 +312,29 @@ export class Router {
         const hash = DOM.source.getLocationHash();
 
         return hash.startsWith("#") ? hash.slice(1) : hash;
+    }
+
+    /**
+     * The query parameters for `href`, or — with no argument — for the
+     * current URL, decoded. In hash mode the query is embedded in the hash;
+     * in History mode it is the real `location.search`, read through the DOM
+     * seam. Unlike {@link getFragment}, this is never hard-wired to `{}` in
+     * hash mode — the query is real in both modes.
+     *
+     * @param href - The href to parse; defaults to the current hash (hash
+     * mode) or `location.search` (History mode), read through the DOM seam.
+     * @returns The decoded query parameters, or `{}` when there are none.
+     */
+    getQuery(href?: string): RouteQuery {
+        if (this._mode === "hash") {
+            return parseQuery(splitQuery(href ?? DOM.source.getLocationHash()).query);
+        }
+
+        if (href !== undefined) {
+            return parseQuery(splitQuery(splitFragment(href).path).query);
+        }
+
+        return parseQuery(DOM.source.getLocationSearch());
     }
 
     /**
@@ -356,6 +406,7 @@ export class Router {
     private applyCurrentRoute(): void {
         const path     = this.getPath();
         const fragment = this.getFragment();
+        const query    = this.getQuery();
         const result   = selectPattern(Array.from(this._routes.values()), path);
 
         if (result === null) {
@@ -364,9 +415,9 @@ export class Router {
             return;
         }
 
-        const match: RouteMatch = { pattern: result.compiled.pattern, params: result.params, path, fragment };
+        const match: RouteMatch = { pattern: result.compiled.pattern, params: result.params, path, fragment, query };
 
-        result.compiled.handler(result.params, path, fragment);
+        result.compiled.handler(result.params, path, fragment, query);
         this.emit("navigate", match);
     }
 

@@ -17,6 +17,22 @@ In History mode, `location.hash` is free to carry a real URL fragment alongside 
 
 Hash mode discards fragments everywhere: the `#` is already the route, so there's nowhere to put a second one. `getFragment()` always returns `""` in hash mode, and any `#fragment` passed into `getHref` or `navigate` is silently dropped.
 
+### Query parameters
+
+A query parameter is a view-mode property layered on top of a route that already matched — a diagram's initial traversal depth, whether a table view opens rotated, which record index to focus. It never affects which pattern wins; patterns match the path only.
+
+Where the query lives depends on the mode. In hash mode it is written and read inside the hash string itself — `#/table/users?rotated=true` — and `location.search` is never touched. In History mode the query is the real `location.search`, read through the DOM seam. Either way, the URL orders path, then `?query`, then `#fragment`.
+
+`getQuery(href?)` reads it, decoded, with no argument reading the current URL — unlike `getFragment`, it is never hard-wired to `{}` in hash mode, since the query is real in both modes. `getHref(path, query?)` and `navigate(path, { query })` both accept a query embedded in `path` (`"/table/users?rotated=true"`) and an explicit record; when both are present, the explicit record **replaces** the embedded one entirely rather than merging with it — an explicit `{}` still clears whatever `path` embedded.
+
+Keys and values are percent-encoded on write and percent-decoded on read; a duplicate key resolves to its last occurrence.
+
+```typescript
+router.getHref('/table/users', { rotated: 'true' }); // "#/table/users?rotated=true"
+router.navigate('/concepts/sizing', { query: { depth: '2' } });
+router.getQuery(); // { depth: '2' }
+```
+
 ## The surface
 
 ```typescript
@@ -36,14 +52,15 @@ router.start();
 
 - **`register(pattern, handler)`** — adds a route. The `routes` construction option calls this for you, keyed by pattern string.
 - **`start()`** — reads the current hash or path, applies the matching route **synchronously**, then installs the `hashchange` (hash mode) or `popstate` (History mode) listener. Call it once your app has built its component tree and *before* the first layout pass runs — layout in this framework is coalesced onto the next animation frame, so synchronous code at module scope always runs before that frame. Calling `start()` this late, rather than automatically, is what avoids a flash of the wrong section on load: applying the route any earlier finds nothing built yet to select, and applying it any later (e.g. on the first frame) means the default section has already painted.
-- **`navigate(path, options?)`** — writes `path` into the hash or, in History mode, into `location.pathname`. Pass `{ replace: true }` to replace the current history entry instead of pushing a new one. Navigating to the path already current is a same-value write: no history entry is written and no handler re-runs.
-- **`getHref(path)`** — the href an `<a>` for `path` should carry, in this router's mode and base: a `"#/…"` fragment in hash mode, a base-joined path in History mode. Build every link through this method rather than concatenating the mode's URL shape by hand, so a mode change never needs a second place fixed.
+- **`navigate(path, options?)`** — writes `path` into the hash or, in History mode, into `location.pathname`. Pass `{ replace: true }` to replace the current history entry instead of pushing a new one, and `{ query }` to set the query explicitly (see [Query parameters](#query-parameters)). Navigating to the path (and, in History mode, fragment and query) already current is a same-value write: no history entry is written and no handler re-runs.
+- **`getHref(path, query?)`** — the href an `<a>` for `path` should carry, in this router's mode and base: a `"#/…"` fragment in hash mode, a base-joined path in History mode. Build every link through this method rather than concatenating the mode's URL shape by hand, so a mode change never needs a second place fixed.
 - **`getPath(href?)`** — the route path for `href`, or — with no argument — for the current URL, read through the DOM seam. The inverse of `getHref`.
+- **`getQuery(href?)`** — the query parameters for `href`, or — with no argument — for the current URL, decoded (see [Query parameters](#query-parameters)).
 - **`stop()`** — removes the `hashchange` / `popstate` listener. Call it when the router itself is being torn down; an installed listener that is never removed leaks the router and everything its handlers close over.
 
 ## Handlers drive components — they don't build them
 
-A route's handler is called with the extracted params and the normalized path. It should call into components your app already built — `setActiveTabIndex`, showing a `Card` child, and the like — never construct a fresh component tree per navigation. Rebuilding on every navigation would discard scroll position, focus, and expansion state; this is a retained-mode framework, so the tree a route "shows" should already exist and simply become visible.
+A route's handler is called with the extracted params, the normalized path, the fragment, and the query. It should call into components your app already built — `setActiveTabIndex`, showing a `Card` child, and the like — never construct a fresh component tree per navigation. Rebuilding on every navigation would discard scroll position, focus, and expansion state; this is a retained-mode framework, so the tree a route "shows" should already exist and simply become visible.
 
 ## Pattern specificity
 
@@ -69,6 +86,6 @@ router.register('/data/rows/:sel', (params) => {
 ## Listening for navigation
 
 ```typescript
-router.on('navigate', (match) => console.log(match.pattern, match.params, match.path));
+router.on('navigate', (match) => console.log(match.pattern, match.params, match.path, match.query));
 router.on('nomatch',  (path)  => console.warn('No route for', path));
 ```
