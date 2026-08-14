@@ -4,6 +4,7 @@ import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
+import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { AutoRepeat } from "~/core/AutoRepeat.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -341,6 +342,11 @@ class Scrollbar extends Component<ScrollbarOptions> {
     private _thumbPos        : number                   = -1;
     private _dragStartClient : number                   = 0;
     private _dragStartScroll : number                   = 0;
+    // Track hover and drag independently so the thumb-hover fill (driven by
+    // updateThumbFill) can stay applied for the whole drag even once the
+    // pointer strays outside the thumb's bounds and fires a native mouseout.
+    private _thumbHovered    : boolean                  = false;
+    private _thumbDragging   : boolean                  = false;
     private _listeners       : ListenerBag<ScrollbarEvent> = new ListenerBag<ScrollbarEvent>();
 
     private _arrowsEnabled   : boolean                  = true;
@@ -390,7 +396,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
 
         this._thumb = new Component();
         this._thumb.setBackgroundColor("var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))");
-        this._thumb.setCursor("default");
+        this._thumb.setCursor("grab");
 
         // Pre-promote to its own compositor layer: setThumbPos moves the
         // thumb via translate on every scroll tick, so the layer should
@@ -498,15 +504,30 @@ class Scrollbar extends Component<ScrollbarOptions> {
      * Darkens the thumb fill when the cursor moves over it.
      */
     private _onThumbMouseOver = (): void => {
-        this._thumb.setBackgroundColor("var(--ts-ui-scrollbar-thumb-hover, rgba(0, 0, 0, 0.55))");
+        this._thumbHovered = true;
+        this.updateThumbFill();
     };
 
     /**
-     * Restores the thumb's resting fill when the cursor leaves it.
+     * Restores the thumb's resting fill when the cursor leaves it, unless a
+     * drag is still in progress.
      */
     private _onThumbMouseOut = (): void => {
-        this._thumb.setBackgroundColor("var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))");
+        this._thumbHovered = false;
+        this.updateThumbFill();
     };
+
+    /**
+     * Applies the thumb-hover fill whenever the pointer is over the thumb or a
+     * drag is in progress, and the resting fill otherwise — so the highlight
+     * persists for the whole drag even once the pointer strays outside the
+     * thumb's bounds (which fires a native mouseout mid-drag).
+     */
+    private updateThumbFill(): void {
+        this._thumb.setBackgroundColor(this._thumbHovered || this._thumbDragging
+            ? "var(--ts-ui-scrollbar-thumb-hover, rgba(0, 0, 0, 0.55))"
+            : "var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))");
+    }
 
     /**
      * Registers a listener for one of this scrollbar's events.
@@ -832,7 +853,8 @@ class Scrollbar extends Component<ScrollbarOptions> {
     /**
      * Captures the initial client coordinate and scroll position, then attaches
      * viewport listeners so the drag continues even when the pointer or finger
-     * leaves the thumb.
+     * leaves the thumb. Holds the hover fill and pins a grabbing cursor for the
+     * whole drag.
      *
      * @param e - The mousedown or touchstart event on the thumb.
      */
@@ -841,6 +863,8 @@ class Scrollbar extends Component<ScrollbarOptions> {
 
         this._dragStartClient = this.extractClientPrimary(e);
         this._dragStartScroll = this._scrollPosition;
+        this._thumbDragging = true;
+        this.updateThumbFill();
 
         Event.addViewportListener(this, "mousemove",   this._onDragMove);
         Event.addViewportListener(this, "mouseup",     this._onDragEnd);
@@ -848,9 +872,12 @@ class Scrollbar extends Component<ScrollbarOptions> {
         Event.addViewportListener(this, "touchend",    this._onDragEnd);
         Event.addViewportListener(this, "touchcancel", this._onDragEnd);
 
-        // Suppresses pointer events on document.body (not a Component) for the
-        // duration of the drag so the cursor can't snag on other elements.
-        DOM.sink.apply(DOM.source.getBody(), { style: { pointerEvents: "none" } });
+        // Suppresses pointer events on document.body for the duration of the
+        // drag so the cursor can't snag on other elements, and pins a grabbing
+        // cursor on the document element — required because suppressing body
+        // pointer events also takes the thumb out of hit-testing, so its own
+        // "grab" cursor can no longer win a hit test (see PointerDrag.ts).
+        beginPointerDrag("grabbing");
     };
 
     /**
@@ -879,7 +906,9 @@ class Scrollbar extends Component<ScrollbarOptions> {
     };
 
     /**
-     * Removes viewport listeners and restores body pointer events.
+     * Removes viewport listeners, restores body pointer events and the
+     * document cursor, and drops the hover fill unless the pointer is still
+     * over the thumb.
      *
      * @param _e - The mouseup/touchend/touchcancel event ending the drag.
      * @returns `true`, consuming the release that ends the thumb drag.
@@ -891,8 +920,10 @@ class Scrollbar extends Component<ScrollbarOptions> {
         Event.removeViewportListener(this, "touchend",    this._onDragEnd);
         Event.removeViewportListener(this, "touchcancel", this._onDragEnd);
 
-        // Restores pointer events on document.body (not a Component) once the drag ends.
-        DOM.sink.apply(DOM.source.getBody(), { style: { pointerEvents: "" } });
+        this._thumbDragging = false;
+        this.updateThumbFill();
+
+        endPointerDrag();
 
         return true;
     };

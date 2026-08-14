@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { Component } from '~/core/Component';
 import { Scrollbar } from '~/component/container/Scrollbar';
 import { DOM } from '~/core/DOM';
+import type { Handle } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -325,5 +326,112 @@ describe('Scrollbar arrow tick emits scroll on change', () => {
         // listener registration is chainable and no spurious emit occurred from
         // setMetrics alone (setMetrics must not emit "scroll").
         expect(positions).toEqual([]);
+    });
+});
+
+// _onThumbMouseOver/_onThumbMouseOut/_onDragStart/_onDragEnd are private bound
+// fields, not real DOM listeners — calling them directly exercises the same
+// logic a real mouseover/mousedown/mouseup would run without depending on the
+// offline harness's dispatch (which never invokes registered listeners).
+const HOVER_BG   = 'var(--ts-ui-scrollbar-thumb-hover, rgba(0, 0, 0, 0.55))';
+const RESTING_BG = 'var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))';
+
+const FAKE_MOUSEDOWN = { preventDefault: () => {}, clientY: 0 } as unknown as MouseEvent;
+
+/** Reaches the private drag/hover handlers under test, `Tree.test.ts`-style. */
+function drive(bar: Scrollbar): {
+    _onThumbMouseOver: () => void;
+    _onThumbMouseOut:  () => void;
+    _onDragStart:      (e: MouseEvent) => void;
+    _onDragEnd:         (e: Event) => void;
+} {
+    return bar as unknown as ReturnType<typeof drive>;
+}
+
+describe('Scrollbar thumb hover highlight persists through a drag', () => {
+    afterEach(() => DOM.reset());
+
+    it('applies the hover fill on mouseover and the resting fill on mouseout', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical');
+
+        drive(bar)._onThumbMouseOver();
+        expect(thumb(bar).getBackgroundColor()).toBe(HOVER_BG);
+
+        drive(bar)._onThumbMouseOut();
+        expect(thumb(bar).getBackgroundColor()).toBe(RESTING_BG);
+    });
+
+    it('keeps the hover fill for the whole drag even after the pointer leaves the thumb', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical', { arrowsEnabled: false });
+
+        bar.setHeight(400);
+        bar.setMetrics(200, 1200, 0);
+
+        drive(bar)._onThumbMouseOver();
+        drive(bar)._onDragStart(FAKE_MOUSEDOWN);
+
+        // The pointer strays off the thumb mid-drag (its travel box shrinks as
+        // the thumb moves), firing a native mouseout — the highlight must not
+        // drop while the drag is still in progress.
+        drive(bar)._onThumbMouseOut();
+        expect(thumb(bar).getBackgroundColor()).toBe(HOVER_BG);
+
+        drive(bar)._onDragEnd({} as Event);
+        expect(thumb(bar).getBackgroundColor()).toBe(RESTING_BG);
+    });
+
+    it('drops the hover fill on drag end only if the pointer is not still over the thumb', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical', { arrowsEnabled: false });
+
+        bar.setHeight(400);
+        bar.setMetrics(200, 1200, 0);
+
+        drive(bar)._onThumbMouseOver();
+        drive(bar)._onDragStart(FAKE_MOUSEDOWN);
+        drive(bar)._onDragEnd({} as Event);
+
+        // mouseout never fired mid-drag here, so the pointer is still (as far
+        // as the component knows) over the thumb — the fill must stay hovered.
+        expect(thumb(bar).getBackgroundColor()).toBe(HOVER_BG);
+    });
+});
+
+describe('Scrollbar thumb cursor', () => {
+    afterEach(() => DOM.reset());
+
+    it('rests at a grab cursor', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical');
+
+        expect(thumb(bar).getCursor()).toBe('grab');
+    });
+
+    it('pins a grabbing cursor on the document element for the duration of a drag, and releases it after', () => {
+        const sink = installTestDOM(CONFIG);
+        const bar  = new Scrollbar('vertical');
+
+        /** The last style patch written to the named element's tag. */
+        function styleFor(tag: string): Record<string, string> | undefined {
+            const match = sink.writes
+                .filter(w => w.op === 'apply')
+                .reverse()
+                .find(w => DOM.source.getTagName(w.args[0] as Handle) === tag
+                        && (w.args[1] as { style?: unknown }).style !== undefined);
+
+            return (match?.args[1] as { style?: Record<string, string> })?.style;
+        }
+
+        drive(bar)._onDragStart(FAKE_MOUSEDOWN);
+        expect(styleFor('HTML')).toEqual({ cursor: 'grabbing' });
+
+        drive(bar)._onDragEnd({} as Event);
+        expect(styleFor('HTML')).toEqual({ cursor: '' });
     });
 });
