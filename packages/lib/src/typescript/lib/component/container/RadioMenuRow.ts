@@ -50,6 +50,10 @@ class RadioMenuRow extends MenuRow<RadioMenuRowOptions> {
     // The title offset the owning Menu pushed in, or null when this row is
     // standalone — in which case doLayout falls back to MenuItem.TEXT_INSET.
     private _iconStart: number | null = null;
+    // The check-column width the owning Menu pushed in, alongside _iconStart —
+    // needed to tell whether _iconStart was widened for a sibling's icon (see
+    // doLayout's `iconColumnReserved`).
+    private _checkZone: number | null = null;
 
     private readonly _onMouseOver: () => void;
     private readonly _onMouseOut: () => void;
@@ -189,14 +193,15 @@ class RadioMenuRow extends MenuRow<RadioMenuRowOptions> {
 
     /**
      * Stores the menu-computed left offset so the radio button lines up with
-     * the `MenuItem`s around it. `checkZone` and `titleColumn` are unused —
-     * this row has no check column and no shared title column of its own.
+     * the `MenuItem`s around it. `titleColumn` is unused — this row has no
+     * shared title column of its own.
      *
-     * @param _checkZone - Unused.
+     * @param checkZone - Width reserved for the menu's leading checkmark column.
      * @param iconStart - The left offset (in pixels) to align the radio button to.
      * @param _titleColumn - Unused.
      */
-    setColumns(_checkZone: number, iconStart: number, _titleColumn: number): void {
+    setColumns(checkZone: number, iconStart: number, _titleColumn: number): void {
+        this._checkZone = checkZone;
         this._iconStart = iconStart;
         this.scheduleLayout();
     }
@@ -205,6 +210,16 @@ class RadioMenuRow extends MenuRow<RadioMenuRowOptions> {
      * Positions the radio button within the row's content box, vertically
      * centred, at the injected `iconStart` (or `MenuItem.TEXT_INSET` when
      * this row was never given one).
+     *
+     * When a sibling row reserves an icon column, `iconStart` is pushed out
+     * to align with icon rows' *title text* — past their icon — which would
+     * otherwise indent this row's radio button behind an icon-sized gap of
+     * empty space. Aligning with the icon's own position instead
+     * (`checkZone + 4`, matching {@link MenuItem}'s icon inset) keeps the
+     * radio button flush with where a sibling's icon renders, since the
+     * radio button plays the same visual role. With no icon column,
+     * `iconStart` already collapses to `checkZone + MenuItem.TEXT_INSET`, so
+     * this leaves a plain radio-only menu's layout unchanged.
      *
      * @returns This row, for method chaining.
      */
@@ -218,7 +233,9 @@ class RadioMenuRow extends MenuRow<RadioMenuRowOptions> {
         }
 
         const size = this._radio.getPreferredSize() ?? { width: 0, height: 0 };
-        const left = this._iconStart ?? MenuItem.TEXT_INSET;
+        const checkZone           = this._checkZone ?? 0;
+        const iconColumnReserved  = this._iconStart !== null && this._iconStart - checkZone === MenuItem.ICON_ZONE;
+        const left = iconColumnReserved ? checkZone + 4 : (this._iconStart ?? MenuItem.TEXT_INSET);
         const top  = Math.max(0, Math.floor((box.height - size.height) / 2));
 
         this._radio.setX(box.x + left);

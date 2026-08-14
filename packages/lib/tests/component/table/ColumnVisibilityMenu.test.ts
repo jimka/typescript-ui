@@ -315,8 +315,8 @@ describe('Table column visibility — top-level menu, normal mode', () => {
 
         const items = capturedMenuItems(table);
         expect(items).toEqual([
-            { text: 'Export as CSV',  action: expect.any(Function) },
-            { text: 'Export as JSON', action: expect.any(Function) },
+            { text: 'Export as CSV',  glyph: 'file-csv',  action: expect.any(Function) },
+            { text: 'Export as JSON', glyph: 'file-code', action: expect.any(Function) },
         ]);
 
         table.setExportMenuEnabled(false);

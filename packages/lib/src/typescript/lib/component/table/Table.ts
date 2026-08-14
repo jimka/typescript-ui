@@ -16,6 +16,11 @@ import { Menu } from "~/overlay/Menu.js";
 import { Dialog, DialogButtons } from "~/overlay/Dialog.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
+import { Glyph } from "~/component/display/Glyph.js";
+import { table_columns } from "~/glyphs/solid/table_columns.js";
+import { undo } from "~/glyphs/solid/undo.js";
+import { file_csv } from "~/glyphs/solid/file_csv.js";
+import { file_code } from "~/glyphs/solid/file_code.js";
 import { Column } from "~/component/table/Column.js";
 import type { CellType, ColumnConfig, ComboOption } from "~/component/table/ColumnConfig.js";
 import { ColumnSpec, normalizeComboOptions } from "~/component/table/ColumnConfig.js";
@@ -32,6 +37,11 @@ import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import { chainRoom, distributeDragChain, DRAG_DISTRIBUTION_EPSILON } from "~/core/DragChain.js";
+
+// Register the column context menu's item glyphs eagerly at module load —
+// same pattern as PaginationBar's nav glyphs — so a consumer never has to
+// pre-register them before the menu can open.
+Glyph.register(table_columns, undo, file_csv, file_code);
 
 /** Events emitted by {@link Table}. */
 export type TableEvent = "selection" | "cellclick";
@@ -1455,8 +1465,8 @@ class Table extends Component<TableOptions> {
             }
 
             this._columnContextMenu.show(x, y, [
-                { text: 'Export as CSV',  action: () => this.exportCSV()  },
-                { text: 'Export as JSON', action: () => this.exportJSON() },
+                { text: 'Export as CSV',  glyph: 'file-csv',  action: () => this.exportCSV()  },
+                { text: 'Export as JSON', glyph: 'file-code', action: () => this.exportJSON() },
             ]);
 
             return;
@@ -1468,9 +1478,10 @@ class Table extends Component<TableOptions> {
         if (columns.length > 0) {
             items.push(
                 columns.length > COLUMN_MENU_DIALOG_THRESHOLD
-                    ? { text: 'Show/hide columns', action: () => this.showColumnDialog() }
+                    ? { text: 'Show/hide columns', glyph: 'table-columns', action: () => this.showColumnDialog() }
                     : {
                         text:    'Show/hide columns',
+                        glyph:   'table-columns',
                         submenu: { label: 'Show/hide columns', items: this.buildColumnMenuItems(columns) },
                     }
             );
@@ -1478,7 +1489,7 @@ class Table extends Component<TableOptions> {
 
         items.push(
             { separator: true },
-            { text: 'Reset columns', action: () => this.resetColumns() }
+            { text: 'Reset columns', glyph: 'undo', action: () => this.resetColumns() }
         );
 
         if (this._resolvedColumns.some(c => c.isFilterable())) {
@@ -1499,8 +1510,8 @@ class Table extends Component<TableOptions> {
         if (this._exportMenuEnabled) {
             items.push(
                 { separator: true },
-                { text: 'Export as CSV',  action: () => this.exportCSV()  },
-                { text: 'Export as JSON', action: () => this.exportJSON() }
+                { text: 'Export as CSV',  glyph: 'file-csv',  action: () => this.exportCSV()  },
+                { text: 'Export as JSON', glyph: 'file-code', action: () => this.exportJSON() }
             );
         }
 
