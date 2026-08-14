@@ -15,6 +15,7 @@ import { LayoutSize, LayoutSizeUnit, toLayoutSizes, fromLayoutSizes, isRestorabl
 import type { AxisOrientation } from "~/primitive/Axis.js";
 import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
+import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 
 // Pixel thickness of a single draggable gutter. The main-axis sizing math
@@ -1106,35 +1107,94 @@ class Split extends LayoutManager {
 
         const target = this.gutterTargetPane(gutterIndex, components);
 
+        let collapseLeadRow: CheckboxMenuRow | null = null;
+        let collapseNextRow: CheckboxMenuRow | null = null;
+
+        // The two collapse rows are one choice with no "collapses neither"
+        // state to un-check into, so each toggle recomputes the live target
+        // and writes BOTH rows' checked state — including the row that was
+        // just clicked, restoring its own checkbox when it was already the
+        // target. The optional calls cover a test that builds one factory
+        // without the other; `Menu` always calls every factory before the
+        // panel is interactive.
+        const syncCollapseRows = (): void => {
+            const live = this.gutterTargetPane(gutterIndex, components);
+
+            collapseLeadRow?.setChecked(live === gutterIndex);
+            collapseNextRow?.setChecked(live === gutterIndex + 1);
+        };
+
         const configs: MenuItemConfig[] = [
             {
-                text:    "Lock gutter",
-                checked: !gutter.isMovable(),
-                action:  () => gutter.setMovable(!gutter.isMovable()),
+                row: () => {
+                    const row = new CheckboxMenuRow({ text: "Lock gutter", checked: !gutter.isMovable() });
+
+                    row.on("action", () => { gutter.setMovable(!gutter.isMovable()); });
+
+                    return row;
+                },
             },
             { separator: true },
             {
-                text:    `Fix ${leadWord} pane ${extentWord}`,
-                checked: this.getPaneResizeWeight(lead) === 0,
-                action:  () => this.togglePaneResizePin(lead),
+                row: () => {
+                    const row = new CheckboxMenuRow({
+                        text:    `Fix ${leadWord} pane ${extentWord}`,
+                        checked: this.getPaneResizeWeight(lead) === 0,
+                    });
+
+                    row.on("action", () => { this.togglePaneResizePin(lead); });
+
+                    return row;
+                },
             },
             {
-                text:    `Fix ${nextWord} pane ${extentWord}`,
-                checked: this.getPaneResizeWeight(next) === 0,
-                action:  () => this.togglePaneResizePin(next),
+                row: () => {
+                    const row = new CheckboxMenuRow({
+                        text:    `Fix ${nextWord} pane ${extentWord}`,
+                        checked: this.getPaneResizeWeight(next) === 0,
+                    });
+
+                    row.on("action", () => { this.togglePaneResizePin(next); });
+
+                    return row;
+                },
             },
             { separator: true },
             {
-                text:    `Collapse ${leadWord} pane`,
-                checked: target === gutterIndex,
-                enabled: !gutter.isOpaque() && this.paneCollapsible(lead),
-                action:  () => this.retargetGutterCollapse(gutterIndex, gutterIndex),
+                row: () => {
+                    const row = new CheckboxMenuRow({
+                        text:    `Collapse ${leadWord} pane`,
+                        checked: target === gutterIndex,
+                        enabled: !gutter.isOpaque() && this.paneCollapsible(lead),
+                    });
+
+                    row.on("action", () => {
+                        this.retargetGutterCollapse(gutterIndex, gutterIndex);
+                        syncCollapseRows();
+                    });
+
+                    collapseLeadRow = row;
+
+                    return row;
+                },
             },
             {
-                text:    `Collapse ${nextWord} pane`,
-                checked: target === gutterIndex + 1,
-                enabled: !gutter.isOpaque() && this.paneCollapsible(next),
-                action:  () => this.retargetGutterCollapse(gutterIndex, gutterIndex + 1),
+                row: () => {
+                    const row = new CheckboxMenuRow({
+                        text:    `Collapse ${nextWord} pane`,
+                        checked: target === gutterIndex + 1,
+                        enabled: !gutter.isOpaque() && this.paneCollapsible(next),
+                    });
+
+                    row.on("action", () => {
+                        this.retargetGutterCollapse(gutterIndex, gutterIndex + 1);
+                        syncCollapseRows();
+                    });
+
+                    collapseNextRow = row;
+
+                    return row;
+                },
             },
         ];
 

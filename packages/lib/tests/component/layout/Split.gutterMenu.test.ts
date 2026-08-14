@@ -4,8 +4,10 @@ import { Component } from '~/core/Component';
 import { Split } from '~/layout/Split';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { MenuItemConfig } from '~/component/container/MenuItem';
+import { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
+import { _Checkbox as Checkbox } from '~/component/input/Checkbox';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -73,24 +75,81 @@ function openMenuFor(split: Split, gutterIndex: number): MenuItemConfig[] {
     return captured;
 }
 
-/** Row labels in order; separators render as '---'. */
-function labels(configs: MenuItemConfig[]): string[] {
-    return configs.map(c => (c.separator ? '---' : c.text!));
-}
+describe('Split gutter context menu', () => {
+    // Every gutter-menu row wires its own click/mouseover/mouseout listeners
+    // in its constructor and must be disposed before DOM.reset(), or a
+    // leaked row leaves "click" marked installed against a discarded sink
+    // and the next test's `toggle()` dispatch silently finds no handler (see
+    // MenuRow.test.ts's afterEach comment). Declared after DOM.reset()'s
+    // afterEach so it runs first (afterEach hooks run in reverse
+    // registration order).
+    let builtRows: Array<InstanceType<typeof CheckboxMenuRow>> = [];
 
-/** Looks up a row's config by its label. */
-function row(configs: MenuItemConfig[], text: string): MenuItemConfig {
-    const found = configs.find(c => c.text === text);
+    afterEach(() => DOM.reset());
+    afterEach(() => {
+        for (const row of builtRows) {
+            row.dispose();
+        }
+        builtRows = [];
+    });
 
-    if (!found) {
-        throw new Error(`No row titled "${text}"`);
+    // Memoized per config object, not just recorded for teardown: the two
+    // collapse rows close over shared `let collapseLeadRow`/`collapseNextRow`
+    // fields inside one `openGutterMenu` call, so calling a `row:` factory
+    // twice for the same open — e.g. two `row(configs, …)` lookups against
+    // one captured `configs` array — would silently rebind those fields to a
+    // second, test-invisible instance. Caching by config object keeps every
+    // lookup against the same `configs` array returning the one row Split
+    // itself is holding, while a fresh `openMenuFor()` call (a fresh
+    // `configs` array) still builds fresh rows.
+    const builtByConfig = new Map<MenuItemConfig, InstanceType<typeof CheckboxMenuRow>>();
+
+    /** Calls a `row:` factory once per config object, recording the built row for teardown above. */
+    function buildRow(config: MenuItemConfig): InstanceType<typeof CheckboxMenuRow> {
+        let built = builtByConfig.get(config);
+
+        if (!built) {
+            built = config.row!() as InstanceType<typeof CheckboxMenuRow>;
+            builtByConfig.set(config, built);
+            builtRows.push(built);
+        }
+
+        return built;
     }
 
-    return found;
-}
+    /** A built row's label — its only child is its Checkbox. */
+    function rowLabel(row: InstanceType<typeof CheckboxMenuRow>): string {
+        return (row.getComponents()[0] as InstanceType<typeof Checkbox>).getLabel() ?? '';
+    }
 
-describe('Split gutter context menu', () => {
-    afterEach(() => DOM.reset());
+    /** Dispatches a click at `row`'s element, toggling it — mirrors MenuRow.test.ts's `click` helper. */
+    function toggle(row: InstanceType<typeof CheckboxMenuRow>): void {
+        const handle = row.getElement(true)!;
+
+        DOM.sink.dispatchEvent(DOM.source.getWindow(), makeEvent(handle, 'click'));
+    }
+
+    /** Row labels in order; a `row:` config's label is built, a separator renders as '---'. */
+    function labels(configs: MenuItemConfig[]): string[] {
+        return configs.map(c => (c.separator ? '---' : rowLabel(buildRow(c))));
+    }
+
+    /** Looks up a built row by its label, building only as many configs as needed. */
+    function row(configs: MenuItemConfig[], text: string): InstanceType<typeof CheckboxMenuRow> {
+        for (const c of configs) {
+            if (c.separator) {
+                continue;
+            }
+
+            const built = buildRow(c);
+
+            if (rowLabel(built) === text) {
+                return built;
+            }
+        }
+
+        throw new Error(`No row titled "${text}"`);
+    }
 
     it('lays out Lock, Fix-left/right, and Collapse-left/right on a horizontal split', () => {
         installTestDOM(CONFIG);
@@ -130,12 +189,12 @@ describe('Split gutter context menu', () => {
         const { split } = hostSplit(new Split(), 2);
         const gutter = probe(split)._gutters[0];
 
-        expect(row(openMenuFor(split, 0), 'Lock gutter').checked).toBe(false);
+        expect(row(openMenuFor(split, 0), 'Lock gutter').isChecked()).toBe(false);
 
-        row(openMenuFor(split, 0), 'Lock gutter').action!();
+        toggle(row(openMenuFor(split, 0), 'Lock gutter'));
 
         expect(gutter.isMovable()).toBe(false);
-        expect(row(openMenuFor(split, 0), 'Lock gutter').checked).toBe(true);
+        expect(row(openMenuFor(split, 0), 'Lock gutter').isChecked()).toBe(true);
     });
 
     it('Fix left pane width pins and unpins the leading pane\'s resize weight', () => {
@@ -143,17 +202,17 @@ describe('Split gutter context menu', () => {
 
         const { split, panes } = hostSplit(new Split(), 2);
 
-        expect(row(openMenuFor(split, 0), 'Fix left pane width').checked).toBe(false);
+        expect(row(openMenuFor(split, 0), 'Fix left pane width').isChecked()).toBe(false);
 
-        row(openMenuFor(split, 0), 'Fix left pane width').action!();
+        toggle(row(openMenuFor(split, 0), 'Fix left pane width'));
 
         expect(split.getPaneResizeWeight(panes[0])).toBe(0);
-        expect(row(openMenuFor(split, 0), 'Fix left pane width').checked).toBe(true);
+        expect(row(openMenuFor(split, 0), 'Fix left pane width').isChecked()).toBe(true);
 
-        row(openMenuFor(split, 0), 'Fix left pane width').action!();
+        toggle(row(openMenuFor(split, 0), 'Fix left pane width'));
 
         expect(split.getPaneResizeWeight(panes[0])).toBeUndefined();
-        expect(row(openMenuFor(split, 0), 'Fix left pane width').checked).toBe(false);
+        expect(row(openMenuFor(split, 0), 'Fix left pane width').isChecked()).toBe(false);
     });
 
     it('keeps the two pin rows independent', () => {
@@ -161,9 +220,9 @@ describe('Split gutter context menu', () => {
 
         const { split } = hostSplit(new Split(), 2);
 
-        row(openMenuFor(split, 0), 'Fix left pane width').action!();
+        toggle(row(openMenuFor(split, 0), 'Fix left pane width'));
 
-        expect(row(openMenuFor(split, 0), 'Fix right pane width').checked).toBe(false);
+        expect(row(openMenuFor(split, 0), 'Fix right pane width').isChecked()).toBe(false);
     });
 
     it('serves the leading pane by default', () => {
@@ -172,8 +231,8 @@ describe('Split gutter context menu', () => {
         const { split } = hostSplit(new Split(), 2);
         const configs = openMenuFor(split, 0);
 
-        expect(row(configs, 'Collapse left pane').checked).toBe(true);
-        expect(row(configs, 'Collapse right pane').checked).toBe(false);
+        expect(row(configs, 'Collapse left pane').isChecked()).toBe(true);
+        expect(row(configs, 'Collapse right pane').isChecked()).toBe(false);
     });
 
     it('retargets to the trailing pane and back, syncing constraints/gutterTargetPane/chevron', () => {
@@ -183,7 +242,7 @@ describe('Split gutter context menu', () => {
         const p = probe(split);
         const gutters = p._gutters;
 
-        row(openMenuFor(split, 0), 'Collapse right pane').action!();
+        toggle(row(openMenuFor(split, 0), 'Collapse right pane'));
         host.doLayout();
 
         expect(split.getLayoutConstraints(panes[1])!.collapseDirection).toBe('east');
@@ -191,10 +250,10 @@ describe('Split gutter context menu', () => {
         expect(gutters[0].getCollapseDirection()).toBe('east');
 
         let configs = openMenuFor(split, 0);
-        expect(row(configs, 'Collapse right pane').checked).toBe(true);
-        expect(row(configs, 'Collapse left pane').checked).toBe(false);
+        expect(row(configs, 'Collapse right pane').isChecked()).toBe(true);
+        expect(row(configs, 'Collapse left pane').isChecked()).toBe(false);
 
-        row(openMenuFor(split, 0), 'Collapse left pane').action!();
+        toggle(row(openMenuFor(split, 0), 'Collapse left pane'));
         host.doLayout();
 
         expect(split.getLayoutConstraints(panes[0])!.collapseDirection).toBe('west');
@@ -212,7 +271,7 @@ describe('Split gutter context menu', () => {
 
         const { host, split, panes } = hostSplit(new Split(), 2, [undefined, constraints]);
 
-        row(openMenuFor(split, 0), 'Collapse right pane').action!();
+        toggle(row(openMenuFor(split, 0), 'Collapse right pane'));
         host.doLayout();
 
         const stored = split.getLayoutConstraints(panes[1])!;
@@ -233,7 +292,7 @@ describe('Split gutter context menu', () => {
 
         expect(split.getLayoutConstraints(panes[1])).toBeUndefined();
 
-        row(openMenuFor(split, 0), 'Collapse right pane').action!();
+        toggle(row(openMenuFor(split, 0), 'Collapse right pane'));
         host.doLayout();
 
         const stored = split.getLayoutConstraints(panes[1])!;
@@ -252,7 +311,7 @@ describe('Split gutter context menu', () => {
 
         const { split } = hostSplit(new Split(), 2, [undefined, nonCollapsible]);
 
-        expect(row(openMenuFor(split, 0), 'Collapse right pane').enabled).toBe(false);
+        expect(row(openMenuFor(split, 0), 'Collapse right pane').isEnabled()).toBe(false);
     });
 
     it('disables both Collapse rows while the gutter is an opaque collapse strip', () => {
@@ -265,10 +324,51 @@ describe('Split gutter context menu', () => {
 
         const configs = openMenuFor(split, 0);
 
-        expect(row(configs, 'Collapse left pane').enabled).toBe(false);
-        expect(row(configs, 'Collapse right pane').enabled).toBe(false);
-        expect(row(configs, 'Lock gutter').enabled).not.toBe(false);
-        expect(row(configs, 'Fix left pane width').enabled).not.toBe(false);
+        expect(row(configs, 'Collapse left pane').isEnabled()).toBe(false);
+        expect(row(configs, 'Collapse right pane').isEnabled()).toBe(false);
+        expect(row(configs, 'Lock gutter').isEnabled()).toBe(true);
+        expect(row(configs, 'Fix left pane width').isEnabled()).toBe(true);
+    });
+
+    it('B18. toggling one collapse row re-syncs both, including toggling the row already at the target', () => {
+        installTestDOM(CONFIG);
+
+        const { split } = hostSplit(new Split(), 2);
+        const configs = openMenuFor(split, 0);
+        const leadRow = row(configs, 'Collapse left pane');
+        const nextRow = row(configs, 'Collapse right pane');
+
+        // lead is the default target (see 'serves the leading pane by default').
+        expect(leadRow.isChecked()).toBe(true);
+        expect(nextRow.isChecked()).toBe(false);
+
+        // Click the non-target row: retargets to next; both rows re-sync.
+        toggle(nextRow);
+        expect(leadRow.isChecked()).toBe(false);
+        expect(nextRow.isChecked()).toBe(true);
+
+        // Click the SAME row again — it is now already the target, so the
+        // target is unchanged, and the click's own flip-to-unchecked (from
+        // CheckboxMenuRow.activate()) is restored by the re-sync.
+        toggle(nextRow);
+        expect(leadRow.isChecked()).toBe(false);
+        expect(nextRow.isChecked()).toBe(true);
+    });
+
+    it('B18b. toggling the lead collapse row while it is already the target restores its own checkbox', () => {
+        installTestDOM(CONFIG);
+
+        const { split } = hostSplit(new Split(), 2);
+        const configs = openMenuFor(split, 0);
+        const leadRow = row(configs, 'Collapse left pane');
+        const nextRow = row(configs, 'Collapse right pane');
+
+        expect(leadRow.isChecked()).toBe(true); // lead is already the default target
+
+        toggle(leadRow);
+
+        expect(leadRow.isChecked()).toBe(true);
+        expect(nextRow.isChecked()).toBe(false);
     });
 
     it('rebuilds on every open, reflecting direct setter calls made between opens', () => {
@@ -277,7 +377,7 @@ describe('Split gutter context menu', () => {
         const { split, panes } = hostSplit(new Split(), 2);
         const gutter = probe(split)._gutters[0];
 
-        expect(row(openMenuFor(split, 0), 'Lock gutter').checked).toBe(false);
+        expect(row(openMenuFor(split, 0), 'Lock gutter').isChecked()).toBe(false);
 
         gutter.setOpaque(false);
         (gutter as unknown as { setMovable: (v: boolean) => void }).setMovable(false);
@@ -285,8 +385,8 @@ describe('Split gutter context menu', () => {
 
         const configs = openMenuFor(split, 0);
 
-        expect(row(configs, 'Lock gutter').checked).toBe(true);
-        expect(row(configs, 'Fix left pane width').checked).toBe(true);
+        expect(row(configs, 'Lock gutter').isChecked()).toBe(true);
+        expect(row(configs, 'Fix left pane width').isChecked()).toBe(true);
     });
 
     it('is a no-op with no container', () => {

@@ -20,6 +20,7 @@ import { Event } from '~/core/Event';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
+import { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
 import { TreeTable } from '~/component/table/TreeTable';
 import type { TableHeader } from '~/component/table/Header';
 import { FilterCell } from '~/component/table/cell/Filter';
@@ -772,6 +773,20 @@ describe('Column filter row — rotated mode and column visibility', () => {
 });
 
 describe('Column filter row — header context-menu toggle', () => {
+    // Local to this describe block: the Filter row built via `buildRow`
+    // below also wires its own "click" listener and must be disposed before
+    // the module-level table disposal / DOM.reset() (see the file-level
+    // `builtTables` comment above for the underlying gotcha). Nested
+    // `afterEach` hooks run before the ones registered at module scope.
+    let builtRows: Array<InstanceType<typeof CheckboxMenuRow>> = [];
+
+    afterEach(() => {
+        for (const row of builtRows) {
+            row.dispose();
+        }
+        builtRows = [];
+    });
+
     function capturedMenuItems(table: Table): MenuItemConfig[] {
         const captured: { items?: MenuItemConfig[] } = {};
 
@@ -784,13 +799,20 @@ describe('Column filter row — header context-menu toggle', () => {
         return captured.items!;
     }
 
-    // Matches on a trailing "Filter" (`.endsWith`), not an exact-equals after
-    // `.trim()`: the checked face is `'✓ Filter'`, and `.trim()` only strips
-    // whitespace, so the leading `'✓ '` survives and an exact-equals match
-    // would silently stop finding the entry the moment it becomes checked.
-    const isFilterEntry = (i: MenuItemConfig) => i.text?.trim().endsWith('Filter') ?? false;
+    /** Calls a `row:` factory, recording the built row for teardown above. */
+    function buildRow(config: MenuItemConfig): InstanceType<typeof CheckboxMenuRow> {
+        const row = config.row!() as InstanceType<typeof CheckboxMenuRow>;
 
-    it('35. a Filter entry (unchecked) appears after Reset columns when a column is filterable', async () => {
+        builtRows.push(row);
+
+        return row;
+    }
+
+    // The Filter entry is the menu's only `row:` config (see Table.ts's
+    // showColumnMenu): every other top-level entry is a plain MenuItemConfig.
+    const isFilterEntry = (i: MenuItemConfig) => i.row !== undefined;
+
+    it('35. a Filter entry (a row config) appears after Reset columns when a column is filterable', async () => {
         const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
 
         const items       = capturedMenuItems(table);
@@ -798,7 +820,7 @@ describe('Column filter row — header context-menu toggle', () => {
         const filterIndex = items.findIndex(isFilterEntry);
 
         expect(filterIndex).toBeGreaterThan(resetIndex);
-        expect(items[filterIndex].text).toBe('  Filter');
+        expect(items[filterIndex].text).toBeUndefined();
     });
 
     it('36. no Filter entry appears when no column is filterable', async () => {
@@ -809,23 +831,22 @@ describe('Column filter row — header context-menu toggle', () => {
         expect(items.some(isFilterEntry)).toBe(false);
     });
 
-    it('37. invoking the Filter action toggles the row and the entry\'s checkmark', async () => {
+    it('37. the built Filter row\'s checked state tracks table.isFilterRowVisible() across menu rebuilds', async () => {
+        // The click-driven round trip (a real click flips the row, and its
+        // "action" handler applies the new state via setFilterRowVisible) is
+        // covered in ColumnVisibilityMenu.test.ts against this same Table.ts
+        // factory; this case instead pins the build-time binding — that a
+        // freshly rebuilt menu's Filter row always reflects live table state,
+        // per `## Non-Goals`' "menu rebuilds its rows on every open".
         const { table } = await makeTable({ columns: [{ field: 'name', filterable: true }] });
 
-        let items = capturedMenuItems(table);
-        items.find(isFilterEntry)!.action!();
+        expect(buildRow(capturedMenuItems(table).find(isFilterEntry)!).isChecked()).toBe(false);
 
-        expect(table.isFilterRowVisible()).toBe(true);
+        table.setFilterRowVisible(true);
+        expect(buildRow(capturedMenuItems(table).find(isFilterEntry)!).isChecked()).toBe(true);
 
-        items = capturedMenuItems(table);
-        expect(items.find(isFilterEntry)!.text).toBe('✓ Filter');
-
-        items.find(isFilterEntry)!.action!();
-
-        expect(table.isFilterRowVisible()).toBe(false);
-
-        items = capturedMenuItems(table);
-        expect(items.find(isFilterEntry)!.text).toBe('  Filter');
+        table.setFilterRowVisible(false);
+        expect(buildRow(capturedMenuItems(table).find(isFilterEntry)!).isChecked()).toBe(false);
     });
 });
 

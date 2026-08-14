@@ -10,6 +10,10 @@ import { callable } from "~/core/Callable.js";
 /** Events exposed by {@link CheckboxMenuRow}. */
 export type CheckboxMenuRowEvent = "action";
 
+// Dim applied to a disabled row, matching the framework's other composite
+// disabled controls (Button.setEnabled, NumberSpinner.applyEnabled).
+const DISABLED_OPACITY = 0.5;
+
 /**
  * Construction-time options for {@link CheckboxMenuRow}.
  *
@@ -20,6 +24,8 @@ export interface CheckboxMenuRowOptions extends ComponentOptions {
     text?: string;
     /** Initial checked state. Defaults to `false`. */
     checked?: boolean;
+    /** Defaults to `true`. Disabled rows are dimmed and non-interactive. */
+    enabled?: boolean;
     /**
      * Construction-time listener bag; `action` fires after each toggle.
      */
@@ -70,6 +76,7 @@ class CheckboxMenuRow extends MenuRow<CheckboxMenuRowOptions> {
         this._checkbox = new Checkbox({
             label:    options?.text ?? "",
             selected: options?.checked ?? false,
+            enabled:  options?.enabled ?? true,
         });
         // Pointer-inert child so a click anywhere in the row hits the row
         // element and toggles — the same arrangement MenuItem uses for its
@@ -79,6 +86,15 @@ class CheckboxMenuRow extends MenuRow<CheckboxMenuRowOptions> {
         // re-enter it.
         this._checkbox.setPointerEvents("none");
         this.addComponent(this._checkbox);
+
+        if (options?.enabled === false) {
+            // Pointer-inert, not merely guarded: a consumer's `on("action", …)`
+            // handler is a second click listener on this row, which no guard
+            // inside `activate()` can suppress. Keeping the click off the row
+            // is what makes a disabled row truly non-interactive.
+            this.setPointerEvents("none");
+            this.setOpacity(DISABLED_OPACITY);
+        }
 
         this._onMouseOver = () => {
             this.setFocused(true);
@@ -131,10 +147,25 @@ class CheckboxMenuRow extends MenuRow<CheckboxMenuRowOptions> {
     }
 
     /**
+     * Overrides {@link MenuRow.isEnabled}, reading the inner `Checkbox`'s
+     * own enabled state — the cache for this row's `enabled` option, just as
+     * it already is for `checked`.
+     *
+     * @returns Whether this row is interactive.
+     */
+    isEnabled(): boolean {
+        return this._checkbox.isEnabled();
+    }
+
+    /**
      * Flips the checkbox. Called by a click on the row or by
-     * `Menu.activateFocused()` on Enter.
+     * `Menu.activateFocused()` on Enter. A no-op when the row is disabled.
      */
     activate(): void {
+        if (!this.isEnabled()) {
+            return;
+        }
+
         this.setChecked(!this.isChecked());
     }
 

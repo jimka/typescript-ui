@@ -117,7 +117,9 @@ managers read the same constraint field with opposite defaults.
 ## Gutter context menu
 
 Right-clicking a gutter's chevron opens a context menu, rebuilt from live state
-on every open, with three groups of controls:
+on every open, with three groups of controls. Every row is a real
+[`CheckboxMenuRow`](/components/CheckboxMenuRow), so the menu stays open across
+a toggle — several controls can be flipped in one open:
 
 - **Lock gutter** — disables dragging (and the resize cursor) on that gutter
   without affecting its collapse chevron. Wraps
@@ -134,7 +136,10 @@ on every open, with three groups of controls:
   `collapseDirection` constraint (see [Collapsible panels](#collapsible-panels))
   and re-syncing the chevron on the next layout pass. Disabled for a
   `collapsible: false` neighbour, and both disabled while the gutter itself is
-  a collapsed strip.
+  a collapsed strip. The two rows remain one choice, not two independent
+  toggles: checking one unchecks the other, including when the just-clicked
+  row was already the target, which restores its own checkbox rather than
+  leaving it unchecked.
 
 Row labels follow the split's orientation: `left`/`right`/`width` on a
 horizontal split, `top`/`bottom`/`height` on a vertical one. [`Border`](/layouts/Border)'s

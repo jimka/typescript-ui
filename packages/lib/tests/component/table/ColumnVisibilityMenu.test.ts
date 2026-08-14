@@ -7,11 +7,12 @@
 // capturedMenuItems stub.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
 import { _Dialog as Dialog } from '~/overlay/Dialog';
 import { _Checkbox as Checkbox } from '~/component/input/Checkbox';
+import { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
 import { _Text as Text } from '~/component/input/Text';
 import { _HBox as HBox } from '~/layout/HBox';
 import { MemoryStore } from '~/data/MemoryStore';
@@ -29,7 +30,38 @@ const CONFIG = {
 };
 
 beforeEach(() => installTestDOM(CONFIG));
+
+// Rows built via a `row:` factory (the Filter row and each field row) wire
+// window-level click/mouseover/mouseout listeners in their constructor and
+// must be disposed before DOM.reset(), or a leaked row leaves the type
+// marked installed against a discarded sink and the next test's dispatch
+// silently finds no handler (see MenuRow.test.ts's afterEach comment).
+// afterEach hooks run in reverse registration order, so this is declared
+// after DOM.reset()'s to run before it.
+let builtRows: Array<InstanceType<typeof CheckboxMenuRow>> = [];
+
+// Every Table built by `makeTable` carries per-column ResizeHandles, each
+// wiring its own "click" listener; left undisposed (as every case here did
+// before `toggle()` existed, since no case ever dispatched a real click) it
+// keeps "click" permanently marked installed against that test's now-discarded
+// sink, so a later test's `toggle()` dispatch silently finds no handler — the
+// exact "click"/"submit" gotcha documented in Form.test.ts's `disposeForm`.
+// Disposing here is idempotent even for the case (20) that already disposes
+// its own table.
+let builtTables: Table[] = [];
+
 afterEach(() => DOM.reset());
+afterEach(() => {
+    for (const row of builtRows) {
+        row.dispose();
+    }
+    builtRows = [];
+
+    for (const table of builtTables) {
+        table.dispose();
+    }
+    builtTables = [];
+});
 
 // The submenu's indent: four literal U+00A0 non-breaking spaces (see
 // Table.ts's GROUP_INDENT).
@@ -52,6 +84,8 @@ async function makeTable(model: Model, spec?: ColumnSpec): Promise<Table> {
     table.setWidth(600);
     table.setHeight(400);
     table.doLayout();
+
+    builtTables.push(table);
 
     return table;
 }
@@ -124,9 +158,42 @@ function capturedMenuItems(table: Table, x = 0, y = 0): MenuItemConfig[] {
     return captured.items!;
 }
 
-/** Row labels in order; separators render as '---'. */
+/** Calls a `row:` factory, recording the built row for teardown in `afterEach`. */
+function buildRow(config: MenuItemConfig): InstanceType<typeof CheckboxMenuRow> {
+    const row = config.row!() as InstanceType<typeof CheckboxMenuRow>;
+
+    builtRows.push(row);
+
+    return row;
+}
+
+// Named apart from the dialog-row `rowLabel` below (which prefixes
+// 'H:'/'C:' for a Text/Checkbox pair) — a built menu row's label is unprefixed.
+/** A built menu row's label — its only child is its Checkbox. */
+function menuRowLabel(row: InstanceType<typeof CheckboxMenuRow>): string {
+    return (row.getComponents()[0] as InstanceType<typeof Checkbox>).getLabel() ?? '';
+}
+
+/** Dispatches a click at `row`'s element, toggling it — mirrors MenuRow.test.ts's `click` helper. */
+function toggle(row: InstanceType<typeof CheckboxMenuRow>): void {
+    const handle = row.getElement(true)!;
+
+    DOM.sink.dispatchEvent(DOM.source.getWindow(), makeEvent(handle, 'click'));
+}
+
+/** Row labels in order; a `row:` config's label is built, a separator renders as '---'. */
 function labels(configs: MenuItemConfig[]): string[] {
-    return configs.map(c => (c.separator ? '---' : c.text!));
+    return configs.map(c => {
+        if (c.separator) {
+            return '---';
+        }
+
+        if (c.row !== undefined) {
+            return menuRowLabel(buildRow(c));
+        }
+
+        return c.text!;
+    });
 }
 
 /** The submenu items array under the top-level "Show/hide columns" row. */
@@ -207,23 +274,38 @@ describe('Table column visibility — top-level menu, normal mode', () => {
         expect(items[1].text).toBe('Reset columns');
     });
 
-    it('5. Reset columns / Filter / export entries keep their text, order, and separators', async () => {
+    it('5. Reset columns / Filter / export entries keep their order and separators; Filter is a row config', async () => {
         const table = await makeTable(wideModel(3), { columns: [{ field: 'col0', filterable: true }] });
         table.setExportMenuEnabled(true);
 
         const items       = capturedMenuItems(table);
         const resetIndex  = items.findIndex(i => i.text === 'Reset columns');
-        const filterIndex = items.findIndex(i => i.text?.trim().endsWith('Filter') ?? false);
+        const filterIndex = items.findIndex(i => i.row !== undefined);
         const csvIndex    = items.findIndex(i => i.text === 'Export as CSV');
         const jsonIndex   = items.findIndex(i => i.text === 'Export as JSON');
 
         expect(items[resetIndex - 1]).toEqual({ separator: true });
         expect(items[filterIndex - 1]).toEqual({ separator: true });
         expect(filterIndex).toBeGreaterThan(resetIndex);
-        expect(items[filterIndex].text).toBe('  Filter');
+        expect(items[filterIndex].text).toBeUndefined();
+        expect(menuRowLabel(buildRow(items[filterIndex]))).toBe('Filter');
         expect(items[csvIndex - 1]).toEqual({ separator: true });
         expect(csvIndex).toBeGreaterThan(filterIndex);
         expect(jsonIndex).toBe(csvIndex + 1);
+    });
+
+    it('5b. the built Filter row starts checked to isFilterRowVisible(), and toggling it round-trips the table state', async () => {
+        const table = await makeTable(wideModel(3), { columns: [{ field: 'col0', filterable: true }] });
+
+        const filterRow = buildRow(capturedMenuItems(table).find(i => i.row !== undefined)!);
+
+        expect(filterRow.isChecked()).toBe(table.isFilterRowVisible());
+
+        toggle(filterRow);
+        expect(table.isFilterRowVisible()).toBe(true);
+
+        toggle(filterRow);
+        expect(table.isFilterRowVisible()).toBe(false);
     });
 
     it('6. rotated mode is unchanged: export rows only when enabled, no menu otherwise', async () => {
@@ -248,29 +330,28 @@ describe('Table column visibility — top-level menu, normal mode', () => {
 describe('Table column visibility — submenu contents', () => {
     it('7. rows appear in field order, one per resolved column, each labelled with the field name', async () => {
         const table = await groupedTable();
-        const fieldRows = submenuItems(table).filter(i => i.action !== undefined);
+        const fieldRows = submenuItems(table).filter(i => i.row !== undefined).map(buildRow);
 
-        expect(fieldRows.map(i => i.text!.trim())).toEqual(
+        expect(fieldRows.map(r => menuRowLabel(r).trim())).toEqual(
             ['Name', 'Active', 'Score', 'Role', 'Joined', 'Meeting', 'LastSeen', 'Manager', 'Notes', 'locked']
         );
     });
 
-    it('8. checked matches visibility; no row\'s text begins with the old \'✓ \'/\'  \' prefix', async () => {
+    it('8. isChecked() matches column visibility, for both a visible and a hidden column', async () => {
         const table    = await groupedTable();
-        const items    = submenuItems(table);
-        const fieldRow = (name: string) => items.find(i => i.action !== undefined && i.text?.trim() === name)!;
+        const rows     = submenuItems(table).filter(i => i.row !== undefined).map(buildRow);
+        const fieldRow = (name: string) => rows.find(r => menuRowLabel(r).trim() === name)!;
 
-        expect(fieldRow('Name').checked).toBe(true);
-        expect(fieldRow('Active').checked).toBe(true);
-        expect(fieldRow('Notes').checked).toBe(false);
-        expect(fieldRow('locked').checked).toBe(false);
-        expect(items.every(i => !(i.text ?? '').startsWith('✓ ') && !(i.text ?? '').startsWith('  '))).toBe(true);
+        expect(fieldRow('Name').isChecked()).toBe(true);
+        expect(fieldRow('Active').isChecked()).toBe(true);
+        expect(fieldRow('Notes').isChecked()).toBe(false);
+        expect(fieldRow('locked').isChecked()).toBe(false);
     });
 
     it('9. a disabled group-header row precedes each grouped run; only grouped runs get one', async () => {
         const table   = await groupedTable();
         const items   = submenuItems(table);
-        const headers = items.filter(i => !i.separator && i.action === undefined);
+        const headers = items.filter(i => !i.separator && i.row === undefined);
 
         expect(headers.map(h => h.text)).toEqual(['Identity', 'Activity']);
         expect(headers.every(h => h.enabled === false && h.checked === undefined)).toBe(true);
@@ -298,22 +379,28 @@ describe('Table column visibility — submenu contents', () => {
         ]);
     });
 
-    it('11. an unhideable column\'s row is enabled:false and checked:true', async () => {
+    it('11. an unhideable column\'s row is disabled and checked', async () => {
         const table = await groupedTable();
-        const nameRow = submenuItems(table).find(i => i.text?.trim() === 'Name')!;
+        const rows  = submenuItems(table).filter(i => i.row !== undefined).map(buildRow);
+        const nameRow = rows.find(r => menuRowLabel(r).trim() === 'Name')!;
 
-        expect(nameRow.enabled).toBe(false);
-        expect(nameRow.checked).toBe(true);
+        expect(nameRow.isEnabled()).toBe(false);
+        expect(nameRow.isChecked()).toBe(true);
     });
 
-    it('12. invoking a visible column\'s row action hides only that column; rebuilding shows it unchecked', async () => {
-        const table = await groupedTable();
+    it('12. toggling a visible column\'s row hides it; toggling the SAME row instance again shows it', async () => {
+        const table  = await groupedTable();
         const before = table.getColumns().map(c => c.getField().getName());
+        const rows   = submenuItems(table).filter(i => i.row !== undefined).map(buildRow);
+        const scoreRow = rows.find(r => menuRowLabel(r).trim() === 'Score')!;
 
-        submenuItems(table).find(i => i.text?.trim() === 'Score')!.action!();
+        toggle(scoreRow);
 
         expect(table.getColumns().map(c => c.getField().getName())).toEqual(before.filter(n => n !== 'Score'));
-        expect(submenuItems(table).find(i => i.text?.trim() === 'Score')!.checked).toBe(false);
+
+        toggle(scoreRow);
+
+        expect(table.getColumns().map(c => c.getField().getName())).toEqual(before);
     });
 });
 

@@ -542,6 +542,23 @@ describe('Menu focus navigation (persistent)', () => {
         expect(onClose).not.toHaveBeenCalled();
     });
 
+    it('activateFocused leaves a disabled CheckboxMenuRow\'s isChecked() unchanged', () => {
+        installTestDOM(CONFIG);
+
+        let row!: InstanceType<typeof CheckboxMenuRow>;
+        const configs: MenuItemConfig[] = [
+            { row: () => { row = new CheckboxMenuRow({ text: 'Bold', enabled: false }); return row; } },
+        ];
+        const menu = new Menu(configs, () => {});
+
+        menu.focusItem(0);
+        menu.activateFocused();
+
+        expect(row.isChecked()).toBe(false);
+
+        menu.dispose();
+    });
+
     it('activateFocused no-ops when nothing is focused', () => {
         installTestDOM(CONFIG);
 

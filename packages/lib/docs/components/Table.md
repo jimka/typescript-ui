@@ -264,10 +264,12 @@ A column is no longer limited to one operator and one value: open a column's ope
 
 The column header's right-click context menu lists every resolved column's
 visibility as a checkable "Show/hide columns" submenu, one row per column in
-field order. A grouped column's row sits under its group name, rendered as a
-disabled section header above the group's members. An `unhideable` column is
-still listed, but its row is disabled — it can never be turned off. Toggling
-a row hides or shows that column immediately and closes the menu.
+field order. Each row is a real [`CheckboxMenuRow`](/components/CheckboxMenuRow),
+so toggling it applies immediately and leaves the submenu open — several
+columns can be flipped in one open. A grouped column's row sits under its
+group name, rendered as a disabled section header above the group's members.
+An `unhideable` column is still listed, but its row is a disabled checkbox —
+it can never be turned off.
 
 Past 20 resolved columns the trigger opens a modal dialog instead of the
 submenu, so a wide table's toggles stay comfortable to scan and scroll

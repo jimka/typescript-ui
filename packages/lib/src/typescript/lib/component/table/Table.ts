@@ -15,6 +15,7 @@ import { Insets } from "~/primitive/Insets.js";
 import { Menu } from "~/overlay/Menu.js";
 import { Dialog, DialogButtons } from "~/overlay/Dialog.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
+import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
 import { Column } from "~/component/table/Column.js";
 import type { CellType, ColumnConfig, ComboOption } from "~/component/table/ColumnConfig.js";
 import { ColumnSpec, normalizeComboOptions } from "~/component/table/ColumnConfig.js";
@@ -1484,8 +1485,13 @@ class Table extends Component<TableOptions> {
             items.push(
                 { separator: true },
                 {
-                    text:   (this._filterRowVisible ? '✓ ' : '  ') + 'Filter',
-                    action: () => this.setFilterRowVisible(!this._filterRowVisible),
+                    row: () => {
+                        const row = new CheckboxMenuRow({ text: 'Filter', checked: this._filterRowVisible });
+
+                        row.on('action', () => { this.setFilterRowVisible(row.isChecked()); });
+
+                        return row;
+                    },
                 },
             );
         }
@@ -1547,11 +1553,17 @@ class Table extends Component<TableOptions> {
                 }
             }
 
+            const label   = (group !== null ? GROUP_INDENT : "") + fieldName;
+            const enabled = !col.isUnhideable();
+
             items.push({
-                text:    (group !== null ? GROUP_INDENT : "") + fieldName,
-                checked: visible,
-                action:  () => this.setColumnVisible(fieldName, !visible),
-                enabled: !col.isUnhideable(),
+                row: () => {
+                    const row = new CheckboxMenuRow({ text: label, checked: visible, enabled });
+
+                    row.on('action', () => { this.setColumnVisible(fieldName, row.isChecked()); });
+
+                    return row;
+                },
             });
 
             lastGroup = group;

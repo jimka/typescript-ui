@@ -34,6 +34,9 @@ page resets to empty.
   Passing `undefined` clears a previously-set pin, restoring the pane to
   ratio-based persistence in `getPaneSizes`. Existing callers passing a
   number are unaffected.
+- **The gutter context menu's five toggles are now `CheckboxMenuRow` rows**,
+  so the menu stays open across a toggle instead of closing on every click —
+  several controls can be flipped in one open. No consumer action is needed.
 
 ### Table
 
@@ -62,6 +65,10 @@ page resets to empty.
 - **A `number` column's header filter input now refuses non-numeric
   characters as they are typed** instead of accepting them and silently
   applying no filter. No consumer action is needed.
+- **The header context menu's Filter toggle and its "Show/hide columns"
+  submenu rows are now `CheckboxMenuRow` rows**, so toggling Filter or a
+  column no longer closes the menu — several columns can be flipped in one
+  open. No consumer action is needed.
 
 ## Added
 
@@ -148,7 +155,8 @@ page resets to empty.
   `MenuSeparator` now extend it, with no public-surface change.
 - **`CheckboxMenuRow`**, a menu row hosting a real `Checkbox` that toggles
   without closing the menu — the worked example for `MenuRow`, and a
-  ready-made way to build a multi-select menu.
+  ready-made way to build a multi-select menu. Its `enabled` option (default
+  `true`) dims a disabled row and makes it ignore clicks and Enter.
 
 ## Fixed
 
