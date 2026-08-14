@@ -138,7 +138,9 @@ describe('Scrollbar thumb geometry (arrows disabled)', () => {
         bar.setHeight(400);
         bar.setMetrics(200, 800, 0);
 
+        // Position rides the translate, not the static Y — see setThumbPos.
         expect(thumb(bar).getY()).toBe(0);
+        expect(thumb(bar).getTranslateY()).toBe(0);
     });
 
     it('keeps thumbPos + thumbSize within the track across a scroll sweep', () => {
@@ -156,7 +158,7 @@ describe('Scrollbar thumb geometry (arrows disabled)', () => {
         for (const scroll of [0, 100, 500, maxScroll]) {
             bar.setMetrics(viewport, content, scroll);
 
-            const pos  = thumb(bar).getY();
+            const pos  = thumb(bar).getTranslateY();
             const size = thumb(bar).getHeight();
 
             // Relational invariant: the thumb never extends past the track end.
@@ -178,7 +180,7 @@ describe('Scrollbar thumb geometry (arrows disabled)', () => {
 
         bar.setMetrics(viewport, content, content - viewport);
 
-        const pos  = thumb(bar).getY();
+        const pos  = thumb(bar).getTranslateY();
         const size = thumb(bar).getHeight();
 
         // Contract: at max scroll the thumb bottom is flush with the track end.
@@ -203,7 +205,54 @@ describe('Scrollbar thumb geometry (arrows enabled)', () => {
 
         // The start arrow occupies the first TRACK_WIDTH px, so the thumb at
         // scroll 0 begins one TRACK_WIDTH lower than with arrows off.
-        expect(thumb(on).getY() - thumb(off).getY()).toBe(TRACK_WIDTH);
+        expect(thumb(on).getTranslateY() - thumb(off).getTranslateY()).toBe(TRACK_WIDTH);
+    });
+});
+
+describe('Scrollbar thumb positioning is composite-only', () => {
+    afterEach(() => DOM.reset());
+
+    // setThumbPos runs on every scroll tick. Positioning the thumb via
+    // setX/setY (top/left) would force layout + paint on every tick; routing
+    // it through setTranslate keeps the move composite-only. The static X/Y
+    // pinned at construction must never change once a real scroll position
+    // has been pushed through — only the translate should move.
+    it('moves the thumb via translate, leaving its static X/Y pinned', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical', { arrowsEnabled: false });
+
+        bar.setHeight(400);
+        bar.setMetrics(200, 1200, 0);
+
+        const staticY = thumb(bar).getY();
+
+        for (const scroll of [100, 500, 1000]) {
+            bar.setMetrics(200, 1200, scroll);
+
+            expect(thumb(bar).getY()).toBe(staticY);
+        }
+
+        expect(thumb(bar).getTranslateY()).toBeGreaterThan(0);
+    });
+
+    it('mirrors the pin on the horizontal axis', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('horizontal', { arrowsEnabled: false });
+
+        bar.setWidth(400);
+        bar.setMetrics(200, 1200, 0);
+
+        const staticX = thumb(bar).getX();
+
+        for (const scroll of [100, 500, 1000]) {
+            bar.setMetrics(200, 1200, scroll);
+
+            expect(thumb(bar).getX()).toBe(staticX);
+        }
+
+        expect(thumb(bar).getTranslateX()).toBeGreaterThan(0);
     });
 });
 
@@ -223,7 +272,7 @@ describe('Scrollbar horizontal orientation', () => {
 
         bar.setMetrics(viewport, content, content - viewport);
 
-        const pos  = thumb(bar).getX();
+        const pos  = thumb(bar).getTranslateX();
         const size = thumb(bar).getWidth();
 
         expect(size).toBe(Math.max(THUMB_MIN_SIZE, Math.floor(trackLength * (viewport / content))));

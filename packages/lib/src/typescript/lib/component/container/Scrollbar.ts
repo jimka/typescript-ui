@@ -392,6 +392,11 @@ class Scrollbar extends Component<ScrollbarOptions> {
         this._thumb.setBackgroundColor("var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))");
         this._thumb.setCursor("default");
 
+        // Pre-promote to its own compositor layer: setThumbPos moves the
+        // thumb via translate on every scroll tick, so the layer should
+        // already exist before the first drag/scroll pays to create it.
+        this._thumb.setWillChange("transform");
+
         if (this.isVertical()) {
             this._thumb.setX(THUMB_INSET);
             this._thumb.setY(0);
@@ -779,14 +784,21 @@ class Scrollbar extends Component<ScrollbarOptions> {
      * when those are enabled.
      *
      * @param pos - The new thumb position in pixels, relative to the track region.
+     *
+     * @remarks Written through `setTranslate`, not `setX`/`setY`: this runs on
+     * every scroll tick, and a `top`/`left` write forces layout + paint where a
+     * transform is composite-only. The thumb's static X/Y (set at construction
+     * and, for the cross axis, in `setMetrics`) stays put; the full along-axis
+     * offset lives entirely in the translate, mirroring the row pool's
+     * `setY(0)` + per-frame `setTranslate` split in `VirtualRowView`.
      */
     private setThumbPos(pos: number): void {
         const origin = this.getTrackOrigin();
 
         if (this.isVertical()) {
-            this._thumb.setY(origin + pos);
+            this._thumb.setTranslate(0, origin + pos);
         } else {
-            this._thumb.setX(origin + pos);
+            this._thumb.setTranslate(origin + pos, 0);
         }
     }
 

@@ -74,9 +74,19 @@ const CONFIG = {
 beforeEach(() => installTestDOM(CONFIG));
 afterEach(() => DOM.reset());
 
-/** `{ x, y, width, height }` of a laid-out child, for rectangle comparison. */
+/**
+ * `{ x, y, width, height }` of a laid-out child, for rectangle comparison.
+ * Folds in the translate offset — a scroll-driven thumb or pooled row keeps
+ * its static X/Y pinned and carries its position via `setTranslate` instead,
+ * so the static box alone would under-report its true visual rect.
+ */
 function rect(c: Component): { x: number; y: number; width: number; height: number } {
-    return { x: c.getX(), y: c.getY(), width: c.getWidth(), height: c.getHeight() };
+    return {
+        x: c.getX() + c.getTranslateX(),
+        y: c.getY() + c.getTranslateY(),
+        width: c.getWidth(),
+        height: c.getHeight(),
+    };
 }
 
 /**
@@ -1296,7 +1306,7 @@ describe('Scrollbar.setMetrics keeps the thumb and both arrows inside the conten
         bare.setHeight(196);
         bare.setMetrics(200, 1000, 0);
 
-        expect(thumb(bare).getY()).toBe(thumb(bordered).getY());
+        expect(thumb(bare).getTranslateY()).toBe(thumb(bordered).getTranslateY());
         expect(thumb(bare).getHeight()).toBe(thumb(bordered).getHeight());
         expect(arrowEnd(bare).getY()).toBe(arrowEnd(bordered).getY());
 
@@ -1315,6 +1325,7 @@ describe('Scrollbar.setMetrics keeps the thumb and both arrows inside the conten
         bar.setMetrics(200, 1000, 0);
 
         expect(thumb(bar).getY()).toBe(0);
+        expect(thumb(bar).getTranslateY()).toBe(0);
         expect(thumb(bar).getHeight()).toBe(39);
     });
 
