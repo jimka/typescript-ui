@@ -96,6 +96,9 @@ page resets to empty.
 - **A `Dialog`'s plain-text `message` can now be selected and copied.** A
   dialog built with a custom `contentComponent` is unaffected — that
   content controls its own selectability. No consumer action is needed.
+- **A `Notification` toast's message, and the full message shown in its
+  detail dialog, can now be selected and copied.** No consumer action is
+  needed.
 
 ## Added
 
