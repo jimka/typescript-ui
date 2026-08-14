@@ -78,6 +78,12 @@ page resets to empty.
   submenu rows are now `CheckboxMenuRow` rows**, so toggling Filter or a
   column no longer closes the menu — several columns can be flipped in one
   open. No consumer action is needed.
+- **Table cell values can now be selected and copied by dragging across
+  them; column headers, parent-header bands and group-separator labels
+  still cannot.** On a `TreeTable`, a row's own press-and-drag reparent
+  gesture takes precedence over text selection — double-click (word) and
+  shift-click (range) still select a row's text there. No consumer action
+  is needed.
 
 ### Display
 
