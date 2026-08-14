@@ -189,6 +189,52 @@ export function positionFlexibleAnchored(
 }
 
 /**
+ * The chosen coordinate for a size-flexible anchored element, plus the room
+ * available on the vertical side it landed on.
+ *
+ * @category Core
+ */
+export interface AnchoredFlexiblePlacement {
+    x:         number;
+    y:         number;
+    /** Room (px) on the vertical side the element landed on — the caller's height cap. */
+    available: number;
+}
+
+/**
+ * Places a **size-flexible** element against `anchorRect` inside `viewport`:
+ * {@link positionFlexibleAnchored} on the vertical axis (grows below, flips
+ * above when the room below is short and above is roomier, and reports the
+ * room at the chosen side) composed with {@link positionAligned} on the
+ * horizontal axis (aligns to the anchor's left edge, flipping to the right
+ * edge when that overflows). This is the placement every content-sized panel
+ * anchored under a trigger needs — a fixed-size panel that only wants a
+ * coordinate should use {@link positionAnchored} instead.
+ *
+ * @param anchorRect - The anchor element's bounding rect.
+ * @param size - The element's unclamped preferred width/height.
+ * @param viewport - The viewport size to clamp/flip within.
+ * @param margin - Viewport-edge margin in px, applied on both axes.
+ * @returns The resolved top-left `{ x, y }` plus the room available at the
+ *   chosen vertical side.
+ *
+ * @category Core
+ */
+export function positionAnchoredFlexible(
+    anchorRect: Rect,
+    size:       Size,
+    viewport:   Size,
+    margin:     number,
+): AnchoredFlexiblePlacement {
+    const v = positionFlexibleAnchored(anchorRect.top, anchorRect.bottom, size.height, viewport.height, margin);
+    const x = positionAligned(anchorRect.left, anchorRect.right, size.width, viewport.width, margin);
+
+    // `available` is the room on the side the panel actually landed on — never
+    // re-derive it from `v.start`, which measures the wrong side after a flip.
+    return { x, y: v.start, available: v.available };
+}
+
+/**
  * Places an element of `size` against `anchorRect` inside `viewport`. On the
  * primary axis it grows past the anchor's far edge (below / right), flipping to
  * the near edge (above / left) only when the far side lacks room AND the near

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { positionAnchored, positionAligned, positionFlexibleAnchored } from '~/core/OverlayPosition';
+import { positionAnchored, positionAligned, positionFlexibleAnchored, positionAnchoredFlexible } from '~/core/OverlayPosition';
 import type { Rect } from '~/core/DOM';
 import type { Size } from '~/primitive/Size';
 
@@ -297,5 +297,50 @@ describe('positionFlexibleAnchored', () => {
 
         expect(p.start).toBeGreaterThanOrEqual(viewportMargin);
         expect(p).toEqual({ start: viewportMargin, available: 756 });
+    });
+});
+
+describe('positionAnchoredFlexible', () => {
+    // Viewport 1280×800, margin 4 — the same fixture PopupPanel's Expected
+    // Behaviour table uses, so these four rows pin that table directly.
+    const vp     = size(1280, 800);
+    const margin = 4;
+
+    it('fits below: left-aligns, no flip, available is the room below', () => {
+        const anchor  = rect(100, 100, 180, 124);
+        const content = size(200, 300);
+
+        const p = positionAnchoredFlexible(anchor, content, vp, margin);
+
+        expect(p).toEqual({ x: 100, y: 124, available: 672 });
+    });
+
+    it('flips above when the room below is short and above is roomier', () => {
+        const anchor  = rect(100, 700, 180, 724);
+        const content = size(200, 300);
+
+        const p = positionAnchoredFlexible(anchor, content, vp, margin);
+
+        // Bottom flush with the anchor top: y = 700 - 300 = 400.
+        expect(p).toEqual({ x: 100, y: 400, available: 696 });
+    });
+
+    it('flips above and caps: taller content than the room above still flips and clamps to the margin', () => {
+        const anchor  = rect(100, 700, 180, 724);
+        const content = size(200, 900);
+
+        const p = positionAnchoredFlexible(anchor, content, vp, margin);
+
+        expect(p).toEqual({ x: 100, y: 4, available: 696 });
+    });
+
+    it('right-aligns horizontally when the near alignment overflows the viewport', () => {
+        const anchor  = rect(1200, 100, 1270, 124);
+        const content = size(200, 300);
+
+        const p = positionAnchoredFlexible(anchor, content, vp, margin);
+
+        // Right edges align: x = 1270 - 200 = 1070.
+        expect(p).toEqual({ x: 1070, y: 124, available: 672 });
     });
 });
