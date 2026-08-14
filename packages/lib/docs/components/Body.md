@@ -60,11 +60,28 @@ Body.init({ favicon: false });          // no icon
 
 `favicon: false` means "do not install one"; it does not remove an icon that is already there. To install the icon from an app that mounts without `Body.init`, call [`Favicon.install()`](/api/core/classes/Favicon) directly.
 
+## Context menu
+
+`Body.init` also suppresses the browser's own right-click menu, page-wide:
+
+```typescript
+Body.init({ layoutManager: Fit(), components: [appShell] });   // native menu suppressed
+```
+
+That includes a `TextField`'s native editing menu — right-clicking one no longer offers cut / copy / paste / spellcheck. Pass `nativeContextMenu: true` to restore the browser's menu everywhere instead:
+
+```typescript
+Body.init({ layoutManager: Fit(), components: [appShell], nativeContextMenu: true });   // native menu restored
+```
+
+A menu the library or your app opens on `contextmenu` — `Tree`, `DiagramView`, a `Split` gutter's chevron, your own `Event.addListener(comp, 'contextmenu', …)` handler — keeps working unchanged either way. To suppress the native menu from an app that mounts without `Body.init`, call `Body.getInstance().setNativeContextMenu(false)` directly.
+
 ## Notes
 
 - **Singleton** — constructed when the `Body` module is first imported, not on first call. `Body.init()` and `Body.getInstance()` both hand back that same existing instance. Do not `Body()` yourself.
 - **Resize listener** — `Body` listens for `window.resize` and re-runs layout from itself. Adding a top-level component to `Body` is what wires it into the responsive layout pass.
 - **Theme bootstrap** — call `ThemeManager.setTheme(ClassicTheme)` (or any theme) before adding components, so style rules pick up the right CSS variables.
+- **Context menu** — the browser's native right-click menu is suppressed page-wide by default; pass `nativeContextMenu: true` to restore it, including on text inputs.
 
 ## See also
 

@@ -63,7 +63,7 @@ Event.addListener(myList, 'contextmenu', (e: MouseEvent) => {
 
 ## Notes
 
-- `e.preventDefault()` is required to suppress the browser's native context menu.
+- [`Body.init`](/components/Body) already suppresses the browser's native context menu page-wide, so `e.preventDefault()` here is what keeps this handler correct for an app that opted back in with `nativeContextMenu: true`.
 - `Menu` is appended to `document.documentElement` so it always layers above the rest of the UI.
 - The menu closes itself automatically; you don't need to call `hide` after an `action` runs.
 
