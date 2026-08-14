@@ -5,7 +5,9 @@ import { Split } from '~/layout/Split';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { MenuItemConfig } from '~/component/container/MenuItem';
 import { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
+import { RadioMenuRow } from '~/component/container/RadioMenuRow';
 import { _Checkbox as Checkbox } from '~/component/input/Checkbox';
+import { _RadioButton as RadioButton } from '~/component/input/RadioButton';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -75,6 +77,10 @@ function openMenuFor(split: Split, gutterIndex: number): MenuItemConfig[] {
     return captured;
 }
 
+// Either of the two row classes the gutter menu builds: three rows stay
+// CheckboxMenuRow, the collapse pair is now RadioMenuRow.
+type GutterMenuRow = InstanceType<typeof CheckboxMenuRow> | InstanceType<typeof RadioMenuRow>;
+
 describe('Split gutter context menu', () => {
     // Every gutter-menu row wires its own click/mouseover/mouseout listeners
     // in its constructor and must be disposed before DOM.reset(), or a
@@ -83,7 +89,7 @@ describe('Split gutter context menu', () => {
     // MenuRow.test.ts's afterEach comment). Declared after DOM.reset()'s
     // afterEach so it runs first (afterEach hooks run in reverse
     // registration order).
-    let builtRows: Array<InstanceType<typeof CheckboxMenuRow>> = [];
+    let builtRows: Array<GutterMenuRow> = [];
 
     afterEach(() => DOM.reset());
     afterEach(() => {
@@ -102,14 +108,14 @@ describe('Split gutter context menu', () => {
     // lookup against the same `configs` array returning the one row Split
     // itself is holding, while a fresh `openMenuFor()` call (a fresh
     // `configs` array) still builds fresh rows.
-    const builtByConfig = new Map<MenuItemConfig, InstanceType<typeof CheckboxMenuRow>>();
+    const builtByConfig = new Map<MenuItemConfig, GutterMenuRow>();
 
     /** Calls a `row:` factory once per config object, recording the built row for teardown above. */
-    function buildRow(config: MenuItemConfig): InstanceType<typeof CheckboxMenuRow> {
+    function buildRow(config: MenuItemConfig): GutterMenuRow {
         let built = builtByConfig.get(config);
 
         if (!built) {
-            built = config.row!() as InstanceType<typeof CheckboxMenuRow>;
+            built = config.row!() as GutterMenuRow;
             builtByConfig.set(config, built);
             builtRows.push(built);
         }
@@ -117,13 +123,13 @@ describe('Split gutter context menu', () => {
         return built;
     }
 
-    /** A built row's label — its only child is its Checkbox. */
-    function rowLabel(row: InstanceType<typeof CheckboxMenuRow>): string {
-        return (row.getComponents()[0] as InstanceType<typeof Checkbox>).getLabel() ?? '';
+    /** A built row's label — its only child is a Checkbox or a RadioButton, both sharing getLabel(). */
+    function rowLabel(row: GutterMenuRow): string {
+        return (row.getComponents()[0] as InstanceType<typeof Checkbox> | InstanceType<typeof RadioButton>).getLabel() ?? '';
     }
 
-    /** Dispatches a click at `row`'s element, toggling it — mirrors MenuRow.test.ts's `click` helper. */
-    function toggle(row: InstanceType<typeof CheckboxMenuRow>): void {
+    /** Dispatches a click at `row`'s element, toggling/selecting it — mirrors MenuRow.test.ts's `click` helper. */
+    function toggle(row: GutterMenuRow): void {
         const handle = row.getElement(true)!;
 
         DOM.sink.dispatchEvent(DOM.source.getWindow(), makeEvent(handle, 'click'));
@@ -135,7 +141,7 @@ describe('Split gutter context menu', () => {
     }
 
     /** Looks up a built row by its label, building only as many configs as needed. */
-    function row(configs: MenuItemConfig[], text: string): InstanceType<typeof CheckboxMenuRow> {
+    function row(configs: MenuItemConfig[], text: string): GutterMenuRow {
         for (const c of configs) {
             if (c.separator) {
                 continue;
@@ -330,7 +336,31 @@ describe('Split gutter context menu', () => {
         expect(row(configs, 'Fix left pane width').isEnabled()).toBe(true);
     });
 
-    it('B18. toggling one collapse row re-syncs both, including toggling the row already at the target', () => {
+    it('S7. a gutter collapsing neither pane starts with both collapse rows unselected but enabled', () => {
+        installTestDOM(CONFIG);
+
+        const leadConstraints = new LayoutConstraints();
+        leadConstraints.collapseDirection = 'east';
+        const nextConstraints = new LayoutConstraints();
+        nextConstraints.collapseDirection = 'west';
+
+        const { split } = hostSplit(new Split(), 2, [leadConstraints, nextConstraints]);
+        const configs = openMenuFor(split, 0);
+        const leadRow = row(configs, 'Collapse left pane');
+        const nextRow = row(configs, 'Collapse right pane');
+
+        expect(leadRow.isChecked()).toBe(false);
+        expect(nextRow.isChecked()).toBe(false);
+        expect(leadRow.isEnabled()).toBe(true);
+        expect(nextRow.isEnabled()).toBe(true);
+
+        toggle(nextRow);
+
+        expect(nextRow.isChecked()).toBe(true);
+        expect(leadRow.isChecked()).toBe(false);
+    });
+
+    it('B18. clicking the non-target collapse row selects it and clears the sibling; a repeat click is a no-op', () => {
         installTestDOM(CONFIG);
 
         const { split } = hostSplit(new Split(), 2);
@@ -342,20 +372,21 @@ describe('Split gutter context menu', () => {
         expect(leadRow.isChecked()).toBe(true);
         expect(nextRow.isChecked()).toBe(false);
 
-        // Click the non-target row: retargets to next; both rows re-sync.
+        // Click the non-target row: RadioMenuRow.activate() selects it, then
+        // syncCollapseRows retargets and clears the sibling.
         toggle(nextRow);
         expect(leadRow.isChecked()).toBe(false);
         expect(nextRow.isChecked()).toBe(true);
 
-        // Click the SAME row again — it is now already the target, so the
-        // target is unchanged, and the click's own flip-to-unchecked (from
-        // CheckboxMenuRow.activate()) is restored by the re-sync.
+        // Click the SAME row again — it is already the target and already
+        // selected, so activate() is a select-only no-op and the re-sync
+        // recomputes the identical target: nothing changes.
         toggle(nextRow);
         expect(leadRow.isChecked()).toBe(false);
         expect(nextRow.isChecked()).toBe(true);
     });
 
-    it('B18b. toggling the lead collapse row while it is already the target restores its own checkbox', () => {
+    it('B18b. clicking the lead collapse row while it is already the target leaves both rows unchanged', () => {
         installTestDOM(CONFIG);
 
         const { split } = hostSplit(new Split(), 2);
@@ -365,10 +396,33 @@ describe('Split gutter context menu', () => {
 
         expect(leadRow.isChecked()).toBe(true); // lead is already the default target
 
+        // activate() on an already-selected row is a no-op, and
+        // syncCollapseRows recomputes the same live target — nothing changes.
         toggle(leadRow);
 
         expect(leadRow.isChecked()).toBe(true);
         expect(nextRow.isChecked()).toBe(false);
+    });
+
+    it('the collapse rows are select-only RadioMenuRow, not CheckboxMenuRow: activate() alone leaves an already-selected row selected', () => {
+        installTestDOM(CONFIG);
+
+        // syncCollapseRows always rewrites both rows' checked state after a
+        // click, so every click-driven assertion above reads the same
+        // whichever row class built the pair. Calling activate() directly —
+        // bypassing the click event and therefore syncCollapseRows entirely
+        // — isolates the row's own activation rule: a CheckboxMenuRow would
+        // flip an already-selected row to unchecked here; a RadioMenuRow is
+        // select-only and leaves it selected.
+        const { split } = hostSplit(new Split(), 2);
+        const configs = openMenuFor(split, 0);
+        const leadRow = row(configs, 'Collapse left pane');
+
+        expect(leadRow.isChecked()).toBe(true); // lead is already the default target
+
+        leadRow.activate();
+
+        expect(leadRow.isChecked()).toBe(true);
     });
 
     it('rebuilds on every open, reflecting direct setter calls made between opens', () => {

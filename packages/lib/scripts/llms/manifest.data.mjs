@@ -107,6 +107,7 @@ export const groups = [
         { task: "Edge-anchored sliding drawer", symbol: "Drawer" },
         { task: "Context / dropdown menu", symbol: "Menu" },
         { task: "Checkbox row in a menu", symbol: "CheckboxMenuRow" },
+        { task: "Radio row in a menu", symbol: "RadioMenuRow" },
         { task: "Anchored floating popover", symbol: "Popover" },
         { task: "Hover tooltip", symbol: "Tooltip" },
         { task: "Transient toast notification", symbol: "Notification" },
