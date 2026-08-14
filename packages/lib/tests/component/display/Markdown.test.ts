@@ -1653,3 +1653,9 @@ describe('Markdown code editor disposal', () => {
         expect(anyMd._renderGeneration).toBeGreaterThan(generationBefore);
     });
 });
+
+describe('Markdown selectable text', () => {
+    it('opts the root into user-select: text so rendered prose can be selected', () => {
+        expect(new Markdown('# Hi').getUserSelect()).toBe('text');
+    });
+});

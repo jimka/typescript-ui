@@ -599,6 +599,13 @@ class Markdown extends Component<MarkdownOptions> {
         this.setWhiteSpace("normal");
         this.setElementCSSRule("overflowWrap", "break-word");
 
+        // Rendered prose is read-only content the reader copies (a code
+        // sample, an error message, a changelog entry), not interactive UI
+        // chrome. `Markdown`'s children are raw DOM nodes rather than
+        // `Component`s, so they carry no `user-select` of their own and
+        // inherit this value.
+        this.setUserSelect("text");
+
         // Prose reads continuously, unlike the framework's UI controls (tuned
         // for scanned single-line text), so it wants looser leading. Inherits
         // to every prose descendant; code/pre reset it back to "normal" via
