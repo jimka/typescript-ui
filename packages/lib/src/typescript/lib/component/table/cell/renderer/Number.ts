@@ -36,6 +36,9 @@ class NumberRenderer extends CellRenderer<Number | null> {
         this._text.setAutoMeasure(false);
 
         this.addComponent(this._text);
+
+        this.setUserSelect("text");
+        this._text.setUserSelect("text");
     }
 
     /**

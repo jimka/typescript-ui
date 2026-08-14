@@ -56,6 +56,8 @@ class ParentHeaderCell extends DefaultCell {
         renderer.getText().setFontWeight("bold");
         renderer.getText().setTextAlign("center");
         renderer.getText().setText(text);
+        renderer.setUserSelect("none");
+        renderer.getText().setUserSelect("none");
 
         // The cell's `Cell` base writes `var(--ts-ui-table-cell-bg, …)` into
         // backgroundColor; override to either the consumer-supplied

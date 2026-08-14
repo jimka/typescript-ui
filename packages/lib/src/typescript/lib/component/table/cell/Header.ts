@@ -116,6 +116,12 @@ class HeaderCell extends DefaultCell {
         renderer.getText().setFontWeight("bold");
         renderer.getText().setText(text);
 
+        // A column title is chrome, not data, so it stays unselectable even
+        // though StringRenderer (which DefaultCell built this cell's
+        // renderer from) now opts in.
+        renderer.setUserSelect("none");
+        renderer.getText().setUserSelect("none");
+
         // DefaultCell's `(tag?: string)` super-signature cannot carry the
         // `styleRules` options bag, so the rule is allocated here via the
         // protected `createStyleRule` builder — same dedupe-and-defer path

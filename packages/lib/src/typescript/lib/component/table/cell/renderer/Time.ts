@@ -28,6 +28,9 @@ class TimeRenderer extends CellRenderer<Date | null> {
         this._text.setPointerEvents("none");
         this._text.setAutoMeasure(false);
         this.addComponent(this._text);
+
+        this.setUserSelect("text");
+        this._text.setUserSelect("text");
     }
 
     getValue(): Date | null {

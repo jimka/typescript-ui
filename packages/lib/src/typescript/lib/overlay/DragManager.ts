@@ -357,8 +357,9 @@ function onSourceMouseDown(this: Component, e: MouseEvent): void {
     // listener for the type exists. A raw document-level mouseup binding would
     // race SpinButton-class registrants that already pre-empt mouseup at
     // capture and never fire.
-    Event.addViewportListener(source, "mousemove", onMouseMove);
-    Event.addViewportListener(source, "mouseup",   onMouseUp);
+    Event.addViewportListener(source, "mousemove",   onMouseMove);
+    Event.addViewportListener(source, "mouseup",     onMouseUp);
+    Event.addViewportListener(source, "selectstart", onSelectStart);
 }
 
 /**
@@ -480,6 +481,27 @@ function enterNewTarget(session: DragSession, target: DropTargetRecord, detail: 
 }
 
 /**
+ * Suppresses the browser's own text-selection gesture for the duration of a
+ * drag session, which would otherwise run alongside it now that table cell
+ * text is selectable — the drag is mouse-driven (mousedown/mousemove), not
+ * HTML5 drag-and-drop, so nothing else stops a selection from painting in
+ * parallel. `preventDefault()` on `mousemove` does not by itself stop the
+ * browser from extending a selection (verified live: the selection still
+ * grew with every `mousemove` observably prevented), so the suppression has
+ * to target `selectstart` itself. Registered and torn down alongside the
+ * mousemove/mouseup viewport listeners, so it is live only while a session
+ * exists — including the brief press-to-release window of a plain click
+ * that never crosses the drag threshold, where losing the (invisible)
+ * collapsed-caret placement a real `selectstart` would otherwise produce
+ * has no observable effect on a non-editable table cell.
+ *
+ * @returns Always suppresses the event while installed.
+ */
+function onSelectStart(): Event.ListenerResult {
+    return { stop: true, prevent: true };
+}
+
+/**
  * Drives the active session forward each frame: commits past the
  * threshold, moves the ghost, hands target changes to the
  * enter / leave helpers, and re-runs `onDragOver` while the cursor stays
@@ -500,7 +522,7 @@ function onMouseMove(e: MouseEvent): Event.ListenerResult {
         const dy = e.clientY - session.startY;
 
         if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) {
-            return true;
+            return { stop: true, prevent: true };
         }
 
         const startDetail = buildDetail(session, e.clientX, e.clientY);
@@ -508,7 +530,7 @@ function onMouseMove(e: MouseEvent): Event.ListenerResult {
         if (session.sourceOptions.onDragStart?.(startDetail) === false) {
             endSession(false, e.clientX, e.clientY);
 
-            return true;
+            return { stop: true, prevent: true };
         }
 
         commitSession(session);
@@ -532,14 +554,14 @@ function onMouseMove(e: MouseEvent): Event.ListenerResult {
     if (target === null) {
         leaveCurrentTarget(session, detail);
 
-        return true;
+        return { stop: true, prevent: true };
     }
 
     if (session.currentTarget !== target.component) {
         leaveCurrentTarget(session, detail);
         enterNewTarget(session, target, detail);
 
-        return true;
+        return { stop: true, prevent: true };
     }
 
     // Same target as last frame — re-check accepts so the feedback
@@ -559,7 +581,7 @@ function onMouseMove(e: MouseEvent): Event.ListenerResult {
             session.indicator.detach();
         }
 
-        return true;
+        return { stop: true, prevent: true };
     }
 
     const hint = target.options.onDragOver?.(detail);
@@ -571,7 +593,7 @@ function onMouseMove(e: MouseEvent): Event.ListenerResult {
         session.indicator.detach();
     }
 
-    return true;
+    return { stop: true, prevent: true };
 }
 
 /**
@@ -627,8 +649,9 @@ function endSession(dropped: boolean, clientX: number, clientY: number): void {
 
     const session = activeSession;
 
-    Event.removeViewportListener(session.source, "mousemove", onMouseMove);
-    Event.removeViewportListener(session.source, "mouseup",   onMouseUp);
+    Event.removeViewportListener(session.source, "mousemove",   onMouseMove);
+    Event.removeViewportListener(session.source, "mouseup",     onMouseUp);
+    Event.removeViewportListener(session.source, "selectstart", onSelectStart);
 
     // The drag chrome is built fresh for every committed gesture in
     // `commitSession` and held only on the session record — none of it is
