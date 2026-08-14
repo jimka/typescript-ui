@@ -43,3 +43,4 @@ The menu opens under the button's bottom-left corner and **flips above it** when
 - [`Menu`](/components/Menu) — the dropdown panel and its item descriptors
 - [`SplitButton`](/components/SplitButton) — a button with a *separate* primary action and a trailing dropdown chevron
 - [`NotificationHistoryButton`](/components/NotificationHistoryButton) — a ready-made `MenuButton` subclass
+- [`PopupButton`](/components/PopupButton) — the closest sibling, for arbitrary popup content instead of a list of items

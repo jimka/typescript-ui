@@ -85,3 +85,4 @@ Power users who need a complex composition skip the conveniences and call `addCo
 - [`Tooltip`](/components/Tooltip) — ephemeral, hover-triggered, no interactive content
 - [`Dialog`](/components/Dialog) — modal with focus trap and backdrop
 - [`AnimatedDropdown`](/components/AnimatedDropdown) — shared fade lifecycle
+- [`PopupPanel`](/components/PopupPanel) — content-sized, dropdown-geometry sibling for a trigger-anchored panel that needs a height cap rather than a bubble

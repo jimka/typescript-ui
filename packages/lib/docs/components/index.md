@@ -21,6 +21,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`Dock`](/components/Dock) | Rearrangeable panel layout — reorder, tear-off, edge-split, and save/restore |
 | [`Tooltip`](/api/overlay/classes/Tooltip) | Singleton hover hint, attach via `Tooltip.attach(component, text)` |
 | [`Popover`](/components/Popover) | Anchored, non-modal floating bubble with arrow tail and dismiss modes |
+| [`PopupPanel`](/components/PopupPanel) | Content-sized floating panel anchored to a trigger, with a height cap that scrolls |
 | [`Notification`](/api/overlay/classes/Notification) | Static toast — `Notification.show(message, type, duration?)` |
 | [`NotificationHistoryButton`](/api/overlay/classes/NotificationHistoryButton) | Button opening a menu of recent notifications to review and re-open |
 | [`AnimatedDropdown`](/api/core/classes/AnimatedDropdown) | Floating-panel base with shared fade lifecycle |
@@ -33,6 +34,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`ToggleButton`](/api/component/button/classes/ToggleButton) | Two-state press button |
 | [`SplitButton`](/api/component/button/classes/SplitButton) | Click button with a trailing dropdown-menu chevron |
 | [`MenuButton`](/api/component/button/classes/MenuButton) | Button whose click opens a dropdown menu, flipping above when the room below is short |
+| [`PopupButton`](/components/PopupButton) | Button whose click toggles a `PopupPanel` anchored under it |
 | [`RadioButton`](/api/component/input/classes/RadioButton) | Single-selection radio (use with `ButtonGroup`) |
 | [`ButtonGroup`](/api/overlay/classes/ButtonGroup) | Enforces single selection across radio / toggle buttons |
 | [`SpinButton`](/api/component/input/classes/SpinButton) | Up / down arrow paired with a numeric field |

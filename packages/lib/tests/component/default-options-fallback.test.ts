@@ -43,6 +43,7 @@ import { ToolBarSeparator } from '~/component/menubar/ToolBarSeparator';
 import { ChartLegend } from '~/component/chart/ChartLegend';
 import { Drawer } from '~/overlay/Drawer';
 import { Popover } from '~/overlay/Popover';
+import { PopupPanel } from '~/overlay/PopupPanel';
 import { AnimatedDropdown } from '~/core/AnimatedDropdown';
 import { LineChart } from '~/component/chart/LineChart';
 import { BarChart } from '~/component/chart/BarChart';
@@ -362,6 +363,10 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'Popover border',               resolve: () => new Popover().getBorder(),                                  expected: { border: '1px solid var(--ts-ui-popover-border, rgb(200, 200, 200))' } },
     { label: 'Popover borderRadius',         resolve: () => new Popover().getBorderRadius(),                            expected: 'var(--ts-ui-popover-radius, 6px)' },
     { label: 'Popover shadow',               resolve: () => new Popover().getShadow(),                                  expected: 'var(--ts-ui-popover-shadow, 2px 4px 12px rgba(0, 0, 0, 0.18))' },
+    { label: 'PopupPanel backgroundColor',   resolve: () => new PopupPanel().getBackgroundColor(),                      expected: 'var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))' },
+    { label: 'PopupPanel border',            resolve: () => new PopupPanel().getBorder(),                               expected: { border: 'var(--ts-ui-input-border)' } },
+    { label: 'PopupPanel borderRadius',      resolve: () => new PopupPanel().getBorderRadius(),                         expected: 'var(--ts-ui-border-radius, 4px)' },
+    { label: 'PopupPanel shadow',            resolve: () => new PopupPanel().getShadow(),                               expected: 'var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))' },
     { label: 'TabButton border',             resolve: () => new TabButton('x').getBorder(),                             expected: {
         borderTop:    'var(--ts-ui-tab-button-border-top,    var(--ts-ui-tab-button-border, none))',
         borderRight:  'var(--ts-ui-tab-button-border-right,  var(--ts-ui-tab-button-border, none))',
