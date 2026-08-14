@@ -19,6 +19,14 @@ export interface BodyOptions extends ComponentOptions {
      * HTML wins and nothing is injected.
      */
     favicon?: string | false;
+
+    /**
+     * Whether the browser's own right-click menu is allowed. Defaults to
+     * `false` — `Body.init` suppresses the native menu page-wide, so only
+     * menus the library or the app opens on `contextmenu` ever appear.
+     * `true` restores the browser's menu everywhere.
+     */
+    nativeContextMenu?: boolean;
 }
 
 /**
@@ -59,7 +67,9 @@ export class Body extends Component<BodyOptions> {
      * theme set up at construction are preserved.
      *
      * Also installs the browser-tab icon, unless the page already declares a
-     * `<link rel="icon">` of its own or `options.favicon` is `false`.
+     * `<link rel="icon">` of its own or `options.favicon` is `false`, and
+     * suppresses the browser's native right-click menu page-wide, unless
+     * `options.nativeContextMenu` is `true`.
      *
      * @param options - Component options to apply (layout manager, children, …).
      *
@@ -84,6 +94,14 @@ export class Body extends Component<BodyOptions> {
             this.INSTANCE.setFavicon(DEFAULT_FAVICON);
         }
 
+        // Same reasoning as the favicon default above: dispatched here rather
+        // than from applyOptions, which also runs during the singleton's
+        // construction at module import — too early for a caller to have
+        // opted out, and before a test harness has swapped the DOM seams.
+        if (options.nativeContextMenu === undefined) {
+            this.INSTANCE.setNativeContextMenu(false);
+        }
+
         return this.INSTANCE;
     }
 
@@ -92,6 +110,7 @@ export class Body extends Component<BodyOptions> {
         super.applyOptions(options);
 
         if (options.favicon !== undefined) this.setFavicon(options.favicon);
+        if (options.nativeContextMenu !== undefined) this.setNativeContextMenu(options.nativeContextMenu);
 
         return this;
     }
@@ -125,6 +144,40 @@ export class Body extends Component<BodyOptions> {
      */
     getFavicon(): string | false {
         return this._options.favicon ?? DEFAULT_FAVICON;
+    }
+
+    /**
+     * Allows or suppresses the browser's native right-click menu page-wide.
+     *
+     * @param allowed - `true` lets the browser's own menu open on
+     *   `contextmenu`; `false` suppresses it everywhere.
+     *
+     * @returns This component, for method chaining.
+     */
+    setNativeContextMenu(allowed: boolean): this {
+        // The listener is registered exactly when the option reads `false`;
+        // `undefined` means "not configured yet", so nothing is registered.
+        const listening = this._options.nativeContextMenu === false;
+
+        this._options.nativeContextMenu = allowed;
+
+        if (!allowed && !listening) {
+            Event.addViewportListener(this, "contextmenu", this.onContextMenu);
+        } else if (allowed && listening) {
+            Event.removeViewportListener(this, "contextmenu", this.onContextMenu);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether the browser's native right-click menu is allowed.
+     *
+     * @returns `true` when the native menu is allowed, `false` when it is
+     *   suppressed (the default).
+     */
+    getNativeContextMenu(): boolean {
+        return this._options.nativeContextMenu ?? false;
     }
 
     private constructor() {
@@ -171,6 +224,23 @@ export class Body extends Component<BodyOptions> {
     private _onViewportResize = (): void => {
         this.setSize(DOM.source.getViewportSize());
     };
+
+    /**
+     * Viewport `contextmenu` handler registered by {@link setNativeContextMenu}
+     * while the native menu is suppressed. Returns a disposition rather than
+     * calling `preventDefault()` itself, and deliberately never returns a stop
+     * disposition: a `contextmenu` event is also routed to any component's
+     * own handler (e.g. `Tree`, `DiagramView`) through `Event`'s other
+     * window-capture listener, and this handler must not cut that walk short.
+     * A plain prototype method, not an arrow field, so it exists before the
+     * constructor runs and has a stable identity `removeViewportListener` can
+     * find (see `Markdown.handleViewportChange` for the same reasoning).
+     *
+     * @returns `{ prevent: true }`, suppressing the browser's own menu.
+     */
+    private onContextMenu(): Event.ListenerResult {
+        return { prevent: true };
+    }
 
     /**
      * Bound theme-change handler. Schedules a layout pass so every `Text` in
