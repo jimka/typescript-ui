@@ -7,6 +7,7 @@ import { Body } from "~/component/table/Body.js";
 import type { CellClickEvent } from "~/component/table/Body.js";
 import { FooterRow } from "~/component/table/Footer.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
+import type { StoreUpdateEvent } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { MemoryStore } from "~/data/MemoryStore.js";
 import { Model } from "~/data/Model.js";
@@ -24,6 +25,7 @@ import { file_code } from "~/glyphs/solid/file_code.js";
 import { Column } from "~/component/table/Column.js";
 import type { CellType, ColumnConfig, ComboOption } from "~/component/table/ColumnConfig.js";
 import { ColumnSpec, normalizeComboOptions } from "~/component/table/ColumnConfig.js";
+import { columnFilterOperators } from "~/component/table/ColumnFilter.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { TableExporter, ExportOptions } from "~/component/table/TableExporter.js";
@@ -117,6 +119,23 @@ interface WidthReferences {
     datePx: Map<string, number>;
 }
 
+/** The state behind one active {@link Table.setQuickSearch} call. */
+interface QuickSearchState {
+    /** Trimmed, lower-cased search text. Never `''` — a blank search is stored as `null` instead. */
+    needle:    string;
+    /** The `fields` argument exactly as passed, or `null` for the default column scope. */
+    requested: readonly string[] | null;
+    /** The field names actually searched, derived from `requested`. */
+    fields:    string[];
+    /**
+     * Per-record searchable text: every searched field's cell text, lower-cased and
+     * joined with `\n`. Built the first time a record is tested and reused on every
+     * later render pass — `Body.getVisibleRecords()` re-runs the predicate over the
+     * whole store on every frame, so formatting per pass is not affordable.
+     */
+    cache:     WeakMap<ModelRecord, string>;
+}
+
 /**
  * Construction-time options for {@link Table}.
  *
@@ -207,6 +226,7 @@ class Table extends Component<TableOptions> {
     private _displayMode      : TableDisplayMode = "normal";
     private _rotatedRecord    : ModelRecord | null = null;
     private _rowVisible       : ((record: ModelRecord) => boolean) | null = null;
+    private _quickSearch      : QuickSearchState | null = null;
     private _rotatedStore     : MemoryStore | null = null;
     private _rotatedColumns   : Column[] = [];
     private _rotatedConfigs   : Map<string, ColumnConfig> = new Map();
@@ -228,6 +248,7 @@ class Table extends Component<TableOptions> {
     // separator.
     private _rotatedIndentedRecords: Set<ModelRecord> = new Set();
     private _sourceRefresh    : (() => void) | null = null;
+    private _sourceUpdate     : ((event: StoreUpdateEvent) => void) | null = null;
     private _suppressSelectionForward: boolean = false;
     private _autoWidthsSampled: boolean = false;
     private _widthRefs        : WidthReferences | null = null;
@@ -460,7 +481,7 @@ class Table extends Component<TableOptions> {
                 (record) => this._rotatedIndentedRecords.has(record));
             this.emit("selection", this._rotatedRecord ? [this._rotatedRecord] : []);
         } else {
-            this.bindView(this._store, this.getSourceColumns(), this._columnConfigs, this.getEffectiveHiddenSet(), this._spec?.rowReadOnly ?? null, this._rowVisible, null, null);
+            this.bindView(this._store, this.getSourceColumns(), this._columnConfigs, this.getEffectiveHiddenSet(), this._spec?.rowReadOnly ?? null, this.composeRowVisible(), null, null);
             this._body.selectRecord(this._rotatedRecord);
         }
 
@@ -487,6 +508,9 @@ class Table extends Component<TableOptions> {
      * set while rotated. Inherited by `TreeTable` as a documented no-op —
      * see the `TreeTable` docs non-goal.
      *
+     * Composes with {@link setQuickSearch} via AND — a row renders only when
+     * both agree — and setting one never clears the other.
+     *
      * @param predicate - Returns `true` to keep the record's row rendered.
      *   Called for every loaded record on every render pass; must be O(1)
      *   and pure.
@@ -494,12 +518,130 @@ class Table extends Component<TableOptions> {
      */
     setRowVisible(predicate: ((record: ModelRecord) => boolean) | null): this {
         this._rowVisible = predicate;
-
-        if (this._displayMode === "normal") {
-            this._body.setRowVisible(predicate);
-        }
+        this.applyRowVisible();
 
         return this;
+    }
+
+    /**
+     * Hides every row whose displayed cell text does not contain `text`, matched
+     * case-insensitively — a client-side quick search over an already-loaded
+     * grid. Cleared by passing `null`, `''`, or blank text.
+     *
+     * Each searched field is resolved through {@link getCellText}, so the match
+     * runs against what the cell actually shows — a combo column's option
+     * label, a formatted date/time/datetime — not the raw stored value.
+     *
+     * With no `fields` argument the searched columns default to every resolved
+     * column (including a hidden one) whose filter row would offer a
+     * **Contains** operator: a `boolean` column is excluded, since its cell is
+     * a checkbox with no text to match, and a column with `filterable: false`
+     * is excluded, matching the filter row's own opt-out. Passing `fields`
+     * overrides that default and searches exactly the named fields, verbatim —
+     * even one whose column is `filterable: false` or offers no Contains
+     * operator; an empty array searches nothing, so no row matches.
+     *
+     * Display-only: never touches {@link getStore}'s records,
+     * {@link getSelectedRecords}, or any pending edit. Composes with
+     * {@link setRowVisible} via AND — a row renders only when both agree — and
+     * setting one never clears the other. Neutralized while
+     * {@link getDisplayMode} is `"rotated"` and resumes on return to
+     * `"normal"`, and is inherited by `TreeTable` as a documented no-op — both
+     * for the same reasons {@link setRowVisible} is.
+     *
+     * Each record's searchable text is captured the first time that record is
+     * tested against the current search, and reused on every later render
+     * pass rather than rebuilt per frame. That cached text is refreshed when
+     * the store reports the record changed (an in-grid edit), but a batch
+     * committed through the store's own edit-batch API reports no per-record
+     * identity, so those records keep the text they were cached with until
+     * `setQuickSearch` is called again. Calling `setQuickSearch` always
+     * rebuilds the cache from scratch, even for the same text.
+     *
+     * @param text - The search text, or `null`/blank to clear the search.
+     * @param fields - Field names to search, verbatim. Omit for the default
+     *   column scope described above.
+     * @returns This table, for method chaining.
+     */
+    setQuickSearch(text: string | null, fields?: readonly string[] | null): this {
+        const needle = (text ?? '').trim().toLowerCase();
+
+        this._quickSearch = needle === '' ? null : {
+            needle,
+            requested: fields ?? null,
+            fields:    this.resolveSearchFields(fields ?? null),
+            cache:     new WeakMap(),
+        };
+
+        this.applyRowVisible();
+
+        return this;
+    }
+
+    /**
+     * Derives the field names {@link setQuickSearch} searches: `requested`
+     * verbatim when given, otherwise every resolved column whose filter row
+     * would offer a Contains operator.
+     *
+     * @param requested - The `fields` argument passed to `setQuickSearch`, or `null`.
+     * @returns The field names to search.
+     */
+    private resolveSearchFields(requested: readonly string[] | null): string[] {
+        if (requested) {
+            return requested.slice();
+        }
+
+        return this._resolvedColumns
+            .filter(c => c.isFilterable() && columnFilterOperators(c.getField().getType()).includes('contains'))
+            .map(c => c.getField().getName());
+    }
+
+    /**
+     * Tests one record against an active quick search, consulting (and
+     * populating) its cached searchable text.
+     *
+     * @param search - The active quick-search state.
+     * @param record - The record to test.
+     * @returns `true` when the record's cached text contains the search needle.
+     */
+    private quickSearchMatches(search: QuickSearchState, record: ModelRecord): boolean {
+        let text = search.cache.get(record);
+
+        if (text === undefined) {
+            text = search.fields.map(f => this.getCellText(f, record).toLowerCase()).join('\n');
+
+            search.cache.set(record, text);
+        }
+
+        return text.includes(search.needle);
+    }
+
+    /**
+     * Combines the active quick search and the consumer's own row-visible
+     * predicate into the single predicate `Body` sees, via AND.
+     *
+     * @returns The composed predicate, or `null` when neither is active.
+     */
+    private composeRowVisible(): ((record: ModelRecord) => boolean) | null {
+        const search = this._quickSearch;
+        const custom = this._rowVisible;
+
+        if (!search) {
+            return custom;
+        }
+
+        const matches = (record: ModelRecord) => this.quickSearchMatches(search, record);
+
+        return custom ? (record: ModelRecord) => matches(record) && custom(record) : matches;
+    }
+
+    /**
+     * Pushes the composed row-visible predicate to `Body`, when not rotated.
+     */
+    private applyRowVisible(): void {
+        if (this._displayMode === "normal") {
+            this._body.setRowVisible(this.composeRowVisible());
+        }
     }
 
     /**
@@ -552,6 +694,7 @@ class Table extends Component<TableOptions> {
         this._header.setColumns(this._resolvedColumns);
         this._body.setColumns(this._resolvedColumns);
         this._header.setHiddenColumns(this.getEffectiveHiddenSet());
+        this.refreshQuickSearch();
         this.getAria().setColCount(this.getColumns().length);
 
         // Matches setColumnVisible / resetColumns / bindView, which each end
@@ -563,6 +706,28 @@ class Table extends Component<TableOptions> {
         this.doLayout();
 
         return this;
+    }
+
+    /**
+     * Re-derives the active quick search's field list against the current
+     * `_resolvedColumns` and rebuilds its cache from scratch. A no-op when no
+     * search is active. Called by {@link setStore}: a search built before a
+     * store swap holds field names from the old model, which a different
+     * model's columns may no longer have.
+     */
+    private refreshQuickSearch(): void {
+        if (!this._quickSearch) {
+            return;
+        }
+
+        this._quickSearch = {
+            needle:    this._quickSearch.needle,
+            requested: this._quickSearch.requested,
+            fields:    this.resolveSearchFields(this._quickSearch.requested),
+            cache:     new WeakMap(),
+        };
+
+        this.applyRowVisible();
     }
 
     /**
@@ -1061,8 +1226,10 @@ class Table extends Component<TableOptions> {
 
     /**
      * Subscribes to the source store's mutation events so a rotated view
-     * tracks the record it displays. Stores the callback in `_sourceRefresh`
-     * so {@link unbindSourceStore} can remove exactly this registration later.
+     * tracks the record it displays, and so an active quick search's cached
+     * text for one edited record can be dropped without rebuilding the
+     * whole cache. Stores the callbacks in `_sourceRefresh` / `_sourceUpdate`
+     * so {@link unbindSourceStore} can remove exactly these registrations later.
      *
      * @param store - The source store to subscribe to.
      */
@@ -1075,10 +1242,15 @@ class Table extends Component<TableOptions> {
         store.on('add', refresh);
         store.on('remove', refresh);
         store.on('datachange', refresh);
+
+        const invalidate = (event: StoreUpdateEvent) => this.onSourceRecordUpdate(event);
+
+        this._sourceUpdate = invalidate;
+        store.on('update', invalidate);
     }
 
     /**
-     * Unsubscribes the callback installed by {@link bindSourceStore} from `store`.
+     * Unsubscribes the callbacks installed by {@link bindSourceStore} from `store`.
      *
      * @param store - The store to unsubscribe from.
      */
@@ -1090,6 +1262,10 @@ class Table extends Component<TableOptions> {
         (['load', 'add', 'remove', 'datachange'] as const).forEach(e =>
             store.off(e, this._sourceRefresh!)
         );
+
+        if (this._sourceUpdate) {
+            store.off('update', this._sourceUpdate);
+        }
     }
 
     /**
@@ -1127,6 +1303,16 @@ class Table extends Component<TableOptions> {
         this._savedColumnWidths = new Map();
         this._columnWidthTarget = 0;
         this.doLayout();
+    }
+
+    /**
+     * Drops one record's cached quick-search text so it is re-tested against
+     * fresh text on the next render pass. A no-op when no search is active.
+     *
+     * @param event - The `'update'` event payload; only `record` is read.
+     */
+    private onSourceRecordUpdate(event: StoreUpdateEvent): void {
+        this._quickSearch?.cache.delete(event.record);
     }
 
     /**
