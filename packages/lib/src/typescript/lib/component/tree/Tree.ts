@@ -1490,7 +1490,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this.initScroller(el);
 
         Event.addSubtreeListener(this, "click", this._handleClick);
-        Event.addSubtreeListener(this, "contextmenu", { button: "any", handler: this._handleContextMenu });
+        Event.addSubtreeListener(this, "contextmenu", this._handleContextMenu);
         Event.addSubtreeListener(this, "dblclick", this._handleDblClick);
         Event.addListener(this, "keydown", this._onKeyDown);
 

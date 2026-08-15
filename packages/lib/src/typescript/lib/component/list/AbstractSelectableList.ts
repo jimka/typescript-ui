@@ -325,7 +325,7 @@ class SelectableListRow extends Component {
 
         Event.addListener(this, "pointerdown", this.onPointerDown);
         Event.addListener(this, "click",       this.onClick);
-        Event.addListener(this, "contextmenu", { button: "any", handler: this.onContextMenu });
+        Event.addListener(this, "contextmenu", this.onContextMenu);
         Event.addListener(this, "dblclick",    this.onDblClick);
     }
 

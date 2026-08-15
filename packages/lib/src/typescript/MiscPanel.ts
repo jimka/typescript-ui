@@ -853,7 +853,7 @@ class MiscPanel extends Panel {
 
         const buttonContextMenu = new Button("Right-click me for context menu");
         Tooltip.attach(buttonContextMenu, "Right-click to open a context menu");
-        Event.addListener(buttonContextMenu, "contextmenu", { button: "any", handler: (e: MouseEvent): Event.ListenerResult => {
+        Event.addListener(buttonContextMenu, "contextmenu", (e: MouseEvent): Event.ListenerResult => {
             Tooltip.hide();
             contextMenu.show(e.clientX, e.clientY, [
                 { text: "Action 1", action: () => alert("Action 1 clicked!") },
@@ -864,7 +864,7 @@ class MiscPanel extends Panel {
             ]);
 
             return { prevent: true };
-        } });
+        });
         leftColumn.addComponent(buttonContextMenu);
 
         // A deliberately tall context menu (40 items) so it exceeds the
@@ -882,12 +882,12 @@ class MiscPanel extends Panel {
 
         const buttonTallContextMenu = new Button("Right-click for a tall (scrolling) menu");
         Tooltip.attach(buttonTallContextMenu, "Right-click near the screen edge to see the menu flip and scroll");
-        Event.addListener(buttonTallContextMenu, "contextmenu", { button: "any", handler: (e: MouseEvent): Event.ListenerResult => {
+        Event.addListener(buttonTallContextMenu, "contextmenu", (e: MouseEvent): Event.ListenerResult => {
             Tooltip.hide();
             tallContextMenu.show(e.clientX, e.clientY, tallItems);
 
             return { prevent: true };
-        } });
+        });
         leftColumn.addComponent(buttonTallContextMenu);
 
         const buttonTooltip = new Button("Hover over me for a tooltip");

@@ -565,17 +565,16 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             return { prevent: true };
         });
 
-        // pointermove is not a button-state-change event (button is always
-        // -1, same as pointercancel above) — a default "primary" registration
-        // would silently never run this during a real drag. The pointerId
-        // check below is the actual gate, so opt out explicitly.
-        Event.addListener(this, "pointermove", { button: "any", handler: (e: PointerEvent) => {
+        // pointermove defaults to a button-agnostic registration (see
+        // Event.ts's PRIMARY_BUTTON_TYPES) since the spec reports its
+        // button as always -1. The pointerId check below is the actual gate.
+        Event.addListener(this, "pointermove", (e: PointerEvent) => {
             if (this._draggingPointer !== e.pointerId) {
                 return;
             }
 
             this.setValue(this.valueAtPointer(e));
-        } });
+        });
 
         const release = (e: PointerEvent): void => {
             if (this._draggingPointer !== e.pointerId) {
@@ -590,15 +589,14 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             this._draggingPointer = null;
         };
 
-        Event.addListener(this, "pointerup",          release);
-        // pointercancel and lostpointercapture are not button-state-change
-        // events — the spec defines `button` as -1 for both, so a default
-        // "primary" registration would silently never run this cleanup and
-        // leak a stuck drag. Both opt out explicitly.
-        Event.addListener(this, "pointercancel",      { button: "any", handler: release });
+        Event.addListener(this, "pointerup",     release);
+        // pointercancel and lostpointercapture both default to a
+        // button-agnostic registration (see Event.ts's PRIMARY_BUTTON_TYPES),
+        // so this cleanup still runs regardless of which button was held.
+        Event.addListener(this, "pointercancel", release);
         // Browser releases pointer capture on alt-tab / focus loss. Clear our
         // mirror so the next pointerdown starts clean and there's no stuck-drag.
-        Event.addListener(this, "lostpointercapture", { button: "any", handler: release });
+        Event.addListener(this, "lostpointercapture", release);
 
         Event.addListener(this, "keydown", (e: KeyboardEvent): Event.ListenerResult => {
             if (!this.isEnabled() || this.isReadOnly()) {

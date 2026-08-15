@@ -204,7 +204,7 @@ class ParentHeaderCell extends DefaultCell {
             return this;
         }
 
-        Event.addSubtreeListener(this, "contextmenu", { button: "any", handler: this.onContextMenu });
+        Event.addSubtreeListener(this, "contextmenu", this.onContextMenu);
 
         if (this._tooltipText) {
             Tooltip.attachToElement(el, this._tooltipText);

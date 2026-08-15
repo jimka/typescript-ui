@@ -58,7 +58,7 @@ function pointRect(x: number, y: number): Rect {
  * ```typescript
  * // Rebuild mode — right-click context menu
  * const menu = new Menu();
- * Event.addListener(myComponent, 'contextmenu', { button: "any", handler: (e: MouseEvent): Event.ListenerResult => {
+ * Event.addListener(myComponent, 'contextmenu', (e: MouseEvent): Event.ListenerResult => {
  *     menu.show(e.clientX, e.clientY, [
  *         { text: 'Cut',   action: () => cut() },
  *         { separator: true },
@@ -66,7 +66,7 @@ function pointRect(x: number, y: number): Rect {
  *     ]);
  *
  *     return { prevent: true };
- * } });
+ * });
  *
  * // Persistent mode — MenuBar dropdown
  * const panel = new Menu(

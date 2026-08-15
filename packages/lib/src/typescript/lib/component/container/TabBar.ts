@@ -1581,7 +1581,7 @@ class TabBar extends Container<TabBarOptions> {
             closeButton.on("action", () => this.emit("tabclose", id));
         }
 
-        Event.addSubtreeListener(tabButton, "contextmenu", { button: "any", handler: onContextMenu });
+        Event.addSubtreeListener(tabButton, "contextmenu", onContextMenu);
 
         this._entries.push(entry);
 

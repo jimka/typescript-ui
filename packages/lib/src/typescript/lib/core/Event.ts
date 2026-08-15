@@ -43,21 +43,27 @@ export namespace Event {
         /**
          * Restricts which button state — see {@link isPrimaryButton} — this
          * listener fires for:
-         * - `"primary"` (default) — only a primary (left) press, or an event
-         *   with no `button` property at all (touch, hand-built fixtures).
+         * - `"primary"` — only a primary (left) press, or an event with no
+         *   `button` property at all (touch, hand-built fixtures).
          * - `"aux"` — only a defined, non-zero button (right/middle/back/
          *   forward); never fires for touch. Named after the `auxclick`
          *   event, which fires under this same condition — any non-primary
          *   button, not just the middle button despite the DOM's
          *   `MouseEvent.button` value `1` also being labelled "auxiliary".
          * - `"any"` — every button, regardless of state. Use this for a
-         *   listener that reacts to a button-agnostic gesture (a right-click
-         *   `"contextmenu"`, dismissing a tooltip on any press, bringing a
-         *   window to front on any press, …) rather than *initiating* a
-         *   primary-button interaction.
+         *   listener that reacts to a button-agnostic gesture (dismissing a
+         *   tooltip on any press, bringing a window to front on any press,
+         *   …) rather than *initiating* a primary-button interaction.
          *
-         * `"click"` is unaffected either way — the dispatcher gates it to
-         * the primary button unconditionally regardless of this option.
+         * Unset resolves to `"primary"` for a short list of press-initiating
+         * types (`mousedown`, `mouseup`, `click`, `dblclick`, `pointerdown`,
+         * `pointerup` — see the internal `PRIMARY_BUTTON_TYPES` set in
+         * Event.ts) and `"any"` for every other type, since only those few
+         * types actually represent an initiating press. Set this explicitly
+         * to override the default either way.
+         *
+         * `"click"` is unaffected by any of this — the dispatcher gates it
+         * to the primary button unconditionally regardless of this option.
          */
         button?: "primary" | "aux" | "any";
     }
@@ -96,12 +102,14 @@ export namespace Event {
      * `MouseEventInit.button` default of `0` — only a defined, non-zero
      * value (right/middle/back/forward) is rejected.
      *
-     * @remarks This is a helper for callers that *initiate* a gesture from a
-     * raw `pointerdown` / `mousedown` listener (drag sources, window move,
-     * resize handles) — those events are general-purpose and used for many
-     * things beyond activation, so unlike `"click"` (gated centrally in
-     * `baseListener` below) there is no single safe place to enforce this
-     * for every listener; each drag-initiating call site opts in explicitly.
+     * @remarks A bare `addListener`/`addSubtreeListener` registration already
+     * gets primary-only filtering for free from the dispatcher's default —
+     * see {@link ListenerOptions.button}. This helper remains useful for two
+     * cases the default doesn't cover: a listener registered `button: "any"`
+     * that still needs a primary check for part of its own logic (e.g. a
+     * viewport listener, which isn't button-filtered at all), and a public
+     * method (a drag-initiating entry point a subclass or consumer can call
+     * directly, bypassing the dispatcher) validating its own precondition.
      *
      * @param e - A mouse, pointer, or touch event.
      * @returns True when the event should be treated as a primary-button press.
@@ -113,19 +121,37 @@ export namespace Event {
     }
 
     /**
-     * Applies a {@link ListenerOptions.button} filter to a dispatched event.
-     * `undefined` (unset) resolves to `"primary"`, matching the documented
-     * default.
+     * Event types whose bare registration means "primary button only" — the
+     * gestures that actually initiate a press. Every other type defaults to
+     * `"any"`: `contextmenu` (already the button-agnostic "open a menu"
+     * signal — right-click, a keyboard context-menu key, a touch
+     * long-press), the pointer move/cancel/capture-loss family (the Pointer
+     * Events spec reports `button: -1`, "no button change", for all of
+     * them), the mouse-flavoured half of that same family (`mousemove` /
+     * `mouseover` / `mouseout` / `mouseenter` / `mouseleave`, whose `button`
+     * likewise never represents a press), and `auxclick` (which by
+     * definition never carries `button: 0`, so a `"primary"` default would
+     * mean a bare registration on it could never fire).
      */
-    function passesButtonFilter(evnt: Event, filter: ListenerOptions["button"]): boolean {
-        if (filter === "any") {
+    const PRIMARY_BUTTON_TYPES: ReadonlySet<string> = new Set([
+        "mousedown", "mouseup", "click", "dblclick", "pointerdown", "pointerup",
+    ]);
+
+    /**
+     * Applies a {@link ListenerOptions.button} filter to a dispatched event.
+     * `undefined` (unset) resolves to `"primary"` for a type in
+     * {@link PRIMARY_BUTTON_TYPES}, `"any"` for every other type.
+     */
+    function passesButtonFilter(evnt: Event, type: string, filter: ListenerOptions["button"]): boolean {
+        const effective = filter ?? (PRIMARY_BUTTON_TYPES.has(type) ? "primary" : "any");
+
+        if (effective === "any") {
             return true;
         }
 
         const primary = isPrimaryButton(evnt as MouseEvent);
 
-        // Unset resolves to "primary", matching the documented default.
-        return filter === "aux" ? !primary : primary;
+        return effective === "aux" ? !primary : primary;
     }
 
     let listenerMap = new Map<String, Map<String, CompFunc>>();
@@ -238,7 +264,7 @@ export namespace Event {
 
             if (compFunc) {
                 for (let entry of compFunc.listeners) {
-                    if (!passesButtonFilter(evnt, entry.options?.button)) {
+                    if (!passesButtonFilter(evnt, evnt.type, entry.options?.button)) {
                         continue;
                     }
 
@@ -281,7 +307,7 @@ export namespace Event {
                 let compFunc = subtreeListeners.get(id);
                 if (compFunc) {
                     for (let entry of compFunc.listeners) {
-                        if (!passesButtonFilter(evnt, entry.options?.button)) {
+                        if (!passesButtonFilter(evnt, evnt.type, entry.options?.button)) {
                             continue;
                         }
 
@@ -401,13 +427,19 @@ export namespace Event {
         listener: Listener,
         options: ListenerOptions | undefined,
     ): void {
+        // Validate BEFORE touching `map`: `installBaseListener` throws on a
+        // passive-option conflict, and it must do so before a fresh, empty
+        // `typeMap` is inserted — otherwise a failed registration leaves a
+        // stale `type -> emptyMap` entry behind, which later cleanup paths
+        // (e.g. `purgeComponent`'s plain `.has(type)` check) mistake for a
+        // live registration and never uninstall the base listener for.
+        installBaseListener(type, options);
+
         let typeMap = map.get(type);
         if (!typeMap) {
             typeMap = new Map<String, CompFunc>();
             map.set(type, typeMap);
         }
-
-        installBaseListener(type, options);
 
         let compFunc = typeMap.get(component.getId());
         if (!compFunc) {

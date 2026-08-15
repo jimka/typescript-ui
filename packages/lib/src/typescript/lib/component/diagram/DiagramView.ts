@@ -1404,17 +1404,16 @@ class DiagramView extends Panel<DiagramViewOptions> {
         // (mirrors click/dblclick, which is why selection worked but pan did not).
         Event.addSubtreeListener(this, "click", this._handleClick);
         Event.addSubtreeListener(this, "dblclick", this._handleDoubleClick);
-        Event.addSubtreeListener(this, "contextmenu", { button: "any", handler: this._handleContextMenu });
+        Event.addSubtreeListener(this, "contextmenu", this._handleContextMenu);
         // Non-passive: `_handleWheel` calls `preventDefault()` to suppress the
         // page's native scroll/zoom, which a passive listener silently ignores
         // (mirrors `Component.attachWheelScrolling` / `WheelTrap`).
         Event.addSubtreeListener(this, "wheel", { passive: false, handler: this._handleWheel });
         Event.addSubtreeListener(this, "pointerdown", this._handlePointerDown);
-        // pointermove is not a button-state-change event (button is always
-        // -1) — a default "primary" registration would silently never run
-        // this during a real pan drag. `_handlePointerMove` gates on the
-        // live `buttons` bitmask itself, so opt out explicitly.
-        Event.addSubtreeListener(this, "pointermove", { button: "any", handler: this._handlePointerMove });
+        // pointermove defaults to a button-agnostic registration (see
+        // Event.ts's PRIMARY_BUTTON_TYPES); `_handlePointerMove` gates on
+        // the live `buttons` bitmask itself during a real pan drag.
+        Event.addSubtreeListener(this, "pointermove", this._handlePointerMove);
         Event.addSubtreeListener(this, "pointerup", this._handlePointerUp);
         // `mousemove`/`mouseout` rather than `mouseenter`/`mouseleave`: per
         // ARCHITECTURE.md, the non-bubbling enter/leave pair never reaches the
