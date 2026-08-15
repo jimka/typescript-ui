@@ -5,6 +5,15 @@ tied to a version number yet. Once this release is tagged, its content moves
 onto its own numbered page (see [Changelog](/reference/changelog)) and this
 page resets to empty.
 
+## Breaking changes
+
+### Core
+
+`DOMSource` gains one required member: `getDocumentSelection()`, returning
+the document's current text selection as plain start/end container handles
+and character offsets, or `null` when nothing is selected. Only a consumer
+implementing its own `DOMSource` is affected.
+
 ## Changed
 
 ### Core
@@ -56,6 +65,11 @@ page resets to empty.
 
 ### Table
 
+- **Copying a multi-cell selection now produces a tab/newline-formatted
+  clipboard payload instead of the browser's raw concatenated text**, for
+  both `Table` and `TreeTable`. A drag-selected range pastes into a
+  spreadsheet as separate columns and rows rather than one run-on string.
+  No consumer action is needed.
 - **A `DynamicCell` number row (the rotated `\x`-style view, or any column
   using `ColumnConfig.cellType`/`cellValues` for a per-row mixed-type
   column) now renders left-aligned instead of right-aligned.** A
