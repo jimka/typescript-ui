@@ -218,16 +218,22 @@ class TableHeader extends Component {
         // cascade above) overrides `background-color` with a translucent
         // black tint, meant to composite against an ambient page background
         // showing through a transparent resting state. This button's resting
-        // background is opaque instead (the masking colour above), and in
-        // themes where the CSS var resolves to a plain colour rather than a
-        // gradient, `background-image` is invalid and computes to `none` —
-        // leaving `background-color` as the button's only paint layer. The
-        // hover/pressed override then strips that layer entirely, flashing
-        // the button transparent. Clearing it lets the resting colour keep
-        // showing through in every state; the hover border and pressed inset
-        // shadow (both untouched) still carry the interaction feedback.
-        this._menuButton.clearHoverBackgroundColor();
-        this._menuButton.clearPressedBackgroundColor();
+        // background is opaque instead (the masking colour above), so swap in
+        // the *non-flat* hover/pressed tokens for the usual darker-on-press
+        // look. Depending on the theme, those tokens can resolve to either a
+        // plain colour or a gradient — the same ambiguity `TABLE_HEADER_BG`
+        // has above — so, as above, write each token to both
+        // `background-color` and `background-image`: whichever is invalid
+        // for the resolved value drops out silently, leaving exactly one
+        // opaque paint layer instead of the transparent gap a colour-only
+        // write leaves when the token turns out to be a gradient.
+        const hoverBg   = "var(--ts-ui-button-hover-bg, rgb(252, 252, 252))";
+        const pressedBg = "var(--ts-ui-button-pressed-bg, rgb(200, 200, 200))";
+
+        this._menuButton.setHoverBackgroundColor(hoverBg);
+        this._menuButton.setHoverBackgroundImage(hoverBg);
+        this._menuButton.setPressedBackgroundColor(pressedBg);
+        this._menuButton.setPressedBackgroundImage(pressedBg);
         // An inset shadow, not `setBorder` — flat chrome already reserves a
         // 1px transparent border on every side for its hover/pressed
         // geometry, and overwriting just the left side of that via
