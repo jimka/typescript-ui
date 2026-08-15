@@ -160,18 +160,18 @@ class PickerCell extends Text {
         // on specificity. The cursor must be set on this instance.
         this.setCursor("pointer");
 
-        Event.addListener(this, "pointerdown", this.handlePointerDown);
+        Event.addListener(this, "pointerdown", { prevent: true, handler: this.handlePointerDown });
         Event.addListener(this, "click",       this.handleClick);
     }
 
     /**
      * Suppresses focus loss when the cell is pointed at so the host input's
-     * blur-to-commit path doesn't fire mid-click.
+     * blur-to-commit path doesn't fire mid-click. `preventDefault` is
+     * applied by the registration's `prevent: true` floor.
      *
      * @param e - The pointerdown event.
      */
-    private handlePointerDown(_e: PointerEvent): Event.ListenerResult {
-        return { prevent: true };
+    private handlePointerDown(_e: PointerEvent): void {
     }
 
     /**

@@ -1408,7 +1408,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
         // Non-passive: `_handleWheel` calls `preventDefault()` to suppress the
         // page's native scroll/zoom, which a passive listener silently ignores
         // (mirrors `Component.attachWheelScrolling` / `WheelTrap`).
-        Event.addSubtreeListener(this, "wheel", { passive: false, handler: this._handleWheel });
+        Event.addSubtreeListener(this, "wheel", { passive: false, prevent: true, handler: this._handleWheel });
         Event.addSubtreeListener(this, "pointerdown", this._handlePointerDown);
         // pointermove defaults to a button-agnostic registration (see
         // Event.ts's PRIMARY_BUTTON_TYPES); `_handlePointerMove` gates on
@@ -1632,15 +1632,14 @@ class DiagramView extends Panel<DiagramViewOptions> {
      * Wheel-zoom about the pointer: scales toward/away, keeping the graph
      * point under the cursor fixed in the viewport.
      *
-     * @param event - The wheel event.
+     * @param event - The wheel event. `preventDefault` is applied by the
+     * registration's `prevent: true` floor.
      */
-    private _handleWheel(event: WheelEvent): Event.ListenerResult {
+    private _handleWheel(event: WheelEvent): void {
         const rect = DOM.source.getViewportRect(this);
 
         this.zoomAboutViewportPoint(event.deltaY < 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP,
             event.clientX - rect.left, event.clientY - rect.top);
-
-        return { prevent: true };
     }
 
     /**

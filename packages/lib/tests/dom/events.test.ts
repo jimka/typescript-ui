@@ -898,6 +898,119 @@ describe('Modelled event delivery — listener return disposition', () => {
     });
 });
 
+// ListenerOptions.stop/prevent is a registration-time floor, OR'd with the
+// listener's own returned disposition — a separate mechanism from the return
+// value tested above. Driven through the real dispatcher the same way.
+describe('Modelled event delivery — ListenerOptions.stop/prevent floor', () => {
+    afterEach(() => DOM.reset());
+
+    it('prevents the default when the registration sets prevent: true, even though the listener returns nothing', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let prevents = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { preventDefault: () => void }).preventDefault = () => { prevents += 1; };
+
+        Event.addListener(comp, type, { prevent: true, handler: () => { /* returns nothing */ } });
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(prevents).toBe(1);
+    });
+
+    it('stops propagation and skips the ancestor walk when the registration sets stop: true, even though the listener returns nothing', () => {
+        installTestDOM(CONFIG);
+
+        const root   = new Component({});
+        const target = new Component({});
+        const type   = uniqueType();
+
+        root.getElement(true);
+        root.addComponent(target);
+
+        let stops = 0;
+        let ancestorRuns = 0;
+        const evt = makeEvent(target.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { stops += 1; };
+
+        Event.addSubtreeListener(root, type, () => { ancestorRuns += 1; });
+        Event.addListener(target, type, { stop: true, handler: () => { /* returns nothing */ } });
+
+        DOM.sink.dispatchEvent(target.getElement()!, evt);
+
+        expect(stops).toBe(1);
+        expect(ancestorRuns).toBe(0);
+    });
+
+    it('is a floor, not an override — the listener returning false does not suppress it', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let prevents = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { preventDefault: () => void }).preventDefault = () => { prevents += 1; };
+
+        Event.addListener(comp, type, { prevent: true, handler: () => false });
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(prevents).toBe(1);
+    });
+
+    it('OR-composes with the listener\'s own returned disposition rather than replacing it', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let stops = 0;
+        let prevents = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { stops += 1; };
+        (evt as unknown as { preventDefault: () => void }).preventDefault = () => { prevents += 1; };
+
+        // The registration floor only asks for `prevent`; the listener's own
+        // return value is what asks for `stop` — both must take effect.
+        Event.addListener(comp, type, { prevent: true, handler: () => true });
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(stops).toBe(1);
+        expect(prevents).toBe(1);
+    });
+
+    it('does not apply when the button filter rejects the press before the listener runs', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let prevents = 0;
+        let runs = 0;
+        const evt = makeEvent(comp.getElement()!, type, { button: 2 });
+        (evt as unknown as { preventDefault: () => void }).preventDefault = () => { prevents += 1; };
+
+        // A synthetic type is not in PRIMARY_BUTTON_TYPES, so it defaults to
+        // "any" — an explicit "primary" override is what makes this button:2
+        // event rejected, exercising the interaction under test.
+        Event.addListener(comp, type, { button: 'primary', prevent: true, handler: () => { runs += 1; } });
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(runs).toBe(0);
+        expect(prevents).toBe(0);
+    });
+});
+
 describe('Modelled event delivery — setId reindex', () => {
     afterEach(() => DOM.reset());
 

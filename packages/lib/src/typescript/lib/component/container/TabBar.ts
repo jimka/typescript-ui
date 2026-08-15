@@ -1561,10 +1561,9 @@ class TabBar extends Container<TabBarOptions> {
         // and stored on the entry so `removeBarEntry` can remove it (the closure
         // over `entry`, resolved at call time, is safe because right-clicks only
         // fire after the entry is fully built).
-        const onContextMenu = (e: MouseEvent): Event.ListenerResult => {
+        // `preventDefault` is applied by the registration's `prevent: true` floor.
+        const onContextMenu = (e: MouseEvent): void => {
             this.openTabMenu(entry, e.clientX, e.clientY);
-
-            return { prevent: true };
         };
 
         const entry: BarEntry = {
@@ -1581,7 +1580,7 @@ class TabBar extends Container<TabBarOptions> {
             closeButton.on("action", () => this.emit("tabclose", id));
         }
 
-        Event.addSubtreeListener(tabButton, "contextmenu", onContextMenu);
+        Event.addSubtreeListener(tabButton, "contextmenu", { prevent: true, handler: onContextMenu });
 
         this._entries.push(entry);
 

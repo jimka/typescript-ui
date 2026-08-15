@@ -323,7 +323,7 @@ class SelectableListRow extends Component {
         // cursor on hover.
         this.setCursor("pointer");
 
-        Event.addListener(this, "pointerdown", this.onPointerDown);
+        Event.addListener(this, "pointerdown", { prevent: true, handler: this.onPointerDown });
         Event.addListener(this, "click",       this.onClick);
         Event.addListener(this, "contextmenu", this.onContextMenu);
         Event.addListener(this, "dblclick",    this.onDblClick);
@@ -586,8 +586,7 @@ class SelectableListRow extends Component {
      *
      * @param e - The pointerdown event.
      */
-    private onPointerDown(_e: PointerEvent): Event.ListenerResult {
-        return { prevent: true };
+    private onPointerDown(_e: PointerEvent): void {
     }
 
     /**

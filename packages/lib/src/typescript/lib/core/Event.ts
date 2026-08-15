@@ -66,6 +66,24 @@ export namespace Event {
          * to the primary button unconditionally regardless of this option.
          */
         button?: "primary" | "aux" | "any";
+
+        /**
+         * Unconditionally halts DOM propagation (`stopPropagation`) after
+         * this listener runs, OR'd with whatever the listener itself
+         * returns — it is a floor, not an override, so a listener cannot
+         * un-set it by returning `false`/`void`. Set this only when EVERY
+         * code path through the listener wants the same outcome; a
+         * listener whose disposition depends on runtime state (an early
+         * guard-clause return, a conditional check) must leave this unset
+         * and keep returning its {@link EventDisposition} instead.
+         */
+        stop?: boolean;
+
+        /**
+         * Unconditionally suppresses the default action (`preventDefault`)
+         * after this listener runs. Same floor semantics as {@link stop}.
+         */
+        prevent?: boolean;
     }
 
     /**
@@ -169,26 +187,22 @@ export namespace Event {
     }
 
     /**
-     * Applies a listener's returned disposition to the event.
+     * Applies a listener's returned disposition to the event, OR'd with its
+     * registration's {@link ListenerOptions.stop} / {@link
+     * ListenerOptions.prevent} floor, if any — either source alone is
+     * enough to trigger the corresponding action.
      *
      * @returns `true` when propagation was stopped, so a dispatcher can end its walk.
      */
-    function applyDisposition(evnt: Event, result: ListenerResult): boolean {
-        if (result === undefined || result === false) {
-            return false;
-        }
+    function applyDisposition(evnt: Event, result: ListenerResult, options?: ListenerOptions): boolean {
+        const stop = !!options?.stop || result === true || (typeof result === "object" && !!result?.stop);
+        const prevent = !!options?.prevent || (typeof result === "object" && !!result?.prevent);
 
-        if (result === true) {
-            evnt.stopPropagation();
-
-            return true;
-        }
-
-        if (result.prevent) {
+        if (prevent) {
             evnt.preventDefault();
         }
 
-        if (result.stop) {
+        if (stop) {
             evnt.stopPropagation();
 
             return true;
@@ -268,7 +282,7 @@ export namespace Event {
                         continue;
                     }
 
-                    if (applyDisposition(evnt, entry.listener.apply(compFunc.component, [evnt]))) {
+                    if (applyDisposition(evnt, entry.listener.apply(compFunc.component, [evnt]), entry.options)) {
                         propagationStopped = true;
                     }
                 }
@@ -311,7 +325,7 @@ export namespace Event {
                             continue;
                         }
 
-                        if (applyDisposition(evnt, entry.listener.apply(compFunc.component, [evnt]))) {
+                        if (applyDisposition(evnt, entry.listener.apply(compFunc.component, [evnt]), entry.options)) {
                             propagationStopped = true;
                         }
                     }
@@ -348,7 +362,7 @@ export namespace Event {
             let component = compFunc.component;
 
             for (let entry of compFunc.listeners) {
-                applyDisposition(evnt, entry.listener.apply(component, [evnt]));
+                applyDisposition(evnt, entry.listener.apply(component, [evnt]), entry.options);
             }
         }
     };
@@ -517,7 +531,9 @@ export namespace Event {
      * `passive` is native-listener-level: once a type has been registered
      * with a given `passive` value, subsequent registrations for the same
      * type must agree, or this function throws. `button` is per-listener —
-     * see {@link ListenerOptions.button}.
+     * see {@link ListenerOptions.button}. `stop` / `prevent` are an
+     * unconditional floor applied regardless of `handler`'s return value —
+     * see {@link ListenerOptions.stop}.
      */
     export function addListener(component: Component, type: string, registration: ListenerRegistration): void;
 

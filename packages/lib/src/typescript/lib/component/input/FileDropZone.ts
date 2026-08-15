@@ -88,10 +88,10 @@ class FileDropZone<TOptions extends FileDropZoneOptions = FileDropZoneOptions>
         this.setActive(false);
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
 
-        Event.addSubtreeListener(this, "dragenter", (e: DragEvent) => this.onDragEnter(e));
-        Event.addSubtreeListener(this, "dragover",  (e: DragEvent) => this.onDragOver(e));
-        Event.addSubtreeListener(this, "dragleave", (e: DragEvent) => this.onDragLeave(e));
-        Event.addSubtreeListener(this, "drop",      (e: DragEvent) => this.onDrop(e));
+        Event.addSubtreeListener(this, "dragenter", { prevent: true, handler: this.onDragEnter });
+        Event.addSubtreeListener(this, "dragover",  { prevent: true, handler: this.onDragOver });
+        Event.addSubtreeListener(this, "dragleave", { prevent: true, handler: this.onDragLeave });
+        Event.addSubtreeListener(this, "drop",      { prevent: true, handler: this.onDrop });
 
         if (this._options.enabled !== undefined) {
             this.applyEnabled(this._options.enabled);
@@ -146,63 +146,60 @@ class FileDropZone<TOptions extends FileDropZoneOptions = FileDropZoneOptions>
 
     /**
      * Increments the drag-depth counter and lights the zone on the first enter.
-     * Bound as the subtree `dragenter` handler.
+     * Bound as the subtree `dragenter` handler; `preventDefault` is applied by
+     * the registration's `prevent: true` floor, not returned here.
      */
-    private onDragEnter(_e: DragEvent): Event.ListenerResult {
+    private onDragEnter(_e: DragEvent): void {
         this._dragDepth++;
 
         if (this._dragDepth === 1) {
             this.setActive(true);
         }
-
-        return { prevent: true };
     }
 
     /**
-     * Signals a valid drop target by calling `preventDefault`. The `FileList` is
-     * only populated on `drop`, so nothing is read here. Bound as the subtree
-     * `dragover` handler.
+     * Signals a valid drop target. The `FileList` is only populated on
+     * `drop`, so nothing is read here; `preventDefault` is applied by the
+     * registration's `prevent: true` floor. Bound as the subtree `dragover`
+     * handler.
      */
-    private onDragOver(_e: DragEvent): Event.ListenerResult {
-        return { prevent: true };
+    private onDragOver(_e: DragEvent): void {
     }
 
     /**
      * Decrements the drag-depth counter and dims the zone once the cursor truly
-     * leaves (depth back to 0). Bound as the subtree `dragleave` handler.
+     * leaves (depth back to 0). Bound as the subtree `dragleave` handler;
+     * `preventDefault` is applied by the registration's `prevent: true` floor.
      */
-    private onDragLeave(_e: DragEvent): Event.ListenerResult {
+    private onDragLeave(_e: DragEvent): void {
         this._dragDepth = Math.max(0, this._dragDepth - 1);
 
         if (this._dragDepth === 0) {
             this.setActive(false);
         }
-
-        return { prevent: true };
     }
 
     /**
      * Accepts the dropped `FileList`, resets the highlight, and hands the files
      * to the inner field so one code path owns formatting + notify. Bound as the
-     * subtree `drop` handler.
+     * subtree `drop` handler; `preventDefault` is applied by the registration's
+     * `prevent: true` floor.
      */
-    private onDrop(e: DragEvent): Event.ListenerResult {
+    private onDrop(e: DragEvent): void {
         this._dragDepth = 0;
         this.setActive(false);
 
         if (!this.isEnabled() || this.isReadOnly()) {
-            return { prevent: true };
+            return;
         }
 
         const files = e.dataTransfer?.files;
 
         if (!files || files.length === 0) {
-            return { prevent: true };
+            return;
         }
 
         this._field.acceptDroppedFiles(files);
-
-        return { prevent: true };
     }
 
     /**

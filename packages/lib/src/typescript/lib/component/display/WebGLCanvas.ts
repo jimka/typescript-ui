@@ -144,6 +144,10 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
     /** True between `webglcontextlost` and `webglcontextrestored`; frames skip. */
     private _contextLost: boolean = false;
 
+    private readonly _onContextLost: () => void = () => {
+        this._contextLost = true;
+    };
+
     /**
      * False until `onContextInit` has run for the current context; reset on
      * restore (and by `setOnContextInit`) so the next frame re-runs the hook.
@@ -441,12 +445,9 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
     protected render(): Handle {
         const element = super.render();
 
-        Event.addListener(this, "webglcontextlost", (): Event.ListenerResult => {
-            this._contextLost = true;
-
-            // REQUIRED — without it the browser never fires `webglcontextrestored`.
-            return { prevent: true };
-        });
+        // `prevent: true` is REQUIRED — without it the browser never fires
+        // `webglcontextrestored`.
+        Event.addListener(this, "webglcontextlost", { prevent: true, handler: this._onContextLost });
         Event.addListener(this, "webglcontextrestored", () => {
             this._contextLost = false;
             this._contextInitialised = false;
