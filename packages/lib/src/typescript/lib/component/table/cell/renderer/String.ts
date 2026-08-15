@@ -26,6 +26,15 @@ class StringRenderer extends CellRenderer<String | null> {
         this._text.setPointerEvents("none");
         this._text.setAutoMeasure(false);
         this.addComponent(this._text);
+
+        // The renderer is the element the pointer hits (the Text stays
+        // pointer-events: none), so it must opt in for a selection to be
+        // able to start here. The Text needs its own opt-in too — its
+        // element carries the framework's user-select: none in its own
+        // right, and a descendant's declaration is not inherited from an
+        // ancestor's.
+        this.setUserSelect("text");
+        this._text.setUserSelect("text");
     }
 
     /**

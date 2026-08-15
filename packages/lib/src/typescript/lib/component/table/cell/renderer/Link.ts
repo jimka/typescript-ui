@@ -69,6 +69,9 @@ class LinkCellRenderer extends CellRenderer<String | null> {
         // Renderer Texts opt out of auto-measure — the host cell force-sizes them.
         this._text.setAutoMeasure(false);
         this.addComponent(this._text);
+
+        this.setUserSelect("text");
+        this._text.setUserSelect("text");
     }
 
     /**

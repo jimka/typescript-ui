@@ -127,6 +127,14 @@ describe('Dialog (LayerManager integration getters)', () => {
         expect(dialog.getContentComponent()).toBeDefined();
         expect(dialog.getTitleBar()).toBeDefined();
     });
+
+    it('makes a message dialog\'s body text selectable and copyable', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new Dialog({ title: 'T', message: 'M' });
+
+        expect(dialog.getContentComponent().getComponents()[0].getUserSelect()).toBe('text');
+    });
 });
 
 describe('Dialog — resizeToContent', () => {

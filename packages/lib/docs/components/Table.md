@@ -260,6 +260,7 @@ A column is no longer limited to one operator and one value: open a column's ope
 - **Shift-click** a column header to compose a multi-column sort: each shift-click appends or toggles that column inside the current sort list (asc → desc → removed). When more than one column is active, a small priority badge (`2`, `3`, …) is shown on each non-primary column header.
 - Right-click a column header to toggle column visibility via a context menu — see [Showing and hiding columns](#showing-and-hiding-columns) below.
 - `table.getSelectedRecord()` / `getSelectedRecords()` return the user's selection.
+- Cell values are selectable and copyable by dragging across them; headers are not. On a [`TreeTable`](/components/TreeTable), the row-reparent drag takes precedence over press-and-drag text selection — double-click (word) and shift-click (range) still select a row's text there.
 
 ### Showing and hiding columns
 

@@ -58,6 +58,16 @@ the layout for a cell whose geometry has not moved, and scrolling a row into
 view rebinds its value without moving it. The symptom is a child that renders at
 zero size after a scroll, but looks correct on first paint.
 
+A custom renderer's content is **not** selectable by default — every
+`Component` opts out of text selection. Call `setUserSelect("text")` on the
+renderer itself (the element the pointer hits) and on any `Component` holding
+the text (a descendant's own declaration is not inherited from an ancestor):
+
+```typescript
+this.setUserSelect("text");
+this.text.setUserSelect("text");
+```
+
 ## Build the editor
 
 A [`CellEditor<T>`](/api/component/table/classes/CellEditor) takes over on double-click. Wrap a [`TextField`](/components/TextField) and parse the typed value back into a number:

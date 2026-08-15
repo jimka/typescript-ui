@@ -167,12 +167,17 @@ class WysiwygSurface extends Component {
         // (CodeMirror's `.cm-content` padding is `4px 0`) and 6px horizontal
         // (its `.cm-line` padding-left is 6px).
         this.setPadding(new Insets(4, 6, 4, 6));
-        // Text caret over the whole surface: signals editability, and — paired
-        // with the `user-select: text` Lexical stamps on the root — keeps the
-        // surface select-and-copy-able even in read-only mode. `setCursor` caches
-        // in `_options.cursor`, which `applyStyle` replays, so it survives both
-        // detached construction and Lexical's mount.
+        // Text caret over the whole surface, signalling editability. `setCursor`
+        // caches in `_options.cursor`, which `applyStyle` replays, so it survives
+        // both detached construction and Lexical's mount.
         this.setCursor("text");
+        // The surface is a contenteditable editing host, which the browser
+        // exempts from the framework's `user-select: none` on its own, and
+        // Lexical additionally stamps `user-select: text` inline on the root
+        // when it mounts. Stating the same intent here in the framework's own
+        // rule means the select-and-copy behaviour does not depend on that
+        // inline write surviving a later re-render.
+        this.setUserSelect("text");
         // Matches the read-only Markdown viewer's own root-level override
         // (Markdown.ts) so the edited prose reads at the same leading as the
         // preview instead of falling back to the tighter UI-control line-height

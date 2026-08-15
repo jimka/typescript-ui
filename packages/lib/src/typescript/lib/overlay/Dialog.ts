@@ -630,6 +630,7 @@ class Dialog extends Component implements DismissableLayer {
             messageText.setWhiteSpace("normal");
             messageText.setWordBreak("break-word");
             messageText.setPadding(new Insets(16, 16, 16, 16));
+            messageText.setUserSelect("text");
             this._contentContainer.addComponent(messageText);
         }
 

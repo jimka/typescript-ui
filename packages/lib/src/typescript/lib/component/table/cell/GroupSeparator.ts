@@ -34,6 +34,8 @@ class GroupSeparatorCell extends DefaultCell {
         const renderer = this.getRenderer();
         renderer.getText().setFontWeight("bold");
         renderer.getText().setText(text);
+        renderer.setUserSelect("none");
+        renderer.getText().setUserSelect("none");
 
         this.setBackgroundColor(color ?? "transparent");
 
