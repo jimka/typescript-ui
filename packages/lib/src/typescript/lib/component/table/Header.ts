@@ -234,11 +234,23 @@ class TableHeader extends Component {
         this._menuButton.setHoverBackgroundImage(hoverBg);
         this._menuButton.setPressedBackgroundColor(pressedBg);
         this._menuButton.setPressedBackgroundImage(pressedBg);
-        // An inset shadow, not `setBorder` — flat chrome already reserves a
-        // 1px transparent border on every side for its hover/pressed
-        // geometry, and overwriting just the left side of that via
-        // `setBorder` would fight the framework's own chrome state.
-        // `ParentHeaderCell` uses the same technique for its own dividers.
+        // Flat chrome (installed by the `super()` cascade above) reserves a
+        // 1px transparent border on every side, at rest and on hover/pressed,
+        // so its own border-colour swap doesn't nudge the glyph. An `inset`
+        // box-shadow always clips to the padding edge — *inside* the border —
+        // regardless of the border's colour, so that reservation would leave
+        // the divider below 1px short on every edge it touches (top, bottom,
+        // and the left edge it's meant to sit flush against). The hover/
+        // pressed background swap above already carries the interaction
+        // feedback flat chrome's border swap was for, so clear the border in
+        // every state rather than work around the clip: with no border
+        // reserved, the padding edge coincides with the button's true edges
+        // and the shadow below reaches them exactly.
+        this._menuButton.clearBorder();
+        this._menuButton.clearHoverBorder();
+        this._menuButton.clearPressedBorder();
+        // `ParentHeaderCell` uses the same inset-shadow technique for its own
+        // dividers.
         this._menuButton.setShadow("inset 1px 0 0 0 var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))");
         this._menuButton.getAria().setHasPopup("menu");
         super.addComponent(this._menuButton);

@@ -202,6 +202,25 @@ describe('TableHeader menu button', () => {
         expect({ x: button.getX(), y: button.getY(), width: button.getWidth(), height: button.getHeight() }).toEqual(before);
     });
 
+    // An `inset` box-shadow (the button's own left-edge divider) always clips
+    // to the padding edge, inside the border, regardless of the border's
+    // colour — so flat chrome's own reserved 1px transparent border (kept
+    // uniform across rest/hover/pressed so its colour swap doesn't nudge the
+    // glyph) left the divider 1px short of the button's true edges on every
+    // side it touches. The button has its own opaque hover/pressed
+    // background fill for interaction feedback, making that border
+    // reservation redundant, so the fix clears it in every state: with no
+    // border to clip against, the padding edge coincides with the button's
+    // true edges and the divider reaches them.
+    it('clears the border in every state so the inset-shadow divider is not clipped', () => {
+        const header = makeTable().getHeader();
+        const button = header.getMenuButton();
+
+        expect(button.getBorder()).toEqual({ border: 'none' });
+        expect(button.getHoverBorder()).toBeNull();
+        expect(button.getPressedBorder()).toBeNull();
+    });
+
     it('reports the accessible name and popup role', () => {
         const header = makeTable().getHeader();
         const button = header.getMenuButton();
