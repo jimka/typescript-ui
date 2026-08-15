@@ -12,7 +12,7 @@
 // store sync" bullet. The latter needs a store-sync seam whose re-render path
 // (renderWindow) reaches live geometry the offline source zeroes out, so it is
 // deferred rather than asserted here.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -283,5 +283,51 @@ describe('TreeBody column window — tree column scrolling', () => {
         const treeCell = row.getTreeCell();
         expect(treeCell).not.toBeNull();
         expect(treeCell!.getRenderer()).toBeInstanceOf(TreeCellRenderer);
+    });
+});
+
+// Body's `copy` listener and onCopy/buildSelectionText machinery are defined
+// once on Body and TreeBody adds no override — this pins that the
+// inheritance actually works against a real TreeBody row pool, not just that
+// TreeBody.init() happens to call super.init().
+describe('TreeBody copy — inherits Body onCopy without any TreeBody-specific code', () => {
+    // All-string fields (unlike the file's own numeric-id MODEL) so the
+    // expected payload below is a literal taken from the contract, not a
+    // value read back off the renderer under test. id/parent stay in the
+    // model (TreeBody needs them to build the parent/child index) but are
+    // hidden, so the two visible columns are name/extra.
+    const COPY_MODEL = new Model([
+        { name: 'id',     type: 'string', order: 0 },
+        { name: 'parent', type: 'string', order: 1 },
+        { name: 'name',   type: 'string', order: 2 },
+        { name: 'extra',  type: 'string', order: 3 },
+    ], 'id');
+    const COPY_SPEC = { idField: 'id', parentField: 'parent', treeColumn: 'name', indentPx: 16 };
+
+    it('a stubbed selection across a TreeBody row builds a tab-separated payload', () => {
+        const store = new MemoryStore(COPY_MODEL, []);
+        store.loadData([
+            { id: '1', parent: null, name: 'a', extra: 'x' },
+            { id: '2', parent: null, name: 'b', extra: 'y' },
+        ]);
+
+        const tb = new TreeBody(store, COPY_SPEC);
+        tb.setHiddenColumns(new Set(['id', 'parent']));
+        tb.getElement(true);
+
+        const cells = (tb as any).getRowPool()[0].getComponents();
+        expect(cells).toHaveLength(2); // name, extra
+
+        vi.spyOn(DOM.source, 'getDocumentSelection').mockReturnValue({
+            startContainer: cells[0].getElement()!,
+            startOffset:    null,
+            endContainer:   cells[cells.length - 1].getElement()!,
+            endOffset:      null,
+        });
+
+        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
+
+        expect((tb as any).onCopy(fakeEvent)).toEqual({ prevent: true });
+        expect(fakeEvent.clipboardData!.setData).toHaveBeenCalledWith('text/plain', 'a\tx');
     });
 });

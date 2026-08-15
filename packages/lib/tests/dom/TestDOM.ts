@@ -12,7 +12,7 @@
 // reads the recorded scroll / value / id state back off that stub. The shared
 // `TestHandleTable` is what lets a write through the sink be read by the source.
 
-import { DOM, type DOMSink, type DOMSource, type ElementPatch, type Handle, type TimerId, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize, type MediaState } from '~/core/DOM';
+import { DOM, type DOMSink, type DOMSource, type DocumentSelectionRange, type ElementPatch, type Handle, type TimerId, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize, type MediaState } from '~/core/DOM';
 import type { Component } from '~/core/Component';
 import type { Size } from '~/primitive/Size';
 import type { TextMeasureOptions, TextMetrics } from '~/core/Util';
@@ -1110,6 +1110,11 @@ export class ModelledDOMSource implements DOMSource {
     /** Reads the focused handle recorded by the sink's `focus`/`blur`. */
     getActiveElement(): Handle | null {
         return _table.focus();
+    }
+
+    /** No live Selection offline; always reports nothing selected. */
+    getDocumentSelection(): DocumentSelectionRange | null {
+        return null;
     }
 
     /** Modelled media query: never matches; change subscription is a no-op. */
