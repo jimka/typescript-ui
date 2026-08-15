@@ -19,10 +19,10 @@ Reuse this single instance — `Menu` in rebuild mode is designed to be shared a
 
 ## Wire `contextmenu` on the target component
 
-```typescript
-Event.addListener(myList, 'contextmenu', (e: MouseEvent) => {
-    e.preventDefault();
+`Event.addListener` defaults to primary (left) button only, but a right-click's `contextmenu` event reports a non-primary button — pass `button: "any"` so the listener still fires:
 
+```typescript
+Event.addListener(myList, 'contextmenu', { button: "any", handler: (e: MouseEvent): Event.ListenerResult => {
     const item = findItemAt(e);  // your own hit-test logic
 
     menu.show(e.clientX, e.clientY, [
@@ -32,7 +32,9 @@ Event.addListener(myList, 'contextmenu', (e: MouseEvent) => {
         { separator: true },
         { text: 'Delete', action: () => deleteItem(item) },
     ]);
-});
+
+    return { prevent: true };
+} });
 ```
 
 The menu coordinates use `clientX` / `clientY` (viewport-relative).
@@ -54,16 +56,17 @@ function buildMenu(item: Item) {
     return items;
 }
 
-Event.addListener(myList, 'contextmenu', (e: MouseEvent) => {
-    e.preventDefault();
+Event.addListener(myList, 'contextmenu', { button: "any", handler: (e: MouseEvent): Event.ListenerResult => {
     const item = findItemAt(e);
     menu.show(e.clientX, e.clientY, buildMenu(item));
-});
+
+    return { prevent: true };
+} });
 ```
 
 ## Notes
 
-- [`Body.init`](/components/Body) already suppresses the browser's native context menu page-wide, so `e.preventDefault()` here is what keeps this handler correct for an app that opted back in with `nativeContextMenu: true`.
+- [`Body.init`](/components/Body) already suppresses the browser's native context menu page-wide, so returning `{ prevent: true }` here is what keeps this handler correct for an app that opted back in with `nativeContextMenu: true`.
 - `Menu` is appended to `document.documentElement` so it always layers above the rest of the UI.
 - The menu closes itself automatically; you don't need to call `hide` after an `action` runs.
 
