@@ -143,16 +143,16 @@ abstract class AbstractBooleanInput<
      *
      * @param e - The keyboard event.
      */
-    private handleActivationKey(e: KeyboardEvent): void {
+    private handleActivationKey(e: KeyboardEvent): Event.ListenerResult {
         if (!this.activationKeys().includes(e.key)) {
             return;
         }
 
-        e.preventDefault();
-
         if (this.isEnabled() && !this.isReadOnly()) {
             this.activate();
         }
+
+        return { prevent: true };
     }
 
     /**

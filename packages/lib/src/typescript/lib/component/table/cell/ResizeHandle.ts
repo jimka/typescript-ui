@@ -215,6 +215,8 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
      * through the `"dragstart"` event) relied on the removed
      * `stopPropagation` monkey-patch to produce.
      *
+     * @param e - The mousedown event. Only ever a primary-button press — the
+     * default `button: "primary"` registration filters the rest.
      * @returns `true`, consuming the press so it does not also reach the header's own sort handler.
      */
     private _onMouseDown = (e: MouseEvent): Event.ListenerResult => {

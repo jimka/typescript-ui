@@ -174,8 +174,8 @@ class CollapseButton extends Component<CollapseButtonOptions> {
         this.applyListeners(options?.listeners);
 
         Event.addListener(this, this._trigger === "click" ? "click" : "dblclick", this.onActivate);
-        Event.addListener(this, "mousedown", this.onMouseDown);
-        Event.addListener(this, "contextmenu", this.onContextMenu);
+        Event.addListener(this, "mousedown", { button: "any", handler: this.onMouseDown });
+        Event.addListener(this, "contextmenu", { button: "any", handler: this.onContextMenu });
     }
 
     /**

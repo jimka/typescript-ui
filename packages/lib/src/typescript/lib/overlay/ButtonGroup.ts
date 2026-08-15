@@ -268,14 +268,16 @@ class ButtonGroup {
             this._rovingTabIndex.add(button);
         }
 
-        Event.addSubtreeListener(container, "keydown", (e: KeyboardEvent) => {
+        Event.addSubtreeListener(container, "keydown", (e: KeyboardEvent): Event.ListenerResult => {
             if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                e.preventDefault();
                 this._rovingTabIndex!.moveNext();
             } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                e.preventDefault();
                 this._rovingTabIndex!.movePrev();
+            } else {
+                return;
             }
+
+            return { prevent: true };
         });
 
         return this;

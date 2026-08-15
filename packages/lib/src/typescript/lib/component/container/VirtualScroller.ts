@@ -146,8 +146,7 @@ export class VirtualScroller {
         Event.addSubtreeListener(
             this._owner,
             "wheel",
-            (e: WheelEvent) => this.onWheel(e),
-            { passive: false }
+            { passive: false, handler: (e: WheelEvent) => this.onWheel(e) },
         );
 
         this.attachTouchHandlers();
@@ -513,20 +512,20 @@ export class VirtualScroller {
      *
      * @param e - The wheel event.
      */
-    private onWheel(e: WheelEvent): void {
+    private onWheel(e: WheelEvent): Event.ListenerResult {
         if (!consumeWheel(e)) {
             return;
         }
 
-        e.preventDefault();
-
         if (e.shiftKey && e.deltaY !== 0 && e.deltaX === 0) {
             this._smooth.scrollBy(e.deltaY, 0);
 
-            return;
+            return { prevent: true };
         }
 
         this._smooth.scrollBy(e.deltaX, e.deltaY);
+
+        return { prevent: true };
     }
 
     /**

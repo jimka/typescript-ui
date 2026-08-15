@@ -183,8 +183,8 @@ class PickerNavButton extends Component {
         glyph.setPreferredSize({ width: GLYPH_PX, height: GLYPH_PX });
         this.addComponent(glyph);
 
-        Event.addListener(this, "pointerdown", (e: PointerEvent) => e.preventDefault());
-        Event.addListener(this, "click",       ()                => onClick());
+        Event.addListener(this, "pointerdown", (): Event.ListenerResult => ({ prevent: true }));
+        Event.addListener(this, "click",       ()                       => onClick());
     }
 
     /**
@@ -222,8 +222,8 @@ class PickerMonthLabel extends Text {
         this.getAria().setExpanded(false);
         this.getAria().setTabIndex(0);
 
-        Event.addListener(this, "pointerdown", (e: PointerEvent) => e.preventDefault());
-        Event.addListener(this, "click",       ()                => onClick());
+        Event.addListener(this, "pointerdown", (): Event.ListenerResult => ({ prevent: true }));
+        Event.addListener(this, "click",       ()                       => onClick());
     }
 
     /**
@@ -289,8 +289,8 @@ class PickerDay extends Text {
      *
      * @param e - The pointerdown event.
      */
-    private onPointerDown(e: PointerEvent): void {
-        e.preventDefault();
+    private onPointerDown(_e: PointerEvent): Event.ListenerResult {
+        return { prevent: true };
     }
 
     /**
@@ -614,7 +614,7 @@ abstract class AbstractCalendarDropdown<
      *
      * @param e - The pointerdown event.
      */
-    private onPointerDown(e: PointerEvent): void {
+    private onPointerDown(e: PointerEvent): Event.ListenerResult {
         if (DOM.source.isNode(e.target) && DOM.source.getTagName(DOM.source.intern(e.target)) === "INPUT") {
             return;
         }
@@ -623,7 +623,7 @@ abstract class AbstractCalendarDropdown<
             return;
         }
 
-        e.preventDefault();
+        return { prevent: true };
     }
 
     /**

@@ -237,8 +237,18 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
     /**
      * Attaches viewport mouse/touch move and stop listeners and disables body pointer events.
+     *
+     * @param e - The originating mousedown event. Optional so a caller can
+     * trigger a drag with no real event; when supplied — both the strip's
+     * own `mousedown` wiring and `AbstractWindow`'s snap-resize forwarding
+     * (`onSnapMouseDown`, reached through an unfiltered viewport listener)
+     * always do — a non-primary button is rejected.
      */
-    onDragStart() {
+    onDragStart(e?: MouseEvent) {
+        if (e && !Event.isPrimaryButton(e)) {
+            return;
+        }
+
         Event.addViewportListener(this, 'mouseup', this._dragStopListener);
         Event.addViewportListener(this, 'touchend', this._dragStopListener);
         Event.addViewportListener(this, 'touchcancel', this._dragStopListener);

@@ -4,6 +4,7 @@ import { _Body } from "~/component/table/Body.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import { Event } from "~/core/Event.js";
 import { DragEventDetail, DragManager } from "~/overlay/DragManager.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Row } from "~/component/table/Row.js";
@@ -801,19 +802,15 @@ class TreeBody extends _Body {
      *
      * @param e - The keyboard event fired on the body element.
      */
-    protected onKeyDown(e: KeyboardEvent): void {
+    protected onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") {
-            super.onKeyDown(e);
-
-            return;
+            return super.onKeyDown(e);
         }
 
         const anchor = this.getSelectedRecord();
 
         if (!anchor) {
-            super.onKeyDown(e);
-
-            return;
+            return super.onKeyDown(e);
         }
 
         const idx = this._flatRows.findIndex(f => f.record === anchor);
@@ -822,12 +819,8 @@ class TreeBody extends _Body {
         // dropped its subtree mid-key-press). Treat as no-op for tree
         // navigation rather than silently swallowing the keystroke.
         if (idx < 0) {
-            e.preventDefault();
-
-            return;
+            return { prevent: true };
         }
-
-        e.preventDefault();
 
         const flat = this._flatRows[idx];
 
@@ -836,6 +829,8 @@ class TreeBody extends _Body {
         } else {
             this.handleArrowLeft(flat, idx);
         }
+
+        return { prevent: true };
     }
 
     /**

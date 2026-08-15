@@ -441,10 +441,11 @@ class WebGLCanvas extends Component<WebGLCanvasOptions> {
     protected render(): Handle {
         const element = super.render();
 
-        Event.addListener(this, "webglcontextlost", (e: WebGLContextEvent) => {
-            // REQUIRED — without it the browser never fires `webglcontextrestored`.
-            e.preventDefault();
+        Event.addListener(this, "webglcontextlost", (): Event.ListenerResult => {
             this._contextLost = true;
+
+            // REQUIRED — without it the browser never fires `webglcontextrestored`.
+            return { prevent: true };
         });
         Event.addListener(this, "webglcontextrestored", () => {
             this._contextLost = false;

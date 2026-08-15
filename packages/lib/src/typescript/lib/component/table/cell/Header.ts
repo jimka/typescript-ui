@@ -171,11 +171,11 @@ class HeaderCell extends DefaultCell {
         // Subtree listener so clicks on any child element (e.g. the Label) bubble up here.
         Event.addSubtreeListener(this, 'click', (e: MouseEvent) => this.onSortClick(e.shiftKey));
 
-        Event.addSubtreeListener(this, 'contextmenu', (e: MouseEvent) => {
-            e.preventDefault();
-
+        Event.addSubtreeListener(this, 'contextmenu', { button: "any", handler: (e: MouseEvent): Event.ListenerResult => {
             this.emit("contextmenu", this._fieldName, e.clientX, e.clientY);
-        });
+
+            return { prevent: true };
+        } });
 
         // Side-load the resize handle and sort-priority badge as overlays.
         // Their `position:absolute` means they don't disturb the cell's `Card`

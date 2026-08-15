@@ -1561,9 +1561,10 @@ class TabBar extends Container<TabBarOptions> {
         // and stored on the entry so `removeBarEntry` can remove it (the closure
         // over `entry`, resolved at call time, is safe because right-clicks only
         // fire after the entry is fully built).
-        const onContextMenu = (e: MouseEvent): void => {
-            e.preventDefault();
+        const onContextMenu = (e: MouseEvent): Event.ListenerResult => {
             this.openTabMenu(entry, e.clientX, e.clientY);
+
+            return { prevent: true };
         };
 
         const entry: BarEntry = {
@@ -1580,7 +1581,7 @@ class TabBar extends Container<TabBarOptions> {
             closeButton.on("action", () => this.emit("tabclose", id));
         }
 
-        Event.addSubtreeListener(tabButton, "contextmenu", onContextMenu);
+        Event.addSubtreeListener(tabButton, "contextmenu", { button: "any", handler: onContextMenu });
 
         this._entries.push(entry);
 
@@ -3073,7 +3074,7 @@ class TabBar extends Container<TabBarOptions> {
      *
      * @param e - The keyboard event fired on the strip element.
      */
-    private onToolbarKeyDown(e: KeyboardEvent): void {
+    private onToolbarKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
             return;
         }
@@ -3083,8 +3084,6 @@ class TabBar extends Container<TabBarOptions> {
         if (tabCount === 0) {
             return;
         }
-
-        e.preventDefault();
 
         const activeIdx = this._entries.findIndex(entry => entry.id === this._activeId);
         const base = activeIdx >= 0 ? activeIdx : 0;
@@ -3099,6 +3098,8 @@ class TabBar extends Container<TabBarOptions> {
         newTab.setSelected(true);
 
         this.onTabPressed(newTab);
+
+        return { prevent: true };
     }
 
     /**

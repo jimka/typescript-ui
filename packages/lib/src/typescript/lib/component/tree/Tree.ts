@@ -1025,7 +1025,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *
      * @param e - The keyboard event fired on the tree element.
      */
-    private _onKeyDown(e: KeyboardEvent): void {
+    private _onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         const navigable = new Set(['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End']);
         if (!navigable.has(e.key)) {
             return;
@@ -1035,8 +1035,6 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         if (flatRows.length === 0) {
             return;
         }
-
-        e.preventDefault();
 
         // For Shift+Arrow the moving end is the focus node, not the anchor
         const focusIdx = this._focusNode
@@ -1061,14 +1059,15 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         } else if (e.key === 'ArrowRight') {
             if (focusIdx < 0) {
                 this._selectAtIndex(0);
-                return;
+
+                return { prevent: true };
             }
 
             const { node } = flatRows[focusIdx];
             const hasChildren = this._isExpandable(node);
 
             if (!hasChildren) {
-                return;
+                return { prevent: true };
             }
 
             if (this._expandedNodes.has(node)) {
@@ -1081,7 +1080,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
         } else if (e.key === 'ArrowLeft') {
             if (focusIdx < 0) {
-                return;
+                return { prevent: true };
             }
 
             const { node, depth } = flatRows[focusIdx];
@@ -1104,6 +1103,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
                 }
             }
         }
+
+        return { prevent: true };
     }
 
     /**
@@ -1187,7 +1188,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *
      * @param e - The contextmenu event whose target is inside the tree's subtree.
      */
-    private _handleContextMenu(e: MouseEvent): void {
+    private _handleContextMenu(e: MouseEvent): Event.ListenerResult {
         const target = e.target === null ? null : DOM.source.intern(e.target);
 
         for (const row of this._rowPool) {
@@ -1201,10 +1202,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
                 continue;
             }
 
-            e.preventDefault();
             this.emit("contextmenu", node, e);
 
-            return;
+            return { prevent: true };
         }
     }
 
@@ -1222,7 +1222,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *
      * @param e - The dblclick event whose target is inside the tree's subtree.
      */
-    private _handleDblClick(e: MouseEvent): void {
+    private _handleDblClick(e: MouseEvent): Event.ListenerResult {
         const target = e.target === null ? null : DOM.source.intern(e.target);
 
         for (const row of this._rowPool) {
@@ -1236,7 +1236,6 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
                 continue;
             }
 
-            e.preventDefault();
             this.emit("dblclick", node);
 
             // Double-clicking a parent row toggles its expansion, the
@@ -1257,7 +1256,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
                 this._onToggle(node);
             }
 
-            return;
+            return { prevent: true };
         }
     }
 
@@ -1491,7 +1490,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this.initScroller(el);
 
         Event.addSubtreeListener(this, "click", this._handleClick);
-        Event.addSubtreeListener(this, "contextmenu", this._handleContextMenu);
+        Event.addSubtreeListener(this, "contextmenu", { button: "any", handler: this._handleContextMenu });
         Event.addSubtreeListener(this, "dblclick", this._handleDblClick);
         Event.addListener(this, "keydown", this._onKeyDown);
 

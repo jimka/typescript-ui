@@ -547,12 +547,11 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         // hits to the root, so the exact-target `addListener` matches the
         // slider's id. `setPointerCapture` below then routes the move / up /
         // cancel stream to the same root element.
-        Event.addListener(this, "pointerdown", (e: PointerEvent) => {
+        Event.addListener(this, "pointerdown", (e: PointerEvent): Event.ListenerResult => {
             if (!this.isEnabled() || this.isReadOnly()) {
                 return;
             }
 
-            e.preventDefault();
             this.focus();
 
             const element = this.getElement();
@@ -562,15 +561,21 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             }
 
             this.setValue(this.valueAtPointer(e));
+
+            return { prevent: true };
         });
 
-        Event.addListener(this, "pointermove", (e: PointerEvent) => {
+        // pointermove is not a button-state-change event (button is always
+        // -1, same as pointercancel above) — a default "primary" registration
+        // would silently never run this during a real drag. The pointerId
+        // check below is the actual gate, so opt out explicitly.
+        Event.addListener(this, "pointermove", { button: "any", handler: (e: PointerEvent) => {
             if (this._draggingPointer !== e.pointerId) {
                 return;
             }
 
             this.setValue(this.valueAtPointer(e));
-        });
+        } });
 
         const release = (e: PointerEvent): void => {
             if (this._draggingPointer !== e.pointerId) {
@@ -586,12 +591,16 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         };
 
         Event.addListener(this, "pointerup",          release);
-        Event.addListener(this, "pointercancel",      release);
+        // pointercancel and lostpointercapture are not button-state-change
+        // events — the spec defines `button` as -1 for both, so a default
+        // "primary" registration would silently never run this cleanup and
+        // leak a stuck drag. Both opt out explicitly.
+        Event.addListener(this, "pointercancel",      { button: "any", handler: release });
         // Browser releases pointer capture on alt-tab / focus loss. Clear our
         // mirror so the next pointerdown starts clean and there's no stuck-drag.
-        Event.addListener(this, "lostpointercapture", release);
+        Event.addListener(this, "lostpointercapture", { button: "any", handler: release });
 
-        Event.addListener(this, "keydown", (e: KeyboardEvent) => {
+        Event.addListener(this, "keydown", (e: KeyboardEvent): Event.ListenerResult => {
             if (!this.isEnabled() || this.isReadOnly()) {
                 return;
             }
@@ -604,30 +613,30 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             switch (e.key) {
                 case "ArrowRight":
                 case "ArrowUp":
-                    e.preventDefault();
                     this.setValue(this.getValue() + step);
-                    break;
+
+                    return { prevent: true };
                 case "ArrowLeft":
                 case "ArrowDown":
-                    e.preventDefault();
                     this.setValue(this.getValue() - step);
-                    break;
+
+                    return { prevent: true };
                 case "PageUp":
-                    e.preventDefault();
                     this.setValue(this.getValue() + largeStep);
-                    break;
+
+                    return { prevent: true };
                 case "PageDown":
-                    e.preventDefault();
                     this.setValue(this.getValue() - largeStep);
-                    break;
+
+                    return { prevent: true };
                 case "Home":
-                    e.preventDefault();
                     this.setValue(min);
-                    break;
+
+                    return { prevent: true };
                 case "End":
-                    e.preventDefault();
                     this.setValue(max);
-                    break;
+
+                    return { prevent: true };
             }
         });
     }

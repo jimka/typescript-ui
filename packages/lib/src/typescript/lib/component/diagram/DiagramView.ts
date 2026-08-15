@@ -1404,13 +1404,17 @@ class DiagramView extends Panel<DiagramViewOptions> {
         // (mirrors click/dblclick, which is why selection worked but pan did not).
         Event.addSubtreeListener(this, "click", this._handleClick);
         Event.addSubtreeListener(this, "dblclick", this._handleDoubleClick);
-        Event.addSubtreeListener(this, "contextmenu", this._handleContextMenu);
+        Event.addSubtreeListener(this, "contextmenu", { button: "any", handler: this._handleContextMenu });
         // Non-passive: `_handleWheel` calls `preventDefault()` to suppress the
         // page's native scroll/zoom, which a passive listener silently ignores
         // (mirrors `Component.attachWheelScrolling` / `WheelTrap`).
-        Event.addSubtreeListener(this, "wheel", this._handleWheel, { passive: false });
+        Event.addSubtreeListener(this, "wheel", { passive: false, handler: this._handleWheel });
         Event.addSubtreeListener(this, "pointerdown", this._handlePointerDown);
-        Event.addSubtreeListener(this, "pointermove", this._handlePointerMove);
+        // pointermove is not a button-state-change event (button is always
+        // -1) — a default "primary" registration would silently never run
+        // this during a real pan drag. `_handlePointerMove` gates on the
+        // live `buttons` bitmask itself, so opt out explicitly.
+        Event.addSubtreeListener(this, "pointermove", { button: "any", handler: this._handlePointerMove });
         Event.addSubtreeListener(this, "pointerup", this._handlePointerUp);
         // `mousemove`/`mouseout` rather than `mouseenter`/`mouseleave`: per
         // ARCHITECTURE.md, the non-bubbling enter/leave pair never reaches the
@@ -1590,7 +1594,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
      * @param event - The contextmenu event whose target is inside the view's
      *   subtree.
      */
-    private _handleContextMenu(event: MouseEvent): void {
+    private _handleContextMenu(event: MouseEvent): Event.ListenerResult {
         const id = this.nodeIdAt(event.target);
 
         if (id === null) {
@@ -1600,8 +1604,9 @@ class DiagramView extends Panel<DiagramViewOptions> {
         const data = this._nodeData.get(id);
 
         if (data !== undefined) {
-            event.preventDefault();
             this.emit("contextmenu", data, event);
+
+            return { prevent: true };
         }
     }
 
@@ -1630,13 +1635,13 @@ class DiagramView extends Panel<DiagramViewOptions> {
      *
      * @param event - The wheel event.
      */
-    private _handleWheel(event: WheelEvent): void {
-        event.preventDefault();
-
+    private _handleWheel(event: WheelEvent): Event.ListenerResult {
         const rect = DOM.source.getViewportRect(this);
 
         this.zoomAboutViewportPoint(event.deltaY < 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP,
             event.clientX - rect.left, event.clientY - rect.top);
+
+        return { prevent: true };
     }
 
     /**

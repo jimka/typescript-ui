@@ -1926,7 +1926,7 @@ class Body extends VirtualRowView<Row> {
      * additional keys (ArrowRight/Left for expand/collapse) and delegate
      * the rest to `super.onKeyDown`. Not for consumer use.
      */
-    protected onKeyDown(e: KeyboardEvent): void {
+    protected onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         const records = this.getVisibleRecords();
 
         if (records.length === 0) {
@@ -1941,8 +1941,6 @@ class Body extends VirtualRowView<Row> {
         if (!navigable.has(e.key)) {
             return;
         }
-
-        e.preventDefault();
 
         // Column navigation — no row change needed
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -1963,13 +1961,13 @@ class Body extends VirtualRowView<Row> {
             this._updateActiveDescendant();
             this._updateFocusStyle();
 
-            return;
+            return { prevent: true };
         }
 
         // Enter/Space — start editing the focused cell
         if (e.key === 'Enter' || e.key === ' ') {
             if (!this._anchorRecord) {
-                return;
+                return { prevent: true };
             }
 
             // Same as the ArrowLeft/ArrowRight branch: make sure the focused
@@ -1981,7 +1979,7 @@ class Body extends VirtualRowView<Row> {
             const poolSlotIdx = this._boundIndices.indexOf(anchorIdx);
 
             if (poolSlotIdx < 0) {
-                return;
+                return { prevent: true };
             }
 
             const row   = this._rowPool[poolSlotIdx];
@@ -2001,7 +1999,7 @@ class Body extends VirtualRowView<Row> {
                 typedCell.startEdit();
             }
 
-            return;
+            return { prevent: true };
         }
 
         // Row navigation
@@ -2040,6 +2038,8 @@ class Body extends VirtualRowView<Row> {
         this.scrollRecordIntoView(newAnchor);
         this.renderWindow();
         this._updateActiveDescendant();
+
+        return { prevent: true };
     }
 
     /**

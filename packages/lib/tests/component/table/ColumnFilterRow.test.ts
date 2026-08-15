@@ -1758,7 +1758,7 @@ describe('Column filter row — numeric input restriction (filter-numeric-input-
 
         expect(registration).toBeDefined();
 
-        const listener = registration![2] as (e: KeyboardEvent) => unknown;
+        const listener = registration![2] as unknown as Event.Listener;
 
         expect(listener({ key: 'a' } as KeyboardEvent)).toEqual({ prevent: true });
         expect(listener({ key: '5' } as KeyboardEvent)).toBe(false);

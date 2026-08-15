@@ -102,9 +102,9 @@ describe('Event passive-conflict contract', () => {
         const type = uniqueType();
         const comp = new Component({});
 
-        Event.addListener(comp, type, () => {}, { passive: true });
+        Event.addListener(comp, type, { passive: true, handler: () => {} });
 
-        expect(() => Event.addListener(comp, type, () => {}, { passive: false }))
+        expect(() => Event.addListener(comp, type, { passive: false, handler: () => {} }))
             .toThrow(/conflict with earlier registration/);
     });
 
@@ -113,9 +113,31 @@ describe('Event passive-conflict contract', () => {
         const type = uniqueType();
         const comp = new Component({});
 
-        Event.addListener(comp, type, () => {}, { passive: true });
+        Event.addListener(comp, type, { passive: true, handler: () => {} });
 
-        expect(() => Event.addListener(comp, type, () => {}, { passive: true })).not.toThrow();
+        expect(() => Event.addListener(comp, type, { passive: true, handler: () => {} })).not.toThrow();
+    });
+
+    it('leaves no stale map entry behind when a cross-map conflict throws, so purging the sole real registration still uninstalls the base listener', () => {
+        const sink = installTestDOM(CONFIG);
+        const type = uniqueType();
+        const subtreeComp = new Component({});
+        const exactComp = new Component({});
+
+        // First registration (subtree) succeeds and locks `type` passive: true.
+        Event.addSubtreeListener(subtreeComp, type, { passive: true, handler: () => {} });
+
+        // Second registration (exact-target, a DIFFERENT internal map) conflicts
+        // and throws. Before the fix, `registerEntry` inserted an empty typeMap
+        // into `listenerMap` before this throw, leaving it permanently stale —
+        // `purgeComponent`'s plain `listenerMap.has(type)` check would then never
+        // see the type as free, and the base listener would never be uninstalled.
+        expect(() => Event.addListener(exactComp, type, { passive: false, handler: () => {} }))
+            .toThrow(/conflict with earlier registration/);
+
+        Event.purgeComponent(subtreeComp.getId());
+
+        expect(countWrites(sink, 'removeListener', type)).toBe(1);
     });
 });
 

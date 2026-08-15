@@ -492,26 +492,25 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
      *
      * @param e - The keyboard event from the text field.
      */
-    private onKeyDown(e: KeyboardEvent): void {
+    private onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (this._dropdown.isOpen()) {
             const forward = e.key === "ArrowDown"
                          || e.key === "ArrowUp"
                          || e.key === "Enter";
 
             if (forward && this._dropdown.handleKey(e)) {
-                e.preventDefault();
                 this.updateActiveDescendant();
 
-                return;
+                return { prevent: true };
             }
         }
 
         switch (e.key) {
             case "ArrowDown":
                 // Dropdown was closed — fire the query.
-                e.preventDefault();
                 this.querySuggestions(this.getValue());
-                break;
+
+                return { prevent: true };
 
             case "Escape":
                 this._dropdown.hide();

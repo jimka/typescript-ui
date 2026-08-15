@@ -1458,7 +1458,10 @@ export function installTestDOM(config: ModelledDOMConfig): RecordingDOMSink {
  * @param target - The element handle the event targets.
  * @param type - The event type (e.g. `"click"`).
  * @param init - Optional `clientX`/`clientY`/`key`/`keyCode`/`button`/`buttons`/
- * `deltaY`/`detail`/`code`/modifier-key fields.
+ * `deltaY`/`detail`/`code`/modifier-key/`relatedTarget`/`pointerId` fields.
+ * `relatedTarget`, when given, is wrapped in the same sentinel `target` uses,
+ * so `DOM.source.isNode` / `.intern` resolve it back to that handle exactly
+ * like `target` (see `ModelledDOMSource.isNode`'s doc comment).
  * @returns The synthetic event.
  */
 export function makeEvent(
@@ -1467,14 +1470,18 @@ export function makeEvent(
     init?: {
         clientX?: number; clientY?: number; key?: string; keyCode?: number; button?: number; buttons?: number;
         deltaY?: number; detail?: unknown; code?: string; ctrlKey?: boolean; altKey?: boolean; shiftKey?: boolean;
-        metaKey?: boolean;
+        metaKey?: boolean; relatedTarget?: Handle; pointerId?: number;
     }
 ): Event {
     const sentinel: SentinelTarget = { [SENTINEL_TARGET]: target };
+    const relatedTargetSentinel: SentinelTarget | undefined =
+        init?.relatedTarget !== undefined ? { [SENTINEL_TARGET]: init.relatedTarget } : undefined;
 
     const event = {
         type,
         target:          sentinel,
+        relatedTarget:   relatedTargetSentinel,
+        pointerId:       init?.pointerId,
         clientX:         init?.clientX,
         clientY:         init?.clientY,
         key:             init?.key,

@@ -432,19 +432,17 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
      *
      * @param e - The keyboard event.
      */
-    private onKeyDown(e: KeyboardEvent): void {
+    private onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (e.key === "ArrowUp") {
-            e.preventDefault();
             this.applyValue(this.getValue() + this.getStep());
 
-            return;
+            return { prevent: true };
         }
 
         if (e.key === "ArrowDown") {
-            e.preventDefault();
             this.applyValue(this.getValue() - this.getStep());
 
-            return;
+            return { prevent: true };
         }
 
         if (e.key === "Enter") {

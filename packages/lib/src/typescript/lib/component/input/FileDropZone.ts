@@ -148,13 +148,14 @@ class FileDropZone<TOptions extends FileDropZoneOptions = FileDropZoneOptions>
      * Increments the drag-depth counter and lights the zone on the first enter.
      * Bound as the subtree `dragenter` handler.
      */
-    private onDragEnter(e: DragEvent): void {
-        e.preventDefault();
+    private onDragEnter(_e: DragEvent): Event.ListenerResult {
         this._dragDepth++;
 
         if (this._dragDepth === 1) {
             this.setActive(true);
         }
+
+        return { prevent: true };
     }
 
     /**
@@ -162,21 +163,22 @@ class FileDropZone<TOptions extends FileDropZoneOptions = FileDropZoneOptions>
      * only populated on `drop`, so nothing is read here. Bound as the subtree
      * `dragover` handler.
      */
-    private onDragOver(e: DragEvent): void {
-        e.preventDefault();
+    private onDragOver(_e: DragEvent): Event.ListenerResult {
+        return { prevent: true };
     }
 
     /**
      * Decrements the drag-depth counter and dims the zone once the cursor truly
      * leaves (depth back to 0). Bound as the subtree `dragleave` handler.
      */
-    private onDragLeave(e: DragEvent): void {
-        e.preventDefault();
+    private onDragLeave(_e: DragEvent): Event.ListenerResult {
         this._dragDepth = Math.max(0, this._dragDepth - 1);
 
         if (this._dragDepth === 0) {
             this.setActive(false);
         }
+
+        return { prevent: true };
     }
 
     /**
@@ -184,22 +186,23 @@ class FileDropZone<TOptions extends FileDropZoneOptions = FileDropZoneOptions>
      * to the inner field so one code path owns formatting + notify. Bound as the
      * subtree `drop` handler.
      */
-    private onDrop(e: DragEvent): void {
-        e.preventDefault();
+    private onDrop(e: DragEvent): Event.ListenerResult {
         this._dragDepth = 0;
         this.setActive(false);
 
         if (!this.isEnabled() || this.isReadOnly()) {
-            return;
+            return { prevent: true };
         }
 
         const files = e.dataTransfer?.files;
 
         if (!files || files.length === 0) {
-            return;
+            return { prevent: true };
         }
 
         this._field.acceptDroppedFiles(files);
+
+        return { prevent: true };
     }
 
     /**

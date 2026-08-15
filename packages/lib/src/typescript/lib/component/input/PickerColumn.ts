@@ -170,8 +170,8 @@ class PickerCell extends Text {
      *
      * @param e - The pointerdown event.
      */
-    private handlePointerDown(e: PointerEvent): void {
-        e.preventDefault();
+    private handlePointerDown(_e: PointerEvent): Event.ListenerResult {
+        return { prevent: true };
     }
 
     /**

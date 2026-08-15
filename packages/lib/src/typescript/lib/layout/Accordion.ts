@@ -2517,7 +2517,7 @@ class Accordion extends LayoutManager {
      * @param e - The keyboard event fired on a header.
      * @param index - Zero-based index of the header that received the event.
      */
-    private onHeaderKeyDown(e: KeyboardEvent, index: number): void {
+    private onHeaderKeyDown(e: KeyboardEvent, index: number): Event.ListenerResult {
         const count = this._headers.length;
 
         if (count === 0) {
@@ -2534,8 +2534,9 @@ class Accordion extends LayoutManager {
             default:          return;
         }
 
-        e.preventDefault();
         this._headers[target].getTitleButton().focus();
+
+        return { prevent: true };
     }
 
     /**

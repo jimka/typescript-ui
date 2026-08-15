@@ -204,7 +204,7 @@ class ParentHeaderCell extends DefaultCell {
             return this;
         }
 
-        Event.addSubtreeListener(this, "contextmenu", this.onContextMenu);
+        Event.addSubtreeListener(this, "contextmenu", { button: "any", handler: this.onContextMenu });
 
         if (this._tooltipText) {
             Tooltip.attachToElement(el, this._tooltipText);
@@ -220,10 +220,10 @@ class ParentHeaderCell extends DefaultCell {
      *
      * @param e - The contextmenu event captured from a descendant.
      */
-    private onContextMenu(e: MouseEvent): void {
-        e.preventDefault();
-
+    private onContextMenu(e: MouseEvent): Event.ListenerResult {
         this.emit("contextmenu", e.clientX, e.clientY);
+
+        return { prevent: true };
     }
 }
 

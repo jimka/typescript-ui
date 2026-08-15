@@ -183,7 +183,7 @@ class ScrollArrowButton extends Component {
             onTick:       () => this.emit("tick"),
         });
 
-        Event.addListener(this, "mousedown",  this._onMouseDown);
+        Event.addListener(this, "mousedown", this._onMouseDown);
         Event.addListener(this, "mouseover",  this._onMouseOver);
         Event.addListener(this, "mouseout",   this._onMouseOut);
         Event.addViewportListener(this, "mouseup",    this._onMouseUp);
@@ -267,7 +267,8 @@ class ScrollArrowButton extends Component {
      * Scrollbar's track-click handler does not also fire, then (if not
      * disabled) fires the first tick and schedules accelerating repeats.
      *
-     * @param _e - The mousedown event.
+     * @param e - The mousedown event. Only ever a primary-button press — the
+     * default `button: "primary"` registration filters the rest.
      * @returns `{ stop: true, prevent: true }`, consuming the press and suppressing the browser's default text selection.
      */
     private _onMouseDown = (_e: MouseEvent): Event.ListenerResult => {
@@ -910,11 +911,11 @@ class Scrollbar extends Component<ScrollbarOptions> {
      * leaves the thumb. Holds the hover fill and pins a grabbing cursor for the
      * whole drag.
      *
-     * @param e - The mousedown or touchstart event on the thumb.
+     * @param e - The mousedown or touchstart event on the thumb. Only ever a
+     * primary-button press — the default `button: "primary"` registration
+     * filters the rest.
      */
-    private _onDragStart = (e: MouseEvent | TouchEvent): void => {
-        e.preventDefault();
-
+    private _onDragStart = (e: MouseEvent | TouchEvent): Event.ListenerResult => {
         this._dragStartClient = this.extractClientPrimary(e);
         this._dragStartScroll = this._scrollPosition;
         this._thumbDragging = true;
@@ -932,6 +933,8 @@ class Scrollbar extends Component<ScrollbarOptions> {
         // pointer events also takes the thumb out of hit-testing, so its own
         // "grab" cursor can no longer win a hit test (see PointerDrag.ts).
         beginPointerDrag("grabbing");
+
+        return { prevent: true };
     };
 
     /**
@@ -989,11 +992,11 @@ class Scrollbar extends Component<ScrollbarOptions> {
      * clicks that land inside an arrow region are ignored so the arrow
      * button's own handler is the sole authority on arrow-region clicks.
      *
-     * @param e - The mousedown or touchstart event on the track.
+     * @param e - The mousedown or touchstart event on the track. Only ever a
+     * primary-button press — the default `button: "primary"` registration
+     * filters the rest.
      */
-    private _onTrackClick = (e: MouseEvent | TouchEvent): void => {
-        e.preventDefault();
-
+    private _onTrackClick = (e: MouseEvent | TouchEvent): Event.ListenerResult => {
         const vertical = this.isVertical();
         let click: number;
 
@@ -1004,7 +1007,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
                 : touchEvent.changedTouches[0];
             const el = this.getElement();
             if (!t || !el) {
-                return;
+                return { prevent: true };
             }
             // getViewportRect's top-left is the border box, while the mouse
             // branch's offsetX/offsetY below is padding-box-relative; subtract
@@ -1028,7 +1031,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         const origin = this.getTrackOrigin();
         const outer  = axis.origin + axis.extent;
         if (this._arrowsEnabled && (click < origin || click >= outer - TRACK_WIDTH)) {
-            return;
+            return { prevent: true };
         }
 
         // Subtract origin so the thumb-position comparison stays in the
@@ -1040,6 +1043,8 @@ class Scrollbar extends Component<ScrollbarOptions> {
         const newPosition = Math.max(0, Math.min(maxScroll, this._scrollPosition + direction * this._viewportSize));
 
         this.emit("scroll", newPosition);
+
+        return { prevent: true };
     };
 }
 
