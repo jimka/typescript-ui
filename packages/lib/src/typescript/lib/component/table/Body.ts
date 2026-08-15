@@ -177,6 +177,88 @@ function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
 }
 
 /**
+ * Builds a tab/newline-formatted clipboard payload from `rows`, spanning
+ * `[startRow, startCol]` to `[endRow, endCol]` inclusive in row-major order.
+ * `startOffset`/`endOffset` trim the first/last cell to the selected
+ * characters (`null` leaves that cell's text whole); every cell strictly
+ * between the two boundaries contributes its full text.
+ *
+ * @param rows - The copy grid's cell text, row-major.
+ * @param startRow - The selection start's row index.
+ * @param startCol - The selection start's column index.
+ * @param startOffset - Character offset into the start cell's text, or `null` for the whole cell.
+ * @param endRow - The selection end's row index.
+ * @param endCol - The selection end's column index.
+ * @param endOffset - Character offset into the end cell's text, or `null` for the whole cell.
+ *
+ * @returns The tab-separated, newline-separated clipboard text.
+ *
+ * @internal
+ */
+export function buildTsv(
+    rows: string[][],
+    startRow: number, startCol: number, startOffset: number | null,
+    endRow:   number, endCol:   number, endOffset:   number | null,
+): string {
+    const lines: string[] = [];
+
+    for (let r = startRow; r <= endRow; r++) {
+        const row     = rows[r];
+        const colFrom = r === startRow ? startCol : 0;
+        const colTo   = r === endRow   ? endCol   : row.length - 1;
+        const parts: string[] = [];
+
+        for (let c = colFrom; c <= colTo; c++) {
+            const isStart = r === startRow && c === startCol;
+            const isEnd   = r === endRow   && c === endCol;
+            const text    = row[c];
+            const from    = isStart && startOffset !== null ? startOffset : 0;
+            const to      = isEnd   && endOffset   !== null ? endOffset   : text.length;
+
+            parts.push(escapeTsvField(text.slice(from, to)));
+        }
+
+        lines.push(parts.join("\t"));
+    }
+
+    return lines.join("\n");
+}
+
+function escapeTsvField(value: string): string {
+    if (value.includes("\t") || value.includes("\n") || value.includes("\"")) {
+        return "\"" + value.replace(/"/g, "\"\"") + "\"";
+    }
+
+    return value;
+}
+
+/**
+ * Finds the row-major grid position of the rendered cell containing
+ * `target`, or `null` when no cell in `grid` contains it.
+ *
+ * @param grid - The copy grid's cell elements, row-major.
+ * @param target - The selection boundary's container handle.
+ *
+ * @returns The matching `{ row, col }`, or `null`.
+ *
+ * @internal
+ */
+export function locateCellInGrid(
+    grid:   Array<Array<{ element: Handle }>>,
+    target: Handle,
+): { row: number, col: number } | null {
+    for (let r = 0; r < grid.length; r++) {
+        for (let c = 0; c < grid[r].length; c++) {
+            if (DOM.source.contains(grid[r][c].element, target)) {
+                return { row: r, col: c };
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
  * Virtual-scrolling body for the Table component.
  *
  * Only the rows visible in the viewport plus SCROLL_BUFFER rows above and below
@@ -815,6 +897,12 @@ class Body extends VirtualRowView<Row> {
         // clicks on subtree-owned widgets like the expand/collapse toggle.
         Event.addSubtreeListener(this, "click", this.onSubtreeClick);
 
+        // A native `copy` targets wherever the browser's selection actually
+        // starts (a cell's own element or its Text descendant), not Body's
+        // own element — an exact-target listener here would never fire, the
+        // same reason clicks above are routed as a subtree listener.
+        Event.addSubtreeListener(this, "copy", this.onCopy);
+
         this.renderWindow();
 
         return this;
@@ -1279,6 +1367,117 @@ class Body extends VirtualRowView<Row> {
                 event:    e,
             });
         }
+    }
+
+    /**
+     * Handles the native `copy` event, replacing the browser's default raw
+     * concatenated-text payload with a tab/newline-formatted grid built from
+     * the current selection.
+     *
+     * @param e - The native clipboard event.
+     *
+     * @returns `{ prevent: true }` when a payload was written, so the
+     *   dispatcher suppresses the browser's default copy; `undefined`
+     *   (leaving the default behaviour intact) when there is nothing to copy.
+     */
+    private onCopy(e: ClipboardEvent): Event.ListenerResult {
+        const text = this.buildSelectionText();
+
+        if (text === null) {
+            return;
+        }
+
+        e.clipboardData?.setData("text/plain", text);
+
+        return { prevent: true };
+    }
+
+    /**
+     * Resolves the current browser selection against the rendered cell grid
+     * and formats it as tab/newline-separated text.
+     *
+     * @returns The formatted clipboard text, or `null` when there is no
+     *   selection or it does not resolve to any rendered cell.
+     */
+    private buildSelectionText(): string | null {
+        const range = DOM.source.getDocumentSelection();
+        if (!range) {
+            return null;
+        }
+
+        const grid = this.renderedCellGrid();
+        let start  = locateCellInGrid(grid, range.startContainer);
+        let end    = locateCellInGrid(grid, range.endContainer);
+
+        if (!start || !end) {
+            return null;
+        }
+
+        let startOffset = range.startOffset;
+        let endOffset   = range.endOffset;
+
+        // A pool row's element is appended to the DOM once, in creation
+        // order, and never physically reordered afterwards — recycling
+        // changes which data index a slot displays (see renderedCellGrid's
+        // own remarks) but not the element's position in the DOM tree. The
+        // browser normalises `startContainer`/`endContainer` to that fixed
+        // DOM position, which is unrelated to the row-major order this
+        // grid is already built in, so the "start" the browser reports can
+        // resolve to a later grid position than "end"; swap so the walk
+        // below always proceeds forward through the grid's row-major order.
+        if (start.row > end.row || (start.row === end.row && start.col > end.col)) {
+            [start, end]             = [end, start];
+            [startOffset, endOffset] = [endOffset, startOffset];
+        }
+
+        return buildTsv(
+            grid.map(row => row.map(cell => cell.text)),
+            start.row, start.col, startOffset,
+            end.row,   end.col,   endOffset,
+        );
+    }
+
+    /**
+     * The copy grid: every currently-displayed, non-separator pool row's
+     * cells, in row-major order.
+     *
+     * @remarks `bindAndPositionRows` always sets `_boundIndices[i]` to
+     * `firstRow + i` for a displayed slot, so iterating `_rowPool` by array
+     * index already yields row-major (data-index) order — no sort is
+     * needed here. What *isn't* row-major is the DOM: a pool row's element
+     * is appended once, in creation order, and never physically reordered
+     * as the pool recycles, so a native `Range`'s start/end containers
+     * (which the browser orders by DOM position) can disagree with this
+     * grid's order — `buildSelectionText`'s swap guard is what corrects
+     * for that, not this method. A row's own cells need no such
+     * correction either way: `Row.setColumnWindow`'s `sortComponents` call
+     * keeps `getComponents()` in visible-column order already (the same
+     * array `resolveClickedColumn` relies on).
+     *
+     * @returns The rendered cell grid, row-major.
+     */
+    private renderedCellGrid(): Array<Array<{ text: string, element: Handle }>> {
+        const grid: Array<Array<{ text: string, element: Handle }>> = [];
+
+        for (let i = 0; i < this._rowPool.length; i++) {
+            if (!this._rowDisplayed[i]) {
+                continue;
+            }
+
+            const row = this._rowPool[i];
+            if (row.isSeparator()) {
+                continue;
+            }
+
+            const cells = row.getComponents() as Cell<any>[];
+
+            grid.push(cells.map(cell => ({
+                text:    cell.getRenderer().getDisplayText(),
+                element: cell.getElement()!,
+            })));
+        }
+
+        return grid;
     }
 
     /**

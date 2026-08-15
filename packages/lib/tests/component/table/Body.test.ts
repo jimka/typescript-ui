@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
-import { Body, resolveClickedColumn } from '~/component/table/Body';
+import { Body, resolveClickedColumn, buildTsv, locateCellInGrid } from '~/component/table/Body';
 import type { CellClickEvent } from '~/component/table/Body';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
@@ -501,6 +501,259 @@ describe('resolveClickedColumn', () => {
         const cells = row.getComponents();
 
         expect(resolveClickedColumn(cells, null)).toBe(-1);
+    });
+});
+
+describe('buildTsv', () => {
+    const rows = [['Alice', '25', 'NYC'], ['Bob', '30', 'LA']];
+
+    it('formats a whole row with no offsets as tab-separated', () => {
+        expect(buildTsv(rows, 0, 0, null, 0, 2, null)).toBe('Alice\t25\tNYC');
+    });
+
+    it('formats a cross-row span as row-major, not rectangular', () => {
+        expect(buildTsv(rows, 0, 1, null, 1, 1, null)).toBe('25\tNYC\nBob\t30');
+    });
+
+    it('trims both boundary cells to the selected characters', () => {
+        expect(buildTsv(rows, 0, 0, 2, 0, 1, 1)).toBe('ice\t2');
+    });
+
+    it('trims a single-cell selection to the selected characters', () => {
+        expect(buildTsv(rows, 0, 0, 2, 0, 0, 4)).toBe('ic');
+    });
+
+    it('keeps a boundary cell whole when only its own offset is null', () => {
+        expect(buildTsv(rows, 0, 0, null, 0, 1, 1)).toBe('Alice\t2');
+    });
+
+    it('quote-wraps a field containing a tab, keeping the tab intact', () => {
+        expect(buildTsv([['a\tb', 'c']], 0, 0, null, 0, 1, null)).toBe('"a\tb"\tc');
+    });
+
+    it('quote-wraps a field containing a quote, doubling interior quotes', () => {
+        expect(buildTsv([['He said "hi"']], 0, 0, null, 0, 0, null)).toBe('"He said ""hi"""');
+    });
+
+    it('quote-wraps a field containing a newline, keeping the newline intact', () => {
+        expect(buildTsv([['a\nb']], 0, 0, null, 0, 0, null)).toBe('"a\nb"');
+    });
+});
+
+describe('locateCellInGrid', () => {
+    it("returns the grid position of a cell's own element", async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const row   = (b as any).getRowPool()[0];
+        const cells = row.getComponents();
+        const grid  = [cells.map((c: any) => ({ element: c.getElement()! }))];
+
+        expect(locateCellInGrid(grid, cells[1].getElement()!)).toEqual({ row: 0, col: 1 });
+    });
+
+    it('returns the grid position when the target is a descendant of the cell', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const row   = (b as any).getRowPool()[0];
+        const cells = row.getComponents();
+        const grid  = [cells.map((c: any) => ({ element: c.getElement()! }))];
+        const inner = cells[2].getComponents()[0].getElement();
+
+        expect(locateCellInGrid(grid, inner)).toEqual({ row: 0, col: 2 });
+    });
+
+    it('returns null when the target is outside every cell in the grid', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const row   = (b as any).getRowPool()[0];
+        const cells = row.getComponents();
+        const grid  = [cells.map((c: any) => ({ element: c.getElement()! }))];
+
+        // The row element itself is not one of its cells.
+        expect(locateCellInGrid(grid, row.getElement()!)).toBe(null);
+    });
+});
+
+describe('Body onCopy / buildSelectionText', () => {
+    it('returns undefined and writes nothing when there is no selection', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        // ModelledDOMSource.getDocumentSelection() defaults to null — no stubbing needed.
+        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
+
+        expect((b as any).onCopy(fakeEvent)).toBeUndefined();
+        expect(fakeEvent.clipboardData!.setData).not.toHaveBeenCalled();
+    });
+
+    it('writes a tab-separated payload and prevents default for a resolved whole-row selection', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const cells = (b as any).getRowPool()[0].getComponents();
+
+        vi.spyOn(DOM.source, 'getDocumentSelection').mockReturnValue({
+            startContainer: cells[0].getElement()!,
+            startOffset:    null,
+            endContainer:   cells[2].getElement()!,
+            endOffset:      null,
+        });
+
+        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
+
+        expect((b as any).onCopy(fakeEvent)).toEqual({ prevent: true });
+        expect(fakeEvent.clipboardData!.setData).toHaveBeenCalledOnce();
+        expect(fakeEvent.clipboardData!.setData).toHaveBeenCalledWith('text/plain', '1\t2\t3');
+    });
+
+    it('returns undefined and writes nothing when the selection resolves outside every rendered cell', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const row = (b as any).getRowPool()[0];
+
+        // The row's own element is not one of its cells, so this selection
+        // does not resolve to any grid position.
+        vi.spyOn(DOM.source, 'getDocumentSelection').mockReturnValue({
+            startContainer: row.getElement()!,
+            startOffset:    null,
+            endContainer:   row.getElement()!,
+            endOffset:      null,
+        });
+
+        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
+
+        expect((b as any).onCopy(fakeEvent)).toBeUndefined();
+        expect(fakeEvent.clipboardData!.setData).not.toHaveBeenCalled();
+    });
+
+    it('skips a GroupSeparatorCell row spanned by the selection, in a rotated-mode body', async () => {
+        const store = new MemoryStore(MODEL, [
+            { a: '1', b: '2', c: '3' },
+            { a: 'SEP', b: '', c: '' },
+            { a: '4', b: '5', c: '6' },
+        ]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setRowSeparator(record => record.get('a') === 'SEP' ? { label: 'SEP', color: null } : null);
+        b.renderWindow();
+
+        const rowPool = (b as any).getRowPool();
+        const sepRow  = rowPool.find((r: any) => r.isSeparator());
+        expect(sepRow).toBeDefined();
+
+        const firstDataRow = rowPool.find((r: any) => !r.isSeparator() && r.getData()?.get('a') === '1');
+        const lastDataRow  = rowPool.find((r: any) => !r.isSeparator() && r.getData()?.get('a') === '4');
+
+        vi.spyOn(DOM.source, 'getDocumentSelection').mockReturnValue({
+            startContainer: firstDataRow.getComponents()[0].getElement()!,
+            startOffset:    null,
+            endContainer:   lastDataRow.getComponents()[2].getElement()!,
+            endOffset:      null,
+        });
+
+        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
+
+        (b as any).onCopy(fakeEvent);
+
+        // The separator row is absent from the copy grid entirely — its
+        // label never appears, and the two data rows land on adjacent lines.
+        expect(fakeEvent.clipboardData!.setData).toHaveBeenCalledWith('text/plain', '1\t2\t3\n4\t5\t6');
+    });
+
+    it('recovers correct row-major order when the Range reports start/end reversed', async () => {
+        const store = new MemoryStore(MODEL, [
+            { a: '1', b: '2', c: '3' },
+            { a: '4', b: '5', c: '6' },
+        ]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const pool     = (b as any).getRowPool();
+        const row0Cells = pool[0].getComponents(); // data index 0: "1","2","3"
+        const row1Cells = pool[1].getComponents(); // data index 1: "4","5","6"
+
+        // A pool row's element is appended to the DOM once, in creation
+        // order, and never physically moved as the pool recycles (see
+        // renderedCellGrid's own remarks), so a real Range's start/end
+        // containers — which the browser orders by DOM position, not data
+        // index — can resolve to the LATER row first. Stand in for that
+        // directly: "start" is a cell in the row with the larger data
+        // index, "end" a cell in the row with the smaller one.
+        vi.spyOn(DOM.source, 'getDocumentSelection').mockReturnValue({
+            startContainer: row1Cells[1].getElement()!,
+            startOffset:    null,
+            endContainer:   row0Cells[1].getElement()!,
+            endOffset:      null,
+        });
+
+        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
+        (b as any).onCopy(fakeEvent);
+
+        // Reading order follows the DATA index (row 0's b/c cells, then row
+        // 1's a/b cells), not which container the Range happened to label
+        // "start", and is never empty.
+        expect(fakeEvent.clipboardData!.setData).toHaveBeenCalledWith('text/plain', '2\t3\n4\t5');
+    });
+
+    it('swaps the start/end character offsets along with the reversed positions', async () => {
+        const store = new MemoryStore(MODEL, [
+            { a: 'aaa', b: 'bbb', c: 'ccc' },
+            { a: 'ddd', b: 'eee', c: 'fff' },
+        ]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const pool      = (b as any).getRowPool();
+        const row0Cells = pool[0].getComponents(); // "aaa","bbb","ccc"
+        const row1Cells = pool[1].getComponents(); // "ddd","eee","fff"
+
+        // Same reversed-order setup as above, but this time both boundary
+        // containers carry a real character offset — proving the offset
+        // that trims each cell travels with its (now-swapped) position
+        // rather than staying attached to whichever container the browser
+        // originally labelled "start" / "end".
+        vi.spyOn(DOM.source, 'getDocumentSelection').mockReturnValue({
+            startContainer: row1Cells[1].getElement()!, // "eee"
+            startOffset:    1,
+            endContainer:   row0Cells[1].getElement()!, // "bbb"
+            endOffset:      2,
+        });
+
+        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
+        (b as any).onCopy(fakeEvent);
+
+        // True start is ("bbb", offset 2) -> "b"; true end is ("eee", offset
+        // 1) -> "e". A missing or inverted offset swap would instead trim
+        // "bbb" with offset 1 ("bb") and "eee" with offset 2 ("ee").
+        expect(fakeEvent.clipboardData!.setData).toHaveBeenCalledWith('text/plain', 'b\tccc\nddd\te');
     });
 });
 

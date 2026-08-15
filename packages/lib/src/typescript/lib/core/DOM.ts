@@ -1111,6 +1111,15 @@ export interface DOMSource {
     getActiveElement(): Handle | null;
 
     /**
+     * Reads the document's current text selection as plain data, boxed
+     * through handles so the live `Selection`/`Range` never escapes the seam.
+     *
+     * @returns The selection's start/end containers and character offsets,
+     *   or `null` when nothing is selected (no ranges, or a collapsed one).
+     */
+    getDocumentSelection(): DocumentSelectionRange | null;
+
+    /**
      * Evaluates a media query, returning its current match state and a
      * change-subscription hook. The live `MediaQueryList` never escapes the seam.
      *
@@ -1415,6 +1424,24 @@ export interface DOMSource {
      * @returns The element handles at the point, topmost first.
      */
     elementsFromPoint(x: number, y: number): Handle[];
+}
+
+/**
+ * Seam-friendly result of {@link DOMSource.getDocumentSelection}: the
+ * selection's start/end containers and character offsets, boxed through
+ * handles so the live `Selection`/`Range` never escapes the seam.
+ *
+ * @category Core
+ */
+export interface DocumentSelectionRange {
+    /** The node the selection starts in. */
+    startContainer: Handle;
+    /** Character offset into {@link startContainer}, or `null` when it is not a text node. */
+    startOffset:    number | null;
+    /** The node the selection ends in. */
+    endContainer:   Handle;
+    /** Character offset into {@link endContainer}, or `null` when it is not a text node. */
+    endOffset:      number | null;
 }
 
 /**
@@ -2175,6 +2202,25 @@ export class ProductionDOMSource implements DOMSource {
         const active = document.activeElement;
 
         return active === null ? null : _registry.intern(active);
+    }
+
+    /** @inheritDoc */
+    getDocumentSelection(): DocumentSelectionRange | null {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+            return null;
+        }
+
+        const range = sel.getRangeAt(0);
+        const startIsText = range.startContainer.nodeType === Node.TEXT_NODE;
+        const endIsText   = range.endContainer.nodeType === Node.TEXT_NODE;
+
+        return {
+            startContainer: _registry.intern(range.startContainer),
+            startOffset:    startIsText ? range.startOffset : null,
+            endContainer:   _registry.intern(range.endContainer),
+            endOffset:      endIsText ? range.endOffset : null,
+        };
     }
 
     /** @inheritDoc */
