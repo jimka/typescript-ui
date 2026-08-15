@@ -258,44 +258,30 @@ class Table extends LayoutManager {
                 filterRowHeight,
             });
 
-            // Cover the vertical-scrollbar reservation at the header's
-            // right edge so cells scrolled horizontally appear to clip at
-            // the trackW boundary while the band stays continuous with the
-            // rest of the header's gradient. Sits on top of the inner rows
-            // by DOM order, beneath the scrollbar widget which lives in
-            // the body. Placed from `headerBox`, the same rectangle as the
-            // rows above, since the cover is a raw `<div>` appended to the
-            // header's element and so shares their containing block.
-            const trackW = DOM.source.getScrollBarWidth();
-            const cover  = header.getScrollbarCover();
-            DOM.sink.apply(cover, {
-                style: {
-                    left:   (headerBox.x + headerBox.width - trackW) + "px",
-                    top:    headerBox.y + "px",
-                    width:  trackW + "px",
-                    height: headerBox.height + "px",
-                },
-            });
-
-            // Centres the column-menu button horizontally in the reservation
-            // band and spans it the full band height, top to bottom — the
-            // same rect the cover above just got, parent-header row included
-            // when one is present. The button's own width stays its natural
-            // glyph-derived preferred width; the height is `headerBox.height`
-            // by design (not content-derived), so it is re-pinned via
-            // `setPreferredSize` every pass — `Button.setPreferredSize`
-            // permanently opts the button out of its own auto-sizing
-            // pipeline (see its doc comment), which is what keeps this
-            // height from being undone the next time `Absolute` (TableHeader's
-            // own layout manager) re-commits every child at
-            // `preferredSize ?? size` on a header-level layout.
+            // Positions the column-menu button over the vertical-scrollbar
+            // reservation band at the header's right edge, spanning it the
+            // full band width and height (top to bottom, parent-header row
+            // included when one is present) — the button carries the
+            // header's own background and a divider (see the `TableHeader`
+            // constructor), so it alone keeps cells scrolled horizontally
+            // appearing to clip at the trackW boundary and the band visually
+            // continuous with the header's gradient. Placed from `headerBox`,
+            // the same rectangle the rows above are positioned against.
+            //
+            // Both axes are pinned via `setPreferredSize` rather than left to
+            // the button's own glyph-derived size: `Button.setPreferredSize`
+            // permanently opts it out of its own auto-sizing pipeline (see
+            // its doc comment), which is what keeps this size from being
+            // undone the next time `Absolute` (`TableHeader`'s own layout
+            // manager) re-commits every child at `preferredSize ?? size` on
+            // a header-level layout.
+            const trackW      = DOM.source.getScrollBarWidth();
             const menuButton  = header.getMenuButton();
-            const buttonWidth = menuButton.getPreferredSize()?.width ?? trackW;
-            const buttonSize  = { width: buttonWidth, height: headerBox.height };
+            const buttonSize  = { width: trackW, height: headerBox.height };
 
             menuButton.setPreferredSize(buttonSize);
             menuButton.setAutoCommitStyle(false);
-            menuButton.setX(headerBox.x + headerBox.width - trackW + Math.floor((trackW - buttonSize.width) / 2));
+            menuButton.setX(headerBox.x + headerBox.width - trackW);
             menuButton.setY(headerBox.y);
             menuButton.setWidth(buttonSize.width);
             menuButton.setHeight(buttonSize.height);

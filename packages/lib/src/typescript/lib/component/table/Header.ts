@@ -2,7 +2,6 @@
 
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
-import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Row } from "~/component/table/Row.js";
 import { AbstractModel } from "~/data/AbstractModel.js";
@@ -35,19 +34,18 @@ const MENU_BUTTON_GLYPH = "ellipsis-v";
 /** Accessible name / tooltip for the column-menu button. */
 const MENU_BUTTON_LABEL = "Column options";
 
-// A flat, compact, glyph-only `Button` measures `glyph + 6` per axis (2px of
-// compact insets plus a 1px transparent flat-chrome frame on each side), and
-// that total has to stay under the native scrollbar width — the reservation
-// band the button sits in, ~15-17px on Windows/Linux Chrome. `8` gives a 14px
-// button, matching the pin `SpinButton` already uses for a chevron in an
-// 11px cell.
-const MENU_BUTTON_GLYPH_PX = 8;
+// A flat, compact, glyph-only `Button` reserves `glyph + MENU_BUTTON_CHROME_PX`
+// per axis around the glyph — 2px of compact insets plus a 1px transparent
+// flat-chrome frame on each side. The button fills the vertical-scrollbar
+// reservation band exactly (see the constructor, which pins the glyph to
+// `getScrollBarWidth() - MENU_BUTTON_CHROME_PX`), so this is the fixed
+// per-side overhead subtracted from that runtime-measured width.
+const MENU_BUTTON_CHROME_PX = 6;
 
-// The scrollbar cover hard-codes `z-index: 1` (see `getScrollbarCover`) and,
-// being created lazily on the header's first layout pass, is appended to the
-// header element AFTER the button — so an equal z-index would let the cover
-// win the paint order. This beats it.
-const MENU_BUTTON_Z_INDEX = 2;
+// Needs to beat the header's inner rows, which are Components at `z-index:
+// 0` (an implicit stacking context) — a plain sibling with `z-index: auto`
+// paints BENEATH them.
+const MENU_BUTTON_Z_INDEX = 1;
 
 /**
  * Debounce (ms) between a filter-cell keystroke and the store write it
@@ -117,7 +115,6 @@ class TableHeader extends Component {
     private _hiddenColumns: Set<string> = new Set();
     private _columns: Column[] = [];
     private _listeners: ListenerBag<TableHeaderEvent> = new ListenerBag<TableHeaderEvent>();
-    private _scrollbarCover: Handle | null = null;
     private _menuButton: Button;
     private _boundOnMenuButtonAction: () => void = () => this.onMenuButtonAction();
 
@@ -195,6 +192,16 @@ class TableHeader extends Component {
         // this class's own `addComponent` is narrowed to `Row` — and appended
         // last so the fixed indices `getParentRow()` (0), `getColumns()` (1),
         // and `getFilterRow()` (2) keep resolving to the three rows above.
+        //
+        // This button fully replaces what used to be a separate, non-
+        // interactive scrollbar-reservation cover: it carries the header's
+        // own background/gradient and a left divider matching the column-cell
+        // border, so cells translated horizontally still appear to clip at
+        // the reserved band's boundary. Its glyph is pinned to exactly fill
+        // that band — `getScrollBarWidth()` is memoized after its first call,
+        // so this read is cheap on every subsequent `TableHeader`.
+        const glyphPx = Math.max(1, DOM.source.getScrollBarWidth() - MENU_BUTTON_CHROME_PX);
+
         this._menuButton = new Button({
             glyph:     MENU_BUTTON_GLYPH,
             text:      MENU_BUTTON_LABEL,
@@ -204,7 +211,15 @@ class TableHeader extends Component {
             zIndex:    MENU_BUTTON_Z_INDEX,
             listeners: { action: this._boundOnMenuButtonAction },
         });
-        this._menuButton.pinGlyphSize(MENU_BUTTON_GLYPH_PX);
+        this._menuButton.pinGlyphSize(glyphPx);
+        this._menuButton.setBackgroundColor(TABLE_HEADER_BG);
+        this._menuButton.setBackgroundImage(TABLE_HEADER_BG);
+        // An inset shadow, not `setBorder` — flat chrome already reserves a
+        // 1px transparent border on every side for its hover/pressed
+        // geometry, and overwriting just the left side of that via
+        // `setBorder` would fight the framework's own chrome state.
+        // `ParentHeaderCell` uses the same technique for its own dividers.
+        this._menuButton.setShadow("inset 1px 0 0 0 var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))");
         this._menuButton.getAria().setHasPopup("menu");
         super.addComponent(this._menuButton);
 
@@ -539,51 +554,6 @@ class TableHeader extends Component {
         if (entries.length > 0) {
             void this._store.setFilters(entries);
         }
-    }
-
-    /**
-     * Returns the cover element that masks the vertical-scrollbar reservation
-     * band at the header's right edge. Created lazily on first access; sized
-     * and positioned by the table layout. Carries the same gradient as the
-     * header so cells translated horizontally appear to clip at the trackW
-     * boundary while the reservation band stays visually continuous with
-     * the rest of the header.
-     */
-    getScrollbarCover(): Handle {
-        if (this._scrollbarCover === null) {
-            // `cover` is a raw presentational `<div>` owned by this header, not a
-            // Component, so the Component style setters don't apply and direct
-            // `.style` writes are correct here.
-            const cover = DOM.sink.createElement("div");
-            DOM.sink.apply(cover, { style: {
-                "position":   "absolute",
-                "top":        "0",
-                "boxSizing":  "border-box",
-                // Inner rows are Components with `z-index: 0`, which creates a
-                // stacking context that paints AFTER positioned siblings with
-                // `z-index: auto`. Without an explicit z-index here the cover
-                // would be painted beneath the rows and cells could be seen
-                // bleeding into the scrollbar-reservation band.
-                "zIndex":     "1",
-                // Presentational only; don't intercept pointer events so column
-                // resize handles whose cells happen to be horizontally scrolled
-                // under the cover still receive clicks.
-                "pointerEvents":   "none",
-                "backgroundColor": TABLE_HEADER_BG,
-                "backgroundImage": TABLE_HEADER_BG,
-                // Left border matches the column-cell right border so the cover
-                // reads as a visual continuation of the column separators
-                // rather than a seam in the gradient.
-                "borderLeft": "1px solid var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))",
-            } });
-            DOM.sink.appendChild(this.getElement(true)!, cover);
-            // Track the header-owned cover so it is released with the header
-            // (on destructor or GC), not left pinned in the registry.
-            this.trackHandle(cover);
-            this._scrollbarCover = cover;
-        }
-
-        return this._scrollbarCover;
     }
 
     /**

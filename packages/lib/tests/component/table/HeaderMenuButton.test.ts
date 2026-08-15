@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { Event } from '~/core/Event';
 import type { Component } from '~/core/Component';
+import { Insets } from '~/primitive/Insets';
 import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
@@ -87,27 +88,65 @@ describe('TableHeader menu button', () => {
         expect(header.getComponents()[3]).toBe(button);
     });
 
-    it('sits inside the vertical-scrollbar reservation band', () => {
+    it('exactly fills the vertical-scrollbar reservation band, replacing the old cover', () => {
         const table  = layOut(makeTable());
         const header = table.getHeader();
         const button = header.getMenuButton();
         const box    = header.getContentBounds()!;
         const trackW = DOM.source.getScrollBarWidth();
 
-        expect(button.getX()).toBeGreaterThanOrEqual(box.x + box.width - trackW);
-        expect(button.getX() + button.getWidth()).toBeLessThanOrEqual(box.x + box.width);
+        expect(button.getX()).toBe(box.x + box.width - trackW);
+        expect(button.getWidth()).toBe(trackW);
     });
 
-    it('fits inside the reservation band at its own preferred size', () => {
+    it('fits the reservation band at its own preferred size', () => {
         const table  = layOut(makeTable());
         const header = table.getHeader();
         const button = header.getMenuButton();
         const trackW = DOM.source.getScrollBarWidth();
         const pref   = button.getPreferredSize()!;
 
-        expect(button.getWidth()).toBeLessThanOrEqual(trackW);
+        expect(button.getWidth()).toBe(trackW);
         expect(button.getWidth()).toBe(pref.width);
         expect(button.getHeight()).toBe(pref.height);
+    });
+
+    // A border never moves the content-box origin, so it cannot tell a real
+    // `headerBox.x`/`width` read apart from the outer, unbordered box — the
+    // trap this regresses: sizing the button against the header's OUTER box
+    // instead of its content box would overshoot the header's own right
+    // border into the clip.
+    it('tracks the header content box, not the outer box, when the header has a border', () => {
+        const table = makeTable();
+
+        table.getHeader().setBorder('6px solid black');
+
+        const header = layOut(table).getHeader();
+        const button = header.getMenuButton();
+        const trackW = DOM.source.getScrollBarWidth();
+        const box    = header.getContentBounds()!;
+
+        expect(button.getX()).toBe(box.x + box.width - trackW);
+        expect(button.getWidth()).toBe(trackW);
+        expect(button.getHeight()).toBe(box.height);
+    });
+
+    // A border never moves the content-box origin, so it cannot tell a real
+    // `headerBox.y` read apart from a hardcoded top of 0 — the trap a stale
+    // partial re-derivation would fall into (`x`/`width`/`height` refreshed
+    // but `y` left at a construction-time value). Padding is what proves it,
+    // since only padding (not a border) shifts the content box's origin.
+    it('offsets from a padded header\'s content-box origin', () => {
+        const table = makeTable();
+
+        table.getHeader().setPadding(new Insets(4, 4, 4, 4));
+
+        const header = layOut(table).getHeader();
+        const button = header.getMenuButton();
+        const box    = header.getContentBounds()!;
+
+        expect(box.y).toBeGreaterThan(0);
+        expect(button.getY()).toBe(box.y);
     });
 
     it('spans the full header band height, matching the scrollbar cover', () => {
