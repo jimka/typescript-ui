@@ -179,7 +179,7 @@ table.setDisplayMode("normal");   // back to one row per record
 - **The `field` and `value` columns stay compact** — each sizes to the displayed record's actual field labels and values, capped at a bounded maximum so a wide record does not stretch them across the whole table; a blank, expanding trailing column absorbs the leftover width, keeping the label and its value grouped on the left.
 - **Export always covers the source table** — `exportCSV()` / `exportJSON()` serialize every source record and column regardless of the active display mode, never the field/value projection.
 - `setColumnVisible` is a no-op while rotated (the projection's data columns are always shown), and the column-header context menu shows only the export entries.
-- `setRowVisible` is neutralized the same way while rotated (a predicate written against source records cannot apply to the field/value projection) and resumes filtering immediately on return to `"normal"` — even a predicate set while rotated is picked up then.
+- `setRowVisible` is neutralized the same way while rotated (a predicate written against source records cannot apply to the field/value projection) and resumes filtering immediately on return to `"normal"` — even a predicate set while rotated is picked up then. `setQuickSearch` is neutralized and restored the same way, for the same reason.
 - The [filter row](#column-filters) is absent while rotated, for the same reason: the projection has no per-column `filterable` field to filter on. The source store's filters stay applied underneath, and the row returns on return to `"normal"` with its toggle state and its previous operator/text intact.
 - **Grouped source columns get a separator row, and their field rows are indented.** Entering rotated mode inserts a separator row before each [group](#parent-headers)'s contiguous run of field/value rows, labeled with the group name and tinted with `groupColor` when set; the run's own field rows render their `field`-name cell indented, nesting them visually under the separator so a column that follows the group without belonging to it doesn't read as still part of it. Both the separator and the indent are suppressed while the projection is sorted (clicking `field` or `value`) — a sort has no notion of group adjacency — and reappear as soon as the sort is cleared. Separator rows are not selectable, are not focusable, and are skipped by keyboard row navigation.
 
@@ -250,6 +250,7 @@ The operators offered depend on the column's field type, and the first entry is 
 - Each filter writes through [`store.setFilter(key, descriptor)`](/data/store#sort-and-filter), keyed by field name, so retyping in one column replaces only that column's descriptor — it never stacks a new filter per keystroke, and never disturbs another column's filter or one added through [`filter()`](/api/data/classes/AbstractStore#filter) / [`filterBy()`](/api/data/classes/AbstractStore#filterBy).
 - **A [combo column](#combo-columns) filters on its label**, not the stored value — see above. A column with a custom `renderer` still filters on the stored value: it declares no option domain to resolve a typed label against.
 - **A `number` column's filter input accepts only the characters a number is built from** — digits, `-`, and `.` — refusing anything else as it is typed, in both the always-visible inline input and every extra condition's field. A combo column declared over a numeric field is not restricted, since it filters on its labels rather than a parsed number. Pasted text is not filtered: pasting something unparseable leaves it in the field and applies no filter, as before.
+- **A column filter is a query the store evaluates** — it goes through `store.setFilter`, changes what `getRecords()` returns, and can reach a remote proxy — while [quick search](#quick-search) is display-only and never reaches the store.
 
 A column is no longer limited to one operator and one value: open a column's operator menu and pick **Add condition…** to add a second (or third, or more) AND-combined condition — `age ≥ 18 AND age ≤ 65`, or `name starts with "A" AND name contains "smith"`. The always-visible text input and operator button keep editing the first condition; every extra condition lives in a popover opened from the operator button, with its own operator picker, text field, and a remove control (the first condition is only ever clearable, never removable, matching the single-condition row). A small corner badge shows the count once a column carries two or more conditions, and disappears again — along with the popover — once it is trimmed back down to one, at which point the column looks exactly as it did before any extra condition was added. Once a column carries two or more conditions, clicking the operator button opens the conditions popover directly instead of the single-condition operator menu — the menu still opens normally below that threshold. Hovering the operator button then states the active conditions in words (e.g. `age At least "18" AND age At most "65"`), not just their count; the badge carries the same description as its accessible label for assistive tech, since the badge itself does not accept pointer input.
 
@@ -355,30 +356,61 @@ table.on("cellclick", e => {
 | `setHeaderVisible(boolean)` / `setBodyVisible(boolean)` / `setFooterVisible(boolean)` | Toggle structural sections. |
 | `exportCSV(options?)` / `exportJSON(options?)` | Trigger a download of the current store view. |
 | `setExportMenuEnabled(boolean)` | Adds "Export as CSV" / "Export as JSON" entries to the column context menu. |
+| `setQuickSearch(text, fields?)` | Hide rows whose displayed cell text does not contain `text`. |
 | `setRowVisible(predicate)` | Hide rows that fail `predicate`, without touching the store. |
 | `setFilterRowVisible(boolean)` | Show / hide the header's [filter row](#column-filters). |
 | `getCellText(field, record)` | The exact text a cell shows for `field` on `record` — the same string export and the filter row resolve a combo label or formatted date/time/datetime through. |
 
-## Row visibility
+## Quick search
 
-`setRowVisible(predicate)` hides rows that fail a predicate, without touching the store — the primitive behind a client-side quick search over an already-loaded, editable grid: type in a search box, non-matching rows disappear instantly, no network round trip, and every add/delete/pending-edit keeps working underneath.
+`setQuickSearch(text, fields?)` hides every row whose displayed cell text does not contain `text`, matched case-insensitively — one call for the client-side quick-search case that used to mean hand-rolling a predicate and a per-record text cache:
 
 ```typescript
 import { Table } from '@jimka/typescript-ui/component/table';
 
 const table = Table(store);
 
-searchBox.on("change", value => {
-    const needle = value.trim().toLowerCase();
-
-    table.setRowVisible(needle === '' ? null : record =>
-        table.getCellText('name', record).toLowerCase().includes(needle));
-});
+searchBox.on("change", value => table.setQuickSearch(value));
 ```
 
-- **Matches what's on screen.** [`getCellText(field, record)`](#common-methods) resolves a combo column's label and a date/time/datetime column's formatted text, so a search built on it (as above) matches the displayed value rather than the raw stored one — the same text `exportCSV()`/`exportJSON()` write and the filter row matches against.
+With no `fields` argument, the searched columns default to every resolved column whose filter row would offer a **Contains** operator:
+
+| Column | Type / config | Searched by default? | Why |
+| --- | --- | --- | --- |
+| `Name` | `string` | yes | `string` offers Contains |
+| `Score` | `number` | yes | `number` offers Contains too |
+| `Joined` | `date` | yes | matched on the cell's formatted text |
+| `Role` | `string` + `values` (combo) | yes | matched on the option label, e.g. `Developer` |
+| `Active` | `boolean` | **no** | `boolean` offers no Contains — the cell is a checkbox with no text |
+| `Notes` | `string`, `hidden: true` | yes | hidden columns are still searched |
+| a column with `filterable: false` | any | **no** | the same "don't offer text matching here" opt-out the filter row reads |
+
+Pass `fields` to search an explicit list instead — every named field is searched verbatim, even one the default screen above would exclude.
+
+- **Matches what's on screen.** Each field is resolved through [`getCellText(field, record)`](#common-methods), the same resolution the filter row uses, so a combo column matches its option label and a date/time/datetime column matches its formatted text, not the raw stored value.
+- **A column with a custom `renderer` matches its stored value**, not what it draws — the renderer declares no text the table can resolve, the same limitation the filter row already has.
+- **A `glyph` column is in the default scope and matches its stored glyph name**, not any visible text — there is none, since the column renders an icon. Pass `fields` to exclude it if that's not wanted.
+- **Fields are joined with a newline**, so a needle typed into a single-line search box can never span two columns.
+- **Composes with [`setRowVisible`](#row-visibility) via AND** — a row renders only when both agree, and setting one never clears the other.
+- **Each record's searchable text is captured when first tested** against the active search and reused on every later render pass, refreshed automatically when the store reports that record changed. A bulk edit committed through `store.beginEdit()` / `commitEdit()` reports no per-record identity, so those records keep the text they were cached with — call `setQuickSearch` again to rebuild against fresh text.
+- **Neutralized while rotated** — see the note in [Rotated record view](#rotated-record-view) below.
+- **No effect on `TreeTable`** — see [`TreeTable`'s non-goals](/components/TreeTable#non-goals).
+
+## Row visibility
+
+`setRowVisible(predicate)` hides rows that fail a predicate, without touching the store — for a text search over displayed cells, see [Quick search](#quick-search) above; `setRowVisible` is the primitive for any other display-only condition, such as hiding rows by a status field:
+
+```typescript
+import { Table } from '@jimka/typescript-ui/component/table';
+
+const table = Table(store);
+
+table.setRowVisible(record => record.get('status') === 'open');
+```
+
 - **Display-only.** Hiding a row never touches `getStore()`'s records, the current selection, or a pending in-grid edit.
 - **Re-applied automatically.** The predicate is re-consulted on every render pass, so it stays in effect across scrolling, sorting, store events (`add` / `remove` / `datachange` / …), and column show/hide — call `setRowVisible` again only when the predicate itself changes.
+- **Composes with [`setQuickSearch`](#quick-search) via AND** — a row renders only when both agree, and setting one never clears the other.
 - **Neutralized while rotated** — see the note in [Rotated record view](#rotated-record-view) below.
 - **No effect on `TreeTable`** — see [`TreeTable`'s non-goals](/components/TreeTable#non-goals).
 

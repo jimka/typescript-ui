@@ -97,6 +97,13 @@ page resets to empty.
 - **A `date` / `time` / `datetime` column's header filter now offers
   Contains / Starts with / Ends with**, matching the displayed text rather
   than the raw `Date`. No consumer action is needed.
+- **`Table.setQuickSearch(text, fields?)`** hides every row whose displayed
+  cell text does not contain `text`, replacing the hand-rolled
+  `setRowVisible` + per-record cache pattern the demo app built by hand.
+  With no `fields` argument the searched columns default to every resolved
+  column whose filter row would offer a Contains operator; composes with
+  `setRowVisible` via AND. See
+  [Quick search](/components/Table#quick-search).
 
 ### Tree
 
