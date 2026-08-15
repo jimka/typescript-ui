@@ -394,50 +394,17 @@ class MiscPanel extends Panel {
                 wideStore.add(rows);
                 wideStore.sync();
 
-                // Demos setRowVisible at scale: one quick-search box filters
-                // across all 45 columns, entirely display-only. Each value is
-                // resolved through Table.getCellText, the same text the cell
-                // itself renders, so the search matches what's on screen, not
-                // the raw value.
-                //
-                // getVisibleRecords() re-evaluates this predicate against the
-                // WHOLE store on every render pass -- including every scroll
-                // animation frame, not just on keystroke (see
-                // Body.getVisibleRecords) -- so formatting all 45 fields
-                // (several Intl-backed toLocaleDateString calls) per record on
-                // every frame is too expensive: measured at 100ms+ of blocked
-                // main thread per frame while scrolling with a filter active.
-                // Each record's searchable text is cached instead, built once
-                // per keystroke (the WeakMap is rebuilt fresh on each
-                // "change", so nothing stale survives past the predicate that
-                // built it) and reused on every later render pass until the
-                // next keystroke replaces the predicate.
-                const searchField = new TextField({ placeholder: 'Filter (all 45 columns)…' });
+                // Demos Table.setQuickSearch at scale: one call filters on
+                // displayed text across every searchable column, entirely
+                // display-only. The 11 boolean columns are skipped — a
+                // checkbox cell has no text to match — and the per-record
+                // caching that makes this affordable at 400 rows (scrolling
+                // with a search active would otherwise re-format every
+                // column of every record on every frame) now lives in
+                // Table itself.
+                const searchField = new TextField({ placeholder: 'Filter (every searchable column)…' });
 
-                searchField.on("change", value => {
-                    const needle = value.trim().toLowerCase();
-
-                    if (needle === '') {
-                        widePanel.getTable().setRowVisible(null);
-                        return;
-                    }
-
-                    const textCache = new WeakMap<ModelRecord, string>();
-
-                    widePanel.getTable().setRowVisible(record => {
-                        let text = textCache.get(record);
-
-                        if (text === undefined) {
-                            text = fields
-                                .map(f => widePanel.getTable().getCellText(f.name, record).toLowerCase())
-                                .join(' ');
-
-                            textCache.set(record, text);
-                        }
-
-                        return text.includes(needle);
-                    });
-                });
+                searchField.on("change", value => { widePanel.getTable().setQuickSearch(value); });
 
                 const searchRow = new Component({ layoutManager: new HBox({ spacing: 8 }) })
                     .addComponent(new Text("Filter:"))
@@ -746,24 +713,19 @@ class MiscPanel extends Panel {
                     specTable.setFilterRowVisible(!specTable.isFilterRowVisible());
                 });
 
-                // Demos setRowVisible as a client-side quick search: filters
-                // Name/Role/Notes/Manager/Joined/Meeting/LastSeen on every
-                // keystroke, entirely display-only (the store, selection, and
-                // pending edits are untouched — clearing the field restores
-                // every row). Each field is resolved through Table.getCellText
-                // before matching — the same text the cell itself renders, so
-                // Role matches its label ('Developer'/'QA Engineer'/'Project
-                // Manager') rather than its stored code, and a search for the
-                // exact text on screen (e.g. "developer", or a date like
-                // "3/15/2021") hits.
+                // Demos Table.setQuickSearch's scoped form: an explicit field
+                // whitelist restricts the search to
+                // Name/Role/Notes/Manager/Joined/Meeting/LastSeen, entirely
+                // display-only (the store, selection, and pending edits are
+                // untouched — clearing the field restores every row). Role
+                // matches its label ('Developer'/'QA Engineer'/'Project
+                // Manager') rather than its stored code, since quick search
+                // resolves each field the same way the cell itself renders it.
                 const searchField = new TextField({ placeholder: 'Filter (name, role, notes, manager, joined, meeting, lastSeen)…' });
                 const searchFields = ['Name', 'Role', 'Notes', 'Manager', 'Joined', 'Meeting', 'LastSeen'];
 
                 searchField.on("change", value => {
-                    const needle = value.trim().toLowerCase();
-
-                    specTable.setRowVisible(needle === '' ? null : record =>
-                        searchFields.some(f => specTable.getCellText(f, record).toLowerCase().includes(needle)));
+                    specTable.setQuickSearch(value, searchFields);
                 });
 
                 const searchRow = new Component({ layoutManager: new HBox({ spacing: 8 }) })
