@@ -43,10 +43,10 @@ afterEach(() => DOM.reset());
 
 const FRAMEWORK_SELECTOR = ':where(.ts-ui-component)';
 
-/** The thirteen keys a class-uniform declaration may be hoisted onto. */
+/** The fourteen keys a class-uniform declaration may be hoisted onto. */
 const HOISTED_KEYS = [
     'position', 'visibility', 'display', 'boxSizing', 'whiteSpace',
-    'userSelect', 'margin', 'minWidth', 'minHeight', 'maxWidth',
+    'userSelect', 'cursor', 'margin', 'minWidth', 'minHeight', 'maxWidth',
     'maxHeight', 'overflowX', 'overflowY',
 ] as const;
 
@@ -385,13 +385,11 @@ describe('Class-scoped style rules', () => {
         new ProbeCase16({}).getElement(true);
 
         const sink = DOM.sink as RecordingDOMSink;
-        const b = new ProbeCase16({ cursor: 'pointer', backgroundColor: '#fff' });
+        const b = new ProbeCase16({ backgroundColor: '#fff' });
         const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
 
-        expect(declarations.cursor).toBe('pointer');
         expect(declarations.backgroundColor).toBe('#fff');
         expect(declarations.border).toBeNull();
-        expect(HOISTED_KEYS).not.toContain('cursor');
         expect(HOISTED_KEYS).not.toContain('backgroundColor');
         expect(HOISTED_KEYS).not.toContain('border');
     });
@@ -403,5 +401,77 @@ describe('Class-scoped style rules', () => {
         new ProbeCase17({});
 
         expect(ensureStyleRuleOpsFor(sink, '.ProbeCase17').length).toBe(0);
+    });
+
+    it('case 18: a default-valued cursor lands on no per-component rule', () => {
+        class ProbeCase18 extends Component {}
+
+        const sink = DOM.sink as RecordingDOMSink;
+        new ProbeCase18({}).getElement(true);
+        const b = new ProbeCase18({});
+
+        const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+
+        expect(declarations.cursor).toBeUndefined();
+    });
+
+    it('case 19: a class that overrides cursor gets it on its class rule', () => {
+        class PointerProbeCase19 extends Component {
+            constructor(options?: ComponentOptions) {
+                super(options, { cursor: 'pointer' });
+            }
+        }
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const a = new PointerProbeCase19({});
+        const classDeclarations = declarationsDuring(sink, '.PointerProbeCase19', () => a.getElement(true));
+
+        expect(ensureStyleRuleOpsFor(sink, '.PointerProbeCase19').length).toBe(1);
+        expect(classDeclarations.cursor).toBe('pointer');
+
+        const b = new PointerProbeCase19({});
+        const instanceDeclarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+        expect(instanceDeclarations.cursor).toBeUndefined();
+    });
+
+    it('case 20: an explicitly-set cursor lands on #uuid', () => {
+        class ProbeCase20 extends Component {}
+
+        new ProbeCase20({}).getElement(true);
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const b = new ProbeCase20({ cursor: 'pointer' });
+        const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+
+        expect(declarations.cursor).toBe('pointer');
+    });
+
+    it('case 21: an instance cursor matching the framework value still beats a class override', () => {
+        class PointerProbeCase21 extends Component {
+            constructor(options?: ComponentOptions) {
+                super(options, { cursor: 'pointer' });
+            }
+        }
+
+        new PointerProbeCase21({}).getElement(true);
+        new PointerProbeCase21({}).getElement(true);
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const c = new PointerProbeCase21({ cursor: 'default' });
+        const declarations = declarationsDuring(sink, idSelector(c), () => c.getElement(true));
+
+        expect(declarations.cursor).toBe('default');
+    });
+
+    it('case 22: a pre-render setCursor call is honoured by the render-time rule write', () => {
+        class ProbeCase22 extends Component {}
+
+        const b = new ProbeCase22({});
+        b.setCursor('pointer');
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+
+        expect(declarations.cursor).toBe('pointer');
     });
 });

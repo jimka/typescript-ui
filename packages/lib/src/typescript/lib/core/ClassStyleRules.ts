@@ -20,7 +20,7 @@ const FRAMEWORK_SELECTOR = ":where(." + COMPONENT_CLASS + ")";
 
 /**
  * The class-default fields a rule body is derived from — the subset of
- * `Component._defaultOptions` that feeds the thirteen hoistable
+ * `Component._defaultOptions` that feeds the fourteen hoistable
  * declarations. Typed structurally rather than as `ComponentOptions` so this
  * module does not import from `core/Component.ts` and no import cycle forms.
  */
@@ -30,11 +30,12 @@ interface ClassStyleDefaults {
     minSize?:   { width: number; height: number } | null;
     maxSize?:   { width: number; height: number } | null;
     overflow?:  string | null;
+    cursor?:    string | null;
 }
 
 type ClassStyleBag = Readonly<Record<string, string>>;
 
-// The thirteen hoistable keys at the value Component's own defaults resolve to.
+// The fourteen hoistable keys at the value Component's own defaults resolve to.
 const FRAMEWORK_DECLARATIONS: ClassStyleBag = Object.freeze({
     boxSizing:  "border-box",
     position:   Position.ABSOLUTE,
@@ -42,6 +43,7 @@ const FRAMEWORK_DECLARATIONS: ClassStyleBag = Object.freeze({
     visibility: "inherit",
     whiteSpace: "nowrap",
     userSelect: "none",
+    cursor:     "default",
     margin:     "0px 0px 0px 0px",
     minWidth:   "0px",
     minHeight:  "0px",
@@ -72,7 +74,7 @@ function ensureFrameworkStyleRule(): void {
 }
 
 /**
- * The thirteen declarations an instance of this class produces from defaults
+ * The fourteen declarations an instance of this class produces from defaults
  * alone. A key the phase would *not* write gets the value that reproduces "no
  * declaration", so the framework rule's value is undone rather than inherited.
  */
@@ -88,6 +90,7 @@ function resolveDeclarations(defaults: ClassStyleDefaults): Record<string, strin
         visibility: (defaults.visible ?? null) === false ? "hidden" : "inherit",
         whiteSpace: "nowrap",
         userSelect: "none",
+        cursor:     defaults.cursor ?? "default",
         margin:     "0px 0px 0px 0px",
         minWidth:   minSize ? minSize.width  + "px" : "auto",
         minHeight:  minSize ? minSize.height + "px" : "auto",
