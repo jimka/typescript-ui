@@ -605,6 +605,9 @@ class Markdown extends Component<MarkdownOptions> {
         // `Component`s, so they carry no `user-select` of their own and
         // inherit this value.
         this.setUserSelect("text");
+        // Same reasoning as the user-select opt-in above: the children are
+        // raw DOM, so they inherit the cursor from the root too.
+        this.setCursor("text");
 
         // Prose reads continuously, unlike the framework's UI controls (tuned
         // for scanned single-line text), so it wants looser leading. Inherits

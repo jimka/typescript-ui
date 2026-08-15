@@ -35,6 +35,9 @@ class StringRenderer extends CellRenderer<String | null> {
         // ancestor's.
         this.setUserSelect("text");
         this._text.setUserSelect("text");
+        // Mirrors the user-select opt-in above: the renderer is the element the
+        // pointer hits, so its own cursor is what the browser shows on hover.
+        this.setCursor("text");
     }
 
     /**

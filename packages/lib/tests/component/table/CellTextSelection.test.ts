@@ -38,12 +38,13 @@ const CONFIG = {
 beforeEach(() => installTestDOM(CONFIG));
 afterEach(() => DOM.reset());
 
-describe('text-bearing cell renderers opt in to user-select: text', () => {
+describe('text-bearing cell renderers opt in to user-select: text and cursor: text', () => {
     it('StringRenderer and its Text opt in', () => {
         const r = new StringRenderer();
 
         expect(r.getUserSelect()).toBe('text');
         expect(r.getText().getUserSelect()).toBe('text');
+        expect(r.getCursor()).toBe('text');
     });
 
     it('NumberRenderer and its Text opt in', () => {
@@ -51,6 +52,7 @@ describe('text-bearing cell renderers opt in to user-select: text', () => {
 
         expect(r.getUserSelect()).toBe('text');
         expect(r.getComponents()[0].getUserSelect()).toBe('text');
+        expect(r.getCursor()).toBe('text');
     });
 
     it('DateRenderer and its Text opt in', () => {
@@ -58,6 +60,7 @@ describe('text-bearing cell renderers opt in to user-select: text', () => {
 
         expect(r.getUserSelect()).toBe('text');
         expect(r.getComponents()[0].getUserSelect()).toBe('text');
+        expect(r.getCursor()).toBe('text');
     });
 
     it('DateTimeRenderer and its Text opt in', () => {
@@ -65,6 +68,7 @@ describe('text-bearing cell renderers opt in to user-select: text', () => {
 
         expect(r.getUserSelect()).toBe('text');
         expect(r.getComponents()[0].getUserSelect()).toBe('text');
+        expect(r.getCursor()).toBe('text');
     });
 
     it('TimeRenderer and its Text opt in', () => {
@@ -72,6 +76,7 @@ describe('text-bearing cell renderers opt in to user-select: text', () => {
 
         expect(r.getUserSelect()).toBe('text');
         expect(r.getComponents()[0].getUserSelect()).toBe('text');
+        expect(r.getCursor()).toBe('text');
     });
 
     it('ComboRenderer and its Text opt in', () => {
@@ -79,6 +84,7 @@ describe('text-bearing cell renderers opt in to user-select: text', () => {
 
         expect(r.getUserSelect()).toBe('text');
         expect(r.getText().getUserSelect()).toBe('text');
+        expect(r.getCursor()).toBe('text');
     });
 
     it('LinkCellRenderer and its Text opt in', () => {
@@ -86,10 +92,12 @@ describe('text-bearing cell renderers opt in to user-select: text', () => {
 
         expect(r.getUserSelect()).toBe('text');
         expect(r.getText().getUserSelect()).toBe('text');
+        expect(r.getCursor()).toBe('text');
     });
 
     it('GlyphRenderer stays unselectable — glyph cells are not text', () => {
         expect(new GlyphRenderer().getUserSelect()).toBe('none');
+        expect(new GlyphRenderer().getCursor()).toBe('default');
     });
 });
 
@@ -99,6 +107,7 @@ describe('header, parent-header and group-separator cells opt back out', () => {
 
         expect(cell.getRenderer().getUserSelect()).toBe('none');
         expect(cell.getRenderer().getText().getUserSelect()).toBe('none');
+        expect(cell.getRenderer().getCursor()).toBe('default');
     });
 
     it('ParentHeaderCell keeps its StringRenderer and Text unselectable', () => {
@@ -106,6 +115,7 @@ describe('header, parent-header and group-separator cells opt back out', () => {
 
         expect(cell.getRenderer().getUserSelect()).toBe('none');
         expect(cell.getRenderer().getText().getUserSelect()).toBe('none');
+        expect(cell.getRenderer().getCursor()).toBe('default');
     });
 
     it('GroupSeparatorCell keeps its StringRenderer and Text unselectable', () => {
@@ -113,10 +123,12 @@ describe('header, parent-header and group-separator cells opt back out', () => {
 
         expect(cell.getRenderer().getUserSelect()).toBe('none');
         expect(cell.getRenderer().getText().getUserSelect()).toBe('none');
+        expect(cell.getRenderer().getCursor()).toBe('default');
     });
 
     it('a body StringCell built from the same renderer is unaffected by the header opt-out', () => {
         expect(new StringCell().getRenderer().getUserSelect()).toBe('text');
+        expect(new StringCell().getRenderer().getCursor()).toBe('text');
     });
 });
 

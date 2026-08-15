@@ -121,6 +121,11 @@ class HeaderCell extends DefaultCell {
         // renderer from) now opts in.
         renderer.setUserSelect("none");
         renderer.getText().setUserSelect("none");
+        // StringRenderer's constructor now sets cursor: "text" unconditionally
+        // (it does not know it is being reused as a header renderer here), so
+        // this restates the framework default the same way the user-select
+        // opt-out above does.
+        renderer.setCursor("default");
 
         // DefaultCell's `(tag?: string)` super-signature cannot carry the
         // `styleRules` options bag, so the rule is allocated here via the

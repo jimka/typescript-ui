@@ -134,6 +134,7 @@ describe('Dialog (LayerManager integration getters)', () => {
         const dialog = new Dialog({ title: 'T', message: 'M' });
 
         expect(dialog.getContentComponent().getComponents()[0].getUserSelect()).toBe('text');
+        expect(dialog.getContentComponent().getComponents()[0].getCursor()).toBe('text');
     });
 });
 
