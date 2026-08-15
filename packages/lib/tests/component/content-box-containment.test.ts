@@ -1591,48 +1591,6 @@ describe('a table header band contains its rows and cells', () => {
         expect(table.getBody().getY()).toBe(32);
     });
 
-    // The scrollbar cover is a raw <div> the manager writes through the sink,
-    // not a Component, so it is read back off the recorded writes. It shares
-    // the rows' containing block, so it needs the same content-box rectangle:
-    // against the outer box it would start a border-width too far right and
-    // stand a border-width too tall.
-    it('places the header scrollbar cover in the header content box', () => {
-        const sink  = installTestDOM(CONFIG);
-        const table = makeTable();
-
-        table.getHeader().setBorder('6px solid black');
-
-        const header = layOut(table, 400, 300).getHeader();
-        const trackW = DOM.source.getScrollBarWidth();
-
-        expect(header.getContentBounds()).toMatchObject({ x: 0, width: 386, height: 20 });
-
-        // 386 - trackW, not the container's 398 - trackW; 20, not the band's 32.
-        expect(styleOf(sink, header.getScrollbarCover())).toMatchObject({
-            left:   (386 - trackW) + 'px',
-            width:  trackW + 'px',
-            height: '20px',
-        });
-    });
-
-    // A border never moves the content-box origin, so it cannot tell a real
-    // `headerBox.y` read apart from a hardcoded top of 0 — the trap the cover
-    // write fell into: `left`/`width`/`height` were all re-derived but `top`
-    // was left at its construction-time value. Padding is what proves it.
-    it('offsets the header scrollbar cover from a padded header\'s content-box origin', () => {
-        const sink  = installTestDOM(CONFIG);
-        const table = makeTable();
-
-        table.getHeader().clearBorder();
-        table.getHeader().setPadding(new Insets(4, 4, 4, 4));
-
-        const header = layOut(table, 400, 300).getHeader();
-
-        expect(header.getContentBounds()).toMatchObject({ x: 4, y: 4 });
-
-        expect(styleOf(sink, header.getScrollbarCover())).toMatchObject({ top: '4px' });
-    });
-
     // Reachable only by writing the private flag directly: `Table` exposes no
     // footer-visibility setter. The footer's inner row is built with no
     // model, so `getColumns()` is empty and only the band itself is testable.

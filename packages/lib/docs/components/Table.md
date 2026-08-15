@@ -210,7 +210,7 @@ const table = Table(store, {
 
 ## Column filters
 
-Every column is filterable by default: the header gets a third row — a text input plus an operator-picker button per filterable column — wired straight to the store's own filter system. It is the *row's visibility*, not filterability, that is opt-in: the row stays hidden by default, even on a table where every column is filterable. A user reveals it by right-clicking the header and checking **Filter** in the column context menu; a caller can do the same programmatically:
+Every column is filterable by default: the header gets a third row — a text input plus an operator-picker button per filterable column — wired straight to the store's own filter system. It is the *row's visibility*, not filterability, that is opt-in: the row stays hidden by default, even on a table where every column is filterable. A user reveals it by opening the column context menu — right-clicking the header, or clicking the menu button in the strip above the vertical scrollbar — and checking **Filter**; a caller can do the same programmatically:
 
 ```typescript
 import { Table } from '@jimka/typescript-ui/component/table';
@@ -258,15 +258,16 @@ A column is no longer limited to one operator and one value: open a column's ope
 
 - Click a column header to cycle through sort directions: ascending → descending → no sort.
 - **Shift-click** a column header to compose a multi-column sort: each shift-click appends or toggles that column inside the current sort list (asc → desc → removed). When more than one column is active, a small priority badge (`2`, `3`, …) is shown on each non-primary column header.
-- Right-click a column header to toggle column visibility via a context menu — see [Showing and hiding columns](#showing-and-hiding-columns) below.
+- Right-click a column header — or click the menu button in the strip above the vertical scrollbar — to toggle column visibility via a context menu; see [Showing and hiding columns](#showing-and-hiding-columns) below.
 - `table.getSelectedRecord()` / `getSelectedRecords()` return the user's selection.
 - Cell values are selectable and copyable by dragging across them; headers are not. On a [`TreeTable`](/components/TreeTable), the row-reparent drag takes precedence over press-and-drag text selection — double-click (word) and shift-click (range) still select a row's text there. Copying a multi-cell selection writes tab-separated columns and newline-separated rows to the clipboard, instead of the browser's raw concatenated text, so a paste into a spreadsheet lands each cell in its own cell — for `Table` and `TreeTable` alike.
 
 ### Showing and hiding columns
 
-The column header's right-click context menu lists every resolved column's
-visibility as a checkable "Show/hide columns" submenu, one row per column in
-field order. Each row is a real [`CheckboxMenuRow`](/components/CheckboxMenuRow),
+The column context menu — opened by right-clicking a header cell, or by
+clicking the menu button in the strip above the vertical scrollbar — lists
+every resolved column's visibility as a checkable "Show/hide columns"
+submenu, one row per column in field order. Each row is a real [`CheckboxMenuRow`](/components/CheckboxMenuRow),
 so toggling it applies immediately and leaves the submenu open — several
 columns can be flipped in one open. A grouped column's row sits under its
 group name, rendered as a disabled section header above the group's members.

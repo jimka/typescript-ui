@@ -14,6 +14,16 @@ the document's current text selection as plain start/end container handles
 and character offsets, or `null` when nothing is selected. Only a consumer
 implementing its own `DOMSource` is affected.
 
+### Table
+
+`TableHeader.getScrollbarCover()` is removed. The column-menu button
+(`TableHeader.getMenuButton()`, see *Added* below) now fully replaces the
+raw, non-interactive cover it used to sit next to: it carries the header's
+own background and a left divider itself, so it alone keeps
+horizontally-scrolled cells clipping at the vertical-scrollbar reservation
+boundary. Only a consumer reading the cover's raw DOM handle directly is
+affected.
+
 ## Changed
 
 ### Core
@@ -149,6 +159,10 @@ implementing its own `DOMSource` is affected.
   column whose filter row would offer a Contains operator; composes with
   `setRowVisible` via AND. See
   [Quick search](/components/Table#quick-search).
+- **The column menu now has a visible opener.** A small button sits in the
+  strip above the vertical scrollbar, opening the same menu a right-click on
+  a header cell opens; right-click keeps working unchanged. Exposed as
+  `TableHeader.getMenuButton()`. No consumer action is needed.
 
 ### Tree
 
