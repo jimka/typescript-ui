@@ -31,7 +31,14 @@ page resets to empty.
   library-level context menu (`Tree`, `DiagramView`, `TabBar`, a `Split`
   gutter's chevron, a `Table` column header, …) keeps working unchanged. Opt
   back in with `Body.init({ nativeContextMenu: true })`.
-  
+- **`cursor` now joins the framework's other thirteen hoisted style
+  declarations** (see the `ts-ui-component` note in the 0.3.0 changelog): a
+  component whose cursor is left at the default, or matches its class's own
+  default, no longer gets a redundant per-instance CSS rule for it. No
+  visible or behavioural change — the zero-specificity framework rule and
+  the `.ClassName` rule both still lose to any class-level or per-instance
+  override, exactly as before.
+
 ### Split
 
 - **`SplitGutter.setMovable` is now live at runtime**, instead of taking
