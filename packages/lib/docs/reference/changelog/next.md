@@ -149,6 +149,10 @@ implementing its own `DOMSource` is affected.
   column whose filter row would offer a Contains operator; composes with
   `setRowVisible` via AND. See
   [Quick search](/components/Table#quick-search).
+- **The column menu now has a visible opener.** A small button sits in the
+  strip above the vertical scrollbar, opening the same menu a right-click on
+  a header cell opens; right-click keeps working unchanged. Exposed as
+  `TableHeader.getMenuButton()`. No consumer action is needed.
 
 ### Tree
 
