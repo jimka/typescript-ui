@@ -214,6 +214,20 @@ class TableHeader extends Component {
         this._menuButton.pinGlyphSize(glyphPx);
         this._menuButton.setBackgroundColor(TABLE_HEADER_BG);
         this._menuButton.setBackgroundImage(TABLE_HEADER_BG);
+        // Flat chrome's hover/pressed treatment (installed by the `super()`
+        // cascade above) overrides `background-color` with a translucent
+        // black tint, meant to composite against an ambient page background
+        // showing through a transparent resting state. This button's resting
+        // background is opaque instead (the masking colour above), and in
+        // themes where the CSS var resolves to a plain colour rather than a
+        // gradient, `background-image` is invalid and computes to `none` —
+        // leaving `background-color` as the button's only paint layer. The
+        // hover/pressed override then strips that layer entirely, flashing
+        // the button transparent. Clearing it lets the resting colour keep
+        // showing through in every state; the hover border and pressed inset
+        // shadow (both untouched) still carry the interaction feedback.
+        this._menuButton.clearHoverBackgroundColor();
+        this._menuButton.clearPressedBackgroundColor();
         // An inset shadow, not `setBorder` — flat chrome already reserves a
         // 1px transparent border on every side for its hover/pressed
         // geometry, and overwriting just the left side of that via
