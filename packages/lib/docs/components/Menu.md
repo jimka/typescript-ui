@@ -15,7 +15,7 @@ import { Menu } from '@jimka/typescript-ui/overlay';
 
 const menu = Menu();
 
-Event.addListener(myComponent, 'contextmenu', { button: "any", handler: (e: MouseEvent): Event.ListenerResult => {
+Event.addListener(myComponent, 'contextmenu', (e: MouseEvent): Event.ListenerResult => {
     menu.show(e.clientX, e.clientY, [
         { text: 'Cut',          action: () => cut()   },
         { text: 'Copy',         action: () => copy()  },
@@ -24,7 +24,7 @@ Event.addListener(myComponent, 'contextmenu', { button: "any", handler: (e: Mous
     ]);
 
     return { prevent: true };
-} });
+});
 ```
 
 Reuse one `Menu` instance across the app — `show()` disposes the previous items and rebuilds. The menu closes itself on item click, outside click, or when the browser window loses focus (clicking another application or alt-tabbing); you don't need to call `hide()` — except for an item with `closeOnActivate: false`, which runs its `action` and leaves the menu open. Pass an optional fourth `onClose` argument to `show(x, y, items, onClose)` to be notified once when the menu next closes — useful for reverting an open-state affordance such as a rotated dropdown chevron. An optional fifth `excludeEl` argument names an element exempt from the outside-click-to-close check; pass the trigger that opened the menu so a mousedown on it does not self-close the menu before that trigger's own click can toggle it shut.

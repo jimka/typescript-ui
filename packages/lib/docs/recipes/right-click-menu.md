@@ -19,10 +19,10 @@ Reuse this single instance — `Menu` in rebuild mode is designed to be shared a
 
 ## Wire `contextmenu` on the target component
 
-`Event.addListener` defaults to primary (left) button only, but a right-click's `contextmenu` event reports a non-primary button — pass `button: "any"` so the listener still fires:
+`Event.addListener` defaults to primary (left) button only for most event types, but `contextmenu` defaults to `"any"` — it already IS the button-agnostic signal (right-click, a keyboard context-menu key, or a touch long-press), so no `button` override is needed:
 
 ```typescript
-Event.addListener(myList, 'contextmenu', { button: "any", handler: (e: MouseEvent): Event.ListenerResult => {
+Event.addListener(myList, 'contextmenu', (e: MouseEvent): Event.ListenerResult => {
     const item = findItemAt(e);  // your own hit-test logic
 
     menu.show(e.clientX, e.clientY, [
@@ -34,7 +34,7 @@ Event.addListener(myList, 'contextmenu', { button: "any", handler: (e: MouseEven
     ]);
 
     return { prevent: true };
-} });
+});
 ```
 
 The menu coordinates use `clientX` / `clientY` (viewport-relative).
@@ -56,12 +56,12 @@ function buildMenu(item: Item) {
     return items;
 }
 
-Event.addListener(myList, 'contextmenu', { button: "any", handler: (e: MouseEvent): Event.ListenerResult => {
+Event.addListener(myList, 'contextmenu', (e: MouseEvent): Event.ListenerResult => {
     const item = findItemAt(e);
     menu.show(e.clientX, e.clientY, buildMenu(item));
 
     return { prevent: true };
-} });
+});
 ```
 
 ## Notes
