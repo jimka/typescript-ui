@@ -276,6 +276,40 @@ class Table extends LayoutManager {
                     height: headerBox.height + "px",
                 },
             });
+
+            // Centres the column-menu button horizontally in the reservation
+            // band and spans it the full band height, top to bottom — the
+            // same rect the cover above just got, parent-header row included
+            // when one is present. The button's own width stays its natural
+            // glyph-derived preferred width; the height is `headerBox.height`
+            // by design (not content-derived), so it is re-pinned via
+            // `setPreferredSize` every pass — `Button.setPreferredSize`
+            // permanently opts the button out of its own auto-sizing
+            // pipeline (see its doc comment), which is what keeps this
+            // height from being undone the next time `Absolute` (TableHeader's
+            // own layout manager) re-commits every child at
+            // `preferredSize ?? size` on a header-level layout.
+            const menuButton  = header.getMenuButton();
+            const buttonWidth = menuButton.getPreferredSize()?.width ?? trackW;
+            const buttonSize  = { width: buttonWidth, height: headerBox.height };
+
+            menuButton.setPreferredSize(buttonSize);
+            menuButton.setAutoCommitStyle(false);
+            menuButton.setX(headerBox.x + headerBox.width - trackW + Math.floor((trackW - buttonSize.width) / 2));
+            menuButton.setY(headerBox.y);
+            menuButton.setWidth(buttonSize.width);
+            menuButton.setHeight(buttonSize.height);
+            // `Absolute.doLayout`'s own `commitBounds` is what normally
+            // cascades a freshly-positioned child into its own `doLayout()`
+            // (see `LayoutManager.commitBounds`); this button is instead
+            // committed via raw setters, mirroring how the header/body/
+            // footer/rows above are positioned, so that cascade has to be
+            // called explicitly here. Without it, the button's own `Fit`
+            // layout never runs and its glyph is never actually placed —
+            // present in the DOM, sized, but with no committed position, so
+            // nothing paints.
+            menuButton.doLayout();
+            menuButton.setAutoCommitStyle(true);
         }
 
         if (container.isFooterVisible() && footer && footer.isDisplayed()) {

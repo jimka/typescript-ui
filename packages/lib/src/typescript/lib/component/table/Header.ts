@@ -19,7 +19,35 @@ import { columnFilterOperators, buildColumnFilter, columnFilterStatesEqual, colu
 import type { ColumnFilterState, ColumnFilterTarget } from "~/component/table/ColumnFilter.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { CellTextResolver } from "~/component/table/cell/CellText.js";
+import { Button } from "~/component/button/Button.js";
+import { Glyph } from "~/component/display/Glyph.js";
+import { ellipsis_v } from "~/glyphs/solid/ellipsis_v.js";
 import { callable } from "~/core/Callable.js";
+
+// Register the column-menu button's glyph eagerly at module load — same
+// pattern as ToolBar registering its overflow chevron — so the button always
+// resolves its glyph without the consumer pre-registering it.
+Glyph.register(ellipsis_v);
+
+/** Glyph the column-menu button renders — matches `ToolBar`'s overflow trigger. */
+const MENU_BUTTON_GLYPH = "ellipsis-v";
+
+/** Accessible name / tooltip for the column-menu button. */
+const MENU_BUTTON_LABEL = "Column options";
+
+// A flat, compact, glyph-only `Button` measures `glyph + 6` per axis (2px of
+// compact insets plus a 1px transparent flat-chrome frame on each side), and
+// that total has to stay under the native scrollbar width — the reservation
+// band the button sits in, ~15-17px on Windows/Linux Chrome. `8` gives a 14px
+// button, matching the pin `SpinButton` already uses for a chevron in an
+// 11px cell.
+const MENU_BUTTON_GLYPH_PX = 8;
+
+// The scrollbar cover hard-codes `z-index: 1` (see `getScrollbarCover`) and,
+// being created lazily on the header's first layout pass, is appended to the
+// header element AFTER the button — so an equal z-index would let the cover
+// win the paint order. This beats it.
+const MENU_BUTTON_Z_INDEX = 2;
 
 /**
  * Debounce (ms) between a filter-cell keystroke and the store write it
@@ -90,6 +118,8 @@ class TableHeader extends Component {
     private _columns: Column[] = [];
     private _listeners: ListenerBag<TableHeaderEvent> = new ListenerBag<TableHeaderEvent>();
     private _scrollbarCover: Handle | null = null;
+    private _menuButton: Button;
+    private _boundOnMenuButtonAction: () => void = () => this.onMenuButtonAction();
 
     // Non-hidden fields, in display order — the full column list the
     // rendered window is carved out of. Populated by `rebuildCells`.
@@ -160,6 +190,23 @@ class TableHeader extends Component {
         this.addRow(parentRow);
         this.addRow(row);
         this.addRow(filterRow);
+
+        // A plain, non-`Row` child — appended via `super.addComponent` because
+        // this class's own `addComponent` is narrowed to `Row` — and appended
+        // last so the fixed indices `getParentRow()` (0), `getColumns()` (1),
+        // and `getFilterRow()` (2) keep resolving to the three rows above.
+        this._menuButton = new Button({
+            glyph:     MENU_BUTTON_GLYPH,
+            text:      MENU_BUTTON_LABEL,
+            showText:  false,
+            flat:      true,
+            compact:   true,
+            zIndex:    MENU_BUTTON_Z_INDEX,
+            listeners: { action: this._boundOnMenuButtonAction },
+        });
+        this._menuButton.pinGlyphSize(MENU_BUTTON_GLYPH_PX);
+        this._menuButton.getAria().setHasPopup("menu");
+        super.addComponent(this._menuButton);
 
         this.rebuildCells();
         this.rebuildParentCells();
@@ -304,9 +351,10 @@ class TableHeader extends Component {
      *   pointer `clientX` at the moment the drag began; `"columnresize"` fires
      *   when the user drags a column resize handle, receiving the zero-based
      *   column index and the absolute pointer `clientX`; `"columncontextmenu"`
-     *   fires on a right-click anywhere in the header band, receiving the field
-     *   name (empty string when the click landed on a parent-header cell) and
-     *   the viewport x/y coordinates.
+     *   fires on a right-click anywhere in the header band, or on an activation
+     *   of {@link getMenuButton}'s column-menu button, receiving the field name
+     *   (empty string when the click landed on a parent-header cell or on the
+     *   menu button) and the viewport x/y coordinates.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This header, for method chaining.
@@ -536,6 +584,33 @@ class TableHeader extends Component {
         }
 
         return this._scrollbarCover;
+    }
+
+    /**
+     * Returns the button that opens the column context menu — the same menu
+     * a right-click on a header cell opens. Sits in the vertical-scrollbar
+     * reservation band at the header's right edge; positioned by the table
+     * layout.
+     *
+     * @returns The column-menu button.
+     */
+    getMenuButton(): Button {
+        return this._menuButton;
+    }
+
+    /**
+     * Handles a click (or keyboard activation) of the column-menu button:
+     * emits `"columncontextmenu"` with an empty field name — matching a
+     * right-click on a parent-header cell — anchored to the button's own
+     * viewport rect rather than the click coordinates. A keyboard-activated
+     * click reports `clientX`/`clientY` of `0`, which would open the menu in
+     * the viewport's top-left corner; the button's own rect is correct for
+     * both mouse and keyboard activation.
+     */
+    private onMenuButtonAction(): void {
+        const rect = DOM.source.getViewportRect(this._menuButton);
+
+        this.emit("columncontextmenu", "", rect.left, rect.bottom);
     }
 
     /**
