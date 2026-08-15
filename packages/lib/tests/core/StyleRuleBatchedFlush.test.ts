@@ -148,11 +148,12 @@ describe('StyleRule — batched flush (Component.applyStyle)', () => {
 
         expect(ops.length).toBe(1);
         const bag = ops[0].args[1] as Record<string, string | null>;
-        // `position` / `margin` are now served by the framework-wide rule
-        // (plans/implemented/class-scoped-style-rules.md), so a bare
-        // `Component` writes nothing for them to its own `#id` rule; `cursor`
-        // and `border` stay conditional and always land at `#id`.
-        expect(bag.cursor).toBeDefined();
+        // `position` / `margin` / `cursor` are now served by the
+        // framework-wide rule (plans/implemented/class-scoped-style-rules.md,
+        // plans/implemented/selectable-text-cursor.md), so a bare `Component`
+        // writes nothing for them to its own `#id` rule; `border` stays
+        // conditional and always lands at `#id`.
+        expect(bag.cursor).toBeUndefined();
         expect(bag.border).toBeDefined();
     });
 

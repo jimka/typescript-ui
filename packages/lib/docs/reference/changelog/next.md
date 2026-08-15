@@ -31,7 +31,14 @@ page resets to empty.
   library-level context menu (`Tree`, `DiagramView`, `TabBar`, a `Split`
   gutter's chevron, a `Table` column header, …) keeps working unchanged. Opt
   back in with `Body.init({ nativeContextMenu: true })`.
-  
+- **`cursor` now joins the framework's other thirteen hoisted style
+  declarations** (see the `ts-ui-component` note in the 0.3.0 changelog): a
+  component whose cursor is left at the default, or matches its class's own
+  default, no longer gets a redundant per-instance CSS rule for it. No
+  visible or behavioural change — the zero-specificity framework rule and
+  the `.ClassName` rule both still lose to any class-level or per-instance
+  override, exactly as before.
+
 ### Split
 
 - **`SplitGutter.setMovable` is now live at runtime**, instead of taking
@@ -80,7 +87,9 @@ page resets to empty.
   open. No consumer action is needed.
 - **Table cell values can now be selected and copied by dragging across
   them; column headers, parent-header bands and group-separator labels
-  still cannot.** On a `TreeTable`, a row's own press-and-drag reparent
+  still cannot.** Hovering a selectable cell value now shows a text-select
+  cursor; headers, parent-header bands and group-separator labels keep the
+  plain arrow. On a `TreeTable`, a row's own press-and-drag reparent
   gesture takes precedence over text selection — double-click (word) and
   shift-click (range) still select a row's text there. No consumer action
   is needed.
@@ -88,17 +97,18 @@ page resets to empty.
 ### Display
 
 - **Rendered `Markdown` prose can now be selected and copied**, like any
-  other read-only text a reader might want to quote. No consumer action is
-  needed.
+  other read-only text a reader might want to quote, and hovering it now
+  shows a text-select cursor. No consumer action is needed.
 
 ### Overlay
 
-- **A `Dialog`'s plain-text `message` can now be selected and copied.** A
-  dialog built with a custom `contentComponent` is unaffected — that
-  content controls its own selectability. No consumer action is needed.
+- **A `Dialog`'s plain-text `message` can now be selected and copied, and
+  hovering it now shows a text-select cursor.** A dialog built with a
+  custom `contentComponent` is unaffected — that content controls its own
+  selectability. No consumer action is needed.
 - **A `Notification` toast's message, and the full message shown in its
-  detail dialog, can now be selected and copied.** No consumer action is
-  needed.
+  detail dialog, can now be selected and copied, and hovering either now
+  shows a text-select cursor.** No consumer action is needed.
 
 ## Added
 

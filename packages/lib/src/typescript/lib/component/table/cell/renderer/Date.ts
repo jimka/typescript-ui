@@ -28,6 +28,7 @@ class DateRenderer extends CellRenderer<Date | null> {
 
         this.setUserSelect("text");
         this._text.setUserSelect("text");
+        this.setCursor("text");
     }
 
     getValue(): Date | null {

@@ -41,12 +41,17 @@ describe('AbstractWindow — style-rule disposal on teardown', () => {
 
         destroy(win);
 
-        // The contract is total: a closed window must not retain a single rule
-        // on the shared sheet, or the sheet grows without bound across churn.
-        // The one documented exception is the framework-wide rule
-        // (plans/implemented/class-scoped-style-rules.md) — permanent,
-        // module-scoped state created once per process and never disposed.
-        const leaked = _ruleCacheKeys().filter((key) => !before.has(key) && key !== ':where(.ts-ui-component)');
+        // The contract is total: a closed window must not retain a single
+        // per-instance rule on the shared sheet, or the sheet grows without
+        // bound across churn. The documented exceptions are the two lower,
+        // permanent tiers (plans/implemented/class-scoped-style-rules.md) —
+        // the framework-wide `:where(.ts-ui-component)` rule and any
+        // `.ClassName` rule (e.g. `.Button`, for its `cursor: pointer`
+        // default) — both module-scoped state created once per process and
+        // never disposed, unlike the window's and its resize borders' own
+        // `#uuid` rules. Per-instance selectors all start with `#`, so
+        // filtering to those excludes both permanent tiers at once.
+        const leaked = _ruleCacheKeys().filter((key) => !before.has(key) && key.startsWith('#'));
 
         expect(leaked).toEqual([]);
     });

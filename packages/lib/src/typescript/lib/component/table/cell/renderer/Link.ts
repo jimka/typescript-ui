@@ -72,6 +72,7 @@ class LinkCellRenderer extends CellRenderer<String | null> {
 
         this.setUserSelect("text");
         this._text.setUserSelect("text");
+        this.setCursor("text");
     }
 
     /**

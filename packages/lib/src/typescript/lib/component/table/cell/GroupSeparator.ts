@@ -36,6 +36,7 @@ class GroupSeparatorCell extends DefaultCell {
         renderer.getText().setText(text);
         renderer.setUserSelect("none");
         renderer.getText().setUserSelect("none");
+        renderer.setCursor("default");
 
         this.setBackgroundColor(color ?? "transparent");
 

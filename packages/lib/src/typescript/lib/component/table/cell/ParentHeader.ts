@@ -58,6 +58,7 @@ class ParentHeaderCell extends DefaultCell {
         renderer.getText().setText(text);
         renderer.setUserSelect("none");
         renderer.getText().setUserSelect("none");
+        renderer.setCursor("default");
 
         // The cell's `Cell` base writes `var(--ts-ui-table-cell-bg, …)` into
         // backgroundColor; override to either the consumer-supplied
