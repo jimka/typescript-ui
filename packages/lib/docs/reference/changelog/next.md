@@ -5,6 +5,14 @@ tied to a version number yet. Once this release is tagged, its content moves
 onto its own numbered page (see [Changelog](/reference/changelog)) and this
 page resets to empty.
 
+## Breaking changes
+
+### Core
+
+`DOMSource` gains one required member: `measureTexts(requests)`, returning
+one `TextMetrics` per request measured in a single document reflow. Only a
+consumer implementing its own `DOMSource` is affected.
+
 ## Changed
 
 ### Core

@@ -76,7 +76,7 @@ Custom filter predicates passed to `filterBy` must be **pure functions** with no
 
 ## Disposing Text components
 
-[`Text`](/components/Text) and its subclasses ([`Label`](/components/Label), [`Legend`](/components/Legend)) subscribe to [`ThemeManager.onThemeChange`](/api/core/classes/ThemeManager) on construction so they re-measure on every theme change.
+[`Text`](/components/Text) and its subclasses ([`Label`](/components/Label), [`Legend`](/components/Legend)) register themselves in the framework's measurement registry on construction, and release that entry in `destructor()`.
 
 **A `Text` added as a registered child needs no explicit cleanup** — its owner's own teardown recurses into every registered child and releases each one's theme subscription automatically:
 
@@ -112,6 +112,7 @@ A few patterns can defeat the rAF coalescing and force multiple layout passes pe
 - **Mutating during a layout callback.** Adding or removing components from inside `doLayout` (or a layout-triggered listener) re-enters the layout pass. The framework handles this safely, but the immediate call you triggered won't see the new children — they land on the next frame.
 - **Missing `pauseLayout` for large bulk operations.** rAF coalescing helps, but for thousands of changes you'll also pay queue-management overhead. `pauseLayout` skips that.
 - **A style or layout read landing after a stylesheet-rule write, in the same task.** This makes every later rule write in that task dramatically more expensive — roughly proportional to the number of rules on the shared sheet — regardless of which kind of read it is (`getComputedStyle`, `getBoundingClientRect`, `offsetWidth`, `scrollLeft`, …). A render pass that writes many rules and also reads geometry mid-pass pays this on every write after the first read. Batch reads ahead of the frame's first rule write, or serve them from a cache keyed on the read's inputs, so a repeated read never lands mid-write.
+- **Measuring N strings one at a time costs N forced layouts.** The framework already measures every stale [`Text`](/components/Text) through one probe element — the first stale `Text` any caller asks for a size measures every other stale `Text` in the same batch. A consumer measuring several strings itself should use one [`DOMSource.measureTexts`](/api/core/interfaces/DOMSource) call rather than a `measureText` loop.
 
 ## Deferring expensive panel construction
 
