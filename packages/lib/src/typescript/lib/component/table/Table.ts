@@ -17,6 +17,7 @@ import { Menu } from "~/overlay/Menu.js";
 import { Dialog, DialogButtons } from "~/overlay/Dialog.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
+import { TRACK_WIDTH } from "~/component/container/Scrollbar.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { table_columns } from "~/glyphs/solid/table_columns.js";
 import { undo } from "~/glyphs/solid/undo.js";
@@ -37,7 +38,6 @@ import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
-import { DOM } from "~/core/DOM.js";
 import { chainRoom, distributeDragChain, DRAG_DISTRIBUTION_EPSILON } from "~/core/DragChain.js";
 
 // Register the column context menu's item glyphs eagerly at module load —
@@ -764,16 +764,16 @@ class Table extends Component<TableOptions> {
 
     /**
      * The pixel width the columns are laid out against: the table's inner
-     * width less the reserved vertical-scrollbar track. Shared by the
-     * column-resize drag handler and the layout manager so both derive the
-     * same number.
+     * width less the custom vertical `Scrollbar`'s fixed track width. Shared
+     * by the column-resize drag handler and the layout manager so both
+     * derive the same number.
      *
      * @returns The available column width in pixels, or `0` before first render.
      */
     getAvailableColumnWidth(): number {
         const innerSize = this.getInnerSize();
 
-        return innerSize ? innerSize.width - DOM.source.getScrollBarWidth() : 0;
+        return innerSize ? innerSize.width - TRACK_WIDTH : 0;
     }
 
     /**

@@ -117,6 +117,10 @@ affected.
   gesture takes precedence over text selection — double-click (word) and
   shift-click (range) still select a row's text there. No consumer action
   is needed.
+- **A table's available column width is now computed from the custom
+  `Scrollbar`'s fixed 12px track rather than the browser's native scrollbar
+  probe.** Most platforms gain a few extra pixels of column width as a
+  result. No consumer action is needed.
 
 ### Display
 
@@ -263,4 +267,6 @@ affected.
 **A [combo column](/components/Table#combo-columns)'s header filter was unusable — it matched the stored code against text typed for the label, so filtering "Role" for "Developer" found nothing.** The filter row now resolves each declared option's label the same way the cell renders it and matches against that; `Contains` / `Starts with` / `Ends with` / `Equals` / `Not equals` all resolve to the matching stored value(s). A column no longer needs `filterable: false` to work around this. No consumer action is needed.
 
 **A `time` column's header filter silently applied nothing, so every row stayed visible regardless of what was typed.** The operand parse only understood a full `Date`-parseable string, and a bare time like `09:30 AM` isn't one. The parser now also accepts `HH:MM[:SS]` with an optional `AM`/`PM` suffix, anchored to 1970-01-01 the same way the time cell editor normalises its own value. No consumer action is needed.
+
+**The column-menu button no longer sits shifted from the vertical scrollbar it caps.** The button's reservation band was sized from the browser's native scrollbar probe (15–17px on common platforms) while the table's own themed `Scrollbar` beneath it always renders at a fixed 12px, leaving a visible seam between the two. Both are now sized from the same fixed track width. No consumer action is needed.
 
