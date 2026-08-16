@@ -330,15 +330,15 @@ describe('Column filter row — sizing and operator-button legibility', () => {
 
 describe('Column filter row — geometry-diff self-layout', () => {
     // Mirrors HeaderColumnWindow.test.ts's "geometry diffing" cases for
-    // HeaderCell.setHeaderGlyph: the header's own geometry-diff cache
-    // (CellGeometryCache) skips a cell's doLayout when its x/width/height
-    // are unchanged — which is exactly the case for a cell recycled onto a
-    // different column that happens to land at the same geometry. An
-    // operator change moves this cell's own layout (the input's
+    // HeaderCell.setHeaderGlyph: applyBounds skips a cell's doLayout when its
+    // x/width/height are unchanged — which is exactly the case for a cell
+    // recycled onto a different column that happens to land at the same
+    // geometry. An operator change moves this cell's own layout (the input's
     // enabled/disabled state) without moving that geometry, so
     // FilterCell.setFilterState must lay itself out rather than relying on
-    // the header's geometry pass to do it — see CellGeometry.ts's writer
-    // list. Pins the fix directly (asserts doLayout was invoked) rather
+    // the header's geometry pass to do it — see
+    // Cell.canSkipUnchangedLayout's writer list. Pins the fix directly
+    // (asserts doLayout was invoked) rather
     // than an incidental geometric side effect, since none of
     // setFilterState's other writes (button text, enabled flag, value)
     // themselves depend on a layout pass having run.

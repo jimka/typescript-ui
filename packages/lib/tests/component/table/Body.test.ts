@@ -265,7 +265,7 @@ describe('Body virtual-scroll — single-row scroll pool rebind', () => {
 });
 
 describe('Body virtual-scroll — invalidateGeom', () => {
-    it('clears the row geometry, and the cell geometry with it', async () => {
+    it('clears the row geometry; cell geometry no longer rides along', async () => {
         const { b } = await bodyWith(50, 240);
         const p = b as any;
 
@@ -277,10 +277,12 @@ describe('Body virtual-scroll — invalidateGeom', () => {
 
         expect(p._rowGeom.every((g: unknown) => g === null)).toBe(true);
 
-        // The cell half has no array to inspect — the records are keyed on the
-        // cell — so it is asserted through behaviour: after a settled pass that
-        // lays nothing out, invalidating makes the next pass lay every cell out
-        // again even though no geometry moved.
+        // The cell half is gone: `Body` no longer overrides `invalidateGeom` to
+        // clear a per-cell cache alongside the row one (see
+        // `Cell.canSkipUnchangedLayout`). A cell re-placed at unchanged
+        // geometry stays skipped even right after `invalidateGeom` — the diff
+        // now lives on the cell's own committed rectangle, which
+        // `invalidateGeom` has no reach into.
         let layouts = 0;
 
         b.renderWindow(300, [100, 100, 100]);
@@ -297,7 +299,7 @@ describe('Body virtual-scroll — invalidateGeom', () => {
         p.invalidateGeom();
         b.renderWindow(300, [100, 100, 100]);
 
-        expect(layouts).toBeGreaterThan(0);
+        expect(layouts).toBe(0);
     });
 });
 
@@ -1354,7 +1356,7 @@ describe('Column window — geometry diffing', () => {
                     survivors++;
 
                     // Kept its column, so it kept its geometry — the whole
-                    // point of keying the records on the cell.
+                    // point of a committed rect living on the cell itself.
                     expect(laidOut.has(cell)).toBe(false);
                 }
             });

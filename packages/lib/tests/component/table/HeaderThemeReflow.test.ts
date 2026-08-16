@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 // Coverage for the header's geometry diff under a theme change. A header cell
-// is laid out only when `TableHeader.applyCellGeometry` sees its x/width/height
-// change, so a theme that moves a layout input without moving the cell — the
-// table cell's padding feeds the renderer's insets — has to invalidate the
-// diff, or the label stays where the old theme put it.
+// is laid out only when `Cell.canSkipUnchangedLayout`'s `applyBounds` sees its
+// x/width/height change, so a theme that moves a layout input without moving
+// the cell — the table cell's padding feeds the renderer's insets — has to
+// invalidate the diff, or the label stays where the old theme put it.
 //
-// The header drops its records from a theme subscription; the cells are
+// The header marks its cells dirty from a theme subscription; the cells are
 // re-fitted by the next layout pass, since `renderColumnWindow` only ever runs
 // from one. These tests therefore drive that pass explicitly — the frame the
 // root schedules off its own theme subscription is mocked out here, so relying
@@ -88,7 +88,7 @@ async function singleColumnTable(): Promise<Table> {
 }
 
 describe('Header column window — theme reflow', () => {
-    it('drops its geometry records so the next pass re-lays-out at unchanged geometry', async () => {
+    it('marks its cells dirty so the next pass re-lays-out at unchanged geometry', async () => {
         const table = await singleColumnTable();
         table.getElement(true);
 
@@ -107,14 +107,14 @@ describe('Header column window — theme reflow', () => {
 
         ThemeManager.setTheme(paddedTheme(ModernTheme.table.cell.padding + 8));
 
-        // Deliberately the *same* geometry: without the records being dropped
-        // this pass would skip the cell and the label would not move.
+        // Deliberately the *same* geometry: without the cell being marked
+        // dirty this pass would skip it and the label would not move.
         table.getHeader().renderColumnWindow(geometry);
 
         expect(labelX(cell)).toBe(before + 8);
     });
 
-    it('drops the records for parent-row cells too', async () => {
+    it('marks parent-row cells dirty too', async () => {
         const store = new MemoryStore(new Model([
             { name: 'c0', type: 'string' },
             { name: 'c1', type: 'string' },
@@ -136,8 +136,8 @@ describe('Header column window — theme reflow', () => {
 
         table.getHeader().renderColumnWindow(geometry);
 
-        // The parent row shares `applyCellGeometry`, so its cells are recorded
-        // and skipped on the same terms as the column row's.
+        // The parent row shares `applyBounds`, so its cells are skipped on
+        // the same terms as the column row's.
         const parent  = table.getHeader().getParentRow().getComponents()[0];
         let   layouts = 0;
         parent.doLayout = () => { layouts++; return parent; };

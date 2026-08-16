@@ -340,10 +340,9 @@ class FilterCell extends Cell<string | null> {
 
         // Mirrors selectOperator's self-layout: a cell recycled onto a new
         // column at unchanged geometry (same x/width/height) has its
-        // doLayout skipped by the header's geometry-diff cache, and an
-        // operator change moves this cell's own layout (enabled/disabled
-        // input) without moving that geometry. See CellGeometry.ts's writer
-        // list.
+        // doLayout skipped by applyBounds, and an operator change moves this
+        // cell's own layout (enabled/disabled input) without moving that
+        // geometry. See Cell.canSkipUnchangedLayout's writer list.
         this.doLayout();
 
         return this;
