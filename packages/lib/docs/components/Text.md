@@ -2,7 +2,7 @@
 
 [`Text`](/api/component/input/classes/Text) is the standard component for displaying text. It renders a `<span>` by default and uses an off-screen probe element to measure text dimensions, automatically updating its preferred size whenever the text or a font property changes.
 
-Use `Text` for any standalone text — status messages, captions next to fields, headings, body content. Reach for [`Label`](/components/Label) only when the text is associated with a specific form control via the HTML `for` attribute, or [`Header`](/components/Header) for header bars.
+Use `Text` for any standalone text — status messages, captions next to fields, headings, body content. Reach for [`Label`](/components/Label) only when the text is associated with a specific form control via the HTML `for` attribute, [`Header`](/components/Header) for header bars, or [`SelectableText`](/api/component/input/classes/SelectableText) when the text is content the reader is meant to be able to select and copy — a dialog or notification message, a data cell's value — since `Text` itself is unselectable by default.
 
 <!-- demo: text-basic -->
 > **Live demo** — a left-aligned `Text` beside one centred in a
