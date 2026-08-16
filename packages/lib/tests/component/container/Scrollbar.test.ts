@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Component } from '~/core/Component';
-import { Scrollbar, isScrollbarTarget } from '~/component/container/Scrollbar';
+import { Scrollbar, isScrollbarTarget, TRACK_WIDTH } from '~/component/container/Scrollbar';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { installTestDOM, makeEvent } from '../../dom/TestDOM';
@@ -14,12 +14,10 @@ const CONFIG = {
     themeVars:       {},
 };
 
-// Contract constants. THUMB_MIN_SIZE and TRACK_WIDTH are file-local in
-// Scrollbar.ts; the values are mirrored here ONLY to derive expected relations
-// (the tests assert proportional/min-clamp/origin relations, not these numbers
-// as goldens). TRACK_WIDTH is also cross-checked against getTrackWidth() below.
+// Contract constant. THUMB_MIN_SIZE is file-local in Scrollbar.ts; the value
+// is mirrored here ONLY to derive expected relations (the tests assert
+// proportional/min-clamp/origin relations, not this number as a golden).
 const THUMB_MIN_SIZE = 30;
-const TRACK_WIDTH    = 12;
 
 /** The committed thumb child — Scrollbar adds it as its first child. */
 function thumb(bar: Scrollbar): Component {
@@ -32,6 +30,12 @@ describe('Scrollbar construction defaults', () => {
     it('exposes TRACK_WIDTH via getTrackWidth', () => {
         installTestDOM(CONFIG);
 
+        // getTrackWidth() is a one-line passthrough to the same TRACK_WIDTH
+        // binding imported above, so comparing the two against each other
+        // alone can never fail regardless of the constant's value — pin the
+        // actual contract value (12) first, so a future edit to TRACK_WIDTH
+        // still trips a regression here.
+        expect(TRACK_WIDTH).toBe(12);
         expect(new Scrollbar('vertical').getTrackWidth()).toBe(TRACK_WIDTH);
     });
 

@@ -8,6 +8,7 @@ import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
 import type { CellClickEvent } from '~/component/table/Body';
 import { TableExporter } from '~/component/table/TableExporter';
+import { TRACK_WIDTH } from '~/component/container/Scrollbar';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ModelRecord } from '~/data/ModelRecord';
@@ -204,5 +205,29 @@ describe('Table.getCellText', () => {
         const record = table.getStore().getRecords()[0];
 
         expect(table.getCellText('name', record)).toBe('Alice');
+    });
+});
+
+describe('Table.getAvailableColumnWidth', () => {
+    afterEach(() => DOM.reset());
+
+    it('uses the fixed Scrollbar track width, not the native scrollbar probe', () => {
+        installTestDOM({ ...CONFIG, scrollBarWidth: 15 });
+        const tableA = new Table(new MemoryStore(MODEL, []));
+        tableA.getElement(true);
+        tableA.setWidth(400);
+        tableA.setHeight(300);
+        tableA.doLayout();
+        const innerWidth = tableA.getInnerSize()!.width;
+        expect(tableA.getAvailableColumnWidth()).toBe(innerWidth - TRACK_WIDTH);
+        DOM.reset();
+
+        installTestDOM({ ...CONFIG, scrollBarWidth: 40 });
+        const tableB = new Table(new MemoryStore(MODEL, []));
+        tableB.getElement(true);
+        tableB.setWidth(400);
+        tableB.setHeight(300);
+        tableB.doLayout();
+        expect(tableB.getAvailableColumnWidth()).toBe(innerWidth - TRACK_WIDTH);
     });
 });

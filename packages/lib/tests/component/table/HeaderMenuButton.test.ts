@@ -10,6 +10,7 @@ import { Table } from '~/component/table/Table';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ColumnSpec } from '~/component/table/ColumnConfig';
+import { TRACK_WIDTH } from '~/component/container/Scrollbar';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -93,7 +94,7 @@ describe('TableHeader menu button', () => {
         const header = table.getHeader();
         const button = header.getMenuButton();
         const box    = header.getContentBounds()!;
-        const trackW = DOM.source.getScrollBarWidth();
+        const trackW = TRACK_WIDTH;
 
         expect(button.getX()).toBe(box.x + box.width - trackW);
         expect(button.getWidth()).toBe(trackW);
@@ -103,12 +104,37 @@ describe('TableHeader menu button', () => {
         const table  = layOut(makeTable());
         const header = table.getHeader();
         const button = header.getMenuButton();
-        const trackW = DOM.source.getScrollBarWidth();
+        const trackW = TRACK_WIDTH;
         const pref   = button.getPreferredSize()!;
 
         expect(button.getWidth()).toBe(trackW);
         expect(button.getWidth()).toBe(pref.width);
         expect(button.getHeight()).toBe(pref.height);
+    });
+
+    it('sizes the reservation band from the fixed Scrollbar track width, not the native scrollbar probe', () => {
+        // 40 is arbitrary, chosen only to differ from both CONFIG's native
+        // probe (15) and TRACK_WIDTH (12) — proves the band no longer tracks
+        // the probe at all, not just that it happens to equal it today.
+        installTestDOM({ ...CONFIG, scrollBarWidth: 40 });
+
+        const table  = layOut(makeTable());
+        const header = table.getHeader();
+        const button = header.getMenuButton();
+
+        expect(button.getWidth()).toBe(TRACK_WIDTH);
+    });
+
+    it('pins the glyph from the fixed Scrollbar track width, not the native scrollbar probe', () => {
+        installTestDOM({ ...CONFIG, scrollBarWidth: 40 });
+
+        const table  = layOut(makeTable());
+        const header = table.getHeader();
+        const button = header.getMenuButton();
+
+        // TRACK_WIDTH (12) minus MENU_BUTTON_CHROME_PX (4) — the glyph pin's
+        // own production formula, restated here as the expected value.
+        expect(button.getGlyph()!.getPreferredSize()!.width).toBe(TRACK_WIDTH - 4);
     });
 
     // A border never moves the content-box origin, so it cannot tell a real
@@ -123,7 +149,7 @@ describe('TableHeader menu button', () => {
 
         const header = layOut(table).getHeader();
         const button = header.getMenuButton();
-        const trackW = DOM.source.getScrollBarWidth();
+        const trackW = TRACK_WIDTH;
         const box    = header.getContentBounds()!;
 
         expect(button.getX()).toBe(box.x + box.width - trackW);

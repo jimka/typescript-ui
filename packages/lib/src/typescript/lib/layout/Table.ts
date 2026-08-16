@@ -6,10 +6,10 @@ import { Column } from "~/component/table/Column.js";
 import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { UNBOUNDED } from "~/primitive/Size.js";
-import { DOM } from "~/core/DOM.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
+import { TRACK_WIDTH } from "~/component/container/Scrollbar.js";
 
 /**
  * Construction-time options for the {@link Table} layout manager.
@@ -275,7 +275,11 @@ class Table extends LayoutManager {
             // undone the next time `Absolute` (`TableHeader`'s own layout
             // manager) re-commits every child at `preferredSize ?? size` on
             // a header-level layout.
-            const trackW      = DOM.source.getScrollBarWidth();
+            //
+            // `trackW` is the custom `Scrollbar`'s fixed track width, not the
+            // native probe — the band must match what `Body`'s
+            // `VirtualScroller` actually renders its own `Scrollbar` at.
+            const trackW      = TRACK_WIDTH;
             const menuButton  = header.getMenuButton();
             const buttonSize  = { width: trackW, height: headerBox.height };
 

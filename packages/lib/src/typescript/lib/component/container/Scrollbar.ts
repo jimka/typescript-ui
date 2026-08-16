@@ -26,7 +26,15 @@ export type ScrollbarEvent = "scroll";
  */
 type ScrollArrowEvent = "tick";
 
-const TRACK_WIDTH    = 12;
+// Fixed cross-axis (track) width of the custom Scrollbar, in pixels —
+// independent of the OS/browser's native scrollbar width, which
+// `DOM.source.getScrollBarWidth()` measures separately for genuinely
+// native scroll paths. Exported so a caller that needs to reserve space
+// for a Scrollbar it doesn't hold an instance of yet (e.g. Table's
+// column-width and header-button layout math) can read the value
+// directly — the same shape `CollapseSupport.ts` uses for
+// `COLLAPSE_STRIP_SIZE`.
+export const TRACK_WIDTH = 12;
 const THUMB_INSET    = 2;
 const THUMB_MIN_SIZE = 30;
 

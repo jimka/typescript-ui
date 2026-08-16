@@ -22,6 +22,7 @@ import { Button } from "~/component/button/Button.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { ellipsis_v } from "~/glyphs/solid/ellipsis_v.js";
 import { callable } from "~/core/Callable.js";
+import { TRACK_WIDTH } from "~/component/container/Scrollbar.js";
 
 // Register the column-menu button's glyph eagerly at module load — same
 // pattern as ToolBar registering its overflow chevron — so the button always
@@ -35,12 +36,13 @@ const MENU_BUTTON_GLYPH = "ellipsis-v";
 const MENU_BUTTON_LABEL = "Column options";
 
 // A flat, compact, glyph-only `Button` reserves `glyph + MENU_BUTTON_CHROME_PX`
-// per axis around the glyph — 2px of compact insets plus a 1px transparent
-// flat-chrome frame on each side. The button fills the vertical-scrollbar
-// reservation band exactly (see the constructor, which pins the glyph to
-// `getScrollBarWidth() - MENU_BUTTON_CHROME_PX`), so this is the fixed
-// per-side overhead subtracted from that runtime-measured width.
-const MENU_BUTTON_CHROME_PX = 6;
+// per axis around the glyph — 2px of compact insets on each side. The
+// button's own border is cleared in the constructor (`clearBorder()` and its
+// hover/pressed twins), so it contributes no width here. The button fills
+// the vertical-scrollbar reservation band exactly (see the constructor,
+// which pins the glyph to `TRACK_WIDTH - MENU_BUTTON_CHROME_PX`), so this is
+// the fixed per-side overhead subtracted from that fixed track width.
+const MENU_BUTTON_CHROME_PX = 4;
 
 // Needs to beat the header's inner rows, which are Components at `z-index:
 // 0` (an implicit stacking context) — a plain sibling with `z-index: auto`
@@ -198,9 +200,9 @@ class TableHeader extends Component {
         // own background/gradient and a left divider matching the column-cell
         // border, so cells translated horizontally still appear to clip at
         // the reserved band's boundary. Its glyph is pinned to exactly fill
-        // that band — `getScrollBarWidth()` is memoized after its first call,
-        // so this read is cheap on every subsequent `TableHeader`.
-        const glyphPx = Math.max(1, DOM.source.getScrollBarWidth() - MENU_BUTTON_CHROME_PX);
+        // that band — `TRACK_WIDTH` is a fixed compile-time constant, so this
+        // costs nothing at runtime.
+        const glyphPx = Math.max(1, TRACK_WIDTH - MENU_BUTTON_CHROME_PX);
 
         this._menuButton = new Button({
             glyph:     MENU_BUTTON_GLYPH,

@@ -4,13 +4,13 @@
 // total surviving a later layout. Cases are numbered to match the plan.
 //
 // Fixture: four `string` columns (A/B/C/D) with `minWidth` 60/100/40/30 and
-// no declared `maxWidth` (case 10 gives A a `maxWidth` of its own). The
-// offline harness reserves a 15px scrollbar track, and Table's own 1px border
-// on each side additionally eats 2px of the outer width, so `setWidth(517)`
-// (not the plan's literal 515 — see the implementation note this plan file
-// carries) yields the worked example's available width of 500. Drag is
-// driven through the private `onColumnResizeStart` / `onColumnResize`
-// handlers, mirroring the pattern at
+// no declared `maxWidth` (case 10 gives A a `maxWidth` of its own). Table
+// reserves the custom Scrollbar's fixed TRACK_WIDTH (12px), and Table's own
+// 1px border on each side additionally eats 2px of the outer width, so
+// `setWidth(514)` (not the plan's literal 515 — see the implementation note
+// this plan file carries) yields the worked example's available width of
+// 500. Drag is driven through the private `onColumnResizeStart` /
+// `onColumnResize` handlers, mirroring the pattern at
 // packages/lib/tests/component/layout/Accordion.resizable.test.ts:186.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
@@ -94,7 +94,7 @@ function makeTable(spec: ColumnSpec = SPEC): Table {
     const table = new Table(store, spec);
 
     table.getElement(true);
-    table.setWidth(517);
+    table.setWidth(514);
     table.setHeight(400);
     table.doLayout();
     table.setColumnWidths([200, 150, 100, 50]);
@@ -354,12 +354,12 @@ describe('Table column resize — the widened total survives', () => {
     it('12. resizing the container', () => {
         const table = grownTable();
 
-        table.setWidth(817); // available 800, per the border/scrollbar note above
+        table.setWidth(814); // available 800, per the border/scrollbar note above
         table.doLayout();
 
         expect(table.getColumnWidths().reduce((s, w) => s + w, 0)).toBeCloseTo(800, 5);
 
-        table.setWidth(517); // back to the fixture's available width of 500
+        table.setWidth(514); // back to the fixture's available width of 500
         table.doLayout();
 
         const widths = table.getColumnWidths();
