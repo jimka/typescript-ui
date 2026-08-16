@@ -323,7 +323,7 @@ class SelectableListRow extends Component {
         // cursor on hover.
         this.setCursor("pointer");
 
-        Event.addListener(this, "pointerdown", this.onPointerDown);
+        Event.addListener(this, "pointerdown", { prevent: true, handler: this.onPointerDown });
         Event.addListener(this, "click",       this.onClick);
         Event.addListener(this, "contextmenu", this.onContextMenu);
         Event.addListener(this, "dblclick",    this.onDblClick);
@@ -586,8 +586,7 @@ class SelectableListRow extends Component {
      *
      * @param e - The pointerdown event.
      */
-    private onPointerDown(e: PointerEvent): void {
-        e.preventDefault();
+    private onPointerDown(_e: PointerEvent): void {
     }
 
     /**
@@ -1824,7 +1823,7 @@ abstract class AbstractSelectableList<
      *
      * @param e - The keyboard event.
      */
-    protected handleKeyDown(e: KeyboardEvent): void {
+    protected handleKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (!this.isEnabled() || this.isReadOnly()) {
             return;
         }
@@ -1846,10 +1845,9 @@ abstract class AbstractSelectableList<
         }
 
         if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
             this.commitFocusedRow(ctrl, e.shiftKey);
 
-            return;
+            return { prevent: true };
         }
 
         // Printable single-character key — feed the type-ahead buffer.

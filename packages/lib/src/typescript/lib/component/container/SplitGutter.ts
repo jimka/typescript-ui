@@ -540,8 +540,9 @@ class SplitGutter extends Component<SplitGutterOptions> {
     onDragStart(evnt: MouseEvent) {
         // A locked gutter never drags. A gutter in its collapsed strip state is
         // also not a resize handle — the pane behind it is hidden, so a drag
-        // would corrupt its stored size.
-        if (!this._movable || this._opaque) {
+        // would corrupt its stored size. A right-/middle-click press must not
+        // start a resize drag either.
+        if (!this._movable || this._opaque || !Event.isPrimaryButton(evnt)) {
             return;
         }
 

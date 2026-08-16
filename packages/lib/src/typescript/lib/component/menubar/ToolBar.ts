@@ -132,7 +132,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     declare private _overflowSide: AxisEnd;
     declare private _flat:         boolean;
     declare private _rovingTabIndex: RovingTabIndex;
-    declare private _onKeyDown:    (e: KeyboardEvent) => void;
+    declare private _onKeyDown:    (e: KeyboardEvent) => Event.ListenerResult;
     declare private _overflowButton: Button | null;
     declare private _overflowMenu:   Menu | null;
     declare private _overflowSpacer: Spacer | null;
@@ -163,17 +163,19 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
         this.getAria().setRole("toolbar");
         this.getAria().setTabIndex(0);
 
-        this._onKeyDown = (e: KeyboardEvent) => {
+        this._onKeyDown = (e: KeyboardEvent): Event.ListenerResult => {
             const isHoriz = this._orientation === "horizontal";
             const fwd     = isHoriz ? "ArrowRight" : "ArrowDown";
             const back    = isHoriz ? "ArrowLeft"  : "ArrowUp";
 
             if (e.key === fwd) {
-                e.preventDefault();
                 this._rovingTabIndex.moveNext();
+
+                return { prevent: true };
             } else if (e.key === back) {
-                e.preventDefault();
                 this._rovingTabIndex.movePrev();
+
+                return { prevent: true };
             }
         };
 

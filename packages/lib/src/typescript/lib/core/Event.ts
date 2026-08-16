@@ -11,19 +11,27 @@ import type { Handle } from "~/core/DOM.js";
  * @category Core
  */
 export namespace Event {
+    /** A registered listener paired with the options it was registered with. */
+    interface ListenerEntry {
+        listener: Listener,
+        options?: ListenerOptions,
+    }
+
     interface CompFunc {
         component: Component,
-        listeners: Listener[]
+        listeners: ListenerEntry[]
     };
 
     /**
      * Per-call override of the default registration options for a listener.
      *
-     * @remarks Once a listener type has been registered with a given
-     * `passive` setting, subsequent registrations for the same type must use
-     * the same setting — `addListener` / `addSubtreeListener` throw on
-     * conflict. The window-level capture handler is installed once per type,
-     * so the first registration locks the options for that type's lifetime.
+     * @remarks `passive` is a per-*type* setting: once a type has been
+     * registered with a given `passive` value, subsequent registrations for
+     * the same type must agree — `addListener` / `addSubtreeListener` throw
+     * on conflict, since the window-level capture handler is installed once
+     * per type and locks that setting for its lifetime. `button` is a
+     * per-*listener* setting with no such conflict — different listeners on
+     * the same type may set it independently.
      */
     export interface ListenerOptions {
         /**
@@ -31,6 +39,61 @@ export namespace Event {
          * for this type may call `preventDefault()` on the received event.
          */
         passive?: boolean;
+
+        /**
+         * Restricts which button state — see {@link isPrimaryButton} — this
+         * listener fires for:
+         * - `"primary"` — only a primary (left) press, or an event with no
+         *   `button` property at all (touch, hand-built fixtures).
+         * - `"aux"` — only a defined, non-zero button (right/middle/back/
+         *   forward); never fires for touch. Named after the `auxclick`
+         *   event, which fires under this same condition — any non-primary
+         *   button, not just the middle button despite the DOM's
+         *   `MouseEvent.button` value `1` also being labelled "auxiliary".
+         * - `"any"` — every button, regardless of state. Use this for a
+         *   listener that reacts to a button-agnostic gesture (dismissing a
+         *   tooltip on any press, bringing a window to front on any press,
+         *   …) rather than *initiating* a primary-button interaction.
+         *
+         * Unset resolves to `"primary"` for a short list of press-initiating
+         * types (`mousedown`, `mouseup`, `click`, `dblclick`, `pointerdown`,
+         * `pointerup` — see the internal `PRIMARY_BUTTON_TYPES` set in
+         * Event.ts) and `"any"` for every other type, since only those few
+         * types actually represent an initiating press. Set this explicitly
+         * to override the default either way.
+         *
+         * `"click"` is unaffected by any of this — the dispatcher gates it
+         * to the primary button unconditionally regardless of this option.
+         */
+        button?: "primary" | "aux" | "any";
+
+        /**
+         * Unconditionally halts DOM propagation (`stopPropagation`) after
+         * this listener runs, OR'd with whatever the listener itself
+         * returns — it is a floor, not an override, so a listener cannot
+         * un-set it by returning `false`/`void`. Set this only when EVERY
+         * code path through the listener wants the same outcome; a
+         * listener whose disposition depends on runtime state (an early
+         * guard-clause return, a conditional check) must leave this unset
+         * and keep returning its {@link EventDisposition} instead.
+         */
+        stop?: boolean;
+
+        /**
+         * Unconditionally suppresses the default action (`preventDefault`)
+         * after this listener runs. Same floor semantics as {@link stop}.
+         */
+        prevent?: boolean;
+    }
+
+    /**
+     * A listener bundled with its registration options into a single
+     * argument, for the {@link addListener} / {@link addSubtreeListener}
+     * overload that takes options.
+     */
+    export interface ListenerRegistration extends ListenerOptions {
+        /** The callback invoked when the event fires. See {@link addListener}. */
+        handler: Listener;
     }
 
     /**
@@ -49,6 +112,66 @@ export namespace Event {
     /** A DOM-routed listener registered through the `Event` API. */
     export type Listener = (event: any) => ListenerResult;
 
+    /**
+     * Reports whether a mouse/pointer event represents a primary-button
+     * press. Share this rather than re-deriving it: `button === undefined`
+     * (a hand-built test fixture, or a `TouchEvent`, which carries no
+     * `button` at all) is treated as primary, matching the DOM's own
+     * `MouseEventInit.button` default of `0` — only a defined, non-zero
+     * value (right/middle/back/forward) is rejected.
+     *
+     * @remarks A bare `addListener`/`addSubtreeListener` registration already
+     * gets primary-only filtering for free from the dispatcher's default —
+     * see {@link ListenerOptions.button}. This helper remains useful for two
+     * cases the default doesn't cover: a listener registered `button: "any"`
+     * that still needs a primary check for part of its own logic (e.g. a
+     * viewport listener, which isn't button-filtered at all), and a public
+     * method (a drag-initiating entry point a subclass or consumer can call
+     * directly, bypassing the dispatcher) validating its own precondition.
+     *
+     * @param e - A mouse, pointer, or touch event.
+     * @returns True when the event should be treated as a primary-button press.
+     */
+    export function isPrimaryButton(e: MouseEvent | PointerEvent | TouchEvent): boolean {
+        const button = (e as MouseEvent | PointerEvent).button;
+
+        return button === undefined || button === 0;
+    }
+
+    /**
+     * Event types whose bare registration means "primary button only" — the
+     * gestures that actually initiate a press. Every other type defaults to
+     * `"any"`: `contextmenu` (already the button-agnostic "open a menu"
+     * signal — right-click, a keyboard context-menu key, a touch
+     * long-press), the pointer move/cancel/capture-loss family (the Pointer
+     * Events spec reports `button: -1`, "no button change", for all of
+     * them), the mouse-flavoured half of that same family (`mousemove` /
+     * `mouseover` / `mouseout` / `mouseenter` / `mouseleave`, whose `button`
+     * likewise never represents a press), and `auxclick` (which by
+     * definition never carries `button: 0`, so a `"primary"` default would
+     * mean a bare registration on it could never fire).
+     */
+    const PRIMARY_BUTTON_TYPES: ReadonlySet<string> = new Set([
+        "mousedown", "mouseup", "click", "dblclick", "pointerdown", "pointerup",
+    ]);
+
+    /**
+     * Applies a {@link ListenerOptions.button} filter to a dispatched event.
+     * `undefined` (unset) resolves to `"primary"` for a type in
+     * {@link PRIMARY_BUTTON_TYPES}, `"any"` for every other type.
+     */
+    function passesButtonFilter(evnt: Event, type: string, filter: ListenerOptions["button"]): boolean {
+        const effective = filter ?? (PRIMARY_BUTTON_TYPES.has(type) ? "primary" : "any");
+
+        if (effective === "any") {
+            return true;
+        }
+
+        const primary = isPrimaryButton(evnt as MouseEvent);
+
+        return effective === "aux" ? !primary : primary;
+    }
+
     let listenerMap = new Map<String, Map<String, CompFunc>>();
     let viewportListenerMap = new Map<String, Map<String, CompFunc>>();
     let subtreeListenerMap = new Map<String, Map<String, CompFunc>>();
@@ -64,26 +187,22 @@ export namespace Event {
     }
 
     /**
-     * Applies a listener's returned disposition to the event.
+     * Applies a listener's returned disposition to the event, OR'd with its
+     * registration's {@link ListenerOptions.stop} / {@link
+     * ListenerOptions.prevent} floor, if any — either source alone is
+     * enough to trigger the corresponding action.
      *
      * @returns `true` when propagation was stopped, so a dispatcher can end its walk.
      */
-    function applyDisposition(evnt: Event, result: ListenerResult): boolean {
-        if (result === undefined || result === false) {
-            return false;
-        }
+    function applyDisposition(evnt: Event, result: ListenerResult, options?: ListenerOptions): boolean {
+        const stop = !!options?.stop || result === true || (typeof result === "object" && !!result?.stop);
+        const prevent = !!options?.prevent || (typeof result === "object" && !!result?.prevent);
 
-        if (result === true) {
-            evnt.stopPropagation();
-
-            return true;
-        }
-
-        if (result.prevent) {
+        if (prevent) {
             evnt.preventDefault();
         }
 
-        if (result.stop) {
+        if (stop) {
             evnt.stopPropagation();
 
             return true;
@@ -127,6 +246,17 @@ export namespace Event {
     }
 
     let baseListener = function (evnt: Event) {
+        // "click" is the framework-wide activation event (buttons, links,
+        // checkboxes, menu items, ...) and is meant to represent a primary
+        // (left) mouse-button activation. Reject any other button here so
+        // every consumer gets that guarantee for free. `fireEvent(component,
+        // "click")` (a programmatic `.click()`) dispatches a plain
+        // `CustomEvent`, which carries no `button` property at all —
+        // `isPrimaryButton` treats that as primary rather than rejecting it.
+        if (evnt.type === "click" && !isPrimaryButton(evnt as MouseEvent)) {
+            return;
+        }
+
         // The dispatcher does NOT stop propagation on a component's behalf: an
         // event is halted only when a handler's returned disposition asks for
         // it (see `applyDisposition`). An unconsumed event therefore keeps
@@ -147,8 +277,12 @@ export namespace Event {
             let compFunc = listeners.get(elementId);
 
             if (compFunc) {
-                for (let listener of compFunc.listeners) {
-                    if (applyDisposition(evnt, listener.apply(compFunc.component, [evnt]))) {
+                for (let entry of compFunc.listeners) {
+                    if (!passesButtonFilter(evnt, evnt.type, entry.options?.button)) {
+                        continue;
+                    }
+
+                    if (applyDisposition(evnt, entry.listener.apply(compFunc.component, [evnt]), entry.options)) {
                         propagationStopped = true;
                     }
                 }
@@ -186,8 +320,12 @@ export namespace Event {
             if (id) {
                 let compFunc = subtreeListeners.get(id);
                 if (compFunc) {
-                    for (let listener of compFunc.listeners) {
-                        if (applyDisposition(evnt, listener.apply(compFunc.component, [evnt]))) {
+                    for (let entry of compFunc.listeners) {
+                        if (!passesButtonFilter(evnt, evnt.type, entry.options?.button)) {
+                            continue;
+                        }
+
+                        if (applyDisposition(evnt, entry.listener.apply(compFunc.component, [evnt]), entry.options)) {
                             propagationStopped = true;
                         }
                     }
@@ -223,8 +361,8 @@ export namespace Event {
 
             let component = compFunc.component;
 
-            for (let listener of compFunc.listeners) {
-                applyDisposition(evnt, listener.apply(component, [evnt]));
+            for (let entry of compFunc.listeners) {
+                applyDisposition(evnt, entry.listener.apply(component, [evnt]), entry.options);
             }
         }
     };
@@ -273,6 +411,100 @@ export namespace Event {
     }
 
     /**
+     * Resolves the `addListener` / `addSubtreeListener` overload argument
+     * into a handler and its options, splitting `handler` back out of a
+     * {@link ListenerRegistration} so `entry.options` never carries a
+     * redundant self-reference to the same function as `entry.listener`.
+     */
+    function resolveRegistration(
+        listenerOrRegistration: Listener | ListenerRegistration,
+    ): [Listener | undefined, ListenerOptions | undefined] {
+        if (!listenerOrRegistration || typeof listenerOrRegistration === "function") {
+            return [listenerOrRegistration as Listener | undefined, undefined];
+        }
+
+        const { handler, ...options } = listenerOrRegistration;
+
+        return [handler, options];
+    }
+
+    /**
+     * Finds or creates the `CompFunc` for `(type, component)` in `map` and
+     * appends `{ listener, options }` unless that exact `listener` reference
+     * is already registered there. Shared by `addListener` and
+     * `addSubtreeListener`, which differ only in which map they write to.
+     */
+    function registerEntry(
+        map: Map<String, Map<String, CompFunc>>,
+        component: Component,
+        type: string,
+        listener: Listener,
+        options: ListenerOptions | undefined,
+    ): void {
+        // Validate BEFORE touching `map`: `installBaseListener` throws on a
+        // passive-option conflict, and it must do so before a fresh, empty
+        // `typeMap` is inserted — otherwise a failed registration leaves a
+        // stale `type -> emptyMap` entry behind, which later cleanup paths
+        // (e.g. `purgeComponent`'s plain `.has(type)` check) mistake for a
+        // live registration and never uninstall the base listener for.
+        installBaseListener(type, options);
+
+        let typeMap = map.get(type);
+        if (!typeMap) {
+            typeMap = new Map<String, CompFunc>();
+            map.set(type, typeMap);
+        }
+
+        let compFunc = typeMap.get(component.getId());
+        if (!compFunc) {
+            compFunc = { component, listeners: [] };
+            typeMap.set(component.getId(), compFunc);
+        }
+
+        if (!compFunc.listeners.some((entry) => entry.listener === listener)) {
+            compFunc.listeners.push({ listener, options });
+        }
+    }
+
+    /**
+     * Removes the entry for `listener` from `map`'s `(type, component)`
+     * `CompFunc`, and cleans up the map/type-map entries it leaves empty.
+     * Shared by `removeListener` and `removeSubtreeListener` — each still
+     * runs its own cross-map `uninstallBaseListener` check afterward, since
+     * exact-target and subtree registrations share one window-level handler
+     * per type.
+     */
+    function unregisterEntry(
+        map: Map<String, Map<String, CompFunc>>,
+        component: Component,
+        type: string,
+        listener: Listener,
+    ): void {
+        let typeMap = map.get(type);
+        if (!typeMap) {
+            return;
+        }
+
+        let compFunc = typeMap.get(component.getId());
+        if (!compFunc) {
+            return;
+        }
+
+        let idx = compFunc.listeners.findIndex((entry) => entry.listener === listener);
+        if (idx >= 0) {
+            compFunc.listeners.splice(idx, 1);
+        }
+
+        if (compFunc.listeners.length === 0) {
+            typeMap.delete(component.getId());
+        }
+
+        if (typeMap.size === 0) {
+            map.delete(type);
+        }
+    }
+
+    /**
      * Registers a listener for a DOM event type on the given component, using a single window-level handler per type.
      *
      * @param component - The component to associate the listener with.
@@ -282,45 +514,41 @@ export namespace Event {
      * event: `true` stops propagation, `{ prevent: true }` suppresses the
      * default action, `{ stop: true, prevent: true }` does both, and nothing
      * (or `false`) leaves the event untouched.
-     * @param options - Optional override for the default registration options
-     * (currently only `passive`). Once a type has been registered, subsequent
-     * registrations must use the same `passive` setting or this function
-     * throws.
      *
      * @remarks A capture-phase window listener is installed the first time a given event type is registered,
      * and removed automatically when the last listener for that type is unregistered.
      */
+    export function addListener(component: Component, type: string, listener: Listener): void;
+
+    /**
+     * Registers a listener for a DOM event type, bundled with explicit
+     * registration options into a single argument.
+     *
+     * @param component - The component to associate the listener with.
+     * @param type - The DOM event type string to listen for.
+     * @param registration - The handler plus overrides for the default
+     * registration options. `handler` — see the two-argument overload.
+     * `passive` is native-listener-level: once a type has been registered
+     * with a given `passive` value, subsequent registrations for the same
+     * type must agree, or this function throws. `button` is per-listener —
+     * see {@link ListenerOptions.button}. `stop` / `prevent` are an
+     * unconditional floor applied regardless of `handler`'s return value —
+     * see {@link ListenerOptions.stop}.
+     */
+    export function addListener(component: Component, type: string, registration: ListenerRegistration): void;
+
     export function addListener(
         component: Component,
         type: string,
-        listener: Listener,
-        options?: ListenerOptions
-    ) {
+        listenerOrRegistration: Listener | ListenerRegistration,
+    ): void {
+        const [listener, options] = resolveRegistration(listenerOrRegistration);
+
         if (!listener || !component) {
             return;
         }
 
-        let typeMap = listenerMap.get(type);
-        if (!typeMap) {
-            typeMap = new Map<String, CompFunc>();
-            listenerMap.set(type, typeMap);
-        }
-
-        installBaseListener(type, options);
-
-        let compFunc = typeMap.get(component.getId());
-        if (!compFunc) {
-            compFunc = {
-                component: component,
-                listeners: []
-            }
-
-            typeMap.set(component.getId(), compFunc);
-        }
-
-        if (!compFunc.listeners.includes(listener)) {
-            compFunc.listeners.push(listener);
-        }
+        registerEntry(listenerMap, component, type, listener, options);
     }
 
     /**
@@ -338,28 +566,7 @@ export namespace Event {
             return;
         }
 
-        let typeMap = listenerMap.get(type);
-        if (!typeMap) {
-            return;
-        }
-
-        let compFunc = typeMap.get(component.getId());
-        if (!compFunc) {
-            return;
-        }
-
-        let idx = compFunc.listeners.indexOf(listener);
-        if (idx >= 0) {
-            compFunc.listeners.splice(idx, 1);
-        }
-
-        if (compFunc.listeners.length == 0) {
-            typeMap.delete(component.getId());
-        }
-
-        if (typeMap.size == 0) {
-            listenerMap.delete(type);
-        }
+        unregisterEntry(listenerMap, component, type, listener);
 
         const subtreeMap = subtreeListenerMap.get(type);
         const bothEmpty = !listenerMap.has(type) && (!subtreeMap || subtreeMap.size === 0);
@@ -381,42 +588,35 @@ export namespace Event {
      * ancestor is visited), `{ prevent: true }` suppresses the default
      * action, `{ stop: true, prevent: true }` does both, and nothing (or
      * `false`) leaves the event untouched.
-     * @param options - Optional override for the default registration options
-     * (currently only `passive`). Once a type has been registered, subsequent
-     * registrations must use the same `passive` setting or this function
-     * throws.
      *
      * @remarks Unlike `addListener`, which only matches the exact event target, this fires for
      * any event whose target is a descendant of the component's element. Multiple components
      * may register subtree listeners for the same event type; all matching ancestors are notified.
      */
+    export function addSubtreeListener(component: Component, type: string, listener: Listener): void;
+
+    /**
+     * Registers a subtree listener, bundled with explicit registration
+     * options into a single argument.
+     *
+     * @param component - The ancestor component to watch.
+     * @param type - The DOM event type string to listen for.
+     * @param registration - See {@link addListener}'s registration overload.
+     */
+    export function addSubtreeListener(component: Component, type: string, registration: ListenerRegistration): void;
+
     export function addSubtreeListener(
         component: Component,
         type: string,
-        listener: Listener,
-        options?: ListenerOptions
+        listenerOrRegistration: Listener | ListenerRegistration,
     ): void {
+        const [listener, options] = resolveRegistration(listenerOrRegistration);
+
         if (!listener || !component) {
             return;
         }
 
-        let typeMap = subtreeListenerMap.get(type);
-        if (!typeMap) {
-            typeMap = new Map<String, CompFunc>();
-            subtreeListenerMap.set(type, typeMap);
-        }
-
-        installBaseListener(type, options);
-
-        let compFunc = typeMap.get(component.getId());
-        if (!compFunc) {
-            compFunc = { component, listeners: [] };
-            typeMap.set(component.getId(), compFunc);
-        }
-
-        if (!compFunc.listeners.includes(listener)) {
-            compFunc.listeners.push(listener);
-        }
+        registerEntry(subtreeListenerMap, component, type, listener, options);
     }
 
     /**
@@ -431,28 +631,7 @@ export namespace Event {
             return;
         }
 
-        let typeMap = subtreeListenerMap.get(type);
-        if (!typeMap) {
-            return;
-        }
-
-        let compFunc = typeMap.get(component.getId());
-        if (!compFunc) {
-            return;
-        }
-
-        let idx = compFunc.listeners.indexOf(listener);
-        if (idx >= 0) {
-            compFunc.listeners.splice(idx, 1);
-        }
-
-        if (compFunc.listeners.length === 0) {
-            typeMap.delete(component.getId());
-        }
-
-        if (typeMap.size === 0) {
-            subtreeListenerMap.delete(type);
-        }
+        unregisterEntry(subtreeListenerMap, component, type, listener);
 
         const exactMap = listenerMap.get(type);
         const bothEmpty = (!exactMap || exactMap.size === 0) && !subtreeListenerMap.has(type);
@@ -604,7 +783,7 @@ export namespace Event {
             typeMap.set(component.getId(), compFunc);
         }
 
-        compFunc.listeners.push(listener);
+        compFunc.listeners.push({ listener });
     }
 
     /**
@@ -632,7 +811,7 @@ export namespace Event {
             return;
         }
 
-        let idx = compFunc.listeners.indexOf(listener);
+        let idx = compFunc.listeners.findIndex((entry) => entry.listener === listener);
         if (idx >= 0) {
             compFunc.listeners.splice(idx, 1);
         }

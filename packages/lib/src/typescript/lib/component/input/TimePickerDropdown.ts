@@ -91,12 +91,12 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
      *
      * @param e - The pointerdown event.
      */
-    private onPointerDown(e: PointerEvent): void {
+    private onPointerDown(e: PointerEvent): Event.ListenerResult {
         if (isScrollbarTarget(e)) {
             return;
         }
 
-        e.preventDefault();
+        return { prevent: true };
     }
 
     /**

@@ -80,11 +80,13 @@ describe('AbstractCalendarDropdown.onPointerDown — scrollbar guard (year scrol
         );
 
         const e = makeEvent(thumb, 'pointerdown');
-        const preventDefault = vi.spyOn(e, 'preventDefault');
 
-        dd.onPointerDown(e);
+        // `onPointerDown` claims the event by RETURNING `{ prevent: true }`
+        // rather than calling `e.preventDefault()` itself — the real
+        // dispatcher applies that disposition, which this direct call bypasses.
+        const result = dd.onPointerDown(e);
 
-        expect(preventDefault).not.toHaveBeenCalled();
+        expect(typeof result === 'object' && result?.prevent).toBeFalsy();
     });
 
     it('still preventDefaults a pointerdown on a year cell', () => {
@@ -97,10 +99,9 @@ describe('AbstractCalendarDropdown.onPointerDown — scrollbar guard (year scrol
         vi.spyOn(DOM.source, 'matches').mockReturnValue(false);
 
         const e = makeEvent(cell, 'pointerdown');
-        const preventDefault = vi.spyOn(e, 'preventDefault');
 
-        dd.onPointerDown(e);
+        const result = dd.onPointerDown(e);
 
-        expect(preventDefault).toHaveBeenCalled();
+        expect(typeof result === 'object' && result?.prevent).toBe(true);
     });
 });

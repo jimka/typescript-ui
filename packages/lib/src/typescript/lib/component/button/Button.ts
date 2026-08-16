@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Fit } from "~/layout/Fit.js";
 import { HBox } from "~/layout/HBox.js";
@@ -132,8 +133,8 @@ export interface ButtonOptions extends ComponentOptions {
 
     /**
      * Classical "flat" appearance: no resting border/shadow/gradient; a light
-     * frame + fill on `:hover:not(:active)` and a sunken inset frame on
-     * `:active`. Mutually exclusive with `chromeless` (chromeless wins).
+     * frame + fill on `:hover:not(.pressed)` and a sunken inset frame on
+     * `.pressed`. Mutually exclusive with `chromeless` (chromeless wins).
      * Runtime counterpart `setFlat`; read with `isFlat`.
      */
     flat?:                   boolean;
@@ -243,7 +244,7 @@ const _defaultButtonOptions: Partial<ButtonOptions> = {
 /**
  * A push button component with a text label and configurable pressed-state appearance.
  *
- * Maintains separate CSS rules for the normal and `:active` states, allowing
+ * Maintains separate CSS rules for the normal and `.pressed` states, allowing
  * independent control of border, shadow, background, and foreground color when pressed.
  *
  * @example
@@ -373,7 +374,164 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this.recomputePreferredSize();
     };
 
-    // Lazy `:active` rule. The slot is just a fast-path cache — the
+    // The pressed treatment is driven entirely by this `.pressed` class
+    // rather than the native `:active` pseudo-class. Browsers match `:active`
+    // on whichever element received a `mousedown` regardless of which mouse
+    // button was pressed, and — worse — its clear timing relative to
+    // `pointerup`/`pointercancel` isn't something JS can reliably race
+    // (an attempt to veto it with a same-tick `:not()` class produced a
+    // one-frame flash of the pressed treatment on non-primary release). Fully
+    // owning the class instead sidesteps that: it is added/removed only by
+    // this component, only for a primary-button press or a held Space key —
+    // the same two gestures native `:active` covers for a `<button>` — so a
+    // right-/middle-click never shows it at all, with no timing dependency
+    // on the browser's own state.
+    //
+    // Tracking owns two axes: which pointer (if any) is holding the button
+    // down, and whether that pointer currently sits over the button —
+    // `.pressed` reads true only while both hold, or while Space is held,
+    // mirroring what native `:active` shows for a `<button>`. No pointer
+    // capture is acquired: capture would retarget `click` to this element
+    // regardless of where the pointer actually released, breaking
+    // drag-away-to-cancel. Release is instead tracked with a viewport
+    // `pointerup` / `pointercancel` pair installed only while a press is in
+    // progress (mirrors Scrollbar._onDragStart / _onDragEnd's own
+    // press-scoped viewport listeners).
+    private _pressedPointerId:     number | null = null;
+    private _pressedPointerInside: boolean = false;
+    private _spaceHeld:            boolean = false;
+
+    private _updatePressedClass(): void {
+        const element = this.getElement();
+        if (!element) {
+            return;
+        }
+
+        const pressed = (this._pressedPointerId !== null && this._pressedPointerInside) || this._spaceHeld;
+        DOM.sink.apply(element, { toggleClass: { pressed } });
+    }
+
+    /**
+     * True when `related` (an event's `relatedTarget`) is inside this
+     * button's own element — an internal move between descendants, not a
+     * real boundary crossing. Mirrors `Notification.acquireHoverHold` /
+     * `releaseHoverHold`'s inline `relatedTarget`-inside guard.
+     */
+    private _isInsideTarget(related: unknown): boolean {
+        const element = this.getElement();
+
+        return element !== undefined && DOM.source.isNode(related) && DOM.source.contains(element, DOM.source.intern(related));
+    }
+
+    private readonly _onPointerDown: (e: PointerEvent) => void = (e) => {
+        // Already tracking a press (a second finger, e.g.) — first one wins.
+        if (this._pressedPointerId !== null) {
+            return;
+        }
+
+        this._pressedPointerId     = e.pointerId;
+        this._pressedPointerInside = true;
+
+        Event.addViewportListener(this, "pointerup",     this._onPointerRelease);
+        Event.addViewportListener(this, "pointercancel", this._onPointerRelease);
+
+        this._updatePressedClass();
+    };
+
+    private readonly _onPointerOver: (e: PointerEvent) => void = (e) => {
+        if (e.pointerId !== this._pressedPointerId) {
+            return;
+        }
+
+        // The primary button is no longer held — it was released outside the
+        // browser window, so no pointerup ever reached the viewport listener
+        // below. Heal here, the next time the pointer crosses back onto the
+        // button (mirrors DiagramView._handlePointerMove's buttons-bit
+        // recheck, though for a narrower case — Button's own pointerup is
+        // viewport-scoped and already catches a release anywhere else in the
+        // document; this only covers the pointer leaving the window itself).
+        if ((e.buttons & 1) === 0) {
+            this._onPointerRelease(e);
+            return;
+        }
+
+        this._pressedPointerInside = true;
+        this._updatePressedClass();
+    };
+
+    private readonly _onPointerOut: (e: PointerEvent) => void = (e) => {
+        if (e.pointerId !== this._pressedPointerId || this._isInsideTarget(e.relatedTarget)) {
+            return;
+        }
+
+        this._pressedPointerInside = false;
+        this._updatePressedClass();
+    };
+
+    /**
+     * Suppresses the middle button's autoscroll-icon default. Registered on
+     * `mousedown`, not `pointerdown`: preventing a `pointerdown` suppresses
+     * its synthesized `mousedown` compatibility event entirely, which
+     * `Tooltip.hide()` and `AbstractWindow`'s bring-to-front both depend on
+     * to see a press landing on a descendant Button — `mousedown`'s own
+     * `preventDefault()` carries no such side effect, so this can suppress
+     * the autoscroll default without eating the event for anything else
+     * still listening on the same `mousedown`.
+     *
+     * @param e - The mousedown event.
+     */
+    private readonly _onAuxMouseDown: (e: MouseEvent) => Event.ListenerResult = (e) => {
+        return e.button === 1 ? { prevent: true } : undefined;
+    };
+
+    private readonly _onPointerRelease: (e: PointerEvent) => void = (e) => {
+        if (this._pressedPointerId !== e.pointerId) {
+            return;
+        }
+
+        Event.removeViewportListener(this, "pointerup",     this._onPointerRelease);
+        Event.removeViewportListener(this, "pointercancel", this._onPointerRelease);
+
+        this._pressedPointerId     = null;
+        this._pressedPointerInside = false;
+
+        this._updatePressedClass();
+    };
+
+    private readonly _onSpaceDown: (e: KeyboardEvent) => void = (e) => {
+        if (e.key !== " " || e.repeat) {
+            return;
+        }
+
+        this._spaceHeld = true;
+        this._updatePressedClass();
+    };
+
+    private readonly _onSpaceUp: (e: KeyboardEvent) => void = (e) => {
+        if (e.key !== " ") {
+            return;
+        }
+
+        this._spaceHeld = false;
+        this._updatePressedClass();
+    };
+
+    /**
+     * Clears the Space-held pressed state on blur. Without this, focus
+     * leaving mid-hold (Tab, alt-tab, a programmatic focus move) would never
+     * fire the matching `keyup` and `.pressed` would stay on indefinitely —
+     * `:active`, which this class replaces, clears on blur natively.
+     */
+    private readonly _onBlur: () => void = () => {
+        if (!this._spaceHeld) {
+            return;
+        }
+
+        this._spaceHeld = false;
+        this._updatePressedClass();
+    };
+
+    // Lazy `.pressed` rule. The slot is just a fast-path cache — the
     // `createStyleRule` builder on Component dedupes by selector suffix, so
     // even if the slot is reset between calls (e.g. by TypeScript class-field
     // init after super returns), the next access still returns the same
@@ -382,17 +540,20 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     // lookup after construction.
     private declare _pressedStyleRule?: StyleRule;
     private get pressedStyleRule(): StyleRule {
-        return this._pressedStyleRule ??= this.createStyleRule(":active");
+        return this._pressedStyleRule ??= this.createStyleRule(".pressed");
     }
     private _pressedBorder: BorderOptions | null = null;
 
-    // Lazy `:hover:not(:active)` rule. The `:not(:active)` guard makes the
-    // cascade unambiguous regardless of source order — the moment the
-    // pointer goes down, `:active` matches and `:hover:not(:active)` stops
-    // matching, so the pressed treatment always wins.
+    // Lazy `:hover:not(.pressed)` rule. The `:not(.pressed)` guard makes the
+    // cascade unambiguous regardless of source order — the moment `.pressed`
+    // is added, hover stops matching, so the pressed treatment always wins.
+    // Since `.pressed` is only ever added for a primary-button press or a
+    // held Space key (see `_onPointerDown` / `_onSpaceDown`), a right-/
+    // middle-click hold never sets it, so hover keeps matching for the whole
+    // hold instead of falling through to the plain resting look.
     private declare _hoverStyleRule?: StyleRule;
     private get hoverStyleRule(): StyleRule {
-        return this._hoverStyleRule ??= this.createStyleRule(":hover:not(:active)");
+        return this._hoverStyleRule ??= this.createStyleRule(":hover:not(.pressed)");
     }
     private _hoverBorder: BorderOptions | null = null;
 
@@ -519,6 +680,24 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // font-size / glyph-metric shifts cascade into the button's preferred
         // size without explicit consumer prodding.
         this.subscribeTheme(this._onThemeChange);
+
+        // Subtree, not exact-target: a press on a pointer-opaque descendant
+        // (e.g. SplitButton's chevron, or a TabCloseButton overlaid on a
+        // TabButton) must still show this button pressed, the way `:active`
+        // bubbles through one. This is safe now that no pointer capture is
+        // acquired — each Button instance tracks its own boundary state
+        // independently, with no shared OS-level resource for two instances
+        // to conflict over.
+        Event.addSubtreeListener(this, "pointerdown", this._onPointerDown);
+        Event.addSubtreeListener(this, "pointerover", this._onPointerOver);
+        Event.addSubtreeListener(this, "pointerout",  this._onPointerOut);
+        Event.addListener(this, "mousedown",   { button: "aux", handler: this._onAuxMouseDown });
+        Event.addListener(this, "keydown",       this._onSpaceDown);
+        Event.addListener(this, "keyup",         this._onSpaceUp);
+        // Native `:active` clears on blur; `_onSpaceUp` alone does not — a
+        // Tab or alt-tab away while Space is held would otherwise leave
+        // `.pressed` stuck on indefinitely.
+        Event.addListener(this, "blur",          this._onBlur);
 
         // Wire the listener bag — but only when this IS a plain Button.
         // Subclasses wire their own bag from their constructor body after their
@@ -1528,12 +1707,15 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * `Event.addListener(button, "pointerdown", ...)` directly, preserving
      * the framework's named-listener contract.
      *
-     * @param listener - Called with the originating PointerEvent.
+     * @param listener - Called with the originating PointerEvent. Fires for
+     * every button — this public surface has no documented button
+     * restriction, so it opts out of `Event.addListener`'s primary-only
+     * default to preserve that.
      *
      * @returns This component, for method chaining.
      */
     addPointerDownListener(listener: Event.Listener): this {
-        Event.addListener(this, "pointerdown", listener);
+        Event.addListener(this, "pointerdown", { button: "any", handler: listener });
 
         return this;
     }
@@ -1772,7 +1954,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // Reserve the 1px frame at rest with a transparent border (rather than
         // clearing it like the chromeless branch). Under `box-sizing: border-box`
         // a border consumes content-box space, so a border that only appears on
-        // `:hover` / `:active` would nudge the centred label by 1px. Reserving it
+        // `:hover` / `.pressed` would nudge the centred label by 1px. Reserving it
         // transparent keeps the geometry identical across states — the hover /
         // pressed rules below only swap the border *colour*. Matches the 1px
         // width of the `--ts-ui-button-flat-{hover,pressed}-border` tokens;
@@ -1984,7 +2166,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Returns the background color applied when the button is in the :active state.
+     * Returns the background color applied when the button is in the `.pressed` state.
      *
      * @returns The CSS color string, or null if not set.
      */
@@ -1993,7 +2175,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Sets the background color for the :active CSS rule.
+     * Sets the background color for the `.pressed` CSS rule.
      *
      * @param backgroundColor - A CSS color string, or null to clear the property.
      *
@@ -2007,7 +2189,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Removes the background-color from the :active CSS rule.
+     * Removes the background-color from the `.pressed` CSS rule.
      *
      * @returns This component, for method chaining.
      */
@@ -2019,7 +2201,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Returns the background image applied when the button is in the :active state.
+     * Returns the background image applied when the button is in the `.pressed` state.
      *
      * @returns The CSS background-image string, or null if not set.
      */
@@ -2028,7 +2210,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Sets the background image for the :active CSS rule.
+     * Sets the background image for the `.pressed` CSS rule.
      *
      * @param backgroundImage - Optional. A CSS background-image string, or null to clear the property.
      *
@@ -2042,7 +2224,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Removes the background-image from the :active CSS rule.
+     * Removes the background-image from the `.pressed` CSS rule.
      *
      * @returns This component, for method chaining.
      */
@@ -2054,7 +2236,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Returns the text color applied when the button is in the :active state.
+     * Returns the text color applied when the button is in the `.pressed` state.
      *
      * @returns The CSS color string, or null if not set.
      */
@@ -2063,7 +2245,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Sets the text color for the :active CSS rule.
+     * Sets the text color for the `.pressed` CSS rule.
      *
      * @param foregroundColor - A CSS color string, or null to clear the property.
      *
@@ -2077,7 +2259,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Removes the color (foreground) from the :active CSS rule.
+     * Removes the color (foreground) from the `.pressed` CSS rule.
      *
      * @returns This component, for method chaining.
      */
@@ -2089,16 +2271,16 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Returns the border applied when the button is in the :active state.
+     * Returns the border applied when the button is in the `.pressed` state.
      *
-     * @returns The {@link BorderOptions} for the :active state, or null if not set.
+     * @returns The {@link BorderOptions} for the `.pressed` state, or null if not set.
      */
     getPressedBorder(): BorderOptions | null {
         return this._pressedBorder;
     }
 
     /**
-     * Sets the border for the :active CSS rule. Accepts either a {@link BorderOptions}
+     * Sets the border for the `.pressed` CSS rule. Accepts either a {@link BorderOptions}
      * bag or a CSS `border` shorthand string (sugar for `{ border: <string> }`).
      *
      * @param options - Border configuration, a CSS `border` shorthand string, or omitted for a `none` border.
@@ -2113,7 +2295,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Removes the border from the :active CSS rule, reverting the pressed
+     * Removes the border from the `.pressed` CSS rule, reverting the pressed
      * state to no explicit border. Lets the un-flatten / un-chromeless round
      * trip strip a flat pressed border that has no raised default to restore.
      *
@@ -2132,7 +2314,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Returns the border radius applied when the button is in the :active state.
+     * Returns the border radius applied when the button is in the `.pressed` state.
      *
      * @returns The CSS border-radius string, or null if not set.
      */
@@ -2141,7 +2323,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Sets the border radius for the :active CSS rule.
+     * Sets the border radius for the `.pressed` CSS rule.
      *
      * @param borderRadius - Optional. A CSS border-radius string, or null to clear the property.
      *
@@ -2155,7 +2337,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Removes the border-radius from the :active CSS rule.
+     * Removes the border-radius from the `.pressed` CSS rule.
      *
      * @returns This component, for method chaining.
      */
@@ -2167,7 +2349,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Returns the box shadow applied when the button is in the :active state.
+     * Returns the box shadow applied when the button is in the `.pressed` state.
      *
      * @returns The CSS box-shadow string, or null if not set.
      */
@@ -2176,7 +2358,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Sets the box shadow for the :active CSS rule.
+     * Sets the box shadow for the `.pressed` CSS rule.
      *
      * @param shadow - A CSS box-shadow string, or null to set the shadow to "none".
      *
@@ -2190,7 +2372,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Removes the box-shadow from the :active CSS rule.
+     * Removes the box-shadow from the `.pressed` CSS rule.
      *
      * @returns This component, for method chaining.
      */
@@ -2211,7 +2393,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Sets the background color for the `:hover:not(:active)` CSS rule.
+     * Sets the background color for the `:hover:not(.pressed)` CSS rule.
      *
      * @param backgroundColor - A CSS color string, or null to clear the property.
      *
@@ -2225,7 +2407,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Removes the background-color from the `:hover:not(:active)` CSS rule.
+     * Removes the background-color from the `:hover:not(.pressed)` CSS rule.
      *
      * @returns This component, for method chaining.
      */
@@ -2246,7 +2428,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Sets the background image for the `:hover:not(:active)` CSS rule.
+     * Sets the background image for the `:hover:not(.pressed)` CSS rule.
      *
      * @param backgroundImage - A CSS background-image string, or null to clear the property.
      *
@@ -2260,7 +2442,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Removes the background-image from the `:hover:not(:active)` CSS rule.
+     * Removes the background-image from the `:hover:not(.pressed)` CSS rule.
      *
      * @returns This component, for method chaining.
      */
@@ -2281,7 +2463,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Sets the text color for the `:hover:not(:active)` CSS rule.
+     * Sets the text color for the `:hover:not(.pressed)` CSS rule.
      *
      * @param foregroundColor - A CSS color string, or null to clear the property.
      *
@@ -2295,7 +2477,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Removes the color (foreground) from the `:hover:not(:active)` CSS rule.
+     * Removes the color (foreground) from the `:hover:not(.pressed)` CSS rule.
      *
      * @returns This component, for method chaining.
      */
@@ -2316,7 +2498,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Sets the border for the `:hover:not(:active)` CSS rule. Accepts either a
+     * Sets the border for the `:hover:not(.pressed)` CSS rule. Accepts either a
      * {@link BorderOptions} bag or a CSS `border` shorthand string (sugar for
      * `{ border: <string> }`, e.g. `"1px solid rgb(...)"` or `"none"`). The four
      * CSS longhands are written so a per-side hover border survives.
@@ -2361,7 +2543,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Sets the border radius for the `:hover:not(:active)` CSS rule.
+     * Sets the border radius for the `:hover:not(.pressed)` CSS rule.
      *
      * @param borderRadius - A CSS border-radius string, or null to clear the property.
      *
@@ -2375,7 +2557,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Removes the border-radius from the `:hover:not(:active)` CSS rule.
+     * Removes the border-radius from the `:hover:not(.pressed)` CSS rule.
      *
      * @returns This component, for method chaining.
      */
@@ -2396,7 +2578,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Sets the box shadow for the `:hover:not(:active)` CSS rule.
+     * Sets the box shadow for the `:hover:not(.pressed)` CSS rule.
      *
      * @param shadow - A CSS box-shadow string, or null to set the shadow to "none".
      *
@@ -2410,7 +2592,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Removes the box-shadow from the `:hover:not(:active)` CSS rule.
+     * Removes the box-shadow from the `:hover:not(.pressed)` CSS rule.
      *
      * @returns This component, for method chaining.
      */

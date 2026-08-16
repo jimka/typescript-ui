@@ -204,7 +204,7 @@ class ParentHeaderCell extends DefaultCell {
             return this;
         }
 
-        Event.addSubtreeListener(this, "contextmenu", this.onContextMenu);
+        Event.addSubtreeListener(this, "contextmenu", { prevent: true, handler: this.onContextMenu });
 
         if (this._tooltipText) {
             Tooltip.attachToElement(el, this._tooltipText);
@@ -219,10 +219,9 @@ class ParentHeaderCell extends DefaultCell {
      * (the host's listener typically opens the table's column-toggle menu).
      *
      * @param e - The contextmenu event captured from a descendant.
+     * `preventDefault` is applied by the registration's `prevent: true` floor.
      */
     private onContextMenu(e: MouseEvent): void {
-        e.preventDefault();
-
         this.emit("contextmenu", e.clientX, e.clientY);
     }
 }

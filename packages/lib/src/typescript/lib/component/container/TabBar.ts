@@ -1561,8 +1561,8 @@ class TabBar extends Container<TabBarOptions> {
         // and stored on the entry so `removeBarEntry` can remove it (the closure
         // over `entry`, resolved at call time, is safe because right-clicks only
         // fire after the entry is fully built).
+        // `preventDefault` is applied by the registration's `prevent: true` floor.
         const onContextMenu = (e: MouseEvent): void => {
-            e.preventDefault();
             this.openTabMenu(entry, e.clientX, e.clientY);
         };
 
@@ -1580,7 +1580,7 @@ class TabBar extends Container<TabBarOptions> {
             closeButton.on("action", () => this.emit("tabclose", id));
         }
 
-        Event.addSubtreeListener(tabButton, "contextmenu", onContextMenu);
+        Event.addSubtreeListener(tabButton, "contextmenu", { prevent: true, handler: onContextMenu });
 
         this._entries.push(entry);
 
@@ -3073,7 +3073,7 @@ class TabBar extends Container<TabBarOptions> {
      *
      * @param e - The keyboard event fired on the strip element.
      */
-    private onToolbarKeyDown(e: KeyboardEvent): void {
+    private onToolbarKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
             return;
         }
@@ -3083,8 +3083,6 @@ class TabBar extends Container<TabBarOptions> {
         if (tabCount === 0) {
             return;
         }
-
-        e.preventDefault();
 
         const activeIdx = this._entries.findIndex(entry => entry.id === this._activeId);
         const base = activeIdx >= 0 ? activeIdx : 0;
@@ -3099,6 +3097,8 @@ class TabBar extends Container<TabBarOptions> {
         newTab.setSelected(true);
 
         this.onTabPressed(newTab);
+
+        return { prevent: true };
     }
 
     /**

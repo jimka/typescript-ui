@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Component } from '~/core/Component';
 import { Scrollbar, isScrollbarTarget, TRACK_WIDTH } from '~/component/container/Scrollbar';
+import { Event } from '~/core/Event';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { installTestDOM, makeEvent } from '../../dom/TestDOM';
@@ -482,5 +483,31 @@ describe('isScrollbarTarget', () => {
         installTestDOM(CONFIG);
 
         expect(isScrollbarTarget({ target: null } as unknown as Event)).toBe(false);
+    });
+});
+
+describe('Scrollbar touchstart registration', () => {
+    afterEach(() => DOM.reset());
+
+    // Both the thumb's drag-start and the track-click listeners register
+    // touchstart with `{ prevent: true }` — since "touchstart" is one of
+    // Event.ts's PASSIVE_TYPES, that floor is a silent no-op unless the
+    // registration also overrides `passive: false` (a passive listener's
+    // preventDefault() is dropped by the browser). RecordingDOMSink.addListener
+    // drops the options it's given, so this isn't directly observable through
+    // a recorded write — but Event's own conflict guard makes it indirectly
+    // observable: having claimed "touchstart" as `passive: false` (via the
+    // `new Scrollbar` construction below, which registers it), a later
+    // registration with a *different* passive setting throws, while a
+    // matching one doesn't.
+    it('locks "touchstart" as passive: false, so preventDefault actually applies', () => {
+        installTestDOM(CONFIG);
+
+        new Scrollbar('vertical');
+
+        const other = new Component();
+
+        expect(() => Event.addListener(other, 'touchstart', { passive: true, handler: () => {} })).toThrow();
+        expect(() => Event.addListener(other, 'touchstart', { passive: false, handler: () => {} })).not.toThrow();
     });
 });

@@ -41,7 +41,7 @@ describe('WheelTrap registration / teardown / idempotency', () => {
         const wheelCalls = add.mock.calls.filter((c) => c[0] === comp && c[1] === 'wheel');
 
         expect(wheelCalls.length).toBe(1);
-        expect(wheelCalls[0][3]).toEqual({ passive: false });
+        expect(wheelCalls[0][2].passive).toBe(false);
     });
 
     it('is idempotent — a second trapWheel does not register a second listener', () => {
@@ -65,7 +65,7 @@ describe('WheelTrap registration / teardown / idempotency', () => {
 
         trapWheel(comp);
 
-        const registered = add.mock.calls.find((c) => c[0] === comp && c[1] === 'wheel')![2];
+        const registered = add.mock.calls.find((c) => c[0] === comp && c[1] === 'wheel')![2].handler;
 
         untrapWheel(comp);
 
@@ -105,13 +105,23 @@ describe('WheelTrap gate logic (handler preventDefaults only when unconsumed)', 
         DOM.reset();
     });
 
-    /** Captures the handler trapWheel registered, so we can drive the gate directly. */
-    function captureHandler(comp: Component): (e: WheelEvent) => void {
+    /**
+     * Captures the handler trapWheel registered, so we can drive the gate
+     * directly. The handler claims the wheel by RETURNING `{ prevent: true }`
+     * rather than calling `e.preventDefault()` itself — the real dispatcher
+     * applies that disposition, which this direct call bypasses.
+     */
+    function captureHandler(comp: Component): (e: WheelEvent) => Event.ListenerResult {
         const add = vi.spyOn(Event, 'addSubtreeListener');
 
         trapWheel(comp);
 
-        return add.mock.calls.find((c) => c[0] === comp && c[1] === 'wheel')![2] as (e: WheelEvent) => void;
+        return add.mock.calls.find((c) => c[0] === comp && c[1] === 'wheel')![2].handler as (e: WheelEvent) => Event.ListenerResult;
+    }
+
+    /** True when the handler's returned disposition asks the dispatcher to preventDefault. */
+    function prevented(result: Event.ListenerResult): boolean {
+        return typeof result === 'object' && !!result?.prevent;
     }
 
     it('preventDefaults a fresh (unconsumed) wheel — the trap swallows the leftover', () => {
@@ -119,11 +129,9 @@ describe('WheelTrap gate logic (handler preventDefaults only when unconsumed)', 
         const comp = new Component({});
         const handler = captureHandler(comp);
 
-        const e = { preventDefault: vi.fn() } as unknown as WheelEvent;
+        const e = {} as unknown as WheelEvent;
 
-        handler(e);
-
-        expect(e.preventDefault).toHaveBeenCalledTimes(1);
+        expect(prevented(handler(e))).toBe(true);
     });
 
     it('does NOT preventDefault when an inner scroller already consumed the wheel', () => {
@@ -131,14 +139,12 @@ describe('WheelTrap gate logic (handler preventDefaults only when unconsumed)', 
         const comp = new Component({});
         const handler = captureHandler(comp);
 
-        const e = { preventDefault: vi.fn() } as unknown as WheelEvent;
+        const e = {} as unknown as WheelEvent;
 
         // Simulate an inner SmoothScroller having claimed it first.
         consumeWheel(e);
 
-        handler(e);
-
-        expect(e.preventDefault).not.toHaveBeenCalled();
+        expect(prevented(handler(e))).toBe(false);
     });
 
     it('claims the wheel once — a second handler pass on the same event does not re-preventDefault', () => {
@@ -146,11 +152,9 @@ describe('WheelTrap gate logic (handler preventDefaults only when unconsumed)', 
         const comp = new Component({});
         const handler = captureHandler(comp);
 
-        const e = { preventDefault: vi.fn() } as unknown as WheelEvent;
+        const e = {} as unknown as WheelEvent;
 
-        handler(e);
-        handler(e);
-
-        expect(e.preventDefault).toHaveBeenCalledTimes(1);
+        expect(prevented(handler(e))).toBe(true);
+        expect(prevented(handler(e))).toBe(false);
     });
 });

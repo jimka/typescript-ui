@@ -276,7 +276,7 @@ class Link extends Text<LinkOptions> {
      *
      * @param event - The keyboard event being handled.
      */
-    private handleKeyDown(event: KeyboardEvent): void {
+    private handleKeyDown(event: KeyboardEvent): Event.ListenerResult {
         if (!this.isInteractive()) {
             return;
         }
@@ -285,9 +285,9 @@ class Link extends Text<LinkOptions> {
             return;
         }
 
-        event.preventDefault();
-
         this.click();
+
+        return { prevent: true };
     }
 }
 

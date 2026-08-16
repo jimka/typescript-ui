@@ -463,7 +463,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // `_contentFrameStyle`.
     private _contentFrame         : Handle | null = null;
     private _contentFrameStyle    : InlineStyle  = new InlineStyle();
-    // Subclass-owned state rules (e.g. Button's `:active` / `:hover`,
+    // Subclass-owned state rules (e.g. Button's `.pressed` / `:hover:not(.pressed)`,
     // ToggleButton's `.selected`) keyed by selector suffix and materialised
     // at first render. Assigned in the constructor body (not via a field
     // initializer) so the map is in place before subclass field initializers
@@ -978,8 +978,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Returns the state-specific {@link StyleRule} for the given selector
-     * suffix appended to this component's id (e.g. `":active"`,
-     * `":hover:not(:active)"`, `".selected"`). The first call for a suffix
+     * suffix appended to this component's id (e.g. `":hover"`,
+     * `".pressed"`, `".selected"`). The first call for a suffix
      * allocates a new wrapper and registers it for render-time materialisation
      * via {@link applyStyle}; subsequent calls with the same suffix return the
      * same wrapper, even across intervening backing-slot resets — so a lazy
@@ -4016,7 +4016,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             clamp: (axis, value) => Util.clamp(value, 0, axis === "x" ? this.getMaxScrollLeft() : this.getMaxScrollTop()),
         });
 
-        Event.addSubtreeListener(this, "wheel", this.onWheelScroll, { passive: false });
+        Event.addSubtreeListener(this, "wheel", { passive: false, handler: this.onWheelScroll });
     }
 
     /**
@@ -4068,7 +4068,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * find the event already consumed. Ignoring it lets the wheel chain
      * outward, as it does natively.
      */
-    private onWheelScroll(e: WheelEvent): void {
+    private onWheelScroll(e: WheelEvent): Event.ListenerResult {
         const canX = this.isOverflowScrollable(this.getOverflowX()) && this.getMaxScrollLeft() > 0;
         const canY = this.isOverflowScrollable(this.getOverflowY()) && this.getMaxScrollTop()  > 0;
 
@@ -4088,8 +4088,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return;
         }
 
-        e.preventDefault();
         this._wheelScroller?.scrollBy(dx, dy);
+
+        return { prevent: true };
     }
 
     /**
@@ -4917,7 +4918,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     private materialiseDeferredRules(): void {
         // Materialise state-specific rules registered by subclasses (Button's
-        // `:active` / `:hover`, ToggleButton's `.selected`). Each rule's
+        // `.pressed` / `:hover:not(.pressed)`, ToggleButton's `.selected`). Each rule's
         // pending writes flush onto the live `CSSStyleRule` inside `ensure()`,
         // so the stylesheet picks up the entry on first render rather than on
         // first setter write during construction.
@@ -5641,11 +5642,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * (`ARCHITECTURE.md` §Event handling).
      *
      * @param listener - The callback invoked with the originating MouseEvent.
+     * Fires for every button — this public surface has no documented button
+     * restriction, so it opts out of `Event.addListener`'s primary-only
+     * default to preserve that.
      *
      * @returns This component, for method chaining.
      */
     addMouseDownListener(listener: Event.Listener): this {
-        Event.addListener(this, "mousedown", listener);
+        Event.addListener(this, "mousedown", { button: "any", handler: listener });
 
         return this;
     }
@@ -5672,11 +5676,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * the actual mousedown) starts the drag.
      *
      * @param listener - The callback invoked with the originating MouseEvent.
+     * Fires for every button — this public surface has no documented button
+     * restriction, so it opts out of `Event.addSubtreeListener`'s
+     * primary-only default to preserve that.
      *
      * @returns This component, for method chaining.
      */
     addMouseDownSubtreeListener(listener: Event.Listener): this {
-        Event.addSubtreeListener(this, "mousedown", listener);
+        Event.addSubtreeListener(this, "mousedown", { button: "any", handler: listener });
 
         return this;
     }

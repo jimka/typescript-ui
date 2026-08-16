@@ -17,9 +17,9 @@ import { Insets } from "~/primitive/Insets.js";
  * `WindowHeader`'s trailing buttons — so the two cannot visually drift.
  */
 const WINDOW_CONTROL_STYLE_RULES: ComponentStyleRuleSpec[] = [
-    { suffix: "",                    styles: { background: "var(--ts-ui-window-control-bg)", border: "var(--ts-ui-window-control-border)", boxShadow: "var(--ts-ui-window-control-shadow)" } },
-    { suffix: ":hover:not(:active)", styles: { background: "var(--ts-ui-window-control-hover-bg)" } },
-    { suffix: ":active",             styles: { background: "var(--ts-ui-window-control-active-bg)" } },
+    { suffix: "",                     styles: { background: "var(--ts-ui-window-control-bg)", border: "var(--ts-ui-window-control-border)", boxShadow: "var(--ts-ui-window-control-shadow)" } },
+    { suffix: ":hover:not(.pressed)", styles: { background: "var(--ts-ui-window-control-hover-bg)" } },
+    { suffix: ".pressed",             styles: { background: "var(--ts-ui-window-control-active-bg)" } },
 ];
 
 /**

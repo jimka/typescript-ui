@@ -430,7 +430,7 @@ export class Tooltip extends Component {
         Event.addListener(component, "mouseover", mouseoverFn);
         Event.addListener(component, "mousemove", mousemoveFn);
         Event.addListener(component, "mouseout", mouseoutFn);
-        Event.addListener(component, "mousedown", mousedownFn);
+        Event.addListener(component, "mousedown", { button: "any", handler: mousedownFn });
 
         Tooltip.attachments.set(component.getId(), {
             text, colors, mouseoverFn, mousemoveFn, mouseoutFn, mousedownFn,

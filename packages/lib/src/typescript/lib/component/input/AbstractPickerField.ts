@@ -370,8 +370,8 @@ abstract class AbstractPickerField<
      *
      * @param e - The pointerdown event.
      */
-    protected onButtonPointerDown(e: PointerEvent): void {
-        e.preventDefault();
+    protected onButtonPointerDown(_e: PointerEvent): Event.ListenerResult {
+        return { prevent: true };
     }
 
     /**
@@ -443,18 +443,17 @@ abstract class AbstractPickerField<
      *
      * @param e - The keyboard event.
      */
-    protected onKeyDown(e: KeyboardEvent): void {
+    protected onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (this._dropdown && this._dropdown.isOpen()) {
             if (this._dropdown.handleKey(e)) {
-                e.preventDefault();
-
-                return;
+                return { prevent: true };
             }
         }
 
         if (e.key === "ArrowDown") {
-            e.preventDefault();
             this.openDropdown();
+
+            return { prevent: true };
         } else if (e.key === "Escape") {
             this.closeDropdown();
         }

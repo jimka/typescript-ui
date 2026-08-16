@@ -213,7 +213,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
     /**
      * Toggles the flat appearance, then re-points the `.selected:not(:hover)`
      * rule so a toggled-on flat button reads as depressed with the same sunken
-     * treatment Button's flat `:active` state uses. Flattening points the
+     * treatment Button's `.pressed` class applies when flat. Flattening points the
      * selected shadow/background at the `--ts-ui-button-flat-pressed-*` tokens;
      * un-flattening restores the default `--ts-ui-toggle-selected-*` tokens.
      *

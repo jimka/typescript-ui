@@ -547,12 +547,11 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         // hits to the root, so the exact-target `addListener` matches the
         // slider's id. `setPointerCapture` below then routes the move / up /
         // cancel stream to the same root element.
-        Event.addListener(this, "pointerdown", (e: PointerEvent) => {
+        Event.addListener(this, "pointerdown", (e: PointerEvent): Event.ListenerResult => {
             if (!this.isEnabled() || this.isReadOnly()) {
                 return;
             }
 
-            e.preventDefault();
             this.focus();
 
             const element = this.getElement();
@@ -562,8 +561,13 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             }
 
             this.setValue(this.valueAtPointer(e));
+
+            return { prevent: true };
         });
 
+        // pointermove defaults to a button-agnostic registration (see
+        // Event.ts's PRIMARY_BUTTON_TYPES) since the spec reports its
+        // button as always -1. The pointerId check below is the actual gate.
         Event.addListener(this, "pointermove", (e: PointerEvent) => {
             if (this._draggingPointer !== e.pointerId) {
                 return;
@@ -585,13 +589,16 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             this._draggingPointer = null;
         };
 
-        Event.addListener(this, "pointerup",          release);
-        Event.addListener(this, "pointercancel",      release);
+        Event.addListener(this, "pointerup",     release);
+        // pointercancel and lostpointercapture both default to a
+        // button-agnostic registration (see Event.ts's PRIMARY_BUTTON_TYPES),
+        // so this cleanup still runs regardless of which button was held.
+        Event.addListener(this, "pointercancel", release);
         // Browser releases pointer capture on alt-tab / focus loss. Clear our
         // mirror so the next pointerdown starts clean and there's no stuck-drag.
         Event.addListener(this, "lostpointercapture", release);
 
-        Event.addListener(this, "keydown", (e: KeyboardEvent) => {
+        Event.addListener(this, "keydown", (e: KeyboardEvent): Event.ListenerResult => {
             if (!this.isEnabled() || this.isReadOnly()) {
                 return;
             }
@@ -604,30 +611,30 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             switch (e.key) {
                 case "ArrowRight":
                 case "ArrowUp":
-                    e.preventDefault();
                     this.setValue(this.getValue() + step);
-                    break;
+
+                    return { prevent: true };
                 case "ArrowLeft":
                 case "ArrowDown":
-                    e.preventDefault();
                     this.setValue(this.getValue() - step);
-                    break;
+
+                    return { prevent: true };
                 case "PageUp":
-                    e.preventDefault();
                     this.setValue(this.getValue() + largeStep);
-                    break;
+
+                    return { prevent: true };
                 case "PageDown":
-                    e.preventDefault();
                     this.setValue(this.getValue() - largeStep);
-                    break;
+
+                    return { prevent: true };
                 case "Home":
-                    e.preventDefault();
                     this.setValue(min);
-                    break;
+
+                    return { prevent: true };
                 case "End":
-                    e.preventDefault();
                     this.setValue(max);
-                    break;
+
+                    return { prevent: true };
             }
         });
     }

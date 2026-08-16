@@ -26,6 +26,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { _Panel } from '~/core/Panel';
 import { DOM } from '~/core/DOM';
+import { Event } from '~/core/Event';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -54,9 +55,19 @@ function stubMetrics(metrics: Partial<{
     });
 }
 
-/** Invokes the private wheel handler as the Event subtree dispatch would. */
-function wheel(panel: _Panel, e: WheelEvent): void {
-    (panel as unknown as { onWheelScroll(e: WheelEvent): void }).onWheelScroll(e);
+/**
+ * Invokes the private wheel handler as the Event subtree dispatch would, and
+ * returns its disposition — `onWheelScroll` claims a wheel by RETURNING
+ * `{ prevent: true }` rather than calling `e.preventDefault()` itself; the
+ * real dispatcher applies that disposition, which this direct call bypasses.
+ */
+function wheel(panel: _Panel, e: WheelEvent): Event.ListenerResult {
+    return (panel as unknown as { onWheelScroll(e: WheelEvent): Event.ListenerResult }).onWheelScroll(e);
+}
+
+/** True when the handler's returned disposition asks the dispatcher to preventDefault. */
+function prevented(result: Event.ListenerResult): boolean {
+    return typeof result === 'object' && !!result?.prevent;
 }
 
 /** Invokes the private shadow recompute that `doLayout` and `scroll` drive. */
@@ -69,17 +80,13 @@ function shadowEdge(panel: _Panel, edge: 'top' | 'bottom' | 'left' | 'right'): n
     return (panel as unknown as { _shadowEdges: Record<string, number> })._shadowEdges[edge];
 }
 
-/** A cancellable wheel event carrying the framework's once-marker surface. */
-function wheelEvent(deltaY: number): WheelEvent & { defaultPrevented: boolean } {
-    let prevented = false;
-
+/** A wheel event carrying the framework's once-marker surface. */
+function wheelEvent(deltaY: number): WheelEvent {
     return {
         deltaX: 0,
         deltaY,
         shiftKey: false,
-        preventDefault() { prevented = true; },
-        get defaultPrevented() { return prevented; },
-    } as unknown as WheelEvent & { defaultPrevented: boolean };
+    } as unknown as WheelEvent;
 }
 
 describe('wheel claiming requires scrollable extent', () => {
@@ -92,9 +99,9 @@ describe('wheel claiming requires scrollable extent', () => {
         const e     = wheelEvent(120);
 
         panel.getElement(true);
-        wheel(panel, e);
+        const result = wheel(panel, e);
 
-        expect(e.defaultPrevented).toBe(false);
+        expect(prevented(result)).toBe(false);
         expect((e as { _tsScrollConsumed?: boolean })._tsScrollConsumed).toBeUndefined();
     });
 
@@ -105,9 +112,9 @@ describe('wheel claiming requires scrollable extent', () => {
         const e     = wheelEvent(120);
 
         panel.getElement(true);
-        wheel(panel, e);
+        const result = wheel(panel, e);
 
-        expect(e.defaultPrevented).toBe(true);
+        expect(prevented(result)).toBe(true);
         expect((e as { _tsScrollConsumed?: boolean })._tsScrollConsumed).toBe(true);
     });
 
@@ -123,14 +130,10 @@ describe('wheel claiming requires scrollable extent', () => {
         outer.getElement(true);
 
         stubMetrics({ scrollHeight: 300, clientHeight: 300 });
-        wheel(inner, e);
-
-        expect(e.defaultPrevented).toBe(false);
+        expect(prevented(wheel(inner, e))).toBe(false);
 
         stubMetrics({ scrollHeight: 900, clientHeight: 300 });
-        wheel(outer, e);
-
-        expect(e.defaultPrevented).toBe(true);
+        expect(prevented(wheel(outer, e))).toBe(true);
         expect((e as { _tsScrollConsumed?: boolean })._tsScrollConsumed).toBe(true);
     });
 });

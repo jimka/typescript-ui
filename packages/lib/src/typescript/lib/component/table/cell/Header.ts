@@ -171,11 +171,7 @@ class HeaderCell extends DefaultCell {
         // Subtree listener so clicks on any child element (e.g. the Label) bubble up here.
         Event.addSubtreeListener(this, 'click', (e: MouseEvent) => this.onSortClick(e.shiftKey));
 
-        Event.addSubtreeListener(this, 'contextmenu', (e: MouseEvent) => {
-            e.preventDefault();
-
-            this.emit("contextmenu", this._fieldName, e.clientX, e.clientY);
-        });
+        Event.addSubtreeListener(this, 'contextmenu', { prevent: true, handler: this.onContextMenu });
 
         // Side-load the resize handle and sort-priority badge as overlays.
         // Their `position:absolute` means they don't disturb the cell's `Card`
@@ -512,6 +508,17 @@ class HeaderCell extends DefaultCell {
         }
 
         this.emit("sortclick", this._fieldName, shiftKey);
+    }
+
+    /**
+     * Forwards a right-click on the header cell (or any descendant) to the
+     * registered `"contextmenu"` callback with the viewport coordinates.
+     * `preventDefault` is applied by the registration's `prevent: true` floor.
+     *
+     * @param e - The contextmenu event.
+     */
+    private onContextMenu(e: MouseEvent): void {
+        this.emit("contextmenu", this._fieldName, e.clientX, e.clientY);
     }
 
     private onResizeDragStart(e: MouseEvent): void {

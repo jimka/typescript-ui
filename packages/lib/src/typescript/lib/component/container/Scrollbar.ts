@@ -183,7 +183,7 @@ class ScrollArrowButton extends Component {
             onTick:       () => this.emit("tick"),
         });
 
-        Event.addListener(this, "mousedown",  this._onMouseDown);
+        Event.addListener(this, "mousedown", { stop: true, prevent: true, handler: this._onMouseDown });
         Event.addListener(this, "mouseover",  this._onMouseOver);
         Event.addListener(this, "mouseout",   this._onMouseOut);
         Event.addViewportListener(this, "mouseup",    this._onMouseUp);
@@ -267,15 +267,16 @@ class ScrollArrowButton extends Component {
      * Scrollbar's track-click handler does not also fire, then (if not
      * disabled) fires the first tick and schedules accelerating repeats.
      *
-     * @param _e - The mousedown event.
-     * @returns `{ stop: true, prevent: true }`, consuming the press and suppressing the browser's default text selection.
+     * @param e - The mousedown event. Only ever a primary-button press — the
+     * default `button: "primary"` registration filters the rest.
+     *
+     * @remarks Consumes the press and suppresses the browser's default text
+     * selection via the registration's `stop`/`prevent` floor.
      */
-    private _onMouseDown = (_e: MouseEvent): Event.ListenerResult => {
+    private _onMouseDown = (_e: MouseEvent): void => {
         if (!this._disabled) {
             this._repeat.start();
         }
-
-        return { stop: true, prevent: true };
     };
 
     /**
@@ -473,12 +474,24 @@ class Scrollbar extends Component<ScrollbarOptions> {
             this.buildArrows();
         }
 
-        Event.addListener(this._thumb, "mousedown",  this._onDragStart);
-        Event.addListener(this._thumb, "touchstart", this._onDragStart);
+        Event.addListener(this._thumb, "mousedown",  { prevent: true, handler: this._onDragStart });
+        // touchstart defaults to a passive native listener (see Event.ts's
+        // PASSIVE_TYPES), which silently no-ops preventDefault() — override
+        // explicitly so the `prevent: true` floor above actually applies.
+        // NOTE: Event installs exactly one window-level native listener per
+        // event type, shared by every registration of that type — so this
+        // isn't scoped to just this Scrollbar. Constructing ANY Scrollbar
+        // locks "touchstart" as passive: false for the WHOLE PAGE for the
+        // lifetime of the app (see docs/reference/migration/next.md).
+        Event.addListener(this._thumb, "touchstart", { passive: false, prevent: true, handler: this._onDragStart });
         Event.addListener(this._thumb, "mouseover",  this._onThumbMouseOver);
         Event.addListener(this._thumb, "mouseout",   this._onThumbMouseOut);
-        Event.addListener(this, "mousedown",  this._onTrackClick);
-        Event.addListener(this, "touchstart", this._onTrackClick);
+        Event.addListener(this, "mousedown",  { prevent: true, handler: this._onTrackClick });
+        // touchstart defaults to a passive native listener (see Event.ts's
+        // PASSIVE_TYPES), which silently no-ops preventDefault() — override
+        // explicitly so the `prevent: true` floor above actually applies.
+        // Same page-wide-lock caveat as the thumb's registration above.
+        Event.addListener(this, "touchstart", { passive: false, prevent: true, handler: this._onTrackClick });
 
         this.applyListeners(options?.listeners);
     }
@@ -910,11 +923,12 @@ class Scrollbar extends Component<ScrollbarOptions> {
      * leaves the thumb. Holds the hover fill and pins a grabbing cursor for the
      * whole drag.
      *
-     * @param e - The mousedown or touchstart event on the thumb.
+     * @param e - The mousedown or touchstart event on the thumb. Only ever a
+     * primary-button press — the default `button: "primary"` registration
+     * filters the rest. `preventDefault` is applied by the registration's
+     * `prevent: true` floor.
      */
     private _onDragStart = (e: MouseEvent | TouchEvent): void => {
-        e.preventDefault();
-
         this._dragStartClient = this.extractClientPrimary(e);
         this._dragStartScroll = this._scrollPosition;
         this._thumbDragging = true;
@@ -989,11 +1003,12 @@ class Scrollbar extends Component<ScrollbarOptions> {
      * clicks that land inside an arrow region are ignored so the arrow
      * button's own handler is the sole authority on arrow-region clicks.
      *
-     * @param e - The mousedown or touchstart event on the track.
+     * @param e - The mousedown or touchstart event on the track. Only ever a
+     * primary-button press — the default `button: "primary"` registration
+     * filters the rest. `preventDefault` is applied by the registration's
+     * `prevent: true` floor.
      */
     private _onTrackClick = (e: MouseEvent | TouchEvent): void => {
-        e.preventDefault();
-
         const vertical = this.isVertical();
         let click: number;
 

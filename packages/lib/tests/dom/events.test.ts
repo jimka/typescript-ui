@@ -260,6 +260,234 @@ describe('Modelled event delivery — exact-target routing', () => {
     });
 });
 
+describe('Modelled event delivery — ListenerOptions.button filter', () => {
+    afterEach(() => DOM.reset());
+
+    // Regression coverage: a prior implementation of the button filter treated
+    // an unset `button` option as "any", silently undoing the documented
+    // "primary" default for every bare-handler registration (drag sources,
+    // Button's pressed state, …) — right-click could drag a Scrollbar/Slider
+    // and press a Button. Every existing test drove handlers directly rather
+    // than through `Event.addListener` + real dispatch, so nothing caught it.
+
+    // A literal press-initiating type, not `uniqueType()`: this pins the
+    // "primary" default itself, which since the allowlist restructuring only
+    // applies to the handful of types in PRIMARY_BUTTON_TYPES — a synthetic
+    // type would now default to "any" and defeat the point of the test.
+    it('the default (unset) filter fires for a primary press and not for a non-primary one', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = 'pointerdown';
+
+        comp.getElement(true);
+
+        let runs = 0;
+        Event.addListener(comp, type, () => { runs += 1; });
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type, { button: 2 }));
+        expect(runs).toBe(0);
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type, { button: 0 }));
+        expect(runs).toBe(1);
+    });
+
+    it('button: "aux" fires only for a non-primary press', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let runs = 0;
+        Event.addListener(comp, type, { button: 'aux', handler: () => { runs += 1; } });
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type, { button: 0 }));
+        expect(runs).toBe(0);
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type, { button: 2 }));
+        expect(runs).toBe(1);
+    });
+
+    it('button: "any" fires for both a primary and a non-primary press', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let runs = 0;
+        Event.addListener(comp, type, { button: 'any', handler: () => { runs += 1; } });
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type, { button: 0 }));
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type, { button: 2 }));
+
+        expect(runs).toBe(2);
+    });
+
+    // Second regression: `pointermove` (and pointercancel/lostpointercapture)
+    // are not button-state-change events per the Pointer Events spec — a real
+    // browser fires them with `button: -1` even while a button is held, since
+    // `button` only reflects a just-changed button, not the live held state
+    // (that's `buttons`, plural). A bare "primary" registration therefore
+    // never ran during an actual drag — Slider's pointermove tracking and
+    // DiagramView's pan both silently stopped updating after the button
+    // filter shipped, degrading a drag into a single click. Every existing
+    // drag test drove `_draggingPointer`/pointerId state directly rather than
+    // dispatching a real -1-button move, so nothing caught it either.
+    // A literal press-initiating type ("pointerup", not already used as a
+    // literal elsewhere in this file), for the same reason as the test
+    // above: the "primary" default this pins only applies to
+    // PRIMARY_BUTTON_TYPES members since the allowlist restructuring.
+    it('the default (unset) filter rejects a -1 ("no button state change") event on a press-type it does not belong to', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = 'pointerup';
+
+        comp.getElement(true);
+
+        let runs = 0;
+        Event.addListener(comp, type, () => { runs += 1; });
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type, { button: -1 }));
+        expect(runs).toBe(0);
+    });
+
+    it('button: "any" still fires for a -1 ("no button state change") event', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let runs = 0;
+        Event.addListener(comp, type, { button: 'any', handler: () => { runs += 1; } });
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, type, { button: -1 }));
+        expect(runs).toBe(1);
+    });
+});
+
+// The button-filter tests above all dispatch a `uniqueType()` synthetic
+// type, which is never a member of Event.ts's PRIMARY_BUTTON_TYPES allowlist
+// — so they cover the "any" fallback but never actually exercise the
+// allowlist itself. These dispatch real type strings so the allowlist's
+// membership test is driven through the real dispatcher, not just asserted
+// by reading the code.
+//
+// Every literal-type case lives in ONE test per type (not `uniqueType()`-
+// able, since the point is the literal type string): `installBaseListener`
+// only installs the native window listener on a type's FIRST registration,
+// and that installation isn't undone by `DOM.reset()` between tests — a
+// second test separately registering the same literal type would install
+// nothing against its own fresh sink and silently never see its events
+// dispatched.
+describe('Modelled event delivery — PRIMARY_BUTTON_TYPES per-type default', () => {
+    afterEach(() => DOM.reset());
+
+    it('a bare "contextmenu" registration fires for any button, and an explicit override still narrows it', () => {
+        installTestDOM(CONFIG);
+
+        const bare = new Component({});
+        bare.getElement(true);
+
+        let bareRuns = 0;
+        Event.addListener(bare, 'contextmenu', () => { bareRuns += 1; });
+
+        // Right-click.
+        DOM.sink.dispatchEvent(bare.getElement()!, makeEvent(bare.getElement()!, 'contextmenu', { button: 2 }));
+        expect(bareRuns).toBe(1);
+
+        // Keyboard-triggered context menu.
+        DOM.sink.dispatchEvent(bare.getElement()!, makeEvent(bare.getElement()!, 'contextmenu', { button: 0 }));
+        expect(bareRuns).toBe(2);
+
+        // An explicit override on a second component still narrows the
+        // per-type default back to primary-only.
+        const overridden = new Component({});
+        overridden.getElement(true);
+
+        let overriddenRuns = 0;
+        Event.addListener(overridden, 'contextmenu', { button: 'primary', handler: () => { overriddenRuns += 1; } });
+
+        DOM.sink.dispatchEvent(overridden.getElement()!, makeEvent(overridden.getElement()!, 'contextmenu', { button: 2 }));
+        expect(overriddenRuns).toBe(0);
+
+        DOM.sink.dispatchEvent(overridden.getElement()!, makeEvent(overridden.getElement()!, 'contextmenu', { button: 0 }));
+        expect(overriddenRuns).toBe(1);
+    });
+
+    it('a bare "pointermove" registration fires despite the spec\'s button: -1', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        comp.getElement(true);
+
+        let runs = 0;
+        Event.addListener(comp, 'pointermove', () => { runs += 1; });
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, 'pointermove', { button: -1 }));
+        expect(runs).toBe(1);
+    });
+
+    it('a type in the allowlist (e.g. "mousedown") still defaults to primary-only', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        comp.getElement(true);
+
+        let runs = 0;
+        Event.addListener(comp, 'mousedown', () => { runs += 1; });
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, 'mousedown', { button: 2 }));
+        expect(runs).toBe(0);
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, 'mousedown', { button: 0 }));
+        expect(runs).toBe(1);
+    });
+
+    // Regression case: under the old "default primary, except a short
+    // exceptions list gets any" model, a type absent from BOTH the
+    // exceptions list AND anyone's memory of updating it defaulted to
+    // primary-only — and `auxclick` by definition never carries `button: 0`,
+    // so a bare registration on it could never fire at all. The allowlist
+    // model makes this the other way around: only types that actually
+    // initiate a press default to primary, so a type nobody thought to list
+    // is safe by construction.
+    it('a bare "auxclick" registration fires for any non-primary button', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        comp.getElement(true);
+
+        let runs = 0;
+        Event.addListener(comp, 'auxclick', () => { runs += 1; });
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, 'auxclick', { button: 2 }));
+        expect(runs).toBe(1);
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, 'auxclick', { button: 1 }));
+        expect(runs).toBe(2);
+    });
+
+    it('a bare "mouseover" registration is not primary-filtered', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        comp.getElement(true);
+
+        let runs = 0;
+        Event.addListener(comp, 'mouseover', () => { runs += 1; });
+
+        DOM.sink.dispatchEvent(comp.getElement()!, makeEvent(comp.getElement()!, 'mouseover', { button: 2 }));
+        expect(runs).toBe(1);
+    });
+});
+
 describe('Modelled event delivery — polite propagation', () => {
     afterEach(() => DOM.reset());
 
@@ -667,6 +895,119 @@ describe('Modelled event delivery — listener return disposition', () => {
         DOM.sink.dispatchEvent(target.getElement()!, makeEvent(target.getElement()!, type));
 
         expect(ancestorRuns).toBe(1);
+    });
+});
+
+// ListenerOptions.stop/prevent is a registration-time floor, OR'd with the
+// listener's own returned disposition — a separate mechanism from the return
+// value tested above. Driven through the real dispatcher the same way.
+describe('Modelled event delivery — ListenerOptions.stop/prevent floor', () => {
+    afterEach(() => DOM.reset());
+
+    it('prevents the default when the registration sets prevent: true, even though the listener returns nothing', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let prevents = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { preventDefault: () => void }).preventDefault = () => { prevents += 1; };
+
+        Event.addListener(comp, type, { prevent: true, handler: () => { /* returns nothing */ } });
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(prevents).toBe(1);
+    });
+
+    it('stops propagation and skips the ancestor walk when the registration sets stop: true, even though the listener returns nothing', () => {
+        installTestDOM(CONFIG);
+
+        const root   = new Component({});
+        const target = new Component({});
+        const type   = uniqueType();
+
+        root.getElement(true);
+        root.addComponent(target);
+
+        let stops = 0;
+        let ancestorRuns = 0;
+        const evt = makeEvent(target.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { stops += 1; };
+
+        Event.addSubtreeListener(root, type, () => { ancestorRuns += 1; });
+        Event.addListener(target, type, { stop: true, handler: () => { /* returns nothing */ } });
+
+        DOM.sink.dispatchEvent(target.getElement()!, evt);
+
+        expect(stops).toBe(1);
+        expect(ancestorRuns).toBe(0);
+    });
+
+    it('is a floor, not an override — the listener returning false does not suppress it', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let prevents = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { preventDefault: () => void }).preventDefault = () => { prevents += 1; };
+
+        Event.addListener(comp, type, { prevent: true, handler: () => false });
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(prevents).toBe(1);
+    });
+
+    it('OR-composes with the listener\'s own returned disposition rather than replacing it', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let stops = 0;
+        let prevents = 0;
+        const evt = makeEvent(comp.getElement()!, type);
+        (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { stops += 1; };
+        (evt as unknown as { preventDefault: () => void }).preventDefault = () => { prevents += 1; };
+
+        // The registration floor only asks for `prevent`; the listener's own
+        // return value is what asks for `stop` — both must take effect.
+        Event.addListener(comp, type, { prevent: true, handler: () => true });
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(stops).toBe(1);
+        expect(prevents).toBe(1);
+    });
+
+    it('does not apply when the button filter rejects the press before the listener runs', () => {
+        installTestDOM(CONFIG);
+
+        const comp = new Component({});
+        const type = uniqueType();
+
+        comp.getElement(true);
+
+        let prevents = 0;
+        let runs = 0;
+        const evt = makeEvent(comp.getElement()!, type, { button: 2 });
+        (evt as unknown as { preventDefault: () => void }).preventDefault = () => { prevents += 1; };
+
+        // A synthetic type is not in PRIMARY_BUTTON_TYPES, so it defaults to
+        // "any" — an explicit "primary" override is what makes this button:2
+        // event rejected, exercising the interaction under test.
+        Event.addListener(comp, type, { button: 'primary', prevent: true, handler: () => { runs += 1; } });
+        DOM.sink.dispatchEvent(comp.getElement()!, evt);
+
+        expect(runs).toBe(0);
+        expect(prevents).toBe(0);
     });
 });
 

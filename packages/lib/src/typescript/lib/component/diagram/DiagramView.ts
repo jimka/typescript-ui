@@ -1408,8 +1408,11 @@ class DiagramView extends Panel<DiagramViewOptions> {
         // Non-passive: `_handleWheel` calls `preventDefault()` to suppress the
         // page's native scroll/zoom, which a passive listener silently ignores
         // (mirrors `Component.attachWheelScrolling` / `WheelTrap`).
-        Event.addSubtreeListener(this, "wheel", this._handleWheel, { passive: false });
+        Event.addSubtreeListener(this, "wheel", { passive: false, prevent: true, handler: this._handleWheel });
         Event.addSubtreeListener(this, "pointerdown", this._handlePointerDown);
+        // pointermove defaults to a button-agnostic registration (see
+        // Event.ts's PRIMARY_BUTTON_TYPES); `_handlePointerMove` gates on
+        // the live `buttons` bitmask itself during a real pan drag.
         Event.addSubtreeListener(this, "pointermove", this._handlePointerMove);
         Event.addSubtreeListener(this, "pointerup", this._handlePointerUp);
         // `mousemove`/`mouseout` rather than `mouseenter`/`mouseleave`: per
@@ -1590,7 +1593,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
      * @param event - The contextmenu event whose target is inside the view's
      *   subtree.
      */
-    private _handleContextMenu(event: MouseEvent): void {
+    private _handleContextMenu(event: MouseEvent): Event.ListenerResult {
         const id = this.nodeIdAt(event.target);
 
         if (id === null) {
@@ -1600,8 +1603,9 @@ class DiagramView extends Panel<DiagramViewOptions> {
         const data = this._nodeData.get(id);
 
         if (data !== undefined) {
-            event.preventDefault();
             this.emit("contextmenu", data, event);
+
+            return { prevent: true };
         }
     }
 
@@ -1628,11 +1632,10 @@ class DiagramView extends Panel<DiagramViewOptions> {
      * Wheel-zoom about the pointer: scales toward/away, keeping the graph
      * point under the cursor fixed in the viewport.
      *
-     * @param event - The wheel event.
+     * @param event - The wheel event. `preventDefault` is applied by the
+     * registration's `prevent: true` floor.
      */
     private _handleWheel(event: WheelEvent): void {
-        event.preventDefault();
-
         const rect = DOM.source.getViewportRect(this);
 
         this.zoomAboutViewportPoint(event.deltaY < 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP,

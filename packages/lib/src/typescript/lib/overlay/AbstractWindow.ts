@@ -323,7 +323,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // — focus is driven programmatically on activation, not by tabbing.
         this.getAria().setTabIndex(-1);
 
-        Event.addSubtreeListener(this, "mousedown", this._boundOnBringToFront);
+        // Any button brings the window to front — a right-click should raise
+        // it before its context menu opens too, not just a left-click.
+        Event.addSubtreeListener(this, "mousedown", { button: "any", handler: this._boundOnBringToFront });
     }
 
     /**
@@ -1484,6 +1486,13 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * absolute-pointer drag origin read by `onDrag`.
      */
     startMoveFrom(e: MouseEvent): void {
+        // Primary button only — a right- or middle-click mousedown on the
+        // header must not start a window move, mirroring DragManager's own
+        // button gate on every other drag source.
+        if (!Event.isPrimaryButton(e)) {
+            return;
+        }
+
         // Shift+drag is a re-dock gesture (handled by a subclass drag source),
         // not a window move — don't start the move. (Ctrl is left free for the
         // snap-resize affordance.)
@@ -2535,7 +2544,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         // Forward into the border's own drag flow. The snap-target highlight
         // is cleared in the matching onDragStop hook the border owns.
-        target.onDragStart();
+        target.onDragStart(e);
         this._snapTargetBorder = null;
 
         return true;

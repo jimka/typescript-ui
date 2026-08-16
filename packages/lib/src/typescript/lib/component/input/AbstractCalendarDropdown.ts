@@ -183,8 +183,17 @@ class PickerNavButton extends Component {
         glyph.setPreferredSize({ width: GLYPH_PX, height: GLYPH_PX });
         this.addComponent(glyph);
 
-        Event.addListener(this, "pointerdown", (e: PointerEvent) => e.preventDefault());
-        Event.addListener(this, "click",       ()                => onClick());
+        Event.addListener(this, "pointerdown", { prevent: true, handler: this.onPointerDown });
+        Event.addListener(this, "click",       ()                       => onClick());
+    }
+
+    /**
+     * No-op body — `preventDefault` is applied entirely by the registration's
+     * `prevent: true` floor; this only exists so the listener is a named,
+     * grep-able, removable reference per ARCHITECTURE.md rather than an
+     * inline closure.
+     */
+    private onPointerDown(): void {
     }
 
     /**
@@ -222,8 +231,17 @@ class PickerMonthLabel extends Text {
         this.getAria().setExpanded(false);
         this.getAria().setTabIndex(0);
 
-        Event.addListener(this, "pointerdown", (e: PointerEvent) => e.preventDefault());
-        Event.addListener(this, "click",       ()                => onClick());
+        Event.addListener(this, "pointerdown", { prevent: true, handler: this.onPointerDown });
+        Event.addListener(this, "click",       ()                       => onClick());
+    }
+
+    /**
+     * No-op body — `preventDefault` is applied entirely by the registration's
+     * `prevent: true` floor; this only exists so the listener is a named,
+     * grep-able, removable reference per ARCHITECTURE.md rather than an
+     * inline closure.
+     */
+    private onPointerDown(): void {
     }
 
     /**
@@ -270,7 +288,7 @@ class PickerDay extends Text {
         // on specificity. The cursor must be set on this instance.
         this.setCursor("pointer");
 
-        Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
+        Event.addListener(this, "pointerdown", { prevent: true, handler: this.onPointerDown });
         Event.addListener(this, "click",       ()                => this.onClick());
     }
 
@@ -285,12 +303,12 @@ class PickerDay extends Text {
 
     /**
      * Suppresses focus loss when the day is pointed at so the host input's
-     * blur-to-commit path doesn't fire mid-click.
-     *
-     * @param e - The pointerdown event.
+     * blur-to-commit path doesn't fire mid-click. `preventDefault` is
+     * applied by the registration's `prevent: true` floor — this body is a
+     * deliberate no-op, needed only because the listener must reference a
+     * named function rather than an inline arrow (see ARCHITECTURE.md).
      */
-    private onPointerDown(e: PointerEvent): void {
-        e.preventDefault();
+    private onPointerDown(_e: PointerEvent): void {
     }
 
     /**
@@ -614,7 +632,7 @@ abstract class AbstractCalendarDropdown<
      *
      * @param e - The pointerdown event.
      */
-    private onPointerDown(e: PointerEvent): void {
+    private onPointerDown(e: PointerEvent): Event.ListenerResult {
         if (DOM.source.isNode(e.target) && DOM.source.getTagName(DOM.source.intern(e.target)) === "INPUT") {
             return;
         }
@@ -623,7 +641,7 @@ abstract class AbstractCalendarDropdown<
             return;
         }
 
-        e.preventDefault();
+        return { prevent: true };
     }
 
     /**

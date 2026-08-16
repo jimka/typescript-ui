@@ -15,14 +15,15 @@ import { Menu } from '@jimka/typescript-ui/overlay';
 
 const menu = Menu();
 
-Event.addListener(myComponent, 'contextmenu', (e: MouseEvent) => {
-    e.preventDefault();
+Event.addListener(myComponent, 'contextmenu', (e: MouseEvent): Event.ListenerResult => {
     menu.show(e.clientX, e.clientY, [
         { text: 'Cut',          action: () => cut()   },
         { text: 'Copy',         action: () => copy()  },
         { separator: true       },
         { text: 'Paste',        action: () => paste(), enabled: clipboardHasData() },
     ]);
+
+    return { prevent: true };
 });
 ```
 

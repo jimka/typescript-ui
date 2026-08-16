@@ -885,17 +885,16 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      *
      * @param e - The keyboard event.
      */
-    private onKeyDown(e: KeyboardEvent): void {
+    private onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (this._dropdown.isOpen()) {
             if (this._dropdown.handleKey(e)) {
-                e.preventDefault();
-
-                return;
+                return { prevent: true };
             }
 
             if (e.key === "Escape") {
-                e.preventDefault();
                 this.closeDropdown();
+
+                return { prevent: true };
             }
 
             return;
@@ -906,9 +905,9 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
             case "ArrowUp":
             case "Enter":
             case " ":
-                e.preventDefault();
                 this.toggleDropdown();
-                break;
+
+                return { prevent: true };
             case "Escape":
                 // Nothing to close.
                 break;

@@ -4,6 +4,7 @@ import { AbstractSelectableList, AbstractSelectableListOptions } from "~/compone
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { reduceModifierSelection } from "~/component/shared/reduceModifierSelection.js";
 import { callable } from "~/core/Callable.js";
+import { Event } from "~/core/Event.js";
 
 /**
  * Construction-time options for {@link MultiSelectList}.
@@ -223,7 +224,7 @@ class MultiSelectList extends AbstractSelectableList<string[], MultiSelectListOp
      *
      * @param e - The keyboard event.
      */
-    protected handleKeyDown(e: KeyboardEvent): void {
+    protected handleKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (!this.isEnabled() || this.isReadOnly()) {
             return;
         }
@@ -231,13 +232,12 @@ class MultiSelectList extends AbstractSelectableList<string[], MultiSelectListOp
         const ctrl = e.ctrlKey || e.metaKey;
 
         if (ctrl && (e.key === "a" || e.key === "A")) {
-            e.preventDefault();
             this.selectAll();
 
-            return;
+            return { prevent: true };
         }
 
-        super.handleKeyDown(e);
+        return super.handleKeyDown(e);
     }
 
     /**

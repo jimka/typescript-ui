@@ -21,9 +21,9 @@ const _trapped = new WeakSet<Component>();
  *
  * @param e - The wheel event reaching the overlay as the outermost ancestor.
  */
-function swallowUnconsumedWheel(e: WheelEvent): void {
+function swallowUnconsumedWheel(e: WheelEvent): Event.ListenerResult {
     if (consumeWheel(e)) {
-        e.preventDefault();
+        return { prevent: true };
     }
 }
 
@@ -49,7 +49,7 @@ export function trapWheel(component: Component): void {
     }
 
     _trapped.add(component);
-    Event.addSubtreeListener(component, "wheel", swallowUnconsumedWheel, { passive: false });
+    Event.addSubtreeListener(component, "wheel", { passive: false, handler: swallowUnconsumedWheel });
 }
 
 /**

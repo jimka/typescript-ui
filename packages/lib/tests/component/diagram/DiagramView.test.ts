@@ -209,8 +209,8 @@ describe('DiagramView — real DOM-dispatched wiring (behaviours 10, 19)', () =>
         // registration with a *different* passive setting throws, while a
         // matching one doesn't.
         const other = new Component();
-        expect(() => Event.addSubtreeListener(other, 'wheel', () => {}, { passive: true })).toThrow();
-        expect(() => Event.addSubtreeListener(other, 'wheel', () => {}, { passive: false })).not.toThrow();
+        expect(() => Event.addSubtreeListener(other, 'wheel', { passive: true, handler: () => {} })).toThrow();
+        expect(() => Event.addSubtreeListener(other, 'wheel', { passive: false, handler: () => {} })).not.toThrow();
     });
 });
 
@@ -922,14 +922,15 @@ describe('DiagramView — "contextmenu" node event (behaviours 10, 11)', () => {
 
         const handle: Handle = view._nodeComponents.get('a').getElement(true);
         const event = makeEvent(handle, 'contextmenu') as any;
-        let prevented = false;
-        event.preventDefault = () => { prevented = true; };
 
-        view._handleContextMenu(event);
+        // `_handleContextMenu` claims the event by RETURNING `{ prevent: true }`
+        // rather than calling `e.preventDefault()` itself — the real dispatcher
+        // applies that disposition, which this direct call bypasses.
+        const result: Event.ListenerResult = view._handleContextMenu(event);
 
         expect(fired).toHaveLength(1);
         expect(fired[0][0].id).toBe('a');
-        expect(prevented).toBe(true);
+        expect(typeof result === 'object' && result?.prevent).toBe(true);
     });
 
     it('fires no "contextmenu" and does not prevent default on empty canvas', async () => {
@@ -942,13 +943,11 @@ describe('DiagramView — "contextmenu" node event (behaviours 10, 11)', () => {
 
         const empty: Handle = view.getElement(true);
         const event = makeEvent(empty, 'contextmenu') as any;
-        let prevented = false;
-        event.preventDefault = () => { prevented = true; };
 
-        view._handleContextMenu(event);
+        const result: Event.ListenerResult = view._handleContextMenu(event);
 
         expect(fired).toHaveLength(0);
-        expect(prevented).toBe(false);
+        expect(typeof result === 'object' && result?.prevent).toBeFalsy();
     });
 });
 
