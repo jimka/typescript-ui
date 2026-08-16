@@ -9,7 +9,7 @@ export { Animation } from '~/core/Animation.js';
 export { SmoothScroller } from '~/core/SmoothScroller.js';
 export type { SmoothScrollTarget, ScrollAxis } from '~/core/SmoothScroller.js';
 export { Util } from '~/core/Util.js';
-export type { TextMeasureOptions, TextMetrics } from '~/core/Util.js';
+export type { TextMeasureOptions, TextMeasureRequest, TextMetrics } from '~/core/Util.js';
 export { DOM, ProductionDOMSink, ProductionDOMSource, PatchBuilder } from '~/core/DOM.js';
 export type { DOMSink, DOMSource, DOMSeams, DocumentSelectionRange, Rect, ScrollMetrics, OffsetSize, MediaState, Handle, TimerId, ElementPatch, MediaQueryResult } from '~/core/DOM.js';
 export { callable } from '~/core/Callable.js';

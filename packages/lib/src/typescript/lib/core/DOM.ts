@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import type { TextMeasureOptions, TextMetrics } from "~/core/Util.js";
+import type { TextMeasureOptions, TextMeasureRequest, TextMetrics } from "~/core/Util.js";
 import type { Size } from "~/primitive/Size.js";
 import type { Component } from "~/core/Component.js";
 
@@ -996,6 +996,15 @@ export interface DOMSource {
      * touches the DOM not at all and returns an empty array.
      */
     measureTextWidths(texts: string[], options?: TextMeasureOptions): number[];
+
+    /**
+     * Measures many strings, each under its own font, in a single document reflow.
+     *
+     * @param requests - The strings to measure, each with its own font properties.
+     * @returns One `TextMetrics` per request, in request order; an empty request
+     *   list touches the DOM not at all and returns an empty array.
+     */
+    measureTexts(requests: TextMeasureRequest[]): TextMetrics[];
 
     /**
      * Resolves a CSS `font-size` value (possibly a `calc()`/`var()`) to a pixel
@@ -2054,6 +2063,74 @@ export class ProductionDOMSource implements DOMSource {
         document.body.removeChild(wrapper);
 
         return widths;
+    }
+
+    /** @inheritDoc */
+    measureTexts(requests: TextMeasureRequest[]): TextMetrics[] {
+        if (requests.length === 0) {
+            return [];
+        }
+
+        const wrapper = document.createElement("div");
+
+        _applyProbeStyles(wrapper, { position: "fixed", visibility: "hidden", whiteSpace: "nowrap" });
+
+        const probes = requests.map(({ text, options = {} }) => {
+            const {
+                fontFamily  = "var(--ts-ui-font-family, system-ui, sans-serif)",
+                fontSize    = "var(--ts-ui-font-size, 14px)",
+                fontWeight  = "normal",
+                fontStyle   = "normal",
+                fontVariant = "normal",
+                fontStretch = "normal",
+                lineHeight  = "calc(1em + var(--ts-ui-line-padding, 2px))",
+                maxWidth,
+            } = options;
+
+            const probe = document.createElement("span");
+
+            _applyProbeStyles(probe, {
+                display:    "inline-block",
+                whiteSpace: maxWidth === undefined ? "nowrap" : "pre-wrap",
+                width:      maxWidth === undefined ? "" : `${maxWidth}px`,
+                fontFamily, fontSize, fontWeight, fontStyle, fontVariant, fontStretch, lineHeight,
+            });
+
+            probe.textContent = text;
+
+            const ref = document.createElement("span");
+
+            _applyProbeStyles(ref, {
+                display:       "inline-block",
+                width:         "0",
+                height:        "0",
+                verticalAlign: "baseline",
+            });
+
+            probe.appendChild(ref);
+            wrapper.appendChild(probe);
+
+            return { probe, ref };
+        });
+
+        document.body.appendChild(wrapper);
+
+        // One layout flush: the first read forces it, and nothing mutates the
+        // DOM between reads, so the rest are served from the same computed layout.
+        const metrics = probes.map(({ probe, ref }) => {
+            const probeRect = probe.getBoundingClientRect();
+            const refRect   = ref.getBoundingClientRect();
+
+            return {
+                width:    Math.ceil(probeRect.width),
+                height:   Math.ceil(probeRect.height),
+                baseline: Math.round(refRect.top - probeRect.top),
+            };
+        });
+
+        document.body.removeChild(wrapper);
+
+        return metrics;
     }
 
     /** @inheritDoc */

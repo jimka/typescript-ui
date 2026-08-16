@@ -37,6 +37,14 @@ export interface TextMetrics {
 }
 
 /**
+ * One string to measure, with the font properties to measure it under.
+ */
+export interface TextMeasureRequest {
+    text: string;
+    options?: TextMeasureOptions;
+}
+
+/**
  * General-purpose utility functions for DOM interaction and browser environment queries.
  *
  * @category Util

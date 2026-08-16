@@ -4,6 +4,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Util } from "~/core/Util.js";
+import type { TextMetrics } from "~/core/Util.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
@@ -72,6 +73,18 @@ const _defaultTextOptions: Partial<TextOptions> = {
     truncate:       true,
 };
 
+/**
+ * Registry of `WeakRef<Text>` for every live instance, walked by the batched
+ * measurement below so one DOM flush can serve every stale Text at once.
+ * `WeakRef` keeps an undisposed Text collectable; dead references are pruned
+ * as the walk finds them. Mirrors `Glyph.ts`'s animated-instance registry.
+ */
+const _measurableRefs: Set<WeakRef<Text>> = new Set();
+
+// Guards against a nested batch: the wrap-aware re-measure inside
+// `applyNaturalMetrics` probes the DOM again, and must not restart the walk.
+let _batching = false;
+
 // Upper bound for the auto-derived `minSize.width` from text measurement —
 // short labels report their full measured width (so they're never truncated
 // when the container has room), longer text caps here so the parent layout
@@ -116,6 +129,9 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private _measuredGeneration: number = -1;
     private _wordBreak: string | null = null;
     private _lineClamp: number | null = null;
+    // Registered in the constructor, dropped in destructor(). Held so teardown
+    // can remove this exact entry rather than searching the set.
+    private readonly _measureRef: WeakRef<Text> = new WeakRef(this);
 
     // `NoInfer` on `options` keeps a partial options literal from narrowing
     // TOptions to just the keys it carries: `new Text("x", { fontWeight: "600" })`
@@ -157,6 +173,17 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         // getPreferredSize / getBaseline call so construction stays JS-only
         // (no forced layout from `DOM.source.measureText`).
         this._measurementDirty = true;
+
+        _measurableRefs.add(this._measureRef);
+    }
+
+    /**
+     * Deregisters this instance from the batched-measurement registry before
+     * the rest of the teardown runs.
+     */
+    protected destructor(): void {
+        _measurableRefs.delete(this._measureRef);
+        super.destructor();
     }
 
     /**
@@ -333,6 +360,106 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
+     * Folds a natural (single-line) measurement into preferred size, baseline and
+     * minimum floor, and marks this Text measured. The tail of the old
+     * `calculateSize` body, shared by the solo and batched paths.
+     *
+     * @param natural - The natural (single-line) measurement to fold in.
+     */
+    private applyNaturalMetrics(natural: TextMetrics): void {
+        this._measurementDirty   = false;
+        this._measuredGeneration = Util.textMetricsGeneration();
+
+        const text = this._options.text!.toString();
+
+        // Floor the reported minimum height to one line so a single-line label
+        // is never squeezed below its line box (the measured height is 0 for
+        // empty text and unset before the first probe).
+        const minLineHeight = Math.ceil(this.getLineHeight() ?? this.readThemeLineHeightPx());
+
+        // Natural (single-line) measurement establishes the preferred WIDTH
+        // and the baseline; the height then follows the box's current width,
+        // growing when a wrapping run has been laid out narrower than natural.
+        const height = this.measuredHeight(text, natural.width, natural.height);
+
+        this._measuredBaseline = natural.baseline;
+        this.setCalculatedSize(natural.width, height);
+        // Store the measured floor as per-instance derived state (like
+        // `_measuredBaseline`), kept out of `_defaultOptions`, which holds
+        // the class-level Text defaults rather than per-instance
+        // measurements. `getMinSize` folds this into the inherited min.
+        // When truncation is disabled, report the full natural width so the
+        // parent layout widens to fit instead of squeezing the text;
+        // otherwise cap it so the parent can shrink the text past its
+        // natural width.
+        const autoMinWidth = this.isTruncate()
+            ? Math.min(natural.width, TEXT_AUTO_MIN_WIDTH_CAP_PX)
+            : natural.width;
+        this._measuredMinSize = {
+            width:  autoMinWidth,
+            height: Math.max(height, minLineHeight),
+        };
+    }
+
+    /** Whether this Text would issue its own natural-measurement probe now. */
+    private wantsBatchedMeasure(): boolean {
+        return this._autoMeasure && this.needsMeasure() && !!this._options.text;
+    }
+
+    /**
+     * Measures `initiator` together with every other stale Text in one DOM flush.
+     * A `private static` (rather than a module function) so it can read the other
+     * instances' private `measureOptions()` and `_options`.
+     *
+     * @param initiator - The `Text` whose own measurement triggered the batch.
+     */
+    private static batchMeasure(initiator: Text): void {
+        if (_batching) {
+            return;
+        }
+
+        const pending: Text[] = [initiator];
+
+        for (const ref of Array.from(_measurableRefs)) {
+            const candidate = ref.deref();
+
+            if (!candidate) {
+                _measurableRefs.delete(ref);
+                continue;
+            }
+
+            if (candidate !== initiator && candidate.wantsBatchedMeasure()) {
+                pending.push(candidate);
+            }
+        }
+
+        // Only the initiator is stale — batching would cost a wrapper element
+        // to save nothing. Fall through to its own single probe.
+        if (pending.length < 2) {
+            return;
+        }
+
+        _batching = true;
+
+        try {
+            // Build every request before issuing the call — a `measureOptions()`
+            // that resolves a bound font-size var can itself probe the DOM, and
+            // those probes must all land before the batched read, not between
+            // its rectangle reads.
+            const metrics = DOM.source.measureTexts(
+                pending.map(participant => ({
+                    text:    participant._options.text!.toString(),
+                    options: participant.measureOptions(),
+                })),
+            );
+
+            pending.forEach((participant, i) => participant.applyNaturalMetrics(metrics[i]));
+        } finally {
+            _batching = false;
+        }
+    }
+
+    /**
      * Measures the text using an off-screen probe element and sets the preferred size.
      *
      * @remarks Creates a temporary fixed-positioned invisible `<span>`, appends it to the body
@@ -340,6 +467,16 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * No-op when {@link setAutoMeasure} is `false` — the parent layout is expected to size this Text.
      */
     private calculateSize(): void {
+        if (this.wantsBatchedMeasure()) {
+            Text.batchMeasure(this);
+
+            // The batch measured this Text — it is no longer stale, and
+            // `applyNaturalMetrics` already wrote every derived field.
+            if (!this.needsMeasure()) {
+                return;
+            }
+        }
+
         this._measurementDirty    = false;
         this._measuredGeneration  = Util.textMetricsGeneration();
 
@@ -347,37 +484,9 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             return;
         }
 
-        // Floor the reported minimum height to one line so a single-line label
-        // is never squeezed below its line box (the measured height is 0 for
-        // empty text and unset before the first probe).
-        const lineHeightPx  = this.getLineHeight() ?? this.readThemeLineHeightPx();
-        const minLineHeight = Math.ceil(lineHeightPx);
-
         const text = this._options.text;
         if (text) {
-            // Natural (single-line) measurement establishes the preferred WIDTH
-            // and the baseline; the height then follows the box's current width,
-            // growing when a wrapping run has been laid out narrower than natural.
-            const natural = DOM.source.measureText(text.toString(), this.measureOptions());
-            const height  = this.measuredHeight(text.toString(), natural.width, natural.height);
-
-            this._measuredBaseline = natural.baseline;
-            this.setCalculatedSize(natural.width, height);
-            // Store the measured floor as per-instance derived state (like
-            // `_measuredBaseline`), kept out of `_defaultOptions`, which holds
-            // the class-level Text defaults rather than per-instance
-            // measurements. `getMinSize` folds this into the inherited min.
-            // When truncation is disabled, report the full natural width so the
-            // parent layout widens to fit instead of squeezing the text;
-            // otherwise cap it so the parent can shrink the text past its
-            // natural width.
-            const autoMinWidth = this.isTruncate()
-                ? Math.min(natural.width, TEXT_AUTO_MIN_WIDTH_CAP_PX)
-                : natural.width;
-            this._measuredMinSize = {
-                width:  autoMinWidth,
-                height: Math.max(height, minLineHeight),
-            };
+            this.applyNaturalMetrics(DOM.source.measureText(text.toString(), this.measureOptions()));
         } else {
             // No glyphs means no baseline — report null so HBox doesn't try
             // to baseline-align surrounding components against an empty box.
@@ -1380,9 +1489,17 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 }
 
+/** Empties the measurement registry. For the test harness only. @internal */
+function _resetTextMeasurementRegistry(): void { _measurableRefs.clear(); }
+
+/** Number of registered instances; for tests only. @internal */
+function _textMeasurementRegistrySize(): number { return _measurableRefs.size; }
+
 const TextCallable = callable(Text);
 type TextCallable<TOptions extends TextOptions = TextOptions> = Text<TOptions>;
 export {
     Text         as _Text,
-    TextCallable as Text
+    TextCallable as Text,
+    _resetTextMeasurementRegistry,
+    _textMeasurementRegistrySize,
 };
