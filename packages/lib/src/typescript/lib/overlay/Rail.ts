@@ -1167,7 +1167,12 @@ class Rail extends Component<RailOptions> {
      */
     handleMainAxisOffset(window: AbstractWindow): number {
         const vertical   = this.isVertical();
-        const mainPos    = (c: Component): number => vertical ? c.getY() : c.getX();
+        // A handle `commitBounds` last placed via its size-stable position fast
+        // path has its move riding on `getTranslateX`/`getTranslateY` while
+        // `getX`/`getY` still report the pre-move value — folding the translate
+        // in here keeps this accurate for a handle mid-fast-path (e.g. one a
+        // sibling's removal just compacted into a new slot without resizing it).
+        const mainPos    = (c: Component): number => vertical ? c.getY() + c.getTranslateY() : c.getX() + c.getTranslateX();
         const mainExtent = (c: Component): number => vertical ? c.getHeight() : c.getWidth();
 
         // Restore path (and an already-minimized window): the handle exists — its

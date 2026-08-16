@@ -34,7 +34,7 @@ function closeable(): LayoutConstraints {
 }
 
 /** The private surface of `TabBar._entries` this test reads geometry off of. */
-type EntryButton = TabButton & { _content: { getX(): number; getWidth(): number } };
+type EntryButton = TabButton & { _content: { getX(): number; getTranslateX(): number; getWidth(): number } };
 type BarEntries = Array<{ id: string; button: EntryButton }>;
 
 /** Reaches `TabBar._entries`, the same private surface the sibling glyph-centring test casts through. */
@@ -144,13 +144,17 @@ describe('tab close-button reserve is per-tab', () => {
 
         const plain = entries(bar)[1].button;
 
+        // A same-size text-align flip re-anchors `_content` at a new x with no
+        // width change, so LayoutManager.commitBounds's size-stable position
+        // fast path drives the move via translate — `getX()` alone would keep
+        // reporting the pre-move (frozen) value; fold the translate back in.
         bar.setTextAlign('start');
         host.doLayout();
-        const startRight = plain._content.getX() + plain._content.getWidth();
+        const startRight = plain._content.getX() + plain._content.getTranslateX() + plain._content.getWidth();
 
         bar.setTextAlign('end');
         host.doLayout();
-        const endRight = plain._content.getX() + plain._content.getWidth();
+        const endRight = plain._content.getX() + plain._content.getTranslateX() + plain._content.getWidth();
 
         // End-justify pushes the label's trailing edge further right than
         // start-justify does; a phantom close reserve would have clamped both to

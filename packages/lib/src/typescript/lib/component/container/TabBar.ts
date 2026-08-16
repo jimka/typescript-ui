@@ -2505,7 +2505,14 @@ class TabBar extends Container<TabBarOptions> {
             return;
         }
 
-        const mainPos = vertical ? wrapper.getY() : wrapper.getX();
+        // `layoutContent()` (just above, in the caller) can have placed `wrapper`
+        // through LayoutManager.commitBounds's size-stable fast path, which
+        // leaves getX()/getY() at the pre-move value and carries the move via
+        // translate — fold it back in, or the indicator detaches from the tab
+        // after any same-width reorder.
+        const mainPos = vertical
+            ? wrapper.getY() + wrapper.getTranslateY()
+            : wrapper.getX() + wrapper.getTranslateX();
 
         this._indicator.slideTo(mainPos, mainExtent, this._side);
     }
@@ -2958,7 +2965,11 @@ class TabBar extends Container<TabBarOptions> {
 
         for (let i = 0; i < this._entries.length; i++) {
             const wrapper = this._entries[i].button;
-            const start = vertical ? wrapper.getY() : wrapper.getX();
+            // Fold in the translate offset a same-width relayout may have left on
+            // `wrapper` via commitBounds's fast path — see positionIndicator.
+            const start = vertical
+                ? wrapper.getY() + wrapper.getTranslateY()
+                : wrapper.getX() + wrapper.getTranslateX();
             const extent = vertical ? wrapper.getHeight() : wrapper.getWidth();
 
             if (cursorMain < start + extent / 2) {
@@ -2987,16 +2998,21 @@ class TabBar extends Container<TabBarOptions> {
      * @returns The boundary's main-axis coordinate in px.
      */
     private slotBoundary(insertIndex: number, vertical: boolean): number {
+        // Both branches fold in the translate offset a same-width relayout may
+        // have left on `wrapper` via commitBounds's fast path — see
+        // positionIndicator.
         if (insertIndex < this._entries.length) {
             const wrapper = this._entries[insertIndex].button;
 
-            return vertical ? wrapper.getY() : wrapper.getX();
+            return vertical ? wrapper.getY() + wrapper.getTranslateY() : wrapper.getX() + wrapper.getTranslateX();
         }
 
         if (this._entries.length > 0) {
             const wrapper = this._entries[this._entries.length - 1].button;
 
-            return vertical ? wrapper.getY() + wrapper.getHeight() : wrapper.getX() + wrapper.getWidth();
+            return vertical
+                ? wrapper.getY() + wrapper.getTranslateY() + wrapper.getHeight()
+                : wrapper.getX() + wrapper.getTranslateX() + wrapper.getWidth();
         }
 
         return 0;

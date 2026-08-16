@@ -270,6 +270,13 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
      * inner `HBox` top-aligns the label to the row's text baseline on every
      * pass, so re-reading its placed `y` here keeps the nudge idempotent.
      *
+     * `super.doLayout()` can have placed `label` through
+     * `LayoutManager.commitBounds`'s size-stable position fast path (the
+     * label's own size is unchanged pass to pass), which leaves `getY()` at
+     * its pre-move value and carries the move via translate — folding that in
+     * before nudging, then re-zeroing it, is what keeps this idempotent
+     * instead of compounding a growing offset every pass.
+     *
      * @returns This component, for method chaining.
      */
     doLayout(): this {
@@ -278,7 +285,8 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
         const label  = this._label;
         const offset = this.labelCenterOffset();
         if (label !== null && offset > 0) {
-            label.setY(label.getY() + offset);
+            label.setY(label.getY() + label.getTranslateY() + offset);
+            label.setTranslate(label.getTranslateX(), 0);
         }
 
         return this;
