@@ -631,4 +631,29 @@ describe('Class-scoped style rules', () => {
 
         expect(declarations.color).toBe('rgb(4, 5, 6)');
     });
+
+    it('case 33: a class contributing a `font` bag via getClassStyleDefaults gets it hoisted onto its class rule', () => {
+        // A bare `Component` subclass, not `Text` — proves the generic
+        // `font`-field mechanism in `resolveDeclarations`/`classDeviations`
+        // in isolation, since `Component`'s own `applyStyle` phases never
+        // consult `font` themselves (only `Text.applyStyle` does).
+        class FontProbeCase33 extends Component {
+            protected getClassStyleDefaults() {
+                return {
+                    ...super.getClassStyleDefaults(),
+                    font: { fontWeight: 'bold', fontStyle: null },
+                };
+            }
+        }
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const a = new FontProbeCase33({});
+        const classDeclarations = declarationsDuring(sink, '.FontProbeCase33', () => a.getElement(true));
+
+        expect(ensureStyleRuleOpsFor(sink, '.FontProbeCase33').length).toBe(1);
+        expect(classDeclarations.fontWeight).toBe('bold');
+        // A `null`-valued font field is conditional, exactly like
+        // outline/color — it must never introduce a key at all.
+        expect(classDeclarations.fontStyle).toBeUndefined();
+    });
 });

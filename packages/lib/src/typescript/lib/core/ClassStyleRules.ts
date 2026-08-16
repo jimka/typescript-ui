@@ -24,7 +24,7 @@ const FRAMEWORK_SELECTOR = ":where(." + COMPONENT_CLASS + ")";
  * declarations. Typed structurally rather than as `ComponentOptions` so this
  * module does not import from `core/Component.ts` and no import cycle forms.
  */
-interface ClassStyleDefaults {
+export interface ClassStyleDefaults {
     visible?:         boolean | null;
     displayed?:       boolean;
     minSize?:         { width: number; height: number } | null;
@@ -34,6 +34,34 @@ interface ClassStyleDefaults {
     userSelect?:      string | null;
     outline?:         string | null;
     foregroundColor?: string | null;
+    font?:            TextClassStyleDefaults | null;
+}
+
+/**
+ * The class-uniform font/text declarations a `Text`-family class produces
+ * from its own defaults alone. Namespaced under `ClassStyleDefaults.font`
+ * rather than added as flat keys: `Glyph` (component/display/Glyph.ts),
+ * `TabBar` (component/container/TabBar.ts), and `TextInput`
+ * (component/input/TextInput.ts) each declare their own, differently-typed
+ * `fontSize`/`lineHeight`/`textAlign` options — flat keys of the same name
+ * would silently leak their unrelated defaults into this bag, since
+ * `Component.applyStyle`'s default `getClassStyleDefaults()` passes
+ * `_defaultOptions` through verbatim for every class that doesn't override
+ * it. Only `Text.getClassStyleDefaults()` ever sets `font`.
+ */
+interface TextClassStyleDefaults {
+    fontFamily?:     string | null;
+    fontKerning?:    string | null;
+    fontSize?:       string | null;   // CSS-ready value, e.g. "var(--ts-ui-font-size, 14px)"
+    fontSizeAdjust?: string | null;
+    fontStretch?:    string | null;
+    fontStyle?:      string | null;
+    fontVariant?:    string | null;
+    fontWeight?:     string | null;
+    textAlign?:      string | null;
+    textShadow?:     string | null;
+    lineHeight?:     string | null;   // CSS-ready value, e.g. "calc(1em + var(--ts-ui-line-padding, 2px))"
+    textOverflow?:   string | null;   // pre-resolved from `truncate`; see Text.getClassStyleDefaults
 }
 
 type ClassStyleBag = Readonly<Record<string, string | null>>;
@@ -111,6 +139,20 @@ function resolveDeclarations(defaults: ClassStyleDefaults): Record<string, strin
     // never introduce a key with value `undefined`.
     if (defaults.outline)         declarations.outline = defaults.outline;
     if (defaults.foregroundColor) declarations.color   = defaults.foregroundColor;
+
+    const font = defaults.font;
+    if (font?.fontFamily)     declarations.fontFamily     = font.fontFamily;
+    if (font?.fontKerning)    declarations.fontKerning    = font.fontKerning;
+    if (font?.fontSize)       declarations.fontSize       = font.fontSize;
+    if (font?.fontSizeAdjust) declarations.fontSizeAdjust = font.fontSizeAdjust;
+    if (font?.fontStretch)    declarations.fontStretch    = font.fontStretch;
+    if (font?.fontStyle)      declarations.fontStyle      = font.fontStyle;
+    if (font?.fontVariant)    declarations.fontVariant    = font.fontVariant;
+    if (font?.fontWeight)     declarations.fontWeight     = font.fontWeight;
+    if (font?.textAlign)      declarations.textAlign      = font.textAlign;
+    if (font?.textShadow)     declarations.textShadow     = font.textShadow;
+    if (font?.lineHeight)     declarations.lineHeight     = font.lineHeight;
+    if (font?.textOverflow)   declarations.textOverflow   = font.textOverflow;
 
     return declarations;
 }

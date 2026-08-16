@@ -21,7 +21,7 @@ import { ElementAttributes } from "~/core/ElementAttributes.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
-import { COMPONENT_CLASS, ensureClassStyleRule } from "~/core/ClassStyleRules.js";
+import { COMPONENT_CLASS, ensureClassStyleRule, type ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
 import { measureBorderWidths } from "~/core/BorderWidths.js";
 
@@ -4717,12 +4717,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * it always reaches `#id` and wins on specificity regardless of what the
      * framework or class rule already holds.
      */
-    private writeRuleDeclaration(key: string, value: string | null): void {
+    protected writeRuleDeclaration(key: string, value: string | null): void {
         if (this._inheritedStyleBag !== null && this._inheritedStyleBag[key] === value) {
             return;
         }
 
         this._styleRule.queue(key, value);
+    }
+
+    /**
+     * The class-comparison bag `ensureClassStyleRule` resolves for this class.
+     * Base implementation is a bare reference to `_defaultOptions` — the same
+     * value `applyStyle` has always passed. Override when a subclass needs to
+     * contribute a comparison value that doesn't live in `_defaultOptions`
+     * (e.g. `Text`, whose `fontSize`/`lineHeight` resolve through private
+     * derived fields).
+     */
+    protected getClassStyleDefaults(): ClassStyleDefaults {
+        return this._defaultOptions;
     }
 
     /**
@@ -4748,7 +4760,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // Resolve the declarations this class inherits from the framework and
         // class rules before the phases run, so each phase can skip one it
         // already gets from a lower tier.
-        this._inheritedStyleBag = ensureClassStyleRule(this.constructor, this._defaultOptions);
+        this._inheritedStyleBag = ensureClassStyleRule(this.constructor, this.getClassStyleDefaults());
 
         this.applyBoxAndVisibilityStyles();
         this.replayGeometryStyles();
