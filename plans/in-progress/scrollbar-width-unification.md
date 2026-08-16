@@ -522,6 +522,39 @@ Read before implementing:
 
 ---
 
+## Implementation Notes
+
+- **`packages/lib/tests/component/table/ColumnResize.test.ts` needed a fixture
+  fix the plan didn't list.** This file's own fixture doc comment (and its
+  `makeTable()` helper) hard-derives an "available width" of 500/800 from a
+  `setWidth(517)`/`setWidth(817)` outer size built on the *old*
+  native-probe-15px reservation. Once `getAvailableColumnWidth()` moved to
+  `TRACK_WIDTH` (12px), those two `setWidth` calls started reporting an
+  available width 3px too high, failing 6 of the file's assertions (the
+  numbers in `## Expected Behaviour`'s "Not retested" list were the tests
+  audited as reading `getScrollBarWidth()` directly — this file reads neither
+  constant directly, so it fell outside that list and outside the plan's
+  "Files to Modify" table). Fixed by changing `setWidth(517)` → `514` and
+  `setWidth(817)` → `814` (preserving the 500/800 worked-example available
+  widths the rest of the file's assertions are built on) plus the doc comment
+  explaining the derivation — no assertion values needed to change. Full test
+  suite (4790 tests) passes after the fix.
+- **Manual browser verification (`## Verification`'s required browser check,
+  `## Expected Behaviour` cases 5–7) was performed.** Served the worktree's
+  own `packages/lib` via `vite` on a spare port (with `node_modules`
+  symlinked from the main tree, since the demo's `vite.config.ts` aliases
+  `@jimka/typescript-ui/*` straight to this worktree's own `./src`, so no
+  package-resolution trap applied), opened **Misc.** → "Show window with
+  table (slow)!", and read the column-menu button's and the body
+  `Scrollbar`'s real `getBoundingClientRect()` in Chrome: both report
+  `left: 832, right: 844, width: 12` — pixel-flush, closing the seam (case
+  5). The button/glyph render at the new, narrower 12px band, confirmed
+  visually against the earlier full-window screenshot (case 6). Case 7
+  (columns a few px wider) is covered by the automated
+  `Table.getAvailableColumnWidth` test rather than re-checked by eye in the
+  browser, since it is a numeric claim the offline suite already pins
+  exactly.
+
 ## Notes
 
 [^why-fixed-width]: `Scrollbar.ts`'s internal layout is built around the
