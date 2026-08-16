@@ -25,7 +25,7 @@ export type { ExportOptions } from '~/component/table/TableExporter.js';
 export { TableHeader } from '~/component/table/Header.js';
 export type { TableHeaderEvent, HeaderColumnGeometry } from '~/component/table/Header.js';
 export { Body } from '~/component/table/Body.js';
-export type { BodyEvent, CellClickEvent } from '~/component/table/Body.js';
+export type { BodyEvent, CellClickEvent, BodyViewState } from '~/component/table/Body.js';
 export { TreeBody } from '~/component/table/TreeBody.js';
 export type { FlatRecord, TreeBodySpec } from '~/component/table/TreeBody.js';
 export { FooterRow } from '~/component/table/Footer.js';

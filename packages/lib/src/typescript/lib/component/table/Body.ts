@@ -55,6 +55,23 @@ export interface CellClickEvent {
 }
 
 /**
+ * The complete view state a `Table` re-binds its body to in one step, via
+ * {@link Body.bindViewState}.
+ *
+ * @category Components
+ */
+export interface BodyViewState {
+    store:         AbstractStore;
+    columns:       Column[];
+    columnConfigs: Map<string, ColumnConfig>;
+    hiddenColumns: Set<string>;
+    rowReadOnly:   ((record: ModelRecord) => boolean) | null;
+    rowVisible:    ((record: ModelRecord) => boolean) | null;
+    rowSeparator:  ((record: ModelRecord) => { label: string, color: string | null } | null) | null;
+    rowIndented:   ((record: ModelRecord) => boolean) | null;
+}
+
+/**
  * Returns the index of the cell in `cells` whose element is, or contains, the
  * clicked `target` handle; `-1` when the target lies outside every cell (or is
  * null). Pure with respect to the interned handles — no component state.
@@ -632,6 +649,23 @@ class Body extends VirtualRowView<Row> {
      * and group tint are preserved.
      */
     setHiddenColumns(hidden: Set<string>): this {
+        this._hiddenColumns = this.filterUnhideable(hidden);
+        this.syncPoolCells();
+        this.renderWindow();
+
+        return this;
+    }
+
+    /**
+     * Strips field names belonging to {@link Column.isUnhideable} columns
+     * from `hidden`, returned as a new `Set`. Extracted from
+     * {@link setHiddenColumns} so {@link bindViewState} can apply the same
+     * unhideable-column guard.
+     *
+     * @param hidden - The candidate set of field names to hide.
+     * @returns A new set with unhideable columns' field names removed.
+     */
+    private filterUnhideable(hidden: Set<string>): Set<string> {
         const filtered = new Set<string>();
 
         for (const name of hidden) {
@@ -642,11 +676,7 @@ class Body extends VirtualRowView<Row> {
             }
         }
 
-        this._hiddenColumns = filtered;
-        this.syncPoolCells();
-        this.renderWindow();
-
-        return this;
+        return filtered;
     }
 
     /**
@@ -685,18 +715,19 @@ class Body extends VirtualRowView<Row> {
 
     /**
      * Sets the predicate that marks a record as a group-separator row for
-     * rotated mode, forwarded from `Table`'s internal view-binding step.
-     * Cleared by passing `null`. That step is already followed by
-     * `setStore` / `doLayout`, so — unlike {@link setRowVisible} — this
-     * setter forces no render of its own.
+     * rotated mode. Cleared by passing `null`. Unlike {@link setRowVisible},
+     * this setter forces no render of its own.
      *
      * @param predicate - Returns the separator's label/color for a
      *   separator record, or `null` for an ordinary field/value record.
      *   Called on every rebind; must be O(1) and pure.
      * @returns This body, for method chaining.
      *
-     * @remarks Internal wiring called by {@link Table} — not for
-     * consumer use.
+     * @remarks Not for consumer use. `Table`'s internal view-binding step
+     * writes this predicate directly via {@link bindViewState} rather than
+     * calling this setter, so it currently has no production caller; kept
+     * as a standalone setter for symmetry with {@link setRowReadOnly} /
+     * {@link setRowVisible} / {@link setRowIndented}.
      */
     setRowSeparator(predicate: ((record: ModelRecord) => { label: string, color: string | null } | null) | null): this {
         this._rowSeparator = predicate;
@@ -706,17 +737,19 @@ class Body extends VirtualRowView<Row> {
 
     /**
      * Sets the predicate that marks a record as a rotated-mode group
-     * member, forwarded from `Table`'s internal view-binding step. Cleared
-     * by passing `null`. Mirrors {@link setRowSeparator}'s shape and, like
-     * it, forces no render of its own.
+     * member. Cleared by passing `null`. Mirrors {@link setRowSeparator}'s
+     * shape and, like it, forces no render of its own.
      *
      * @param predicate - Returns `true` when the record's `field`-name cell
      *   should render indented (see {@link Row.setFieldIndent}). Called on
      *   every rebind; must be O(1) and pure.
      * @returns This body, for method chaining.
      *
-     * @remarks Internal wiring called by {@link Table} — not for
-     * consumer use.
+     * @remarks Not for consumer use. `Table`'s internal view-binding step
+     * writes this predicate directly via {@link bindViewState} rather than
+     * calling this setter, so it currently has no production caller; kept
+     * as a standalone setter for symmetry with {@link setRowReadOnly} /
+     * {@link setRowVisible} / {@link setRowSeparator}.
      */
     setRowIndented(predicate: ((record: ModelRecord) => boolean) | null): this {
         this._rowIndented = predicate;
@@ -855,6 +888,30 @@ class Body extends VirtualRowView<Row> {
      * @param store - The new store to bind to the body.
      */
     setStore(store: AbstractStore): this {
+        this.rebindStore(store);
+
+        if (this.getElement()) {
+            // Route through `onStoreChange` so subclasses (e.g. `TreeBody`)
+            // can rebuild their per-row index against the new store before
+            // the inherited rebind + render runs. The base implementation
+            // is equivalent to the previous `_boundIndices.fill(-1) +
+            // renderWindow()` inline pair.
+            this.onStoreChange();
+        }
+
+        return this;
+    }
+
+    /**
+     * Unsubscribes from the outgoing store's refresh listeners, assigns and
+     * subscribes to the new store, and invalidates the geometry caches.
+     * Extracted from {@link setStore} so {@link bindViewState} can rebind the
+     * store without triggering the render `setStore` triggers on its own —
+     * `bindViewState` runs its own render once, after every field is written.
+     *
+     * @param store - The new store to bind to the body.
+     */
+    private rebindStore(store: AbstractStore): void {
         if (this._storeRefresh) {
             const old = this._store;
 
@@ -866,13 +923,38 @@ class Body extends VirtualRowView<Row> {
         this._store = store;
         this.bindStore(store);
         this.invalidateGeom();
+    }
+
+    /**
+     * Re-binds every field a `Table` display-mode switch pushes into the
+     * body — store, columns, column configs, hidden-column set and the four
+     * row predicates — writing them all before reconciling the pool and
+     * rendering once, instead of the eight separate setter calls that would
+     * otherwise each sync and render on their own.
+     *
+     * @param state - The complete view state to bind.
+     * @returns This body, for method chaining.
+     *
+     * @remarks Internal wiring called by {@link Table} — not for consumer
+     * use. `state.columns` is assigned before the hidden-column set is
+     * filtered, matching the order the individual setters run in today.
+     */
+    bindViewState(state: BodyViewState): this {
+        this.rebindStore(state.store);
+
+        this._columns       = state.columns;
+        this._columnConfigs = state.columnConfigs;
+        this._hiddenColumns = this.filterUnhideable(state.hiddenColumns);
+        this._rowReadOnly   = state.rowReadOnly;
+        this._rowVisible    = state.rowVisible;
+        this._rowSeparator  = state.rowSeparator;
+        this._rowIndented   = state.rowIndented;
+
+        this.registerComboEditors(state.columnConfigs);
+        this.syncPoolCells();
+        this.invalidateRowBindings();
 
         if (this.getElement()) {
-            // Route through `onStoreChange` so subclasses (e.g. `TreeBody`)
-            // can rebuild their per-row index against the new store before
-            // the inherited rebind + render runs. The base implementation
-            // is equivalent to the previous `_boundIndices.fill(-1) +
-            // renderWindow()` inline pair.
             this.onStoreChange();
         }
 

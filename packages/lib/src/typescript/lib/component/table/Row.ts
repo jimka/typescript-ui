@@ -356,13 +356,12 @@ class Row extends Component {
 
         // Clamp into this row's own visible-field range. A pooled row can be
         // asked to window against a range sized for a store the host `Body`
-        // has already swapped to (`Table.bindView` calls `Body.setStore`,
-        // which renders synchronously, before `setColumns` / `setColumnConfigs`
-        // resync this row's `_visibleFields` to the new model) — the request
-        // is stale for one pass, not invalid, so it is clamped rather than
-        // trusted verbatim. The immediately-following `setColumns` /
-        // `setColumnConfigs` call marks the row dirty and re-renders against
-        // the caught-up field list.
+        // has already swapped to (`Table.setStore` calls `Body.setStore`,
+        // which renders synchronously, before `setColumns` resyncs this
+        // row's `_visibleFields` to the new model) — the request is stale
+        // for one pass, not invalid, so it is clamped rather than trusted
+        // verbatim. The immediately-following `setColumns` call marks the
+        // row dirty and re-renders against the caught-up field list.
         const maxCol = this._visibleFields.length - 1;
 
         lastCol = Math.min(lastCol, maxCol);
