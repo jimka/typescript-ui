@@ -13,8 +13,9 @@ Run `npm install --package-lock-only` at the root to update package-lock.json
 ## Changelog
 
  - Rename packages/lib/docs/reference/changelog/next.md to whatever the new
-   version is.
+   version is. Remove the summary describing 'features for the next version'.
  - Create a new empty next.md file.
+ - Check for links to migration/next.md in the new version changelog.
  - Update index.md in the changelog directory so that all entries are included.
  - Update packages/docs/src/content/pages.ts with information about the new
    version.

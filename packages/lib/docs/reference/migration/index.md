@@ -7,6 +7,7 @@ page covering one upgrade and listing the changes that need code updates. See
 ## Versions
 
 - [Next](/reference/migration/next) — unreleased
+- [0.6.0](/reference/migration/0.6.0) — upgrading from 0.5.0
 - [0.5.0](/reference/migration/0.5.0) — upgrading from 0.4.1
 - [0.4.1](/reference/migration/0.4.1) — upgrading from 0.4.0
 - [0.4.0](/reference/migration/0.4.0) — upgrading from 0.2.x
