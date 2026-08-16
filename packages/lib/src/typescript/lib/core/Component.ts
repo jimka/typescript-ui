@@ -3365,6 +3365,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param width - The new width in pixels.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks The DOM write is rounded to the nearest device pixel — see
+     * {@link setX}.
      */
     setWidth(width: number): this {
         width = this.clampWidth(width);
@@ -3380,7 +3383,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        this.setElementStyle("width", this._width + "px");
+        this.setElementStyle("width", Math.round(this._width) + "px");
 
         return this;
     }
@@ -3466,6 +3469,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param height - The new height in pixels.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks The DOM write is rounded to the nearest device pixel — see
+     * {@link setX}.
      */
     setHeight(height: number): this {
         height = this.clampHeight(height);
@@ -3481,7 +3487,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        this.setElementStyle("height", this._height + "px");
+        this.setElementStyle("height", Math.round(this._height) + "px");
 
         return this;
     }
@@ -3524,6 +3530,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param x - The horizontal offset in pixels.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks The DOM write is rounded to the nearest device pixel to avoid
+     * sub-pixel edges and text re-rasterization; `getX()` still returns the
+     * exact value passed in, so repeated relative layout math does not
+     * accumulate rounding drift.
      */
     setX(x: number): this {
         if (this._left === x) {
@@ -3537,7 +3548,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        this.setElementStyle("left", this._left + "px");
+        this.setElementStyle("left", Math.round(this._left) + "px");
 
         return this;
     }
@@ -3557,6 +3568,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param y - The vertical offset in pixels.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks The DOM write is rounded to the nearest device pixel — see
+     * {@link setX}.
      */
     setY(y: number): this {
         if (this._top === y) {
@@ -3570,7 +3584,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        this.setElementStyle("top", this._top + "px");
+        this.setElementStyle("top", Math.round(this._top) + "px");
 
         return this;
     }
@@ -3754,6 +3768,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param y - Translate-Y in pixels.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks The DOM write is rounded to the nearest device pixel — see
+     * {@link setX}.
      */
     setTranslate(x: number, y: number): this {
         if (this._translateX === x && this._translateY === y && this.getElement()) {
@@ -3766,7 +3783,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (x === 0 && y === 0) {
             this.setElementStyle("transform", null);
         } else {
-            this.setElementStyle("transform", "translate3d(" + x + "px," + y + "px,0)");
+            this.setElementStyle("transform", "translate3d(" + Math.round(x) + "px," + Math.round(y) + "px,0)");
         }
 
         return this;
@@ -4711,19 +4728,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // NaN means "never assigned by a setter" — skip the DOM write for those.
         // Any finite value (including 0) MUST be written so the DOM matches the cached field.
         if (!Number.isNaN(this._width)) {
-            this._inlineStyle.set("width", this._width + "px");
+            this._inlineStyle.set("width", Math.round(this._width) + "px");
         }
 
         if (!Number.isNaN(this._top)) {
-            this._inlineStyle.set("top", this._top + "px");
+            this._inlineStyle.set("top", Math.round(this._top) + "px");
         }
 
         if (!Number.isNaN(this._left)) {
-            this._inlineStyle.set("left", this._left + "px");
+            this._inlineStyle.set("left", Math.round(this._left) + "px");
         }
 
         if (!Number.isNaN(this._height)) {
-            this._inlineStyle.set("height", this._height + "px");
+            this._inlineStyle.set("height", Math.round(this._height) + "px");
         }
 
         // Replay the cached translate so a `setTranslate`'d transform survives
@@ -4731,7 +4748,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // replayed. Skipped at the (0,0) default so components that drive
         // `transform` through `setElementCSSRule` (rotation) are left untouched.
         if (this._translateX !== 0 || this._translateY !== 0) {
-            this._inlineStyle.set("transform", "translate3d(" + this._translateX + "px," + this._translateY + "px,0)");
+            this._inlineStyle.set("transform", "translate3d(" + Math.round(this._translateX) + "px," + Math.round(this._translateY) + "px,0)");
         }
     }
 
