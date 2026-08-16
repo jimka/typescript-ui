@@ -1,6 +1,6 @@
 # Button
 
-[`Button`](/api/component/button/classes/Button) is a push button with a text label and configurable pressed- and hover-state appearance. Maintains separate CSS rules for the normal, `:hover:not(:active)`, and `:active` states so border, shadow, background, and foreground colour are independently controllable when the pointer is over the button and when it is pressed.
+[`Button`](/api/component/button/classes/Button) is a push button with a text label and configurable pressed- and hover-state appearance. Maintains separate CSS rules for the normal, `:hover:not(.pressed)`, and `.pressed` states so border, shadow, background, and foreground colour are independently controllable when the pointer is over the button and when it is pressed. The pressed state is driven by a JS-managed `.pressed` class rather than the native `:active` pseudo-class, so it is scoped to a primary-button press or a held Space key — a right- or middle-click never shows it.
 
 <!-- demo: button-basic -->
 > **Live demo** — two `Button`s side by side, interactive in the documentation app.
@@ -96,7 +96,7 @@ button.setPressedBorderRadius('8px');
 
 ## Hover state
 
-The hover treatment uses a `:hover:not(:active)` rule so the pressed treatment always wins on click, regardless of stylesheet insertion order. Disabled buttons (`button.setEnabled(false)`) receive no hover treatment because the browser suppresses `:hover` on `<button disabled>`.
+The hover treatment uses a `:hover:not(.pressed)` rule so the pressed treatment always wins on click, regardless of stylesheet insertion order. Disabled buttons (`button.setEnabled(false)`) receive no hover treatment because the browser suppresses `:hover` on `<button disabled>`.
 
 Every hover-state property has a matching per-instance setter:
 
@@ -128,7 +128,7 @@ Runtime toggle via `setChromeless(value)`; read with `isChromeless()`. Toggling 
 
 ## Flat appearance
 
-`flat: true` gives the classical Office/Windows toolbar look: no resting border, shadow, or gradient, but a light frame plus subtle fill on `:hover:not(:active)` and a sunken inset frame on `:active`. Unlike `chromeless` — which strips the hover and pressed treatments entirely — `flat` keeps the interaction framing; it only suppresses the resting chrome. The hover and pressed colours come from the `--ts-ui-button-flat-*` theme tokens (see [Theming](/concepts/theming)), so the appearance tracks the active theme.
+`flat: true` gives the classical Office/Windows toolbar look: no resting border, shadow, or gradient, but a light frame plus subtle fill on `:hover:not(.pressed)` and a sunken inset frame on `.pressed`. Unlike `chromeless` — which strips the hover and pressed treatments entirely — `flat` keeps the interaction framing; it only suppresses the resting chrome. The hover and pressed colours come from the `--ts-ui-button-flat-*` theme tokens (see [Theming](/concepts/theming)), so the appearance tracks the active theme.
 
 ```typescript
 Button({ glyph: 'check', flat: true });

@@ -5,4 +5,98 @@ this page is not tied to a version number yet. Once this release is tagged,
 any note here moves onto its own numbered page (see
 [Migration](/reference/migration)) and this page resets to empty.
 
-Nothing here yet.
+## DOM-routed listeners now default to the primary mouse button only
+
+**What changed and why.** `Event.addListener` / `Event.addSubtreeListener`
+previously fired for every mouse button. Both now default to firing only
+for a primary (left) press — a right- or middle-click mousedown/pointerdown
+reaching a component's own listener is silently ignored unless the
+registration opts in. Pass a registration object instead of a bare listener
+to opt in:
+
+```typescript
+Event.addListener(component, type, { button: "aux" | "any", handler });
+```
+
+Only a short list of press-initiating types (`mousedown`, `mouseup`,
+`click`, `dblclick`, `pointerdown`, `pointerup`) defaults to `"primary"` at
+all — every other type, including `contextmenu`, the pointer
+move/cancel/capture-loss family (`pointermove`, `pointerenter`,
+`pointerleave`, `pointerover`, `pointerout`, `pointercancel`,
+`lostpointercapture`, `gotpointercapture`), the mouse-flavoured half of that
+family (`mousemove`, `mouseover`, `mouseout`, `mouseenter`, `mouseleave`),
+and `auxclick`, defaults to `"any"` instead, since none of these represent
+an initiating press. `addViewportListener` is unaffected — it was never
+button-filtered.
+
+**Who needs to act.** Any consumer registering a DOM listener through
+`Event.addListener` / `addSubtreeListener` for a gesture that should react
+to every button (a custom drag source, dismissing an overlay on any press,
+a context-menu-style listener on a type outside the built-in `"any"` list)
+must add `{ button: "any", handler }`. A listener that only ever cared
+about a primary press needs no change.
+
+## `Event.addListener` / `addSubtreeListener` drop their 4th argument
+
+**What changed and why.** Both functions previously took an optional 4th
+positional `options` argument — e.g.
+`addSubtreeListener(component, type, handler, { passive: false })`. They
+now take either a bare listener, or a single registration object bundling
+`handler` with `passive` / `button` / `stop` / `prevent`:
+`addSubtreeListener(component, type, { passive: false, handler })`.
+
+**Who needs to act.** Any call site passing a 4th argument — it is now a
+compile error (too many arguments). Move the options into a registration
+object alongside `handler`, as above.
+
+## `Button`'s pressed state moved from native `:active` to a `.pressed` class
+
+**What changed and why.** `Button` painted its pressed treatment through the
+generated `:active` / `:hover:not(:active)` CSS rules. Those rules now key
+off a JS-managed `.pressed` class instead — `:active` matches whichever
+element received a `mousedown` regardless of which mouse button was
+pressed, and its clear timing relative to `pointerup`/`pointercancel`
+wasn't reliably raceable from JS. The pressed treatment now shows only for
+a primary-button press or a held Space key, matching this branch's
+primary-button-only default elsewhere; a right- or middle-click no longer
+shows it. Button now also consumes `pointerdown` / `pointerover` /
+`pointerout` on a primary press to track it, rather than leaving them
+unclaimed — no pointer capture is acquired, so dragging the pointer off the
+button before releasing still cancels the click, exactly as it did with
+native `:active`.
+
+**Who needs to act.** Any consumer CSS that overrides Button's generated
+`:active` / `:hover:not(:active)` rule selectors directly (rather than
+going through `setPressedX` / `setHoverX`) needs to retarget `.pressed` /
+`:hover:not(.pressed)`. A consumer relying on Button showing a pressed
+state for a non-primary click needs to build that separately — the
+built-in treatment no longer covers it. Button also now calls
+`preventDefault()` on a middle-button `mousedown` (`_onAuxMouseDown`),
+suppressing the browser's native autoscroll-icon default wherever a Button
+exists on the page. A consumer relying on middle-click autoscroll starting
+from a Button needs to build that separately. Pressing a pointer-opaque
+descendant of a Button (e.g. `SplitButton`'s chevron, or a
+`TabCloseButton` overlaid on a `TabButton`) now shows the containing
+Button's pressed treatment too, matching what native `:active` always did
+— no action needed, but consumer visual tests asserting the opposite need
+updating.
+
+## `Scrollbar`'s `touchstart` registration locks the type non-passive page-wide
+
+**What changed and why.** `Scrollbar` registers its `touchstart` listeners
+as `{ passive: false, prevent: true }` so drag/track gestures can suppress
+the browser's native touch scroll. `Event` installs exactly one
+window-level native listener per event type, shared by every registration
+of that type, so this isn't scoped to just the `Scrollbar` instance that
+triggered it: constructing ANY `Scrollbar` locks `"touchstart"` as
+`passive: false` for the WHOLE PAGE for the lifetime of the app.
+
+**Who needs to act.** Two consequences to be aware of:
+- Every `touchstart` listener on the page — not just Scrollbar's own —
+  now runs non-passive, which can cost a touch-scroll frame or two on
+  browsers that optimise passive listeners.
+- A bare, passive-default `touchstart` registration elsewhere in the app
+  now throws a passive-conflict error if it's registered after the app's
+  first `Scrollbar` is constructed, where it previously wouldn't have.
+  Any such consumer must register with `{ passive: false, ... }` (or avoid
+  relying on registration order) to match.

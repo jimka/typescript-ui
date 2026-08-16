@@ -24,6 +24,18 @@ horizontally-scrolled cells clipping at the vertical-scrollbar reservation
 boundary. Only a consumer reading the cover's raw DOM handle directly is
 affected.
 
+`Event.addListener` / `Event.addSubtreeListener` now default to firing only
+for a primary (left) button press, and drop the optional 4th positional
+`options` argument in favour of a single registration-object overload. See
+[Migration](/reference/migration/next) for both changes in full.
+
+### Button
+
+`Button`'s pressed state now shows only for a primary-button press or a
+held Space key, and is painted via a `.pressed` class instead of the
+generated `:active` CSS rule. See
+[Migration](/reference/migration/next) for the full breakdown.
+
 ## Changed
 
 ### Core
@@ -139,6 +151,24 @@ affected.
   shows a text-select cursor.** No consumer action is needed.
 
 ## Added
+
+### Core
+
+- **A DOM-routed listener registration can now set `button: "aux" | "any"`**
+  to opt out of the new primary-button-only default — see *Breaking
+  changes* above. Only a short list of press-initiating types (`mousedown`,
+  `mouseup`, `click`, `dblclick`, `pointerdown`, `pointerup`) defaults to
+  `"primary"` at all; every other type — `contextmenu`, the pointer
+  move/cancel/capture-loss family, the mouse-flavoured half of that family,
+  and `auxclick` — defaults to `"any"` on its own, since none of these
+  represent an initiating press.
+- **`ListenerOptions` gained `stop` / `prevent` fields** — an unconditional
+  floor applied regardless of what the listener returns, OR'd with its own
+  returned disposition. For a handler whose disposition never actually
+  varies by branch, this replaces a repeated `return { prevent: true }` (or
+  `{ stop: true }`) on every exit path with one declaration at registration
+  time. No consumer action is needed — every existing return-value listener
+  keeps working unchanged.
 
 ### Table
 

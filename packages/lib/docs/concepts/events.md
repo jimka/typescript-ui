@@ -74,7 +74,26 @@ Fires for events anywhere in the document, regardless of their target. Used inte
 
 Use this only when you genuinely need global event capture — for everything else, `addListener` or `addSubtreeListener` is more focused and easier to reason about.
 
-A viewport listener does not swallow the event: every registered component receives it, and it keeps propagating to the page — through to any `document`-level listener, such as your own global keyboard accelerator — unless a handler's returned disposition asks for a stop (see [Consuming an event](#consuming-an-event) below). Consume from your handler only when the component genuinely consumes the event (it acted on it and owns the interaction), not merely because it observed it.
+A viewport listener does not swallow the event: every registered component receives it, and it keeps propagating to the page — through to any `document`-level listener, such as your own global keyboard accelerator — unless a handler's returned disposition asks for a stop (see [Consuming an event](#consuming-an-event) below). Consume from your handler only when the component genuinely consumes the event (it acted on it and owns the interaction), not merely because it observed it. Unlike `addListener` / `addSubtreeListener` (below), a viewport listener is **not** button-filtered — it fires for every button on every registration.
+
+## Which mouse button fires a listener
+
+`addListener` and `addSubtreeListener` default to firing only for a **primary** (left) button press — a right- or middle-click mousedown/pointerdown on a leaf component's own listeners is silently ignored unless you opt in. Pass a registration object instead of a bare listener to change that:
+
+```typescript
+Event.addListener(component, 'pointerdown', {
+    button: 'aux',           // or 'any'
+    handler: (e: PointerEvent) => { /* … */ },
+});
+```
+
+| `button`      | Fires for                                                                 |
+| ------------- | -------------------------------------------------------------------------- |
+| `'primary'` (default) | Only a primary press, or an event with no `button` property at all (touch, hand-built fixtures). |
+| `'aux'`       | Only a non-primary press (right/middle/back/forward) — named after the DOM's `auxclick` event, which fires under this same condition. Never fires for touch. |
+| `'any'`       | Every button, regardless of state.                                        |
+
+Only a short list of press-initiating types defaults to `'primary'` at all: `mousedown`, `mouseup`, `click`, `dblclick`, `pointerdown`, `pointerup`. Every other type defaults to `'any'`, because it doesn't represent an initiating press — `contextmenu` (it's already the button-agnostic "open a menu" signal — right-click, a keyboard context-menu key, or a touch long-press), the pointer move/cancel/capture-loss family (`pointermove`, `pointerenter`, `pointerleave`, `pointerover`, `pointerout`, `pointercancel`, `lostpointercapture`, `gotpointercapture`), whose `button` the Pointer Events spec reports as `-1` ("no button change") rather than whichever button is actually held, the mouse-flavoured half of that same family (`mousemove`, `mouseover`, `mouseout`, `mouseenter`, `mouseleave`), and `auxclick`, which by definition never carries `button: 0` — a `'primary'` default would mean a bare registration on it could never fire. Set `button` explicitly on a registration to override the default either way. `click` is a special case beyond just defaulting to `'primary'`: the dispatcher gates it to the primary button unconditionally, regardless of this option, since it is the framework-wide activation event.
 
 ## Consuming an event
 
@@ -100,6 +119,19 @@ Event.addListener(button, 'keydown', (e: KeyboardEvent) => {
 ```
 
 `preventDefault()` is unaffected in every respect — call it directly, exactly as before; it never needed dispatcher help. A direct `stopPropagation()` call still halts native DOM propagation (it is the event's own method), but it no longer influences the dispatcher's ancestor walk — only a returned disposition does. Return a disposition instead of calling `stopPropagation()` whenever you want the walk itself to stop.
+
+### An unconditional floor: `stop` / `prevent` in the registration
+
+When a listener's disposition is the *same on every code path* — it always wants to `preventDefault()`, say — returning it from every branch is repetitive and easy to miss on a newly-added early return. Set `stop` and/or `prevent` directly on the registration instead; the dispatcher applies them unconditionally, OR'd together with whatever the listener itself returns:
+
+```typescript
+Event.addListener(dropZone, 'dragover', {
+    prevent: true,
+    handler: (e: DragEvent) => { highlight(); },
+});
+```
+
+This is a **floor, not an override** — it cannot be un-set by a listener returning `false`/nothing, so use it only when every path genuinely wants the same outcome. A listener whose disposition depends on runtime state (an early guard-clause return, a conditional check) must leave `stop`/`prevent` unset on the registration and keep returning its disposition instead — the two mechanisms compose (both fire when both trigger), but only the return value can vary per invocation.
 
 ## on / off / emit — framework custom events
 
@@ -201,21 +233,20 @@ Event.addListener(grid, 'wheel', (e: WheelEvent) => {
 });
 ```
 
-When a custom scroll surface needs to suppress the browser default (e.g. trapping wheel input on a JS-controlled grid), pass `{ passive: false }` as an extra options bag to `addListener` / `addSubtreeListener`:
+When a custom scroll surface needs to suppress the browser default (e.g. trapping wheel input on a JS-controlled grid), pass a registration object — `{ ...options, handler }` — instead of a bare listener, with `passive: false`:
 
 ```typescript
-Event.addSubtreeListener(
-    grid,
-    'wheel',
-    (e: WheelEvent) => {
-        e.preventDefault();    // ✅ now actually preventDefaults
+Event.addSubtreeListener(grid, 'wheel', {
+    passive: false,
+    handler: (e: WheelEvent): Event.ListenerResult => {
         customScroll(e.deltaY);
+
+        return { prevent: true };  // ✅ now actually preventDefaults
     },
-    { passive: false }
-);
+});
 ```
 
-The framework installs one window-level handler per event type, so the first registration for a type locks the passive flag for that type's lifetime. Subsequent registrations must agree or `addListener` / `addSubtreeListener` throws. The in-tree precedent is `VirtualScroller`, which is currently the only `passive: false` consumer.
+The framework installs one window-level handler per event type, so the first registration for a type locks the passive flag for that type's lifetime. Subsequent registrations must agree or `addListener` / `addSubtreeListener` throws. In-tree precedents include `VirtualScroller` and `DiagramView` (both `wheel`) and `Scrollbar` (`touchstart`) — grep the codebase for `passive: false` for the current full list.
 
 ## When to use which
 
