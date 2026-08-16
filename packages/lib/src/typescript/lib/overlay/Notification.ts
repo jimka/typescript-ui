@@ -5,6 +5,7 @@ import { Event } from "~/core/Event.js";
 import { LayerManager } from "~/core/LayerManager.js";
 import { Animation } from "~/core/Animation.js";
 import { Text } from "~/component/input/Text.js";
+import { SelectableText } from "~/component/input/SelectableText.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Button } from "~/component/button/Button.js";
 import { Position } from "~/primitive/Position.js";
@@ -192,15 +193,13 @@ export class Notification extends Component {
         this._badge.getAria().setHidden(true);
         this.addComponent(this._badge);
 
-        this._messageText = new Text(message);
+        this._messageText = new SelectableText(message);
         // Webkit-prefixed line clamp is now cross-browser (Chrome, Edge, Safari,
         // Firefox 68+). Clamped to two lines so a long message gets a trailing
         // ellipsis — the full text is reachable via double-click → detail dialog.
         this._messageText.setLineClamp(2);
         this._messageText.setWhiteSpace("normal");
         this._messageText.setWordBreak("break-word");
-        this._messageText.setUserSelect("text");
-        this._messageText.setCursor("text");
         this.addComponent(this._messageText);
 
         this._closeButton = new Button({ glyph: "xmark" });
@@ -509,13 +508,11 @@ export class Notification extends Component {
     static showDetail(message: string, type: NotificationType): void {
         Notification.pauseAll();
 
-        const content = new Text(message);
+        const content = new SelectableText(message);
         content.setAutoMeasure(false);
         content.setWhiteSpace("pre-wrap");
         content.setWordBreak("break-word");
         content.setPadding(new Insets(16, 16, 16, 16));
-        content.setUserSelect("text");
-        content.setCursor("text");
 
         const dialog = new _Dialog({
             title:            DETAIL_TITLE[type],

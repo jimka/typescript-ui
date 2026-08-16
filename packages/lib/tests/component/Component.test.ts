@@ -435,7 +435,10 @@ describe('Component — destructor disposes style rules', () => {
 
     it('evicts the component-scope rule from the style-rule cache and deletes it from the sink', () => {
         const sink = DOM.sink as RecordingDOMSink;
-        const c    = new Component({});
+        // `backgroundColor` is a conditional declaration, never hoisted onto the
+        // class rule, so it is what gives this component a per-instance `#id`
+        // rule to dispose — a stock component now materialises none at all.
+        const c    = new Component({ backgroundColor: '#fff' });
         c.getElement(true);   // render -> materialises _styleRule
         const id = c.getId();
 
@@ -462,7 +465,9 @@ describe('Component — destructor disposes style rules', () => {
         const parent = new Component({});
         parent.getElement(true);
 
-        const child = new Component({});
+        // As above: the conditional `backgroundColor` declaration is what gives
+        // the child an `#id` rule for `disposeAllComponents` to evict.
+        const child = new Component({ backgroundColor: '#fff' });
         parent.addComponent(child);
         child.getElement(true);   // render -> materialises _styleRule
         const id = child.getId();

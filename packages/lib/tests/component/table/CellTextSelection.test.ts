@@ -9,8 +9,10 @@
 //
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
+import { Component } from '~/core/Component';
+import { _ruleCacheHas } from '~/core/StyleTarget';
 import { StringRenderer } from '~/component/table/cell/renderer/String';
 import { NumberRenderer } from '~/component/table/cell/renderer/Number';
 import { DateRenderer } from '~/component/table/cell/renderer/Date';
@@ -149,5 +151,98 @@ describe('interactive chrome keeps its unselectable default', () => {
         const tab = new TabButton('Tab');
 
         expect((tab as any)._text.getUserSelect()).toBe('none');
+    });
+});
+
+// The point of routing these values through class defaults rather than
+// per-instance setter calls: `user-select` / `cursor` are class-uniform, so
+// they belong on the shared `.StringRenderer` / `.SelectableText` rule, not
+// re-materialised into every instance's own `#id` rule. The getter assertions
+// above would pass either way — these pin the tier the value actually lands on.
+describe('selectable text resolves through the class rule, not a per-instance rule', () => {
+    /**
+     * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+     * flattened into one key/value map. Only `setRuleStyles` ops whose selector
+     * (`args[0]`) matches are counted, so a class-rule write in the same window
+     * doesn't leak into an `#id`-rule assertion. Mirrors the helper in
+     * `tests/core/ClassStyleRules.test.ts`.
+     */
+    function declarationsDuring(
+        sink: RecordingDOMSink,
+        selector: string,
+        fn: () => void,
+    ): Record<string, string | null> {
+        const start = sink.writes.length;
+        fn();
+
+        const out: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+                continue;
+            }
+
+            const styles = w.args[1] as Record<string, string | null>;
+            for (const key of Object.keys(styles)) {
+                out[key] = styles[key];
+            }
+        }
+
+        return out;
+    }
+
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: Component): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    it('a second StringRenderer writes no per-instance declarations at all', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+
+        // Render one instance first, so the `.StringRenderer` class rule's own
+        // creation sits outside the measured window.
+        new StringRenderer().getElement(true);
+
+        const r    = new StringRenderer();
+        const text = r.getText();
+
+        // The child's first render happens inside the parent's, so one window
+        // covers both. The child's declarations double as the positive control
+        // that this window and these selectors are live — without it, a
+        // mis-built selector would make every absence assertion below pass
+        // vacuously.
+        let textDeclarations: Record<string, string | null> = {};
+        const declarations = declarationsDuring(sink, idSelector(r), () => {
+            textDeclarations = declarationsDuring(sink, idSelector(text), () => r.getElement(true));
+        });
+
+        expect(Object.keys(textDeclarations).length).toBeGreaterThan(0);
+
+        // The renderer diverges from its class bag in nothing — `cursor` and
+        // `user-select` now resolve through `.StringRenderer` — so it
+        // materialises no `#id` rule whatsoever.
+        expect(declarations.userSelect).toBeUndefined();
+        expect(declarations.cursor).toBeUndefined();
+        expect(Object.keys(declarations)).toEqual([]);
+        expect(_ruleCacheHas('.StringRenderer')).toBe(true);
+    });
+
+    it("the renderer's SelectableText child writes its font block but neither userSelect nor cursor", () => {
+        const sink = DOM.sink as RecordingDOMSink;
+
+        new StringRenderer().getElement(true);
+
+        const r    = new StringRenderer();
+        const text = r.getText();
+
+        const declarations = declarationsDuring(sink, idSelector(text), () => r.getElement(true));
+
+        // Positive control, and the reason this is NOT an assertion that the
+        // `#id` rule is absent: `Text.applyStyle` writes its font block into
+        // that rule unconditionally, so the rule exists either way — only
+        // these two keys moved to the shared `.SelectableText` tier.
+        expect(declarations.fontFamily).toBeDefined();
+        expect(declarations.userSelect).toBeUndefined();
+        expect(declarations.cursor).toBeUndefined();
+        expect(_ruleCacheHas('.SelectableText')).toBe(true);
     });
 });

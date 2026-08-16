@@ -441,6 +441,15 @@ interface PendingCodeUpgrade extends CodeUpgradeIdentity {
     ) => CodeEditor;
 }
 
+// Rendered prose is read-only content the reader copies (a code sample, an
+// error message, a changelog entry), not interactive UI chrome, so it opts out
+// of the framework's unselectable default and shows a text cursor. `Markdown`'s
+// children are raw DOM nodes rather than `Component`s, so they carry no
+// `user-select` or `cursor` of their own and inherit both from the root. As
+// class defaults these land on the shared `.Markdown` rule instead of every
+// instance's own `#id` rule.
+const _defaultMarkdownOptions: Partial<MarkdownOptions> = { userSelect: "text", cursor: "text" };
+
 /**
  * A display component that renders a Markdown source string as a live DOM
  * subtree.
@@ -581,9 +590,10 @@ class Markdown extends Component<MarkdownOptions> {
      *
      * @param markdown - The Markdown source to render (optional; defaults to "").
      * @param options - Optional component options bag.
+     * @param subclassDefaults - Optional subclass defaults bag.
      */
-    constructor(markdown?: string, options?: MarkdownOptions) {
-        super(options);
+    constructor(markdown?: string, options?: MarkdownOptions, subclassDefaults?: Partial<MarkdownOptions>) {
+        super(options, { ..._defaultMarkdownOptions, ...(subclassDefaults ?? {}) });
 
         // Positional argument: cache it only when the caller didn't also pass
         // `options.markdown` (which the super-time cascade already stored).
@@ -598,16 +608,6 @@ class Markdown extends Component<MarkdownOptions> {
         // its own `white-space: pre` + self-scroll from the `pre` class rule.
         this.setWhiteSpace("normal");
         this.setElementCSSRule("overflowWrap", "break-word");
-
-        // Rendered prose is read-only content the reader copies (a code
-        // sample, an error message, a changelog entry), not interactive UI
-        // chrome. `Markdown`'s children are raw DOM nodes rather than
-        // `Component`s, so they carry no `user-select` of their own and
-        // inherit this value.
-        this.setUserSelect("text");
-        // Same reasoning as the user-select opt-in above: the children are
-        // raw DOM, so they inherit the cursor from the root too.
-        this.setCursor("text");
 
         // Prose reads continuously, unlike the framework's UI controls (tuned
         // for scanned single-line text), so it wants looser leading. Inherits

@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
+import { ComponentOptions } from "~/core/Component.js";
 import { Text } from "~/component/input/Text.js";
+import { SelectableText } from "~/component/input/SelectableText.js";
 import { normalizeComboOptions } from "~/component/table/ColumnConfig.js";
 import type { ComboOption } from "~/component/table/ColumnConfig.js";
 import { callable } from "~/core/Callable.js";
+
+const _defaultComboRendererOptions: Partial<ComponentOptions> = { cursor: "text", userSelect: "text" };
 
 /**
  * A read-only renderer for constrained-choice (combo-box) cell values.
@@ -21,7 +25,7 @@ import { callable } from "~/core/Callable.js";
  */
 class ComboRenderer extends CellRenderer<String | null> {
 
-    private _text:    Text                = new Text();
+    private _text:    Text                = new SelectableText();
     private _map:     Map<string, string> = new Map();
     private _value:   String | null       = null;
     private _display: string              = "";
@@ -32,7 +36,7 @@ class ComboRenderer extends CellRenderer<String | null> {
      *   build the value-to-label lookup the renderer displays.
      */
     constructor(optionList: Array<ComboOption | string>) {
-        super();
+        super(_defaultComboRendererOptions);
 
         for (const option of normalizeComboOptions(optionList)) {
             this._map.set(option.value, option.label);
@@ -42,10 +46,6 @@ class ComboRenderer extends CellRenderer<String | null> {
         this._text.setPointerEvents("none");
         this._text.setAutoMeasure(false);
         this.addComponent(this._text);
-
-        this.setUserSelect("text");
-        this._text.setUserSelect("text");
-        this.setCursor("text");
     }
 
     /**

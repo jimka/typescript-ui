@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
+import { ComponentOptions } from "~/core/Component.js";
 import { Text } from "~/component/input/Text.js";
+import { SelectableText } from "~/component/input/SelectableText.js";
 import { callable } from "~/core/Callable.js";
+
+const _defaultStringRendererOptions: Partial<ComponentOptions> = { cursor: "text", userSelect: "text" };
 
 /**
  * A read-only renderer for string cell values.
@@ -15,12 +19,12 @@ import { callable } from "~/core/Callable.js";
  */
 class StringRenderer extends CellRenderer<String | null> {
 
-    private _text:    Text          = new Text();
+    private _text:    Text          = new SelectableText();
     private _value:   String | null = null;
     private _display: string        = "";
 
     constructor() {
-        super();
+        super(_defaultStringRendererOptions);
 
         this._text.setText("");
         this._text.setPointerEvents("none");
@@ -28,16 +32,12 @@ class StringRenderer extends CellRenderer<String | null> {
         this.addComponent(this._text);
 
         // The renderer is the element the pointer hits (the Text stays
-        // pointer-events: none), so it must opt in for a selection to be
-        // able to start here. The Text needs its own opt-in too — its
-        // element carries the framework's user-select: none in its own
-        // right, and a descendant's declaration is not inherited from an
-        // ancestor's.
-        this.setUserSelect("text");
-        this._text.setUserSelect("text");
-        // Mirrors the user-select opt-in above: the renderer is the element the
-        // pointer hits, so its own cursor is what the browser shows on hover.
-        this.setCursor("text");
+        // pointer-events: none), so its own user-select/cursor come from
+        // _defaultStringRendererOptions class defaults. The Text needs its own
+        // opt-in too — its element carries the framework's user-select: none
+        // in its own right, and a descendant's declaration is not inherited
+        // from an ancestor's. Being a SelectableText, it now gets those values
+        // from its own class defaults rather than imperative calls.
     }
 
     /**

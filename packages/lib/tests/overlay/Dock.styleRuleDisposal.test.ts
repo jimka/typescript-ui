@@ -90,7 +90,11 @@ describe('Dock — empty-state drop overlay style-rule disposal', () => {
         // The region belongs to the caller, not to the dock, so it is built
         // outside the measured window — its own rule is expected to outlive
         // the dock and must not be counted as a leak.
-        const region = new Component({ preferredSize: { width: 100, height: 100 } });
+        // `backgroundColor` is a conditional declaration, never hoisted onto the
+        // class rule, so it is what gives the region a per-instance `#id` rule —
+        // a stock component now materialises none, and the survival assertion
+        // below reads the rule keys.
+        const region = new Component({ preferredSize: { width: 100, height: 100 }, backgroundColor: '#fff' });
 
         region.getElement(true);
 

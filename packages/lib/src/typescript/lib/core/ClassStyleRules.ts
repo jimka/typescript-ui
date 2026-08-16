@@ -20,22 +20,25 @@ const FRAMEWORK_SELECTOR = ":where(." + COMPONENT_CLASS + ")";
 
 /**
  * The class-default fields a rule body is derived from — the subset of
- * `Component._defaultOptions` that feeds the fourteen hoistable
+ * `Component._defaultOptions` that feeds the fifteen hoistable
  * declarations. Typed structurally rather than as `ComponentOptions` so this
  * module does not import from `core/Component.ts` and no import cycle forms.
  */
 interface ClassStyleDefaults {
-    visible?:   boolean | null;
-    displayed?: boolean;
-    minSize?:   { width: number; height: number } | null;
-    maxSize?:   { width: number; height: number } | null;
-    overflow?:  string | null;
-    cursor?:    string | null;
+    visible?:         boolean | null;
+    displayed?:       boolean;
+    minSize?:         { width: number; height: number } | null;
+    maxSize?:         { width: number; height: number } | null;
+    overflow?:        string | null;
+    cursor?:          string | null;
+    userSelect?:      string | null;
+    outline?:         string | null;
+    foregroundColor?: string | null;
 }
 
-type ClassStyleBag = Readonly<Record<string, string>>;
+type ClassStyleBag = Readonly<Record<string, string | null>>;
 
-// The fourteen hoistable keys at the value Component's own defaults resolve to.
+// The fifteen hoistable keys at the value Component's own defaults resolve to.
 const FRAMEWORK_DECLARATIONS: ClassStyleBag = Object.freeze({
     boxSizing:  "border-box",
     position:   Position.ABSOLUTE,
@@ -44,6 +47,7 @@ const FRAMEWORK_DECLARATIONS: ClassStyleBag = Object.freeze({
     whiteSpace: "nowrap",
     userSelect: "none",
     cursor:     "default",
+    border:     null,
     margin:     "0px 0px 0px 0px",
     minWidth:   "0px",
     minHeight:  "0px",
@@ -74,23 +78,24 @@ function ensureFrameworkStyleRule(): void {
 }
 
 /**
- * The fourteen declarations an instance of this class produces from defaults
+ * The fifteen declarations an instance of this class produces from defaults
  * alone. A key the phase would *not* write gets the value that reproduces "no
  * declaration", so the framework rule's value is undone rather than inherited.
  */
-function resolveDeclarations(defaults: ClassStyleDefaults): Record<string, string> {
+function resolveDeclarations(defaults: ClassStyleDefaults): Record<string, string | null> {
     const minSize  = defaults.minSize  ?? null;
     const maxSize  = defaults.maxSize  ?? null;
     const overflow = defaults.overflow ?? null;
 
-    return {
+    const declarations: Record<string, string | null> = {
         boxSizing:  "border-box",
         position:   Position.ABSOLUTE,
         display:    (defaults.displayed ?? true) ? "block" : "none",
         visibility: (defaults.visible ?? null) === false ? "hidden" : "inherit",
         whiteSpace: "nowrap",
-        userSelect: "none",
+        userSelect: defaults.userSelect ?? "none",
         cursor:     defaults.cursor ?? "default",
+        border:     null,
         margin:     "0px 0px 0px 0px",
         minWidth:   minSize ? minSize.width  + "px" : "auto",
         minHeight:  minSize ? minSize.height + "px" : "auto",
@@ -99,12 +104,21 @@ function resolveDeclarations(defaults: ClassStyleDefaults): Record<string, strin
         overflowX:  overflow ?? "visible",
         overflowY:  overflow ?? "visible",
     };
+
+    // outline/color are conditional: most classes declare neither, and
+    // Component only ever writes them when non-null (see applyChromeStyles /
+    // applyBoxAndVisibilityStyles), so an absent key here must stay absent —
+    // never introduce a key with value `undefined`.
+    if (defaults.outline)         declarations.outline = defaults.outline;
+    if (defaults.foregroundColor) declarations.color   = defaults.foregroundColor;
+
+    return declarations;
 }
 
 /** The subset of `resolveDeclarations` that differs from the framework rule. */
-function classDeviations(defaults: ClassStyleDefaults): Record<string, string> {
+function classDeviations(defaults: ClassStyleDefaults): Record<string, string | null> {
     const resolved = resolveDeclarations(defaults);
-    const out: Record<string, string> = {};
+    const out: Record<string, string | null> = {};
 
     for (const key of Object.keys(resolved)) {
         if (resolved[key] !== FRAMEWORK_DECLARATIONS[key]) {

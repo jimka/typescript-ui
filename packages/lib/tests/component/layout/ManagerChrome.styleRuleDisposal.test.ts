@@ -77,8 +77,12 @@ function renderedBorderPanel(): Panel {
 function renderedAccordionPanel(): Panel {
     const panel = new Panel({ layoutManager: new Accordion() });
 
-    panel.addComponent(new Component({ preferredSize: { width: 50, height: 50 } }), new AccordionConstraints('A', true));
-    panel.addComponent(new Component({ preferredSize: { width: 50, height: 50 } }), new AccordionConstraints('B'));
+    // `backgroundColor` is a conditional declaration, never hoisted onto the
+    // class rule, so it is what gives each content child a per-instance `#id`
+    // rule — a stock component now materialises none at all, and B1-7's
+    // survives-the-swap assertion reads the rule keys.
+    panel.addComponent(new Component({ preferredSize: { width: 50, height: 50 }, backgroundColor: '#fff' }), new AccordionConstraints('A', true));
+    panel.addComponent(new Component({ preferredSize: { width: 50, height: 50 }, backgroundColor: '#fff' }), new AccordionConstraints('B'));
 
     panel.getElement(true);
     panel.setWidth(300);

@@ -118,13 +118,13 @@ class HeaderCell extends DefaultCell {
 
         // A column title is chrome, not data, so it stays unselectable even
         // though StringRenderer (which DefaultCell built this cell's
-        // renderer from) now opts in.
+        // renderer from) now opts in via class defaults.
         renderer.setUserSelect("none");
         renderer.getText().setUserSelect("none");
-        // StringRenderer's constructor now sets cursor: "text" unconditionally
-        // (it does not know it is being reused as a header renderer here), so
-        // this restates the framework default the same way the user-select
-        // opt-out above does.
+        // StringRenderer's constructor now sets cursor: 'text' via its class
+        // defaults (_defaultStringRendererOptions), so this overrides it back
+        // to the framework default via _options, the same pattern as the
+        // user-select opt-out above.
         renderer.setCursor("default");
 
         // DefaultCell's `(tag?: string)` super-signature cannot carry the

@@ -52,6 +52,8 @@ import { FloatingPanel } from '~/component/container/FloatingPanel';
 import { MarkdownMinimap } from '~/component/display/MarkdownMinimap';
 import { MarkdownViewer } from '~/component/display/MarkdownViewer';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
+import { SelectableText } from '~/component/input/SelectableText';
+import { StringCell } from '~/component/table/cell/String';
 import { Canvas, CanvasOptions } from '~/component/display/Canvas';
 import { WebGLCanvas, WebGLCanvasOptions } from '~/component/display/WebGLCanvas';
 import { Insets } from '~/primitive/Insets';
@@ -121,7 +123,7 @@ describe('default options as pure fallback', () => {
 
     it('does not dispatch class defaults into the _options bag', () => {
         const c = new Component({}) as any;
-        for (const key of ['cursor', 'padding', 'insets', 'maxSize', 'minSize',
+        for (const key of ['cursor', 'userSelect', 'padding', 'insets', 'maxSize', 'minSize',
                            'zIndex', 'borderRadius', 'shadow', 'pointerEvents',
                            'writingMode', 'layoutManager']) {
             expect(c._options[key], `_options.${key}`).toBeUndefined();
@@ -135,6 +137,7 @@ describe('default options as pure fallback', () => {
     it('resolves base-class defaults through the getters', () => {
         const c = new Component({});
         expect(c.getCursor()).toBe('default');
+        expect(c.getUserSelect()).toBe('none');
         expect(c.getOverflowX()).toBe('hidden');
         expect(c.getOverflowY()).toBe('hidden');
         expect(c.isDisplayed()).toBe(true);
@@ -260,6 +263,7 @@ const sizeTuple   = (s: Size | null)   => s && [s.width, s.height];
 
 const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expected: unknown }> = [
     { label: 'Component cursor',             resolve: () => new Component({}).getCursor(),                              expected: 'default' },
+    { label: 'Component userSelect',         resolve: () => new Component({}).getUserSelect(),                          expected: 'none' },
     { label: 'Component overflow',           resolve: () => new Component({}).getOverflowX(),                           expected: 'hidden' },
     { label: 'TextField padding',            resolve: () => insetsTuple(new TextField().getPadding()),                  expected: [3, 3, 3, 3] },
     { label: 'ToolBar orientation',          resolve: () => new ToolBar().getOrientation(),                             expected: 'horizontal' },
@@ -393,6 +397,12 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'Slider cursor',                resolve: () => new Slider().getCursor(),                                   expected: 'pointer' },
     { label: 'AbstractChart preferredSize (via LineChart)', resolve: () => new LineChart({}).getPreferredSizeConstraint(), expected: { width: 400, height: 300 } },
     { label: 'AbstractChart minSize (via LineChart)', resolve: () => new LineChart({}).getMinSizeConstraint(),          expected: { width: 80, height: 60 } },
+    { label: 'StringCell foregroundColor',   resolve: () => new StringCell().getForegroundColor(),                       expected: 'var(--ts-ui-table-cell-color, inherit)' },
+    { label: 'SelectableText userSelect',    resolve: () => new SelectableText().getUserSelect(),                       expected: 'text' },
+    { label: 'SelectableText cursor',        resolve: () => new SelectableText().getCursor(),                           expected: 'text' },
+    { label: 'MarkdownEditor surface userSelect', resolve: () => (new MarkdownEditor() as any)._wysiwyg.getUserSelect(), expected: 'text' },
+    { label: 'MarkdownEditor surface cursor', resolve: () => (new MarkdownEditor() as any)._wysiwyg.getCursor(),          expected: 'text' },
+    { label: 'Link userSelect',              resolve: () => new Link().getUserSelect(),                                 expected: 'text' },
 ];
 
 describe('default-resolution registry: a bare construction resolves every class default', () => {
@@ -641,6 +651,13 @@ describe('clear*() suppresses a class-level default (does not revert to it)', ()
         expect(c.getCursor()).toBe('default');
         c.clearCursor();
         expect(c.getCursor()).toBeNull();
+    });
+
+    it('clearUserSelect suppresses the base userSelect default even when never set', () => {
+        const c = new Component({});
+        expect(c.getUserSelect()).toBe('none');
+        c.clearUserSelect();
+        expect(c.getUserSelect()).toBeNull();
     });
 
     it('a never-cleared component still resolves its default, explicit value wins', () => {

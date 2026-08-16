@@ -121,7 +121,11 @@ describe('Component.dispose()', () => {
         // The case `removeComponent` cannot reach: the owner never put this
         // component into its own `_components` list.
         class Owner extends Component {
-            private readonly held: Component = new Component({});
+            // `backgroundColor` is a conditional declaration, never hoisted onto
+            // the class rule, so it is what gives this component a per-instance
+            // `#id` rule to leak in the first place — a stock component now
+            // materialises none at all.
+            private readonly held: Component = new Component({ backgroundColor: '#fff' });
 
             renderHeld(): void {
                 this.held.getElement(true);
