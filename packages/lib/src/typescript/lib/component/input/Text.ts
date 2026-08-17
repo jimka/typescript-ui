@@ -6,6 +6,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Util } from "~/core/Util.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link Text}.
@@ -52,9 +53,10 @@ export interface TextOptions extends ComponentOptions {
  *
  * `fontFamily` is a pure getter-fallback despite living in this bag:
  * `_defaultOptions.fontFamily` is consulted by `getFontFamily()`, but is
- * never dispatched through `setFontFamily(...)` — doing so would write the
- * literal `var(--ts-ui-font-family, …)` onto every Text's CSS rule, blocking
- * a parent's `font-family` override from cascading through.
+ * never dispatched through `setFontFamily(...)` — this is what lets an
+ * instance with no override skip its `#id` write entirely and resolve
+ * `font-family` from `.Text`'s class rule instead, which a higher- or
+ * equal-specificity consumer selector can still beat.
  */
 const _defaultTextOptions: Partial<TextOptions> = {
     tag:            "span",
@@ -83,6 +85,11 @@ const TEXT_AUTO_MIN_WIDTH_CAP_PX = 100;
 // absent. A control overrides this with an explicit px via `setLineHeight`.
 const ADDITIVE_LINE_HEIGHT_RULE = "calc(1em + var(--ts-ui-line-padding, 2px))";
 
+// Default theme-tracking font-size rule, bound to the base `--ts-ui-font-size`
+// var with a 14px fallback. Shared between `_fontSizeCSSRule`'s field
+// initializer and `getClassStyleDefaults()` so the two can never drift apart.
+const DEFAULT_FONT_SIZE_RULE = "var(--ts-ui-font-size, 14px)";
+
 /**
  * A text-displaying component with comprehensive font and layout controls.
  *
@@ -95,7 +102,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
     private _hasExplicitPreferredSize: boolean = false;
     private _fontSizeCSSVar : string | null = "--ts-ui-font-size";
-    private _fontSizeCSSRule: string | null = "var(--ts-ui-font-size, 14px)";
+    private _fontSizeCSSRule: string | null = DEFAULT_FONT_SIZE_RULE;
     private _lineHeightCSSVar : string | null = null;
     private _lineHeightCSSRule: string | null = ADDITIVE_LINE_HEIGHT_RULE;
     private _measuredBaseline: number | null = null;
@@ -121,16 +128,23 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             { ..._defaultTextOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
         );
 
-        // The cascade-driven `setFontSize(14)` clobbers `fontSizeCSSVar` and
-        // `fontSizeCSSRule` to null, but Text's field initializers (which run
-        // after super returns, i.e. right above this line) restore both to
-        // their var-binding values — so theme reactivity is preserved by the
-        // DOM `var(...)` binding even though the cascade temporarily writes a
-        // literal. `getFontSize()` / `getLineHeight()` re-resolve those bound
-        // vars live (through `Util`'s theme-invalidated metrics cache) rather
-        // than caching a value that would go stale on a theme change.
         this.clearInsets();
-        this.setElementCSSRule("lineHeight", this._lineHeightCSSRule);
+
+        // `fontSize`/`lineHeight` are dispatched here, in the constructor
+        // body, rather than from `applyOptions` (see the comment there) —
+        // this class's own field initializers just above (`_fontSizeCSSVar`/
+        // `_fontSizeCSSRule`/`_lineHeightCSSVar`/`_lineHeightCSSRule`) have
+        // already run by this point, so `setFontSize`/`setLineHeight` writing
+        // those fields here is the value that sticks, per
+        // CODE_CONVENTIONS.md's "Fields written during the `super()` cascade
+        // must use `declare`" — deferred-dispatch half of that rule.
+        if (options?.fontSize !== undefined) {
+            this.setFontSize(options.fontSize);
+        }
+
+        if (options?.lineHeight !== undefined) {
+            this.setLineHeight(options.lineHeight);
+        }
 
         // Positional `text` constructor argument: write to the bag only when
         // the caller didn't also pass `options.text` (which would have been
@@ -159,6 +173,16 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         // the 14px size, a subclass's bold weight) are resolved lazily by the
         // font getters' `_defaultOptions` fallback, which `applyStyle` re-reads
         // at render — so they never enter `_options`.
+        //
+        // `fontSize`/`lineHeight` are deliberately NOT dispatched here, unlike
+        // every other option in this method — see CODE_CONVENTIONS.md's
+        // "Fields written during the `super()` cascade must use `declare`".
+        // `setFontSize`/`setLineHeight` write `_fontSizeCSSVar`/
+        // `_fontSizeCSSRule`/`_lineHeightCSSVar`/`_lineHeightCSSRule`, which
+        // this class's own field initializers (real var-binding defaults, not
+        // `declare`-able) would silently revert if the setter ran during this
+        // cascade. The constructor body dispatches both, once, after those
+        // field initializers have already run.
         if (options.text !== undefined) {
             this.setText(options.text);
         }
@@ -173,10 +197,6 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
         if (options.fontFamily !== undefined) {
             this.setFontFamily(options.fontFamily);
-        }
-
-        if (options.fontSize !== undefined) {
-            this.setFontSize(options.fontSize);
         }
 
         if (options.fontWeight !== undefined) {
@@ -201,10 +221,6 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
         if (options.fontSizeAdjust !== undefined) {
             this.setFontSizeAdjust(options.fontSizeAdjust);
-        }
-
-        if (options.lineHeight !== undefined) {
-            this.setLineHeight(options.lineHeight);
         }
 
         if (options.textOverflow !== undefined) {
@@ -1092,9 +1108,18 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
-     * Removes the text-overflow CSS property from the component's CSS rule.
+     * Clears a per-instance `text-overflow` override, reverting to the value
+     * {@link getTextOverflow} derives from {@link isTruncate}.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks Writes that resolved value (substituting the CSS initial
+     * value `"clip"` for `null`) rather than removing the declaration —
+     * `.Text`'s class rule carries a non-null `text-overflow: ellipsis` for
+     * every current class (see `applyStyle`'s own `textOverflow` write), so
+     * a removed `#id` declaration would stop competing with the class rule
+     * rather than beating it, silently resurfacing the class default instead
+     * of the value this call means to establish.
      */
     clearTextOverflow(): this {
         if (this._options.textOverflow === undefined) {
@@ -1102,7 +1127,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         }
 
         this._options.textOverflow = undefined;
-        this.setElementCSSRule("textOverflow", null);
+        this.setElementCSSRule("textOverflow", this.getTextOverflow() ?? "clip");
 
         return this;
     }
@@ -1219,6 +1244,13 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * Removes the line-clamp styling previously applied by {@link setLineClamp}.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks `textOverflow` writes the resolved value (substituting `"clip"`
+     * for `null`) rather than `null`, the same cascade hazard {@link clearTextOverflow}
+     * and `applyStyle`'s own `textOverflow` write guard against: `.Text`'s
+     * class rule carries a non-null `text-overflow: ellipsis`, so removing the
+     * `#id` declaration would stop competing with the class rule rather than
+     * beating it.
      */
     clearLineClamp(): this {
         if (this._lineClamp === null) {
@@ -1231,10 +1263,49 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             webkitBoxOrient: null,
             webkitLineClamp: null,
             overflow: null,
-            textOverflow: null
+            textOverflow: this.getTextOverflow() ?? "clip"
         });
 
         return this;
+    }
+
+    /**
+     * Supplies the class-level font/text defaults `ClassStyleRules.ts` cannot
+     * see in `_defaultOptions`: `fontSize`/`lineHeight` resolve through private
+     * derived fields (`_fontSizeCSSRule`, `_lineHeightCSSRule`), not the raw
+     * numeric options, and `textOverflow` is pre-resolved from `truncate` here
+     * rather than inside the generic resolver. Every value below is the literal
+     * a *fresh, non-customized* instance of this concrete class would produce —
+     * verified true for every current Text-family class (Link, Label, Legend),
+     * none of which touch these fields in their own defaults.
+     */
+    protected getClassStyleDefaults(): ClassStyleDefaults {
+        return {
+            ...super.getClassStyleDefaults(),
+            font: {
+                fontFamily:     this._defaultOptions.fontFamily     ?? null,
+                fontKerning:    this._defaultOptions.fontKerning    ?? null,
+                fontSize:       DEFAULT_FONT_SIZE_RULE,
+                fontSizeAdjust: this._defaultOptions.fontSizeAdjust ?? null,
+                fontStretch:    this._defaultOptions.fontStretch    ?? null,
+                fontStyle:      this._defaultOptions.fontStyle      ?? null,
+                fontVariant:    this._defaultOptions.fontVariant    ?? null,
+                fontWeight:     this._defaultOptions.fontWeight     ?? null,
+                textAlign:      this._defaultOptions.textAlign      ?? null,
+                textShadow:     this._defaultOptions.textShadow     ?? null,
+                lineHeight:     ADDITIVE_LINE_HEIGHT_RULE,
+                textOverflow:   (this._defaultOptions.truncate ?? true) ? "ellipsis" : null,
+            },
+        };
+    }
+
+    /** Writes one font/text declaration only when it has a value — mirrors the
+     *  `if (x) { this.writeRuleDeclaration(...) }` shape every Component phase
+     *  uses for an optional property (see applyChromeStyles's outline/color). */
+    private writeFontDeclaration(key: string, value: string | null): void {
+        if (value) {
+            this.writeRuleDeclaration(key, value);
+        }
     }
 
     /**
@@ -1248,26 +1319,49 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         const fontSize   = this.getFontSize();
         const lineHeight = this.getLineHeight();
 
-        this.setElementCSSRules({
-            fontFamily:     this.getFontFamily()    ?? '',
-            textAlign:      this.getTextAlign()     ?? '',
-            textShadow:     this.getTextShadow()    ?? '',
-            fontKerning:    this.getFontKerning()   ?? '',
-            fontSize:       this._fontSizeCSSRule    ?? (fontSize !== null ? `${fontSize}px` : ''),
-            fontSizeAdjust: this.getFontSizeAdjust() ?? '',
-            fontStretch:    this.getFontStretch()   ?? '',
-            fontStyle:      this.getFontStyle()     ?? '',
-            fontVariant:    this.getFontVariant()   ?? '',
-            fontWeight:     this.getFontWeight()    ?? '',
-            lineHeight:     this._lineHeightCSSRule  ?? (lineHeight !== null ? `${lineHeight}px` : ''),
-            // `textOverflow` has no render-time recompute anywhere else
-            // (unlike `whiteSpace`/`overflow`, `truncate`'s other two
-            // properties, which are covered by Component's own field-backed
-            // phases) — folding it in here matches how every property above
-            // is re-derived from a getter rather than left to whatever an
-            // imperative setter last wrote.
-            textOverflow:   this.getTextOverflow()  ?? '',
-        });
+        this.writeFontDeclaration("fontFamily",     this.getFontFamily());
+        this.writeFontDeclaration("textAlign",      this.getTextAlign());
+        this.writeFontDeclaration("textShadow",     this.getTextShadow());
+        this.writeFontDeclaration("fontKerning",    this.getFontKerning());
+        this.writeFontDeclaration("fontSize",       this._fontSizeCSSRule   ?? (fontSize !== null ? `${fontSize}px` : null));
+        this.writeFontDeclaration("fontSizeAdjust", this.getFontSizeAdjust());
+        this.writeFontDeclaration("fontStretch",    this.getFontStretch());
+        this.writeFontDeclaration("fontStyle",      this.getFontStyle());
+        this.writeFontDeclaration("fontVariant",    this.getFontVariant());
+        this.writeFontDeclaration("fontWeight",     this.getFontWeight());
+        this.writeFontDeclaration("lineHeight",     this._lineHeightCSSRule ?? (lineHeight !== null ? `${lineHeight}px` : null));
+        // `textOverflow` has no render-time recompute anywhere else
+        // (unlike `whiteSpace`/`overflow`, `truncate`'s other two
+        // properties, which are covered by Component's own field-backed
+        // phases) — folding it in here matches how every property above
+        // is re-derived from a getter rather than left to whatever an
+        // imperative setter last wrote.
+        //
+        // Unlike the other eleven, this one bypasses `writeFontDeclaration`'s
+        // truthy guard and calls `writeRuleDeclaration` directly, substituting
+        // the CSS initial value `"clip"` for a `null` `getTextOverflow()`
+        // (`truncate: false`) rather than passing `null` straight through.
+        // `writeRuleDeclaration(key, null)` *removes* the `#id` declaration
+        // (see `DOM.ts`'s `writeDeclaration`) rather than asserting one — with
+        // `.Text`'s class rule carrying a non-null `textOverflow: "ellipsis"`
+        // (every current class defaults `truncate: true`), removing #id's
+        // declaration does not beat the class rule's, it just stops
+        // competing with it, so the cascade would still resolve to
+        // "ellipsis". Writing the property's own initial value instead is an
+        // actual, higher-specificity override that reads as "no ellipsis" —
+        // the same outcome `getTextOverflow() === null` represents — without
+        // relying on `overflow: visible` (which `setTruncate(false)` also
+        // sets, and which happens to suppress ellipsis rendering regardless
+        // of `text-overflow`'s value) to paper over the wrong CSS.
+        const textOverflow = this.getTextOverflow();
+        this.writeRuleDeclaration("textOverflow", textOverflow ?? "clip");
+
+        // `writeRuleDeclaration` only queues; `super.applyStyle` already
+        // flushed once (`materialiseStyleRule` at the end of its own body).
+        // A second flush here drains what this method just queued — skipped
+        // automatically when nothing diverged (see `materialiseStyleRule`'s
+        // own early return).
+        this.materialiseStyleRule();
 
         return this;
     }

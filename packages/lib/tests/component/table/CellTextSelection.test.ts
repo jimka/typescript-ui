@@ -226,7 +226,7 @@ describe('selectable text resolves through the class rule, not a per-instance ru
         expect(_ruleCacheHas('.StringRenderer')).toBe(true);
     });
 
-    it("the renderer's SelectableText child writes its font block but neither userSelect nor cursor", () => {
+    it("the renderer's SelectableText child skips its font block along with userSelect and cursor, keeping only textOverflow", () => {
         const sink = DOM.sink as RecordingDOMSink;
 
         new StringRenderer().getElement(true);
@@ -237,10 +237,16 @@ describe('selectable text resolves through the class rule, not a per-instance ru
         const declarations = declarationsDuring(sink, idSelector(text), () => r.getElement(true));
 
         // Positive control, and the reason this is NOT an assertion that the
-        // `#id` rule is absent: `Text.applyStyle` writes its font block into
-        // that rule unconditionally, so the rule exists either way — only
-        // these two keys moved to the shared `.SelectableText` tier.
-        expect(declarations.fontFamily).toBeDefined();
+        // `#id` rule is absent: `setTruncate` is unconditionally dispatched
+        // from `Text`'s constructor (needed so `whiteSpace`/`overflow`, which
+        // have no render-time fallback, are always set), and that dispatch
+        // pre-queues `textOverflow`'s write before the class-rule comparison
+        // ever runs — see plans/implemented/text-applystyle-class-hoisting.md's
+        // Implementation Notes. Every other font/text declaration, plus
+        // `userSelect`/`cursor`, now resolves through the shared
+        // `.SelectableText` tier instead.
+        expect(declarations.textOverflow).toBe('ellipsis');
+        expect(declarations.fontFamily).toBeUndefined();
         expect(declarations.userSelect).toBeUndefined();
         expect(declarations.cursor).toBeUndefined();
         expect(_ruleCacheHas('.SelectableText')).toBe(true);

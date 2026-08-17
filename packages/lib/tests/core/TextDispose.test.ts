@@ -57,7 +57,13 @@ describe('Text — theme subscription released on dispose', () => {
         // is permanent, module-scoped state, created once per process and
         // never disposed — excluded here as not a leak, the same way
         // ComponentDispose.test.ts and AbstractWindow.styleRuleDisposal.test.ts do.
-        const leaked = _ruleCacheKeys().filter((key) => !before.has(key) && key !== ':where(.ts-ui-component)');
+        // `.Text` is excluded for the same reason, new as of
+        // plans/implemented/text-applystyle-class-hoisting.md: with the twelve
+        // font/text declarations now hoisted, `Text` has its first class-level
+        // deviation from the framework rule, so its shared `.Text` class rule
+        // is created on this file's first rendered `Text` — permanent,
+        // class-scoped state, not a per-instance leak.
+        const leaked = _ruleCacheKeys().filter((key) => !before.has(key) && key !== ':where(.ts-ui-component)' && key !== '.Text');
         expect(leaked).toEqual([]);
     });
 

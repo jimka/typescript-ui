@@ -30,6 +30,17 @@ page resets to empty.
   Raise the selector's specificity, or target the component's id, if a
   consumer rule stops applying. Every per-instance and class-level override
   set through the framework's own setters behaves exactly as before.
+- **[`Text`](/api/component/input/classes/Text)'s font/text declarations
+  (`font-family`, `text-align`, `font-weight`, and most of the rest of the
+  twelve `applyStyle` writes) now join the hoisted style declarations too.**
+  A `Text` (or `Link`/`Label`/`Legend`/`SelectableText`) instance with no
+  per-instance font override no longer writes eleven of the twelve to its
+  own `#id` rule; it shares its concrete class's `.Text`/`.Link`/`.Label`/
+  `.Legend`/`.SelectableText` rule instead (`text-overflow` is the one
+  exception — it keeps writing per-instance for now). As with the note
+  above, a consumer stylesheet targeting one of these classes now ties on
+  specificity with the generated class rule rather than always losing to the
+  framework's per-instance rule, for every declaration but that one.
 - **A stock component now materialises no per-instance CSS rule at all on
   first render.** Previously `border: null` was written unconditionally by
   every component without a border, which forced a rule for it. Nothing
@@ -83,6 +94,22 @@ page resets to empty.
   text-bearing cell renderers now use it.
 
 ## Fixed
+
+### Components
+
+- **A construction-time `fontSize`/`lineHeight` option on
+  [`Text`](/api/component/input/classes/Text) (and its subclasses) was
+  silently ignored in the rendered CSS** — a field-initializer ordering
+  quirk reverted the derived CSS rule back to the class default immediately
+  after the constructor's cascade set it. `getLineHeight()` still reported
+  the caller's value correctly despite the wrong rendered CSS;
+  `getFontSize()` was wrong in the same direction as the CSS, so this also
+  fixes a case where the measured size silently didn't match the option
+  passed to the constructor. Fixes
+  `PickerColumn`'s date/time column headers and
+  `AbstractCalendarDropdown`'s header cells, both of which construct a
+  `Text` with `fontSize: 12` and previously rendered at the theme's base
+  size instead.
 
 ### Table
 
