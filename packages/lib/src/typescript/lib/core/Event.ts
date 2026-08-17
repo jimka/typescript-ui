@@ -353,16 +353,23 @@ export namespace Event {
             return;
         }
 
-        for (let listeners of typeListeners) {
-            let compFunc = listeners[1];
-            if (!compFunc) {
-                continue;
-            }
+        // Most-recently-registered component first: for viewport listeners
+        // registration order tracks stacking order (a Dialog opened on top of
+        // another registers after it, a dropdown opened from inside a Dialog
+        // registers after that), so the topmost/innermost listener gets first
+        // crack at the event — mirroring LayerManager's own LIFO stack, which
+        // already routes Escape the same way. A `stop` disposition halts the
+        // walk (like `baseListener`'s exact-target/subtree walks) instead of
+        // every other registered component also reacting to the same event.
+        let compFuncs = Array.from(typeListeners.values()).reverse();
 
+        for (let compFunc of compFuncs) {
             let component = compFunc.component;
 
             for (let entry of compFunc.listeners) {
-                applyDisposition(evnt, entry.listener.apply(component, [evnt]), entry.options);
+                if (applyDisposition(evnt, entry.listener.apply(component, [evnt]), entry.options)) {
+                    return;
+                }
             }
         }
     };
@@ -745,19 +752,22 @@ export namespace Event {
      *
      * @param component - The component to associate the listener with.
      * @param type - The DOM event type string to listen for globally.
-     * @param listener - The callback invoked on every matching event. Its
-     * return value tells the dispatcher what to do with the event: `true`
+     * @param listener - The callback invoked on every matching event, most-recently-registered
+     * component first. Its return value tells the dispatcher what to do with the event: `true`
      * stops propagation, `{ prevent: true }` suppresses the default action,
      * `{ stop: true, prevent: true }` does both, and nothing (or `false`)
      * leaves the event untouched.
      *
      * @remarks Unlike `addListener`, viewport listeners are not filtered by element id — every
-     * registered component receives the event, regardless of dispatch order, and a component
-     * whose listener returns a stop disposition does not prevent the others from running. The
-     * dispatcher does not stop propagation on a component's behalf: an unconsumed event keeps
-     * propagating to the page (e.g. a consumer's `document`-level accelerator) unless a handler's
-     * returned disposition asks for a stop. Logs a console trace and returns early if either
-     * argument is falsy.
+     * registered component is a candidate to receive the event, regardless of its target. Dispatch
+     * order is last-registered-first, so a component registered on top of an already-open one (a
+     * Dialog opened from inside another Dialog, a dropdown opened from inside a Dialog) gets first
+     * crack at the event — mirroring `LayerManager`'s own LIFO stacking. A component whose listener
+     * returns a stop disposition halts the walk: no older (earlier-registered) component's listener
+     * for this event runs. The dispatcher does not stop propagation on a component's behalf: an
+     * unconsumed event keeps propagating to the page (e.g. a consumer's `document`-level
+     * accelerator) unless a handler's returned disposition asks for a stop. Logs a console trace
+     * and returns early if either argument is falsy.
      */
     export function addViewportListener(component: Component, type: string, listener: Listener) {
         if (!listener || !component) {
