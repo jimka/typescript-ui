@@ -579,95 +579,68 @@ describe('Modelled event delivery — polite propagation', () => {
         expect(nativeStops).toBe(1);
     });
 
-    // Case 3: dispatch order is last-registered-first (the most-recently
-    // opened Dialog/layer gets first crack at the event), and a consume halts
-    // the walk — older (earlier-registered) components do not also react to
-    // an event a newer one already claimed. This replaces the dispatcher's
-    // former flat-broadcast policy: two Dialogs stacked on top of each other
-    // (e.g. a "save preset" name prompt opened from inside a login dialog)
-    // both registered a raw viewport `keydown` listener, so an unscoped
-    // broadcast meant the older, backgrounded dialog also reacted to Enter
-    // typed into the newer one's field.
-    it('dispatches to the most recently registered viewport component first', () => {
+    // Case 3: a consume from one registered component does not silence the
+    // others — the viewport dispatcher is a flat broadcast, not a chain that
+    // a stop can cut short. Verified with both registration orders.
+    it('runs every registered viewport component even when one of them consumes', () => {
         installTestDOM(CONFIG);
 
-        const bottom = new Component({});
-        const top    = new Component({});
+        const first  = new Component({});
+        const second = new Component({});
         const type   = uniqueType();
 
-        bottom.getElement(true);
-        top.getElement(true);
+        first.getElement(true);
+        second.getElement(true);
 
-        const order: string[] = [];
-        const evt = makeEvent(bottom.getElement()!, type);
-
-        Event.addViewportListener(bottom, type, () => { order.push('bottom'); });
-        Event.addViewportListener(top,    type, () => { order.push('top');    });
-
-        DOM.sink.dispatchEvent(bottom.getElement()!, evt);
-
-        expect(order).toEqual(['top', 'bottom']);
-    });
-
-    it('a consuming viewport component halts older registered components', () => {
-        installTestDOM(CONFIG);
-
-        const bottom = new Component({});
-        const top    = new Component({});
-        const type   = uniqueType();
-
-        bottom.getElement(true);
-        top.getElement(true);
-
-        let bottomRuns  = 0;
-        let topRuns     = 0;
+        let firstRuns  = 0;
+        let secondRuns = 0;
         let nativeStops = 0;
 
-        const evt = makeEvent(bottom.getElement()!, type);
+        const evt = makeEvent(first.getElement()!, type);
         (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { nativeStops += 1; };
 
-        Event.addViewportListener(bottom, type, () => { bottomRuns += 1; });
-        Event.addViewportListener(top, type, () => {
-            topRuns += 1;
+        Event.addViewportListener(first, type, () => {
+            firstRuns += 1;
 
             return true;
         });
+        Event.addViewportListener(second, type, () => { secondRuns += 1; });
 
-        DOM.sink.dispatchEvent(bottom.getElement()!, evt);
+        DOM.sink.dispatchEvent(first.getElement()!, evt);
 
-        expect(topRuns).toBe(1);
-        expect(bottomRuns).toBe(0);
+        expect(firstRuns).toBe(1);
+        expect(secondRuns).toBe(1);
         expect(nativeStops).toBe(1);
     });
 
-    it('a non-consuming topmost viewport component falls through to an older one', () => {
+    it('runs every registered viewport component even when one of them consumes, reversed order', () => {
         installTestDOM(CONFIG);
 
-        const bottom = new Component({});
-        const top    = new Component({});
+        const first  = new Component({});
+        const second = new Component({});
         const type   = uniqueType();
 
-        bottom.getElement(true);
-        top.getElement(true);
+        first.getElement(true);
+        second.getElement(true);
 
-        const order: string[] = [];
+        let firstRuns  = 0;
+        let secondRuns = 0;
         let nativeStops = 0;
 
-        const evt = makeEvent(bottom.getElement()!, type);
+        const evt = makeEvent(first.getElement()!, type);
         (evt as unknown as { stopPropagation: () => void }).stopPropagation = () => { nativeStops += 1; };
 
-        // Registered first (older), but consumes — reached only if `top`
-        // (registered after, so dispatched to first) declines to.
-        Event.addViewportListener(bottom, type, () => {
-            order.push('bottom');
+        Event.addViewportListener(second, type, () => { secondRuns += 1; });
+        Event.addViewportListener(first, type, () => {
+            firstRuns += 1;
 
             return true;
         });
-        Event.addViewportListener(top, type, () => { order.push('top'); });
 
-        DOM.sink.dispatchEvent(bottom.getElement()!, evt);
+        DOM.sink.dispatchEvent(first.getElement()!, evt);
 
-        expect(order).toEqual(['top', 'bottom']);
+        expect(firstRuns).toBe(1);
+        expect(secondRuns).toBe(1);
         expect(nativeStops).toBe(1);
     });
 
