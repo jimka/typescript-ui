@@ -55,6 +55,13 @@ class Row extends Component {
     private _cellKeys: string[] = [];
     // Field name per rendered slot, index-aligned with `getComponents()`.
     private _fieldNames: string[] = [];
+    // Cells detached from the rendered set that no entering column could take,
+    // filed by `cellKeyFor` key so a later widen restores them instead of
+    // rebuilding. Framework-managed bookkeeping — not a consumer surface, so it
+    // stays off any options bag. A plain initializer is correct here: no setter
+    // `applyOptions` dispatches writes this field, so the `declare` rule in
+    // CODE_CONVENTIONS.md does not apply.
+    private _cellCache: Map<string, Cell<any>[]> = new Map();
     // Set by `setColumnFields` so the next `setColumnWindow` reconciles
     // even when the requested range happens to match the current one —
     // a column-set change (hide/show, config swap) can leave the range
@@ -290,6 +297,11 @@ class Row extends Component {
         columnConfigs: Map<string, ColumnConfig>,
         treeFieldName?: string,
     ): this {
+        // The field set, the per-field configs, or the whole model may all be
+        // changing, so a cell cached under a key derived from the old
+        // configuration must not be handed to the new one.
+        this.disposeCellCache();
+
         this._model = model;
 
         this._visibleFields = model.getFields()
@@ -304,12 +316,13 @@ class Row extends Component {
     }
 
     /**
-     * Discards this row's current cells and mounts a single
-     * {@link GroupSeparatorCell} spanning the whole row, labeling a
+     * Retires this row's current cells into its cell cache and mounts a
+     * single {@link GroupSeparatorCell} spanning the whole row, labeling a
      * contiguous run of a rotated table's grouped field/value rows. The
      * row's own ARIA role switches to `'separator'` (from the default
      * `'row'`); {@link setColumnWindow}'s guard reverses both the moment
-     * this pooled slot is asked to render a real field row again.
+     * this pooled slot is asked to render a real field row again, restoring
+     * the retired cells from the cache rather than rebuilding them.
      *
      * @param label - The group label to display.
      * @param color - Optional CSS color string for the separator's
@@ -319,7 +332,14 @@ class Row extends Component {
      * via the `Table`-supplied separator predicate.
      */
     renderSeparator(label: string, color: string | null): void {
-        this.disposeAllComponents();
+        // Snapshot first — retirement removes each cell, which splices the
+        // live array `getComponents()` returns.
+        const cells = [...this.getComponents()] as Cell<any>[];
+
+        for (let s = 0; s < cells.length; s++) {
+            this.retireCell(cells[s], this._cellKeys[s]);
+        }
+
         this.addComponent(new GroupSeparatorCell(label, color));
 
         this._separatorMode = true;
@@ -336,9 +356,11 @@ class Row extends Component {
      * Reconciles the rendered cells to exactly the visible columns
      * `[firstCol, lastCol]`. A column keeps its existing cell when that
      * cell already presents the same field; otherwise it recycles a cell
-     * that just left the window and shares the same cell key, or
-     * builds a fresh one. Cells that end up unclaimed are committed (if
-     * editing), removed, and disposed.
+     * that just left the window and shares the same cell key, restores a
+     * matching cell previously parked by an earlier narrow, or builds a
+     * fresh one. Cells that end up unclaimed are committed (if editing),
+     * removed, and parked in the row's cell cache so a later widen can
+     * restore them — a cell whose slot carried no key is disposed instead.
      *
      * @param firstCol - The first visible-column index to render, inclusive.
      * @param lastCol - The last visible-column index to render, inclusive.
@@ -426,13 +448,23 @@ class Row extends Component {
 
             const field = this._visibleFields[col];
             const key   = this.cellKeyFor(field);
-            const pool  = free.get(key);
+            const pool   = free.get(key);
+            const cached = this._cellCache.get(key);
             let cell: Cell<any>;
 
             if (pool && pool.length > 0) {
                 cell = pool.pop()!;
 
                 this.setLayoutConstraints(cell, { data: field });
+            } else if (cached && cached.length > 0) {
+                cell = cached.pop()!;
+
+                if (cached.length === 0) {
+                    this._cellCache.delete(key);
+                }
+
+                this.addComponent(cell, { data: field });
+                cell.invalidateLayout();
             } else {
                 cell = Row.createCellForField(field, this._columnConfigs);
 
@@ -465,18 +497,13 @@ class Row extends Component {
             }
         }
 
-        // Discard whatever is still free. Commit an in-flight edit first so
-        // user keystrokes land on the record (mirrors the blur-commits-edit
-        // contract), then dispose so the cell's per-instance stylesheet rule
-        // doesn't survive the discard.
-        for (const pool of free.values()) {
+        // Park whatever is still free in the cell cache for a later widen to
+        // restore, keyed the same way `free` was. `retireCell` commits an
+        // in-flight edit first so user keystrokes land on the record (mirrors
+        // the blur-commits-edit contract); only a keyless slot is disposed.
+        for (const [key, pool] of free) {
             for (const cell of pool) {
-                if (cell.isEditing()) {
-                    cell.commitEdit();
-                }
-
-                this.removeComponent(cell);
-                cell.dispose();
+                this.retireCell(cell, key);
             }
         }
 
@@ -660,12 +687,67 @@ class Row extends Component {
     }
 
     /**
+     * Retires `cell` out of the rendered set: commits an in-flight edit, detaches
+     * it, and either files it in the cache under `key` or disposes it when the
+     * slot carried no key.
+     *
+     * @param cell - The cell to retire.
+     * @param key - The cell's reuse key, or `undefined` when the slot it
+     *   occupied carried no recorded key.
+     */
+    private retireCell(cell: Cell<any>, key: string | undefined): void {
+        if (cell.isEditing()) {
+            cell.commitEdit();
+        }
+
+        this.removeComponent(cell);
+
+        if (key === undefined) {
+            cell.dispose();
+            return;
+        }
+
+        const pool = this._cellCache.get(key);
+
+        if (pool) {
+            pool.push(cell);
+        } else {
+            this._cellCache.set(key, [cell]);
+        }
+    }
+
+    /** Disposes every cached cell and empties the cache. */
+    private disposeCellCache(): void {
+        for (const pool of this._cellCache.values()) {
+            for (const cell of pool) {
+                cell.dispose();
+            }
+        }
+
+        this._cellCache.clear();
+    }
+
+    /**
      * No-op; cell layout is driven by the Body's renderWindow.
      *
      * @returns This component, for method chaining.
      */
     doLayout(): this {
         return this;
+    }
+
+    /**
+     * Disposes this row's cell cache, then runs the inherited teardown.
+     *
+     * A cached cell is detached via `removeComponent` and filed in
+     * `_cellCache`, never a registered child of this row, so the base
+     * destructor's recursion over `_components` cannot reach it — mirroring
+     * `Body.destructor()`'s explicit disposal of `_editorPool`.
+     */
+    protected destructor(): void {
+        this.disposeCellCache();
+
+        super.destructor();
     }
 }
 
