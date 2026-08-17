@@ -325,6 +325,49 @@ export namespace LayerManager {
     }
 
     /**
+     * Finds the topmost layer eligible to own keyboard/input routing — the
+     * same "topmost non-manual layer" the Escape handler below targets, shared
+     * so {@link isTopmostInputLayer} answers consistently with it. A "manual"
+     * layer (a hover tooltip, say) is purely decorative for this purpose and
+     * never shadows what is stacked beneath it.
+     *
+     * @returns The topmost non-manual layer, or `null` when the stack is empty
+     *   or holds only manual layers.
+     */
+    function topmostInputLayer(): DismissableLayer | null {
+        for (let i = _stack.length - 1; i >= 0; i--) {
+            if (_stack[i].layer.getDismissMode() !== "manual") {
+                return _stack[i].layer;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Returns whether `layer` currently owns keyboard/input routing — it is
+     * the topmost layer in the stack, skipping past any purely decorative
+     * "manual" layers (e.g. a hover tooltip) stacked above it.
+     *
+     * @remarks This governs *routing*, not dismissal — `layer` need not be
+     * dismissable, only registered. Use it from a viewport listener that would
+     * otherwise react to every open instance of a component (e.g. two stacked
+     * Dialogs both handling the same Enter keydown) to scope the reaction to
+     * whichever instance is actually on top, mirroring how Escape already
+     * targets only the topmost non-manual layer. Unlike the dispatcher's own
+     * propagation control, this is an opt-in check each consumer makes for
+     * itself — it does not stop other, unrelated viewport listeners from
+     * running, so it carries none of the cross-cutting risk a dispatcher-level
+     * "topmost wins" rule would.
+     *
+     * @param layer - The layer asking whether it is the active one.
+     * @returns `true` when `layer` is the topmost non-manual layer.
+     */
+    export function isTopmostInputLayer(layer: DismissableLayer): boolean {
+        return topmostInputLayer() === layer;
+    }
+
+    /**
      * Re-stamps `layer` (and its descendant layers) with fresh top-of-band
      * z-indices and marks it active. Used by surfaces that raise on click
      * (e.g. a window brought to front), so the raised layer — and anything it
@@ -550,19 +593,15 @@ export namespace LayerManager {
             return;
         }
 
-        for (let i = _stack.length - 1; i >= 0; i--) {
-            const mode = _stack[i].layer.getDismissMode();
+        const target = topmostInputLayer();
 
-            if (mode === "manual") {
-                continue;
-            }
-
-            _stack[i].layer.requestClose();
-
-            return true;
+        if (!target) {
+            return;
         }
 
-        return;
+        target.requestClose();
+
+        return true;
     }
 
     /** Installs the three document-level listeners against the sentinel owner. */
