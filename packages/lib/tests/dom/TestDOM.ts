@@ -15,8 +15,9 @@
 import { DOM, type DOMSink, type DOMSource, type DocumentSelectionRange, type ElementPatch, type Handle, type TimerId, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize, type MediaState } from '~/core/DOM';
 import type { Component } from '~/core/Component';
 import type { Size } from '~/primitive/Size';
-import type { TextMeasureOptions, TextMetrics } from '~/core/Util';
+import type { TextMeasureOptions, TextMeasureRequest, TextMetrics } from '~/core/Util';
 import { clearBorderWidths } from '~/core/BorderWidths';
+import { _resetTextMeasurementRegistry } from '~/component/input/Text';
 
 /**
  * Per-font baked metrics: font ascent/descent/cap-top plus per-character
@@ -1007,6 +1008,10 @@ export class ModelledDOMSource implements DOMSource {
         return texts.map(t => this.measureText(t, options).width);
     }
 
+    measureTexts(requests: TextMeasureRequest[]): TextMetrics[] {
+        return requests.map(r => this.measureText(r.text, r.options));
+    }
+
     /**
      * Resolves a CSS `line-height` value to a pixel number for the modelled
      * measurement path, falling back to the font box when the value is
@@ -1436,6 +1441,10 @@ export function installTestDOM(config: ModelledDOMConfig): RecordingDOMSink {
     // Drop any border-width measurements shared from a previously installed
     // source, so a test file's cases cannot inherit widths measured against it.
     clearBorderWidths();
+
+    // Drop any Text instances registered by a previously installed source, so
+    // one test file's cases cannot drag a previous case's Text into a batch.
+    _resetTextMeasurementRegistry();
 
     const sink   = new RecordingDOMSink();
     const source = new ModelledDOMSource(config);
