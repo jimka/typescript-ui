@@ -1060,7 +1060,7 @@ describe('Column window — sliding', () => {
         expect(enteringCell).toBe(departingCell);
     });
 
-    it('a one-column slide where the entering column is a different type builds a fresh cell and disposes the departing one', async () => {
+    it('a one-column slide where the entering column is a different type builds a fresh cell and caches the departing one', async () => {
         const b = await wideBody(20, 250, 300, { types: { 8: 'number' } });
         const row = (b as any).getRowPool()[0];
         const departingCell = row.getComponents()[0]; // column 0 (string), about to leave
@@ -1070,8 +1070,12 @@ describe('Column window — sliding', () => {
         const enteringCell = row.getComponents()[row.getComponents().length - 1]; // column 8 (number)
         expect(enteringCell).toBeInstanceOf(NumberCell);
         expect((enteringCell as NumberCell).getEditorKey()).toBe('number');
-        // Component.destructor clears the child array; a bare removeComponent leaves it attached.
-        expect(departingCell.getComponents().length).toBe(0);
+        expect(row.getComponents()).not.toContain(departingCell);
+        // Retired into the row's cell cache, not disposed: `removeComponent`
+        // alone leaves the cell's own children (its renderer) intact, unlike
+        // `Component.destructor`, which would clear them.
+        expect(departingCell.getComponents().length).toBeGreaterThan(0);
+        expect((row as any)._cellCache.get('string')).toContain(departingCell);
     });
 
     it('after any slide, aria colIndex equals the column index + 1 for every rendered cell', async () => {

@@ -62,6 +62,13 @@ consumer implementing its own `DOMSource` is affected.
   renderer already did per-cell — a link's label is content a reader may want
   to select and copy. The pointer cursor is unchanged. Pass
   `userSelect: "none"` to opt an individual link back out.
+- **Narrowing a table (a window minimize, a horizontal resize, a split-gutter
+  drag) and widening it again no longer destroys and rebuilds the cells that
+  left the view.** Each row keeps its own displaced cells and restores them
+  once their columns come back, at the cost of holding those cells — and
+  their DOM nodes — in memory until they are restored, the column set or its
+  configuration changes, or the table is torn down. No consumer action is
+  needed.
 
 ## Added
 
