@@ -446,8 +446,7 @@ abstract class VirtualRowView<
 
     /**
      * Clears the cached row geometry so the next render re-applies positions and
-     * sizes for every slot. `Body` overrides this to additionally clear its
-     * per-cell geometry cache.
+     * sizes for every slot.
      */
     protected invalidateGeom(): void {
         for (let i = 0; i < this._rowGeom.length; i++) {

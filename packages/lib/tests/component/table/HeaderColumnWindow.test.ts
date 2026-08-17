@@ -555,9 +555,9 @@ describe('Header column window — geometry diffing', () => {
     // A header cell's x/width are content-absolute: `setScrollX` translates the
     // two inner rows rather than moving the cells, so a scroll that leaves the
     // window where it is leaves every rendered cell's geometry identical. The
-    // header must then skip the write and the `doLayout()` — mirroring the
-    // body's `_cellGeom` diff cache (`Body.ts`), whose per-slot entries gate
-    // the same writes for exactly the same reason.
+    // header must then skip the write and the `doLayout()` — via
+    // `Cell.canSkipUnchangedLayout`'s `applyBounds` opt-in, which the body's
+    // cells share and gate the same writes for exactly the same reason.
 
     /** Replaces `doLayout` on every component with a counting stub; returns the counter. */
     function countLayouts(components: { doLayout(): void }[]): () => number {

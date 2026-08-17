@@ -12,7 +12,6 @@ import { HeaderCell } from "~/component/table/cell/Header.js";
 import { ParentHeaderCell } from "~/component/table/cell/ParentHeader.js";
 import { FilterCell } from "~/component/table/cell/Filter.js";
 import { computeColumnWindow } from "~/component/table/Body.js";
-import { CellGeometryCache } from "~/component/table/CellGeometry.js";
 import type { ColumnWindow } from "~/component/table/Body.js";
 import { columnFilterOperators, buildColumnFilter, columnFilterStatesEqual, columnFilterTakesNumericOperand } from "~/component/table/ColumnFilter.js";
 import type { ColumnFilterState, ColumnFilterTarget } from "~/component/table/ColumnFilter.js";
@@ -134,9 +133,6 @@ class TableHeader extends Component {
     // behind it need to change.
     private _columnsDirty : boolean = true;
     private _geometry      : HeaderColumnGeometry = { columnWidths: [], viewportWidth: 0, columnHeight: 0, parentRowHeight: 0, filterRowHeight: 0 };
-    // Geometry last written to each header cell, shared with the body's rows;
-    // see `CellGeometryCache` for the invariant it rests on.
-    private _cellGeom     : CellGeometryCache = new CellGeometryCache();
 
     // Filter-row state. `_filterStates` is keyed per store (rather than held
     // flat) so a round trip through rotated mode — which re-points this
@@ -260,9 +256,9 @@ class TableHeader extends Component {
         this.rebuildCells();
         this.rebuildParentCells();
 
-        // Drops the records so the next layout pass re-fits every cell against
-        // the new theme; see `CellGeometryCache` for why a theme change needs
-        // that and geometry alone cannot detect it.
+        // Marks every rendered cell dirty so the next layout pass re-fits it
+        // against the new theme; see `Cell.canSkipUnchangedLayout` for why a
+        // theme change needs that and geometry alone cannot detect it.
         //
         // Re-rendering from inside this callback, as
         // `VirtualRowView.onThemeReflow` does for the body, would run too
@@ -270,7 +266,7 @@ class TableHeader extends Component {
         // rewrites the insets the pass has to fit against, and those renderers
         // subscribe after this header does, so the re-render would fit against
         // the outgoing theme's padding.
-        this.subscribeTheme(() => this._cellGeom.clear());
+        this.subscribeTheme(() => this.invalidateCellLayouts());
     }
 
     /**
@@ -1359,6 +1355,29 @@ class TableHeader extends Component {
     }
 
     /**
+     * Marks every rendered cell in all three rows dirty, so the next
+     * {@link applyBounds} call each of {@link positionFilterCells} /
+     * {@link positionColumnCells} / {@link positionParentCells} makes cannot
+     * skip it even when its rectangle is unchanged. Called on a theme change —
+     * see the constructor's theme subscription — the one writer in
+     * {@link Cell.canSkipUnchangedLayout}'s enumeration that does not lay its
+     * cell out itself.
+     */
+    private invalidateCellLayouts(): void {
+        for (const cell of this.getParentRow().getComponents()) {
+            cell.invalidateLayout();
+        }
+
+        for (const cell of this.getComponents()[1].getComponents()) {
+            cell.invalidateLayout();
+        }
+
+        for (const cell of this.getFilterRow().getComponents()) {
+            cell.invalidateLayout();
+        }
+    }
+
+    /**
      * Positions every rendered filter-row cell from the window's `lefts` /
      * `widths` arrays, mirroring {@link positionColumnCells} — the filter
      * row is windowed exactly like the column row, one cell per visible
@@ -1373,7 +1392,7 @@ class TableHeader extends Component {
         for (let slot = 0; slot < cells.length; slot++) {
             const col = win.firstCol + slot;
 
-            this._cellGeom.apply(cells[slot], win.lefts[col] ?? 0, win.widths[col] ?? 0, filterRowHeight);
+            cells[slot].applyBounds(win.lefts[col] ?? 0, 0, win.widths[col] ?? 0, filterRowHeight);
         }
     }
 
@@ -1391,7 +1410,7 @@ class TableHeader extends Component {
         for (let slot = 0; slot < cells.length; slot++) {
             const col = win.firstCol + slot;
 
-            this._cellGeom.apply(cells[slot], win.lefts[col] ?? 0, win.widths[col] ?? 0, columnHeight);
+            cells[slot].applyBounds(win.lefts[col] ?? 0, 0, win.widths[col] ?? 0, columnHeight);
         }
     }
 
@@ -1415,7 +1434,7 @@ class TableHeader extends Component {
             const x    = win.lefts[from] ?? 0;
             const w    = (win.lefts[to] ?? 0) + (win.widths[to] ?? 0) - x;
 
-            this._cellGeom.apply(cell, x, w, parentRowHeight);
+            cell.applyBounds(x, 0, w, parentRowHeight);
         }
     }
 

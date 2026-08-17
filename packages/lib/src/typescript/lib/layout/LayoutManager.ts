@@ -465,9 +465,10 @@ export abstract class LayoutManager extends BaseObject {
 
     /**
      * Commits a resolved rect to the child: writes `setX`/`setY`/`setWidth`/
-     * `setHeight`, then recurses into the child's `doLayout`, all wrapped in
-     * `setAutoCommitStyle(false/true)` so the four positional writes flush as
-     * a single DOM update.
+     * `setHeight`, then recurses into the child's `doLayout` unless the
+     * rectangle is unchanged and the child allows the pass to be skipped, all
+     * wrapped in `setAutoCommitStyle(false/true)` so the four positional
+     * writes flush as a single DOM update.
      *
      * Used by {@link LayoutManager.placeComponent} (via {@link LayoutManager.resolveBounds}) and by
      * layout managers that need to bypass the cell clamp — e.g. [`Absolute`](/api/layout/classes/Absolute)
@@ -480,17 +481,14 @@ export abstract class LayoutManager extends BaseObject {
      * @param y - Final top position in the container's coordinate space.
      * @param width - Final width.
      * @param height - Final height.
+     *
+     * @remarks The recursion is conditional: it is withheld only when the
+     * child's rectangle did not change AND the child opts into the skip
+     * through its protected opt-in gate (default off, so every layout manager
+     * gets today's unconditional recursion until a component opts in).
      */
     protected commitBounds(component: Component, x: number, y: number, width: number, height: number): void {
-        component.setAutoCommitStyle(false);
-        component.setX(x);
-        component.setY(y);
-        component.setWidth(width);
-        component.setHeight(height);
-
-        component.doLayout();
-
-        component.setAutoCommitStyle(true);
+        component.applyBounds(x, y, width, height);
     }
 
     /**

@@ -107,6 +107,37 @@ export class Cell<T> extends Component {
     }
 
     /**
+     * Opts into the unchanged-geometry layout skip: a cell re-placed at the
+     * same x/width/height it already holds is not re-laid-out.
+     *
+     * The writers that move a cell's layout without moving its rectangle —
+     * each of which already lays the cell out itself, except the theme
+     * change, which the host `Header`/`Body` handle by marking their cells
+     * dirty (see `Header`'s theme subscription and `Body.onThemeReflow`):
+     *
+     * - `Cell.setActiveRenderer` — a `DynamicCell` swapping the child the
+     *   layout is fitted around.
+     * - `Cell.startEdit` / `detachEditor` — the same swap, for the editor
+     *   (`detachEditor` is private, reached from `commitEdit` and
+     *   `cancelEdit`).
+     * - `TreeCellRenderer.setTreeState` — a depth change moves the indent.
+     * - `HeaderCell.setHeaderGlyph` — a glyph shifts the renderer's left
+     *   inset.
+     * - `FilterCell.selectOperator` / `setFilterState` — an operator change
+     *   enables/disables the text input, which moves layout without moving
+     *   geometry.
+     * - `GlyphRenderer.setValue` — replaces its child outright.
+     * - A theme change, which rewrites the padding and border every cell is
+     *   fitted against.
+     *
+     * @returns `true` — a cell allows `applyBounds` to skip an unchanged
+     *   rectangle.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return true;
+    }
+
+    /**
      * Returns the pool-key that selects which shared editor this cell should borrow on edit.
      *
      * @returns A string key registered on the {@link CellEditorPool}, or `null` to opt out of

@@ -378,6 +378,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _top                  : number                  = NaN;
     private _width                : number                  = NaN;
     private _height               : number                  = NaN;
+    /**
+     * Backing field. Declared bare — see the `declare` rule in CODE_CONVENTIONS.md.
+     * Framework-managed bookkeeping, so it gets no `ComponentOptions` field, per
+     * ARCHITECTURE.md's third DOM-write rule.
+     */
+    declare private _layoutDirty  : boolean;
     private _translateX           : number                  = 0;
     private _translateY           : number                  = 0;
     private _scrollLeft           : number                  = 0;
@@ -3346,6 +3352,99 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Writes x / y / width / height as one batched DOM update.
+     *
+     * @param x - The new left position in pixels.
+     * @param y - The new top position in pixels.
+     * @param width - The new width in pixels.
+     * @param height - The new height in pixels.
+     *
+     * @returns Whether the committed rectangle changed.
+     */
+    setBounds(x: number, y: number, width: number, height: number): boolean {
+        this.setAutoCommitStyle(false);
+        const changed = this.writeBounds(x, y, width, height);
+        this.setAutoCommitStyle(true);
+
+        return changed;
+    }
+
+    /**
+     * Writes the rectangle, then lays this component out unless the rectangle
+     * was unchanged and this component allows the pass to be skipped.
+     *
+     * @param x - The new left position in pixels.
+     * @param y - The new top position in pixels.
+     * @param width - The new width in pixels.
+     * @param height - The new height in pixels.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks Keeps the batching window open across `doLayout()`, matching
+     * `LayoutManager.commitBounds`'s behaviour exactly: any inline style the
+     * component writes on itself during its own layout pass is flushed in the
+     * same batch as the rectangle. The pass runs when the rectangle changed,
+     * when this component has not opted into the skip (the protected
+     * `canSkipUnchangedLayout` gate, default `false`), when
+     * {@link isLayoutDirty} reports a pass is owed, or when this component
+     * has no element yet — a cell with no element cannot lay out, so
+     * recording that pass as done would skip it forever.
+     */
+    applyBounds(x: number, y: number, width: number, height: number): this {
+        this.setAutoCommitStyle(false);
+
+        const changed = this.writeBounds(x, y, width, height);
+
+        if (changed || !this.canSkipUnchangedLayout() || this.isLayoutDirty() || !this.getElement()) {
+            this.doLayout();
+        }
+
+        this.setAutoCommitStyle(true);
+
+        return this;
+    }
+
+    /**
+     * Opt-in gate for the unchanged-geometry skip {@link applyBounds} applies.
+     * Default `false` — a component's `doLayout()` is withheld only when it
+     * overrides this to `true`.
+     *
+     * @returns `true` to allow `applyBounds` to skip a `doLayout()` pass when
+     *   the rectangle it was handed is unchanged and this component is not
+     *   dirty; `false` to always recurse.
+     */
+    protected canSkipUnchangedLayout(): boolean {
+        return false;
+    }
+
+    /**
+     * Shared body of {@link setBounds} / {@link applyBounds}: writes x / y /
+     * width / height and reports whether the committed rectangle changed.
+     * Assumes the batching window is already open.
+     *
+     * @param x - The new left position in pixels.
+     * @param y - The new top position in pixels.
+     * @param width - The new width in pixels.
+     * @param height - The new height in pixels.
+     *
+     * @returns Whether the committed rectangle changed.
+     *
+     * @remarks Reads the fields *after* the setters ran, so a `setWidth`/
+     * `setHeight` that clamped to this component's min or max still reports
+     * honestly.
+     */
+    private writeBounds(x: number, y: number, width: number, height: number): boolean {
+        const px = this._left, py = this._top, pw = this._width, ph = this._height;
+
+        this.setX(x);
+        this.setY(y);
+        this.setWidth(width);
+        this.setHeight(height);
+
+        return this._left !== px || this._top !== py || this._width !== pw || this._height !== ph;
+    }
+
+    /**
      * Returns the component's current width in pixels.
      *
      * @returns The width in pixels, or 0 if the size is unavailable.
@@ -5439,6 +5538,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      *
      * @remarks Throws an Error if no layout manager has been set.
+     *
+     * The dirty flag is cleared only when this component has an element: a
+     * layout manager that reads {@link getInnerSize} — `null` without one,
+     * e.g. `Card`, `Fit`, `Border`, the box layouts — cannot actually place
+     * its children on a pass run before this component is rendered, so
+     * clearing the flag anyway would let {@link applyBounds} skip the real
+     * pass once the element exists and the same rectangle is handed to it
+     * again (the header-cell "no element" case the protected
+     * `canSkipUnchangedLayout` gate's opt-ins guard against).
      */
     doLayout(): this {
         if (this.isLayoutPaused()) {
@@ -5448,6 +5556,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const lm = this.getLayoutManager();
         if (!lm) {
             throw new Error("Unable to do layout, no layout manager specified.");
+        }
+
+        if (this.getElement()) {
+            this._layoutDirty = false;
         }
 
         lm.doLayout();
@@ -5523,6 +5635,33 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Marks this component's layout as stale, so the next {@link applyBounds}
+     * cannot skip it even when the rectangle it is handed is unchanged.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks The cheaper counterpart to {@link scheduleLayout} for setters
+     * that cannot lay out immediately — during construction, or mid-cascade —
+     * and only need to make sure a later pass is not withheld.
+     */
+    invalidateLayout(): this {
+        this._layoutDirty = true;
+
+        return this;
+    }
+
+    /**
+     * Whether a layout pass is owed. True until the first {@link doLayout}
+     * completes.
+     *
+     * @returns `true` when this component has never completed a layout pass,
+     *   or has been marked stale since its last one.
+     */
+    isLayoutDirty(): boolean {
+        return this._layoutDirty ?? true;
+    }
+
+    /**
      * Queues a layout pass to run on the next animation frame. Multiple calls within
      * the same frame coalesce into a single doLayout() call; if an ancestor is also
      * scheduled, the ancestor's recursion subsumes this component and its scheduled
@@ -5534,6 +5673,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * (e.g. before reading getInnerSize) should call `flushLayout()` instead.
      */
     scheduleLayout(): this {
+        this._layoutDirty = true;
+
         if (this.isLayoutPaused()) {
             return this;
         }

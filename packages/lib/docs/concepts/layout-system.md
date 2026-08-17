@@ -24,6 +24,10 @@ parent.doLayout()
 
 The layout pass walks the tree top-down. Each child's `setSize` triggers its own layout pass for *its* children, recursively.
 
+### The write is diffed
+
+Committing a child's rectangle and recursing into its own layout pass are two separate steps, joined by [`Component.applyBounds`](/api/core/classes/Component#applybounds): it writes `x`/`y`/`width`/`height` and then recurses only when the rectangle actually changed, or the component has never completed a layout pass, or it has no element yet. A child handed the exact rectangle it already has is not re-laid-out — but only when that child opts in via its protected `canSkipUnchangedLayout` gate, which defaults to `false`. [`Component.setBounds`](/api/core/classes/Component#setbounds) is the non-recursing half: it writes the rectangle and reports whether it changed, for call sites that never cascaded into a child layout pass to begin with. A component that dirties its own layout inputs outside the normal `setSize`/`setPosition` path — mid-construction, or from a setter that cannot lay out immediately — calls [`Component.invalidateLayout`](/api/core/classes/Component#invalidatelayout) to guarantee the next `applyBounds` cannot skip it.
+
 ## Constraints
 
 Constraints are the second argument to `addComponent`. The shape depends on the layout manager:

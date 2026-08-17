@@ -5,7 +5,7 @@ import { Table as TableComponent } from "~/component/table/Table.js";
 import { Column } from "~/component/table/Column.js";
 import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
-import { UNBOUNDED } from "~/primitive/Size.js";
+import { Size, UNBOUNDED } from "~/primitive/Size.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
@@ -28,6 +28,30 @@ interface TableLayoutOptions extends LayoutManagerOptions {
 // wrong in either direction.
 const FILTER_INPUT_PADDING = new Insets(3, 3, 3, 3);
 const NO_INSETS            = new Insets(0, 0, 0, 0);
+
+/** A plain rectangle — the geometry `commit` writes to a section band. */
+interface Rect {
+    x     : number;
+    y     : number;
+    width : number;
+    height: number;
+}
+
+/**
+ * The pure result of {@link Table.calculate} — every value the write phase
+ * ({@link Table.commit}) needs, computed without touching a single component
+ * setter. `header`/`footer` are `null` when that section is not both visible
+ * and displayed, mirroring the same gate `commit` used to check inline.
+ */
+interface TableGeometry {
+    columnWidths   : number[];
+    availableWidth : number;
+    header         : { band: Rect; columnHeight: number; parentRowHeight: number; filterRowHeight: number } | null;
+    footer         : { band: Rect; columnHeight: number } | null;
+    bodyVisible    : boolean;
+    containerInsets: Insets;
+    containerSize  : Size;
+}
 
 /**
  * A layout manager dedicated to the [`Table`](/api/component/table/classes/Table) component.
@@ -99,10 +123,27 @@ class Table extends LayoutManager {
      * table to, whichever is larger, so a drag-widened table is not rescaled back down.
      */
     doLayout() {
+        const geometry = this.calculate();
+
+        if (geometry) {
+            this.commit(geometry);
+        }
+    }
+
+    /**
+     * Pure resolution phase: computes every value {@link Table.commit} needs
+     * to write, touching no component setter and calling neither
+     * `renderWindow` nor `renderColumnWindow`.
+     *
+     * @returns The resolved geometry, or `null` when there is no container to
+     *   lay out, or its size has not resolved yet (see the remarks on the
+     *   `containerSize` check below).
+     */
+    private calculate(): TableGeometry | null {
         const container = <TableComponent>this.getContainer();
 
         if (!container) {
-            return;
+            return null;
         }
 
         const containerSize = container.getInnerSize();
@@ -118,7 +159,7 @@ class Table extends LayoutManager {
         // comparison is false, so no early return catches it) — so the widths
         // are left alone and the next properly-sized pass derives them.
         if (!containerSize || !Number.isFinite(containerSize.width) || !Number.isFinite(containerSize.height)) {
-            return;
+            return null;
         }
 
         const containerInsets = container.getContentInsets();
@@ -135,22 +176,22 @@ class Table extends LayoutManager {
 
         if (columnWidths.length !== columnCount) {
             columnWidths = this.initializeWidths(container, columns, availableWidth);
-            container.setColumnWidths(columnWidths);
         } else {
             columnWidths = this.rescaleWidths(container, columns, columnWidths, targetWidth);
-            container.setColumnWidths(columnWidths);
         }
 
-        const header = container.getHeader();
-        const body   = container.getBody();
-        const footer = container.getFooter();
+        const headerComponent = container.getHeader();
+        const footerComponent = container.getFooter();
+        const bodyComponent   = container.getBody();
 
         // A section is laid out only when it is both visible (the Table's own
         // header/body/footer visibility flag) AND displayed (the core
         // `setDisplayed` flag). The two are reconciled, not substituted: a
         // `setDisplayed(false)` part drops out of the layout exactly like a
         // `setHeaderVisible(false)` one, and the body reflows to reclaim its band.
-        if (container.isHeaderVisible() && header && header.isDisplayed()) {
+        let header: TableGeometry["header"] = null;
+
+        if (container.isHeaderVisible() && headerComponent && headerComponent.isDisplayed()) {
             // Header cells render their text in the shared px line box, so the
             // row height is that line box plus the cell padding.
             const theme        = ThemeManager.getTheme();
@@ -166,14 +207,14 @@ class Table extends LayoutManager {
             // rows stay aligned. Collapses to zero when no visible
             // column declares a `group`, so no-group tables are
             // byte-identical at runtime.
-            const hasParentRow    = header.hasParentRow();
+            const hasParentRow    = headerComponent.hasParentRow();
             const parentRowHeight = hasParentRow ? columnHeight : 0;
 
             // Same "does this row apply" gate as the parent row, but the
             // height itself is NOT columnHeight-derived — the filter row
             // holds a TextField, whose own chrome differs from the column
             // row's plain text. See FILTER_INPUT_PADDING's comment.
-            const filterRowHeight = header.hasFilterRow()
+            const filterRowHeight = headerComponent.hasFilterRow()
                 ? Util.singleLineBoxHeight(NO_INSETS, FILTER_INPUT_PADDING, { top: 0, bottom: 0 })
                 : 0;
 
@@ -183,23 +224,102 @@ class Table extends LayoutManager {
             // sum every other manager's size report uses. Taking it out of a
             // row instead would make a header cell shorter than the body row
             // it heads, by an amount the theme's border width decides.
-            const headerPerimeter  = header.getPerimeterSize();
+            const headerPerimeter  = headerComponent.getPerimeterSize();
             const headerBandHeight = parentRowHeight + columnHeight + filterRowHeight
                                    + headerPerimeter.top + headerPerimeter.bottom;
 
-            header.setAutoCommitStyle(false);
-            header.setX(containerInsets.getLeft());
-            header.setY(containerInsets.getTop());
-            header.setWidth(containerSize.width);
-            header.setHeight(headerBandHeight);
-            header.setAutoCommitStyle(true);
+            header = {
+                band: {
+                    x:      containerInsets.getLeft(),
+                    y:      containerInsets.getTop(),
+                    width:  containerSize.width,
+                    height: headerBandHeight,
+                },
+                columnHeight,
+                parentRowHeight,
+                filterRowHeight,
+            };
+        }
+
+        let footer: TableGeometry["footer"] = null;
+
+        if (container.isFooterVisible() && footerComponent && footerComponent.isDisplayed()) {
+            // Footer cells render their text in the shared px line box, so the
+            // row height is that line box plus the cell padding.
+            const theme        = ThemeManager.getTheme();
+            // Same additive line box as the header/body: the root font size plus
+            // the `--ts-ui-line-padding` leading, via `Util`.
+            const lineHeight   = Util.lineHeightPx();
+            const padding      = theme.table.cell.padding         ?? 2;
+            const columnHeight = lineHeight + 2 * padding;
+
+            // Same "children plus perimeter" sum as the header band above:
+            // the footer's own top border is chrome outside the row, so the
+            // outer height grows by it instead of the row shrinking inside it.
+            const footerPerimeter  = footerComponent.getPerimeterSize();
+            const footerBandHeight = columnHeight + footerPerimeter.top + footerPerimeter.bottom;
+
+            footer = {
+                band: {
+                    x:      containerInsets.getLeft(),
+                    y:      containerInsets.getTop() + containerSize.height - footerBandHeight,
+                    width:  containerSize.width,
+                    height: footerBandHeight,
+                },
+                columnHeight,
+            };
+        }
+
+        const bodyVisible = container.isBodyVisible() && !!bodyComponent && bodyComponent.isDisplayed();
+
+        return {
+            columnWidths,
+            availableWidth,
+            header,
+            footer,
+            bodyVisible,
+            containerInsets,
+            containerSize,
+        };
+    }
+
+    /**
+     * Write phase: performs every write {@link Table.calculate} resolved,
+     * in the same order the fused `doLayout` used to.
+     *
+     * @param geometry - The resolved geometry from {@link Table.calculate}.
+     *
+     * @remarks The header's inner content box (`headerBox`) and the body
+     * band's header/footer height deductions are computed here, not in
+     * `calculate`, because both read back *committed* state —
+     * `header.getContentBounds()` and `header.getHeight()`/`footer.getHeight()`
+     * — which can differ from the requested value whenever `setHeight`'s
+     * clamp bites.
+     */
+    private commit(geometry: TableGeometry): void {
+        const container = <TableComponent>this.getContainer();
+
+        if (!container) {
+            return;
+        }
+
+        container.setColumnWidths(geometry.columnWidths);
+
+        const header = container.getHeader();
+        const footer = container.getFooter();
+        const body   = container.getBody();
+
+        if (geometry.header && header) {
+            const { band, columnHeight, parentRowHeight, filterRowHeight } = geometry.header;
+
+            header.setBounds(band.x, band.y, band.width, band.height);
 
             // The rows are the header's own children, so their frame is the
             // header's content box, not the band: a row placed at the band's
             // origin and sized to the band starts inside the border and
             // overruns the far edge.
             const headerBox = header.getContentBounds()
-                ?? { x: 0, y: 0, width: containerSize.width, height: headerBandHeight };
+                ?? { x: 0, y: 0, width: geometry.containerSize.width, height: band.height };
 
             // Rows stay at least as wide as the visible content box, and
             // wider when the columns overflow it, so cells off the right
@@ -207,7 +327,7 @@ class Table extends LayoutManager {
             // `overflow: hidden` would otherwise clip cells at the row's
             // right edge and prevent them from coming into view when the
             // inner rows translate left during a horizontal scroll.
-            const columnSum = columnWidths.reduce((s, w) => s + w, 0);
+            const columnSum = geometry.columnWidths.reduce((s, w) => s + w, 0);
             const innerRowW = Math.max(headerBox.width, columnSum);
 
             // Parent row is sized + positioned first so its `spanFrom`
@@ -217,42 +337,27 @@ class Table extends LayoutManager {
             // cell pool is empty anyway — `header.renderColumnWindow`
             // below skips positioning it.
             const parentRow = header.getParentRow();
-            parentRow.setAutoCommitStyle(false);
-            parentRow.setX(headerBox.x);
-            parentRow.setY(headerBox.y);
-            parentRow.setWidth(innerRowW);
-            parentRow.setHeight(parentRowHeight);
-            parentRow.setAutoCommitStyle(true);
+            parentRow.setBounds(headerBox.x, headerBox.y, innerRowW, parentRowHeight);
 
             // Column row sits beneath the parent row. The cell y-coords
             // are relative to the column row's element, so they stay at
             // y=0 — only the row itself shifts down by `parentRowHeight`.
-            const columnRow     = header.getComponents()[1];
-            columnRow.setAutoCommitStyle(false);
-            columnRow.setX(headerBox.x);
-            columnRow.setY(headerBox.y + parentRowHeight);
-            columnRow.setWidth(innerRowW);
-            columnRow.setHeight(columnHeight);
-            columnRow.setAutoCommitStyle(true);
+            const columnRow = header.getComponents()[1];
+            columnRow.setBounds(headerBox.x, headerBox.y + parentRowHeight, innerRowW, columnHeight);
 
             // Filter row sits beneath the column row, collapsing to zero
             // height (and zero cells, via `header.hasFilterRow()`) exactly
             // like the parent row above when it has nothing to show.
             const filterRow = header.getFilterRow();
-            filterRow.setAutoCommitStyle(false);
-            filterRow.setX(headerBox.x);
-            filterRow.setY(headerBox.y + parentRowHeight + columnHeight);
-            filterRow.setWidth(innerRowW);
-            filterRow.setHeight(filterRowHeight);
-            filterRow.setAutoCommitStyle(true);
+            filterRow.setBounds(headerBox.x, headerBox.y + parentRowHeight + columnHeight, innerRowW, filterRowHeight);
 
             // Reconciles the header's rendered cells to the
             // horizontally-visible column range and positions every
             // rendered cell in all three rows — the header-side counterpart
             // of `body.renderWindow` below.
             header.renderColumnWindow({
-                columnWidths,
-                viewportWidth: availableWidth,
+                columnWidths:   geometry.columnWidths,
+                viewportWidth:  geometry.availableWidth,
                 columnHeight,
                 parentRowHeight,
                 filterRowHeight,
@@ -284,80 +389,49 @@ class Table extends LayoutManager {
             const buttonSize  = { width: trackW, height: headerBox.height };
 
             menuButton.setPreferredSize(buttonSize);
-            menuButton.setAutoCommitStyle(false);
-            menuButton.setX(headerBox.x + headerBox.width - trackW);
-            menuButton.setY(headerBox.y);
-            menuButton.setWidth(buttonSize.width);
-            menuButton.setHeight(buttonSize.height);
             // `Absolute.doLayout`'s own `commitBounds` is what normally
             // cascades a freshly-positioned child into its own `doLayout()`
             // (see `LayoutManager.commitBounds`); this button is instead
-            // committed via raw setters, mirroring how the header/body/
-            // footer/rows above are positioned, so that cascade has to be
-            // called explicitly here. Without it, the button's own `Fit`
-            // layout never runs and its glyph is never actually placed —
-            // present in the DOM, sized, but with no committed position, so
-            // nothing paints.
-            menuButton.doLayout();
-            menuButton.setAutoCommitStyle(true);
+            // positioned directly by this layout manager, mirroring how the
+            // header/body/footer/rows above are positioned, so it needs the
+            // same cascade `applyBounds` provides rather than `Absolute`'s.
+            // Without it, the button's own `Fit` layout never runs and its
+            // glyph is never actually placed — present in the DOM, sized,
+            // but with no committed position, so nothing paints.
+            menuButton.applyBounds(headerBox.x + headerBox.width - trackW, headerBox.y, buttonSize.width, buttonSize.height);
         }
 
-        if (container.isFooterVisible() && footer && footer.isDisplayed()) {
-            // Footer cells render their text in the shared px line box, so the
-            // row height is that line box plus the cell padding.
-            const theme         = ThemeManager.getTheme();
-            // Same additive line box as the header/body: the root font size plus
-            // the `--ts-ui-line-padding` leading, via `Util`.
-            const lineHeight    = Util.lineHeightPx();
-            const padding       = theme.table.cell.padding         ?? 2;
-            const columnHeight  = lineHeight + 2 * padding;
-            const footerColumns = footer.getColumns();
+        if (geometry.footer && footer) {
+            const { band, columnHeight } = geometry.footer;
 
-            // Same "children plus perimeter" sum as the header band above:
-            // the footer's own top border is chrome outside the row, so the
-            // outer height grows by it instead of the row shrinking inside it.
-            const footerPerimeter  = footer.getPerimeterSize();
-            const footerBandHeight = columnHeight + footerPerimeter.top + footerPerimeter.bottom;
-
-            footer.setAutoCommitStyle(false);
-            footer.setX(containerInsets.getLeft());
-            footer.setY(containerInsets.getTop() + containerSize.height - footerBandHeight);
-            footer.setWidth(containerSize.width);
-            footer.setHeight(footerBandHeight);
-            footer.setAutoCommitStyle(true);
+            footer.setBounds(band.x, band.y, band.width, band.height);
 
             // The footer's inner row is the footer's own child, so its cells
             // are sized from the footer's content box, not the band.
             const footerBox = footer.getContentBounds()
-                ?? { x: 0, y: 0, width: containerSize.width, height: columnHeight };
+                ?? { x: 0, y: 0, width: geometry.containerSize.width, height: columnHeight };
 
             let x = 0;
 
-            footerColumns.forEach((col, i) => {
-                col.setAutoCommitStyle(false);
-                col.setX(x);
-                col.setY(0);
-                col.setWidth(columnWidths[i]);
-                col.setHeight(footerBox.height);
-                col.setAutoCommitStyle(true);
-                col.doLayout();
+            footer.getColumns().forEach((col, i) => {
+                col.applyBounds(x, 0, geometry.columnWidths[i], footerBox.height);
 
-                x += columnWidths[i];
+                x += geometry.columnWidths[i];
             });
         }
 
-        if (container.isBodyVisible() && body && body.isDisplayed()) {
-            const headerHeight = container.isHeaderVisible() && header && header.isDisplayed() ? header.getHeight() : 0;
-            const footerHeight = container.isFooterVisible() && footer && footer.isDisplayed() ? footer.getHeight() : 0;
+        if (geometry.bodyVisible && body) {
+            const headerHeight = geometry.header && header ? header.getHeight() : 0;
+            const footerHeight = geometry.footer && footer ? footer.getHeight() : 0;
 
-            body.setAutoCommitStyle(false);
-            body.setX(containerInsets.getLeft());
-            body.setY(containerInsets.getTop() + headerHeight);
-            body.setWidth(containerSize.width);
-            body.setHeight(containerSize.height - headerHeight - footerHeight);
-            body.setAutoCommitStyle(true);
+            body.setBounds(
+                geometry.containerInsets.getLeft(),
+                geometry.containerInsets.getTop() + headerHeight,
+                geometry.containerSize.width,
+                geometry.containerSize.height - headerHeight - footerHeight,
+            );
 
-            body.renderWindow(availableWidth, columnWidths);
+            body.renderWindow(geometry.availableWidth, geometry.columnWidths);
         }
     }
 

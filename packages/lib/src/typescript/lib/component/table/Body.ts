@@ -7,7 +7,6 @@ import { ListenerBag } from "~/core/ListenerBag.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Row } from "~/component/table/Row.js";
-import { CellGeometryCache } from "~/component/table/CellGeometry.js";
 import { Cell } from "~/component/table/cell/Cell.js";
 import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
 import { ComboEditor } from "~/component/table/cell/editor/Combo.js";
@@ -289,7 +288,6 @@ class Body extends VirtualRowView<Row> {
     private _rowVisible      : ((record: ModelRecord) => boolean) | null = null;
     private _rowSeparator    : ((record: ModelRecord) => { label: string, color: string | null } | null) | null = null;
     private _rowIndented     : ((record: ModelRecord) => boolean) | null = null;
-    private _cellGeom        : CellGeometryCache         = new CellGeometryCache();
     private _lastBodyWidth   : number                    = 0;
     private _lastColumnWidths: number[]                  = [];
     private _lastAriaRowCount: number                    = -1;
@@ -328,11 +326,32 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
-     * Refreshes the derived row height before the shared re-bind pass, so the
-     * rows this reflow re-renders are positioned against the new line box.
+     * Refreshes the derived row height, marks every pooled row's cells dirty,
+     * then chains to the shared re-bind pass.
+     *
+     * @remarks Order matters: {@link VirtualRowView.onThemeReflow} ends by
+     * calling `renderWindow()`, so the cells must already be dirty (see
+     * {@link Cell.canSkipUnchangedLayout}'s enumeration) when it does, or a
+     * cell re-placed at unchanged geometry would keep its `doLayout()`
+     * withheld altogether — parity with the deleted per-cell geometry cache,
+     * whose own clear-on-theme-change was reached from this same call chain.
+     * Whether a cell's *renderer* reflects the new theme's insets by the end
+     * of this one pass is a separate question this marking does not answer: the
+     * renderer's own theme subscription registers after this component's
+     * (built when the cell is pooled, not in `Body`'s constructor), so it
+     * can still be pending when this inline `renderWindow()` runs — the same
+     * ordering risk `TableHeader`'s theme subscription comment documents and
+     * avoids by not re-rendering inline. `Body` re-renders inline here
+     * unchanged from before this class opted its cells into the skip.
      */
     protected onThemeReflow(): void {
         this._rowHeight = this.computeRowHeight();
+
+        for (const row of this._rowPool) {
+            for (const cell of row.getComponents()) {
+                cell.invalidateLayout();
+            }
+        }
 
         super.onThemeReflow();
     }
@@ -597,17 +616,6 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
-     * Clears the cached row geometry (via the base) and the per-cell geometry
-     * with it, so the next renderWindow re-applies positions and sizes for
-     * every visible row and every cell in it.
-     */
-    protected invalidateGeom(): void {
-        super.invalidateGeom();
-
-        this._cellGeom.clear();
-    }
-
-    /**
      * Updates the set of hidden column field names, records the new
      * visible-field list on every pooled row, and re-renders.
      *
@@ -795,9 +803,9 @@ class Body extends VirtualRowView<Row> {
      * Builds no cells itself — marking a row's column fields dirty makes its
      * next {@link Row.setColumnWindow} (from {@link bindAndPositionRows}, on
      * the next `renderWindow`) reconcile the cell set against the new column
-     * list, exactly as it does for a scroll-driven window slide. Also
-     * invalidates the per-slot geometry caches so that render re-positions
-     * cells against the new column count.
+     * list, exactly as it does for a scroll-driven window slide. Also clears
+     * the row-geometry cache so render re-positions each row against the new
+     * column count.
      *
      * Guarded by `_reconciling`, mirroring `renderWindow`: the commit pass
      * can cascade back into this method through `store.notifyRecordChanged`.
@@ -827,12 +835,13 @@ class Body extends VirtualRowView<Row> {
                 this.wireRowCells(row);
 
                 // The row's column count changed, so its own width may have.
-                // The cells' records are keyed on the cell, so they stay valid
-                // across the re-point `setColumnWindow` performs next — a cell
-                // moved onto a column at the same x and width genuinely needs
-                // no reposition. What it may need is a layout, when the new
-                // column changes something the layout fits around; the writes
-                // that do that lay the cell out themselves.
+                // A cell's committed rect lives on the cell itself, so it
+                // stays valid across the re-point `setColumnWindow` performs
+                // next — a cell moved onto a column at the same x and width
+                // genuinely needs no reposition. What it may need is a
+                // layout, when the new column changes something the layout
+                // fits around; the writes that do that lay the cell out
+                // themselves.
                 this._rowGeom[i] = null;
             }
         } finally {
@@ -1207,7 +1216,7 @@ class Body extends VirtualRowView<Row> {
                 }
 
                 this.positionRow(i, dataIndex * rowHeight, rowWidth);
-                this._cellGeom.apply(row.getComponents()[0], 0, rowWidth, rowHeight);
+                row.getComponents()[0].applyBounds(0, 0, rowWidth, rowHeight);
 
                 continue;
             }
@@ -1216,10 +1225,10 @@ class Body extends VirtualRowView<Row> {
 
             if (windowChanged) {
                 // Slot → column mapping changed, so newly-entered cells need
-                // the editor pool + scroll-into-view handler wired. The
-                // geometry records survive: they are keyed on the cell, so a
-                // cell that kept its column is still correctly recorded even
-                // though its slot moved.
+                // the editor pool + scroll-into-view handler wired. A cell's
+                // committed rect lives on the cell itself, so a cell that
+                // kept its column stays correctly positioned even though its
+                // slot moved.
                 this.wireRowCells(row);
             }
 
@@ -1251,7 +1260,7 @@ class Body extends VirtualRowView<Row> {
             for (let slot = 0; slot < cells.length; slot++) {
                 const colW = columns.widths[columns.firstCol + slot] ?? 0;
 
-                this._cellGeom.apply(cells[slot], x, colW, rowHeight);
+                cells[slot].applyBounds(x, 0, colW, rowHeight);
 
                 x += colW;
             }

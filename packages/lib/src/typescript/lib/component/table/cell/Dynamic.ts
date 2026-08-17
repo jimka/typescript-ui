@@ -21,7 +21,7 @@ import { callable } from "~/core/Callable.js";
  * built-in variant it can show (`string`, `number`, `date`, `time`,
  * `datetime`, `glyph`, `combo`, `boolean`) is built lazily and cached, then
  * swapped into view on {@link DynamicCell.bindRecord} by making it the
- * cell's active renderer. This keeps the slot's geometry cache,
+ * cell's active renderer. This keeps the slot's committed geometry,
  * editor-pool wiring, commit wiring, read-only state, and focus behaviour
  * valid across rebinds that change the resolved variant, unlike replacing
  * the cell instance itself.
