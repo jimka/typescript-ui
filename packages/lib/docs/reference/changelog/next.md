@@ -38,3 +38,9 @@ page resets to empty.
   are the one component opted into the skip today, re-expressing the
   cache's old behaviour through this shared primitive instead of a private,
   table-only mechanism.
+
+## Fixed
+
+### Table
+
+**A table display-mode switch (`setDisplayMode`) reconciled and re-rendered the row pool up to seven times when one pass would do.** `Table` pushed the new store, columns, column configs, hidden-column set and row predicates into `Body` through eight separate setter calls, three of which each triggered their own pool-cell reconciliation and render. The switch now goes through one bulk `Body.bindViewState(state)` call that writes every field first and reconciles + renders once, cutting a mode switch to one reconciliation and at most two render passes. No consumer action is needed.

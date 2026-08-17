@@ -1554,25 +1554,18 @@ class Table extends Component<TableOptions> {
      *   Passed `null` on the normal-mode call site, for the same reason
      *   as `rowSeparator`.
      *
-     * @remarks `Body.setStore` re-renders with pool rows whose cells still
-     * match the outgoing model; `setColumns` (called after `setStore`) is
-     * what re-syncs those cells, so the order matters. `_body.selectRecord(null)`
-     * transiently fires the body's own `"selection"` — `_suppressSelectionForward`
-     * gates the Table-level forwarder for the duration of the re-bind so that
-     * transient clear never reaches consumers. Clearing `_columnWidths` /
+     * @remarks The body is re-bound in one pass via `Body.bindViewState`,
+     * which writes the store, columns, column configs, hidden-column set and
+     * every row predicate before reconciling the pool and rendering once.
+     * Installing the row predicates before that single render is what makes
+     * freshly-built cells receive their read-only state on the same pass
+     * they're built, rather than needing a second rebind afterward.
+     * `_body.selectRecord(null)` transiently fires the body's own
+     * `"selection"` — `_suppressSelectionForward` gates the Table-level
+     * forwarder for the duration of the re-bind so that transient clear
+     * never reaches consumers. Clearing `_columnWidths` /
      * `_savedColumnWidths` is what makes the layout manager re-initialise
      * widths for the new column count on the next `doLayout`.
-     *
-     * `setStore` is called again at the end (re-assigning the same store) to
-     * force a second full rebind after the column/config/hidden/read-only
-     * state has settled: `Body`'s own per-slot metadata (read-only tint,
-     * required-empty, ARIA) is only re-applied on a slot whose bound index
-     * changes, and the first `setStore` call already consumed that "changed"
-     * signal — on the model swap alone, before `setColumnConfigs` /
-     * `setColumns` have synced the pool's cells to the new column shape. A
-     * second `setStore` re-triggers the same store-change rebind, this time
-     * over the fully-synced cells, so e.g. a rotated column's freshly-built
-     * `DynamicCell` actually receives `setReadOnly(true)`.
      */
     private bindView(
         store:       AbstractStore,
@@ -1592,16 +1585,17 @@ class Table extends Component<TableOptions> {
         this._header.setHiddenColumns(hidden);
 
         this._body.selectRecord(null);
-        this._body.setStore(store);
-        this._body.setColumnConfigs(configs);
         this._header.setColumnConfigs(configs);
-        this._body.setColumns(columns);
-        this._body.setHiddenColumns(hidden);
-        this._body.setRowReadOnly(rowReadOnly);
-        this._body.setRowVisible(rowVisible);
-        this._body.setRowSeparator(rowSeparator);
-        this._body.setRowIndented(rowIndented);
-        this._body.setStore(store);
+        this._body.bindViewState({
+            store,
+            columns,
+            columnConfigs: configs,
+            hiddenColumns: hidden,
+            rowReadOnly,
+            rowVisible,
+            rowSeparator,
+            rowIndented,
+        });
 
         this._suppressSelectionForward = false;
 
