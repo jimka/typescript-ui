@@ -54,4 +54,26 @@ describe('Notification (pause/resume refcount, idle)', () => {
             Notification.resumeAll();
         }).not.toThrow();
     });
+
+    it("makes a toast's message text selectable and copyable", () => {
+        installTestDOM(CONFIG);
+
+        // A toast message is content the reader may want to select and copy —
+        // the same category as a Dialog's body text, which
+        // `tests/overlay/Dialog.test.ts` pins the same way. `_messageText` is a
+        // `SelectableText`, so both values fold out of its class defaults
+        // rather than a per-instance setter call; this asserts the behaviour
+        // the swap to `SelectableText` had to preserve.
+        //
+        // The constructor is private, so the toast is reached through the
+        // static active-stack the way `Notification.styleRuleDisposal.test.ts`
+        // already does.
+        Notification.show('msg');
+
+        const active = (Notification as unknown as { activeNotifications: unknown[] }).activeNotifications;
+        const toast  = active[active.length - 1] as { _messageText: { getUserSelect(): string | null; getCursor(): string | null } };
+
+        expect(toast._messageText.getUserSelect()).toBe('text');
+        expect(toast._messageText.getCursor()).toBe('text');
+    });
 });

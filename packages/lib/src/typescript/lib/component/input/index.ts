@@ -2,6 +2,8 @@
 
 export { Text } from '~/component/input/Text.js';
 export type { TextOptions } from '~/component/input/Text.js';
+export { SelectableText } from '~/component/input/SelectableText.js';
+export type { SelectableTextOptions } from '~/component/input/SelectableText.js';
 export { Label } from '~/component/input/Label.js';
 export type { LabelOptions } from '~/component/input/Label.js';
 export { Link } from '~/component/input/Link.js';

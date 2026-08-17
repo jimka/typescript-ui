@@ -105,6 +105,7 @@ const _defaultLinkOptions: Partial<LinkOptions> = {
     tag:             "a",
     foregroundColor: LINK_COLOR_CSS,
     cursor:          "pointer",
+    userSelect:      "text",
     interactive:     true,
 };
 

@@ -139,7 +139,12 @@ describe('StyleRule — batched flush (Component.applyStyle)', () => {
     });
 
     it('case 6: first render produces exactly one setRuleStyles op for the component rule', () => {
-        const c = new Component({});
+        // `backgroundColor` is a conditional declaration — never hoisted onto
+        // the class tier (see ClassStyleRules.test.ts case 16) — so it is what
+        // gives this component an `#id` rule to batch at all. A bare
+        // `new Component({})` now diverges from its class bag in nothing and
+        // materialises no rule whatsoever; case 15 pins that half.
+        const c = new Component({ backgroundColor: '#fff' });
         c.getElement(true);
 
         const sink     = DOM.sink as RecordingDOMSink;
@@ -148,17 +153,18 @@ describe('StyleRule — batched flush (Component.applyStyle)', () => {
 
         expect(ops.length).toBe(1);
         const bag = ops[0].args[1] as Record<string, string | null>;
-        // `position` / `margin` / `cursor` are now served by the
+        // `position` / `margin` / `cursor` / `border` are all served by the
         // framework-wide rule (plans/implemented/class-scoped-style-rules.md,
-        // plans/implemented/selectable-text-cursor.md), so a bare `Component`
-        // writes nothing for them to its own `#id` rule; `border` stays
-        // conditional and always lands at `#id`.
+        // plans/implemented/selectable-text-cursor.md, and this plan's
+        // `border` hoist), so a bare `Component` writes none of them to its
+        // own `#id` rule — only the conditional declaration it actually set.
         expect(bag.cursor).toBeUndefined();
-        expect(bag.border).toBeDefined();
+        expect(bag.border).toBeUndefined();
+        expect(bag.backgroundColor).toBe('#fff');
     });
 
     it('case 7: sync() produces exactly one further setRuleStyles op, not one per declaration', () => {
-        const c = new Component({});
+        const c = new Component({ backgroundColor: '#fff' });
         c.getElement(true);
 
         const sink     = DOM.sink as RecordingDOMSink;
@@ -250,6 +256,11 @@ describe('StyleRule — lazy materialisation gate', () => {
         const sink     = DOM.sink as RecordingDOMSink;
         const selector = '#' + c.getId();
 
-        expect(sink.writes.filter((w) => w.op === 'ensureStyleRule' && w.args[0] === selector).length).toBe(1);
+        // A stock component diverges from its class bag in nothing — every
+        // declaration it resolves is already served by the framework rule — so
+        // the lazy gate correctly inserts no per-instance rule at all. Case 12
+        // pins the positive half (one queued declaration ⇒ exactly one rule).
+        expect(sink.writes.filter((w) => w.op === 'ensureStyleRule' && w.args[0] === selector).length).toBe(0);
+        expect(_ruleCacheHas(selector)).toBe(false);
     });
 });

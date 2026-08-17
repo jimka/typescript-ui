@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { Fit } from "~/layout/Fit.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Text } from "~/component/input/Text.js";
@@ -15,8 +15,8 @@ import { ThemeManager } from "~/core/Theme.js";
  */
 export abstract class CellRenderer<T> extends Component {
 
-    constructor() {
-        super();
+    constructor(subclassDefaults?: Partial<ComponentOptions>) {
+        super(undefined, subclassDefaults);
 
         this.setLayoutManager(new Fit());
 

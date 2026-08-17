@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
+import { DOM } from "~/core/DOM.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Card } from "~/layout/Card.js";
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
@@ -17,6 +18,12 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
  * @category Components
  */
 export type CellEvent = "commit" | "editend";
+
+// Every cell resolves its text colour to the same theme token, on every
+// instance and every subclass, so it is a class default rather than a
+// per-instance write — which keeps the `color` declaration on the shared
+// `.Cell`-family class rule instead of each cell's own `#id` rule.
+const _defaultCellOptions: Partial<ComponentOptions> = { foregroundColor: 'var(--ts-ui-table-cell-color, inherit)' };
 
 /**
  * Base class for table cells that support both a display renderer and an optional in-place editor.
@@ -47,8 +54,8 @@ export class Cell<T> extends Component {
     // host's typed `on` / `off` / `emit` overloads, not on the bag field.
     protected _listeners: ListenerBag<string> = new ListenerBag<string>();
 
-    constructor(tag: string, renderer: CellRenderer<T>, editor?: CellEditor<T>, rendererConstraints?: LayoutConstraints, editorContraints?: LayoutConstraints) {
-        super({ tag: tag || "td" });
+    constructor(tag: string, renderer: CellRenderer<T>, editor?: CellEditor<T>, rendererConstraints?: LayoutConstraints, editorContraints?: LayoutConstraints, subclassDefaults?: Partial<ComponentOptions>) {
+        super({ tag: tag || "td" }, { ..._defaultCellOptions, ...(subclassDefaults ?? {}) });
 
         this.setLayoutManager(new Card());
 
@@ -60,7 +67,6 @@ export class Cell<T> extends Component {
         this.setInsets(new Insets(0, 0, 0, 0));
 
         this.setBackgroundColor('var(--ts-ui-table-cell-bg, transparent)');
-        this.setForegroundColor('var(--ts-ui-table-cell-color, inherit)');
         this.setBorder('var(--ts-ui-table-cell-border, none)');
 
         this.subscribeTheme(() => this.setBorder('var(--ts-ui-table-cell-border, none)'));
@@ -352,11 +358,31 @@ export class Cell<T> extends Component {
      * required-empty states cannot fight over either.
      */
     private _applyStateTint(): void {
+        const background = this._readOnly
+            ? 'var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))'
+            : this._baseBackground;
+
+        // Pooled, frequently-rebound cell: Row.setColumnWindow / Header's column
+        // reconciler call setBaseBackground (and Body.applyReadOnlyState calls
+        // setReadOnly) on every recycle pass, not just on a real change. Routing
+        // through the persistent setBackgroundColor setter would re-materialise
+        // this cell's #id stylesheet rule every time — the same cost
+        // Row.updateVisualState already avoids for rows. Cache the resolved
+        // value directly (so getBackgroundColor() keeps answering correctly —
+        // see Cell.test.ts's background/cursor/outline precedence block) and
+        // paint it as a direct inline style instead.
+        if (this._options.backgroundColor !== background) {
+            this._options.backgroundColor = background;
+
+            const el = this.getElement();
+            if (el) {
+                DOM.sink.apply(el, { style: { 'background-color': background } });
+            }
+        }
+
         if (this._readOnly) {
-            this.setBackgroundColor('var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))');
             this.setCursor('default');
         } else {
-            this.setBackgroundColor(this._baseBackground);
             this.clearCursor();
         }
 

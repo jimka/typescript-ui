@@ -8,6 +8,7 @@ import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerMa
 import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
 import { Position } from "~/primitive/Position.js";
 import { Text } from "~/component/input/Text.js";
+import { SelectableText } from "~/component/input/SelectableText.js";
 import { Button } from "~/component/button/Button.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { DialogBackdrop } from "~/component/container/DialogBackdrop.js";
@@ -626,12 +627,10 @@ class Dialog extends Component implements DismissableLayer {
         if (config.contentComponent) {
             this._contentContainer.addComponent(config.contentComponent);
         } else {
-            const messageText = new Text(config.message ?? '');
+            const messageText = new SelectableText(config.message ?? '');
             messageText.setWhiteSpace("normal");
             messageText.setWordBreak("break-word");
             messageText.setPadding(new Insets(16, 16, 16, 16));
-            messageText.setUserSelect("text");
-            messageText.setCursor("text");
             this._contentContainer.addComponent(messageText);
         }
 

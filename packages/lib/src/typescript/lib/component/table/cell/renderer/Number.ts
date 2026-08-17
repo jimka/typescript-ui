@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
+import { ComponentOptions } from "~/core/Component.js";
 import { Text } from "~/component/input/Text.js";
+import { SelectableText } from "~/component/input/SelectableText.js";
 import { callable } from "~/core/Callable.js";
+
+const _defaultNumberRendererOptions: Partial<ComponentOptions> = { cursor: "text", userSelect: "text" };
 
 /**
  * A read-only renderer for numeric cell values.
@@ -16,7 +20,7 @@ import { callable } from "~/core/Callable.js";
  */
 class NumberRenderer extends CellRenderer<Number | null> {
 
-    private _text:    Text          = new Text();
+    private _text:    Text          = new SelectableText();
     private _value:   Number | null = null;
     private _display: string        = "";
 
@@ -28,7 +32,7 @@ class NumberRenderer extends CellRenderer<Number | null> {
      *   column.
      */
     constructor(align: "left" | "right" = "right") {
-        super();
+        super(_defaultNumberRendererOptions);
 
         this._text.setPointerEvents("none");
         this._text.setTextAlign(align);
@@ -36,10 +40,6 @@ class NumberRenderer extends CellRenderer<Number | null> {
         this._text.setAutoMeasure(false);
 
         this.addComponent(this._text);
-
-        this.setUserSelect("text");
-        this._text.setUserSelect("text");
-        this.setCursor("text");
     }
 
     /**

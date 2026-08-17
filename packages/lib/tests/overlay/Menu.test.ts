@@ -1229,6 +1229,10 @@ describe('Menu custom rows', () => {
         menu.show(0, 0, [{ row: () => new TestRow() }]);
 
         const oldRow = (menu as any)._menuItems[0];
+        // `backgroundColor` is a conditional declaration, never hoisted onto the
+        // class rule, so it is what gives the row a per-instance `#id` rule for
+        // the reshow to dispose — a stock row now materialises none at all.
+        oldRow.setBackgroundColor('#fff');
         oldRow.getElement(true);
         const id = oldRow.getId();
         expect(_ruleCacheKeys().some((k: string) => k.startsWith('#' + id))).toBe(true);

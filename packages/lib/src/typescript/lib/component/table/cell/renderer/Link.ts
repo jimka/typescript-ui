@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
+import { ComponentOptions } from "~/core/Component.js";
 import { Text } from "~/component/input/Text.js";
 import { Link } from "~/component/input/Link.js";
 import { callable } from "~/core/Callable.js";
@@ -18,6 +19,8 @@ export interface LinkCellRendererOptions {
      */
     color ?: string;
 }
+
+const _defaultLinkCellRendererOptions: Partial<ComponentOptions> = { cursor: "text", userSelect: "text" };
 
 /**
  * A display-only cell renderer that presents its string value as a link.
@@ -55,7 +58,7 @@ class LinkCellRenderer extends CellRenderer<String | null> {
     private _display: string = "";
 
     constructor(options?: LinkCellRendererOptions) {
-        super();
+        super(_defaultLinkCellRendererOptions);
 
         this._text = new Link("", {
             // The Table owns keyboard nav (RovingTabIndex) and routes clicks
@@ -69,10 +72,6 @@ class LinkCellRenderer extends CellRenderer<String | null> {
         // Renderer Texts opt out of auto-measure — the host cell force-sizes them.
         this._text.setAutoMeasure(false);
         this.addComponent(this._text);
-
-        this.setUserSelect("text");
-        this._text.setUserSelect("text");
-        this.setCursor("text");
     }
 
     /**

@@ -14,10 +14,18 @@ const ZERO_MIN_SIZE = Object.freeze({ width: 0,         height: 0 });
 const UNBOUNDED_MAX = Object.freeze({ width: UNBOUNDED, height: UNBOUNDED });
 
 const BASE_DEFAULTS = Object.freeze({
-    cursor   : "default",
-    insets   : ZERO_INSETS,
-    minSize  : ZERO_MIN_SIZE,
-    maxSize  : UNBOUNDED_MAX,
+    cursor    : "default",
+    // Framework-wide "chrome is not selectable" default, the peer of `cursor`
+    // above: `getUserSelect()` folds `_defaultOptions` and is read at render by
+    // `applyMiscInlineStyles`, so the base value has to live here rather than in
+    // a constructor seed — otherwise every stock component reports null and the
+    // `:where(.ts-ui-component)` rule's `user-select: none` is the only thing
+    // holding the behaviour up. A class that wants selectable text overrides it
+    // through its own defaults bag (see `SelectableText`, `Link`, `Markdown`).
+    userSelect: "none",
+    insets    : ZERO_INSETS,
+    minSize   : ZERO_MIN_SIZE,
+    maxSize   : UNBOUNDED_MAX,
     // `hidden` is deliberate and load-bearing beyond just clipping: it
     // visually EXPOSES layout-calculation bugs. When a layout lays a
     // child out larger than the box its parent sized for it — i.e. when
@@ -26,9 +34,9 @@ const BASE_DEFAULTS = Object.freeze({
     // spilling, so the size-negotiation mistake shows up on screen
     // instead of hiding. Don't relax this to "fix" a clip; find the
     // preferred-vs-doLayout discrepancy it revealed.
-    overflow : "hidden",
-    zIndex   : 0,
-    displayed: true,
+    overflow  : "hidden",
+    zIndex    : 0,
+    displayed : true,
 });
 
 interface CacheEntry { bag: object; keys: string[]; }

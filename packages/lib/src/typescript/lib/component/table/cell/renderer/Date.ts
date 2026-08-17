@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
+import { ComponentOptions } from "~/core/Component.js";
 import { Text } from "~/component/input/Text.js";
+import { SelectableText } from "~/component/input/SelectableText.js";
 import { callable } from "~/core/Callable.js";
 import { temporalDisplayText } from "~/data/temporalText.js";
+
+const _defaultDateRendererOptions: Partial<ComponentOptions> = { cursor: "text", userSelect: "text" };
 
 /**
  * A read-only renderer for date cell values.
@@ -14,21 +18,17 @@ import { temporalDisplayText } from "~/data/temporalText.js";
  */
 class DateRenderer extends CellRenderer<Date | null> {
 
-    private _text: Text = new Text();
+    private _text: Text = new SelectableText();
     private _value: Date | null = null;
     private _display: string = "";
 
     constructor() {
-        super();
+        super(_defaultDateRendererOptions);
 
         this._text.setText("");
         this._text.setPointerEvents("none");
         this._text.setAutoMeasure(false);
         this.addComponent(this._text);
-
-        this.setUserSelect("text");
-        this._text.setUserSelect("text");
-        this.setCursor("text");
     }
 
     getValue(): Date | null {

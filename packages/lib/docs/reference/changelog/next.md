@@ -18,6 +18,31 @@ page resets to empty.
   transition, or a commit that also changes size, is unaffected — it still
   writes real `left`/`top`/`width`/`height` as before. No consumer action is
   needed.
+- **`user-select`, `outline`, `color` and `border` now join the framework's
+  hoisted style declarations** (see the `cursor` note in the 0.6.0 changelog
+  and the `ts-ui-component` note in 0.3.0): a component whose value for one
+  of these is left at the default, or matches its class's own default, no
+  longer gets a redundant per-instance CSS rule for it. The visible
+  consequence is one of specificity: a consumer stylesheet targeting a
+  component by class now *ties* with the generated `.ClassName` rule where
+  the framework's per-instance `#id` rule previously always won, so such a
+  rule lands or loses on source order rather than being overridden outright.
+  Raise the selector's specificity, or target the component's id, if a
+  consumer rule stops applying. Every per-instance and class-level override
+  set through the framework's own setters behaves exactly as before.
+- **A stock component now materialises no per-instance CSS rule at all on
+  first render.** Previously `border: null` was written unconditionally by
+  every component without a border, which forced a rule for it. Nothing
+  changes visually; a component that sets anything genuinely per-instance
+  still gets its own rule.
+
+### Components
+
+- **[`Link`](/api/component/input/classes/Link) text is now selectable by
+  default** (`userSelect: "text"`), matching what the table's link cell
+  renderer already did per-cell — a link's label is content a reader may want
+  to select and copy. The pointer cursor is unchanged. Pass
+  `userSelect: "none"` to opt an individual link back out.
 
 ## Added
 
@@ -38,6 +63,24 @@ page resets to empty.
   are the one component opted into the skip today, re-expressing the
   cache's old behaviour through this shared primitive instead of a private,
   table-only mechanism.
+- **`ComponentOptions.userSelect`**, giving construction-time parity with the
+  existing `setUserSelect` setter — `new Foo({ userSelect: "text" })` now
+  works the same way `cursor` already did, and a subclass can seed it as a
+  class default. `getUserSelect()` folds that default, so a class-level value
+  is visible to consumers and to the render path alike.
+
+### Components
+
+- **[`SelectableText`](/api/component/input/classes/SelectableText)**, a
+  [`Text`](/api/component/input/classes/Text) subclass that the reader can
+  select and copy, with a matching I-beam cursor. Framework `Text` is
+  unselectable by default because most text in a UI is chrome — a button
+  label, a menu title — so reach for `SelectableText` when the text is
+  content instead: a dialog or notification message, a data cell's value.
+  It adds no API of its own; the two values come from its class defaults, so
+  a per-instance `setUserSelect("text")` call is no longer needed. The
+  library's own dialog and notification messages and the table's
+  text-bearing cell renderers now use it.
 
 ## Fixed
 

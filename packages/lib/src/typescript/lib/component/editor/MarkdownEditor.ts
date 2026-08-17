@@ -125,6 +125,15 @@ function $selectionIsInTableCell(): boolean {
     return $getTableCellNodeFromLexicalNode(selection.anchor.getNode()) !== null;
 }
 
+// A text caret over the whole surface signals editability. The surface is also
+// a contenteditable editing host, which the browser exempts from the framework's
+// `user-select: none` on its own, and Lexical additionally stamps
+// `user-select: text` inline on the root when it mounts — stating the same
+// intent here in the framework's own rule means select-and-copy does not depend
+// on that inline write surviving a later re-render. As class defaults both land
+// on the shared `.WysiwygSurface` rule rather than each instance's `#id` rule.
+const _defaultWysiwygSurfaceOptions: Partial<ComponentOptions> = { userSelect: "text", cursor: "text" };
+
 /**
  * The private WYSIWYG editing surface: the element Lexical's `contenteditable`
  * view mounts into.
@@ -149,9 +158,10 @@ class WysiwygSurface extends Component {
      * Constructs the WYSIWYG surface.
      *
      * @param onReady - Called on the surface's first connected + sized layout.
+     * @param subclassDefaults - Optional subclass defaults bag.
      */
-    constructor(onReady: () => void) {
-        super();
+    constructor(onReady: () => void, subclassDefaults?: Partial<ComponentOptions>) {
+        super(undefined, { ..._defaultWysiwygSurfaceOptions, ...(subclassDefaults ?? {}) });
 
         this._onReady = onReady;
 
@@ -167,17 +177,6 @@ class WysiwygSurface extends Component {
         // (CodeMirror's `.cm-content` padding is `4px 0`) and 6px horizontal
         // (its `.cm-line` padding-left is 6px).
         this.setPadding(new Insets(4, 6, 4, 6));
-        // Text caret over the whole surface, signalling editability. `setCursor`
-        // caches in `_options.cursor`, which `applyStyle` replays, so it survives
-        // both detached construction and Lexical's mount.
-        this.setCursor("text");
-        // The surface is a contenteditable editing host, which the browser
-        // exempts from the framework's `user-select: none` on its own, and
-        // Lexical additionally stamps `user-select: text` inline on the root
-        // when it mounts. Stating the same intent here in the framework's own
-        // rule means the select-and-copy behaviour does not depend on that
-        // inline write surviving a later re-render.
-        this.setUserSelect("text");
         // Matches the read-only Markdown viewer's own root-level override
         // (Markdown.ts) so the edited prose reads at the same leading as the
         // preview instead of falling back to the tighter UI-control line-height

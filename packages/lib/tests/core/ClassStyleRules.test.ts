@@ -43,11 +43,11 @@ afterEach(() => DOM.reset());
 
 const FRAMEWORK_SELECTOR = ':where(.ts-ui-component)';
 
-/** The fourteen keys a class-uniform declaration may be hoisted onto. */
+/** The fifteen keys a class-uniform declaration may be hoisted onto. */
 const HOISTED_KEYS = [
     'position', 'visibility', 'display', 'boxSizing', 'whiteSpace',
-    'userSelect', 'cursor', 'margin', 'minWidth', 'minHeight', 'maxWidth',
-    'maxHeight', 'overflowX', 'overflowY',
+    'userSelect', 'cursor', 'border', 'margin', 'minWidth', 'minHeight',
+    'maxWidth', 'maxHeight', 'overflowX', 'overflowY',
 ] as const;
 
 /**
@@ -389,9 +389,11 @@ describe('Class-scoped style rules', () => {
         const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
 
         expect(declarations.backgroundColor).toBe('#fff');
-        expect(declarations.border).toBeNull();
+        // `border` is hoisted now: every class's "no border" resolution is the
+        // same literal null, so the class bag already carries it and the
+        // instance write is skipped entirely rather than written as null.
+        expect(declarations.border).toBeUndefined();
         expect(HOISTED_KEYS).not.toContain('backgroundColor');
-        expect(HOISTED_KEYS).not.toContain('border');
     });
 
     it('case 17: no rule for a component that never renders', () => {
@@ -473,5 +475,160 @@ describe('Class-scoped style rules', () => {
         const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
 
         expect(declarations.cursor).toBe('pointer');
+    });
+
+    it('case 23: a default-valued userSelect lands on no per-component rule', () => {
+        class ProbeCase23 extends Component {}
+
+        const sink = DOM.sink as RecordingDOMSink;
+        new ProbeCase23({}).getElement(true);
+        const b = new ProbeCase23({});
+
+        const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+
+        expect(declarations.userSelect).toBeUndefined();
+    });
+
+    it('case 24: a class that overrides userSelect gets it on its class rule', () => {
+        class SelectableProbeCase24 extends Component {
+            constructor(options?: ComponentOptions) {
+                super(options, { userSelect: 'text' });
+            }
+        }
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const a = new SelectableProbeCase24({});
+        const classDeclarations = declarationsDuring(sink, '.SelectableProbeCase24', () => a.getElement(true));
+
+        expect(ensureStyleRuleOpsFor(sink, '.SelectableProbeCase24').length).toBe(1);
+        expect(classDeclarations.userSelect).toBe('text');
+
+        const b = new SelectableProbeCase24({});
+        const instanceDeclarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+        expect(instanceDeclarations.userSelect).toBeUndefined();
+    });
+
+    it('case 25: an explicitly-set userSelect lands on #uuid', () => {
+        class ProbeCase25 extends Component {}
+
+        new ProbeCase25({}).getElement(true);
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const b = new ProbeCase25({ userSelect: 'text' });
+        const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+
+        expect(declarations.userSelect).toBe('text');
+    });
+
+    it('case 26: an instance userSelect matching the framework value still beats a class override', () => {
+        class SelectableProbeCase26 extends Component {
+            constructor(options?: ComponentOptions) {
+                super(options, { userSelect: 'text' });
+            }
+        }
+
+        new SelectableProbeCase26({}).getElement(true);
+        new SelectableProbeCase26({}).getElement(true);
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const c = new SelectableProbeCase26({ userSelect: 'none' });
+        const declarations = declarationsDuring(sink, idSelector(c), () => c.getElement(true));
+
+        // 'none' is the framework value, but it deviates from this class's own
+        // bag, so it must still be restated on the instance rule to win.
+        expect(declarations.userSelect).toBe('none');
+    });
+
+    it('case 27: a class with no outline default writes no outline declaration at all', () => {
+        class ProbeCase27 extends Component {}
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const a = new ProbeCase27({});
+        const classDeclarations = declarationsDuring(sink, '.ProbeCase27', () => a.getElement(true));
+
+        const b = new ProbeCase27({});
+        const instanceDeclarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+
+        // Unlike cursor/userSelect, outline has no non-empty framework default,
+        // so the key stays absent from every tier rather than resolving to one.
+        expect(classDeclarations.outline).toBeUndefined();
+        expect(instanceDeclarations.outline).toBeUndefined();
+    });
+
+    it('case 28: a class that defaults outline gets it on its class rule', () => {
+        class OutlinedProbeCase28 extends Component {
+            constructor(options?: ComponentOptions) {
+                super(options, { outline: 'none' });
+            }
+        }
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const a = new OutlinedProbeCase28({});
+        const classDeclarations = declarationsDuring(sink, '.OutlinedProbeCase28', () => a.getElement(true));
+
+        expect(ensureStyleRuleOpsFor(sink, '.OutlinedProbeCase28').length).toBe(1);
+        expect(classDeclarations.outline).toBe('none');
+
+        const b = new OutlinedProbeCase28({});
+        const instanceDeclarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+        expect(instanceDeclarations.outline).toBeUndefined();
+    });
+
+    it('case 29: an explicitly-set outline lands on #uuid', () => {
+        class ProbeCase29 extends Component {}
+
+        new ProbeCase29({}).getElement(true);
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const b = new ProbeCase29({});
+        b.setOutline('2px solid blue');
+        const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+
+        expect(declarations.outline).toBe('2px solid blue');
+    });
+
+    it('case 30: a class with no foregroundColor default writes no color declaration at all', () => {
+        class ProbeCase30 extends Component {}
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const a = new ProbeCase30({});
+        const classDeclarations = declarationsDuring(sink, '.ProbeCase30', () => a.getElement(true));
+
+        const b = new ProbeCase30({});
+        const instanceDeclarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+
+        expect(classDeclarations.color).toBeUndefined();
+        expect(instanceDeclarations.color).toBeUndefined();
+    });
+
+    it('case 31: a class that defaults foregroundColor gets color on its class rule', () => {
+        class TintedProbeCase31 extends Component {
+            constructor(options?: ComponentOptions) {
+                super(options, { foregroundColor: 'rgb(1, 2, 3)' });
+            }
+        }
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const a = new TintedProbeCase31({});
+        const classDeclarations = declarationsDuring(sink, '.TintedProbeCase31', () => a.getElement(true));
+
+        expect(ensureStyleRuleOpsFor(sink, '.TintedProbeCase31').length).toBe(1);
+        expect(classDeclarations.color).toBe('rgb(1, 2, 3)');
+
+        const b = new TintedProbeCase31({});
+        const instanceDeclarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+        expect(instanceDeclarations.color).toBeUndefined();
+    });
+
+    it('case 32: an explicitly-set foregroundColor lands on #uuid', () => {
+        class ProbeCase32 extends Component {}
+
+        new ProbeCase32({}).getElement(true);
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const b = new ProbeCase32({ foregroundColor: 'rgb(4, 5, 6)' });
+        const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+
+        expect(declarations.color).toBe('rgb(4, 5, 6)');
     });
 });

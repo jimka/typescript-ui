@@ -208,7 +208,11 @@ describe('restoreLayout round-trip', () => {
         // below is process-global and not cleared by DOM.reset(), so a
         // colliding id would pick up another test's still-live rule.
         const a = new Component({}); a.setId('l3-a');
-        const b = new Component({}); b.setId('l3-b');
+        // `backgroundColor` is a conditional declaration, never hoisted onto the
+        // class rule, so it is what gives the dropped leaf a per-instance `#id`
+        // rule whose fate this test tracks — a stock component now materialises
+        // none at all.
+        const b = new Component({ backgroundColor: '#fff' }); b.setId('l3-b');
 
         split.addComponent(a);
         split.addComponent(b);
@@ -249,7 +253,11 @@ describe('restoreLayout round-trip', () => {
         installTestDOM(CONFIG);
 
         const root = new Container({ layoutManager: new Split({ orientation: 'horizontal' }) });
-        const nested = new Container({ layoutManager: new Split({ orientation: 'vertical' }) });
+        // `backgroundColor` is a conditional declaration, never hoisted onto the
+        // class rule, so it is what gives the scaffold container a per-instance
+        // `#id` rule whose disposal this test asserts — a stock container now
+        // materialises none at all.
+        const nested = new Container({ layoutManager: new Split({ orientation: 'vertical' }), backgroundColor: '#fff' });
         const a = new Component({}); a.setId('a');
         const b = new Component({}); b.setId('b');
         const c = new Component({}); c.setId('c');
@@ -283,7 +291,11 @@ describe('restoreLayout round-trip', () => {
         // The transient child is mounted after the state was captured — it is
         // never part of `state`, the same way a Dock's empty-state placeholder
         // is never captured by serializeLayout.
-        const placeholder = new Component({});
+        // `backgroundColor` is a conditional declaration, never hoisted onto the
+        // class rule, so it is what gives the placeholder a per-instance `#id`
+        // rule — this test asserts the rule SURVIVES (detached, not disposed),
+        // and a stock component now materialises none at all.
+        const placeholder = new Component({ backgroundColor: '#fff' });
         root.addComponent(placeholder, Object.assign(new LayoutConstraints(), { transient: true }));
         placeholder.getElement(true);
         const placeholderId = placeholder.getId();

@@ -73,6 +73,7 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | Component | Purpose |
 | --- | --- |
 | [`Text`](/api/component/input/classes/Text) | Standalone text — the default for status, captions, body |
+| [`SelectableText`](/api/component/input/classes/SelectableText) | Text the reader can select and copy — an I-beam cursor and selectable content |
 | [`Label`](/api/component/input/classes/Label) | Text tied to a form control via the HTML `for` attribute |
 | [`Link`](/components/Link) | Clickable text link — hit area is exactly the text; activates on click or Enter |
 | [`Header`](/api/component/display/classes/Header) | Title-bar / panel header text |

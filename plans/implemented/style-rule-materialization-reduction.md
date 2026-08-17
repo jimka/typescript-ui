@@ -629,3 +629,78 @@ New unit test in `tests/component/table/cell/Cell.test.ts`: render a `Cell`, rec
 [^row-precedent]: `Row.updateVisualState` ([Row.ts:224-243](packages/lib/src/typescript/lib/component/table/Row.ts#L224-L243)): "Going through a cached Component setter (setBackgroundColor) would persist this into `_options` and replay it onto the next record bound to this reused row, so write/remove the inline style directly instead." `Row` has no getter reading this state back, so it can skip `_options` entirely; `Cell.getBackgroundColor()` cannot.
 
 [^element-guard]: `Header.reconcileColumnCells` builds a fresh cell with `cell = new HeaderCell(...); row.addComponent(cell, ...);` in Pass 2 ([Header.ts:769-782](packages/lib/src/typescript/lib/component/table/Header.ts#L769-L782)) before Pass 3 calls `cell.setBaseBackground(...)` ([Header.ts:809](packages/lib/src/typescript/lib/component/table/Header.ts#L809)). `Row.setColumnWindow` follows the identical shape ([Row.ts:437-462](packages/lib/src/typescript/lib/component/table/Row.ts#L437-L462)). `Component.insertComponent` (called by `addComponent`) appends the child's element at the matching DOM position once its parent already has one; both the header's column row and a body `Row` are already mounted before their column-window reconciler runs, so the newly-built cell has a live element by the time `setBaseBackground` reads it.
+
+---
+
+## Implementation Notes
+
+### `Cell` and `WysiwygSurface` both gained a `subclassDefaults` parameter
+
+**What the plan called for.** Step 15 specified `Cell`'s constructor call
+verbatim as `super({ tag: tag || "td" }, _defaultCellOptions);`, and step 19
+specified `WysiwygSurface`'s as `super(undefined, _defaultWysiwygSurfaceOptions);`
+— "no new constructor parameter", argued in
+[Architecture Decisions](#architecture-decisions) and footnote `[^surface-private]`
+on the grounds that `WysiwygSurface` is file-private, takes no options bag, and
+cannot be subclassed from outside `MarkdownEditor.ts`.
+
+**What was done instead.** Both constructors now accept a trailing optional
+`subclassDefaults?: Partial<ComponentOptions>` and layer it over the class bag in
+the established way:
+
+```typescript
+super({ tag: tag || "td" }, { ..._defaultCellOptions,            ...(subclassDefaults ?? {}) });
+super(undefined,            { ..._defaultWysiwygSurfaceOptions,  ...(subclassDefaults ?? {}) });
+```
+
+**Why.** Both forms the plan specified are rejected by the
+`local/require-subclass-defaults` ESLint rule
+([packages/lib/scripts/eslint/require-subclass-defaults.js](packages/lib/scripts/eslint/require-subclass-defaults.js)),
+which runs at `"error"` severity with no baseline file — so the plan's own
+[Verification](#verification) step (`npm run lint` clean) could not pass as
+written. The rule reports any `super()` call whose second-or-later argument names
+a `_default<Name>Options` constant without also forwarding a constructor
+parameter. Its only exemption is `params.length === 0` (a fixed-configuration
+leaf with no parameter to plumb); `Cell` takes five parameters and
+`WysiwygSurface` takes `onReady`, so neither qualifies. The rule has no exemption
+for a file-private or non-exported class — it reads the AST shape, not the
+export surface — so the plan's `[^surface-private]` reasoning, though sound as
+design rationale, does not reach the mechanically-enforced repo rule.
+
+Rather than weaken the rule or add the project's first `require-subclass-defaults`
+baseline entry for a change that introduced the violation, both sites adopt the
+same pattern this branch already applies correctly to `SelectableText`, `Link`,
+`Markdown`, and the seven cell renderers. The cost is one optional parameter each,
+which ARCHITECTURE.md's *Constructors forward `subclassDefaults`* explicitly says
+to add "even when no subclass exists yet, [because] it cannot be added later
+without touching every subclass". Neither parameter is part of the consumer-facing
+surface: `WysiwygSurface` is not exported, and `Cell`'s is trailing and optional,
+so every existing call site is unchanged.
+
+### `ComponentDefaults.ts`'s `BASE_DEFAULTS` gained a `userSelect` field
+
+**What the plan called for.** Step 2 described `getUserSelect`/`setUserSelect`/
+`clearUserSelect` as mirroring `getCursor`/`setCursor`/`clearCursor` "exactly",
+but named no base-level default value for `userSelect` — `cursor`'s own base
+default (`"default"`) already lived in `ComponentDefaults.ts`'s `BASE_DEFAULTS`
+bag before this plan, seeded by a different, earlier plan.
+
+**What was done instead.** `BASE_DEFAULTS` gained `userSelect: "none"`, alongside
+`cursor`, so `getUserSelect()` folds to `"none"` for a stock component exactly as
+it did before this plan's refactor away from the constructor-seeded `_userSelect`
+field.
+
+**Why.** Before this plan, `Component`'s constructor unconditionally set
+`this._userSelect = "none"`, so every instance already had the base default
+regardless of `_defaultOptions`. Step 2 replaces that field with the same
+folding-getter shape `cursor` already uses (`_options.userSelect ?? _defaultOptions.userSelect ?? null`),
+which depends on `_defaultOptions.userSelect` carrying the base value — but
+`_defaultOptions` for a plain `Component` resolves from `BASE_DEFAULTS`, and
+nothing in the plan's Ordered Steps added `userSelect` there. Implementing step 2
+exactly as specified, without this addition, silently regresses `getUserSelect()`
+from `"none"` to `null` for every component that never opts into selectable
+text — including `GlyphRenderer`, `Button` labels, `MenuItem` titles, and
+`TabButton` labels, all of which `tests/component/table/CellTextSelection.test.ts`
+already pins at `'none'`. Adding `userSelect: "none"` to `BASE_DEFAULTS` restores
+the pre-plan behaviour through the new mechanism instead of through the deleted
+field, the same fix shape the plan's own `cursor` precedent already established.

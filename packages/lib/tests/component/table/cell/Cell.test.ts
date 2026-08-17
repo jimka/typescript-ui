@@ -188,6 +188,54 @@ describe('Cell background/cursor/outline state precedence', () => {
         expect(afterSecond.length).toBe(afterFirst.length);
     });
 
+    // A pooled cell is rebound on every column-window recycle: Row.setColumnWindow
+    // and Header's reconciler call setBaseBackground (and Body.applyReadOnlyState
+    // calls setReadOnly) unconditionally, not only on a real change. Routing that
+    // through setBackgroundColor re-materialised the cell's own `#id` stylesheet
+    // rule every single time — the cost Row.updateVisualState already avoids for
+    // rows. The rebind now paints an inline style instead, while still caching the
+    // resolved value so getBackgroundColor() keeps answering (the precedence block
+    // above is that half of the contract).
+    it('a rebind paints the background inline, never re-materialising the #id rule', () => {
+        const sink         = DOM.sink as RecordingDOMSink;
+        const cell         = editableCell();
+        const cellSelector = '#' + cell.getId();
+
+        const before = sink.writes.length;
+
+        cell.setBaseBackground('rgb(1,2,3)');
+        cell.setBaseBackground('rgb(4,5,6)');
+        cell.setReadOnly(true);
+        cell.setReadOnly(false);
+        cell.setBaseBackground(null);
+
+        const window = sink.writes.slice(before);
+
+        const backgroundRuleWrites = window
+            .filter((w) => w.op === 'setRuleStyles' && w.args[0] === cellSelector)
+            .flatMap((w) => Object.keys(w.args[1] as Record<string, string | null>))
+            .filter((key) => key === 'backgroundColor');
+
+        expect(backgroundRuleWrites).toEqual([]);
+        expect(window.some((w) => w.op === 'ensureStyleRule' && w.args[0] === cellSelector)).toBe(false);
+
+        // Positive control: the writes did happen, just inline. Without this the
+        // absences above would pass vacuously if the rebinds were skipped entirely.
+        const inlineBackgrounds = window
+            .filter((w) => w.op === 'apply')
+            .map((w) => (w.args[1] as { style?: Record<string, string | null> })?.style)
+            .filter((style): style is Record<string, string | null> => !!style && 'background-color' in style)
+            .map((style) => style['background-color']);
+
+        expect(inlineBackgrounds).toEqual([
+            'rgb(1,2,3)',
+            'rgb(4,5,6)',
+            'var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))',
+            'rgb(4,5,6)',
+            'var(--ts-ui-table-cell-bg, transparent)',
+        ]);
+    });
+
     it('a read-only cell shows the default cursor; requiredEmpty and base both clear the cursor', () => {
         const cell = editableCell();
 

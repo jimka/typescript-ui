@@ -138,6 +138,7 @@ export interface ComponentOptions {
     shadow?:          string;
     outline?:         string;
     cursor?:          string;
+    userSelect?:      string;
     preferredSize?:   Size;
     minSize?:         Size;
     maxSize?:         Size;
@@ -438,7 +439,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _layoutPaused         : boolean                 = false;
     private _aria                : Aria | null             = null;
     private _whiteSpace           : string | null;
-    private _userSelect           : string | null;
     private _verticalAlign        : string | null;
     // Deferred-write style buffers. `styleRule` lazily materialises the
     // component's per-id `CSSStyleRule` on first `ensure()` call; `inlineStyle`
@@ -449,7 +449,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // for this concrete class — the merged bag `ensureClassStyleRule` returns.
     // Set at the top of `applyStyle` and consulted by `writeRuleDeclaration`
     // so each phase can skip a write already served by a lower tier.
-    private _inheritedStyleBag    : Readonly<Record<string, string>> | null = null;
+    private _inheritedStyleBag    : Readonly<Record<string, string | null>> | null = null;
     // Optional clip frame: a presentational wrapper element interposed between
     // this component's element and its DOM parent, sized to a cell rect with
     // `overflow: hidden` so a layout manager can visually clip an element that
@@ -544,7 +544,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // Constants without ComponentOptions counterpart.
         this._boxSizing     = "border-box";
         this._whiteSpace    = "nowrap";
-        this._userSelect    = "none";
         this._verticalAlign = "baseline";
 
         // Class-level defaults — fallback values consulted by getters when the
@@ -616,6 +615,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this.applyChromeOptions(options);
         if (options.outline         !== undefined) this.setOutline(options.outline);
         if (options.cursor          !== undefined) this.setCursor(options.cursor);
+        if (options.userSelect      !== undefined) this.setUserSelect(options.userSelect);
         if (options.preferredSize   !== undefined) this.setPreferredSize(options.preferredSize);
         if (options.minSize         !== undefined) this.setMinSize(options.minSize);
         if (options.maxSize         !== undefined) this.setMaxSize(options.maxSize);
@@ -4623,41 +4623,41 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Returns the `user-select` value last passed to {@link setUserSelect}, or
-     * `null` if no value has been set.
+     * Returns the current CSS user-select value.
      *
-     * @returns The user-select string, or null.
+     * @returns The CSS user-select string, or null if not set.
      */
     getUserSelect(): string | null {
-        return this._userSelect;
+        return "userSelect" in this._options ? (this._options.userSelect ?? null) : (this._defaultOptions.userSelect ?? null);
     }
 
     /**
-     * Sets the CSS user-select property on the element.
+     * Sets the CSS user-select style on the element.
      *
-     * @param value - A CSS user-select value (e.g. "none", "auto", "text").
+     * @param value - A CSS user-select value (e.g. "none", "text", "auto").
      *
      * @returns This component, for method chaining.
      */
     setUserSelect(value: string): this {
-        this._userSelect = value;
-
+        if (this._options.userSelect === value) {
+            return this;
+        }
+        this._options.userSelect = value;
         this.setElementCSSRule("userSelect", value);
 
         return this;
     }
 
     /**
-     * Removes the user-select CSS property from the component's CSS rule.
+     * Removes the user-select CSS property from the element.
      *
      * @returns This component, for method chaining.
      */
     clearUserSelect(): this {
-        if (this._userSelect === null) {
-            return this;
-        }
-
-        this._userSelect = null;
+        // Set (not skip) the key so `getUserSelect` sees an explicit clear and
+        // returns null, suppressing the class default — distinct from the
+        // never-set case where the key is absent and the default applies.
+        this._options.userSelect = undefined;
         this.setElementCSSRule("userSelect", null);
 
         return this;
@@ -4974,8 +4974,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._inlineStyle.set("opacity", String(this._opacity));
         }
 
-        if (this._userSelect) {
-            this.writeRuleDeclaration("userSelect", this._userSelect);
+        const userSelect = this.getUserSelect();
+        if (userSelect) {
+            this.writeRuleDeclaration("userSelect", userSelect);
         }
 
         const padding = this.getPadding();
