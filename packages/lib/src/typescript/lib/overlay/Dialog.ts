@@ -1012,6 +1012,18 @@ class Dialog extends Component implements DismissableLayer {
         // topmost non-manual layer (this dialog when it is on top). The dialog
         // keeps only the Tab focus-trap and the Enter-confirms-the-primary
         // shortcut here.
+        //
+        // Both are scoped to "I am the topmost layer": every open Dialog gets
+        // this same keydown broadcast (that's the event dispatcher's policy,
+        // and other consumers rely on it — see Event.addViewportListener), so
+        // a backgrounded Dialog stacked under another one must not act on a
+        // key meant for whichever Dialog is actually on top. Without this, a
+        // "name this preset" prompt opened from inside a login dialog would
+        // have Enter in its field also confirm the login dialog underneath.
+        if (!LayerManager.isTopmostInputLayer(this)) {
+            return;
+        }
+
         if (e.key === 'Enter') {
             return this.onEnter(e);
         }

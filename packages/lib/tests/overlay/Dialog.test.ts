@@ -306,22 +306,90 @@ describe('Dialog — Tab focus trap', () => {
         installTestDOM(CONFIG);
 
         const dialog = new TestDialog({ title: 'T', message: 'M' });
+        LayerManager.register(dialog);
         const { event, stopped } = keyDownEvent('Tab');
 
         dialog.keyDown(event);
 
         expect(stopped()).toBe(true);
+
+        LayerManager.unregister(dialog);
     });
 
     it('does not consume an unrelated key', () => {
         installTestDOM(CONFIG);
 
         const dialog = new TestDialog({ title: 'T', message: 'M' });
+        LayerManager.register(dialog);
         const { event, stopped } = keyDownEvent('a');
 
         dialog.keyDown(event);
 
         expect(stopped()).toBe(false);
+
+        LayerManager.unregister(dialog);
+    });
+});
+
+describe('Dialog — keydown scoped to the topmost layer', () => {
+    afterEach(() => DOM.reset());
+
+    // A Dialog's own keydown handling reacts on every keydown broadcast (the
+    // dispatcher does not filter by target), so a backgrounded Dialog stacked
+    // under another open layer must ignore keys that were meant for whichever
+    // layer is actually on top — otherwise a "save preset" name prompt opened
+    // from inside a login dialog would also confirm the login dialog
+    // underneath when Enter is pressed in its own field.
+    it('Enter confirms while the dialog is the topmost layer', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        LayerManager.register(dialog);
+        const hide = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+        const { event, stopped } = enterEvent();
+
+        dialog.keyDown(event);
+
+        expect(stopped()).toBe(true);
+        expect(hide).toHaveBeenCalledWith('confirm');
+
+        LayerManager.unregister(dialog);
+    });
+
+    it('Enter is inert while another layer is stacked on top of the dialog', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        LayerManager.register(dialog);
+        const onTop = { getLayerElement: () => null, getDismissMode: () => 'modal' as const, requestClose: () => {} };
+        LayerManager.register(onTop);
+        const hide = vi.spyOn(dialog, 'hide').mockReturnValue(dialog);
+        const { event, stopped } = enterEvent();
+
+        dialog.keyDown(event);
+
+        expect(stopped()).toBe(false);
+        expect(hide).not.toHaveBeenCalled();
+
+        LayerManager.unregister(onTop);
+        LayerManager.unregister(dialog);
+    });
+
+    it('a trapped Tab is inert while another layer is stacked on top of the dialog', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+        LayerManager.register(dialog);
+        const onTop = { getLayerElement: () => null, getDismissMode: () => 'modal' as const, requestClose: () => {} };
+        LayerManager.register(onTop);
+        const { event, stopped } = keyDownEvent('Tab');
+
+        dialog.keyDown(event);
+
+        expect(stopped()).toBe(false);
+
+        LayerManager.unregister(onTop);
+        LayerManager.unregister(dialog);
     });
 });
 

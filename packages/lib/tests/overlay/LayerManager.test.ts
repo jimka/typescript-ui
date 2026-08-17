@@ -323,6 +323,55 @@ describe('LayerManager', () => {
         });
     });
 
+    describe('isTopmostInputLayer', () => {
+        it('is true for the only registered layer', () => {
+            installTestDOM(CONFIG);
+
+            const a = register(fakeLayer());
+
+            expect(LayerManager.isTopmostInputLayer(a)).toBe(true);
+        });
+
+        it('is false for a layer with another registered on top of it', () => {
+            installTestDOM(CONFIG);
+
+            const a = register(fakeLayer());
+            const b = register(fakeLayer());
+
+            expect(LayerManager.isTopmostInputLayer(a)).toBe(false);
+            expect(LayerManager.isTopmostInputLayer(b)).toBe(true);
+        });
+
+        it('reflects the new top once the layer above it unregisters', () => {
+            installTestDOM(CONFIG);
+
+            const a = register(fakeLayer());
+            const b = register(fakeLayer());
+
+            LayerManager.unregister(b);
+
+            expect(LayerManager.isTopmostInputLayer(a)).toBe(true);
+        });
+
+        it('is false for every layer when the stack is empty', () => {
+            installTestDOM(CONFIG);
+
+            const a = fakeLayer();
+
+            expect(LayerManager.isTopmostInputLayer(a)).toBe(false);
+        });
+
+        it('skips a "manual" layer stacked on top — it is decorative, not input-owning', () => {
+            installTestDOM(CONFIG);
+
+            const dialog = register(fakeLayer({ dismissMode: 'click-outside' }));
+            const tooltip = register(fakeLayer({ dismissMode: 'manual' }));
+
+            expect(LayerManager.isTopmostInputLayer(dialog)).toBe(true);
+            expect(LayerManager.isTopmostInputLayer(tooltip)).toBe(false);
+        });
+    });
+
     // ----- Documented offline gap (Tier-3 dismiss dispatch) -----
     //
     // The rest of the dismiss-mode dispatch the plan names (`handleOutside`,
