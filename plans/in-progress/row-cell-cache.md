@@ -309,3 +309,120 @@ No exported symbol is added, removed, or renamed, so no typedoc or barrel change
 [^hidden-rows]: This also explains the measured numbers. During a window minimize the visible height falls toward zero, so `computeVisibleWindow` ([VirtualRowView.ts:271](packages/lib/src/typescript/lib/component/shared/VirtualRowView.ts#L271)) collapses to about five rows — `SCROLL_BUFFER` on each side plus the rounding. Only those five rows run `setColumnWindow`, which is why one minimize of the 25-column grouped-wide table destroyed 80 body cells rather than the pool's full complement. A horizontal narrow is the larger case: the row window stays full height, so every in-window pooled row narrows its column window, and the cells saved scale with the pool rather than with five.
 
 [^no-release]: `Component.release()` shipped as a base seam with no component opting in (see `plans/implemented/component-element-release.md` and the 0.5.0 changelog). It detaches the element *and* drops the handle, so a released cell rebuilds its DOM on the next `getElement(true)`. That is the opposite trade from this cache, whose whole saving comes from the element surviving the round trip. The two are not alternatives to weigh here — releasing cached cells would be a follow-on memory optimization that gives back most of the speed this plan buys.
+
+---
+
+## Implementation Notes
+
+The plan's `## Files to Create / Modify / Delete` table did not list
+`packages/lib/tests/component/table/Body.test.ts`, but one pre-existing case
+there — *"a one-column slide where the entering column is a different type
+builds a fresh cell and disposes the departing one"* — asserted the exact
+old behavior this plan replaces: it checked that a departing cell with no
+same-key entering column was truly `dispose()`d (via
+`departingCell.getComponents().length === 0`, which only a real destructor
+call would produce). That assertion is now false by design — such a cell is
+retired into the row's cache, not disposed — so the test was updated in the
+same commit to assert retirement instead: the cell leaves `getComponents()`,
+its own children stay intact, and it is filed in `_cellCache` under its key.
+No other test files needed changes.
+
+### Manual verification (plan cases 13-17)
+
+Run in a browser against this branch's own build (a fresh `vite` dev server
+started from this worktree, with `node_modules/@jimka/typescript-ui`
+re-pointed at this worktree's `packages/lib` — the worktree's own symlink had
+resolved to the main tree's copy), driven via the Chrome DevTools MCP tools.
+
+- **Case 13 (grouped-wide minimize/restore).** The plan's literal "removal
+  count drops to zero" framing does not hold, and an initial pass reporting
+  0/0 was a measurement artifact: a `MutationObserver` on `document.body`
+  sees nothing, because this framework's floating windows are portaled to a
+  container that is a sibling of `<body>` (a child of `<html>`), not a
+  descendant of it — the observer was watching an empty subtree throughout.
+  Re-observing `document.documentElement` shows minimizing genuinely narrows
+  the column window (this window's minimize collapses both dimensions, not
+  just height) and genuinely detaches roughly the same number of `<td>`s as
+  the pre-fix baseline — `retireCell` still calls `removeComponent` on a
+  cached cell, exactly as the old disposal path did, so the raw removal
+  count is not what this change reduces. What it removes is *reconstruction*
+  on the following widen. Verified directly: tagging every rendered `<td>`
+  with a unique `data-probe` attribute before a minimize-then-restore cycle,
+  every single one of the (372) `<td>` elements present afterward still
+  carries its original tag — 0 were freshly created. PASS, on the mechanism
+  the plan actually built (no reconstruction across the round trip), not on
+  the specific removal-count figures its `## Expected Behaviour` case 13
+  predicted.
+- **Case 14 (horizontal narrow/widen).** Dragging the window's right
+  `WindowBorder` from 900px down to 186px and back out past 1300px restored
+  every column with correct values, alignment, and group tint; no blank or
+  misaligned cells. PASS.
+- **Case 15 (theme switch while narrowed).** Narrowed to 186px (5 of 17
+  visible columns; the rest cached), switched from the default to the
+  classic theme via the panel's toggle, then widened back to 1305px. The
+  restored columns (`hire_date` through `tax_id`) picked up the classic
+  theme's visible cell borders identically to the columns that stayed
+  attached throughout — no stale padding/border from the pre-switch theme.
+  PASS.
+- **Case 16 (mid-edit column pushed out).** Double-clicked the `base_salary`
+  cell of row 1 (value `26`), typed `99999` without committing, then
+  narrowed the window until that column left the rendered range and widened
+  it back. The cell shows `99999` (not `26`), confirming `retireCell`
+  committed the in-flight edit before parking the cell. PASS.
+- **Case 17 (rotated grouped view).** Used `RotatedRecordPanel`'s rotate
+  toggle and record stepper (the same `Body.bindAndPositionRows` flip path
+  `RotatedGroupSeparators.test.ts` covers offline) to cycle the same pooled
+  rows between the `GroupSeparatorCell`-headed key/value layout and back,
+  and to step through records 1, 2, and 4. Every step showed correct field
+  values under correctly-labeled `Identity`/`Employment` separators, with no
+  stale content from a previous record or mode. PASS.
+
+No console errors or warnings were observed in any of the five cases.
+
+### The `^bound` invariant is looser than stated across a `setColumnFields` call
+
+`## Architecture Decisions`' "No cap, no eviction policy" section and its
+`^bound` footnote state the bound as "attached cells plus cached cells never
+exceed the number of *visible* fields." That holds for every scenario the
+plan's `## Expected Behaviour` exercises (narrow/widen within one field set)
+but not across a `setColumnFields` call: `Body.setHiddenColumns` /
+`setColumns` / `setColumnConfigs` call `syncPoolCells` (which runs
+`row.setColumnFields`, clearing the cache per step 8) immediately followed,
+synchronously, by `renderWindow` (which runs `row.setColumnWindow` against
+the *new* `_visibleFields`). A column hidden by that same call is no longer
+in `_visibleFields`, but its old cell is still attached from before the
+call, so the reconciler's ordinary "this column left the window" path caches
+it under its type key — indistinguishable, from `setColumnWindow`'s side,
+from an ordinary narrow. Reproduced directly: a 6-field row at window (0,5),
+then `setColumnFields` hiding the three `number` fields + `setColumnWindow`
+to the remaining 3 `string` fields, leaves 3 attached + 3 cached = 6 live
+cells for 3 visible fields — the cached three are unreachable (no other
+visible field shares their key) until the *next* `setColumnFields` call
+clears them.
+
+This is not unbounded growth: `disposeCellCache()` still runs first on every
+`setColumnFields` call, so the surplus never survives more than one such
+call. But the ceiling is looser than "the row's total declared field count"
+— that holds for a hide, not for a `ColumnConfig` swap that *rekeys* a
+still-visible field (e.g. adding `cellType`), which is worse: the field
+never leaves `_visibleFields`, so it still gets a rendered cell, but pass
+1's key-match check compares against the *pre-swap* recorded key, fails,
+and rebuilds fresh — while the still-otherwise-valid old cell has nowhere
+to go but the cache, filed under its now-orphaned old key. Reproduced
+directly: a 6-field row at window (0,5), then a `setColumnFields` call
+whose new configs change `cellKeyFor`'s output for 3 of the 6 (still
+visible) fields + `setColumnWindow` to the same (0,5), leaves all 6 fields
+attached (3 kept, 3 freshly built) plus the 3 discarded pre-swap cells
+cached = 9 live cells for 6 declared fields. The worst case is a swap that
+rekeys every visible field at once: every field rebuilds and every old cell
+is cached, so attached and cached each reach the field count and the total
+tops out at **twice** the row's declared field count, not once. Closing it
+precisely would mean either scoping cache entries to specific fields, not
+just their shared type key, or having `setColumnFields` suppress caching
+for the reconcile pass it triggers — both are new bookkeeping this plan's
+`## Non-Goals` explicitly declines to add ("Shrinking the row pool, or an
+LRU / size cap on the cache... adding one would be speculative machinery"),
+so no code change was made. The `^bound` footnote's claim should be read as
+"per visible field in steady state, with a transient surplus of up to the
+field count again immediately after a column-hide or column-rekey
+operation," not as an exact invariant.
