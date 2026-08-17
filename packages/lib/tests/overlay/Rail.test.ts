@@ -208,6 +208,40 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
         expectCenteredAlongHandle(rail, third);
     });
 
+    it('folds a handle-in-flight translate into the reported offset (handle-exists path)', () => {
+        installTestDOM(CONFIG);
+        const rail = new Rail({ edge: Placement.WEST });
+        rail.mount();
+
+        const rect = { x: 10, y: 20, width: 200, height: 150 };
+        const windows = [0, 1, 2].map(i => {
+            const w = new Window(`W${i}`);
+            w.applyRect(rect);
+            return w;
+        });
+
+        for (const w of windows) {
+            minimizeIntoRail(w, rail);
+        }
+        rail.flushLayout();
+
+        const third  = windows[2];
+        const before = rail.handleMainAxisOffset(third);
+
+        // Simulate the third handle sitting mid-`LayoutManager.commitBounds`
+        // size-stable position fast path — e.g. a sibling handle's removal
+        // compacting the remaining ones into new slots without resizing
+        // them — leaving `getY()` (WEST is a vertical rail) at the pre-move
+        // value while the move rides on `getTranslateY()`.
+        const registration = (rail as unknown as {
+            _windows: Map<Window, { handle: { setTranslate(x: number, y: number): void } | null }>;
+        })._windows.get(third)!;
+        const dy = 37;
+        registration.handle!.setTranslate(0, dy);
+
+        expect(rail.handleMainAxisOffset(third)).toBe(before + dy);
+    });
+
     it('the collapse path predicts the slot where the next handle actually lands', () => {
         installTestDOM(CONFIG);
         const rail = new Rail({ edge: Placement.WEST });

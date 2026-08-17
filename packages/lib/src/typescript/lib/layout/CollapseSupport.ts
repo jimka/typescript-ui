@@ -198,9 +198,23 @@ interface CollapseMover {
     end:       Rect;
 }
 
-/** Reads a component's current box geometry into a {@link Rect}. */
+/**
+ * Reads a component's current box geometry into a {@link Rect}.
+ *
+ * @remarks A participant `LayoutManager.commitBounds` last placed via its
+ * size-stable position fast path has its move riding on `getTranslateX`/
+ * `getTranslateY` while `getX`/`getY` still report the pre-move value —
+ * folding the translate in here is what keeps `starts`/`ends` in
+ * {@link runCollapse} accurate for a participant that entered this collapse
+ * mid-fast-path.
+ */
 function captureRect(component: Component): Rect {
-    return { x: component.getX(), y: component.getY(), width: component.getWidth(), height: component.getHeight() };
+    return {
+        x:      component.getX() + component.getTranslateX(),
+        y:      component.getY() + component.getTranslateY(),
+        width:  component.getWidth(),
+        height: component.getHeight(),
+    };
 }
 
 /**
@@ -277,14 +291,22 @@ const lerpRect = (a: Rect, b: Rect, t: number): Rect => ({
 
 /**
  * Writes a resolved rect to a component as a single batched DOM update,
- * mirroring `LayoutManager.commitBounds`: the four positional setters flush
- * together, and a content-bearing participant re-lays-out its children at the
- * new size.
+ * mirroring `LayoutManager.commitBounds`'s slow path: the positional setters
+ * flush together, and a content-bearing participant re-lays-out its children
+ * at the new size.
+ *
+ * @remarks `rect` is already the fully-resolved position — {@link captureRect}
+ * folded any translate in when it captured `end`. Resetting the translate
+ * (and its `will-change` hint) here, unconditionally, is what keeps that
+ * resolved position from being silently offset again by a leftover translate
+ * a participant carried in from entering this collapse mid-fast-path.
  */
 function commitRect(component: Component, rect: Rect, relayout: boolean): void {
     component.setAutoCommitStyle(false);
     component.setX(rect.x);
     component.setY(rect.y);
+    component.setTranslate(0, 0);
+    component.setWillChange(null);
     component.setWidth(rect.width);
     component.setHeight(rect.height);
 

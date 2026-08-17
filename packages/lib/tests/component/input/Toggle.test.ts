@@ -3,8 +3,19 @@
 // flips through the framework ListenerBag (no DOM event loop), label is a pure
 // option read. Also covers the AbstractInput notifyChange fan-out (change +
 // binding) via two registered listeners.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { Toggle } from '~/component/input/Toggle';
+import { DOM } from '~/core/DOM';
+import { installTestDOM } from '../../dom/TestDOM';
+import fontMetrics from '../../dom/font-metrics.test-font.json';
+
+const CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
 
 describe('Toggle value transitions', () => {
     it('defaults the value to false', () => {
@@ -94,5 +105,38 @@ describe('Toggle AbstractInput enabled/readOnly surface', () => {
 
         expect(t.isEnabled()).toBe(false);
         expect(t.isReadOnly()).toBe(true);
+    });
+});
+
+describe('Toggle label nudge across repeated relayouts', () => {
+    afterEach(() => DOM.reset());
+
+    it('keeps the label at a stable static Y across no-op relayouts (unchanged geometry)', () => {
+        installTestDOM(CONFIG);
+
+        const toggle = new Toggle({ label: 'Wi-Fi' });
+        toggle.getElement(true);
+        toggle.setWidth(200);
+        toggle.setHeight(40);
+        toggle.doLayout();
+
+        const label = (toggle as unknown as { _label: { getY(): number; getTranslateY(): number } })._label;
+
+        // doLayout() re-nudges the label on every pass — a sibling/window
+        // relayout that leaves Toggle's own geometry unchanged still triggers
+        // it. `label`'s own size never changes across these passes, so
+        // LayoutManager.commitBounds fast-paths its inner-HBox placement; the
+        // nudge must fold the resulting translate back in rather than compound
+        // it, or the static Y drifts further every pass.
+        toggle.doLayout();
+        const yAfterSecondPass = label.getY();
+
+        toggle.doLayout();
+        toggle.doLayout();
+        const yAfterFourthPass = label.getY();
+
+        expect(yAfterFourthPass).toBe(yAfterSecondPass);
+        // True visual position (static + translate) stays at the nudged offset.
+        expect(label.getY() + label.getTranslateY()).toBe(yAfterSecondPass);
     });
 });

@@ -107,6 +107,41 @@ describe('TabBar moveBarEntry', () => {
     });
 });
 
+/** The private surface this suite reaches into for wrapper/indicator geometry. */
+type Wrapper = { getX(): number; getTranslateX(): number };
+type BarInternals = {
+    _entries: Array<{ id: string; button: Wrapper }>;
+    _indicator: { getTranslateX(): number };
+};
+
+describe('TabBar selection indicator tracks the active tab across a same-count reorder', () => {
+    afterEach(() => DOM.reset());
+
+    it('keeps the indicator glued to the active tab after moveBarEntry reshuffles slots', () => {
+        installTestDOM(CONFIG);
+
+        const bar = threeEntryBar(); // a, b, c
+        bar.getElement(true);
+        bar.setActiveEntry('b'); // middle tab, so a reorder actually displaces it
+
+        bar.placeStrip(0, 0, 300, 30); // first placement: slow path, indicator lands correctly
+
+        const { _entries, _indicator } = bar as unknown as BarInternals;
+        const wrapper = _entries.find(e => e.id === 'b')!.button;
+
+        expect(_indicator.getTranslateX()).toBe(wrapper.getX() + wrapper.getTranslateX());
+
+        // Move 'c' to the front: same tab COUNT, so the strip's equal-width mode
+        // keeps every wrapper's width unchanged — only positions shift. 'b'
+        // (still active) slides from slot 1 to slot 2, a size-stable move that
+        // LayoutManager.commitBounds now drives via translate.
+        bar.moveBarEntry('c', 0);
+        bar.placeStrip(0, 0, 300, 30);
+
+        expect(_indicator.getTranslateX()).toBe(wrapper.getX() + wrapper.getTranslateX());
+    });
+});
+
 describe('TabBar removeBarEntry', () => {
     afterEach(() => DOM.reset());
 
