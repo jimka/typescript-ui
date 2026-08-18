@@ -12,9 +12,9 @@
 // store sync" bullet. The latter needs a store-sync seam whose re-render path
 // (renderWindow) reaches live geometry the offline source zeroes out, so it is
 // deferred rather than asserted here.
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { TreeBody } from '~/component/table/TreeBody';
 import { TreeCellRenderer } from '~/component/table/cell/renderer/TreeCell';
@@ -286,11 +286,12 @@ describe('TreeBody column window — tree column scrolling', () => {
     });
 });
 
-// Body's `copy` listener and onCopy/buildSelectionText machinery are defined
-// once on Body and TreeBody adds no override — this pins that the
-// inheritance actually works against a real TreeBody row pool, not just that
-// TreeBody.init() happens to call super.init().
-describe('TreeBody copy — inherits Body onCopy without any TreeBody-specific code', () => {
+// Body's cell-range-selection copy machinery (copySelectionToClipboard,
+// getCellRangeBounds, buildCopyText, …) is defined once on Body and TreeBody
+// adds no override — this pins that the inheritance actually works against a
+// real TreeBody row pool, not just that TreeBody.init() happens to call
+// super.init().
+describe('TreeBody copy — inherits Body cell-range copy without any TreeBody-specific code', () => {
     // All-string fields (unlike the file's own numeric-id MODEL) so the
     // expected payload below is a literal taken from the contract, not a
     // value read back off the renderer under test. id/parent stay in the
@@ -304,7 +305,7 @@ describe('TreeBody copy — inherits Body onCopy without any TreeBody-specific c
     ], 'id');
     const COPY_SPEC = { idField: 'id', parentField: 'parent', treeColumn: 'name', indentPx: 16 };
 
-    it('a stubbed selection across a TreeBody row builds a tab-separated payload', () => {
+    it('a range set across a TreeBody row builds a tab-separated payload', () => {
         const store = new MemoryStore(COPY_MODEL, []);
         store.loadData([
             { id: '1', parent: null, name: 'a', extra: 'x' },
@@ -318,16 +319,17 @@ describe('TreeBody copy — inherits Body onCopy without any TreeBody-specific c
         const cells = (tb as any).getRowPool()[0].getComponents();
         expect(cells).toHaveLength(2); // name, extra
 
-        vi.spyOn(DOM.source, 'getDocumentSelection').mockReturnValue({
-            startContainer: cells[0].getElement()!,
-            startOffset:    null,
-            endContainer:   cells[cells.length - 1].getElement()!,
-            endOffset:      null,
-        });
+        // "name"/"extra" are visible-column indices 0/1 (id/parent are
+        // hidden); drive the range directly across both, mirroring the real
+        // mousedown/mousemove gesture Body.test.ts's own gesture tests
+        // exercise on the base class.
+        const record = (tb as any).getRowPool()[0].getData();
+        (tb as any)._rangeAnchor = { record, col: 0 };
+        (tb as any)._rangeFocus  = { record, col: 1 };
 
-        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
+        tb.copySelectionToClipboard();
 
-        expect((tb as any).onCopy(fakeEvent)).toEqual({ prevent: true });
-        expect(fakeEvent.clipboardData!.setData).toHaveBeenCalledWith('text/plain', 'a\tx');
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        expect(writes[0].args[0]).toBe('a\tx');
     });
 });

@@ -596,6 +596,10 @@ export class RecordingDOMSink implements DOMSink {
         _table.setLocationHash(hashIndex === -1 ? '' : url.slice(hashIndex));
     }
 
+    writeClipboardText(text: string): void {
+        this.record('writeClipboardText', text);
+    }
+
     addListener<T extends Event = Event>(target: Handle, type: string, handler: (event: T) => void, _options?: boolean | AddEventListenerOptions): void {
         this.record('addListener', type);
 

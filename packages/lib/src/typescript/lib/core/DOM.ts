@@ -672,6 +672,13 @@ export interface DOMSink {
     replaceHistoryPath(url: string): void;
 
     /**
+     * Writes `text` to the system clipboard. Page-level; no element receiver.
+     *
+     * @param text - The text to write to the clipboard.
+     */
+    writeClipboardText(text: string): void;
+
+    /**
      * Registers a native event listener on a target. The framework's
      * {@link Event} class is the component-level routing layer; this seam covers
      * the low-level native hook it (and a few primitives) sits on.
@@ -1768,6 +1775,11 @@ export class ProductionDOMSink implements DOMSink {
     /** @inheritDoc */
     replaceHistoryPath(url: string): void {
         history.replaceState(null, "", url);
+    }
+
+    /** @inheritDoc */
+    writeClipboardText(text: string): void {
+        navigator.clipboard?.writeText(text);
     }
 
     /** @inheritDoc */

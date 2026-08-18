@@ -142,6 +142,7 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
         cell  : {
             background                : 'transparent',
             readonlyBackground        : 'rgba(255, 255, 255, 0.04)',
+            rangeSelectedBackground   : 'rgba(30, 100, 200, 0.25)',
             requiredEmptyOutlineColor : 'rgba(255, 90, 90, 0.8)',
             color                     : 'inherit',
             border                    : 'none',

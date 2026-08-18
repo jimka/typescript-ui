@@ -157,6 +157,7 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
         cell  : {
             background                : 'transparent',
             readonlyBackground        : 'rgba(0, 0, 0, 0.04)',
+            rangeSelectedBackground   : 'rgba(30, 100, 200, 0.15)',
             requiredEmptyOutlineColor : 'rgba(220, 60, 60, 0.6)',
             color                     : 'inherit',
             border                    : 'none',
