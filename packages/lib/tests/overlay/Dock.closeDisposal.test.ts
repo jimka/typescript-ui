@@ -87,7 +87,11 @@ describe('Dock close disposal', () => {
         captureRaf();
 
         const dock    = mountDock();
-        const content = new Component({});
+        // A real per-instance declaration, so `content` actually materialises
+        // a rule to check for a leak against — a stock `Component({})` queues
+        // nothing and correctly gets no rule at all (see
+        // plans/implemented/suppress-empty-style-rules.md).
+        const content = new Component({ backgroundColor: '#fff' });
         const child   = new Component({});
 
         content.addComponent(child);
@@ -202,7 +206,11 @@ describe('Dock close disposal', () => {
         captureRaf();
 
         const dock    = mountDock();
-        const content = new Component({});
+        // A real per-instance declaration, so `content` actually materialises
+        // a rule to check survives the round trip — a stock `Component({})`
+        // queues nothing and correctly gets no rule at all (see
+        // plans/implemented/suppress-empty-style-rules.md).
+        const content = new Component({ backgroundColor: '#fff' });
 
         dock.addPanel({ id: 'a', title: 'A', content, disposeOnClose: false });
         dock.doLayout();

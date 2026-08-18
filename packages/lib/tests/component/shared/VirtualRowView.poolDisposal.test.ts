@@ -98,13 +98,18 @@ describe('VirtualRowView — pooled-row disposal on teardown', () => {
     it('disposes a table body\'s pooled rows, not just the view element', async () => {
         const table = await renderedTable();
 
-        // Capture the pooled rows before teardown so their own rules can be
-        // checked directly — a destructor that removed only the view's element
-        // would still leave every row's rule on the sheet.
+        // Capture the pooled rows before teardown. `Row` itself queues no
+        // per-instance declaration (its visuals are inline styles or shared
+        // class rules), so it correctly gets no `#uuid` rule to leak at all
+        // (see plans/implemented/suppress-empty-style-rules.md) — the
+        // assertion below still pins that a destructor reaching only the
+        // view's element wouldn't leave a stray row rule behind, mirroring
+        // the Tree case below. The cells sibling test is what actually
+        // proves the destructor recursion reaches the pooled rows, since a
+        // cell is only destroyed transitively through its owning row.
         const rows = [...poolOf(table)];
 
         expect(rows.length).toBeGreaterThan(0);
-        expect(survivingRulesFor(rows).length).toBeGreaterThan(0);
 
         destroy(table);
 

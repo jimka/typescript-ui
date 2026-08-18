@@ -1642,7 +1642,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * rendered — the dirty entries stay queued and are picked up by the next
      * {@link ensureCSSRule} call (typically driven by `render()`).
      * Avoids inserting a stylesheet rule for components that are constructed
-     * but never attached.
+     * but never attached. Once attached, also skips inserting the rule when
+     * nothing queued would produce a real declaration — see
+     * {@link materialiseWhenNeeded}.
      */
     protected commitCSSRule(): this {
         // Gate on element existence (matches prior `dirtyCSSRule` behaviour):
@@ -1652,9 +1654,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        // Materialise the rule (no-op if already created) and drain the
-        // queued writes.
-        this._styleRule.ensure();
+        this.materialiseWhenNeeded(this._styleRule);
         this._styleRule.flush();
 
         return this;
@@ -5005,22 +5005,36 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Materialises `rule` only when doing so is worth it: the rule already
+     * exists — so any queued write, including a `null` removal, is a real
+     * change to live state — or the dirty bag holds at least one real
+     * declaration. Skips a rule that would otherwise insert empty, with every
+     * currently-queued entry a no-op `null` removal of a property that was
+     * never set.
+     *
+     * @param rule - The component-scoped or deferred `StyleRule` to
+     *   conditionally materialise.
+     */
+    private materialiseWhenNeeded(rule: StyleRule): void {
+        if (rule.isMaterialized() || rule.hasQueuedDeclarations()) {
+            rule.ensure();
+        }
+    }
+
+    /**
      * Materialises this component's `#id` stylesheet rule and drains the queued
      * declarations into it — the final `applyStyle` phase before the deferred
      * state rules.
      *
-     * @remarks Skipped entirely when the phases queued nothing: a component that
-     * contributes no declaration gets no rule on the shared stylesheet, and none
-     * is needed until a later setter writes one. `ensure()` flushes the bag on
-     * first materialisation; the `flush()` after it covers the re-render case,
-     * where the rule already exists and `ensure()` returns it without draining.
+     * @remarks Skipped entirely when the phases queued nothing worth a real
+     * declaration: a component that contributes no declaration gets no rule
+     * on the shared stylesheet, and none is needed until a later setter
+     * writes one. `ensure()` flushes the bag on first materialisation; the
+     * `flush()` after it covers the re-render case, where the rule already
+     * exists and `ensure()` returns it without draining.
      */
     protected materialiseStyleRule(): void {
-        if (!this._styleRule.hasQueuedWrites()) {
-            return;
-        }
-
-        this.ensureCSSRule();
+        this.materialiseWhenNeeded(this._styleRule);
         this._styleRule.flush();
     }
 
@@ -5033,9 +5047,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `.pressed` / `:hover:not(.pressed)`, ToggleButton's `.selected`). Each rule's
         // pending writes flush onto the live `CSSStyleRule` inside `ensure()`,
         // so the stylesheet picks up the entry on first render rather than on
-        // first setter write during construction.
+        // first setter write during construction. A deferred rule allocated via
+        // `createStyleRule()` but never given a real declaration (e.g. `Panel`'s
+        // `::-webkit-scrollbar` rule when the native bar is never hidden) is
+        // correctly skipped rather than inserted empty.
         for (const deferredRule of this._deferredStyleRules.values()) {
-            deferredRule.ensure();
+            this.materialiseWhenNeeded(deferredRule);
         }
     }
 

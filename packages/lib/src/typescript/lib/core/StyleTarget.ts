@@ -97,6 +97,24 @@ abstract class StyleTarget<T> {
         return Object.keys(this._dirty).length > 0;
     }
 
+    /**
+     * Returns whether the dirty bag holds at least one entry that would produce
+     * a real CSS declaration if flushed — a queued value that isn't a no-op
+     * `null` removal. Distinct from {@link StyleTarget.hasQueuedWrites}, which
+     * only asks whether the bag is non-empty and can't tell a real declaration
+     * from a bag holding only `null` entries queued before the target ever
+     * existed.
+     */
+    hasQueuedDeclarations(): boolean {
+        for (const key of Object.keys(this._dirty)) {
+            if (this._dirty[key] !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     protected materialize(target: T): void {
         this._target = target;
         this.flushDirty(this._dirty);
