@@ -25,6 +25,42 @@ import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 
 /**
+ * Per-tick reconciliation aid `Body` computes once per render pass and hands
+ * to every pooled row's `setColumnWindow` call. Present only when this
+ * tick's column-window change is an ordinary same-width slide that overlaps
+ * the previous window; undefined for a resize, a field-set change, a jump
+ * larger than the window, or the first render.
+ *
+ * @internal Not re-exported from the `component/table` barrel — cross-file
+ * internal use only, matching how `ColumnWindow` is handled in `Body.ts`.
+ */
+export interface ColumnWindowSlidePlan {
+    /** The visible-column window this row must have been showing last tick to qualify for the fast path. */
+    prevFirstCol: number;
+    prevLastCol: number;
+    /** newFirstCol - prevFirstCol. Positive: window moved right. Negative: moved left. Never zero. */
+    delta: number;
+    /** cellKeyFor-equivalent key for each column newly entering the window this tick, keyed by absolute visible-column index. Covers exactly the |delta| entering columns. */
+    enteringKeys: Map<number, string>;
+}
+
+/**
+ * One cell `Row.setColumnWindow` built, recycled, or restored on its last
+ * call, paired with the field it now presents.
+ *
+ * @internal Not re-exported from the `component/table` barrel.
+ */
+export interface RetargetedCell {
+    cell: Cell<any>;
+    fieldName: string;
+}
+
+/** Inclusive integer range `[a, b]` as an array, e.g. `range(2, 4)` -> `[2, 3, 4]`. */
+function range(a: number, b: number): number[] {
+    return Array.from({ length: b - a + 1 }, (_, i) => a + i);
+}
+
+/**
  * A single data row in the table, rendered as a `<tr>` element.
  *
  * Creates one typed cell ({@link StringCell}, {@link NumberCell}, {@link BooleanCell},
@@ -62,6 +98,12 @@ class Row extends Component {
     // `applyOptions` dispatches writes this field, so the `declare` rule in
     // CODE_CONVENTIONS.md does not apply.
     private _cellCache: Map<string, Cell<any>[]> = new Map();
+    // Cells `setColumnWindow` built, recycled, or restored on its last call —
+    // populated by both the full path's pass 3 and the fast path, and read
+    // by `Body` via `getRetargetedCells()` to scope its own per-row sweeps
+    // to just the cells that actually changed. Reset at the top of every
+    // `setColumnWindow` call, so a no-op call reports an empty list.
+    private _lastRetargeted: RetargetedCell[] = [];
     // Set by `setColumnFields` so the next `setColumnWindow` reconciles
     // even when the requested range happens to match the current one —
     // a column-set change (hide/show, config swap) can leave the range
@@ -139,6 +181,21 @@ class Row extends Component {
      */
     getFieldNames(): string[] {
         return this._fieldNames;
+    }
+
+    /**
+     * Returns the cells `setColumnWindow` built, recycled, or restored on
+     * its last call, paired with the field each now presents.
+     *
+     * @returns The retargeted cells from the last `setColumnWindow` call.
+     *
+     * @remarks Not for consumer use — read by `Body` right after a
+     * `setColumnWindow` call that reported `true`, to scope its own
+     * per-row sweeps (`wireRowCells`, `applyReadOnlyState`) to just the
+     * cells that actually changed.
+     */
+    getRetargetedCells(): RetargetedCell[] {
+        return this._lastRetargeted;
     }
 
     /**
@@ -362,12 +419,33 @@ class Row extends Component {
      * removed, and parked in the row's cell cache so a later widen can
      * restore them — a cell whose slot carried no key is disposed instead.
      *
+     * When `plan` describes an ordinary same-width slide that overlaps this
+     * row's own previous window exactly as `Body` last left it, retires the
+     * departing edge into the cell cache and resolves only the entering
+     * edge instead of reconciling every rendered column — see the plan's
+     * Architecture Decisions for the exact eligibility conditions.
+     *
      * @param firstCol - The first visible-column index to render, inclusive.
      * @param lastCol - The last visible-column index to render, inclusive.
+     * @param plan - Optional. This tick's slide plan from `Body`, present
+     *   only for an ordinary same-width horizontal slide.
      *
      * @returns `true` when the rendered cell set changed.
      */
-    setColumnWindow(firstCol: number, lastCol: number): boolean {
+    setColumnWindow(firstCol: number, lastCol: number, plan?: ColumnWindowSlidePlan): boolean {
+        this._lastRetargeted = [];
+
+        // Captured before anything below clears it. `_columnsDirty` means
+        // `setColumnFields` (or a separator flip) ran since the last call —
+        // a field/config change whose per-column derived state (e.g. Body's
+        // read-only union) can differ even for a column pass 1 matches to
+        // its existing cell by identity. Such a survivor is not otherwise
+        // added to `_lastRetargeted` (its value doesn't need rebinding), so
+        // this flag widens `_lastRetargeted` below to cover it too — Body
+        // must not skip re-deriving state it owns just because the cell
+        // object itself didn't change.
+        const columnsDirtyAtEntry = this._columnsDirty;
+
         if (this._separatorMode) {
             this.disposeAllComponents();
 
@@ -396,6 +474,18 @@ class Row extends Component {
 
         if (!this._columnsDirty && firstCol === this._windowFirst && lastCol === currentLastCol) {
             return false;
+        }
+
+        const width = lastCol - firstCol + 1;
+
+        if (plan
+            && !this._columnsDirty
+            && this._windowFirst === plan.prevFirstCol
+            && currentLastCol === plan.prevLastCol
+            && width === (plan.prevLastCol - plan.prevFirstCol + 1)
+        ) {
+            this.reconcileWindowSlide(firstCol, lastCol, plan);
+            return true;
         }
 
         const cells  = this.getComponents() as Cell<any>[];
@@ -495,6 +585,10 @@ class Row extends Component {
             if (retargeted.has(col)) {
                 this.bindCell(cell, this._data, field.getName());
             }
+
+            if (retargeted.has(col) || columnsDirtyAtEntry) {
+                this._lastRetargeted.push({ cell, fieldName: field.getName() });
+            }
         }
 
         // Park whatever is still free in the cell cache for a later widen to
@@ -544,6 +638,114 @@ class Row extends Component {
     }
 
     /**
+     * Reconciles an ordinary same-width slide: retires the `|delta|`
+     * departing cells into the cell cache, resolves the `|delta|` entering
+     * columns (cache restore, else construct), and leaves every surviving
+     * cell untouched. Only called when `setColumnWindow` has already
+     * confirmed this row's own previous window matches `plan`.
+     *
+     * @param firstCol - The first visible-column index to render, inclusive.
+     * @param lastCol - The last visible-column index to render, inclusive.
+     * @param plan - This tick's slide plan; `plan.delta` drives which edge
+     *   departs and which enters.
+     */
+    private reconcileWindowSlide(firstCol: number, lastCol: number, plan: ColumnWindowSlidePlan): void {
+        const shift = plan.delta;
+        const width = lastCol - firstCol + 1;
+        const outCount = Math.abs(shift);
+
+        // Snapshot first — retirement removes each cell, which splices the
+        // live array `getComponents()` returns (mirrors `renderSeparator`).
+        const cells = [...this.getComponents()] as Cell<any>[];
+
+        // 1. Snapshot the survivors' field names / keys before any mutation.
+        //    (shift > 0: outgoing = old slots [0, outCount); shift < 0: outgoing = old slots [width-outCount, width).)
+        const survivorFieldNames = shift > 0 ? this._fieldNames.slice(outCount) : this._fieldNames.slice(0, width - outCount);
+        const survivorKeys       = shift > 0 ? this._cellKeys.slice(outCount)   : this._cellKeys.slice(0, width - outCount);
+        const survivorCells      = shift > 0 ? cells.slice(outCount)            : cells.slice(0, width - outCount);
+
+        // 2. Retire the departing edge into the cell cache (always keyed — never disposed here).
+        const outgoingSlots = shift > 0 ? range(0, outCount - 1) : range(width - outCount, width - 1);
+
+        for (const slot of outgoingSlots) {
+            this.retireCell(cells[slot], this._cellKeys[slot]);
+        }
+
+        // 3. Resolve the entering columns: cache restore, else construct. Mirrors the full
+        //    path's pass-2 cache tier exactly (see row-cell-cache.md), minus the in-call
+        //    free tier — a same-call cache hit already covers a departing/entering key match.
+        const enteringCols = shift > 0
+            ? range(lastCol - outCount + 1, lastCol)
+            : range(firstCol, firstCol + outCount - 1);
+
+        const enteringCells: Cell<any>[] = [];
+        const enteringFieldNames: string[] = [];
+        const enteringKeys: string[] = [];
+
+        for (const col of enteringCols) {
+            const field = this._visibleFields[col];
+            const key   = plan.enteringKeys.get(col) ?? this.cellKeyFor(field);
+            const cached = this._cellCache.get(key);
+            let cell: Cell<any>;
+
+            if (cached && cached.length > 0) {
+                cell = cached.pop()!;
+
+                if (cached.length === 0) {
+                    this._cellCache.delete(key);
+                }
+
+                this.addComponent(cell, { data: field });
+                cell.invalidateLayout();
+            } else {
+                cell = Row.createCellForField(field, this._columnConfigs);
+
+                if (this._treeFieldName !== undefined && field.getName() === this._treeFieldName) {
+                    cell.wrapRenderer((delegate: CellRenderer<any>) => new TreeCellRenderer(delegate));
+                }
+
+                const builtCell = cell;
+                cell.on("commit", (newValue) => this.commitCellValue(builtCell, newValue));
+
+                this.addComponent(cell, { data: field });
+            }
+
+            cell.getAria().setColIndex(col + 1);
+            cell.setBaseBackground(this._columnConfigs.get(field.getName())?.groupColor ?? null);
+            this.bindCell(cell, this._data, field.getName());
+
+            enteringCells.push(cell);
+            enteringFieldNames.push(field.getName());
+            enteringKeys.push(key);
+            this._lastRetargeted.push({ cell, fieldName: field.getName() });
+        }
+
+        // 4. Fix _components into correct slot order. A plain sortComponents over this row's
+        //    (small) width is far cheaper than the full path's Map-heavy reconciliation, and
+        //    reuses the exact mechanism the full path already relies on for the same purpose —
+        //    see the Architecture Decisions' "why not literal rotation" reasoning.
+        const slotOf = new Map<Cell<any>, number>();
+
+        survivorCells.forEach((cell, i) => slotOf.set(cell, shift > 0 ? i : i + outCount));
+        enteringCells.forEach((cell, i) => slotOf.set(cell, shift > 0 ? width - outCount + i : i));
+
+        this.sortComponents((c1, c2) => (slotOf.get(c1 as Cell<any>) ?? 0) - (slotOf.get(c2 as Cell<any>) ?? 0));
+
+        // 5. Rebuild the parallel bookkeeping arrays and _treeCell.
+        this._fieldNames = shift > 0 ? [...survivorFieldNames, ...enteringFieldNames] : [...enteringFieldNames, ...survivorFieldNames];
+        this._cellKeys   = shift > 0 ? [...survivorKeys, ...enteringKeys]             : [...enteringKeys, ...survivorKeys];
+        this._windowFirst = firstCol;
+
+        if (this._treeFieldName !== undefined) {
+            const treeSlot = this._fieldNames.indexOf(this._treeFieldName);
+
+            this._treeCell = treeSlot === -1 ? null : (this.getComponents()[treeSlot] as Cell<any>);
+        }
+
+        this._columnsDirty = false;
+    }
+
+    /**
      * Commits a cell's newly-entered value onto the row's bound record.
      * Wired once per cell, at construction, so a recycled cell resolves
      * its *current* field from the row's layout constraints at emit time
@@ -581,8 +783,12 @@ class Row extends Component {
      * @param isTreeColumn - Whether this field is the row's tree column.
      *
      * @returns The reuse key. Two columns with the same key may share a cell.
+     *
+     * @internal Package-internal — not re-exported from the `component/table`
+     * barrel. Widened from `private` so `Body` can reuse the same precedence
+     * logic when precomputing a slide plan's entering-column keys.
      */
-    private static cellKey(field: Field, config: ColumnConfig | undefined, isTreeColumn: boolean): string {
+    static cellKey(field: Field, config: ColumnConfig | undefined, isTreeColumn: boolean): string {
         if (isTreeColumn) {
             return `tree:${field.getName()}`;
         }

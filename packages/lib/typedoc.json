@@ -34,7 +34,9 @@
             "MouseEvent": "https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent"
         },
         "@jimka/typescript-ui": {
-            "CellTextResolver": "#"
+            "CellTextResolver": "#",
+            "ColumnWindowSlidePlan": "#",
+            "RetargetedCell": "#"
         }
     },
     "hideGenerator": true,

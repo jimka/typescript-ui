@@ -603,3 +603,59 @@ No consumer-visible export changes — `ColumnWindowSlidePlan`, `RetargetedCell`
 [^why-two-tier]: A true three-tier design (in-call free, then persistent cache, then construct) would need a small `Map<string, Cell<any>[]>` built from the `|delta|` departing cells before resolving the entering ones, exactly mirroring the full path's `free` map but sized to `|delta|` instead of `width`. This was considered and rejected for the first version of this fix: routing the departing cells through the existing `_cellCache` first (a call to the already-shipped `retireCell`), then resolving entering columns through the existing cache-lookup tier, produces the identical *outcome* (a same-key departing cell is available to an entering column in the same tick) at the cost of a `removeComponent`+`addComponent` round-trip instead of a single `setLayoutConstraints` call — for `|delta|` cells, typically 1–3. That constant-factor cost is negligible next to the `Map` allocation and repeated `cellKeyFor` calls the fast path already eliminates for every surviving column, and reusing `_cellCache` directly means the fast path introduces no new data structure at all.
 
 [^scoping-full-path-too]: This is a genuine, low-risk improvement to the existing full path, not just new fast-path plumbing: when the full path runs for a case with partial overlap (e.g. a moderate resize where most columns survive), `retargeted` already correctly names only the columns that were actually built or recycled — the full path's own `retargeted: Set<number>` already tracks exactly this. `wireRowCells`/`applyReadOnlyState` scoping down to it costs nothing extra and is correct regardless of which reconciliation algorithm populated the list, because "a cell was rebuilt or recycled this call" means the same thing either way, and a survivor's read-only status cannot have changed when its own record and column are both unchanged (the only case this scoping applies to — a genuine `wasRebound` still runs the full-row path).
+
+---
+
+## Implementation Notes
+
+Three deviations from this plan's text, found during implementation and an audit pass:
+
+- **`Row.reconcileWindowSlide`'s `cells` snapshot.** The plan's `## Internal
+  Structure` snippet reads `const cells = this.getComponents() as Cell<any>[]`
+  — a reference to the *live* `_components` array. The very next step
+  (`retireCell`, called per departing slot) calls `removeComponent`, which
+  splices that live array, so each subsequent iteration's `cells[slot]` read
+  a different cell than the one the pre-mutation slot numbering intended —
+  silently retiring the wrong cells for any `|delta| > 1` slide. Fixed by
+  snapshotting a copy — `const cells = [...this.getComponents()] as
+  Cell<any>[]` — mirroring the identical hazard `Row.renderSeparator`
+  already guards against the same way. Caught by this plan's own case 3 test
+  (`ColumnWindowSlide.test.ts`), which failed against the plan's literal
+  snippet before the fix.
+- **`packages/lib/typedoc.json` gains two `externalSymbolLinkMappings`
+  entries.** Not in the plan's `## Files to Create / Modify / Delete` table.
+  `Row.getRetargetedCells()` and the widened `Row.setColumnWindow` are plain
+  public methods (not `@internal`), so TypeDoc still documents them — and
+  their signatures name `RetargetedCell` / `ColumnWindowSlidePlan`, which are
+  deliberately *not* barrel-exported (per this plan's `## Documentation
+  Impact`). That combination produces a "referenced but not included in the
+  documentation" warning TypeDoc cannot resolve on its own. Fixed the same
+  way the codebase already fixes the identical situation for
+  `CellTextResolver`: map both type names to `"#"` in
+  `externalSymbolLinkMappings`.
+- **`[^scoping-full-path-too]`'s premise is wrong, and the fix changes
+  `Row.setColumnWindow`'s full path.** The footnote claims "a survivor's
+  read-only status cannot have changed when its own record and column are
+  both unchanged" — false: `Body.applyReadOnlyState`'s union is also driven
+  by `ColumnConfig.readOnly` / `cellReadOnly` and `Body`'s row-level
+  predicate, all mutable independently of the cell's own identity or bound
+  value. A `setColumnConfigs`/`setRowReadOnly` call marks every pooled row
+  `_columnsDirty`, forcing `setColumnWindow`'s full path — but a column
+  whose field, hidden-status, and cell-reuse key are all unchanged is
+  matched to its *existing* cell by pass 1 and never reaches `retargeted`,
+  so it was silently excluded from `getRetargetedCells()` and
+  `Body.applyReadOnlyState(row, record, retargeted)` never re-derived its
+  read-only union — a live regression versus the pre-plan behaviour (which
+  always ran the full, unscoped sweep whenever `windowChanged` was `true`).
+  Found by the audit's independent review, with a reproduction
+  (`Body.test.ts`, "a readOnly config change applies immediately even to a
+  column whose cell keeps its identity across the reconcile") that failed
+  before the fix and passes after. Fixed by capturing
+  `columnsDirtyAtEntry = this._columnsDirty` at the top of
+  `setColumnWindow`, before anything clears it, and widening pass 3's
+  `_lastRetargeted.push` condition to `retargeted.has(col) ||
+  columnsDirtyAtEntry` — `bindCell`'s own gate (`retargeted.has(col)` alone)
+  is untouched, since a survivor's *value* genuinely doesn't need rebinding
+  even when its config-derived state does. The fast path is unaffected: its
+  own eligibility check already requires `!this._columnsDirty`, so it never
+  runs when this case applies.

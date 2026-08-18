@@ -69,6 +69,11 @@ consumer implementing its own `DOMSource` is affected.
   their DOM nodes — in memory until they are restored, the column set or its
   configuration changes, or the table is torn down. No consumer action is
   needed.
+- **Horizontal scrolling on a wide table now touches only the columns
+  entering or leaving the visible window**, instead of re-deriving every
+  rendered column's cell assignment on every tick. A resize, a column-set
+  change, or a jump larger than the visible window still reconciles the
+  whole window as before. No consumer action is needed.
 
 ## Added
 
