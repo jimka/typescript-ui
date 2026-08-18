@@ -258,7 +258,7 @@ rule.setMany({ position: "absolute", top: "0", /* … */ });
 rule.ensure();
 ```
 
-`StyleRuleScope` covers three shapes: `"class"` prepends `.`; `"component"` prepends `#`; `"selector"` is verbatim selector text for pseudo-classes / compound selectors / pseudo-elements. The constructor owns the get-or-create handshake against a module-level cache.
+`StyleRuleScope` covers three shapes: `"class"` prepends `.`, with an optional `suffix` appended verbatim (e.g. `".pressed"`) for a shared class-tier state rule; `"component"` prepends `#`, with the same optional `suffix`; `"selector"` is verbatim selector text for pseudo-classes / compound selectors / pseudo-elements. The constructor owns the get-or-create handshake against a module-level cache.
 
 If you find yourself reaching for `.style.X` on a `CSSStyleRule` or `HTMLElement`, stop — there is a `StyleRule` / `InlineStyle` (or a Component setter that wraps one) that should own that write.
 
