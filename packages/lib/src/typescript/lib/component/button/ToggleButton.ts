@@ -2,6 +2,7 @@
 
 import { DOM } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
+import { writeClassStateDeclaration, writeManyClassStateDeclarations } from "~/core/ClassStyleRules.js";
 import { Event } from "~/core/Event.js";
 import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
 import { Button, ButtonOptions, ClickListener } from "~/component/button/Button.js";
@@ -15,6 +16,18 @@ import { callable } from "~/core/Callable.js";
 export interface ToggleButtonOptions extends ButtonOptions {
     selected?: boolean;
 }
+
+/**
+ * `ToggleButton`'s own default `.selected:not(:hover)` declarations. Unlike
+ * Button's pressed/hover fields, these are never threaded through the
+ * options bag — the constructor writes them as literal theme tokens — so
+ * this is a plain module constant rather than an `_defaultOptions` read.
+ */
+const TOGGLE_SELECTED_DECLARATIONS: Readonly<Record<string, string | null>> = Object.freeze({
+    boxShadow:       "var(--ts-ui-toggle-selected-shadow, 2px 2px 1px inset grey)",
+    backgroundColor: "var(--ts-ui-toggle-selected-bg, rgb(200, 200, 200))",
+    backgroundImage: "var(--ts-ui-toggle-selected-bg, none)",
+});
 
 /**
  * A toggle button component that switches between selected and unselected states on each click.
@@ -35,6 +48,26 @@ class ToggleButton extends Button<ToggleButtonOptions> {
         return this._selectedStyleRule ??= this.createStyleRule(".selected:not(:hover)");
     }
 
+    /**
+     * Always `null`: `.selected:not(:hover)`'s three fields
+     * (`boxShadow`/`backgroundColor`/`backgroundImage`) are *not* safe to
+     * dedupe against a shared `.ClassName.selected:not(:hover)` rule, unlike
+     * Button's `pressedForegroundColor`. `ToggleButton`'s (and `TabButton`'s)
+     * *resting* chrome writes these same three properties straight onto the
+     * instance's base `#id` rule — none of them are part of the base-tier
+     * hoistable set (`core/ClassStyleRules.ts`'s `ClassStyleDefaults`) — and
+     * a bare `#id` selector's specificity always beats a class-only selector
+     * such as `.ToggleButton.selected:not(:hover)`, however many classes it
+     * chains. Skipping the instance-level write for these keys (this
+     * dedup's entire purpose) would leave the resting `#id` declaration
+     * winning the cascade outright, silently breaking the selected-state
+     * fill for every default-styled instance — see this plan's
+     * Implementation Notes for the full empirical trace.
+     */
+    private get selectedClassBag(): Readonly<Record<string, string | null>> | null {
+        return null;
+    }
+
     constructor(text: string, options?: ToggleButtonOptions, subclassDefaults?: Partial<ToggleButtonOptions>) {
         // Button is a children-build class: it builds its inner text/HBox row
         // in its constructor body. We forward the positional `text` to super
@@ -47,9 +80,9 @@ class ToggleButton extends Button<ToggleButtonOptions> {
         // tab fill) still layer in even though `options` waits.
         super(text, undefined, subclassDefaults);
 
-        this.selectedStyleRule.set("boxShadow",       "var(--ts-ui-toggle-selected-shadow, 2px 2px 1px inset grey)");
-        this.selectedStyleRule.set("backgroundColor", "var(--ts-ui-toggle-selected-bg, rgb(200, 200, 200))");
-        this.selectedStyleRule.set("backgroundImage", "var(--ts-ui-toggle-selected-bg, none)");
+        this.setSelectedShadow(TOGGLE_SELECTED_DECLARATIONS.boxShadow!);
+        this.setSelectedBackgroundColor(TOGGLE_SELECTED_DECLARATIONS.backgroundColor!);
+        this.setSelectedBackgroundImage(TOGGLE_SELECTED_DECLARATIONS.backgroundImage!);
 
         Event.addListener(this, "click", () => this.onAction());
 
@@ -158,7 +191,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      * @returns This button, for method chaining.
      */
     setSelectedBackgroundColor(backgroundColor: string): this {
-        this.selectedStyleRule.set("backgroundColor", backgroundColor);
+        writeClassStateDeclaration(this.selectedStyleRule, this.selectedClassBag, "backgroundColor", backgroundColor);
 
         return this;
     }
@@ -174,7 +207,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      * @returns This button, for method chaining.
      */
     setSelectedBackgroundImage(backgroundImage: string): this {
-        this.selectedStyleRule.set("backgroundImage", backgroundImage);
+        writeClassStateDeclaration(this.selectedStyleRule, this.selectedClassBag, "backgroundImage", backgroundImage);
 
         return this;
     }
@@ -188,7 +221,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      * @returns This button, for method chaining.
      */
     setSelectedShadow(shadow: string): this {
-        this.selectedStyleRule.set("boxShadow", shadow);
+        writeClassStateDeclaration(this.selectedStyleRule, this.selectedClassBag, "boxShadow", shadow);
 
         return this;
     }
@@ -205,7 +238,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      */
     setSelectedBorder(options: BorderOptions | string): this {
         const border = typeof options === "string" ? { border: options } : options;
-        this.selectedStyleRule.setMany(borderToStyle(border));
+        writeManyClassStateDeclarations(this.selectedStyleRule, this.selectedClassBag, borderToStyle(border));
 
         return this;
     }

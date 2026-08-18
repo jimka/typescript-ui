@@ -144,7 +144,9 @@ abstract class StyleTarget<T> {
 /**
  * Scope discriminator for the {@link StyleRule} constructor.
  *
- * - `class` — leading `.` is prepended; `name: "Foo"` selects `.Foo`.
+ * - `class` — leading `.` is prepended; `name: "Foo"` selects `.Foo`. An
+ *   optional `suffix` (e.g. `".pressed"`, `":hover:not(.pressed)"`) is
+ *   appended verbatim, after the class name, so it stays live selector syntax.
  * - `component` — leading `#` is prepended and the id is CSS-escaped (so a `.`
  *   or `:` in a consumer-supplied id does not break the selector); `name: "id"`
  *   selects `#id`. An optional `suffix` (e.g. `":hover"`, `".selected"`) is
@@ -156,7 +158,7 @@ abstract class StyleTarget<T> {
  * @category Core
  */
 export type StyleRuleScope =
-    | { scope: "class";     name: string }
+    | { scope: "class";     name: string; suffix?: string }
     | { scope: "component"; name: string; suffix?: string }
     | { scope: "selector";  name: string };
 
@@ -190,7 +192,7 @@ const _ruleCache: Map<string, CSSStyleRule> = new Map();
  */
 function _selectorOf(spec: StyleRuleScope): string {
     switch (spec.scope) {
-        case "class":     return "." + spec.name;
+        case "class":     return "." + spec.name + (spec.suffix ?? "");
         case "component": return "#" + DOM.source.escapeSelector(spec.name) + (spec.suffix ?? "");
         case "selector":  return spec.name;
     }

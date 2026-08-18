@@ -8,6 +8,7 @@ import { callable } from "~/core/Callable.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Component } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
+import { BorderOptions } from "~/primitive/Border.js";
 
 /**
  * Construction-time options for {@link TabButton}.
@@ -102,6 +103,26 @@ const _defaultTabButtonOptions: Partial<TabButtonOptions> = {
     hoverBackgroundImage: "var(--ts-ui-tab-button-hover-bg, #c4c4cf)",
     hoverShadow:          "none",
 };
+
+const TAB_BUTTON_HOVER_BORDER: BorderOptions = {
+    borderTop:    "var(--ts-ui-tab-button-hover-border-top,    var(--ts-ui-tab-button-hover-border, none))",
+    borderRight:  "var(--ts-ui-tab-button-hover-border-right,  var(--ts-ui-tab-button-hover-border, none))",
+    borderBottom: "var(--ts-ui-tab-button-hover-border-bottom, var(--ts-ui-tab-button-hover-border, none))",
+    borderLeft:   "var(--ts-ui-tab-button-hover-border-left,   var(--ts-ui-tab-button-hover-border, none))",
+};
+
+const TAB_BUTTON_SELECTED_BORDER: BorderOptions = {
+    borderTop:    "var(--ts-ui-tab-button-selected-border-top,    var(--ts-ui-tab-button-selected-border, none))",
+    borderRight:  "var(--ts-ui-tab-button-selected-border-right,  var(--ts-ui-tab-button-selected-border, none))",
+    borderBottom: "var(--ts-ui-tab-button-selected-border-bottom, var(--ts-ui-tab-button-selected-border, none))",
+    borderLeft:   "var(--ts-ui-tab-button-selected-border-left,   var(--ts-ui-tab-button-selected-border, none))",
+};
+
+const TAB_BUTTON_SELECTED_FILL = {
+    backgroundColor: "var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))",
+    backgroundImage: "var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))",
+    boxShadow:       "none",
+} as const;
 
 /**
  * A tab-styled toggle button: a {@link ToggleButton} that paints its own
@@ -225,23 +246,13 @@ class TabButton extends ToggleButton {
      *   the hover-border fold below still reads an explicit caller value.
      */
     private applyTabStyling(options?: TabButtonOptions): void {
-        this.setHoverBorder(options?.hoverBorder ?? {
-            borderTop:    "var(--ts-ui-tab-button-hover-border-top,    var(--ts-ui-tab-button-hover-border, none))",
-            borderRight:  "var(--ts-ui-tab-button-hover-border-right,  var(--ts-ui-tab-button-hover-border, none))",
-            borderBottom: "var(--ts-ui-tab-button-hover-border-bottom, var(--ts-ui-tab-button-hover-border, none))",
-            borderLeft:   "var(--ts-ui-tab-button-hover-border-left,   var(--ts-ui-tab-button-hover-border, none))",
-        });
+        this.setHoverBorder(options?.hoverBorder ?? TAB_BUTTON_HOVER_BORDER);
 
         // Selected (active) state.
-        this.setSelectedBackgroundColor("var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))");
-        this.setSelectedBackgroundImage("var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))");
-        this.setSelectedShadow("none");
-        this.setSelectedBorder({
-            borderTop:    "var(--ts-ui-tab-button-selected-border-top,    var(--ts-ui-tab-button-selected-border, none))",
-            borderRight:  "var(--ts-ui-tab-button-selected-border-right,  var(--ts-ui-tab-button-selected-border, none))",
-            borderBottom: "var(--ts-ui-tab-button-selected-border-bottom, var(--ts-ui-tab-button-selected-border, none))",
-            borderLeft:   "var(--ts-ui-tab-button-selected-border-left,   var(--ts-ui-tab-button-selected-border, none))",
-        });
+        this.setSelectedBackgroundColor(TAB_BUTTON_SELECTED_FILL.backgroundColor);
+        this.setSelectedBackgroundImage(TAB_BUTTON_SELECTED_FILL.backgroundImage);
+        this.setSelectedShadow(TAB_BUTTON_SELECTED_FILL.boxShadow);
+        this.setSelectedBorder(TAB_BUTTON_SELECTED_BORDER);
     }
 
     /**
