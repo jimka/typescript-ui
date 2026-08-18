@@ -18,9 +18,11 @@ import { Body, resolveClickedColumn, buildTsv, locateCellInGrid } from '~/compon
 import type { CellClickEvent } from '~/component/table/Body';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
+import { Row } from '~/component/table/Row';
 import { Cell } from '~/component/table/cell/Cell';
 import { ComboCell } from '~/component/table/cell/Combo';
 import { NumberCell } from '~/component/table/cell/Number';
+import { StringCell } from '~/component/table/cell/String';
 import type { ColumnConfig } from '~/component/table/ColumnConfig';
 
 const CONFIG = {
@@ -1131,6 +1133,40 @@ describe('Column window — per-cell state on entry', () => {
         const recycled = row.getComponents()[row.getComponents().length - 1] as Cell<any>;
         expect(recycled.getBackgroundColor()).toBe('var(--ts-ui-table-cell-bg, transparent)');
     });
+
+    // 7. The three tests above happen to cover group tint already — `wideBody(20,
+    // 250, 300)` -> `setScrollX(400)` is window [0,7] -> [1,8], a genuine
+    // same-width one-column slide (see `Column window — sliding`). The
+    // readOnly/required tests above instead jump from window [0,4] to [3,10]
+    // (different widths, scrollX 0 -> 550), which never takes the fast path —
+    // so readOnly and required each need a dedicated same-width-slide version.
+
+    it('7. a readOnly column entering via a same-width one-column slide is read-only immediately, without the row rebinding', async () => {
+        const configs = new Map<string, ColumnConfig>([['c8', { field: 'c8', readOnly: true }]]);
+        const b   = await wideBody(20, 250, 300, { configs }); // window [0,7] — c8 not yet visible
+        const row = (b as any).getRowPool()[0];
+
+        expect(row.getFieldNames()).not.toContain('c8');
+
+        (b as any)._scroller.setScrollX(400); // one-column slide to window [1,8] — c8 enters
+
+        const idx = row.getFieldNames().indexOf('c8');
+        expect(idx).toBeGreaterThanOrEqual(0);
+        expect((row.getComponents()[idx] as Cell<any>).isReadOnly()).toBe(true);
+    });
+
+    it('7. a required column with an empty value entering via a same-width one-column slide shows the outline immediately', async () => {
+        const REQUIRED_OUTLINE = 'inset 0 0 0 1px var(--ts-ui-table-cell-required-outline, rgba(220, 60, 60, 0.6))';
+        const configs = new Map<string, ColumnConfig>([['c8', { field: 'c8', required: true }]]);
+        const b   = await wideBody(20, 250, 300, { configs, blankFields: [8] }); // window [0,7]
+        const row = (b as any).getRowPool()[0];
+
+        (b as any)._scroller.setScrollX(400); // one-column slide to window [1,8] — c8 enters
+
+        const idx  = row.getFieldNames().indexOf('c8');
+        const cell = row.getComponents()[idx] as Cell<any>;
+        expect(cell.getShadow()).toBe(REQUIRED_OUTLINE);
+    });
 });
 
 describe('Column window — column-set changes', () => {
@@ -1156,6 +1192,25 @@ describe('Column window — column-set changes', () => {
 
         const idx = row.getFieldNames().indexOf('c1');
         expect(row.getComponents()[idx]).toBeInstanceOf(ComboCell);
+    });
+
+    it('a readOnly config change applies immediately even to a column whose cell keeps its identity across the reconcile', async () => {
+        // c1 is neither hidden nor type-changed, so `Row.setColumnWindow`'s
+        // full path (forced by `_columnsDirty`, since a config change alone
+        // still marks it dirty) matches c1's existing cell via pass 1 and
+        // never adds it to `_lastRetargeted` — `Body.applyReadOnlyState`
+        // must still reapply the read-only union to it, not just to cells
+        // that were actually rebuilt or recycled.
+        const b   = await wideBody(4, 400, 0); // 4x100 fits the 400px viewport — every column renders
+        const row = (b as any).getRowPool()[0];
+        const idx = row.getFieldNames().indexOf('c1');
+
+        expect((row.getComponents()[idx] as Cell<any>).isReadOnly()).toBe(false);
+
+        b.setColumnConfigs(new Map<string, ColumnConfig>([['c1', { field: 'c1', readOnly: true }]]));
+
+        expect(row.getComponents()[idx]).toBeInstanceOf(StringCell); // same cell kind — pass 1 kept its identity
+        expect((row.getComponents()[idx] as Cell<any>).isReadOnly()).toBe(true);
     });
 });
 
@@ -1517,5 +1572,131 @@ describe('Column window — geometry diffing', () => {
         expect(row.getFieldNames()[0]).toBe('c0');
         expect(cell.getRenderer().getValue()).toBe('caret-right');
         expect(cell.getRenderer().getComponents()[0].getWidth()).toBeGreaterThan(0);
+    });
+});
+
+describe('Column window — fast-path slide (Body integration)', () => {
+    // Pool-scale variant of `tallWideBody` (from `Column window — geometry
+    // diffing` above, out of scope here) with an optional initial `scrollX`,
+    // so a test can reach a base window away from the column-0 clamp before
+    // triggering the one-column slide under test.
+    async function tallWideBody(columnCount: number, scrollX: number = 0, types: Record<number, string> = {}): Promise<Body> {
+        const fields = Array.from({ length: columnCount }, (_, i) => ({
+            name: `c${i}`, type: (types[i] ?? 'string') as any, order: i,
+        }));
+        const records = Array.from({ length: 200 }, (_, r) => {
+            const record: Record<string, string> = {};
+
+            for (let i = 0; i < columnCount; i++) {
+                record[`c${i}`] = `v${r}-${i}`;
+            }
+
+            return record;
+        });
+        const store = new MemoryStore(new Model(fields, 'c0'), records);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(300);
+        b.setHeight(400);
+        b.renderWindow(300, Array(columnCount).fill(100));
+
+        if (scrollX !== 0) {
+            (b as any)._scroller.setScrollX(scrollX);
+        }
+
+        return b;
+    }
+
+    it('11. a one-column slide calls cellKeyFor zero times across the whole pool', async () => {
+        const b = await tallWideBody(20, 300); // window [0,8]
+
+        const spy = vi.spyOn(Row.prototype as any, 'cellKeyFor');
+
+        (b as any)._scroller.setScrollX(400); // one-column slide to window [1,9]
+
+        expect(spy.mock.calls.length).toBe(0);
+    });
+
+    it('12. a one-column slide constructs at most poolSize cells (not poolSize x width) and disposes none', async () => {
+        // c9 is the sole entering column after the slide below; type-mismatched
+        // against every departing (c0, string) cell so each displayed row must
+        // build a fresh NumberCell rather than reusing its departing cell.
+        const b = await tallWideBody(20, 300, { 9: 'number' }); // window [0,8]
+
+        const priv     = b as any;
+        const poolSize = (priv.getRowPool() as unknown[]).length;
+
+        const buildSpy   = vi.spyOn(Row as any, 'createCellForField');
+        const disposeSpy = vi.spyOn(Cell.prototype, 'dispose');
+
+        (b as any)._scroller.setScrollX(400); // one-column slide to window [1,9] — c9 enters
+
+        // Exactly one build per row that actually reconciled this tick (at
+        // most the whole pool) — never `poolSize x width` (9), which is what
+        // re-deriving every rendered column's cell assignment would cost.
+        expect(buildSpy.mock.calls.length).toBeGreaterThan(0);
+        expect(buildSpy.mock.calls.length).toBeLessThanOrEqual(poolSize);
+        expect(buildSpy.mock.calls.length).toBeLessThan(poolSize * 9);
+        expect(disposeSpy).not.toHaveBeenCalled();
+    });
+
+    it('13. computeColumnWindowSlidePlan returns undefined for each fallback case in the eligibility table', async () => {
+        const b = await tallWideBody(4);
+        const compute = (b as any).computeColumnWindowSlidePlan.bind(b) as
+            (prev: unknown, next: unknown) => unknown;
+
+        const empty = { widths: [], lefts: [] };
+        const win = (firstCol: number, lastCol: number) => ({ firstCol, lastCol, widths: [], lefts: [] });
+
+        // First render: no previous window to diff against.
+        expect(compute({ firstCol: 0, lastCol: -1, ...empty }, win(0, 5))).toBeUndefined();
+
+        // Resize: window width changed (6 -> 8).
+        expect(compute(win(0, 5), win(0, 7))).toBeUndefined();
+
+        // Jump: |delta| (10) >= width (6) — no overlap.
+        expect(compute(win(0, 5), win(10, 15))).toBeUndefined();
+
+        // No-op tick: delta === 0.
+        expect(compute(win(0, 5), win(0, 5))).toBeUndefined();
+    });
+
+    it('14. a big horizontal jump (|delta| >= width) still reconciles correctly via the full path', async () => {
+        const b = await tallWideBody(20, 0, { 15: 'number' }); // window [0,8], c15 type-mismatched
+        const row = (b as any).getRowPool()[0];
+
+        (b as any)._scroller.setScrollX(1500); // far jump — window lands at [12,19], no overlap with [0,8]
+
+        expect(row.getColumnWindowStart()).toBe(12);
+        expect(row.getFieldNames()).toContain('c15');
+
+        // byName matching still works across the jump (a surviving string
+        // column keeps a string cell), and the one genuinely type-mismatched
+        // column (c15, number) builds fresh rather than being force-fit.
+        const numberCellIdx = row.getFieldNames().indexOf('c15');
+        expect(row.getComponents()[numberCellIdx]).toBeInstanceOf(NumberCell);
+        row.getFieldNames().forEach((name: string, i: number) => {
+            if (name !== 'c15') {
+                expect(row.getComponents()[i]).not.toBeInstanceOf(NumberCell);
+            }
+        });
+    });
+
+    it('15. a same-tick resize alongside a scroll takes the full path, not the fast path', async () => {
+        const b = await tallWideBody(20, 300); // window [0,8], 100px columns
+
+        const spy = vi.spyOn(Row.prototype as any, 'cellKeyFor');
+
+        // Writes the scroll position directly (bypassing the setScrollX ->
+        // onScroll -> renderWindow trigger, per this file's own white-box
+        // precedent) so the widened-column render below is the single tick
+        // that sees both the scroll delta AND the width change together —
+        // what a resize while mid-scroll produces in practice.
+        (b as any)._scroller._scrollX = 400;
+        b.renderWindow(300, Array(20).fill(150)); // columns widened 100px -> 150px
+
+        expect(spy.mock.calls.length).toBeGreaterThan(0);
     });
 });

@@ -6,7 +6,9 @@ import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
+import type { Field } from "~/data/Field.js";
 import { Row } from "~/component/table/Row.js";
+import type { ColumnWindowSlidePlan, RetargetedCell } from "~/component/table/Row.js";
 import { Cell } from "~/component/table/cell/Cell.js";
 import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
 import { ComboEditor } from "~/component/table/cell/editor/Combo.js";
@@ -190,6 +192,11 @@ function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
         if (a[i] !== b[i]) return false;
     }
     return true;
+}
+
+/** Inclusive integer range `[a, b]` as an array, e.g. `range(2, 4)` -> `[2, 3, 4]`. */
+function range(a: number, b: number): number[] {
+    return Array.from({ length: b - a + 1 }, (_, i) => a + i);
 }
 
 /**
@@ -418,16 +425,19 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
-     * Wires every one of `row`'s cells to the shared editor pool and the
-     * horizontal scroll-into-view handler. Called from {@link createPoolRow}
-     * for a freshly-pooled row and from {@link bindAndPositionRows} whenever
-     * a reconcile changes the rendered cell set — both `setEditorPool` and
-     * `setScrollIntoViewHandler` are idempotent for a surviving cell.
+     * Wires `cells` (default: every one of `row`'s cells) to the shared
+     * editor pool and the horizontal scroll-into-view handler. Called from
+     * {@link createPoolRow} for a freshly-pooled row (no scope — the whole
+     * row is new) and from {@link bindAndPositionRows} whenever a reconcile
+     * changes the rendered cell set, scoped to just the retargeted cells —
+     * both `setEditorPool` and `setScrollIntoViewHandler` are idempotent for
+     * a surviving cell, so scoping down changes nothing but the cost.
      *
      * @param row - The pool row whose cells to wire.
+     * @param cells - Optional. The cells to wire; defaults to every cell in `row`.
      */
-    private wireRowCells(row: Row): void {
-        for (const cell of row.getComponents() as Cell<any>[]) {
+    private wireRowCells(row: Row, cells?: Cell<any>[]): void {
+        for (const cell of cells ?? (row.getComponents() as Cell<any>[])) {
             cell.setEditorPool(this._editorPool);
             cell.setScrollIntoViewHandler(() => this.scrollColumnIntoView(this._focusedColIndex));
         }
@@ -489,6 +499,26 @@ class Body extends VirtualRowView<Row> {
         const records = this._store.getRecords();
 
         return this._rowVisible ? records.filter(this._rowVisible) : records;
+    }
+
+    /**
+     * Returns the model's non-hidden fields, in display order — the same
+     * list every pooled `Row.setColumnFields` derives independently.
+     *
+     * @returns The visible fields, in display order.
+     *
+     * @remarks Mirrors `Row.setColumnFields`' own filter+sort, and
+     * `Header.computeVisibleFields`'s identical one — not extracted to a
+     * shared helper, since it is two lines needed here only once per tick
+     * (not once per row) and the codebase already tolerates this exact
+     * duplication between `Row` and `Header`. Read by
+     * {@link computeColumnWindowSlidePlan} to resolve each entering
+     * column's reuse key once per tick. Not for consumer use.
+     */
+    private computeVisibleFields(): Field[] {
+        return this._store.model.getFields()
+                   .filter(f => !this._hiddenColumns.has(f.getName()))
+                   .sort((f1, f2) => f1.getOrder() - f2.getOrder());
     }
 
     /**
@@ -1126,6 +1156,57 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
+     * Derives this tick's slide plan from the previous and new column
+     * windows, or undefined when this tick isn't an ordinary same-width
+     * overlapping slide (see the eligibility table in the plan's
+     * Architecture Decisions).
+     *
+     * @param prev - The column window from the previous render tick.
+     * @param next - The column window this tick just computed.
+     *
+     * @returns The slide plan, or undefined when this tick takes the full path.
+     */
+    private computeColumnWindowSlidePlan(prev: ColumnWindow, next: ColumnWindow): ColumnWindowSlidePlan | undefined {
+        if (prev.lastCol === -1 || next.lastCol === -1) {
+            return undefined;
+        }
+
+        const prevWidth = prev.lastCol - prev.firstCol + 1;
+        const nextWidth = next.lastCol - next.firstCol + 1;
+
+        if (prevWidth !== nextWidth) {
+            return undefined;
+        }
+
+        const delta = next.firstCol - prev.firstCol;
+
+        if (delta === 0 || Math.abs(delta) >= nextWidth) {
+            return undefined;
+        }
+
+        const visibleFields = this.computeVisibleFields();
+        const treeFieldName = this.getTreeFieldName();
+        const enteringKeys  = new Map<number, string>();
+        const enteringRange = delta > 0
+            ? range(next.lastCol - delta + 1, next.lastCol)
+            : range(next.firstCol, next.firstCol - delta - 1);
+
+        for (const col of enteringRange) {
+            const field = visibleFields[col];
+
+            if (!field) {
+                return undefined;   // defensive; should not happen given effectiveWidths sizing
+            }
+
+            const config = this._columnConfigs.get(field.getName());
+
+            enteringKeys.set(col, Row.cellKey(field, config, field.getName() === treeFieldName));
+        }
+
+        return { prevFirstCol: prev.firstCol, prevLastCol: prev.lastCol, delta, enteringKeys };
+    }
+
+    /**
      * The body of `renderWindow`, below its early returns — recomputes the
      * row AND column windows, rebinds changed rows from the pool, and hides
      * excess rows. Split out so the public `renderWindow` can wrap it in the
@@ -1160,7 +1241,11 @@ class Body extends VirtualRowView<Row> {
         const fallback   = fieldCount > 0 ? rowWidth / fieldCount : rowWidth;
         const effectiveWidths = Array.from({ length: fieldCount }, (_, i) => this._lastColumnWidths[i] ?? fallback);
 
+        const prevColWindow = this._colWindow;
+
         this._colWindow = computeColumnWindow(effectiveWidths, scroller.getScrollX(), this.getWidth() || 0);
+
+        const slidePlan = this.computeColumnWindowSlidePlan(prevColWindow, this._colWindow);
 
         // An edit whose column is about to leave the window is committed
         // before any pool row is rebound — mirrors the precedent
@@ -1179,7 +1264,7 @@ class Body extends VirtualRowView<Row> {
         const poolTarget = this.computePoolTarget(win.windowSize, visibleHeight, totalRows);
         this.growRowPool(poolTarget);
 
-        this.bindAndPositionRows(win.firstRow, win.windowSize, rowWidth, records, this._colWindow);
+        this.bindAndPositionRows(win.firstRow, win.windowSize, rowWidth, records, this._colWindow, slidePlan);
         this.hideExcessPoolRows(win.windowSize);
 
         if (totalRows !== this._lastAriaRowCount) {
@@ -1273,12 +1358,19 @@ class Body extends VirtualRowView<Row> {
      * @param records - The current store records (passed in so this helper doesn't re-query).
      * @param columns - The column window: the rendered `[firstCol, lastCol]`
      *   range plus the widths/lefts every rendered cell is placed from.
+     * @param slidePlan - Optional. This tick's slide plan from
+     *   {@link computeColumnWindowSlidePlan}, present only for an ordinary
+     *   same-width horizontal slide; forwarded to each row's
+     *   `setColumnWindow` so it can opt into the fast path.
      *
      * @remarks `protected` so subclasses (e.g. `TreeBody`) can wrap the
      * standard bind + position pass with their own post-bind work
      * (depth / toggle updates). Not for consumer use.
      */
-    protected bindAndPositionRows(firstRow: number, windowSize: number, rowWidth: number, records: ModelRecord[], columns: ColumnWindow): void {
+    protected bindAndPositionRows(
+        firstRow: number, windowSize: number, rowWidth: number, records: ModelRecord[],
+        columns: ColumnWindow, slidePlan?: ColumnWindowSlidePlan,
+    ): void {
         const rowHeight = this._rowHeight;
 
         this.alignPoolWindow(firstRow);
@@ -1303,15 +1395,18 @@ class Body extends VirtualRowView<Row> {
                 continue;
             }
 
-            const windowChanged = row.setColumnWindow(columns.firstCol, columns.lastCol);
+            const windowChanged = row.setColumnWindow(columns.firstCol, columns.lastCol, slidePlan);
+            const retargeted    = windowChanged ? row.getRetargetedCells() : undefined;
 
             if (windowChanged) {
                 // Slot → column mapping changed, so newly-entered cells need
                 // the editor pool + scroll-into-view handler wired. A cell's
                 // committed rect lives on the cell itself, so a cell that
                 // kept its column stays correctly positioned even though its
-                // slot moved.
-                this.wireRowCells(row);
+                // slot moved. Scoped to just the retargeted cells — correct
+                // under either reconciliation path, since "retargeted" means
+                // the same thing regardless of which one produced it.
+                this.wireRowCells(row, retargeted!.map(r => r.cell));
             }
 
             const wasRebound = this._boundIndices[i] !== dataIndex;
@@ -1325,8 +1420,11 @@ class Body extends VirtualRowView<Row> {
                 this.computeRowAria(row, dataIndex);
             }
 
-            if (wasRebound || windowChanged) {
-                this.applyReadOnlyState(row, records[dataIndex]);
+            if (wasRebound) {
+                this.applyReadOnlyState(row, records[dataIndex]);          // full row — the record changed
+                row.setFieldIndent(this._rowIndented?.(records[dataIndex]) ?? false);
+            } else if (windowChanged) {
+                this.applyReadOnlyState(row, records[dataIndex], retargeted);   // scoped
                 row.setFieldIndent(this._rowIndented?.(records[dataIndex]) ?? false);
             }
 
@@ -1756,15 +1854,17 @@ class Body extends VirtualRowView<Row> {
      *
      * @param row - The pool row being rebound.
      * @param record - The record now bound to that row.
+     * @param retargeted - Optional. When given, scopes the sweep to just
+     *   these cells (a window change that didn't rebind the row) instead of
+     *   every cell in `row` — a survivor's read-only status cannot have
+     *   changed when its own record and column are both unchanged.
      */
-    private applyReadOnlyState(row: Row, record: ModelRecord): void {
+    private applyReadOnlyState(row: Row, record: ModelRecord, retargeted?: RetargetedCell[]): void {
         const rowOverride = this._rowReadOnly?.(record) === true;
-        const cells       = row.getComponents() as Cell<any>[];
-        const fieldNames  = row.getFieldNames();
+        const entries     = retargeted
+            ?? row.getComponents().map((cell, i) => ({ cell: cell as Cell<any>, fieldName: row.getFieldNames()[i] }));
 
-        for (let i = 0; i < cells.length; i++) {
-            const cell       = cells[i];
-            const fieldName  = fieldNames[i];
+        for (const { cell, fieldName } of entries) {
             const config     = this._columnConfigs.get(fieldName);
             const colStatic  = config?.readOnly === true;
             const cellPredOk = config?.cellReadOnly?.(record) === true;
