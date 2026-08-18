@@ -13,6 +13,9 @@ page resets to empty.
 one `TextMetrics` per request measured in a single document reflow. Only a
 consumer implementing its own `DOMSource` is affected.
 
+`DOMSink` gains one required member: `writeClipboardText(text)`. Only a
+consumer implementing its own `DOMSink` is affected.
+
 ## Changed
 
 ### Core
@@ -74,6 +77,21 @@ consumer implementing its own `DOMSource` is affected.
   rendered column's cell assignment on every tick. A resize, a column-set
   change, or a jump larger than the visible window still reconciles the
   whole window as before. No consumer action is needed.
+
+### Table
+
+- **Selecting and copying table cells no longer relies on the browser's
+  native text selection.** Click-drag across cells now selects a rectangular
+  range — replacing character-level text selection — and Ctrl/Cmd+C, or a
+  right-click cell's context-menu **Copy** entry, writes it to the clipboard
+  as tab-separated columns and newline-separated rows. A range always copies
+  whole cells; selecting or copying a substring of one cell's text is no
+  longer possible. The selected range survives scrolling — previously, a
+  drag-selection that scrolled while active could silently copy the wrong
+  cells — and a copy now formats off-screen rows and columns the same way
+  `exportCSV`/`exportJSON` already do. The active range highlights with a new
+  themed `--ts-ui-table-cell-range-selected` background. No consumer action
+  is needed.
 
 ## Added
 
