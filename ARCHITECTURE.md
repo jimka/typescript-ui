@@ -286,7 +286,7 @@ The fix is `:not()`: give the resting-tier write its own instance rule that excl
 1. Build the state rule with `this.createStateStyleRule(suffix, resolveDefaults)` (see *Defer DOM work to render time* below) — this dedupes the state rule itself onto a shared `.ClassName<suffix>` rule.
 2. If that state's class-tier rule declares `backgroundColor` / `backgroundImage` / `boxShadow`, override `getRestingExclusionSuffixes()` to add the toggle class: `return [...super.getRestingExclusionSuffixes(), ".selected"];`. `reconcileRuleDeclaration` / `setReconciledCSSRules` isolate those three properties onto the computed `:not(...)` rule automatically — no other code needed.
 
-`Button` (`.pressed`) and `ToggleButton` (`.selected`) are the two components that need step 2 today.
+`Button` (`.pressed`), `ToggleButton` (`.selected`), `Checkbox`'s `CheckboxBox` delegate (`.selected`, `.indeterminate`), and `RadioButton`'s `RadioButtonRing` delegate (`.selected`) are the components that need step 2 today.
 
 ## Defer DOM work to render time
 
