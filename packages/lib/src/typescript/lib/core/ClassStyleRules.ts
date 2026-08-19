@@ -10,7 +10,9 @@
 // Also backs Button/ToggleButton's state-rule (`.pressed` / `:hover` /
 // `.selected`) dedup, via the `ensureClassStateRule` / `writeClassStateDeclaration`
 // / `writeManyClassStateDeclarations` sibling mechanism below — see
-// plans/implemented/hoist-button-tabbar-state-chrome-rules.md.
+// plans/implemented/hoist-button-tabbar-state-chrome-rules.md. This module
+// also exposes `StateStyleRule`, the wrapper `Component.createStateStyleRule`
+// returns — see plans/implemented/state-style-rule-auto-dedup.md.
 
 import { StyleRule }   from "~/core/StyleTarget.js";
 import { Position }    from "~/primitive/Position.js";
@@ -365,5 +367,84 @@ export function writeManyClassStateDeclarations(
 ): void {
     for (const key of Object.keys(values)) {
         writeClassStateDeclaration(rule, bag, key, values[key]);
+    }
+}
+
+/**
+ * Wraps a per-instance state `StyleRule` together with the class-tier
+ * comparison bag `ensureClassStateRule` resolves for it. `set()` / `setMany()`
+ * skip a write that already matches the class rule and materialise the
+ * underlying rule when a real write just queued on an already-rendered
+ * component — exactly like `writeClassStateDeclaration` /
+ * `writeManyClassStateDeclarations` plus a materialisation nudge — so a
+ * caller gets both by calling the object's own write methods, with nothing
+ * else to opt into.
+ *
+ * Constructed via `Component.createStateStyleRule`; not intended for direct
+ * construction elsewhere.
+ */
+export class StateStyleRule {
+    private readonly _rule:       StyleRule;
+    private readonly _bag:        ClassStyleBag | null;
+    private readonly _hasElement: () => boolean;
+
+    constructor(
+        ctor: Function,
+        suffix: string,
+        rule: StyleRule,
+        resolveDefaults: () => Record<string, string | null>,
+        hasElement: () => boolean,
+    ) {
+        this._rule       = rule;
+        this._bag        = ensureClassStateRule(ctor, suffix, resolveDefaults());
+        this._hasElement = hasElement;
+    }
+
+    /**
+     * The resolved class-tier bag `set()` / `setMany()` compare against;
+     * `null` when this class opted out of dedup (see `ensureClassStateRule`).
+     * Read-only — a caller that needs the bag's own keys (`Button.pinPressedToResting`
+     * is the one in-repo example) reads this instead of bypassing the
+     * comparison `set()` / `setMany()` perform.
+     */
+    get classBag(): ClassStyleBag | null {
+        return this._bag;
+    }
+
+    /**
+     * Writes a single state-rule declaration, deduping against the class-tier
+     * bag and materialising the underlying rule when this write just queued a
+     * real declaration on an already-rendered component.
+     *
+     * @param key - The CSS property name (camelCase).
+     * @param value - The value to set, or null to remove the property.
+     */
+    set(key: string, value: string | null): void {
+        writeClassStateDeclaration(this._rule, this._bag, key, value);
+        this._materialise();
+    }
+
+    /**
+     * Bulk variant of {@link StateStyleRule.set}.
+     *
+     * @param values - Camel-cased property keys mapped to string values (or null to clear).
+     */
+    setMany(values: Record<string, string | null>): void {
+        writeManyClassStateDeclarations(this._rule, this._bag, values);
+        this._materialise();
+    }
+
+    /**
+     * Inserts the rule when a write just queued a real declaration and the
+     * component is already rendered — the choke point `Button`'s
+     * `materialisePressedRule` used to be, generalised so no future caller
+     * can forget it. A rule that never queued anything real (every write so
+     * far matched the class bag) is left unmaterialised, same as any other
+     * deferred rule.
+     */
+    private _materialise(): void {
+        if (this._hasElement() && this._rule.hasQueuedDeclarations()) {
+            this._rule.ensure();
+        }
     }
 }
