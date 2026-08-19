@@ -8,20 +8,23 @@
 // ToggleButton.selectedClassHoisting.test.ts. Naming mirrors the existing
 // TabButton.styleRuleDisposal.test.ts convention.
 //
-// IMPORTANT SCOPE NOTE (see this plan's Implementation Notes): TabButton no
-// longer overrides `getHoverClassDeclarations()` / `getSelectedClassDeclarations()`
-// at all — both overrides were removed. TabButton's own resting chrome
-// (`_defaultTabButtonOptions`) writes `backgroundColor`, `backgroundImage`,
-// and all four `border-*` longhands unconditionally onto the instance's
-// base `#id` rule, at specificity (1,0,0) — which would beat *any*
-// class-only state-tier selector (`.TabButton:hover:not(.pressed)`,
-// `.TabButton.selected:not(:hover)`) regardless of class count, so every
-// field TabButton's hover/selected treatment needs is unsafe to dedupe.
-// TabButton therefore inherits Button's (empty) hover resolver and
+// IMPORTANT SCOPE NOTE (see plans/implemented/button-resting-chrome-state-isolation.md):
+// TabButton no longer overrides `getHoverClassDeclarations()` /
+// `getSelectedClassDeclarations()` at all — both overrides were removed.
+// TabButton's own resting chrome (`_defaultTabButtonOptions`) writes
+// `backgroundColor`, `backgroundImage`, and all four `border-*` longhands;
+// the border longhands are not isolated and stay on the instance's base
+// `#id` rule, but a deviating `backgroundColor` / `backgroundImage` now
+// routes onto the instance's own `#id:not(.pressed)` rule at specificity
+// (1,1,0). Hover and selected still can't be deduped onto a class-tier
+// rule: a class-only state selector (`.TabButton:hover:not(.pressed)`,
+// `.TabButton.selected:not(:hover)`) sits at (0,3,0), which loses to a
+// deviating instance's isolated resting rule at (1,1,0) regardless of class
+// count. TabButton therefore inherits Button's (empty) hover resolver and
 // ToggleButton's (always-`null`) selected bag unchanged — its `.pressed`
-// class rule carries `color` only, exactly like a plain Button, and no
-// `.TabButton:hover:not(.pressed)` / `.TabButton.selected:not(:hover)`
-// class rule is ever created.
+// class rule now carries all four widened pressed-chrome keys, exactly like
+// a plain Button, and no `.TabButton:hover:not(.pressed)` /
+// `.TabButton.selected:not(:hover)` class rule is ever created.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TabButton } from '~/component/button/TabButton';
 import { DOM } from '~/core/DOM';
@@ -75,7 +78,7 @@ function declarationsDuring(
 }
 
 describe('TabButton state-class hoisting', () => {
-    it('gets its own independent .pressed class rule (color only), distinct from .Button.pressed', () => {
+    it('gets its own independent .pressed class rule (all four widened pressed-chrome keys), distinct from .Button.pressed', () => {
         new TabButton('Warmup').getElement(true);
 
         expect(_ruleCacheHas('.TabButton.pressed')).toBe(true);

@@ -6,19 +6,18 @@
 // ToggleButton/TabButton-specific coverage lives in the sibling test files
 // this plan also adds.
 //
-// IMPORTANT SCOPE NOTE (see this plan's Implementation Notes): only
-// `pressedForegroundColor` is actually deduped onto `.Button.pressed`.
-// `backgroundColor`, `backgroundImage`, and `boxShadow` — the fields the
-// plan's own measurement named as the dominant byte-savings contributors —
-// are deliberately EXCLUDED from `getPressedClassDeclarations()` /
-// `getHoverClassDeclarations()`, because Button's own *resting* chrome
-// writes these same three properties unconditionally onto the instance's
-// base `#id` rule (specificity (1,0,0)), which beats any class-only
-// selector such as `.Button.pressed` (specificity (0,2,0)) regardless of
-// class count — deduping them would silently break the pressed/hover
-// visual treatment for every default-styled Button. `getHoverClassDeclarations()`
-// is therefore always empty (no field on `.hover` is safe), and no
-// `.Button:hover:not(.pressed)` class rule is ever created.
+// IMPORTANT SCOPE NOTE: `plans/implemented/button-resting-chrome-state-isolation.md`
+// widened `getPressedClassDeclarations()` to all four pressed-chrome keys —
+// `color`, `backgroundColor`, `backgroundImage`, and `boxShadow` are now all
+// deduped onto `.Button.pressed`. A deviating *resting* `background-color` /
+// `background-image` / `box-shadow` no longer competes with that class rule:
+// it now routes onto the instance's own `#id:not(.pressed)` rule instead of
+// the bare `#id` rule, so the two selectors never match the same element at
+// once. See `Button.restingChromeIsolation.test.ts` for that plan's own
+// coverage. `getHoverClassDeclarations()` is still always empty — hover is
+// never deduped, because a class-tier hover rule would sit at `(0,3,0)`,
+// which loses to a deviating instance's isolated resting rule at `(1,1,0)`
+// — and no `.Button:hover:not(.pressed)` class rule is ever created.
 //
 // Same module-state caveat as `ClassStyleRules.test.ts`: `.Button.pressed`
 // and `.SpinButton.pressed` are process-module state (fresh per test
@@ -79,22 +78,17 @@ function declarationsDuring(
 }
 
 describe('Button pressed/hover state-class hoisting', () => {
-    it("a default Button's pressed color is deduped onto .Button.pressed; backgroundColor/backgroundImage/boxShadow are not", () => {
+    it("a default Button's pressed color, backgroundColor, backgroundImage, and boxShadow are all deduped onto .Button.pressed", () => {
         new Button('Warmup').getElement(true);
 
         const second = new Button('Second');
         const pressedDeclarations = declarationsDuring(sink, idSelector(second) + '.pressed', () => second.getElement(true));
 
-        // Deduped: matches the class-tier default, so the instance writes nothing.
+        // Deduped: each matches the class-tier default, so the instance writes nothing.
         expect(pressedDeclarations.color).toBeUndefined();
-
-        // Not deduped: these three always land on the instance rule, exactly
-        // as they did before this plan — the base `#id` rule's own
-        // unconditional resting declarations for the same three properties
-        // would otherwise outrank `.Button.pressed` on specificity.
-        expect(pressedDeclarations.backgroundColor).toBeDefined();
-        expect(pressedDeclarations.backgroundImage).toBeDefined();
-        expect(pressedDeclarations.boxShadow).toBeDefined();
+        expect(pressedDeclarations.backgroundColor).toBeUndefined();
+        expect(pressedDeclarations.backgroundImage).toBeUndefined();
+        expect(pressedDeclarations.boxShadow).toBeUndefined();
 
         expect(_ruleCacheHas('.Button.pressed')).toBe(true);
     });
@@ -136,17 +130,23 @@ describe('Button pressed/hover state-class hoisting', () => {
         expect(classDeclarations).toEqual({});
     });
 
-    it("SpinButton's constructor-time clearPressedShadow writes directly to its own instance rule (boxShadow is not deduped, so there is no class default to clash with)", () => {
+    it("SpinButton's constructor-time clearPressedShadow pins boxShadow to 'none' on its own instance rule, not the class default it inherits from Button", () => {
         const spin = new SpinButton('▲');
 
         const classDeclarations = declarationsDuring(sink, '.SpinButton.pressed', () => spin.getElement(true));
-        // Only `color` is ever in a Button-family pressed class bag; boxShadow
-        // is absent from `.SpinButton.pressed` entirely.
-        expect(classDeclarations.boxShadow).toBeUndefined();
+        // The class rule materialises eagerly, during construction (when the
+        // first setPressedX call resolves `pressedClassBag`) — well before
+        // this capture window starts, so nothing shows up here regardless of
+        // what the bag holds. `boxShadow` is now IN that bag (SpinButton
+        // inherits Button's `pressedShadow` default), which is exactly why
+        // `clearPressedShadow` below must pin a real value rather than
+        // writing `null` — a `null` write can never outrank the class rule's
+        // now-shared boxShadow token.
+        expect(classDeclarations).toEqual({});
 
         const second = new SpinButton('▼');
         const instanceDeclarations = declarationsDuring(sink, idSelector(second) + '.pressed', () => second.getElement(true));
-        expect(instanceDeclarations.boxShadow).toBeNull();
+        expect(instanceDeclarations.boxShadow).toBe('none');
     });
 
     it('a chromeless Button pins its own pressed color instead of leaking the shared .Button.pressed class rule', () => {

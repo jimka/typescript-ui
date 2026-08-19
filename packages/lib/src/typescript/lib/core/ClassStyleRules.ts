@@ -337,10 +337,12 @@ export function ensureClassStateRule(
  * the class-tier rule's value in sole possession of the property regardless
  * of the instance rule's higher specificity. This routing function cannot
  * fix that generically (it has no per-property "neutral value" table to
- * substitute); see this plan's Implementation Notes for how the one
- * concrete case this surfaces (`Button`'s `pressedShadow`/`hoverShadow`,
- * cleared by `SpinButton`/`Dialog`/`Notification`'s close buttons) stays
- * correct today via each call site's paired base-tier `clearShadow()`.
+ * substitute); the one concrete case this surfaces (`Button`'s
+ * `pressedShadow`/`pressedBackgroundColor`/`pressedBackgroundImage`, cleared
+ * by `SpinButton`/`Dialog`/`Notification`'s close buttons) stays correct by
+ * having each caller pin the current resting value instead of writing
+ * `null` — see `Button.clearPressedShadow`, `clearPressedBackgroundColor`,
+ * and `clearPressedBackgroundImage`.
  */
 export function writeClassStateDeclaration(
     rule: StyleRule,
