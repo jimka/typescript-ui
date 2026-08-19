@@ -53,6 +53,15 @@ consumer implementing its own `DOMSink` is affected.
   appearance rather than merely change who wins an override: a framework
   state rule scoped to a class selector (a `:hover` or `.selected` rule) now
   outranks the resting chrome it previously lost to.
+- **`setForegroundColor`, `setOutline`, `setUserSelect`, `setMinSize`,
+  `setMaxSize`, `setOverflowX`, and `setOverflowY` now dedupe against the
+  class-tier default too, not only the value resolved at render.** These
+  properties already skipped a redundant per-instance declaration when their
+  *render-time* value matched the class default; calling the setter directly
+  with a value that happens to equal that default previously still wrote a
+  real, redundant `#id` declaration — it now writes a removal instead, so the
+  shared `.ClassName` rule (or the framework rule) supplies the value. No
+  consumer action is needed; the rendered result is unchanged.
 - **[`Text`](/api/component/input/classes/Text)'s font/text declarations
   (`font-family`, `text-align`, `font-weight`, and most of the rest of the
   twelve `applyStyle` writes) now join the hoisted style declarations too.**
