@@ -476,6 +476,130 @@ No export surface changes, so no doc page, catalog entry or barrel is touched. `
 
 ---
 
+## Implementation Notes
+
+**`pressedStyleRule` needed a materialisation nudge the plan didn't call for.**
+The plan gives `materialiseRestingRule()` for the *new* `restingStyleRule`
+but says nothing about the *existing* `pressedStyleRule`, because before
+this plan's widening of `getPressedClassDeclarations()` that rule never
+needed one: `backgroundColor` / `backgroundImage` / `boxShadow` were never in
+the pressed class bag, so every chromeful Button's own `#id.pressed` rule
+always carried at least one real (non-deduped) declaration, and
+`materialiseDeferredRules` always inserted it during the first render.
+Once all four keys are deduped, a fully default-styled Button's four pressed
+setters all match the class bag and are skipped — nothing queues a real
+declaration at first render, so the rule stays unmaterialised (this is
+Expected Behaviour row 2, working as intended). The gap: `_clearChrome`
+(`setChromeless(true)`) and `_applyFlatChrome` (`setFlat(true)`, at runtime)
+can each be the *first* real, deviating write to that rule after the render
+has already happened. A `StyleRule.set()` call on an unmaterialised rule
+only queues — nothing was draining that queue, so the write silently never
+reached the stylesheet. Caught by the new `Button.restingChromeIsolation.test.ts`
+row 11 case (`setFlat(true)` then `setFlat(false)`) and confirmed against a
+regression in the pre-existing, unmodified "a Button toggled chromeless at
+runtime… also pins its pressed color" case in
+`Button.pressedHoverClassHoisting.test.ts`, which step 12 explicitly says
+should be left passing as-is.
+
+First fix attempt added `private materialisePressedRule(): void`, the
+`pressedStyleRule` counterpart of `materialiseRestingRule()`, called once at
+the end of `_clearChrome()`'s pressed-clearing block and once at the end of
+`_applyFlatChrome()`. The audit round caught that this placement was too
+narrow: any *direct* runtime call to a `setPressedX` / `clearPressedX`
+setter — the ordinary, documented way to customise a rendered Button's
+pressed chrome, per `CODE_CONVENTIONS.md`'s "reserve `setX` for runtime
+changes" — bypasses both of those methods entirely and so still silently
+drops its write on a previously-default, already-rendered instance. The
+audit reproduced this concretely: `new Button('X'); btn.getElement(true);
+btn.setPressedBackgroundColor('purple')` recorded zero stylesheet writes.
+
+Corrected by moving the nudge to the actual choke point every pressed-tier
+write already funnels through: two new private wrappers,
+`writePressedDeclaration(key, value)` and `writePressedDeclarations(values)`,
+each pairing the existing `writeClassStateDeclaration` /
+`writeManyClassStateDeclarations` call with `materialisePressedRule()`. All
+twelve `setPressedX` / `clearPressedX` methods now call one of these two
+instead of the shared helper directly, so no future pressed-tier write path
+can be added without the nudge either — mirroring how the plan's own
+`restingStyleRule` fix lives in the low-level `reconcileRuleDeclaration` /
+`setReconciledCSSRules` / `setElementCSSRule` overrides rather than in
+higher-level orchestration methods. The now-redundant explicit
+`materialisePressedRule()` calls in `_clearChrome()` and `_applyFlatChrome()`
+were removed, since every pressed setter they call self-nudges now. Locked
+in by a new case in `Button.restingChromeIsolation.test.ts` exercising the
+exact scenario the audit found. `_restoreChrome()` still needs no call of
+its own: every reachable path into it (`setChromeless(false)`,
+`setFlat(false)`) has already gone through a self-nudging setter, or through
+construction-time `pinPressedToResting()` / the flat branch of
+`applyChromeOptions` (both of which write real values unconditionally and
+are picked up by the first render's `materialiseDeferredRules` regardless)
+— so the rule is always already materialised by the time `_restoreChrome`
+runs.
+
+**Two adjacent comments were corrected for accuracy, not just retargeted.**
+While updating `Button.pressedHoverClassHoisting.test.ts`'s SpinButton case
+(step 12), the surrounding comment claiming "boxShadow is absent from
+`.SpinButton.pressed` entirely" turned out to be misleading after the
+widening: `boxShadow` *is* now in that class bag (SpinButton inherits
+Button's `pressedShadow` default) — the reason the assertion still shows an
+empty capture is that the class rule materialises eagerly during
+construction, before the test's capture window (`spin.getElement(true)`)
+starts, not because the bag lacks the key. The comment and the case title
+were reworded to state the real reason; the assertion itself (`toEqual({})`)
+is unchanged in effect from the original `toBeUndefined()` check, since both
+were passing for the same "no write inside this window" fact.
+
+**Manual browser verification of `## Expected Behaviour` rows 12-15 (mandatory
+per `## Verification` point 5) was performed but not originally recorded
+here** — flagged by the audit round and backfilled now. Checked against a
+`vite` dev server started on port 8021 from this worktree (not the main
+tree's), driven via `chrome-devtools` MCP tooling, comparing computed styles
+with `.pressed` forced on rather than relying on screenshots, per the plan's
+own warning that a static screenshot cannot distinguish a working cascade
+from a broken one:
+
+- **Row 12** — a plain `Button` ("Right-click me for context menu" on the
+  Misc panel): resting `background-image: none` with a flat fill; forcing
+  `.pressed` switches to a distinct gradient (`--ts-ui-button-pressed-bg`
+  resolves to a gradient in this theme, which is why `background-color`
+  alone reads as transparent — `background-image` is the channel that
+  actually paints; both are written by the same `.Button.pressed` class
+  rule). Confirms a default-styled Button still visibly changes on press.
+- **Row 13** — the same Button, hovered (via a real `hover` gesture, so
+  native `:hover` is genuinely engaged) then `.pressed` forced while still
+  hovering: shows the pressed gradient, neither the hover fill nor the
+  resting fill — confirms `#id.pressed`'s `.Button.pressed` class-tier
+  declaration outranks `#id:hover:not(.pressed)`'s instance-tier one once
+  `.pressed` excludes the hover selector.
+- **Row 14** — a `Dialog` close button (`Dialog — confirm/cancel` demo):
+  resting and pressed both show no shadow/gradient, matching its explicit
+  `clearShadow()`/`clearBackgroundImage()`/`clearPressedShadow()`/
+  `clearPressedBackgroundImage()` calls. A `ToolBar`'s flat "Save" button:
+  pressed shows its own sunken inset shadow, `rgba(0,0,0,0.1)` fill, and
+  `background-image: none` — no leaked gradient. A `MenuBarButton` ("File"):
+  forcing `.pressed` produces no visual change at all and no
+  `.MenuBarButton.pressed` rule exists in the stylesheet (confirmed via
+  `document.getElementById('Base').sheet.cssRules`), matching the
+  chromeless-by-default exclusion. Three further checks — a `SpinButton`
+  arrow, a `Notification` close button, and a `Tab` strip's `TabCloseButton`
+  — showed a pressed gradient/shadow the plan's row 14 wording implies
+  shouldn't be there; A/B-tested each against the unmodified code at this
+  branch's start point (`git stash` the diff, reload, recheck, `git stash
+  pop`) and confirmed byte-identical computed styles before and after this
+  plan on all three — pre-existing behaviour (none of the three ever calls
+  `clearPressedBackgroundImage()`), not a regression this plan introduces,
+  so left as-is per `## Non-Goals`' scope boundary.
+- **Row 15** — opening a second `Window` blurs the first: its control
+  buttons' `background-color` flattens from the themed `rgb(255,255,255)`
+  fill to `rgba(0,0,0,0)` (transparent), while the newly-focused window's
+  controls show the themed fill — confirms `setWindowControlsActive`'s
+  `background` shorthand write (on chromeless buttons, hence never isolated)
+  still reaches the bare `#id` rule correctly.
+
+No live regression found in any of the five rows.
+
+---
+
 ## Notes
 
 [^prior-scope]: The prior plan's `## Implementation Notes` records the finding in full: a first pass deduped `backgroundColor` / `backgroundImage` / `boxShadow` onto `.Button.pressed`, passed the whole automated suite, and shipped a live regression — every default-styled Button's pressed background stopped changing, and every `TabButton`'s selected tab rendered with the unselected gray. The cause was that the automated suite only ever asserted on *what got written*, never on what the browser's cascade resolves. The scope was then cut to `pressedForegroundColor`, leaving the generic mechanism built but almost unused. `TabButton`'s four border longhands were dropped for the same reason; this plan does not restore them, because they would need the pressed bucket to declare a border it has no default for — pressing a `TabButton` would drop its frame to the UA `<button>` border.
