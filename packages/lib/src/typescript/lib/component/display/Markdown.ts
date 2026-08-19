@@ -729,6 +729,31 @@ class Markdown extends Component<MarkdownOptions> {
     }
 
     /**
+     * Re-applies all styles, then re-asserts the prose column's max-measure
+     * override.
+     *
+     * @param element - The element handle to apply styles to.
+     * @returns This component, for method chaining.
+     *
+     * @remarks `Component.applyStyle`'s size-constraint phase also targets the
+     * `maxWidth` CSS property (every component resolves `getMaxSizeConstraint()`
+     * to a real, if unbounded, `{width,height}` pair, never `null` — see
+     * `Component.getMaxSizeConstraint`), and Markdown defaults no `maxSize` of
+     * its own, so that phase's value matches the class/framework baseline in
+     * the common case. Since that match now queues a removal (rather than
+     * being skipped) onto the very same key {@link setMaxMeasure} already
+     * queued a real value for, in the same render pass, this override
+     * re-asserts {@link setMaxMeasure}'s value last so it always wins.
+     */
+    applyStyle(element: Handle): this {
+        super.applyStyle(element);
+
+        this.setElementCSSRule("maxWidth", this._maxMeasure ?? "var(--ts-ui-md-max-measure, 70ch)");
+
+        return this;
+    }
+
+    /**
      * Scales the prose's base font size; headings and other relatively-sized
      * elements scale with it. Pass `1` to clear the override.
      *

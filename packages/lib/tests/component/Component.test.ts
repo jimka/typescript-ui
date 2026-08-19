@@ -148,24 +148,35 @@ describe('Component size setters take a Size (size-setter-interface plan)', () =
         expect(c.getPreferredSize()).toEqual({ width: 120, height: 32 });
     });
 
-    it('case 2: setMinSize(size) writes minWidth/minHeight and the data-minSize attribute', () => {
+    it('case 2: setMinSize(size) writes minWidth for real and the data-minSize attribute', () => {
         const c = new Component({});
         c.getElement(true);
         c.setMinSize({ width: 180, height: 0 });
 
         const rows = ruleStyleWrites(DOM.sink as RecordingDOMSink);
         expect(rows.some((w) => w.key === 'minWidth' && w.value === '180px')).toBe(true);
-        expect(rows.some((w) => w.key === 'minHeight' && w.value === '0px')).toBe(true);
+        // `height: 0` resolves to the framework's own "0px" baseline, so since
+        // plans/implemented/reconciled-write-path-widening.md, setMinSize's
+        // reconciled write path writes a removal instead of restating it —
+        // observable here because `minWidth`'s real deviation in the same
+        // batch forces #id to materialise regardless.
+        expect(rows.some((w) => w.key === 'minHeight' && w.value === null)).toBe(true);
         expect(c.getDataAttribute('minSize')).toBe('180px 0px');
     });
 
-    it('case 3: setMaxSize(size) writes maxWidth "none" for UNBOUNDED and a px maxHeight', () => {
+    it('case 3: setMaxSize(size) writes a px maxHeight for real; UNBOUNDED maxWidth resolves to the framework baseline and is removed', () => {
         const c = new Component({});
         c.getElement(true);
         c.setMaxSize({ width: UNBOUNDED, height: 24 });
 
         const rows = ruleStyleWrites(DOM.sink as RecordingDOMSink);
-        expect(rows.some((w) => w.key === 'maxWidth' && w.value === 'none')).toBe(true);
+        // UNBOUNDED resolves to "none", which matches the framework's own
+        // maxWidth baseline, so since
+        // plans/implemented/reconciled-write-path-widening.md, setMaxSize's
+        // reconciled write path writes a removal instead of restating it —
+        // observable here because `maxHeight`'s real deviation in the same
+        // batch forces #id to materialise regardless.
+        expect(rows.some((w) => w.key === 'maxWidth' && w.value === null)).toBe(true);
         expect(rows.some((w) => w.key === 'maxHeight' && w.value === '24px')).toBe(true);
     });
 

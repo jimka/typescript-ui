@@ -208,7 +208,7 @@ describe('Class-scoped style rules', () => {
         expect(addClassOps.length).toBe(1);
     });
 
-    it('case 8: a runtime setter after render writes #uuid', () => {
+    it('case 8: a runtime setter after render writes the deviating half of its batch and removes the half that matches the framework tier', () => {
         class ProbeCase8 extends Component {}
 
         new ProbeCase8({}).getElement(true);
@@ -219,10 +219,16 @@ describe('Class-scoped style rules', () => {
         const declarations = declarationsDuring(sink, idSelector(b), () => b.setMinSize({ width: 180, height: 0 }));
 
         expect(declarations.minWidth).toBe('180px');
-        expect(declarations.minHeight).toBe('0px');
+        // `height: 0` resolves to the framework's own "0px" baseline. Since
+        // plans/implemented/reconciled-write-path-widening.md, setMinSize
+        // routes through the reconciled write path like the setters
+        // class-scoped-style-rules.md predates, so a match writes a removal
+        // instead of restating it — observable here because `minWidth`'s real
+        // deviation in the same batch forces #id to materialise regardless.
+        expect(declarations.minHeight).toBeNull();
     });
 
-    it('case 9: a runtime setter that restores a framework value still writes #uuid', () => {
+    it('case 9: a runtime setter that only restores a framework value writes nothing at all once no other declaration forces #uuid to materialise', () => {
         class ProbeCase9 extends Component {}
 
         const b = new ProbeCase9({});
@@ -231,7 +237,13 @@ describe('Class-scoped style rules', () => {
         const sink = DOM.sink as RecordingDOMSink;
         const declarations = declarationsDuring(sink, idSelector(b), () => b.setOverflowY('hidden'));
 
-        expect(declarations.overflowY).toBe('hidden');
+        // 'hidden' matches the framework baseline and nothing else on this
+        // bare instance deviates, so #id was never materialised. Since
+        // plans/implemented/reconciled-write-path-widening.md, setOverflowY's
+        // reconciled write queues only a removal, which alone isn't "real"
+        // enough to justify inserting the rule (Component.materialiseWhenNeeded)
+        // — unlike before that plan, when this setter wrote unconditionally.
+        expect(declarations.overflowY).toBeUndefined();
     });
 
     it('case 10: instances of one class share one set of rules', () => {
