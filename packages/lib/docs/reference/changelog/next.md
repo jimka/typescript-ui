@@ -107,6 +107,15 @@ consumer implementing its own `DOMSink` is affected.
   `.pressed` chrome already does** — no consumer action needed, and
   `TabButton` inherits the same behaviour for its own selected fill and now
   also dedupes its own `.selected` border the same way.
+- **[`Checkbox`](/api/component/input/classes/Checkbox) and
+  [`RadioButton`](/api/component/input/classes/RadioButton)'s internal box/ring
+  graphics no longer duplicate their fixed size and cursor on every
+  instance's own CSS rule**, and the check-mark/dot glyphs no longer duplicate
+  their fixed colour. Each now shares one CSS rule per graphic across every
+  `Checkbox`/`RadioButton` in the app for those properties. The check-mark
+  and dot glyphs' size still writes per-instance, as it always has — a
+  `Glyph`'s own construction-time size pinning cannot be deduped onto a
+  shared class rule. Nothing changes visually; no consumer action needed.
 
 ### Table
 
