@@ -2,9 +2,9 @@
 
 import { Animation } from "~/core/Animation.js";
 import { AbstractBooleanInput, AbstractBooleanInputOptions } from "~/component/input/AbstractBooleanInput.js";
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
-import { Glyph } from "~/component/display/Glyph.js";
+import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
 import { callable } from "~/core/Callable.js";
 import { check } from "~/glyphs/solid/check.js";
@@ -13,6 +13,67 @@ import { check } from "~/glyphs/solid/check.js";
 // glyph definition, and this side-effect import lets Checkbox stand on its own
 // without an outside-the-class `Glyph.register` call.
 Glyph.register(check);
+
+const _defaultCheckboxBoxOptions: Partial<ComponentOptions> = {
+    preferredSize: { width: 16, height: 16 },
+    minSize:       { width: 16, height: 16 },
+    maxSize:       { width: 16, height: 16 },
+    cursor:        "pointer",
+};
+
+/**
+ * The box graphic behind a {@link Checkbox} — the click + cursor surface.
+ * Module-private: constructed only from `Checkbox`'s own constructor. Static
+ * geometry and cursor are class defaults so every instance shares one
+ * `.CheckboxBox` CSS rule instead of repeating them; the checked/indeterminate
+ * background and border stay per-instance, per-state writes — see
+ * plans/checkbox-radio-delegate-state-style-defaults.md.
+ */
+class CheckboxBox extends Component {
+    constructor() {
+        super(undefined, _defaultCheckboxBoxOptions);
+    }
+}
+
+const _defaultCheckboxCheckGlyphOptions: Partial<GlyphOptions> = {
+    foregroundColor: "var(--ts-ui-checkbox-check-color, rgb(255, 255, 255))",
+};
+
+/**
+ * The check-mark glyph inside a {@link Checkbox}'s box. Only `foregroundColor`
+ * is a class default — `preferredSize`/`maxSize` stay imperative constructor
+ * calls, not `_default<Name>Options` entries. `Glyph.applyOptions` (not just
+ * `Glyph.setPreferredSize`'s override) unconditionally re-pins `minSize` /
+ * `maxSize` to the resolved preferred size via a real setter call whenever
+ * `getPreferredSizeConstraint()` is non-null — including when that value
+ * comes from a class default rather than an explicit option — and a setter
+ * always writes straight to this instance's own `#id` rule, bypassing the
+ * class-tier dedup entirely (see `Component.writeRuleDeclaration`'s remarks).
+ * So a defaulted `preferredSize` here would not save any bytes (the size
+ * would still land on `#id` on every instance) while adding a second,
+ * redundant copy on `.CheckboxCheckGlyph` — worse than today, not better.
+ * Opacity (which of unchecked/checked/indeterminate is showing) stays a
+ * per-instance runtime write in `Checkbox.applySelected` — it is not a class
+ * constant.
+ */
+class CheckboxCheckGlyph extends Glyph {
+    constructor() {
+        super("check", undefined, _defaultCheckboxCheckGlyphOptions);
+    }
+}
+
+const _defaultCheckboxDashOptions: Partial<ComponentOptions> = {
+    backgroundColor: "var(--ts-ui-checkbox-check-color, rgb(255, 255, 255))",
+    preferredSize:   { width: 8, height: 2 },
+    maxSize:         { width: 8, height: 2 },
+};
+
+/** The indeterminate-state bar inside a {@link Checkbox}'s box. */
+class CheckboxDash extends Component {
+    constructor() {
+        super(undefined, _defaultCheckboxDashOptions);
+    }
+}
 
 /**
  * Construction-time options for {@link Checkbox}.
@@ -72,25 +133,16 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
 
         this.setLayoutManager(new HBox());
 
-        this._box = new Component();
-        this._box.setPreferredSize({ width: 16, height: 16 });
+        this._box = new CheckboxBox();
         // Min = preferred = max so the outer HBox shrink-on-overallocation
         // can't collapse the box graphic when the checkbox sits next to
         // flexible siblings.
-        this._box.setMinSize({ width: 16, height: 16 });
-        this._box.setMaxSize({ width: 16, height: 16 });
         this._box.setSize({ width: 16, height: 16 });
         this._box.setBackgroundColor("var(--ts-ui-checkbox-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))");
         this._box.setBorder("1px solid var(--ts-ui-form-border, rgb(160, 160, 160))");
         this._box.setBorderRadius("var(--ts-ui-checkbox-radius, 3px)");
-        // The box owns the click + cursor surface so the pointer/click area
-        // matches the visible graphic exactly. The root stays inert (default
-        // cursor, no click listener), so clicks on the label or on stretched
-        // empty space don't toggle and don't show the pointer cursor.
-        this._box.setCursor("pointer");
 
-        this._check = new Glyph("check");
-        this._check.setForegroundColor("var(--ts-ui-checkbox-check-color, rgb(255, 255, 255))");
+        this._check = new CheckboxCheckGlyph();
         this._check.setPreferredSize({ width: 12, height: 12 });
         this._check.setMaxSize({ width: 12, height: 12 });
         // With box-sizing: border-box and the 1px box border, absolute children
@@ -102,10 +154,7 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         // Pass-through so clicks on the glyph still hit the box underneath.
         this._check.setPointerEvents("none");
 
-        this._dash = new Component();
-        this._dash.setBackgroundColor("var(--ts-ui-checkbox-check-color, rgb(255, 255, 255))");
-        this._dash.setPreferredSize({ width: 8, height: 2 });
-        this._dash.setMaxSize({ width: 8, height: 2 });
+        this._dash = new CheckboxDash();
         this._dash.setSize({ width: 8, height: 2 });
         this._dash.setX(3);
         this._dash.setY(6);

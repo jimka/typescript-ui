@@ -2,9 +2,9 @@
 
 import { Animation } from "~/core/Animation.js";
 import { AbstractBooleanInput, AbstractBooleanInputOptions } from "~/component/input/AbstractBooleanInput.js";
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
-import { Glyph } from "~/component/display/Glyph.js";
+import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
 import { callable } from "~/core/Callable.js";
 import { circle } from "~/glyphs/solid/circle.js";
@@ -12,6 +12,39 @@ import { circle } from "~/glyphs/solid/circle.js";
 // Idempotent registration: makes the `"circle"` glyph available for the dot
 // regardless of which control imports first.
 Glyph.register(circle);
+
+const _defaultRadioButtonRingOptions: Partial<ComponentOptions> = {
+    preferredSize: { width: 16, height: 16 },
+    minSize:       { width: 16, height: 16 },
+    maxSize:       { width: 16, height: 16 },
+    cursor:        "pointer",
+};
+
+/** The ring graphic behind a {@link RadioButton}. See `CheckboxBox`'s doc comment for the shape this mirrors. */
+class RadioButtonRing extends Component {
+    constructor() {
+        super(undefined, _defaultRadioButtonRingOptions);
+    }
+}
+
+const _defaultRadioButtonDotOptions: Partial<GlyphOptions> = {
+    foregroundColor: "var(--ts-ui-radio-dot-color, rgb(255, 255, 255))",
+};
+
+/**
+ * The filled dot inside a {@link RadioButton}'s ring. Only `foregroundColor`
+ * is a class default — see `CheckboxCheckGlyph`'s doc comment (Checkbox.ts)
+ * for why `preferredSize`/`maxSize` stay imperative constructor calls instead
+ * of `_default<Name>Options` entries: `Glyph.applyOptions` unconditionally
+ * re-pins `minSize`/`maxSize` via a real setter whenever a preferred size
+ * resolves, and a setter always writes straight to `#id`, bypassing the
+ * class-tier dedup — so defaulting size here would add bytes, not save them.
+ */
+class RadioButtonDot extends Glyph {
+    constructor() {
+        super("circle", undefined, _defaultRadioButtonDotOptions);
+    }
+}
 
 /**
  * Construction-time options for {@link RadioButton}.
@@ -74,25 +107,16 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
 
         this.setLayoutManager(new HBox());
 
-        this._ring = new Component();
-        this._ring.setPreferredSize({ width: 16, height: 16 });
+        this._ring = new RadioButtonRing();
         // Min = preferred = max so the outer HBox shrink-on-overallocation
         // can't collapse the ring graphic when the radio is packed into a
         // tight container with siblings that have flexible widths.
-        this._ring.setMinSize({ width: 16, height: 16 });
-        this._ring.setMaxSize({ width: 16, height: 16 });
         this._ring.setSize({ width: 16, height: 16 });
         this._ring.setBackgroundColor("var(--ts-ui-radio-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))");
         this._ring.setBorder("1px solid var(--ts-ui-form-border, rgb(160, 160, 160))");
         this._ring.setBorderRadius("50%");
-        // The ring owns the click + cursor surface so the pointer/click area
-        // matches the visible graphic exactly. The root stays inert (default
-        // cursor, no click listener), so clicks on a label or in any
-        // stretched empty space don't select and don't show the pointer cursor.
-        this._ring.setCursor("pointer");
 
-        this._dot = new Glyph("circle");
-        this._dot.setForegroundColor("var(--ts-ui-radio-dot-color, rgb(255, 255, 255))");
+        this._dot = new RadioButtonDot();
         this._dot.setPreferredSize({ width: 8, height: 8 });
         this._dot.setMaxSize({ width: 8, height: 8 });
         this._dot.setX(3);

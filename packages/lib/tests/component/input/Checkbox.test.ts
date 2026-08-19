@@ -9,7 +9,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Checkbox } from '~/component/input/Checkbox';
 import { Container } from '~/core/Container';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
+import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -19,6 +20,38 @@ const CONFIG = {
     fontMetrics,
     themeVars:       {},
 };
+
+/** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+function idSelector(component: { getId(): string }): string {
+    return '#' + DOM.source.escapeSelector(component.getId());
+}
+
+/**
+ * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+ * flattened into one key/value map. Copied from `ClassChromeRules.test.ts`.
+ */
+function declarationsDuring(
+    sink: RecordingDOMSink,
+    selector: string,
+    fn: () => void,
+): Record<string, string | null> {
+    const start = sink.writes.length;
+    fn();
+
+    const out: Record<string, string | null> = {};
+    for (const w of sink.writes.slice(start)) {
+        if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+            continue;
+        }
+
+        const styles = w.args[1] as Record<string, string | null>;
+        for (const key of Object.keys(styles)) {
+            out[key] = styles[key];
+        }
+    }
+
+    return out;
+}
 
 describe('Checkbox value/selected aliasing', () => {
     it('aliases the value option onto selected when selected is absent', () => {
@@ -160,5 +193,63 @@ describe('Checkbox action fan-out (mounted)', () => {
 
         expect(cb.isSelected()).toBe(true);
         expect(sink.writes.some((w: any) => w.op === 'dispatchEvent' && w.args[0] === 'click')).toBe(true);
+    });
+});
+
+describe('Checkbox delegate static style hoisting', () => {
+    afterEach(() => DOM.reset());
+
+    it('row 1: a rendered _box carries no static size/cursor declaration on its own #id rule', () => {
+        const sink = installTestDOM(CONFIG);
+        const cb   = new Checkbox() as any;
+        const box  = cb._box;
+
+        const declarations = declarationsDuring(sink, idSelector(box), () => cb.getElement(true));
+
+        expect(declarations.minWidth).toBeUndefined();
+        expect(declarations.minHeight).toBeUndefined();
+        expect(declarations.maxWidth).toBeUndefined();
+        expect(declarations.maxHeight).toBeUndefined();
+        expect(declarations.cursor).toBeUndefined();
+    });
+
+    it('row 2: a rendered _check carries no static color declaration on its own #id rule', () => {
+        // Size (minWidth/minHeight/maxWidth/maxHeight) is deliberately not
+        // asserted here — see CheckboxCheckGlyph's doc comment: Glyph.applyOptions
+        // always re-pins minSize/maxSize via a real setter call when a preferred
+        // size resolves, so size can never dedupe onto the class rule for a
+        // Glyph delegate and stays an imperative, per-instance #id write.
+        const sink  = installTestDOM(CONFIG);
+        const cb    = new Checkbox() as any;
+        const check = cb._check;
+
+        const declarations = declarationsDuring(sink, idSelector(check), () => cb.getElement(true));
+
+        expect(declarations.color).toBeUndefined();
+    });
+
+    it('row 3: a rendered _dash carries no static size/backgroundColor declaration on its own #id rule', () => {
+        const sink = installTestDOM(CONFIG);
+        const cb   = new Checkbox() as any;
+        const dash = cb._dash;
+
+        const declarations = declarationsDuring(sink, idSelector(dash), () => cb.getElement(true));
+
+        // No minHeight check: _dash never had a registered minSize, before or after.
+        expect(declarations.minWidth).toBeUndefined();
+        expect(declarations.maxWidth).toBeUndefined();
+        expect(declarations.maxHeight).toBeUndefined();
+        expect(declarations.backgroundColor).toBeUndefined();
+    });
+
+    it('row 4: the shared .CheckboxBox/.CheckboxCheckGlyph/.CheckboxDash class rules exist once Checkboxes have rendered', () => {
+        installTestDOM(CONFIG);
+
+        new Checkbox().getElement(true);
+        new Checkbox().getElement(true);
+
+        expect(_ruleCacheHas('.CheckboxBox')).toBe(true);
+        expect(_ruleCacheHas('.CheckboxCheckGlyph')).toBe(true);
+        expect(_ruleCacheHas('.CheckboxDash')).toBe(true);
     });
 });
