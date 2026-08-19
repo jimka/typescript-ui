@@ -37,6 +37,7 @@ import { ChartDemoPanel } from "./ChartDemoPanel.js";
 import { DiagramPanel } from "./DiagramPanel.js";
 import { MarkdownEditorPanel } from "./MarkdownEditorPanel.js";
 import { MarkerListPanel } from "./MarkerListPanel.js";
+import { StyleAuditPanel } from "./StyleAuditPanel.js";
 
 DOM.source.getScrollBarWidth();
 (window as any).bench = Benchmark;
@@ -92,6 +93,7 @@ addSection(() => new CodeEditorPanel(),      "CodeEditor" );
 addSection(() => new ChartDemoPanel(),       "Charts"     );
 addSection(() => new DiagramPanel(),         "Diagram"    );
 addSection(() => new MarkdownEditorPanel(),  "MD Editor"  );
+addSection(() => new StyleAuditPanel(),      "Style Audit");
 
 function showSection(params: RouteParams): void {
     const index = slugs.indexOf(params.section);
