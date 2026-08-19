@@ -72,6 +72,23 @@ describe('Table cellclick event', () => {
     });
 });
 
+// Regression: `showCellMenu`'s "Copy" item declares `glyph: 'clipboard'`,
+// which must be registered at module load (mirroring the eager
+// `Glyph.register` call for the column menu's own glyphs) or building the
+// menu throws "Unknown glyph: clipboard" the moment a data cell is
+// right-clicked, before the menu ever displays.
+describe('Table cellcontextmenu — right-click "Copy" menu', () => {
+    it('constructs the context menu without throwing', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1' }]);
+        await store.load();
+
+        const table = new Table(store);
+        table.getElement(true);
+
+        expect(() => (table as any).showCellMenu(10, 10)).not.toThrow();
+    });
+});
+
 // Column virtualization (table-column-virtualization plan): export and
 // aria-colcount read the full resolved column list, never the body's
 // rendered column window — see the plan's `## Expected Behaviour`.

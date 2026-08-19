@@ -358,6 +358,7 @@ export interface Theme {
             padding                   : number;
             background                : string;
             readonlyBackground        : string;
+            rangeSelectedBackground   : string;
             requiredEmptyOutlineColor : string;
             color                     : string;
             border                    : string;
@@ -1071,6 +1072,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-table-cell-height'                : theme.table.cell.height,
         '--ts-ui-table-cell-bg'                    : theme.table.cell.background,
         '--ts-ui-table-cell-readonly-bg'           : theme.table.cell.readonlyBackground,
+        '--ts-ui-table-cell-range-selected'        : theme.table.cell.rangeSelectedBackground,
         '--ts-ui-table-cell-required-outline'      : theme.table.cell.requiredEmptyOutlineColor,
         '--ts-ui-table-cell-color'                 : theme.table.cell.color,
         '--ts-ui-table-cell-border'                : theme.table.cell.border,

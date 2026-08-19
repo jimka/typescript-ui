@@ -23,6 +23,7 @@ import { table_columns } from "~/glyphs/solid/table_columns.js";
 import { undo } from "~/glyphs/solid/undo.js";
 import { file_csv } from "~/glyphs/solid/file_csv.js";
 import { file_code } from "~/glyphs/solid/file_code.js";
+import { clipboard } from "~/glyphs/solid/clipboard.js";
 import { Column } from "~/component/table/Column.js";
 import type { CellType, ColumnConfig, ComboOption } from "~/component/table/ColumnConfig.js";
 import { ColumnSpec, normalizeComboOptions } from "~/component/table/ColumnConfig.js";
@@ -43,7 +44,7 @@ import { chainRoom, distributeDragChain, DRAG_DISTRIBUTION_EPSILON } from "~/cor
 // Register the column context menu's item glyphs eagerly at module load —
 // same pattern as PaginationBar's nav glyphs — so a consumer never has to
 // pre-register them before the menu can open.
-Glyph.register(table_columns, undo, file_csv, file_code);
+Glyph.register(table_columns, undo, file_csv, file_code, clipboard);
 
 /** Events emitted by {@link Table}. */
 export type TableEvent = "selection" | "cellclick";
@@ -311,6 +312,7 @@ class Table extends Component<TableOptions> {
 
         this._body = bodyFactory ? bodyFactory(store) : new Body(store);
         this._body.setHeader(this._header);
+        this._body.on("cellcontextmenu", (x, y) => this.showCellMenu(x, y));
         this.addComponent(this._body);
         this._body.setColumns(this._resolvedColumns);
 
@@ -1696,6 +1698,22 @@ class Table extends Component<TableOptions> {
         }
 
         this._columnContextMenu.show(x, y, items);
+    }
+
+    /**
+     * Displays the body's right-click "Copy" menu over a data cell, reusing
+     * the same rebuild-mode `Menu` instance {@link showColumnMenu} shows over
+     * a header cell — a column-header right-click and a body-cell
+     * right-click never happen at once, and `Menu.show()` fully rebuilds its
+     * item list on every call, so there is nothing to reset between uses.
+     *
+     * @param x - Viewport x coordinate for the menu.
+     * @param y - Viewport y coordinate for the menu.
+     */
+    private showCellMenu(x: number, y: number): void {
+        this._columnContextMenu.show(x, y, [
+            { text: 'Copy', glyph: 'clipboard', action: () => this._body.copyContextMenuSelection() },
+        ]);
     }
 
     /**

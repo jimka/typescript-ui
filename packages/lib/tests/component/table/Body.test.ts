@@ -12,13 +12,14 @@
 // editor.test pattern of poking a private to exercise a real contract.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
-import { installTestDOM, makeEvent } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
-import { Body, resolveClickedColumn, buildTsv, locateCellInGrid } from '~/component/table/Body';
+import { Body, resolveClickedColumn, buildRectangularTsv } from '~/component/table/Body';
 import type { CellClickEvent } from '~/component/table/Body';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import { Row } from '~/component/table/Row';
+import { Column } from '~/component/table/Column';
 import { Cell } from '~/component/table/cell/Cell';
 import { ComboCell } from '~/component/table/cell/Combo';
 import { NumberCell } from '~/component/table/cell/Number';
@@ -508,151 +509,197 @@ describe('resolveClickedColumn', () => {
     });
 });
 
-describe('buildTsv', () => {
-    const rows = [['Alice', '25', 'NYC'], ['Bob', '30', 'LA']];
-
-    it('formats a whole row with no offsets as tab-separated', () => {
-        expect(buildTsv(rows, 0, 0, null, 0, 2, null)).toBe('Alice\t25\tNYC');
+describe('buildRectangularTsv', () => {
+    it('joins each row\'s cells with tabs and the rows with newlines', () => {
+        expect(buildRectangularTsv([['Alice', '25'], ['Bob', '30']])).toBe('Alice\t25\nBob\t30');
     });
 
-    it('formats a cross-row span as row-major, not rectangular', () => {
-        expect(buildTsv(rows, 0, 1, null, 1, 1, null)).toBe('25\tNYC\nBob\t30');
+    it('formats a single-cell grid with no separators', () => {
+        expect(buildRectangularTsv([['only']])).toBe('only');
     });
 
-    it('trims both boundary cells to the selected characters', () => {
-        expect(buildTsv(rows, 0, 0, 2, 0, 1, 1)).toBe('ice\t2');
-    });
-
-    it('trims a single-cell selection to the selected characters', () => {
-        expect(buildTsv(rows, 0, 0, 2, 0, 0, 4)).toBe('ic');
-    });
-
-    it('keeps a boundary cell whole when only its own offset is null', () => {
-        expect(buildTsv(rows, 0, 0, null, 0, 1, 1)).toBe('Alice\t2');
-    });
-
-    it('quote-wraps a field containing a tab, keeping the tab intact', () => {
-        expect(buildTsv([['a\tb', 'c']], 0, 0, null, 0, 1, null)).toBe('"a\tb"\tc');
-    });
-
-    it('quote-wraps a field containing a quote, doubling interior quotes', () => {
-        expect(buildTsv([['He said "hi"']], 0, 0, null, 0, 0, null)).toBe('"He said ""hi"""');
-    });
-
-    it('quote-wraps a field containing a newline, keeping the newline intact', () => {
-        expect(buildTsv([['a\nb']], 0, 0, null, 0, 0, null)).toBe('"a\nb"');
+    it('quote-wraps a field containing a tab, a quote, or a newline', () => {
+        expect(buildRectangularTsv([['a\tb', 'c"d', 'e\nf']])).toBe('"a\tb"\t"c""d"\t"e\nf"');
     });
 });
 
-describe('locateCellInGrid', () => {
-    it("returns the grid position of a cell's own element", async () => {
-        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+describe('Body range selection — mouse gestures', () => {
+    async function rangeBody(): Promise<Body> {
+        const store = new MemoryStore(MODEL, [
+            { a: 'a0', b: 'b0', c: 'c0' },
+            { a: 'a1', b: 'b1', c: 'c1' },
+            { a: 'a2', b: 'b2', c: 'c2' },
+            { a: 'a3', b: 'b3', c: 'c3' },
+        ]);
         await store.load();
 
         const b = new Body(store);
         b.getElement(true);
+        b.setWidth(300);
+        b.setHeight(1000);   // tall enough that all 4 rows are in the pool
+        (b as any).renderWindow(300, [100, 100, 100]);
 
-        const row   = (b as any).getRowPool()[0];
-        const cells = row.getComponents();
-        const grid  = [cells.map((c: any) => ({ element: c.getElement()! }))];
+        return b;
+    }
 
-        expect(locateCellInGrid(grid, cells[1].getElement()!)).toEqual({ row: 0, col: 1 });
+    function cellAt(b: Body, row: number, col: number): Cell<any> {
+        return (b as any).getRowPool()[row].getComponents()[col];
+    }
+
+    function recordAt(b: Body, row: number) {
+        return (b as any).getRowPool()[row].getData();
+    }
+
+    it('walks the drag / plain-click / shift-click gesture sequence from the plan contract', async () => {
+        const b = await rangeBody();
+
+        // mousedown (R1, colB) -> anchor = focus = (R1, colB); rect = just that cell.
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 1, 1).getElement()!, 'mousedown'));
+
+        expect((b as any)._rangeAnchor).toEqual({ record: recordAt(b, 1), col: 1 });
+        expect((b as any)._rangeFocus).toEqual({ record: recordAt(b, 1), col: 1 });
+        expect((b as any).getCellRangeBounds((b as any)._rangeAnchor, (b as any)._rangeFocus))
+            .toEqual({ minRow: 1, maxRow: 1, minCol: 1, maxCol: 1 });
+
+        // ...then mousemove to (R3, colA), mouseup -> anchor unchanged; focus = (R3, colA); rect = rows 1-3 x cols A-B.
+        (b as any).onCellDragMove(makeEvent(cellAt(b, 3, 0).getElement()!, 'mousemove'));
+        (b as any).onCellDragEnd();
+
+        expect((b as any)._rangeAnchor).toEqual({ record: recordAt(b, 1), col: 1 });
+        expect((b as any)._rangeFocus).toEqual({ record: recordAt(b, 3), col: 0 });
+        expect((b as any).getCellRangeBounds((b as any)._rangeAnchor, (b as any)._rangeFocus))
+            .toEqual({ minRow: 1, maxRow: 3, minCol: 0, maxCol: 1 });
+
+        // ...then a plain mousedown at (R0, colC) -> anchor = focus = (R0, colC); old range discarded.
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 0, 2).getElement()!, 'mousedown'));
+
+        expect((b as any)._rangeAnchor).toEqual({ record: recordAt(b, 0), col: 2 });
+        expect((b as any)._rangeFocus).toEqual({ record: recordAt(b, 0), col: 2 });
+
+        // ...then a shift-mousedown at (R2, colA) -> anchor unchanged; focus = (R2, colA); rect = rows 0-2 x cols A-C.
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 2, 0).getElement()!, 'mousedown', { shiftKey: true }));
+
+        expect((b as any)._rangeAnchor).toEqual({ record: recordAt(b, 0), col: 2 });
+        expect((b as any)._rangeFocus).toEqual({ record: recordAt(b, 2), col: 0 });
+        expect((b as any).getCellRangeBounds((b as any)._rangeAnchor, (b as any)._rangeFocus))
+            .toEqual({ minRow: 0, maxRow: 2, minCol: 0, maxCol: 2 });
     });
 
-    it('returns the grid position when the target is a descendant of the cell', async () => {
-        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
-        await store.load();
+    it('a mousedown on a separator row is a no-op: no anchor/focus change, no drag armed', async () => {
+        const b = await rangeBody();
+        b.setRowSeparator(record => record.get('a') === 'a2' ? { label: 'SEP', color: null } : null);
+        (b as any).renderWindow();
 
-        const b = new Body(store);
-        b.getElement(true);
+        const sepRow = (b as any).getRowPool().find((r: any) => r.isSeparator());
+        expect(sepRow).toBeDefined();
 
-        const row   = (b as any).getRowPool()[0];
-        const cells = row.getComponents();
-        const grid  = [cells.map((c: any) => ({ element: c.getElement()! }))];
-        const inner = cells[2].getComponents()[0].getElement();
+        (b as any).onCellMouseDown(makeEvent(sepRow.getElement(), 'mousedown'));
 
-        expect(locateCellInGrid(grid, inner)).toEqual({ row: 0, col: 2 });
+        expect((b as any)._rangeAnchor).toBeNull();
+        expect((b as any)._rangeFocus).toBeNull();
     });
 
-    it('returns null when the target is outside every cell in the grid', async () => {
-        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
-        await store.load();
+    it('a mousedown on an actively-editing cell is a no-op', async () => {
+        const b    = await rangeBody();
+        const cell = cellAt(b, 0, 0) as any;
 
-        const b = new Body(store);
-        b.getElement(true);
+        cell._activeEditor = {}; // fakes Cell.isEditing() === true without full editor wiring
 
-        const row   = (b as any).getRowPool()[0];
-        const cells = row.getComponents();
-        const grid  = [cells.map((c: any) => ({ element: c.getElement()! }))];
+        (b as any).onCellMouseDown(makeEvent(cell.getElement(), 'mousedown'));
 
-        // The row element itself is not one of its cells.
-        expect(locateCellInGrid(grid, row.getElement()!)).toBe(null);
-    });
-});
-
-describe('Body onCopy / buildSelectionText', () => {
-    it('returns undefined and writes nothing when there is no selection', async () => {
-        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
-        await store.load();
-
-        const b = new Body(store);
-        b.getElement(true);
-
-        // ModelledDOMSource.getDocumentSelection() defaults to null — no stubbing needed.
-        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
-
-        expect((b as any).onCopy(fakeEvent)).toBeUndefined();
-        expect(fakeEvent.clipboardData!.setData).not.toHaveBeenCalled();
+        expect((b as any)._rangeAnchor).toBeNull();
     });
 
-    it('writes a tab-separated payload and prevents default for a resolved whole-row selection', async () => {
-        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
-        await store.load();
-
-        const b = new Body(store);
-        b.getElement(true);
-
-        const cells = (b as any).getRowPool()[0].getComponents();
-
-        vi.spyOn(DOM.source, 'getDocumentSelection').mockReturnValue({
-            startContainer: cells[0].getElement()!,
-            startOffset:    null,
-            endContainer:   cells[2].getElement()!,
-            endOffset:      null,
-        });
-
-        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
-
-        expect((b as any).onCopy(fakeEvent)).toEqual({ prevent: true });
-        expect(fakeEvent.clipboardData!.setData).toHaveBeenCalledOnce();
-        expect(fakeEvent.clipboardData!.setData).toHaveBeenCalledWith('text/plain', '1\t2\t3');
-    });
-
-    it('returns undefined and writes nothing when the selection resolves outside every rendered cell', async () => {
-        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
-        await store.load();
-
-        const b = new Body(store);
-        b.getElement(true);
-
+    it('a mousedown outside every cell is a no-op', async () => {
+        const b   = await rangeBody();
         const row = (b as any).getRowPool()[0];
 
-        // The row's own element is not one of its cells, so this selection
-        // does not resolve to any grid position.
-        vi.spyOn(DOM.source, 'getDocumentSelection').mockReturnValue({
-            startContainer: row.getElement()!,
-            startOffset:    null,
-            endContainer:   row.getElement()!,
-            endOffset:      null,
-        });
+        // The row's own element is not one of its cells.
+        (b as any).onCellMouseDown(makeEvent(row.getElement(), 'mousedown'));
 
-        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
-
-        expect((b as any).onCopy(fakeEvent)).toBeUndefined();
-        expect(fakeEvent.clipboardData!.setData).not.toHaveBeenCalled();
+        expect((b as any)._rangeAnchor).toBeNull();
     });
 
-    it('skips a GroupSeparatorCell row spanned by the selection, in a rotated-mode body', async () => {
+    it('a mousemove resolving to the cell the focus already names is a no-op (no repaint)', async () => {
+        const b = await rangeBody();
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 0, 0).getElement()!, 'mousedown'));
+
+        const spy = vi.spyOn(b as any, 'refreshCellRangeHighlight');
+        (b as any).onCellDragMove(makeEvent(cellAt(b, 0, 0).getElement()!, 'mousemove'));
+
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('a mousemove that resolves to no cell leaves the focus unchanged', async () => {
+        const b = await rangeBody();
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 0, 0).getElement()!, 'mousedown'));
+
+        const row = (b as any).getRowPool()[0];
+        (b as any).onCellDragMove(makeEvent(row.getElement(), 'mousemove'));
+
+        expect((b as any)._rangeFocus).toEqual({ record: recordAt(b, 0), col: 0 });
+    });
+
+    it('refreshCellRangeHighlight marks cells inside the rectangle selected and cells outside it not', async () => {
+        const b = await rangeBody();
+
+        (b as any)._rangeAnchor = { record: recordAt(b, 0), col: 0 };
+        (b as any)._rangeFocus  = { record: recordAt(b, 0), col: 1 };
+        (b as any).refreshCellRangeHighlight();
+
+        expect((cellAt(b, 0, 0) as any)._rangeSelected).toBe(true);
+        expect((cellAt(b, 0, 1) as any)._rangeSelected).toBe(true);
+        expect((cellAt(b, 0, 2) as any)._rangeSelected).toBe(false);
+        expect((cellAt(b, 1, 0) as any)._rangeSelected).toBe(false);
+    });
+});
+
+describe('Body range selection — copy', () => {
+    it('copySelectionToClipboard writes nothing when no range is selected', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        b.copySelectionToClipboard();
+
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        expect(writes).toHaveLength(0);
+    });
+
+    it('copies a range whose rows have scrolled out of the row pool (bug 2 regression)', async () => {
+        const store = new MemoryStore(
+            MODEL,
+            Array.from({ length: 50 }, (_, i) => ({ a: `a${i}`, b: `b${i}`, c: `c${i}` })),
+        );
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+        b.setWidth(300);
+        b.setHeight(100);   // small viewport -> a small pool
+        (b as any).renderWindow(300, [100, 100, 100]);
+
+        const records = store.getAll();
+        (b as any)._rangeAnchor = { record: records[0], col: 0 };
+        (b as any)._rangeFocus  = { record: records[2], col: 2 };
+
+        (b as any)._scroller.setScrollY(100000);   // clamped to content max
+        (b as any).renderWindow();
+
+        // Sanity: rows 0-2 genuinely left the pool, so this is really
+        // exercising the off-screen path and not a false negative.
+        expect((b as any)._boundIndices).not.toContain(0);
+
+        b.copySelectionToClipboard();
+
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        expect(writes).toHaveLength(1);
+        expect(writes[0].args[0]).toBe('a0\tb0\tc0\na1\tb1\tc1\na2\tb2\tc2');
+    });
+
+    it('omits a separator row spanned by the copy range', async () => {
         const store = new MemoryStore(MODEL, [
             { a: '1', b: '2', c: '3' },
             { a: 'SEP', b: '', c: '' },
@@ -665,30 +712,90 @@ describe('Body onCopy / buildSelectionText', () => {
         b.setRowSeparator(record => record.get('a') === 'SEP' ? { label: 'SEP', color: null } : null);
         b.renderWindow();
 
-        const rowPool = (b as any).getRowPool();
-        const sepRow  = rowPool.find((r: any) => r.isSeparator());
-        expect(sepRow).toBeDefined();
+        const records = store.getAll();
+        (b as any)._rangeAnchor = { record: records[0], col: 0 };
+        (b as any)._rangeFocus  = { record: records[2], col: 2 };
 
-        const firstDataRow = rowPool.find((r: any) => !r.isSeparator() && r.getData()?.get('a') === '1');
-        const lastDataRow  = rowPool.find((r: any) => !r.isSeparator() && r.getData()?.get('a') === '4');
+        b.copySelectionToClipboard();
 
-        vi.spyOn(DOM.source, 'getDocumentSelection').mockReturnValue({
-            startContainer: firstDataRow.getComponents()[0].getElement()!,
-            startOffset:    null,
-            endContainer:   lastDataRow.getComponents()[2].getElement()!,
-            endOffset:      null,
-        });
-
-        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
-
-        (b as any).onCopy(fakeEvent);
-
-        // The separator row is absent from the copy grid entirely — its
-        // label never appears, and the two data rows land on adjacent lines.
-        expect(fakeEvent.clipboardData!.setData).toHaveBeenCalledWith('text/plain', '1\t2\t3\n4\t5\t6');
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        expect(writes[0].args[0]).toBe('1\t2\t3\n4\t5\t6');
     });
 
-    it('recovers correct row-major order when the Range reports start/end reversed', async () => {
+    it("formats a date column's copied text via TableExporter.formatValue, not the raw record value", async () => {
+        const model  = new Model([{ name: 'd', type: 'date', order: 0 }], 'd');
+        const sample = new Date(2021, 4, 17);
+        const store  = new MemoryStore(model, [{ d: sample }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.setColumns(Column.resolve(model.getFields()));
+        b.getElement(true);
+
+        const record = store.getAll()[0];
+        (b as any)._rangeAnchor = { record, col: 0 };
+        (b as any)._rangeFocus  = { record, col: 0 };
+
+        b.copySelectionToClipboard();
+
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        // Relational assert (locale-agnostic): matches what the date renderer
+        // itself would display, not the raw Date.
+        expect(writes[0].args[0]).toBe(sample.toLocaleDateString());
+    });
+
+    it('Ctrl+C and Cmd+C both call copySelectionToClipboard; a bare "c" keypress does not', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const record = store.getAll()[0];
+        (b as any)._rangeAnchor = { record, col: 0 };
+        (b as any)._rangeFocus  = { record, col: 0 };
+
+        const spy = vi.spyOn(b, 'copySelectionToClipboard');
+
+        expect((b as any).onKeyDown(makeEvent(b.getElement()!, 'keydown', { key: 'c', ctrlKey: true })))
+            .toEqual({ prevent: true });
+        expect(spy).toHaveBeenCalledTimes(1);
+
+        (b as any).onKeyDown(makeEvent(b.getElement()!, 'keydown', { key: 'c', metaKey: true }));
+        expect(spy).toHaveBeenCalledTimes(2);
+
+        (b as any).onKeyDown(makeEvent(b.getElement()!, 'keydown', { key: 'c' }));
+        expect(spy).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('Body range selection — right-click / context menu', () => {
+    it('right-click with no prior selection sets _contextMenuCell and fires cellcontextmenu without touching the range', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const row    = (b as any).getRowPool()[0];
+        const record = row.getData();
+        const cells  = row.getComponents();
+
+        const seen: Array<[number, number]> = [];
+        b.on('cellcontextmenu', (x, y) => seen.push([x, y]));
+
+        const result = (b as any).onCellContextMenu(
+            makeEvent(cells[1].getElement(), 'contextmenu', { clientX: 42, clientY: 84 }),
+        );
+
+        expect(result).toEqual({ prevent: true });
+        expect(seen).toEqual([[42, 84]]);
+        expect((b as any)._contextMenuCell).toEqual({ record, col: 1 });
+        expect((b as any)._rangeAnchor).toBeNull();
+        expect((b as any)._rangeFocus).toBeNull();
+    });
+
+    it('right-clicking a cell inside the current range leaves the range untouched and copies the whole range', async () => {
         const store = new MemoryStore(MODEL, [
             { a: '1', b: '2', c: '3' },
             { a: '4', b: '5', c: '6' },
@@ -698,66 +805,107 @@ describe('Body onCopy / buildSelectionText', () => {
         const b = new Body(store);
         b.getElement(true);
 
-        const pool     = (b as any).getRowPool();
-        const row0Cells = pool[0].getComponents(); // data index 0: "1","2","3"
-        const row1Cells = pool[1].getComponents(); // data index 1: "4","5","6"
+        const rows    = (b as any).getRowPool();
+        const records = store.getAll();
 
-        // A pool row's element is appended to the DOM once, in creation
-        // order, and never physically moved as the pool recycles (see
-        // renderedCellGrid's own remarks), so a real Range's start/end
-        // containers — which the browser orders by DOM position, not data
-        // index — can resolve to the LATER row first. Stand in for that
-        // directly: "start" is a cell in the row with the larger data
-        // index, "end" a cell in the row with the smaller one.
-        vi.spyOn(DOM.source, 'getDocumentSelection').mockReturnValue({
-            startContainer: row1Cells[1].getElement()!,
-            startOffset:    null,
-            endContainer:   row0Cells[1].getElement()!,
-            endOffset:      null,
-        });
+        (b as any)._rangeAnchor = { record: records[0], col: 0 };
+        (b as any)._rangeFocus  = { record: records[1], col: 1 };
 
-        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
-        (b as any).onCopy(fakeEvent);
+        (b as any).onCellContextMenu(makeEvent(rows[0].getComponents()[0].getElement(), 'contextmenu', { clientX: 1, clientY: 1 }));
 
-        // Reading order follows the DATA index (row 0's b/c cells, then row
-        // 1's a/b cells), not which container the Range happened to label
-        // "start", and is never empty.
-        expect(fakeEvent.clipboardData!.setData).toHaveBeenCalledWith('text/plain', '2\t3\n4\t5');
+        expect((b as any)._rangeAnchor).toEqual({ record: records[0], col: 0 });
+        expect((b as any)._rangeFocus).toEqual({ record: records[1], col: 1 });
+
+        b.copyContextMenuSelection();
+
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        expect(writes[0].args[0]).toBe('1\t2\n4\t5');
     });
 
-    it('swaps the start/end character offsets along with the reversed positions', async () => {
+    it('right-clicking a cell outside the current range leaves the range untouched and copies just that cell', async () => {
         const store = new MemoryStore(MODEL, [
-            { a: 'aaa', b: 'bbb', c: 'ccc' },
-            { a: 'ddd', b: 'eee', c: 'fff' },
+            { a: '1', b: '2', c: '3' },
+            { a: '4', b: '5', c: '6' },
         ]);
         await store.load();
 
         const b = new Body(store);
         b.getElement(true);
 
-        const pool      = (b as any).getRowPool();
-        const row0Cells = pool[0].getComponents(); // "aaa","bbb","ccc"
-        const row1Cells = pool[1].getComponents(); // "ddd","eee","fff"
+        const rows    = (b as any).getRowPool();
+        const records = store.getAll();
 
-        // Same reversed-order setup as above, but this time both boundary
-        // containers carry a real character offset — proving the offset
-        // that trims each cell travels with its (now-swapped) position
-        // rather than staying attached to whichever container the browser
-        // originally labelled "start" / "end".
-        vi.spyOn(DOM.source, 'getDocumentSelection').mockReturnValue({
-            startContainer: row1Cells[1].getElement()!, // "eee"
-            startOffset:    1,
-            endContainer:   row0Cells[1].getElement()!, // "bbb"
-            endOffset:      2,
-        });
+        (b as any)._rangeAnchor = { record: records[0], col: 0 };
+        (b as any)._rangeFocus  = { record: records[0], col: 0 };
 
-        const fakeEvent = { clipboardData: { setData: vi.fn() } } as unknown as ClipboardEvent;
-        (b as any).onCopy(fakeEvent);
+        (b as any).onCellContextMenu(makeEvent(rows[1].getComponents()[2].getElement(), 'contextmenu', { clientX: 1, clientY: 1 }));
 
-        // True start is ("bbb", offset 2) -> "b"; true end is ("eee", offset
-        // 1) -> "e". A missing or inverted offset swap would instead trim
-        // "bbb" with offset 1 ("bb") and "eee" with offset 2 ("ee").
-        expect(fakeEvent.clipboardData!.setData).toHaveBeenCalledWith('text/plain', 'b\tccc\nddd\te');
+        expect((b as any)._rangeAnchor).toEqual({ record: records[0], col: 0 });
+        expect((b as any)._rangeFocus).toEqual({ record: records[0], col: 0 });
+
+        b.copyContextMenuSelection();
+
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        expect(writes[0].args[0]).toBe('6');
+    });
+
+    it('right-click on a separator row, an editing cell, or outside every cell is a no-op', async () => {
+        const store = new MemoryStore(MODEL, [
+            { a: '1', b: '2', c: '3' },
+            { a: 'SEP', b: '', c: '' },
+        ]);
+        await store.load();
+
+        const b = new Body(store);
+        b.setRowSeparator(record => record.get('a') === 'SEP' ? { label: 'SEP', color: null } : null);
+        b.getElement(true);
+        b.renderWindow();
+
+        const seen: unknown[] = [];
+        b.on('cellcontextmenu', (...args: unknown[]) => seen.push(args));
+
+        const sepRow = (b as any).getRowPool().find((r: any) => r.isSeparator());
+        expect((b as any).onCellContextMenu(makeEvent(sepRow.getElement(), 'contextmenu'))).toBeUndefined();
+
+        const dataRow = (b as any).getRowPool().find((r: any) => !r.isSeparator());
+        const cell    = dataRow.getComponents()[0] as any;
+        cell._activeEditor = {};
+        expect((b as any).onCellContextMenu(makeEvent(cell.getElement(), 'contextmenu'))).toBeUndefined();
+
+        expect((b as any).onCellContextMenu(makeEvent(dataRow.getElement(), 'contextmenu'))).toBeUndefined();
+
+        expect(seen).toHaveLength(0);
+        expect((b as any)._contextMenuCell).toBeNull();
+    });
+
+    it('copyContextMenuSelection is a no-op when no cell was right-clicked', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        b.copyContextMenuSelection();
+
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        expect(writes).toHaveLength(0);
+    });
+
+    it('copyContextMenuSelection is a no-op when the right-clicked record is no longer visible', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+        const otherStore = new MemoryStore(MODEL, [{ a: 'x', b: 'y', c: 'z' }]);
+        await otherStore.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        (b as any)._contextMenuCell = { record: otherStore.getAll()[0], col: 0 };
+
+        expect(() => b.copyContextMenuSelection()).not.toThrow();
+
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        expect(writes).toHaveLength(0);
     });
 });
 

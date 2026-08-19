@@ -41,6 +41,7 @@ export class Cell<T> extends Component {
 
     private _readOnly: boolean;
     private _requiredEmpty: boolean = false;
+    private _rangeSelected: boolean = false;
     private _baseBackground: string = 'var(--ts-ui-table-cell-bg, transparent)';
     private _renderer: CellRenderer<T>;
     private _editor: CellEditor<T> | undefined;
@@ -330,6 +331,28 @@ export class Cell<T> extends Component {
     }
 
     /**
+     * Sets whether this cell shows the cell-range-selection highlight — a
+     * per-cell background tint driven by the host {@link Body}'s rectangular
+     * cell-range selection. Sourced from `--ts-ui-table-cell-range-selected`.
+     * Idempotent — passing the current value short-circuits before any style
+     * writes. Wins over both the read-only tint and the base background in
+     * the cell's internal background-resolution precedence.
+     *
+     * @param value - `true` to show the range-selected tint, `false` to hide it.
+     * @returns This cell, for method chaining.
+     */
+    setRangeSelected(value: boolean): this {
+        if (this._rangeSelected === value) {
+            return this;
+        }
+
+        this._rangeSelected = value;
+        this._applyStateTint();
+
+        return this;
+    }
+
+    /**
      * Sets the background this cell falls back to when not read-only —
      * e.g. a column's `groupColor` tint. {@link Row} routes its
      * group-color write through this setter (instead of
@@ -352,15 +375,17 @@ export class Cell<T> extends Component {
 
     /**
      * Resolves this cell's background + cursor from precedence
-     * read-only ▸ base background, and separately resolves the
-     * required-empty outline (shown only when required-empty and NOT
+     * range-selected ▸ read-only ▸ base background, and separately resolves
+     * the required-empty outline (shown only when required-empty and NOT
      * read-only). The single owner of both so the read-only and
      * required-empty states cannot fight over either.
      */
     private _applyStateTint(): void {
-        const background = this._readOnly
-            ? 'var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))'
-            : this._baseBackground;
+        const background = this._rangeSelected
+            ? 'var(--ts-ui-table-cell-range-selected, rgba(30, 100, 200, 0.15))'
+            : this._readOnly
+                ? 'var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))'
+                : this._baseBackground;
 
         // Pooled, frequently-rebound cell: Row.setColumnWindow / Header's column
         // reconciler call setBaseBackground (and Body.applyReadOnlyState calls

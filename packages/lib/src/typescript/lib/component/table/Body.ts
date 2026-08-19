@@ -22,15 +22,17 @@ import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { Column } from "~/component/table/Column.js";
 import type { TableHeader } from "~/component/table/Header.js";
 import { callable } from "~/core/Callable.js";
+import { TableExporter } from "~/component/table/TableExporter.js";
+import { CellTextResolver } from "~/component/table/cell/CellText.js";
 
 /**
  * String-literal union of the events emitted by the table {@link Body}.
  * `"verticalscroll"` / `"horizontalscroll"` fire after the body's virtual
  * scroll position changes, carrying the new pixel offset. `"selection"`
  * fires when the selected-record set changes; `"cellclick"` fires when a data
- * cell is clicked.
+ * cell is clicked; `"cellcontextmenu"` fires when a data cell is right-clicked.
  */
-export type BodyEvent = "verticalscroll" | "horizontalscroll" | "selection" | "cellclick";
+export type BodyEvent = "verticalscroll" | "horizontalscroll" | "selection" | "cellclick" | "cellcontextmenu";
 
 /**
  * Payload delivered to a `"cellclick"` listener when a data cell is clicked.
@@ -200,51 +202,22 @@ function range(a: number, b: number): number[] {
 }
 
 /**
- * Builds a tab/newline-formatted clipboard payload from `rows`, spanning
- * `[startRow, startCol]` to `[endRow, endCol]` inclusive in row-major order.
- * `startOffset`/`endOffset` trim the first/last cell to the selected
- * characters (`null` leaves that cell's text whole); every cell strictly
- * between the two boundaries contributes its full text.
+ * Builds a tab/newline-formatted clipboard payload from an already-sliced
+ * rectangular grid: every row's cells are joined with tabs, and the rows
+ * are joined with newlines. Unlike the row-major span the deleted `buildTsv` formatted, a
+ * cell-range selection is a true rectangle — every row spans the same
+ * `[minCol, maxCol]`, so there is no boundary-row special case and no
+ * character offsets to trim.
  *
- * @param rows - The copy grid's cell text, row-major.
- * @param startRow - The selection start's row index.
- * @param startCol - The selection start's column index.
- * @param startOffset - Character offset into the start cell's text, or `null` for the whole cell.
- * @param endRow - The selection end's row index.
- * @param endCol - The selection end's column index.
- * @param endOffset - Character offset into the end cell's text, or `null` for the whole cell.
+ * @param rows - The copy grid's cell text, row-major, already sliced to the
+ *   selected rectangle.
  *
  * @returns The tab-separated, newline-separated clipboard text.
  *
  * @internal
  */
-export function buildTsv(
-    rows: string[][],
-    startRow: number, startCol: number, startOffset: number | null,
-    endRow:   number, endCol:   number, endOffset:   number | null,
-): string {
-    const lines: string[] = [];
-
-    for (let r = startRow; r <= endRow; r++) {
-        const row     = rows[r];
-        const colFrom = r === startRow ? startCol : 0;
-        const colTo   = r === endRow   ? endCol   : row.length - 1;
-        const parts: string[] = [];
-
-        for (let c = colFrom; c <= colTo; c++) {
-            const isStart = r === startRow && c === startCol;
-            const isEnd   = r === endRow   && c === endCol;
-            const text    = row[c];
-            const from    = isStart && startOffset !== null ? startOffset : 0;
-            const to      = isEnd   && endOffset   !== null ? endOffset   : text.length;
-
-            parts.push(escapeTsvField(text.slice(from, to)));
-        }
-
-        lines.push(parts.join("\t"));
-    }
-
-    return lines.join("\n");
+export function buildRectangularTsv(rows: string[][]): string {
+    return rows.map(row => row.map(escapeTsvField).join("\t")).join("\n");
 }
 
 function escapeTsvField(value: string): string {
@@ -256,29 +229,16 @@ function escapeTsvField(value: string): string {
 }
 
 /**
- * Finds the row-major grid position of the rendered cell containing
- * `target`, or `null` when no cell in `grid` contains it.
- *
- * @param grid - The copy grid's cell elements, row-major.
- * @param target - The selection boundary's container handle.
- *
- * @returns The matching `{ row, col }`, or `null`.
+ * Inclusive row/column bounds of a rectangular cell-range selection, in
+ * visible-row / visible-column index space.
  *
  * @internal
  */
-export function locateCellInGrid(
-    grid:   Array<Array<{ element: Handle }>>,
-    target: Handle,
-): { row: number, col: number } | null {
-    for (let r = 0; r < grid.length; r++) {
-        for (let c = 0; c < grid[r].length; c++) {
-            if (DOM.source.contains(grid[r][c].element, target)) {
-                return { row: r, col: c };
-            }
-        }
-    }
-
-    return null;
+interface CellRangeBounds {
+    minRow: number;
+    maxRow: number;
+    minCol: number;
+    maxCol: number;
 }
 
 /**
@@ -329,6 +289,19 @@ class Body extends VirtualRowView<Row> {
     private _selectedRecords : Set<ModelRecord>          = new Set();
     private _anchorRecord    : ModelRecord | null        = null;
     private _focusedColIndex: number                    = 0;
+    // Rectangular cell-range selection, keyed by record identity + visible-
+    // column index — mirrors `_selectedRecords`/`_anchorRecord`'s tolerance
+    // for a since-removed/filtered record (see `getCellRangeBounds`).
+    private _rangeAnchor     : { record: ModelRecord, col: number } | null = null;
+    private _rangeFocus      : { record: ModelRecord, col: number } | null = null;
+    // The right-clicked cell, resolved fresh on every `"contextmenu"` and
+    // left untouched by anything else — right-click never mutates the
+    // persistent range (see the plan's right-click Architecture Decision).
+    private _contextMenuCell : { record: ModelRecord, col: number } | null = null;
+    // Formats off-screen values the way their cell renderer would, for a
+    // copy range that spans outside the rendered pool. Owner-held, mirroring
+    // `_editorPool` — disposed in `destructor()`.
+    private _cellText        : CellTextResolver          = new CellTextResolver();
     private _editorPool      : CellEditorPool            = new CellEditorPool();
     private _header          : TableHeader | null             = null;
     private _listeners       : ListenerBag<BodyEvent>    = new ListenerBag<BodyEvent>();
@@ -1018,11 +991,11 @@ class Body extends VirtualRowView<Row> {
         // clicks on subtree-owned widgets like the expand/collapse toggle.
         Event.addSubtreeListener(this, "click", this.onSubtreeClick);
 
-        // A native `copy` targets wherever the browser's selection actually
-        // starts (a cell's own element or its Text descendant), not Body's
-        // own element — an exact-target listener here would never fire, the
-        // same reason clicks above are routed as a subtree listener.
-        Event.addSubtreeListener(this, "copy", this.onCopy);
+        // Drives the cell-range-selection drag gesture (mousedown arms the
+        // move/up/selectstart viewport listeners — see `onCellMouseDown`) and
+        // the right-click "Copy" menu target resolution.
+        Event.addSubtreeListener(this, "mousedown",   this.onCellMouseDown);
+        Event.addSubtreeListener(this, "contextmenu", this.onCellContextMenu);
 
         this.renderWindow();
 
@@ -1077,6 +1050,7 @@ class Body extends VirtualRowView<Row> {
      */
     protected destructor(): void {
         this._editorPool.dispose();
+        this._cellText.dispose();
 
         super.destructor();
     }
@@ -1428,6 +1402,10 @@ class Body extends VirtualRowView<Row> {
                 row.setFieldIndent(this._rowIndented?.(records[dataIndex]) ?? false);
             }
 
+            if (wasRebound || windowChanged) {
+                this.updateCellRangeVisualState(i);
+            }
+
             this.afterRowBound(row, dataIndex, wasRebound);
 
             this.applyRequiredEmptyState(row, records[dataIndex]);
@@ -1559,114 +1537,351 @@ class Body extends VirtualRowView<Row> {
     }
 
     /**
-     * Handles the native `copy` event, replacing the browser's default raw
-     * concatenated-text payload with a tab/newline-formatted grid built from
-     * the current selection.
+     * Walks up from `target` to the pool row that owns it, mirroring
+     * {@link onSubtreeClick}'s own walk, then resolves the column.
      *
-     * @param e - The native clipboard event.
+     * @param target - The interned event-target handle, or null.
      *
-     * @returns `{ prevent: true }` when a payload was written, so the
-     *   dispatcher suppresses the browser's default copy; `undefined`
-     *   (leaving the default behaviour intact) when there is nothing to copy.
+     * @returns The located row/cell/record/column, or `null` off a
+     *   separator row, a hidden row, or a target outside every cell.
      */
-    private onCopy(e: ClipboardEvent): Event.ListenerResult {
-        const text = this.buildSelectionText();
+    private locateCellFromTarget(target: Handle | null): { row: Row, cell: Cell<any>, record: ModelRecord, col: number } | null {
+        let node = target;
 
-        if (text === null) {
+        while (node) {
+            const row = this._rowPool.find(r => r.getElement() === node);
+
+            if (row) {
+                if (row.isSeparator()) {
+                    return null;
+                }
+
+                const record = row.getData();
+                if (!record) {
+                    return null;
+                }
+
+                const cells = row.getComponents() as Cell<any>[];
+                const slot  = resolveClickedColumn(cells, target);
+                if (slot < 0) {
+                    return null;
+                }
+
+                return { row, cell: cells[slot], record, col: slot + row.getColumnWindowStart() };
+            }
+
+            node = DOM.source.getParentElement(node);
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolves `anchor`/`focus` into inclusive row/column bounds,
+     * re-deriving each endpoint's row position live from
+     * {@link getVisibleRecords} — the same identity-vs-DOM-position
+     * tolerance `_anchorRecord` already relies on for row selection.
+     *
+     * @param anchor - The range's fixed corner, or `null` when no range is active.
+     * @param focus - The range's moving corner, or `null` when no range is active.
+     *
+     * @returns The inclusive row/column bounds, or `null` when either
+     *   endpoint is missing or its record is no longer visible.
+     */
+    private getCellRangeBounds(
+        anchor: { record: ModelRecord, col: number } | null,
+        focus:  { record: ModelRecord, col: number } | null,
+    ): CellRangeBounds | null {
+        if (!anchor || !focus) {
+            return null;
+        }
+
+        const records   = this.getVisibleRecords();
+        const anchorRow = records.indexOf(anchor.record);
+        const focusRow  = records.indexOf(focus.record);
+
+        if (anchorRow === -1 || focusRow === -1) {   // record removed/filtered since selection
+            return null;
+        }
+
+        return {
+            minRow: Math.min(anchorRow, focusRow), maxRow: Math.max(anchorRow, focusRow),
+            minCol: Math.min(anchor.col, focus.col), maxCol: Math.max(anchor.col, focus.col),
+        };
+    }
+
+    /**
+     * Reports whether `cell` falls inside `bounds`, re-deriving its row
+     * position live from {@link getVisibleRecords}.
+     *
+     * @param cell - The candidate record/column pair.
+     * @param bounds - The bounds to test against, or `null`.
+     *
+     * @returns `true` when `cell` is inside `bounds`.
+     */
+    private isCellWithinBounds(cell: { record: ModelRecord, col: number }, bounds: CellRangeBounds | null): boolean {
+        if (!bounds) {
+            return false;
+        }
+
+        const row = this.getVisibleRecords().indexOf(cell.record);
+
+        return row >= bounds.minRow && row <= bounds.maxRow && cell.col >= bounds.minCol && cell.col <= bounds.maxCol;
+    }
+
+    /**
+     * Repaints every currently-bound pool row's cell-range highlight against
+     * the current `_rangeAnchor`/`_rangeFocus`. Called after every gesture
+     * that can change the range — a mousedown, and a mousemove whose
+     * resolved cell actually changed — and nowhere else; a right-click never
+     * calls this, since it does not mutate the persistent range.
+     */
+    private refreshCellRangeHighlight(): void {
+        this._boundIndices.forEach((dataIdx, i) => {
+            if (dataIdx !== -1) { this.updateCellRangeVisualState(i); }
+        });
+    }
+
+    /**
+     * Applies the cell-range-selection highlight to every cell in the pool
+     * row at index `i`, per the current `_rangeAnchor`/`_rangeFocus`. Mirrors
+     * {@link updateRowVisualState}'s two call sites exactly: a full sweep
+     * from {@link refreshCellRangeHighlight} after a range-changing gesture,
+     * and a per-row call from {@link bindAndPositionRows} gated on
+     * `wasRebound || windowChanged`, so a cell scrolled into view picks up
+     * correct highlight state without a full sweep on every scroll tick.
+     *
+     * @param i - The zero-based index into the row pool.
+     */
+    private updateCellRangeVisualState(i: number): void {
+        const row = this._rowPool[i];
+        if (row.isSeparator()) {
             return;
         }
 
-        e.clipboardData?.setData("text/plain", text);
+        const dataIdx = this._boundIndices[i];
+        const record  = this.getVisibleRecords()[dataIdx];
+        if (!record) {
+            return;
+        }
+
+        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus);
+        const cells  = row.getComponents() as Cell<any>[];
+        const start  = row.getColumnWindowStart();
+
+        for (let slot = 0; slot < cells.length; slot++) {
+            const col     = start + slot;
+            const inRange = !!bounds
+                && dataIdx >= bounds.minRow && dataIdx <= bounds.maxRow
+                && col >= bounds.minCol && col <= bounds.maxCol;
+
+            cells[slot].setRangeSelected(inRange);
+        }
+    }
+
+    /**
+     * Formats the rectangular cell range described by `bounds` into a
+     * row-major grid of display text, via {@link TableExporter.formatValue}
+     * so a range that spans outside the rendered pool still formats
+     * combo/date/time/datetime values correctly — a live `CellRenderer` may
+     * not exist for an off-screen cell at all. Rows matching the active
+     * {@link setRowSeparator} predicate are skipped entirely, matching the
+     * deleted `renderedCellGrid`'s behaviour.
+     *
+     * @param bounds - The rectangular range to format.
+     *
+     * @returns The tab/newline-formatted clipboard text.
+     */
+    private buildCopyText(bounds: CellRangeBounds): string {
+        const records = this.getVisibleRecords();
+        const fields  = this.computeVisibleFields();
+        const rows: string[][] = [];
+
+        for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+            const record = records[r];
+            if (this._rowSeparator?.(record)) {   // matches the old renderedCellGrid's separator skip
+                continue;
+            }
+
+            const line: string[] = [];
+            for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                const field  = fields[c];
+                const column = this._columns.find(col => col.getField().getName() === field.getName());
+                const value  = column
+                    ? TableExporter.formatValue(column, record.get(field.getName()), this._columnConfigs, this._cellText)
+                    : record.get(field.getName());
+
+                line.push(String(value ?? ''));
+            }
+            rows.push(line);
+        }
+
+        return buildRectangularTsv(rows);
+    }
+
+    /**
+     * Copies the current cell-range selection to the clipboard — the
+     * Ctrl/Cmd+C path. No-op when nothing is selected.
+     */
+    copySelectionToClipboard(): void {
+        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus);
+        if (!bounds) {
+            return;
+        }
+
+        DOM.sink.writeClipboardText(this.buildCopyText(bounds));
+    }
+
+    /**
+     * Copies the effective right-click copy target — the current range when
+     * the right-clicked cell falls inside it, otherwise just that one cell.
+     * The menu "Copy" path. No-op when no cell was right-clicked.
+     */
+    copyContextMenuSelection(): void {
+        if (!this._contextMenuCell) {
+            return;
+        }
+
+        const currentRange = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus);
+        const bounds        = this.isCellWithinBounds(this._contextMenuCell, currentRange)
+            ? currentRange
+            : this.getCellRangeBounds(this._contextMenuCell, this._contextMenuCell);
+
+        // Falls through here (rather than a non-null assertion above) so a
+        // `_contextMenuCell` whose record was removed from the store between
+        // the right-click and the menu click — `getCellRangeBounds` returns
+        // null for both branches in that case — copies nothing instead of
+        // throwing.
+        if (!bounds) {
+            return;
+        }
+
+        DOM.sink.writeClipboardText(this.buildCopyText(bounds));
+    }
+
+    /**
+     * Mousedown-driven start of a cell-range-selection drag: resolves the
+     * clicked cell and sets it as the new anchor+focus — or, with Shift held
+     * and an existing anchor, extends the focus while keeping the anchor
+     * fixed, mirroring {@link reduceModifierSelection}'s shift-range shape.
+     * Repaints the highlight, focuses the body (a genuine multi-cell drag
+     * never fires a `click` event at all, so {@link onRowClick}'s own
+     * focus() call cannot be relied on to run after one), and arms the
+     * mousemove/mouseup/selectstart viewport listeners that drive the rest
+     * of the gesture.
+     *
+     * A no-op — no anchor/focus change, no drag armed — when the mousedown
+     * resolves to a separator row, an actively-editing cell, or no cell at all.
+     *
+     * @param e - The mousedown event.
+     */
+    protected onCellMouseDown(e: MouseEvent): void {
+        const target  = e.target === null ? null : DOM.source.intern(e.target);
+        const located = this.locateCellFromTarget(target);
+
+        if (!located || located.cell.isEditing()) {
+            return;
+        }
+
+        const cell = { record: located.record, col: located.col };
+
+        if (e.shiftKey && this._rangeAnchor) {
+            this._rangeFocus = cell;
+        } else {
+            this._rangeAnchor = cell;
+            this._rangeFocus  = cell;
+        }
+
+        this.refreshCellRangeHighlight();
+        this.focus();
+
+        Event.addViewportListener(this, "mousemove",   this.onCellDragMove);
+        Event.addViewportListener(this, "mouseup",     this.onCellDragEnd);
+        Event.addViewportListener(this, "selectstart", this.onCellDragSelectStart);
+    }
+
+    /**
+     * Extends the live drag's focus corner to whatever cell the pointer now
+     * resolves to. A no-op when the pointer resolves to no cell (left every
+     * pool row, or landed on a separator row — no auto-scroll, no clamping)
+     * or already names the cell the focus currently holds, which skips the
+     * repaint entirely.
+     *
+     * @param e - The mousemove event.
+     */
+    protected onCellDragMove(e: MouseEvent): Event.ListenerResult {
+        const target  = e.target === null ? null : DOM.source.intern(e.target);
+        const located = this.locateCellFromTarget(target);
+
+        if (!located) {
+            return;
+        }
+
+        const focus = this._rangeFocus;
+        if (focus && focus.record === located.record && focus.col === located.col) {
+            return;
+        }
+
+        this._rangeFocus = { record: located.record, col: located.col };
+        this.refreshCellRangeHighlight();
+    }
+
+    /**
+     * Tears down the drag's viewport listeners on mouseup. The range itself
+     * is already committed live by every {@link onCellDragMove} call, so
+     * nothing else happens here — including for a plain click, which is a
+     * zero-distance drag ({@link onCellMouseDown} alone already set
+     * anchor === focus).
+     */
+    protected onCellDragEnd(): Event.ListenerResult {
+        Event.removeViewportListener(this, "mousemove",   this.onCellDragMove);
+        Event.removeViewportListener(this, "mouseup",     this.onCellDragEnd);
+        Event.removeViewportListener(this, "selectstart", this.onCellDragSelectStart);
+    }
+
+    /**
+     * Suppresses native text selection for the duration of a range drag —
+     * the same technique `DragManager`'s `onSelectStart` uses to stop a
+     * mouse-driven drag from painting a native selection alongside it, since
+     * `preventDefault()` on `mousemove` does not by itself stop the browser
+     * from extending one.
+     *
+     * @returns Always suppresses the event while installed.
+     */
+    private onCellDragSelectStart(): Event.ListenerResult {
+        return { stop: true, prevent: true };
+    }
+
+    /**
+     * Resolves the right-clicked cell into the short-lived `_contextMenuCell`
+     * field and emits `"cellcontextmenu"` with the event's viewport
+     * coordinates — deliberately never touching `_rangeAnchor`/`_rangeFocus`
+     * or repainting the highlight, since a right-click does not change the
+     * selection (mirrors `Tree._handleContextMenu`'s same rule).
+     *
+     * A no-op — leaving the browser's native menu intact — when the
+     * right-click resolves to a separator row, an actively-editing cell, or
+     * no cell at all.
+     *
+     * @param e - The contextmenu event.
+     *
+     * @returns `{ prevent: true }` when a menu target was resolved, so the
+     *   dispatcher suppresses the browser's native context menu; `undefined`
+     *   otherwise.
+     */
+    protected onCellContextMenu(e: MouseEvent): Event.ListenerResult {
+        const target  = e.target === null ? null : DOM.source.intern(e.target);
+        const located = this.locateCellFromTarget(target);
+
+        if (!located || located.cell.isEditing()) {
+            return;
+        }
+
+        this._contextMenuCell = { record: located.record, col: located.col };
+
+        this.emit("cellcontextmenu", e.clientX, e.clientY);
 
         return { prevent: true };
-    }
-
-    /**
-     * Resolves the current browser selection against the rendered cell grid
-     * and formats it as tab/newline-separated text.
-     *
-     * @returns The formatted clipboard text, or `null` when there is no
-     *   selection or it does not resolve to any rendered cell.
-     */
-    private buildSelectionText(): string | null {
-        const range = DOM.source.getDocumentSelection();
-        if (!range) {
-            return null;
-        }
-
-        const grid = this.renderedCellGrid();
-        let start  = locateCellInGrid(grid, range.startContainer);
-        let end    = locateCellInGrid(grid, range.endContainer);
-
-        if (!start || !end) {
-            return null;
-        }
-
-        let startOffset = range.startOffset;
-        let endOffset   = range.endOffset;
-
-        // A pool row's element is appended to the DOM once, in creation
-        // order, and never physically reordered afterwards — recycling
-        // changes which data index a slot displays (see renderedCellGrid's
-        // own remarks) but not the element's position in the DOM tree. The
-        // browser normalises `startContainer`/`endContainer` to that fixed
-        // DOM position, which is unrelated to the row-major order this
-        // grid is already built in, so the "start" the browser reports can
-        // resolve to a later grid position than "end"; swap so the walk
-        // below always proceeds forward through the grid's row-major order.
-        if (start.row > end.row || (start.row === end.row && start.col > end.col)) {
-            [start, end]             = [end, start];
-            [startOffset, endOffset] = [endOffset, startOffset];
-        }
-
-        return buildTsv(
-            grid.map(row => row.map(cell => cell.text)),
-            start.row, start.col, startOffset,
-            end.row,   end.col,   endOffset,
-        );
-    }
-
-    /**
-     * The copy grid: every currently-displayed, non-separator pool row's
-     * cells, in row-major order.
-     *
-     * @remarks `bindAndPositionRows` always sets `_boundIndices[i]` to
-     * `firstRow + i` for a displayed slot, so iterating `_rowPool` by array
-     * index already yields row-major (data-index) order — no sort is
-     * needed here. What *isn't* row-major is the DOM: a pool row's element
-     * is appended once, in creation order, and never physically reordered
-     * as the pool recycles, so a native `Range`'s start/end containers
-     * (which the browser orders by DOM position) can disagree with this
-     * grid's order — `buildSelectionText`'s swap guard is what corrects
-     * for that, not this method. A row's own cells need no such
-     * correction either way: `Row.setColumnWindow`'s `sortComponents` call
-     * keeps `getComponents()` in visible-column order already (the same
-     * array `resolveClickedColumn` relies on).
-     *
-     * @returns The rendered cell grid, row-major.
-     */
-    private renderedCellGrid(): Array<Array<{ text: string, element: Handle }>> {
-        const grid: Array<Array<{ text: string, element: Handle }>> = [];
-
-        for (let i = 0; i < this._rowPool.length; i++) {
-            if (!this._rowDisplayed[i]) {
-                continue;
-            }
-
-            const row = this._rowPool[i];
-            if (row.isSeparator()) {
-                continue;
-            }
-
-            const cells = row.getComponents() as Cell<any>[];
-
-            grid.push(cells.map(cell => ({
-                text:    cell.getRenderer().getDisplayText(),
-                element: cell.getElement()!,
-            })));
-        }
-
-        return grid;
     }
 
     /**
@@ -1743,12 +1958,15 @@ class Body extends VirtualRowView<Row> {
      * selected-record array when the selected set changes; `"cellclick"`
      * fires when a data cell is clicked, carrying the clicked record, the
      * column's field name and visible index, the cell value, the record's
-     * row index in the visible-records view, and the raw mouse event.
+     * row index in the visible-records view, and the raw mouse event;
+     * `"cellcontextmenu"` fires when a data cell is right-clicked, carrying
+     * the event's viewport coordinates.
      *
      * @param event - The event name.
      * @param listener - Receives the new pixel offset along the scroll axis
-     *   (scroll events), the selected records (`"selection"`), or the
-     *   cell-click payload (`"cellclick"`).
+     *   (scroll events), the selected records (`"selection"`), the
+     *   cell-click payload (`"cellclick"`), or the right-click viewport
+     *   coordinates (`"cellcontextmenu"`).
      *
      * @returns This body, for method chaining.
      *
@@ -1759,12 +1977,15 @@ class Body extends VirtualRowView<Row> {
      * header's transform so column headers stay aligned with the body cells
      * they label. The listeners fire from the `VirtualScroller`'s
      * onScroll hook (see `init`) — the body uses transform-based virtual
-     * scroll, so the native DOM `scroll` event never fires.
+     * scroll, so the native DOM `scroll` event never fires. `"cellcontextmenu"`
+     * is used by `Table` to open the shared column-menu instance over the
+     * right-clicked cell.
      */
     on(event: "verticalscroll",   listener: (scrollTop: number) => void): this;
     on(event: "horizontalscroll", listener: (scrollLeft: number) => void): this;
     on(event: "selection",  listener: (records: ModelRecord[]) => void): this;
     on(event: "cellclick",        listener: (e: CellClickEvent) => void): this;
+    on(event: "cellcontextmenu",  listener: (x: number, y: number) => void): this;
     on(event: BodyEvent,          listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -1791,14 +2012,16 @@ class Body extends VirtualRowView<Row> {
      * offset, in registration order.
      *
      * @param event - The event to emit.
-     * @param payload - The scroll offset (scroll events) or the selected
-     *   records (`"selection"`).
+     * @param payload - The scroll offset (scroll events), the selected
+     *   records (`"selection"`), the cell-click detail (`"cellclick"`), or
+     *   the right-click viewport coordinates (`"cellcontextmenu"`).
      */
     protected emit(event: "verticalscroll" | "horizontalscroll", offset: number): void;
     protected emit(event: "selection", records: ModelRecord[]): void;
     protected emit(event: "cellclick", detail: CellClickEvent): void;
-    protected emit(event: BodyEvent, payload: number | ModelRecord[] | CellClickEvent): void {
-        this._listeners.fire(event, payload);
+    protected emit(event: "cellcontextmenu", x: number, y: number): void;
+    protected emit(event: BodyEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
     }
 
     /**
@@ -2122,6 +2345,12 @@ class Body extends VirtualRowView<Row> {
 
         if (records.length === 0) {
             return;
+        }
+
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+            this.copySelectionToClipboard();
+
+            return { prevent: true };
         }
 
         const navigable = new Set([
