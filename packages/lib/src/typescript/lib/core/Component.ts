@@ -21,7 +21,7 @@ import { ElementAttributes } from "~/core/ElementAttributes.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
-import { COMPONENT_CLASS, ensureClassStyleRule, type ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import { COMPONENT_CLASS, ensureClassStyleRule, type ClassStyleDefaults, StateStyleRule } from "~/core/ClassStyleRules.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
 import { measureBorderWidths } from "~/core/BorderWidths.js";
 
@@ -1015,6 +1015,36 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         return rule;
+    }
+
+    /**
+     * Sibling of {@link createStyleRule} for a per-instance state rule that has
+     * class-level defaults to dedupe against. `resolveDefaults` is called once,
+     * eagerly, at this call site — matching how `applyStyle` eagerly calls
+     * `getClassStyleDefaults()` on every render regardless of whether the class
+     * rule already exists. Cache the returned wrapper in a private `??=` getter,
+     * the same idiom `createStyleRule` callers already use (see `Button.pressedStyleRule`),
+     * so `resolveDefaults` runs at most once per instance.
+     *
+     * @param selectorSuffix - CSS selector text appended to `#<id>` to form
+     *                         the instance rule's selector, and to `.ClassName`
+     *                         to form the shared class-tier rule's selector.
+     * @param resolveDefaults - Returns this class's resolved declarations for
+     *                          the suffixed state, e.g. `() => this.getPressedClassDeclarations()`.
+     *
+     * @returns The `StateStyleRule` wrapper.
+     */
+    protected createStateStyleRule(
+        selectorSuffix: string,
+        resolveDefaults: () => Record<string, string | null>,
+    ): StateStyleRule {
+        return new StateStyleRule(
+            this.constructor,
+            selectorSuffix,
+            this.createStyleRule(selectorSuffix),
+            resolveDefaults,
+            () => !!this.getElement(),
+        );
     }
 
     /**

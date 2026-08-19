@@ -18,6 +18,7 @@ import { installTestDOM, RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { _ruleCacheHas } from '~/core/StyleTarget';
 import { ensureClassStateRule, writeClassStateDeclaration } from '~/core/ClassStyleRules';
+import type { StateStyleRule } from '~/core/ClassStyleRules';
 
 const DOM_CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -196,5 +197,132 @@ describe('Class-scoped state rules', () => {
         const c = new ProbeState6({});
         const declarations = declarationsDuring(sink, idSelector(c) + '.on', () => c.getElement(true));
         expect(declarations.color).toBeUndefined();
+    });
+
+    it('case 7: createStateStyleRule wires resolveDefaults into the class bag automatically', () => {
+        class ProbeState7 extends Component {
+            constructor(options?: ComponentOptions) {
+                super(options);
+
+                this.createStateStyleRule('.on', () => ({ color: 'red' })).set('color', 'red');
+            }
+        }
+
+        const sink = DOM.sink as RecordingDOMSink;
+
+        const firstDeclarations = declarationsDuring(sink, '.ProbeState7.on', () => {
+            new ProbeState7({}).getElement(true);
+        });
+
+        expect(_ruleCacheHas('.ProbeState7.on')).toBe(true);
+        expect(firstDeclarations.color).toBe('red');
+
+        const second = new ProbeState7({});
+        const secondDeclarations = declarationsDuring(sink, idSelector(second) + '.on', () => second.getElement(true));
+
+        expect(secondDeclarations.color).toBeUndefined();
+    });
+
+    it('case 8: a deviating .set() call still writes the instance rule', () => {
+        class ProbeState8 extends Component {
+            constructor(options: ComponentOptions | undefined, deviate: boolean) {
+                super(options);
+
+                this.createStateStyleRule('.on', () => ({ color: 'red' })).set('color', deviate ? 'blue' : 'red');
+            }
+        }
+
+        new ProbeState8({}, false).getElement(true);
+
+        const sink          = DOM.sink as RecordingDOMSink;
+        const deviating     = new ProbeState8({}, true);
+        const declarations  = declarationsDuring(sink, idSelector(deviating) + '.on', () => deviating.getElement(true));
+
+        expect(declarations.color).toBe('blue');
+    });
+
+    it('case 9: .setMany() writes only the keys that deviate', () => {
+        class ProbeState9 extends Component {
+            constructor(options?: ComponentOptions) {
+                super(options);
+
+                this.createStateStyleRule('.on', () => ({ color: 'red' })).setMany({ color: 'red', backgroundColor: 'blue' });
+            }
+        }
+
+        const sink  = DOM.sink as RecordingDOMSink;
+        const probe = new ProbeState9({});
+        const declarations = declarationsDuring(sink, idSelector(probe) + '.on', () => probe.getElement(true));
+
+        expect(declarations.backgroundColor).toBe('blue');
+        expect(declarations.color).toBeUndefined();
+    });
+
+    it('case 10: createStateStyleRule shares the same underlying rule createStyleRule would return, not a second one', () => {
+        class ProbeState10 extends Component {
+            constructor(options?: ComponentOptions) {
+                super(options);
+
+                this.createStyleRule('.on');
+                this.createStateStyleRule('.on', () => ({})).set('color', 'red');
+            }
+        }
+
+        const sink  = DOM.sink as RecordingDOMSink;
+        const probe = new ProbeState10({});
+        probe.getElement(true);
+
+        expect(ensureStyleRuleOpsFor(sink, idSelector(probe) + '.on').length).toBe(1);
+    });
+
+    it('case 11: two suffixes on one class produce two independent class rules', () => {
+        class ProbeState11 extends Component {
+            constructor(options?: ComponentOptions) {
+                super(options);
+
+                this.createStateStyleRule('.on',  () => ({ color: 'red'  })).set('color', 'red');
+                this.createStateStyleRule('.off', () => ({ color: 'blue' })).set('color', 'blue');
+            }
+        }
+
+        const sink = DOM.sink as RecordingDOMSink;
+
+        new ProbeState11({}).getElement(true);
+
+        expect(_ruleCacheHas('.ProbeState11.on')).toBe(true);
+        expect(_ruleCacheHas('.ProbeState11.off')).toBe(true);
+
+        const second = new ProbeState11({});
+        const start  = sink.writes.length;
+        second.getElement(true);
+
+        const writes   = sink.writes.slice(start);
+        const onWrite  = writes.find((w) => w.op === 'setRuleStyles' && w.args[0] === idSelector(second) + '.on');
+        const offWrite = writes.find((w) => w.op === 'setRuleStyles' && w.args[0] === idSelector(second) + '.off');
+
+        expect(onWrite).toBeUndefined();
+        expect(offWrite).toBeUndefined();
+    });
+
+    it('case 12: a .set() call matching the class default leaves the rule unmaterialised; a later deviating call on the same wrapper materialises it immediately', () => {
+        class ProbeState12 extends Component {
+            readonly rule: StateStyleRule;
+
+            constructor(options?: ComponentOptions) {
+                super(options);
+
+                this.rule = this.createStateStyleRule('.on', () => ({ color: 'red' }));
+                this.rule.set('color', 'red');
+            }
+        }
+
+        const sink  = DOM.sink as RecordingDOMSink;
+        const probe = new ProbeState12({});
+
+        const firstDeclarations = declarationsDuring(sink, idSelector(probe) + '.on', () => probe.getElement(true));
+        expect(firstDeclarations.color).toBeUndefined();
+
+        const laterDeclarations = declarationsDuring(sink, idSelector(probe) + '.on', () => probe.rule.set('color', 'blue'));
+        expect(laterDeclarations.color).toBe('blue');
     });
 });
