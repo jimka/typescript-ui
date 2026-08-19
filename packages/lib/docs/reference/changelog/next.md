@@ -41,6 +41,18 @@ consumer implementing its own `DOMSink` is affected.
   Raise the selector's specificity, or target the component's id, if a
   consumer rule stops applying. Every per-instance and class-level override
   set through the framework's own setters behaves exactly as before.
+- **`background-color`, `background-image`, `box-shadow` and the four
+  `border-*` longhands now join the hoisted style declarations too.** A
+  component whose value matches its class's own default no longer writes a
+  per-instance rule for it. The same specificity consequence applies as in
+  the note above: a consumer stylesheet targeting a component by class now
+  ties with the generated `.ClassName` rule and lands on source order, where
+  the framework's `#id` rule previously always won — raise the selector's
+  specificity, or target the component's id, if a consumer rule stops
+  applying. One further consequence worth naming, because it can change
+  appearance rather than merely change who wins an override: a framework
+  state rule scoped to a class selector (a `:hover` or `.selected` rule) now
+  outranks the resting chrome it previously lost to.
 - **[`Text`](/api/component/input/classes/Text)'s font/text declarations
   (`font-family`, `text-align`, `font-weight`, and most of the rest of the
   twelve `applyStyle` writes) now join the hoisted style declarations too.**
