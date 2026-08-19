@@ -248,4 +248,20 @@ describe('Cell background/cursor/outline state precedence', () => {
         cell.setReadOnly(false);
         expect(cell.getCursor()).toBeNull();
     });
+
+    it('a fresh cell writes no backgroundColor or border declaration to its own #id rule', () => {
+        const sink         = DOM.sink as RecordingDOMSink;
+        const cell         = editableCell();
+        const cellSelector = '#' + cell.getId();
+
+        const idRuleKeys = ruleStyleWrites(sink)
+            .filter((w) => w.selector === cellSelector)
+            .map((w) => w.key);
+
+        expect(idRuleKeys).not.toContain('backgroundColor');
+        expect(idRuleKeys).not.toContain('borderTop');
+        expect(idRuleKeys).not.toContain('borderRight');
+        expect(idRuleKeys).not.toContain('borderBottom');
+        expect(idRuleKeys).not.toContain('borderLeft');
+    });
 });
