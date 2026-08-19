@@ -76,6 +76,7 @@ panel.setExportMenuEnabled(true);
 panel.exportCSV();
 panel.exportJSON({ filename: 'tree.json' });
 panel.exportCSV({ includeHidden: true });
+panel.exportTSV();
 ```
 
 Export serialises the **store records**, not the flattened visible-row list — so collapsed branches still appear in the output, in store order.

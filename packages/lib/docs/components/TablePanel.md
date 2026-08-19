@@ -61,10 +61,11 @@ its store listeners.
 don't have to drill through `getTable()`:
 
 ```typescript
-panel.setExportMenuEnabled(true);                    // adds CSV/JSON entries to the column menu
+panel.setExportMenuEnabled(true);                    // adds CSV/JSON/TSV entries to the column menu
 panel.exportCSV();                                   // visible columns → table-export.csv
 panel.exportJSON({ filename: 'people.json' });       // custom filename
 panel.exportCSV({ includeHidden: true });            // every resolved column
+panel.exportTSV();                                   // visible columns → table-export.tsv
 ```
 
 See [Table › Exporting](/components/Table#exporting) for the formatting and
