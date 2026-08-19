@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions, Style } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Fit } from "~/layout/Fit.js";
@@ -11,7 +11,6 @@ import { Tooltip } from "~/overlay/Tooltip.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
-import { StyleRule } from "~/core/StyleTarget.js";
 import type { StateStyleRule } from "~/core/ClassStyleRules.js";
 import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -212,22 +211,6 @@ const BUTTON_FLAT_GLYPH_INSETS: Insets = new Insets(4, 4, 4, 4);
  * comment.
  */
 const BUTTON_RESTING_BACKGROUND: string = "var(--ts-ui-button-bg, transparent)";
-
-/**
- * The resting-chrome declarations Button routes onto its own
- * `#id:not(.pressed)` rule rather than the bare `#id` rule, so the shared
- * `.ClassName.pressed` rule is unopposed while the button is pressed. These
- * are the three properties `Component` reconciles against the class-tier bag
- * and the `.pressed` class rule also declares; the `background` shorthand is
- * isolated too, through `setElementCSSRule` below, because its setters still
- * use the plain single-key write path. `border-radius`, the border longhands
- * and `color` are not isolated and stay on `#id`.
- */
-const RESTING_RECONCILED_KEYS: ReadonlySet<string> = new Set([
-    "backgroundColor",
-    "backgroundImage",
-    "boxShadow",
-]);
 
 /**
  * User-overridable visual defaults forwarded to `super` via the options bag.
@@ -578,76 +561,14 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
     private _hoverBorder: BorderOptions | null = null;
 
-    // Lazy `:not(.pressed)` rule. Carries a deviating resting `background-color`
-    // / `background-image` / `box-shadow` / `background` — the properties the
-    // widened `.pressed` class rule also declares — so the two never compete
-    // on specificity: `:not(.pressed)` stops matching the instant `.pressed`
-    // is added, the same mutual-exclusion `hoverStyleRule` above already
-    // relies on one tier up.
-    private declare _restingStyleRule?: StyleRule;
-    private get restingStyleRule(): StyleRule {
-        return this._restingStyleRule ??= this.createStyleRule(":not(.pressed)");
-    }
-
-    // Routes the isolated resting keys onto `restingStyleRule` instead of the
-    // bare `#id` rule. Defaults to `true`; the chromeless branch of
-    // `applyChromeOptions` sets it `false`, since a chromeless button never
-    // dispatches pressed chrome and so has nothing to isolate from — see
-    // `isRestingChromeIsolated`. `declare` (not an initializer) because the
-    // chromeless branch can write it during the `super()` cascade; a plain
-    // `= true` initializer would run afterward and silently revert the write.
-    private declare _restingChromeIsolated?: boolean;
-    private isRestingChromeIsolated(): boolean {
-        return this._restingChromeIsolated ?? true;
-    }
-
     /**
-     * Routes the three reconciled resting declarations onto `#id:not(.pressed)`.
-     * `applyStyle`'s phases reach the rule through this hook. The class-tier
-     * comparison is preserved: a value the class rule already delivers is written
-     * as a removal, so a button holding its class defaults leaves the isolated
-     * rule empty and it is never inserted.
+     * `Button`'s resting chrome (a deviating `backgroundColor` /
+     * `backgroundImage` / `boxShadow`, plus the `background` shorthand below)
+     * stays isolated from `.pressed`, so the shared `.ClassName.pressed` class
+     * rule is never undercut by a bare, higher-specificity `#id` declaration.
      */
-    protected override reconcileRuleDeclaration(key: string, value: string | null): void {
-        if (!this.isRestingChromeIsolated() || !RESTING_RECONCILED_KEYS.has(key)) {
-            super.reconcileRuleDeclaration(key, value);
-
-            return;
-        }
-
-        this.restingStyleRule.set(key, this.matchesClassStyle(key, value) ? null : value);
-    }
-
-    /**
-     * Runtime-setter counterpart of the hook above — `setBackgroundColor`,
-     * `setBackgroundImage`, `setShadow` and their `clear*` siblings arrive here.
-     * `setBorder` / `clearBorder` arrive here too, with a bag of four border
-     * longhands that are not isolated and go on to `super`.
-     */
-    protected override setReconciledCSSRules(values: Style): this {
-        if (!this.isRestingChromeIsolated()) {
-            return super.setReconciledCSSRules(values);
-        }
-
-        const rest: Style = {};
-        let   isolated    = false;
-
-        for (const key of Object.keys(values)) {
-            if (!RESTING_RECONCILED_KEYS.has(key)) {
-                rest[key] = values[key];
-
-                continue;
-            }
-
-            isolated = true;
-            this.restingStyleRule.set(key, this.matchesClassStyle(key, values[key]) ? null : values[key]);
-        }
-
-        if (isolated) {
-            this.materialiseRestingRule();
-        }
-
-        return Object.keys(rest).length > 0 ? super.setReconciledCSSRules(rest) : this;
+    protected override getRestingExclusionSuffixes(): readonly string[] {
+        return [".pressed"];
     }
 
     /**
@@ -665,19 +586,6 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this.materialiseRestingRule();
 
         return this;
-    }
-
-    /**
-     * Inserts the isolated rule when a setter has queued a real declaration onto
-     * it after the element exists. `applyStyle` materialises deferred rules at the
-     * end of a render pass; a setter firing later has no such pass behind it, so
-     * it nudges the rule itself. A bag holding only `null` removals is left
-     * unmaterialised, as `Component` does for every other deferred rule.
-     */
-    private materialiseRestingRule(): void {
-        if (this.getElement() && this.restingStyleRule.hasQueuedDeclarations()) {
-            this.restingStyleRule.ensure();
-        }
     }
 
     /**
@@ -1042,7 +950,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             // isolated rule while isolation was still the default — read the
             // backing slot directly (not the lazy getter) so a button that
             // never allocated the rule does not allocate one here.
-            this._restingChromeIsolated = false;
+            this.setChromeIsolationEnabled(false);
 
             if (this._restingStyleRule !== undefined) {
                 this._restingStyleRule.setMany({ background: null, backgroundColor: null, backgroundImage: null, boxShadow: null });

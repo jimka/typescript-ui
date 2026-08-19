@@ -8,23 +8,17 @@
 // ToggleButton.selectedClassHoisting.test.ts. Naming mirrors the existing
 // TabButton.styleRuleDisposal.test.ts convention.
 //
-// IMPORTANT SCOPE NOTE (see plans/implemented/button-resting-chrome-state-isolation.md):
-// TabButton no longer overrides `getHoverClassDeclarations()` /
-// `getSelectedClassDeclarations()` at all — both overrides were removed.
-// TabButton's own resting chrome (`_defaultTabButtonOptions`) writes
-// `backgroundColor`, `backgroundImage`, and all four `border-*` longhands;
-// the border longhands are not isolated and stay on the instance's base
-// `#id` rule, but a deviating `backgroundColor` / `backgroundImage` now
-// routes onto the instance's own `#id:not(.pressed)` rule at specificity
-// (1,1,0). Hover and selected still can't be deduped onto a class-tier
-// rule: a class-only state selector (`.TabButton:hover:not(.pressed)`,
-// `.TabButton.selected:not(:hover)`) sits at (0,3,0), which loses to a
-// deviating instance's isolated resting rule at (1,1,0) regardless of class
-// count. TabButton therefore inherits Button's (empty) hover resolver and
-// ToggleButton's (always-`null`) selected bag unchanged — its `.pressed`
-// class rule now carries all four widened pressed-chrome keys, exactly like
-// a plain Button, and no `.TabButton:hover:not(.pressed)` /
-// `.TabButton.selected:not(:hover)` class rule is ever created.
+// SCOPE NOTE (see plans/implemented/button-resting-chrome-state-isolation.md
+// and, for the `.selected` half, plans/implemented/state-chrome-isolation-generalization.md):
+// TabButton still doesn't override `getHoverClassDeclarations()` — hover
+// stays un-deduped, every field always writing to the instance, and no
+// `.TabButton:hover:not(.pressed)` class rule is ever created. `.selected`
+// is different now: TabButton overrides `getSelectedClassDeclarations()`
+// with its own tab-specific tokens, so `backgroundColor` / `backgroundImage`
+// / `boxShadow` / the four border longhands (mirroring the border the
+// constructor's `applyTabStyling` separately writes via `setSelectedBorder`)
+// all dedupe onto the shared `.TabButton.selected:not(:hover)` class rule the
+// same way `.pressed` already does.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TabButton } from '~/component/button/TabButton';
 import { DOM } from '~/core/DOM';
@@ -90,7 +84,7 @@ describe('TabButton state-class hoisting', () => {
         expect(classDeclarations).toEqual({});
     });
 
-    it('never dedupes .hover or .selected — every field always writes to the instance, and no class rule is created for either', () => {
+    it('never dedupes .hover — every field always writes to the instance, and no class rule is created', () => {
         const tab = new TabButton('First');
         const hoverDeclarations = declarationsDuring(sink, idSelector(tab) + ':hover:not(.pressed)', () => tab.getElement(true));
 
@@ -102,18 +96,23 @@ describe('TabButton state-class hoisting', () => {
         expect(hoverDeclarations.borderBottom).toBeDefined();
         expect(hoverDeclarations.borderLeft).toBeDefined();
 
+        expect(_ruleCacheHas('.TabButton:hover:not(.pressed)')).toBe(false);
+    });
+
+    it('row 9: a second, default-styled TabButton dedupes .selected backgroundColor/backgroundImage/boxShadow AND its border longhands onto the class rule', () => {
+        new TabButton('Warmup').getElement(true);
+
         const second = new TabButton('Second');
         const selectedDeclarations = declarationsDuring(sink, idSelector(second) + '.selected:not(:hover)', () => second.getElement(true));
 
-        expect(selectedDeclarations.backgroundColor).toBeDefined();
-        expect(selectedDeclarations.backgroundImage).toBeDefined();
-        expect(selectedDeclarations.boxShadow).toBeDefined();
-        expect(selectedDeclarations.borderTop).toBeDefined();
-        expect(selectedDeclarations.borderRight).toBeDefined();
-        expect(selectedDeclarations.borderBottom).toBeDefined();
-        expect(selectedDeclarations.borderLeft).toBeDefined();
+        expect(selectedDeclarations.backgroundColor).toBeUndefined();
+        expect(selectedDeclarations.backgroundImage).toBeUndefined();
+        expect(selectedDeclarations.boxShadow).toBeUndefined();
+        expect(selectedDeclarations.borderTop).toBeUndefined();
+        expect(selectedDeclarations.borderRight).toBeUndefined();
+        expect(selectedDeclarations.borderBottom).toBeUndefined();
+        expect(selectedDeclarations.borderLeft).toBeUndefined();
 
-        expect(_ruleCacheHas('.TabButton:hover:not(.pressed)')).toBe(false);
-        expect(_ruleCacheHas('.TabButton.selected:not(:hover)')).toBe(false);
+        expect(_ruleCacheHas('.TabButton.selected:not(:hover)')).toBe(true);
     });
 });

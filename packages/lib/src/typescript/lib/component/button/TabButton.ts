@@ -8,7 +8,7 @@ import { callable } from "~/core/Callable.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Component } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
-import { BorderOptions } from "~/primitive/Border.js";
+import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
 
 /**
  * Construction-time options for {@link TabButton}.
@@ -253,6 +253,23 @@ class TabButton extends ToggleButton {
         this.setSelectedBackgroundImage(TAB_BUTTON_SELECTED_FILL.backgroundImage);
         this.setSelectedShadow(TAB_BUTTON_SELECTED_FILL.boxShadow);
         this.setSelectedBorder(TAB_BUTTON_SELECTED_BORDER);
+    }
+
+    /**
+     * `TabButton`'s own `.selected:not(:hover)` declarations — the tab-specific
+     * tokens `applyTabStyling` also writes per instance below. Overriding this
+     * (rather than inheriting `ToggleButton`'s base tokens) is what lets the
+     * shared `.TabButton.selected:not(:hover)` class rule cache the correct
+     * per-class bag, so `applyTabStyling`'s writes dedupe against it instead of
+     * always deviating from a mismatched shared rule.
+     */
+    protected override getSelectedClassDeclarations(): Record<string, string | null> {
+        return {
+            backgroundColor: TAB_BUTTON_SELECTED_FILL.backgroundColor,
+            backgroundImage: TAB_BUTTON_SELECTED_FILL.backgroundImage,
+            boxShadow:       TAB_BUTTON_SELECTED_FILL.boxShadow,
+            ...borderToStyle(TAB_BUTTON_SELECTED_BORDER),
+        };
     }
 
     /**

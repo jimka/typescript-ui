@@ -329,6 +329,15 @@ const _componentFinalizer = new FinalizationRegistry<OwnedResources>(({ handles,
     }
 });
 
+// The chrome properties the resting-isolation mechanism intercepts. Fixed —
+// see Architecture Decisions for why this isn't per-component configurable.
+// Moved here from Button.ts's RESTING_RECONCILED_KEYS, unchanged in content.
+const RESTING_ISOLATION_KEYS: ReadonlySet<string> = new Set([
+    "backgroundColor",
+    "backgroundImage",
+    "boxShadow",
+]);
+
 class Component<TOptions extends ComponentOptions = ComponentOptions> extends BaseObject {
 
     // Structural state that is NOT option-backed — runtime references, render
@@ -4748,6 +4757,73 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Selector suffixes (e.g. `.pressed`, `.selected`) whose class-tier state
+     * rule this component's resting chrome must stay isolated from — see
+     * `reconcileRuleDeclaration` / `setReconciledCSSRules`. Empty by default: a
+     * component with no mutually-exclusive toggle-state class needs no
+     * isolation, and its resting chrome writes straight to `#id`, exactly as
+     * before this mechanism existed.
+     *
+     * A subclass overrides this to add its own suffix, chaining onto
+     * `super()`'s list rather than replacing it, so a grandchild class inherits
+     * every ancestor's exclusion automatically. Expected to return a fixed,
+     * construction-time-stable list per class — the same expectation
+     * `getClassStyleDefaults()` already carries — because it is read from as
+     * early as the `super()` construction cascade.
+     */
+    protected getRestingExclusionSuffixes(): readonly string[] {
+        return [];
+    }
+
+    private get restingIsolationSuffix(): string {
+        return this.getRestingExclusionSuffixes().map((suffix) => ":not(" + suffix + ")").join("");
+    }
+
+    // Generalizes Button's original `_restingChromeIsolated` flag: an
+    // instance-level opt-out for a class whose own defaults publish no
+    // state-tier chrome to isolate from (e.g. a chromeless Button). `declare`
+    // because a subclass may write it during the `super()` cascade (Button's
+    // chromeless branch runs inside `applyChromeOptions`, itself dispatched from
+    // `super()`); a plain initializer would run afterward and revert the write.
+    private declare _chromeIsolationEnabled?: boolean;
+
+    protected isChromeIsolationEnabled(): boolean {
+        return this._chromeIsolationEnabled ?? true;
+    }
+
+    protected setChromeIsolationEnabled(enabled: boolean): void {
+        this._chromeIsolationEnabled = enabled;
+    }
+
+    /** True when this instance currently isolates its resting chrome from at
+     *  least one registered state class. */
+    protected isRestingChromeIsolated(): boolean {
+        return this.isChromeIsolationEnabled() && this.restingIsolationSuffix !== "";
+    }
+
+    // Lazy resting-isolation rule. Never allocated unless isRestingChromeIsolated()
+    // is true somewhere on a write path — see the guard in
+    // reconcileRuleDeclaration / setReconciledCSSRules below, which never calls
+    // this getter with an empty restingIsolationSuffix.
+    protected declare _restingStyleRule?: StyleRule;
+    protected get restingStyleRule(): StyleRule {
+        return this._restingStyleRule ??= this.createStyleRule(this.restingIsolationSuffix);
+    }
+
+    /**
+     * Inserts `restingStyleRule` when a write just queued a real declaration on
+     * an already-rendered instance — `applyStyle` materialises deferred rules at
+     * the end of a render pass; a runtime setter firing later has no such pass
+     * behind it. A rule holding only `null` removals is left unmaterialised, as
+     * `Component` does for every other deferred rule.
+     */
+    protected materialiseRestingRule(): void {
+        if (this.getElement() && this.restingStyleRule.hasQueuedDeclarations()) {
+            this.restingStyleRule.ensure();
+        }
+    }
+
+    /**
      * Routes one `applyStyle` rule declaration to the rule that should carry
      * it: dropped when the framework or class rule already delivers the same
      * key/value, queued onto the per-component `#id` rule otherwise.
@@ -4778,6 +4854,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * cannot survive on `#id` and outrank the class rule.
      */
     protected reconcileRuleDeclaration(key: string, value: string | null): void {
+        if (this.isRestingChromeIsolated() && RESTING_ISOLATION_KEYS.has(key)) {
+            this.restingStyleRule.set(key, this.matchesClassStyle(key, value) ? null : value);
+
+            return;
+        }
+
         this._styleRule.queue(key, this.matchesClassStyle(key, value) ? null : value);
     }
 
@@ -4788,13 +4870,26 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * render, when `_inheritedStyleBag` is still null.
      */
     protected setReconciledCSSRules(values: Style): this {
+        const isolated = this.isRestingChromeIsolated();
         const resolved: Style = {};
+        let   wroteIsolated = false;
 
         for (const key of Object.keys(values)) {
+            if (isolated && RESTING_ISOLATION_KEYS.has(key)) {
+                wroteIsolated = true;
+                this.restingStyleRule.set(key, this.matchesClassStyle(key, values[key]) ? null : values[key]);
+
+                continue;
+            }
+
             resolved[key] = this.matchesClassStyle(key, values[key]) ? null : values[key];
         }
 
-        return this.setElementCSSRules(resolved);
+        if (wroteIsolated) {
+            this.materialiseRestingRule();
+        }
+
+        return Object.keys(resolved).length > 0 ? this.setElementCSSRules(resolved) : this;
     }
 
     /**
