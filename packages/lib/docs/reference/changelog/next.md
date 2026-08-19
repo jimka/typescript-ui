@@ -131,6 +131,17 @@ consumer implementing its own `DOMSink` is affected.
   library's own dialog and notification messages and the table's
   text-bearing cell renderers now use it.
 
+### Table
+
+- **`Table.exportTSV(options?)`** downloads the current store view as a
+  tab-separated file, alongside the existing `exportCSV`/`exportJSON`. Same
+  `includeHidden`/`filename` options and the same combo/date/time/datetime
+  formatting. A new "Export as TSV" entry joins "Export as CSV"/"Export as
+  JSON" in the column context menu wherever `setExportMenuEnabled(true)` is
+  set, including the rotated-mode menu. `TablePanel`/`TreeTablePanel`
+  forward `exportTSV` the same way they already forward `exportCSV`/
+  `exportJSON`. No consumer action is needed.
+
 ## Fixed
 
 ### Components

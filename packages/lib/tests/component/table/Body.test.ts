@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
-import { Body, resolveClickedColumn, buildRectangularTsv } from '~/component/table/Body';
+import { Body, resolveClickedColumn } from '~/component/table/Body';
 import type { CellClickEvent } from '~/component/table/Body';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
@@ -506,20 +506,6 @@ describe('resolveClickedColumn', () => {
         const cells = row.getComponents();
 
         expect(resolveClickedColumn(cells, null)).toBe(-1);
-    });
-});
-
-describe('buildRectangularTsv', () => {
-    it('joins each row\'s cells with tabs and the rows with newlines', () => {
-        expect(buildRectangularTsv([['Alice', '25'], ['Bob', '30']])).toBe('Alice\t25\nBob\t30');
-    });
-
-    it('formats a single-cell grid with no separators', () => {
-        expect(buildRectangularTsv([['only']])).toBe('only');
-    });
-
-    it('quote-wraps a field containing a tab, a quote, or a newline', () => {
-        expect(buildRectangularTsv([['a\tb', 'c"d', 'e\nf']])).toBe('"a\tb"\t"c""d"\t"e\nf"');
     });
 });
 

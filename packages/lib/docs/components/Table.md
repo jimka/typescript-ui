@@ -177,7 +177,7 @@ table.setDisplayMode("normal");   // back to one row per record
 - **The view is read-only.** Every value cell refuses inline editing; there is no write-back path from a field/value row to the source record.
 - **Sorting the projection reorders the field rows** (e.g. alphabetically by field name) — it does not touch the source store's own sort, and un-rotating restores the normal column order.
 - **The `field` and `value` columns stay compact** — each sizes to the displayed record's actual field labels and values, capped at a bounded maximum so a wide record does not stretch them across the whole table; a blank, expanding trailing column absorbs the leftover width, keeping the label and its value grouped on the left.
-- **Export always covers the source table** — `exportCSV()` / `exportJSON()` serialize every source record and column regardless of the active display mode, never the field/value projection.
+- **Export always covers the source table** — `exportCSV()` / `exportJSON()` / `exportTSV()` serialize every source record and column regardless of the active display mode, never the field/value projection.
 - `setColumnVisible` is a no-op while rotated (the projection's data columns are always shown), and the column-header context menu shows only the export entries.
 - `setRowVisible` is neutralized the same way while rotated (a predicate written against source records cannot apply to the field/value projection) and resumes filtering immediately on return to `"normal"` — even a predicate set while rotated is picked up then. `setQuickSearch` is neutralized and restored the same way, for the same reason.
 - The [filter row](#column-filters) is absent while rotated, for the same reason: the projection has no per-column `filterable` field to filter on. The source store's filters stay applied underneath, and the row returns on return to `"normal"` with its toggle state and its previous operator/text intact.
@@ -356,8 +356,8 @@ table.on("cellclick", e => {
 | `setColumnVisible(field, boolean)` | Show / hide a column. |
 | `setColumnWidths(widths[])` | Set all column widths at once. |
 | `setHeaderVisible(boolean)` / `setBodyVisible(boolean)` / `setFooterVisible(boolean)` | Toggle structural sections. |
-| `exportCSV(options?)` / `exportJSON(options?)` | Trigger a download of the current store view. |
-| `setExportMenuEnabled(boolean)` | Adds "Export as CSV" / "Export as JSON" entries to the column context menu. |
+| `exportCSV(options?)` / `exportJSON(options?)` / `exportTSV(options?)` | Trigger a download of the current store view. |
+| `setExportMenuEnabled(boolean)` | Adds "Export as CSV" / "Export as JSON" / "Export as TSV" entries to the column context menu. |
 | `setQuickSearch(text, fields?)` | Hide rows whose displayed cell text does not contain `text`. |
 | `setRowVisible(predicate)` | Hide rows that fail `predicate`, without touching the store. |
 | `setFilterRowVisible(boolean)` | Show / hide the header's [filter row](#column-filters). |
@@ -418,15 +418,17 @@ table.setRowVisible(record => record.get('status') === 'open');
 
 ## Exporting
 
-`exportCSV()` and `exportJSON()` serialize the **current store view** — the same
-filtered, sorted records the user sees — and trigger a browser download. By
-default only visible columns are included; pass `{ includeHidden: true }` to
-include columns hidden by the user or by the spec's `hidden` flag.
+`exportCSV()`, `exportJSON()`, and `exportTSV()` serialize the **current store
+view** — the same filtered, sorted records the user sees — and trigger a
+browser download. By default only visible columns are included; pass
+`{ includeHidden: true }` to include columns hidden by the user or by the
+spec's `hidden` flag.
 
 ```typescript
 table.exportCSV();                                  // visible columns → table-export.csv
 table.exportJSON({ filename: 'people.json' });      // visible columns, custom filename
 table.exportCSV({ includeHidden: true });           // every resolved column
+table.exportTSV();                                  // visible columns → table-export.tsv
 ```
 
 To surface export from the column context menu, opt in:
@@ -437,7 +439,9 @@ table.setExportMenuEnabled(true);
 
 CSV output follows RFC 4180: fields containing `,`, `"`, or `\n` are wrapped in
 double quotes and interior quotes are doubled. Null and undefined cell values
-serialize as the empty string (CSV) or `null` (JSON).
+serialize as the empty string (CSV) or `null` (JSON). TSV output follows the
+same shape with its own trigger characters: a field containing a tab, `"`, or
+`\n` is wrapped in double quotes with interior quotes doubled.
 
 Date, time, and datetime cells are formatted with the same `toLocaleDateString`
 / `toLocaleTimeString` / `toLocaleString` options the cell renderers use, so
@@ -446,8 +450,8 @@ the column spec. A [combo column](#combo-columns) likewise exports its
 **label**, not the stored code — a behaviour change to account for if the
 export is meant to be re-imported.
 
-`TablePanel` exposes the same three methods (`setExportMenuEnabled`,
-`exportCSV`, `exportJSON`) as delegates to its inner `Table`.
+`TablePanel` exposes the same four methods (`setExportMenuEnabled`,
+`exportCSV`, `exportJSON`, `exportTSV`) as delegates to its inner `Table`.
 
 ## Performance
 

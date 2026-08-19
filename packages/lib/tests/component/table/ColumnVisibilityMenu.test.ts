@@ -283,6 +283,7 @@ describe('Table column visibility — top-level menu, normal mode', () => {
         const filterIndex = items.findIndex(i => i.row !== undefined);
         const csvIndex    = items.findIndex(i => i.text === 'Export as CSV');
         const jsonIndex   = items.findIndex(i => i.text === 'Export as JSON');
+        const tsvIndex    = items.findIndex(i => i.text === 'Export as TSV');
 
         expect(items[resetIndex - 1]).toEqual({ separator: true });
         expect(items[filterIndex - 1]).toEqual({ separator: true });
@@ -292,6 +293,7 @@ describe('Table column visibility — top-level menu, normal mode', () => {
         expect(items[csvIndex - 1]).toEqual({ separator: true });
         expect(csvIndex).toBeGreaterThan(filterIndex);
         expect(jsonIndex).toBe(csvIndex + 1);
+        expect(tsvIndex).toBe(jsonIndex + 1);
     });
 
     it('5b. the built Filter row starts checked to isFilterRowVisible(), and toggling it round-trips the table state', async () => {
@@ -317,6 +319,7 @@ describe('Table column visibility — top-level menu, normal mode', () => {
         expect(items).toEqual([
             { text: 'Export as CSV',  glyph: 'file-csv',  action: expect.any(Function) },
             { text: 'Export as JSON', glyph: 'file-code', action: expect.any(Function) },
+            { text: 'Export as TSV',  glyph: 'file-lines', action: expect.any(Function) },
         ]);
 
         table.setExportMenuEnabled(false);
