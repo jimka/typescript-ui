@@ -578,21 +578,23 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * excluded, even though Button also defaults and dispatches them
      * unconditionally: Button's own *resting* chrome writes these same three
      * properties straight onto the instance's base `#id` rule (via
-     * `Component.setBackgroundColor`/`setBackgroundImage`/`setShadow`, none
-     * of which are part of the base-tier hoistable set — see
-     * `core/ClassStyleRules.ts`'s `ClassStyleDefaults`). A bare `#id`
-     * selector's specificity (1,0,0) beats *any* class-only selector,
+     * `Component.setBackgroundColor`/`setBackgroundImage`/`setShadow`).
+     * `component-chrome-base-tier-hoisting` added all three to the base-tier
+     * hoistable set (`core/ClassStyleRules.ts`'s `ClassStyleDefaults`),
+     * which clears a default-matching value off `#id` — but a bare `#id`
+     * selector's specificity (1,0,0) still beats *any* class-only selector,
      * including `.Button.pressed` (0,2,0) or `.TabButton:hover:not(.pressed)`
-     * (0,5,0) — no matter how many classes the latter chains — so once the
-     * instance's own `#id.pressed`/`#id:hover` write for one of these three
-     * properties is skipped (this dedup's whole point), the resting `#id`
-     * declaration wins the cascade outright and the pressed/hover treatment
-     * silently stops applying. `color` is safe because Button's *resting*
-     * foreground already routes through the base-tier hoistable set
-     * (`ClassStyleDefaults.foregroundColor`), so for a default-styled
-     * instance nothing on `#id` competes for it at all — see this plan's
-     * Implementation Notes for the full empirical trace (verified live via
-     * chrome-devtools) and the byte-savings shortfall this leaves.
+     * (0,5,0) — no matter how many classes the latter chains — whenever an
+     * instance-level write for one of these three properties IS present
+     * (e.g. a real per-instance customization). `color` is spared today
+     * because Button's *resting* foreground already routes through the
+     * base-tier hoistable set (`ClassStyleDefaults.foregroundColor`), so for
+     * a default-styled instance nothing on `#id` competes for it at all —
+     * see this plan's Implementation Notes for the full empirical trace
+     * (verified live via chrome-devtools) and the byte-savings shortfall
+     * this leaves. Widen this bag only once `button-resting-chrome-state-isolation`
+     * (queued next) isolates Button's resting tier from `.pressed`, closing
+     * the remaining customization gap for real.
      */
     protected getPressedClassDeclarations(): Record<string, string | null> {
         const d = this._defaultOptions;
@@ -607,8 +609,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * Hover-state counterpart of {@link getPressedClassDeclarations}. Always
      * empty: `hoverForegroundColor` carries no class default to begin with
      * (see the setter table in this plan), and `backgroundColor` /
-     * `backgroundImage` / `boxShadow` are excluded for the same base-`#id`
-     * specificity conflict described there.
+     * `backgroundImage` / `boxShadow` are excluded for the same
+     * per-instance-customization gap described there.
      */
     protected getHoverClassDeclarations(): Record<string, string | null> {
         return {};

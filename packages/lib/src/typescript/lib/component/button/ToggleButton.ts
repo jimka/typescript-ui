@@ -54,15 +54,20 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      * dedupe against a shared `.ClassName.selected:not(:hover)` rule, unlike
      * Button's `pressedForegroundColor`. `ToggleButton`'s (and `TabButton`'s)
      * *resting* chrome writes these same three properties straight onto the
-     * instance's base `#id` rule — none of them are part of the base-tier
-     * hoistable set (`core/ClassStyleRules.ts`'s `ClassStyleDefaults`) — and
-     * a bare `#id` selector's specificity always beats a class-only selector
-     * such as `.ToggleButton.selected:not(:hover)`, however many classes it
-     * chains. Skipping the instance-level write for these keys (this
-     * dedup's entire purpose) would leave the resting `#id` declaration
-     * winning the cascade outright, silently breaking the selected-state
-     * fill for every default-styled instance — see this plan's
-     * Implementation Notes for the full empirical trace.
+     * instance's base `#id` rule via `Component.setBackgroundColor`/
+     * `setBackgroundImage`/`setShadow`. `component-chrome-base-tier-hoisting`
+     * added all three to the base-tier hoistable set
+     * (`core/ClassStyleRules.ts`'s `ClassStyleDefaults`), which clears a
+     * default-matching value off `#id` — but a bare `#id` selector's
+     * specificity still beats a class-only selector such as
+     * `.ToggleButton.selected:not(:hover)`, however many classes it chains,
+     * whenever an instance-level write for one of these keys IS present
+     * (e.g. a real per-instance customization). Unlike Button — whose
+     * equivalent gap `button-resting-chrome-state-isolation` closes —
+     * `ToggleButton`/`TabButton` are not touched by that plan, so this bag
+     * stays `null` until an equivalent resting-tier isolation is done for
+     * them too. See this plan's Implementation Notes for the full empirical
+     * trace.
      */
     private get selectedClassBag(): Readonly<Record<string, string | null>> | null {
         return null;
