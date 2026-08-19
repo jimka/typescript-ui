@@ -6,6 +6,11 @@
 // shared `StyleRule`s that `Component.applyStyle` consults through
 // `writeRuleDeclaration`. See
 // plans/implemented/class-scoped-style-rules.md for the rationale.
+//
+// Also backs Button/ToggleButton's state-rule (`.pressed` / `:hover` /
+// `.selected`) dedup, via the `ensureClassStateRule` / `writeClassStateDeclaration`
+// / `writeManyClassStateDeclarations` sibling mechanism below — see
+// plans/implemented/hoist-button-tabbar-state-chrome-rules.md.
 
 import { StyleRule }   from "~/core/StyleTarget.js";
 import { Position }    from "~/primitive/Position.js";
@@ -230,4 +235,114 @@ export function ensureClassStyleRule(
     _bags.set(ctor, inherited);
 
     return inherited;
+}
+
+// (ctor -> (suffix -> bag)). Parallel to `_bags`, but keyed on suffix too, since
+// one class can own several state rules (Button: .pressed, :hover:not(.pressed)).
+const _stateBags: Map<Function, Map<string, ClassStyleBag | null>> = new Map();
+
+/**
+ * State-rule sibling of {@link ensureClassStyleRule}. Ensures a shared
+ * `.ClassName<suffix>` rule exists carrying `declarations` and returns the
+ * bag, so the caller's setters can skip a write that already matches it.
+ * Cached per `(ctor, suffix)` — the first call for a given class+suffix
+ * computes and registers the rule; every later call (any instance, any
+ * suffix already seen for that class) returns the cached result.
+ *
+ * Unlike `ensureClassStyleRule`, there is no framework-level tier beneath a
+ * state rule to diff against — `declarations` is the caller's own fully
+ * resolved bag, not a set of deviations from a lower tier.
+ *
+ * @param ctor - The concrete component class constructor.
+ * @param suffix - The selector suffix, verbatim (e.g. `".pressed"`,
+ *   `":hover:not(.pressed)"`), matching whatever the instance rule's own
+ *   `createStyleRule(suffix)` call uses.
+ * @param declarations - This class's resolved declarations for the
+ *   suffixed state.
+ *
+ * @returns The declarations bag, or `null` when `ctor`'s name is empty or
+ *   already claimed by a different constructor (the same name-collision
+ *   opt-out `ensureClassStyleRule` uses) — the caller must then write every
+ *   declaration to its own instance rule.
+ */
+export function ensureClassStateRule(
+    ctor: Function,
+    suffix: string,
+    declarations: Record<string, string | null>,
+): ClassStyleBag | null {
+    let bySuffix = _stateBags.get(ctor);
+    if (!bySuffix) {
+        bySuffix = new Map();
+        _stateBags.set(ctor, bySuffix);
+    }
+
+    const existing = bySuffix.get(suffix);
+    if (existing !== undefined) {
+        return existing;
+    }
+
+    const name  = ctor.name;
+    const owner = _owners.get(name);
+
+    if (!name || (owner !== undefined && owner !== ctor)) {
+        bySuffix.set(suffix, null);
+
+        return null;
+    }
+
+    _owners.set(name, ctor);
+
+    if (Object.keys(declarations).length > 0) {
+        new StyleRule({ scope: "class", name, suffix, styles: declarations });
+    }
+
+    const bag = Object.freeze({ ...declarations });
+    bySuffix.set(suffix, bag);
+
+    return bag;
+}
+
+/**
+ * Routes one state-rule declaration to the rule that should carry it:
+ * dropped when `bag` already delivers the same key/value, written to `rule`
+ * otherwise. `writeRuleDeclaration`'s shape, generalised to take the target
+ * rule and comparison bag as parameters instead of reading `this._styleRule`
+ * / `this._inheritedStyleBag` — a state-rule setter can fire from many call
+ * sites (construction, a runtime setter, a chrome-mode toggle), not from one
+ * `applyStyle` pass, so there is no single per-render cache to read from.
+ *
+ * @remarks A `null` write can never itself win the cascade over a *non-null*
+ * class-bag value for `key`: `null` maps to a CSSOM `removeProperty`, and a
+ * declaration block that never declares `key` doesn't compete for it at
+ * all — an unmaterialised (or materialised-but-empty) instance rule leaves
+ * the class-tier rule's value in sole possession of the property regardless
+ * of the instance rule's higher specificity. This routing function cannot
+ * fix that generically (it has no per-property "neutral value" table to
+ * substitute); see this plan's Implementation Notes for how the one
+ * concrete case this surfaces (`Button`'s `pressedShadow`/`hoverShadow`,
+ * cleared by `SpinButton`/`Dialog`/`Notification`'s close buttons) stays
+ * correct today via each call site's paired base-tier `clearShadow()`.
+ */
+export function writeClassStateDeclaration(
+    rule: StyleRule,
+    bag: ClassStyleBag | null,
+    key: string,
+    value: string | null,
+): void {
+    if (bag !== null && bag[key] === value) {
+        return;
+    }
+
+    rule.set(key, value);
+}
+
+/** Bulk form of {@link writeClassStateDeclaration}, one call per key of `values`. */
+export function writeManyClassStateDeclarations(
+    rule: StyleRule,
+    bag: ClassStyleBag | null,
+    values: Record<string, string | null>,
+): void {
+    for (const key of Object.keys(values)) {
+        writeClassStateDeclaration(rule, bag, key, values[key]);
+    }
 }
