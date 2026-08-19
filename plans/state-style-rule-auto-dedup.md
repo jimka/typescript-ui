@@ -10,13 +10,11 @@ touches-shared:
 
 ## Overview
 
-[`plans/hoist-button-tabbar-state-chrome-rules.md`](hoist-button-tabbar-state-chrome-rules.md) (depended on by this plan) gives `Button`, `ToggleButton`, and `TabButton` a way to share their `.pressed` / `:hover:not(.pressed)` / `.selected:not(:hover)` CSS declarations across every default-styled instance, through two new free functions in [`ClassStyleRules.ts`](packages/lib/src/typescript/lib/core/ClassStyleRules.ts): `ensureClassStateRule` (computes and caches a shared `.ClassName<suffix>` rule) and `writeClassStateDeclaration` / `writeManyClassStateDeclarations` (skip an instance-rule write that already matches it). Each of the three components gets its own hand-written `getXClassDeclarations()` resolver and every one of its pressed/hover/selected setters is individually rerouted to call the comparison helper instead of writing to its rule directly.
+[`plans/implemented/hoist-button-tabbar-state-chrome-rules.md`](implemented/hoist-button-tabbar-state-chrome-rules.md) gave `Button` a way to share its `.pressed` CSS declarations across every default-styled instance of a class, through two free functions in [`ClassStyleRules.ts`](packages/lib/src/typescript/lib/core/ClassStyleRules.ts): `ensureClassStateRule` (computes and caches a shared `.ClassName<suffix>` rule) and `writeClassStateDeclaration` / `writeManyClassStateDeclarations` (skip an instance-rule write that already matches it). That plan's own audit found the mechanism unsafe for most of the fields it was built to save, and narrowed `Button.getPressedClassDeclarations()` to `color` alone. It found the same conflict for `ToggleButton`'s `.selected` state and disabled dedup there outright: `ToggleButton.selectedClassBag` is hardcoded to return `null` today ([`ToggleButton.ts`, around L72](packages/lib/src/typescript/lib/component/button/ToggleButton.ts#L72)), and the `getSelectedClassDeclarations()` resolver it would have called no longer exists anywhere in the codebase. `TabButton`'s equivalent `getHoverClassDeclarations()` / `getSelectedClassDeclarations()` overrides were deleted the same way.
 
-The dependency plan's mechanism is a manual opt-in: a future component author who wants a state rule reaches for [`Component.createStyleRule(suffix)`](packages/lib/src/typescript/lib/core/Component.ts#L1009) — the only primitive `Component` currently exposes for one — and gets a bare per-instance rule with no dedup, unless they separately discover `ensureClassStateRule` / `writeClassStateDeclaration`, write their own resolver, and reroute their own setters by hand. That is exactly the shape `Button` had before the dependency plan fixed it.
+[`plans/implemented/button-resting-chrome-state-isolation.md`](implemented/button-resting-chrome-state-isolation.md) restored the other three pressed properties for `Button` alone, by moving its deviating resting `background-color` / `background-image` / `box-shadow` off the bare `#id` rule onto a `#id:not(.pressed)` rule, so `.pressed` and the resting tier never compete on specificity. It left `ToggleButton.ts` / `TabButton.ts` untouched — they still write their resting chrome unconditionally onto the bare `#id` rule, so `.selected` dedup stays unsafe for them. Getting `Button`'s own dedup correct also took that plan's implementation two attempts: a fully default-styled Button's four pressed setters all match the class bag and are skipped, so nothing queues a real declaration at first render and the underlying rule never materialises — a later runtime `setPressedX` / `clearPressedX` call on such a button then only queues onto an already-skipped rule and never reaches the stylesheet. A first fix nudged the rule from two orchestration methods and still missed a direct runtime setter call, the ordinary documented way to customise a rendered button. The fix that shipped is two private wrapper methods, `writePressedDeclaration` / `writePressedDeclarations` ([`Button.ts`, around L701-721](packages/lib/src/typescript/lib/component/button/Button.ts#L701-L721)), that pair every dedup write with a `materialisePressedRule()` nudge — the actual choke point every pressed-tier write funnels through. All twelve `setPressedX` / `clearPressedX` methods call one of these two wrappers instead of the shared comparison helper directly.
 
-This plan adds a second `Component` primitive, `createStateStyleRule(suffix, resolveDefaults)`, that returns a small wrapper object whose own `set()` / `setMany()` already perform the class-tier comparison — so a caller gets the dedup automatically just by calling the object's normal write methods, without knowing `ensureClassStateRule` or `writeClassStateDeclaration` exist. It then refactors `Button`, `ToggleButton`, and `TabButton` onto the new primitive, removing their hand-rolled resolvers and per-setter routing. It touches [`ClassStyleRules.ts`](packages/lib/src/typescript/lib/core/ClassStyleRules.ts) (one new class), [`Component.ts`](packages/lib/src/typescript/lib/core/Component.ts) (one new protected method), `Button.ts`, `ToggleButton.ts`, and `ARCHITECTURE.md`. `StyleTarget.ts` is not touched — the suffix-aware `"class"` scope the dependency plan adds there is all this plan needs.
-
-The dependency plan's own implementation found that this dedup mechanism is only safe for a property when nothing else competing for that property writes it unconditionally onto a higher-specificity rule — the reason `Button`'s pressed/hover dedup shipped covering only `pressedForegroundColor` instead of the four properties it was designed for. A second plan, [`plans/button-resting-chrome-state-isolation.md`](button-resting-chrome-state-isolation.md), restores the other three properties by isolating Button's resting chrome behind a `:not(.pressed)` selector, and adds two call sites of its own that deliberately write around this comparison. This plan depends on both, and its refactor of `Button.ts` must preserve that safety property rather than silently break it — see `## Architecture Decisions`.
+This plan adds a `Component` primitive, `createStateStyleRule(suffix, resolveDefaults)`, that returns a small wrapper object, `StateStyleRule`, whose own `set()` / `setMany()` perform both the class-tier comparison *and* the materialisation nudge — folding `writePressedDeclaration` / `writePressedDeclarations` / `materialisePressedRule`'s combined job into the primitive itself, so a future caller gets it by construction instead of having to reinvent it the way `Button` twice had to. It refactors `Button.pressedStyleRule` / `Button.hoverStyleRule` onto the new primitive, deleting those three methods along with the `pressedClassBag` / `hoverClassBag` getters. It touches [`ClassStyleRules.ts`](packages/lib/src/typescript/lib/core/ClassStyleRules.ts) (one new class), [`Component.ts`](packages/lib/src/typescript/lib/core/Component.ts) (one new protected method), `Button.ts`, and `ARCHITECTURE.md`. `ToggleButton.ts` and `TabButton.ts` are **not** touched — see `## Architecture Decisions` for why their disabled `.selected` dedup is genuinely out of this plan's scope, not merely unrefactored.
 
 ---
 
@@ -26,51 +24,60 @@ The dependency plan's own implementation found that this dedup mechanism is only
 
 [`createStyleRule(selectorSuffix)`](packages/lib/src/typescript/lib/core/Component.ts#L1009) stays exactly as it is — the right choice for a state rule with no meaningful class-level default (an instance-only affordance). `createStateStyleRule` is for the common case where a state rule *does* have class-level defaults: it builds the same underlying per-instance `StyleRule` (by calling `createStyleRule` internally, so render-time materialisation, selector tracking, and disposal are unchanged) and wraps it in a `StateStyleRule` object carrying the resolved class-tier comparison bag.
 
-### The wrapper's own `set()` / `setMany()` do the comparison — not a helper the caller must remember to call
+### The wrapper's own `set()` / `setMany()` do the comparison *and* the materialisation nudge — not something a caller must remember to call
 
-The base tier's "hard to avoid" property comes from a single choke point: every `applyStyle` phase writes through [`writeRuleDeclaration`](packages/lib/src/typescript/lib/core/Component.ts#L4720), which reads a per-render cache (`_inheritedStyleBag`) computed once at the top of [`applyStyle`](packages/lib/src/typescript/lib/core/Component.ts#L4757). State rules have no equivalent single point — their setters fire from construction, a runtime call, or a chrome-mode toggle, not from one recompute pass[^no-render-pass] — so the dependency plan's `writeClassStateDeclaration` takes the rule and comparison bag as explicit parameters instead. This plan keeps that shape internally but moves the parameter-passing off the call site: `StateStyleRule.set(key, value)` already knows its own rule and bag, so a setter body reads `this.pressedStyleRule.set(key, value)` — indistinguishable from a bare, non-deduping `rule.set(key, value)` call. There is nothing extra to opt into.
+The base tier's "hard to avoid" property comes from a single choke point: every `applyStyle` phase writes through [`writeRuleDeclaration`](packages/lib/src/typescript/lib/core/Component.ts#L4736), which reads a per-render cache (`_inheritedStyleBag`) computed once at the top of [`applyStyle`](packages/lib/src/typescript/lib/core/Component.ts#L4799). State rules have no equivalent single point — their setters fire from construction, a runtime call, or a chrome-mode toggle, not from one recompute pass[^no-render-pass] — so `writeClassStateDeclaration` takes the rule and comparison bag as explicit parameters instead. `StateStyleRule` keeps that shape internally but moves the parameter-passing off the call site: `set(key, value)` already knows its own rule and bag, so a setter body reads `this.pressedStyleRule.set(key, value)` — indistinguishable from a bare, non-deduping `rule.set(key, value)` call.
+
+`set()` / `setMany()` go one step further than comparison alone: after writing (or skipping) the declaration, each checks whether the underlying rule now has a real, unmaterialised declaration queued — and if the component is already rendered, materialises it immediately. This exists because the dedup comparison itself creates the failure mode it closes: the more properties a state rule dedupes, the more likely a freshly-constructed, default-styled instance queues nothing but removals at first render, leaving its rule unmaterialised until some later write proves it needs to exist. `Button`'s own history shows this is not hypothetical — it is the exact bug `writePressedDeclaration` / `writePressedDeclarations` / `materialisePressedRule` were built to fix, and it took two attempts to fix completely.[^materialise-in-primitive] Folding the nudge into `set()` / `setMany()` means every future write path — construction, a runtime setter, a chrome-mode toggle — gets it automatically, with nothing extra to opt into.
 
 ### `resolveDefaults` is a plain callback, not a suffix-keyed override method
 
-[`Component.getClassStyleDefaults()`](packages/lib/src/typescript/lib/core/Component.ts#L4736) solves the equivalent problem for the base tier with one `protected`, subclass-overridable method — because there is exactly one base `#id` rule per component. A component can have several state rules (`Button` has two, `ToggleButton` adds a third), each needing its own defaults, and TypeScript has no type-safe way to dispatch to a differently-named override method by a runtime suffix string. So `createStateStyleRule` takes the resolver as a parameter instead of looking it up itself. Subclass overridability is preserved as a convention layered on top, not built into the primitive: a component author still defines their own `protected getXClassDeclarations()` method (exactly as `Button` / `ToggleButton` already do) and passes a thunk that calls it — `() => this.getPressedClassDeclarations()` — to `createStateStyleRule`. Because the override still lives on a normal method reached through `this`, a subclass overriding just that method needs no other change: `TabButton`'s existing `getHoverClassDeclarations()` / `getSelectedClassDeclarations()` overrides keep working with zero edits to `TabButton.ts` once `Button` / `ToggleButton`'s getters route through the new primitive (see Ordered Implementation Steps).
+[`Component.getClassStyleDefaults()`](packages/lib/src/typescript/lib/core/Component.ts#L4778) solves the equivalent problem for the base tier with one `protected`, subclass-overridable method — because there is exactly one base `#id` rule per component. A component can have several state rules (`Button` has two: pressed and hover), each needing its own defaults, and TypeScript has no type-safe way to dispatch to a differently-named override method by a runtime suffix string. So `createStateStyleRule` takes the resolver as a parameter instead of looking it up itself. Subclass overridability is preserved as a convention layered on top, not built into the primitive: `Button` defines its own `protected getPressedClassDeclarations()` / `getHoverClassDeclarations()` methods and passes a thunk that calls it — `() => this.getPressedClassDeclarations()` — to `createStateStyleRule`. Because the override still lives on a normal method reached through `this`, a subclass that later adds its own override needs no change to the `createStateStyleRule` call site — the same virtual-dispatch guarantee `hoist-button-tabbar-state-chrome-rules` already relied on. `TabButton` does not currently have such an override (see the ToggleButton/TabButton scope decision below); the guarantee matters for any future subclass, not for a case this plan changes.
 
 ### `StateStyleRule` delegates to the existing `writeClassStateDeclaration` / `writeManyClassStateDeclarations`, it doesn't reimplement them
 
-`StateStyleRule.set()` calls `writeClassStateDeclaration(rule, bag, key, value)` internally; `setMany()` calls `writeManyClassStateDeclarations`. This keeps the comparison logic in one place and keeps the two free functions independently usable — the dependency plan's own `## Non-Goals` explicitly keeps them exported "so a follow-up plan can reuse them without inventing anything new," for a future non-`Component` caller or one that already has its own resolved bag. Refactoring `Button` / `ToggleButton` off calling them directly (this plan) does not make them dead code.
-
-### `Button` and `ToggleButton` are refactored onto the new primitive in this same plan
-
-Leaving the dependency plan's hand-rolled mechanism in place while adding a separate automatic one would mean the codebase's only worked example of a state rule with class defaults still teaches the manual pattern — exactly what this plan exists to stop happening again. The refactor is mechanical and net code-shrinking: each of `Button`'s twelve pressed/hover setter-clearer pairs and `ToggleButton`'s four selected setters changes only its rule's final call (`writeClassStateDeclaration(rule, bag, key, value)` → `rule.set(key, value)`, `writeManyClassStateDeclarations(rule, bag, values)` → `rule.setMany(values)`); the `pressedClassBag` / `hoverClassBag` / `selectedClassBag` getters and their backing fields are deleted outright, since the bag now lives inside `StateStyleRule`. `getPressedClassDeclarations()` / `getHoverClassDeclarations()` / `getSelectedClassDeclarations()` are untouched — only how they're invoked changes. A small number of call sites in `Button.ts` are not setter-clearer pairs and do not follow this transformation; see "Forced writes on `pressedStyleRule` must keep reaching the raw `StyleRule`" below. The dependency plans' own Button/ToggleButton/TabButton test files (created by the first, some further updated by the second) pin the exact observable CSS output and are not modified by this plan; they are the regression check that this refactor changes wiring, not behaviour.[^tabbutton-untouched]
+`StateStyleRule.set()` calls `writeClassStateDeclaration(rule, bag, key, value)` internally; `setMany()` calls `writeManyClassStateDeclarations`. This keeps the comparison logic in one place and keeps the two free functions independently usable — `hoist-button-tabbar-state-chrome-rules`'s own `## Non-Goals` explicitly keeps them exported "so a follow-up plan can reuse them without inventing anything new."
 
 ### `StyleTarget.ts` is not touched
 
-`createStateStyleRule` needs no new selector shape: the instance-tier rule is `createStyleRule`'s existing `"component"` scope (already suffix-aware before the dependency plan), and the class-tier rule is built inside `ensureClassStateRule`, which the dependency plan already routes through the new suffix-aware `"class"` scope. This plan only adds new code in `ClassStyleRules.ts` and `Component.ts`.
+`createStateStyleRule` needs no new selector shape: the instance-tier rule is `createStyleRule`'s existing `"component"` scope, and the class-tier rule is built inside `ensureClassStateRule`, which already routes through the suffix-aware `"class"` scope. This plan only adds new code in `ClassStyleRules.ts` and `Component.ts`.
+
+### Only `Button` is refactored onto the new primitive; `ToggleButton` and `TabButton` are out of scope
+
+`ToggleButton.selectedStyleRule` has nothing to refactor onto the new primitive: `selectedClassBag` is hardcoded `null`, not derived from `ensureClassStateRule`, and the resolver it would have called, `getSelectedClassDeclarations()`, no longer exists.[^toggle-selected-disabled] This is a deliberate, documented safety measure, not leftover scaffolding — `ToggleButton` and `TabButton` write their resting `background-color` / `background-image` / `box-shadow` unconditionally onto the bare `#id` rule, the same way `Button` did before `button-resting-chrome-state-isolation` isolated it, and that plan left `ToggleButton.ts` / `TabButton.ts` untouched.
+
+Routing `ToggleButton.selectedStyleRule` onto `createStateStyleRule(".selected:not(:hover)", () => ({}))` would reproduce today's always-write behaviour exactly — an empty resolver produces an empty class bag, and `writeClassStateDeclaration` never skips against an empty bag, exactly like the current `null` bypass — so it buys nothing functionally. It would trade the current, loudly-commented `return null;` for a resolver that looks like an ordinary, safe-to-fill-in extension point: a future author who later replaces `() => ({})` with a real declaration bag (the natural-looking next step once the class visibly has a `createStateStyleRule` call) would silently reintroduce the exact specificity bug `hoist-button-tabbar-state-chrome-rules`'s audit found and fixed. Leaving `ToggleButton.ts` / `TabButton.ts` untouched keeps that risk exactly where it already sits: an explicit `null` with the reasoning written next to it. Making `.selected` dedup safe needs the same resting-chrome isolation `button-resting-chrome-state-isolation` built for `Button` — a component-specific, non-trivial change of its own, out of scope here.
+
+`TabButton` has no `getPressedClassDeclarations()`, `getHoverClassDeclarations()`, or `getSelectedClassDeclarations()` override of its own — the latter two existed briefly under `hoist-button-tabbar-state-chrome-rules`'s first implementation pass and were deleted by that plan's own audit. `TabButton` paints its hover/selected chrome directly through instance setter calls in `applyTabStyling()` (`setHoverBorder`, `setSelectedBackgroundColor`, etc.), inheriting `Button`'s `pressedStyleRule` / `hoverStyleRule` getters and `ToggleButton`'s `selectedStyleRule` getter unchanged. This plan's rewrite of `Button`'s two getters is invisible to `TabButton` either way, since `TabButton` never overrides the resolvers those getters call and never calls `pressedStyleRule` / `hoverStyleRule` / `selectedStyleRule` directly.
 
 ### Every dedup this plan performs must satisfy a class-tier safety invariant
 
-A property is only safe to dedupe against a class-tier rule at a given suffix tier if every other tier the same component participates in — including its base `#id` resting tier — also writes that property in a comparison-gated way, never unconditionally. An unconditional write anywhere always wins the cascade over a class-only selector, no matter how many classes the deduped tier's selector chains, so one ungated writer defeats the dedup for every tier that declares the same property. `createStateStyleRule` does not verify this on a caller's behalf — it is a rule a component author (or a future extension of the primitive itself) must satisfy by construction before wrapping any given property in a state rule.
+A property is only safe to dedupe against a class-tier rule at a given suffix tier if every other tier the same component participates in — including its base `#id` resting tier — also writes that property in a comparison-gated way, never unconditionally. An unconditional write anywhere always wins the cascade over a class-only selector, no matter how many classes the deduped tier's selector chains, so one ungated writer defeats the dedup for every tier that declares the same property. `createStateStyleRule` does not verify this on a caller's behalf — it is a rule a component author must satisfy by construction before wrapping any given property in a state rule.
 
-Button's own history is the worked example:[^invariant-grounding]
+Button's own history, and ToggleButton's, are the worked example:[^invariant-grounding]
 
-| Property | Resting-tier write | Safe to dedupe at `.pressed`? |
+| Property | Resting-tier write | Safe to dedupe? |
 |---|---|---|
-| `color` | comparison-gated — hoisted onto the class tier by the base-tier `ClassStyleDefaults` mechanism, so nothing on `#id` competes | yes — shipped as `pressedForegroundColor` |
-| `backgroundColor`, before `button-resting-chrome-state-isolation` | unconditional, on the bare `#id` rule `(1,0,0)` | no — narrowed out of `getPressedClassDeclarations()` |
-| `backgroundColor`, after `button-resting-chrome-state-isolation` | comparison-gated by construction — moved to `#id:not(.pressed)`, which never matches while `.pressed` does | yes — restored to `getPressedClassDeclarations()` |
+| `color` (Button `.pressed`) | comparison-gated — hoisted onto the class tier by the base-tier `ClassStyleDefaults` mechanism, so nothing on `#id` competes | yes — shipped as `pressedForegroundColor` |
+| `backgroundColor`/`backgroundImage`/`boxShadow` (Button `.pressed`), before `button-resting-chrome-state-isolation` | unconditional, on the bare `#id` rule `(1,0,0)` | no — narrowed out of `getPressedClassDeclarations()` |
+| `backgroundColor`/`backgroundImage`/`boxShadow` (Button `.pressed`), after `button-resting-chrome-state-isolation` | comparison-gated by construction — moved to `#id:not(.pressed)`, which never matches while `.pressed` does | yes — restored to `getPressedClassDeclarations()`; this plan carries the wiring forward unchanged |
+| `backgroundColor`/`backgroundImage`/`boxShadow` (ToggleButton/TabButton `.selected`) | unconditional, on the bare `#id` rule `(1,0,0)` — never isolated | no — this is why `selectedClassBag` stays `null`; see the scope decision above |
 
 ### `createStateStyleRule` does not gain a resting-tier mode
 
-`createStateStyleRule(suffix, resolveDefaults)` stays scoped to suffixes that get both an instance-tier rule and a class-tier dedup rule — pressed/hover/selected-style suffixes. It does not grow a special case for a mutual-exclusion "resting" suffix such as `:not(.pressed)`. The resting tier needs the opposite shape: an instance-only rule with no class-tier counterpart at all, plus a redirect at the component's own base-tier write choke points for a hand-picked set of properties. Folding that into `createStateStyleRule` would mean either giving the resting tier the class-tier rule it must not have, or bolting an unrelated write-interception mechanism onto a primitive whose entire job is wrapping an already-called setter. It stays a manual, per-component technique, built directly in the component's own source file the way `Button.ts` does it.[^resting-tier-manual]
+`createStateStyleRule(suffix, resolveDefaults)` stays scoped to suffixes that get both an instance-tier rule and a class-tier dedup rule — pressed/hover/selected-style suffixes. It does not grow a special case for a mutual-exclusion "resting" suffix such as `:not(.pressed)`. The resting tier needs the opposite shape: an instance-only rule with no class-tier counterpart at all, plus a redirect at the component's own base-tier write choke points for a hand-picked set of properties. Folding that into `createStateStyleRule` would mean either giving the resting tier the class-tier rule it must not have, or bolting an unrelated write-interception mechanism onto a primitive whose entire job is wrapping an already-called setter. It stays a manual, per-component technique, built directly in the component's own source file the way `Button.ts`'s `restingStyleRule` / `reconcileRuleDeclaration` / `setReconciledCSSRules` / `setElementCSSRule` already do it.[^resting-tier-manual] This plan does not touch any of that mechanism.
 
 ### Forced writes on `pressedStyleRule` must keep reaching the raw `StyleRule`, not the new wrapper
 
-`Button._restoreChrome` already makes one deliberate unconditional write today — [`this.pressedStyleRule.set("color", d.pressedForegroundColor)`](packages/lib/src/typescript/lib/component/button/Button.ts#L1929) — bypassing the class-bag comparison on purpose, to overwrite a stale pin left by a prior chromeless or flat pass. Once `pressedStyleRule` returns a `StateStyleRule`, its `.set()` *is* the comparison-gated write, so this exact call would silently start skipping whenever the restored value matches the class default — reintroducing the stale-pin regression the forced write exists to prevent. The fix needs no new API: [`createStyleRule(selectorSuffix)`](packages/lib/src/typescript/lib/core/Component.ts#L1009) already caches its return value per suffix and returns the identical `StyleRule` object on every call — the same guarantee `createStateStyleRule` itself relies on internally. Every call site that must bypass the class-bag comparison calls `this.createStyleRule(".pressed").set(key, value)` directly instead of going through `pressedStyleRule`, reaching the same underlying rule without the wrapper's comparison.[^forced-write-hazard]
+`Button` has five call sites today that must keep writing unconditionally to `.pressed`, bypassing whatever comparison `pressedStyleRule` performs: `_restoreChrome`'s four forced writes (`color`, `backgroundColor`, `backgroundImage`, `boxShadow` — [Button.ts:2119-2131](packages/lib/src/typescript/lib/component/button/Button.ts#L2119-L2131)) and `pinPressedToResting`'s loop ([Button.ts:2171](packages/lib/src/typescript/lib/component/button/Button.ts#L2171)). Both exist because a value that already matches the class bag must still be written for real when the instance rule may hold a stale pin from an earlier chromeless or flat pass.[^forced-write-hazard] Once `pressedStyleRule` returns a `StateStyleRule`, its `.set()` *is* the comparison-gated write, so all five call sites would silently start skipping whenever the restored value matches the class default — reintroducing the exact regression they exist to prevent. The fix needs no new API: [`createStyleRule(selectorSuffix)`](packages/lib/src/typescript/lib/core/Component.ts#L1009) already caches its return value per suffix and returns the identical `StyleRule` object on every call — the same guarantee `createStateStyleRule` itself relies on internally. Each of the five reroutes to `this.createStyleRule(".pressed").set(key, value)`, reaching the same underlying rule directly instead of through the wrapper.
+
+`pinPressedToResting` also needs the class bag's own keys to iterate — something `.set()` / `.setMany()` deliberately don't expose, since exposing a write bypass would defeat the comparison they exist to perform. `StateStyleRule` gets one read-only accessor for this, `classBag`, returning the same resolved bag `set()` / `setMany()` already compare against internally (`null` when the class opted out of dedup). `pinPressedToResting` reads `this.pressedStyleRule.classBag` instead of a separate `pressedClassBag` getter — which this plan therefore deletes outright, along with `hoverClassBag` (`hoverStyleRule.set()` now performs that comparison internally, and nothing else reads `hoverClassBag`).[^classbag-accessor]
 
 ### `depends-on` requires both `hoist-button-tabbar-state-chrome-rules` and `button-resting-chrome-state-isolation`
 
-This plan calls `ensureClassStateRule` (only exists once the first plan lands), requires the suffix-aware `"class"` `StyleRuleScope` case it adds to `StyleTarget.ts`, and rewrites the exact `Button` / `ToggleButton` call sites it introduces. It also rewrites `Button.pressedStyleRule` into a type that changes what a raw `.set()` call on it means — which is only safe if every existing raw call site on that getter has already been enumerated and accounted for, per the decision above. `button-resting-chrome-state-isolation.md` adds two more such call sites (`_restoreChrome`'s three widened writes and `pinPressedToResting()`), written correctly against `Button.ts`'s current (pre-this-plan) `pressedStyleRule` shape. Ordering this plan strictly after both — rather than leaving it order-independent of the second — is what keeps those call sites correct without editing that plan's own text.[^ordering-not-symmetric] None of this plan's steps are executable against the current, un-hoisted `Button.ts` / `ToggleButton.ts` either way.
+This plan calls `ensureClassStateRule` (only exists once the first plan lands) and rewrites the exact `Button` call sites `button-resting-chrome-state-isolation` shipped: the twelve `writePressedDeclaration`-routed setter/clearer pairs, the five forced writes on `pressedStyleRule`, and the `pressedClassBag` getter `pinPressedToResting` reads. All of these exist only once that plan has landed — this plan is not executable against the pre-isolation `Button.ts` either way.[^ordering-not-symmetric] `ToggleButton.ts` / `TabButton.ts` need no such ordering, since this plan does not touch them.
 
-`touches-shared` does **not** additionally list `ClassStyleRules.ts`, `Component.ts`, `Button.ts`, or `ToggleButton.ts`: `depends-on` already serialises this plan strictly after both dependencies, so there is no concurrent-edit window on those files. `ARCHITECTURE.md` is listed under `touches-shared` instead, because a different, unordered sibling plan drafted the same session — `plans/suppress-empty-style-rules.md` — edits the same *Defer DOM work to render time* section this plan edits (a different bullet, but the dependency plan's own precedent for this frontmatter field flags at file granularity, not line granularity, since that's the level a worktree merge conflicts at).
+`touches-shared` does **not** additionally list `ClassStyleRules.ts`, `Component.ts`, or `Button.ts`: `depends-on` already serialises this plan strictly after both dependencies, so there is no concurrent-edit window on those files. `ARCHITECTURE.md` is listed under `touches-shared` instead, because a different, unordered sibling plan — `plans/implemented/suppress-empty-style-rules.md` — edits the same *Defer DOM work to render time* section this plan edits (a different bullet, but frontmatter flags at file granularity).
 
 ---
 
@@ -83,10 +90,12 @@ This plan calls `ensureClassStateRule` (only exists once the first plan lands), 
 /**
  * Wraps a per-instance state `StyleRule` together with the class-tier
  * comparison bag `ensureClassStateRule` resolves for it. `set()` / `setMany()`
- * skip a write that already matches the class rule, exactly like
- * `writeClassStateDeclaration` / `writeManyClassStateDeclarations` — this
- * class exists so a caller gets that comparison by calling the object's own
- * write methods, with nothing else to opt into.
+ * skip a write that already matches the class rule and materialise the
+ * underlying rule when a real write just queued on an already-rendered
+ * component — exactly like `writeClassStateDeclaration` /
+ * `writeManyClassStateDeclarations` plus a materialisation nudge — so a
+ * caller gets both by calling the object's own write methods, with nothing
+ * else to opt into.
  *
  * Constructed via `Component.createStateStyleRule`; not intended for direct
  * construction elsewhere.
@@ -97,7 +106,17 @@ export class StateStyleRule {
         suffix: string,
         rule: StyleRule,
         resolveDefaults: () => Record<string, string | null>,
+        hasElement: () => boolean,
     );
+
+    /**
+     * The resolved class-tier bag `set()` / `setMany()` compare against;
+     * `null` when this class opted out of dedup (see `ensureClassStateRule`).
+     * Read-only — a caller that needs the bag's own keys (`Button.pinPressedToResting`
+     * is the one in-repo example) reads this instead of bypassing the
+     * comparison `set()` / `setMany()` perform.
+     */
+    get classBag(): Readonly<Record<string, string | null>> | null;
 
     set(key: string, value: string | null): void;
     setMany(values: Record<string, string | null>): void;
@@ -117,17 +136,14 @@ protected createStateStyleRule(
 private get pressedStyleRule(): StateStyleRule;
 private get hoverStyleRule():   StateStyleRule;
 // REMOVED: the `pressedClassBag` / `hoverClassBag` getters and their
-// `_pressedClassBag` / `_hoverClassBag` backing fields — superseded by the
-// bag StateStyleRule now carries internally.
+// `_pressedClassBag` / `_hoverClassBag` backing fields — `pinPressedToResting`
+// now reads `pressedStyleRule.classBag`.
+// REMOVED: `writePressedDeclaration` / `writePressedDeclarations` /
+// `materialisePressedRule` — `StateStyleRule.set()` / `setMany()` now do both
+// jobs (the comparison and the materialisation nudge) internally.
 ```
 
-```typescript
-// component/button/ToggleButton.ts — same treatment.
-private get selectedStyleRule(): StateStyleRule;
-// REMOVED: `selectedClassBag` getter and `_selectedClassBag` backing field.
-```
-
-`TabButton.ts` has no signature changes — see Architecture Decisions.
+`ToggleButton.ts` and `TabButton.ts` have no signature changes — see Architecture Decisions.
 
 No consumer-facing signature changes anywhere: every new, changed, or removed member is `protected` or `private`.
 
@@ -137,36 +153,61 @@ No consumer-facing signature changes anywhere: every new, changed, or removed me
 
 ### `core/ClassStyleRules.ts` — `StateStyleRule`
 
-Placed after `writeManyClassStateDeclarations` (the dependency plan's last addition, at the end of the file):
+Placed after `writeManyClassStateDeclarations` (the end of the file):
 
 ```typescript
 export class StateStyleRule {
-    private readonly _rule: StyleRule;
-    private readonly _bag:  ClassStyleBag | null;
+    private readonly _rule:       StyleRule;
+    private readonly _bag:        ClassStyleBag | null;
+    private readonly _hasElement: () => boolean;
 
     constructor(
         ctor: Function,
         suffix: string,
         rule: StyleRule,
         resolveDefaults: () => Record<string, string | null>,
+        hasElement: () => boolean,
     ) {
-        this._rule = rule;
-        this._bag  = ensureClassStateRule(ctor, suffix, resolveDefaults());
+        this._rule       = rule;
+        this._bag        = ensureClassStateRule(ctor, suffix, resolveDefaults());
+        this._hasElement = hasElement;
+    }
+
+    get classBag(): ClassStyleBag | null {
+        return this._bag;
     }
 
     set(key: string, value: string | null): void {
         writeClassStateDeclaration(this._rule, this._bag, key, value);
+        this._materialise();
     }
 
     setMany(values: Record<string, string | null>): void {
         writeManyClassStateDeclarations(this._rule, this._bag, values);
+        this._materialise();
+    }
+
+    /**
+     * Inserts the rule when a write just queued a real declaration and the
+     * component is already rendered — the choke point `Button`'s
+     * `materialisePressedRule` used to be, generalised so no future caller
+     * can forget it. A rule that never queued anything real (every write so
+     * far matched the class bag) is left unmaterialised, same as any other
+     * deferred rule.
+     */
+    private _materialise(): void {
+        if (this._hasElement() && this._rule.hasQueuedDeclarations()) {
+            this._rule.ensure();
+        }
     }
 }
 ```
 
+Extend the top-of-file module comment to add one clause: this module also exposes `StateStyleRule`, the wrapper `Component.createStateStyleRule` returns.
+
 ### `core/Component.ts` — `createStateStyleRule`
 
-Placed directly below the existing `createStyleRule` ([line 1009-1018](packages/lib/src/typescript/lib/core/Component.ts#L1009-L1018)):
+Placed directly below the existing `createStyleRule` ([Component.ts:1009-1018](packages/lib/src/typescript/lib/core/Component.ts#L1009-L1018)):
 
 ```typescript
 /**
@@ -182,31 +223,69 @@ protected createStateStyleRule(
     selectorSuffix: string,
     resolveDefaults: () => Record<string, string | null>,
 ): StateStyleRule {
-    return new StateStyleRule(this.constructor, selectorSuffix, this.createStyleRule(selectorSuffix), resolveDefaults);
+    return new StateStyleRule(
+        this.constructor,
+        selectorSuffix,
+        this.createStyleRule(selectorSuffix),
+        resolveDefaults,
+        () => !!this.getElement(),
+    );
 }
 ```
 
-Extend the existing `~/core/ClassStyleRules.js` import ([line 24](packages/lib/src/typescript/lib/core/Component.ts#L24)) to add `StateStyleRule`.
+Extend the existing `~/core/ClassStyleRules.js` import ([Component.ts:24](packages/lib/src/typescript/lib/core/Component.ts#L24)) to add `StateStyleRule`.
 
-### `component/button/Button.ts` — the getter and one representative setter, before → after
-
-Only the getters' return expression and each setter's final line change; nothing else in a setter's body moves. `getPressedClassDeclarations()` / `getHoverClassDeclarations()` are untouched.
+### `component/button/Button.ts` — the getters, before → after
 
 ```typescript
-// Before (per plans/hoist-button-tabbar-state-chrome-rules.md):
+// Before (current code, Button.ts:558-574, 695-731):
+private declare _pressedStyleRule?: StyleRule;
+private get pressedStyleRule(): StyleRule {
+    return this._pressedStyleRule ??= this.createStyleRule(".pressed");
+}
+// ...
+private declare _hoverStyleRule?: StyleRule;
+private get hoverStyleRule(): StyleRule {
+    return this._hoverStyleRule ??= this.createStyleRule(":hover:not(.pressed)");
+}
+// ...
+private materialisePressedRule(): void {
+    if (this.getElement() && this.pressedStyleRule.hasQueuedDeclarations()) {
+        this.pressedStyleRule.ensure();
+    }
+}
+
+private writePressedDeclaration(key: string, value: string | null): void {
+    writeClassStateDeclaration(this.pressedStyleRule, this.pressedClassBag, key, value);
+    this.materialisePressedRule();
+}
+
+private writePressedDeclarations(values: Record<string, string | null>): void {
+    writeManyClassStateDeclarations(this.pressedStyleRule, this.pressedClassBag, values);
+    this.materialisePressedRule();
+}
+
 private declare _pressedClassBag?: Readonly<Record<string, string | null>> | null;
 private get pressedClassBag(): Readonly<Record<string, string | null>> | null {
     return this._pressedClassBag ??= ensureClassStateRule(this.constructor, ".pressed", this.getPressedClassDeclarations());
 }
 
-private declare _pressedStyleRule?: StyleRule;
-private get pressedStyleRule(): StyleRule {
-    return this._pressedStyleRule ??= this.createStyleRule(".pressed");
+private declare _hoverClassBag?: Readonly<Record<string, string | null>> | null;
+private get hoverClassBag(): Readonly<Record<string, string | null>> | null {
+    return this._hoverClassBag ??= ensureClassStateRule(this.constructor, ":hover:not(.pressed)", this.getHoverClassDeclarations());
 }
 
 setPressedBackgroundColor(backgroundColor: string): this {
     this._options.pressedBackgroundColor = backgroundColor;
-    writeClassStateDeclaration(this.pressedStyleRule, this.pressedClassBag, "backgroundColor", backgroundColor);
+    this.writePressedDeclaration("backgroundColor", backgroundColor);
+
+    return this;
+}
+
+setHoverBackgroundColor(backgroundColor: string): this {
+    this._options.hoverBackgroundColor = backgroundColor;
+    writeClassStateDeclaration(this.hoverStyleRule, this.hoverClassBag, "backgroundColor", backgroundColor);
+
     return this;
 }
 ```
@@ -218,99 +297,133 @@ private get pressedStyleRule(): StateStyleRule {
     return this._pressedStyleRule ??= this.createStateStyleRule(".pressed", () => this.getPressedClassDeclarations());
 }
 
+private declare _hoverStyleRule?: StateStyleRule;
+private get hoverStyleRule(): StateStyleRule {
+    return this._hoverStyleRule ??= this.createStateStyleRule(":hover:not(.pressed)", () => this.getHoverClassDeclarations());
+}
+
 setPressedBackgroundColor(backgroundColor: string): this {
     this._options.pressedBackgroundColor = backgroundColor;
     this.pressedStyleRule.set("backgroundColor", backgroundColor);
+
+    return this;
+}
+
+setHoverBackgroundColor(backgroundColor: string): this {
+    this._options.hoverBackgroundColor = backgroundColor;
+    this.hoverStyleRule.set("backgroundColor", backgroundColor);
+
     return this;
 }
 ```
 
-Every other pressed/hover setter and clearer in `Button.ts` — all twelve pairs — follows the identical transformation: `writeClassStateDeclaration(<rule>, <bag>, key, value)` → `<rule>.set(key, value)`; `writeManyClassStateDeclarations(<rule>, <bag>, values)` → `<rule>.setMany(values)`. `hoverStyleRule` gets the same getter rewrite, reading `() => this.getHoverClassDeclarations()`.
+`materialisePressedRule`, `writePressedDeclaration`, `writePressedDeclarations`, `pressedClassBag` (`_pressedClassBag`), and `hoverClassBag` (`_hoverClassBag`) are deleted outright — everything they did now lives inside `StateStyleRule`, except `pinPressedToResting`'s need for the bag's own keys, covered by `classBag` below. `getPressedClassDeclarations()` / `getHoverClassDeclarations()` are untouched. Every other pressed setter/clearer (twelve methods total) and hover setter/clearer (twelve methods total) in `Button.ts` follows the identical transformation shown for `backgroundColor` above.
 
-### `component/button/Button.ts` — `_restoreChrome`'s forced write, before → after
-
-This call site does **not** follow the transformation above. It already calls `.set()` directly today — not through `writeClassStateDeclaration` — because it deliberately needs an unconditional write. Reroute it to the raw rule instead of the new wrapper, per Architecture Decisions.
+### `component/button/Button.ts` — the five forced writes and `pinPressedToResting`, before → after
 
 ```typescript
-// Before (current code, Button.ts:1929):
-this.pressedStyleRule.set("color", d.pressedForegroundColor);
+// Before (current code, Button.ts:2104-2132, 2155-2174):
+if (d.pressedForegroundColor !== undefined) {
+    this.setPressedForegroundColor(d.pressedForegroundColor);
+    this.pressedStyleRule.set("color", d.pressedForegroundColor);
+}
+if (d.pressedBackgroundColor !== undefined) {
+    this.setPressedBackgroundColor(d.pressedBackgroundColor);
+    this.pressedStyleRule.set("backgroundColor", d.pressedBackgroundColor);
+}
+// ...backgroundImage, boxShadow follow the same shape
+
+private pinPressedToResting(): void {
+    const bag = this.pressedClassBag;
+
+    if (!bag) {
+        return;
+    }
+
+    const resting: Record<string, string> = { /* unchanged */ };
+
+    for (const key of Object.keys(bag)) {
+        if (resting[key] !== undefined) {
+            this.pressedStyleRule.set(key, resting[key]);
+        }
+    }
+}
 ```
 
 ```typescript
 // After:
-this.createStyleRule(".pressed").set("color", d.pressedForegroundColor);
+if (d.pressedForegroundColor !== undefined) {
+    this.setPressedForegroundColor(d.pressedForegroundColor);
+    this.createStyleRule(".pressed").set("color", d.pressedForegroundColor);
+}
+if (d.pressedBackgroundColor !== undefined) {
+    this.setPressedBackgroundColor(d.pressedBackgroundColor);
+    this.createStyleRule(".pressed").set("backgroundColor", d.pressedBackgroundColor);
+}
+// ...backgroundImage, boxShadow follow the same shape
+
+private pinPressedToResting(): void {
+    const bag = this.pressedStyleRule.classBag;
+
+    if (!bag) {
+        return;
+    }
+
+    const resting: Record<string, string> = { /* unchanged */ };
+
+    for (const key of Object.keys(bag)) {
+        if (resting[key] !== undefined) {
+            this.createStyleRule(".pressed").set(key, resting[key]);
+        }
+    }
+}
 ```
 
-Because `button-resting-chrome-state-isolation` is required by `depends-on` and lands first, `_restoreChrome` also forces three more writes the same way by this point (`backgroundColor`, `backgroundImage`, `boxShadow`), and a second method, `pinPressedToResting()`, forces writes in a loop over the pressed class bag's keys. Apply the identical rewrite — `this.pressedStyleRule.set(...)` → `this.createStyleRule(".pressed").set(...)` — to every one of them. None of these are setter-clearer pairs and none should be touched by the mechanical `writeClassStateDeclaration(...)` → `<rule>.set(...)` transformation; they already call `.set()` today and must keep doing so, just on the raw rule instead of the getter.
+Only the rule each forced write targets changes (`pressedStyleRule` → `createStyleRule(".pressed")`), and only the bag source in `pinPressedToResting` changes (`pressedClassBag` → `pressedStyleRule.classBag`). No other line in either method moves.
 
-### `component/button/ToggleButton.ts` — the getter and the border setter
+### `component/button/Button.ts` — import
 
 ```typescript
-// Before:
-private declare _selectedClassBag?: Readonly<Record<string, string | null>> | null;
-private get selectedClassBag(): Readonly<Record<string, string | null>> | null {
-    return this._selectedClassBag ??= ensureClassStateRule(this.constructor, ".selected:not(:hover)", this.getSelectedClassDeclarations());
-}
-private declare _selectedStyleRule?: StyleRule;
-private get selectedStyleRule(): StyleRule {
-    return this._selectedStyleRule ??= this.createStyleRule(".selected:not(:hover)");
-}
-
-setSelectedBorder(options?: BorderOptions | string): this {
-    this._selectedBorder = typeof options === "string" ? { border: options } : (options ?? {});
-    writeManyClassStateDeclarations(this.selectedStyleRule, this.selectedClassBag, borderToStyle(this._selectedBorder));
-    return this;
-}
+// Before (Button.ts:15):
+import { ensureClassStateRule, writeClassStateDeclaration, writeManyClassStateDeclarations } from "~/core/ClassStyleRules.js";
 ```
 
 ```typescript
 // After:
-private declare _selectedStyleRule?: StateStyleRule;
-private get selectedStyleRule(): StateStyleRule {
-    return this._selectedStyleRule ??= this.createStateStyleRule(".selected:not(:hover)", () => this.getSelectedClassDeclarations());
-}
-
-setSelectedBorder(options?: BorderOptions | string): this {
-    this._selectedBorder = typeof options === "string" ? { border: options } : (options ?? {});
-    this.selectedStyleRule.setMany(borderToStyle(this._selectedBorder));
-    return this;
-}
+import type { StateStyleRule } from "~/core/ClassStyleRules.js";
 ```
 
-The constructor's three calls to `setSelectedShadow` / `setSelectedBackgroundColor` / `setSelectedBackgroundImage` (already routed setters as of the dependency plan) are untouched — they call the setters above, which now dedupe through the rewritten getter automatically.
+Nothing else in `Button.ts` calls `ensureClassStateRule`, `writeClassStateDeclaration`, or `writeManyClassStateDeclarations` directly once the rewrite above is complete — both are reached only through `StateStyleRule` from this point on.
 
-### `component/button/TabButton.ts` — no change
+### `component/button/ToggleButton.ts`, `component/button/TabButton.ts` — no change
 
-`TabButton` never had its own `pressedStyleRule` / `hoverStyleRule` / `selectedStyleRule` getter — it inherits `Button`'s and `ToggleButton`'s. Its two overrides, `getHoverClassDeclarations()` and `getSelectedClassDeclarations()`, are called polymorphically through `this` from inside the thunks the rewritten getters above pass to `createStateStyleRule` — the same virtual dispatch that already made them work under the dependency plan's hand-rolled `pressedClassBag`-style getters. No line in `TabButton.ts` changes.
+See Architecture Decisions. `ToggleButton.selectedStyleRule` stays a plain `StyleRule`, `selectedClassBag` stays hardcoded `null`, and neither file is edited by this plan.
 
 ---
 
 ## Ordered Implementation Steps
 
-1. **`core/ClassStyleRules.ts`** — add the `StateStyleRule` class per Internal Structure, placed after `writeManyClassStateDeclarations`. Extend the top-of-file module comment (already updated once by the dependency plan) to add one clause: this module also exposes `StateStyleRule`, the wrapper `Component.createStateStyleRule` returns.
+1. **`core/ClassStyleRules.ts`** — add the `StateStyleRule` class per Internal Structure, including the `classBag` accessor and the `hasElement`-gated `_materialise()`. Extend the module comment to mention `StateStyleRule`.
    Check: `npm run typecheck` from `packages/lib` — clean.
 
-2. **`core/Component.ts`** — add `createStateStyleRule` directly below `createStyleRule` ([line 1009-1018](packages/lib/src/typescript/lib/core/Component.ts#L1009-L1018)) per Internal Structure. Extend the existing `~/core/ClassStyleRules.js` import ([line 24](packages/lib/src/typescript/lib/core/Component.ts#L24)) to add `StateStyleRule`.
+2. **`core/Component.ts`** — add `createStateStyleRule` directly below `createStyleRule` ([Component.ts:1009-1018](packages/lib/src/typescript/lib/core/Component.ts#L1009-L1018)) per Internal Structure, passing `() => !!this.getElement()` as `hasElement`. Extend the `~/core/ClassStyleRules.js` import ([Component.ts:24](packages/lib/src/typescript/lib/core/Component.ts#L24)) to add `StateStyleRule`.
    Check: `npm run typecheck` — clean.
 
-3. **`component/button/Button.ts`** — rewrite the `pressedStyleRule` / `hoverStyleRule` getters and delete the `pressedClassBag` / `hoverClassBag` getters and their backing fields, per Internal Structure. Change the import from `~/core/ClassStyleRules.js` from `{ ensureClassStateRule, writeClassStateDeclaration, writeManyClassStateDeclarations }` to `type { StateStyleRule }` (no longer called directly). Route all twelve pressed/hover setter/clearer pairs through the mechanical transformation in Internal Structure — the final `writeClassStateDeclaration(...)` / `writeManyClassStateDeclarations(...)` line in each becomes `<rule>.set(...)` / `<rule>.setMany(...)`. Do not change `_pressedBorder` / `_hoverBorder` field writes, `_options.X` writes, method signatures, or `getPressedClassDeclarations()` / `getHoverClassDeclarations()`.
+3. **`component/button/Button.ts`** — rewrite `pressedStyleRule` / `hoverStyleRule` per Internal Structure. Delete `materialisePressedRule`, `writePressedDeclaration`, `writePressedDeclarations`, `pressedClassBag` (`_pressedClassBag`), and `hoverClassBag` (`_hoverClassBag`) outright. Change the `~/core/ClassStyleRules.js` import ([Button.ts:15](packages/lib/src/typescript/lib/component/button/Button.ts#L15)) to `import type { StateStyleRule } from "~/core/ClassStyleRules.js";`. Route all twelve `setPressedX`/`clearPressedX` methods from `this.writePressedDeclaration(...)` / `this.writePressedDeclarations(...)` to `this.pressedStyleRule.set(...)` / `.setMany(...)`, and all twelve `setHoverX`/`clearHoverX` methods from `writeClassStateDeclaration(this.hoverStyleRule, this.hoverClassBag, ...)` / `writeManyClassStateDeclarations(this.hoverStyleRule, this.hoverClassBag, ...)` to `this.hoverStyleRule.set(...)` / `.setMany(...)`. Do not change `_pressedBorder`/`_hoverBorder` field writes, `_options.X` writes, method signatures, or `getPressedClassDeclarations()`/`getHoverClassDeclarations()`.
 
-   Before touching any of these twelve pairs, find every call site that already calls `.set(`/`.setMany(` directly on `pressedStyleRule` or `hoverStyleRule` — a deliberate forced write that bypasses `writeClassStateDeclaration` on purpose (see "Forced writes on `pressedStyleRule`..." in Architecture Decisions and the matching Internal Structure subsection). As of this plan (with `button-resting-chrome-state-isolation` landed), that is `_restoreChrome`'s forced pressed writes and `pinPressedToResting()`. Do **not** apply the mechanical transformation to these — reroute each to `this.createStyleRule(<same suffix>).set(...)` / `.setMany(...)` instead of the getter, so it keeps writing unconditionally.
+   Before touching those twenty-four methods, find and reroute the five forced-write call sites separately, per Internal Structure's second subsection — `_restoreChrome`'s four ([Button.ts:2119-2131](packages/lib/src/typescript/lib/component/button/Button.ts#L2119-L2131)) and `pinPressedToResting`'s loop ([Button.ts:2171](packages/lib/src/typescript/lib/component/button/Button.ts#L2171)) — from `this.pressedStyleRule.set(...)` to `this.createStyleRule(".pressed").set(...)`, and change `pinPressedToResting`'s bag source from `this.pressedClassBag` to `this.pressedStyleRule.classBag`. Do **not** apply the mechanical twenty-four-method transformation to these five — they already call `.set(...)` today, so the ordinary transformation would be a syntactic no-op that silently changes what the call does once `pressedStyleRule` returns a `StateStyleRule`.
 
-   Check: `grep -n 'writeClassStateDeclaration(this\.\|writeManyClassStateDeclarations(this\.' packages/lib/src/typescript/lib/component/button/Button.ts` — zero matches. `grep -n '\.pressedStyleRule\.set(\|\.pressedStyleRule\.setMany(\|\.hoverStyleRule\.set(\|\.hoverStyleRule\.setMany(' packages/lib/src/typescript/lib/component/button/Button.ts` — exactly 24 matches (the twelve setter/clearer pairs, six for `.pressed` and six for `:hover:not(.pressed)`), and every one of them sits inside a `set*`/`clear*` pressed or hover method — none inside `_restoreChrome` or `pinPressedToResting`. `grep -n 'createStyleRule(".pressed").set(' packages/lib/src/typescript/lib/component/button/Button.ts` — one match per forced write identified above, confirming each reaches the raw rule instead of the wrapper.
+   Check: `grep -n 'writePressedDeclaration\|materialisePressedRule\|pressedClassBag\|hoverClassBag' packages/lib/src/typescript/lib/component/button/Button.ts` — zero matches. `grep -c '\.pressedStyleRule\.set(\|\.pressedStyleRule\.setMany(' packages/lib/src/typescript/lib/component/button/Button.ts` — exactly 12 (the twelve pressed setter/clearer methods), none inside `_restoreChrome` or `pinPressedToResting`. `grep -c '\.hoverStyleRule\.set(\|\.hoverStyleRule\.setMany(' packages/lib/src/typescript/lib/component/button/Button.ts` — exactly 12. `grep -c 'createStyleRule(".pressed").set(' packages/lib/src/typescript/lib/component/button/Button.ts` — exactly 5, all inside `_restoreChrome` or `pinPressedToResting` — read both methods directly to confirm.
 
-4. **`component/button/ToggleButton.ts`** — same treatment for `selectedStyleRule` / `selectedClassBag`, per Internal Structure. Leave the constructor's three setter calls and `setFlat`'s two literal setter calls untouched — they already call routed setters.
-   Check: `grep -n 'writeClassStateDeclaration(this\.\|writeManyClassStateDeclarations(this\.' packages/lib/src/typescript/lib/component/button/ToggleButton.ts` — zero matches.
+4. **`ToggleButton.ts`, `TabButton.ts`** — no edit. Confirm: `git status --porcelain packages/lib/src/typescript/lib/component/button/ToggleButton.ts packages/lib/src/typescript/lib/component/button/TabButton.ts` — empty output.
 
-5. **`component/button/TabButton.ts`** — no edit. Confirm: `git status --porcelain packages/lib/src/typescript/lib/component/button/TabButton.ts` — empty output.
+5. **`ARCHITECTURE.md`** — in the *Defer DOM work to render time* section, extend the "Per-component state rules" bullet to mention `createStateStyleRule` as the preferred builder when the state has class-level defaults, alongside the unchanged `createStyleRule` for the no-default case. Both dedupe by suffix and register for render-time materialisation; only which one also dedupes at the class tier differs.
 
-6. **`ARCHITECTURE.md`** — in the *Defer DOM work to render time* section, extend the "Per-component state rules" bullet to mention `createStateStyleRule` as the preferred builder when the state has class-level defaults, alongside the unchanged `createStyleRule` for the no-default case. See Internal Structure's Architecture Decisions for the exact relationship to preserve (both dedupe by suffix and register for render-time materialisation; only which one also dedupes at the class tier differs).
+6. **`packages/lib/tests/core/ClassStateRules.test.ts`** — append the six new cases from Expected Behaviour, reusing the file's `declarationsDuring` / `idSelector` / `_ruleCacheHas` helpers and its `ProbeState<N>`-per-case naming convention. The file already has six cases (its own `case 1` through `case 6`, testing `ensureClassStateRule` / `writeClassStateDeclaration` directly, up to `ProbeState6`) — continue the numbering and pick the next unused `ProbeState<N>` name for each new class; do not reuse a number already claimed. Do not create a new test file.
 
-7. **`packages/lib/tests/core/ClassStateRules.test.ts`** (created by the dependency plan) — append the five new cases from Expected Behaviour, reusing the file's existing `declarationsDuring` / `idSelector` / `_ruleCacheHas` helpers and its uniquely-named-local-`Probe`-per-test convention. Do not create a new test file.
+7. **Run the full suite.** `npx vitest run --no-file-parallelism` from `packages/lib`. `Button.pressedHoverClassHoisting.test.ts`, `TabButton.stateClassHoisting.test.ts`, `ToggleButton.selectedClassHoisting.test.ts`, and `Button.restingChromeIsolation.test.ts` must all pass unmodified — they are this refactor's regression check, in particular `Button.restingChromeIsolation.test.ts`'s "a runtime setPressedBackgroundColor call on an already-rendered, previously-default Button reaches the stylesheet" case (around L217), which is the exact scenario `StateStyleRule`'s materialisation nudge must keep passing.
 
-8. **Run the full suite.** `npx vitest run --no-file-parallelism` from `packages/lib`. The dependency plans' own `Button.pressedHoverClassHoisting.test.ts`, `ToggleButton.selectedClassHoisting.test.ts`, `TabButton.stateClassHoisting.test.ts`, and `Button.restingChromeIsolation.test.ts` must pass unmodified — they are this refactor's regression check. If the same pre-existing leak-diff ordering issue the first dependency plan's own step 12 anticipates recurs, apply the same fix (a throwaway warm-up construct+dispose before the `before` snapshot); never widen the hoist list or skip the assertion.
-
-9. **Run the full verification list** in Verification.
+8. **Run the full verification list** in Verification.
 
 ---
 
@@ -321,7 +434,6 @@ The constructor's three calls to `setSelectedShadow` / `setSelectedBackgroundCol
 | Modify | `packages/lib/src/typescript/lib/core/ClassStyleRules.ts` |
 | Modify | `packages/lib/src/typescript/lib/core/Component.ts` |
 | Modify | `packages/lib/src/typescript/lib/component/button/Button.ts` |
-| Modify | `packages/lib/src/typescript/lib/component/button/ToggleButton.ts` |
 | Modify | `ARCHITECTURE.md` |
 | Modify | `packages/lib/tests/core/ClassStateRules.test.ts` |
 
@@ -329,17 +441,18 @@ The constructor's three calls to `setSelectedShadow` / `setSelectedBackgroundCol
 
 ## Expected Behaviour
 
-`declarationsDuring(sink, selector, fn)` / `idSelector(component)` / `_ruleCacheHas` are the existing helpers already present in `tests/core/ClassStateRules.test.ts` (created by the dependency plan), copied there from `tests/core/ClassStyleRules.test.ts`. Cases 1-5 cover only what's new — the class-collision and disposal semantics of the underlying `ensureClassStateRule` are unchanged and already covered by that file's own cases; they are not retested here. Case 6 covers the forced-write hazard from Architecture Decisions and is verified by re-running an existing test unmodified, not by writing a new one.
+`declarationsDuring(sink, selector, fn)` / `idSelector(component)` / `_ruleCacheHas` are the existing helpers already present in `tests/core/ClassStateRules.test.ts`. The rows below are numbered for this plan's own reference, not the file's `it()` numbering — the file already has six cases of its own (testing `ensureClassStateRule` / `writeClassStateDeclaration` directly), and these six append after them. Rows 1-5 cover `createStateStyleRule`'s class-tier comparison; the class-collision and disposal semantics of the underlying `ensureClassStateRule` are unchanged and already covered by the file's existing cases, not retested here. Row 6 is new: it covers the materialisation nudge — behaviour `StateStyleRule` now owns generically, not previously tested at the primitive level. Row 7 covers the forced-write hazard and is verified by re-running existing tests unmodified, not by writing a new one.
 
 | # | Case | Expected | How |
 |---|---|---|---|
-| 1 | **`createStateStyleRule` wires `resolveDefaults` into the class bag automatically.** A local `class Probe extends Component` whose constructor calls `this.createStateStyleRule(".on", () => ({ color: "red" })).set("color", "red")` unconditionally. Render two `Probe`s. | The second instance's `#id.on` rule captures no `color` — `declarationsDuring(sink, idSelector(second) + '.on', () => second.getElement(true))` is `{}`. `_ruleCacheHas('.Probe.on')` is `true`. | unit |
-| 2 | **A deviating `.set()` call still writes the instance rule.** A third `Probe` (same setup) additionally calls `.set("color", "blue")`. | The captured declarations for that instance's `#id.on` contain `color: "blue"`. | unit |
-| 3 | **`.setMany()` writes only the keys that deviate.** A `Probe` whose class bag (from `resolveDefaults`) is `{ color: "red" }`, calling `.setMany({ color: "red", backgroundColor: "blue" })`. | Captured declarations for `#id.on` contain `backgroundColor: "blue"` but not `color`. | unit |
-| 4 | **`createStateStyleRule` shares the same underlying rule `createStyleRule` would return, not a second one.** A `Probe` whose constructor calls both `this.createStyleRule(".on")` and `this.createStateStyleRule(".on", () => ({}))`. Render it. | Exactly one `#id.on` rule materialises — one `ensureStyleRule` op for that selector, not two. | unit |
-| 5 | **Two suffixes on one class produce two independent class rules.** A `Probe` whose constructor calls `createStateStyleRule(".on", () => ({ color: "red" }))` and `createStateStyleRule(".off", () => ({ color: "blue" }))`. Render two instances. | `.Probe.on` and `.Probe.off` are both cached (`_ruleCacheHas` true for each); the second instance's `#id.on` carries no `color` and its `#id.off` carries no `color` either — each suffix dedupes against its own class bag only. | unit |
-| 6 | **`_restoreChrome`'s forced writes stay unconditional after the refactor.** `setChromeless(true)` then `setChromeless(false)` on a `Button`, so `_restoreChrome` runs while the instance's own `#id.pressed` rule still holds a stale pin, and `setFlat(true)` then `setFlat(false)`, so `_restoreChrome` restores `backgroundColor` / `backgroundImage` / `boxShadow` / `color` at values that match the shared class bag. | Every restored value reaches the instance's `#id.pressed` rule for real — none are silently skipped because they happen to match the class bag. | unit — already exercised by the dependency plans' `Button.pressedHoverClassHoisting.test.ts` (the `setChromeless` case, `color` only) and `Button.restingChromeIsolation.test.ts` (the `setFlat` case, all four keys); re-run both unmodified as this refactor's regression check for this case. |
-| 7 | **Visual parity.** The demo app's Button, ToggleButton, and Tab showcases render identically to how they rendered once the dependency plans alone had landed — resting, hover, pressed, and selected chrome for default-styled and explicitly-customized instances alike. | No visible change anywhere; this plan changes wiring only. | manual |
+| 1 | **`createStateStyleRule` wires `resolveDefaults` into the class bag automatically.** A local `Probe` class (next unused `ProbeState<N>` name) extends `Component`; its constructor calls `this.createStateStyleRule(".on", () => ({ color: "red" })).set("color", "red")` unconditionally. Render two instances. | The second instance's `#id.on` rule captures no `color` — `declarationsDuring(sink, idSelector(second) + '.on', () => second.getElement(true))` is `{}`. `_ruleCacheHas('.<ProbeClassName>.on')` is `true` (the shared class rule was created). | unit |
+| 2 | **A deviating `.set()` call still writes the instance rule.** A third instance (same class) calling `.set("color", "blue")` instead. | The captured declarations for that instance's `#id.on` contain `color: "blue"`. | unit |
+| 3 | **`.setMany()` writes only the keys that deviate.** An instance whose class bag (from `resolveDefaults`) is `{ color: "red" }`, calling `.setMany({ color: "red", backgroundColor: "blue" })`. | Captured declarations for `#id.on` contain `backgroundColor: "blue"` but not `color`. | unit |
+| 4 | **`createStateStyleRule` shares the same underlying rule `createStyleRule` would return, not a second one.** An instance whose constructor calls both `this.createStyleRule(".on")` and `this.createStateStyleRule(".on", () => ({}))`. Render it. | Exactly one `#id.on` rule materialises — one `ensureStyleRule` op for that selector, not two. | unit |
+| 5 | **Two suffixes on one class produce two independent class rules.** An instance whose constructor calls `createStateStyleRule(".on", () => ({ color: "red" }))` and `createStateStyleRule(".off", () => ({ color: "blue" }))`. Render two instances. | `.ClassName.on` and `.ClassName.off` are both cached (`_ruleCacheHas` true for each); the second instance's `#id.on` carries no `color` and its `#id.off` carries no `color` either — each suffix dedupes against its own class bag only. | unit |
+| 6 | **A `.set()` call that matches the class default leaves the underlying rule unmaterialised at first render; a later `.set()` call on the same wrapper, after the element exists, with a deviating value, reaches the stylesheet immediately — without a further render pass.** An instance (next unused `ProbeState<N>` name) whose constructor calls `this.createStateStyleRule(".on", () => ({ color: "red" })).set("color", "red")` and keeps the returned `StateStyleRule` on an instance field. Render it (`probe.getElement(true)`) — confirm no `#id.on` write is recorded. Then call the stored wrapper's `.set("color", "blue")`. | That single call's declaration appears on `#id.on` immediately — captured via `declarationsDuring(sink, idSelector(probe) + '.on', () => probe.rule.set('color', 'blue'))` — proving the rule materialised on this call rather than only queuing. | unit |
+| 7 | **`_restoreChrome`'s and `pinPressedToResting`'s forced writes stay unconditional after the refactor.** `setChromeless(true)` then `setChromeless(false)` on a `Button`, so `_restoreChrome` runs while the instance's own `#id.pressed` rule still holds a stale pin, and `setFlat(true)` then `setFlat(false)`, so `_restoreChrome` restores all four pressed keys at values that match the shared class bag. | Every restored value reaches the instance's `#id.pressed` rule for real — none are silently skipped because they happen to match the class bag. | unit — already exercised by `Button.pressedHoverClassHoisting.test.ts`'s `setChromeless` cases and `Button.restingChromeIsolation.test.ts`'s `setFlat` case (row 11) and its runtime-setter-after-render case; re-run all unmodified as this refactor's regression check. |
+| 8 | **Visual parity.** The demo app's Button showcase renders identically to how it rendered once the dependency plans alone had landed — resting, hover, and pressed chrome for default-styled and explicitly-customized instances alike. | No visible change anywhere; this plan changes wiring only. | manual |
 
 ---
 
@@ -347,17 +460,17 @@ The constructor's three calls to `setSelectedShadow` / `setSelectedBackgroundCol
 
 From `packages/lib`:
 
-1. `npx vitest run --no-file-parallelism` — all cases pass, including the dependency plans' `Button.pressedHoverClassHoisting.test.ts` / `ToggleButton.selectedClassHoisting.test.ts` / `TabButton.stateClassHoisting.test.ts` / `Button.restingChromeIsolation.test.ts` unmodified. `Errors: 0`, exit code `0`.
+1. `npx vitest run --no-file-parallelism` — all cases pass, including `Button.pressedHoverClassHoisting.test.ts` / `TabButton.stateClassHoisting.test.ts` / `ToggleButton.selectedClassHoisting.test.ts` / `Button.restingChromeIsolation.test.ts` unmodified. `Errors: 0`, exit code `0`.
 2. `npm run typecheck` — clean.
 3. `npm run typecheck:test`.
 4. `npm run lint` — clean.
 5. `npm run docs:api` — zero warnings (every new/changed member is `protected`/`private`/internal-module).
-6. `grep -n 'writeClassStateDeclaration(this\.\|writeManyClassStateDeclarations(this\.' packages/lib/src/typescript/lib/component/button/Button.ts packages/lib/src/typescript/lib/component/button/ToggleButton.ts` — zero matches.
-7. `grep -c 'pressedClassBag\|hoverClassBag' packages/lib/src/typescript/lib/component/button/Button.ts` — zero.
-8. `grep -c 'selectedClassBag' packages/lib/src/typescript/lib/component/button/ToggleButton.ts` — zero.
-9. `git status --porcelain packages/lib/src/typescript/lib/component/button/TabButton.ts` — empty output (no working-tree changes to this file from this plan's steps).
-10. `grep -n '\.pressedStyleRule\.set(\|\.pressedStyleRule\.setMany(' packages/lib/src/typescript/lib/component/button/Button.ts` — every match is inside a `set*`/`clear*` pressed method; none inside `_restoreChrome` or `pinPressedToResting`. Read those two methods directly and confirm they instead call `this.createStyleRule(".pressed").set(...)` / `.setMany(...)` — the forced-write fix from Architecture Decisions.
-11. Manual, browser (`npm run dev`, http://localhost:8015): same screens as the dependency plans' own manual checks — a Button demo (resting/hover/pressed for a default and a `pressedBackgroundColor`-customized instance), a ToggleButton demo (selected on/off), a Tab demo (hover, select, close-✕ hover). Confirm `.Button.pressed`, `.Button:hover:not(.pressed)`, `.ToggleButton.selected:not(:hover)`, `.TabButton.pressed`, `.TabButton:hover:not(.pressed)`, `.TabButton.selected:not(:hover)` still exist in `<style id="Base">` and still render identically to before this plan.
+6. `grep -n 'writePressedDeclaration\|materialisePressedRule\|pressedClassBag\|hoverClassBag' packages/lib/src/typescript/lib/component/button/Button.ts` — zero matches.
+7. `grep -c '\.pressedStyleRule\.set(\|\.pressedStyleRule\.setMany(' packages/lib/src/typescript/lib/component/button/Button.ts` — 12.
+8. `grep -c '\.hoverStyleRule\.set(\|\.hoverStyleRule\.setMany(' packages/lib/src/typescript/lib/component/button/Button.ts` — 12.
+9. `grep -c 'createStyleRule(".pressed").set(' packages/lib/src/typescript/lib/component/button/Button.ts` — 5.
+10. `git status --porcelain packages/lib/src/typescript/lib/component/button/ToggleButton.ts packages/lib/src/typescript/lib/component/button/TabButton.ts` — empty output (no working-tree changes to either file from this plan's steps).
+11. Manual, browser (`npm run dev`, http://localhost:8015): a Button demo — resting/hover/pressed for a default instance and a `pressedBackgroundColor`-customized instance. Confirm `.Button.pressed` and `.Button:hover:not(.pressed)` still exist in `<style id="Base">` and still render identically to before this plan.
 
 ---
 
@@ -370,50 +483,56 @@ None. Every new, changed, or removed member is `protected` or `private`; `core/C
 ## Potential Challenges
 
 - **A caller that doesn't cache `createStateStyleRule`'s return value behind a private `??=` getter re-runs `resolveDefaults()` on every call.** Not a correctness bug — `ensureClassStateRule`'s own cache means only the first call's result is ever used for the class rule — but it wastes the resolver's cost repeatedly. Mitigation is the documented idiom (Internal Structure), matching the base tier's own acceptance of this cost (`getClassStyleDefaults()` runs on every `applyStyle` regardless of cache state).
-- **The mechanical setter rewrite touches twenty-eight call sites** — `Button.ts`'s twelve setter/clearer pairs (six for `.pressed`, six for `:hover:not(.pressed)`, twenty-four methods) plus `ToggleButton.ts`'s four `.selected` setters — **with an identical, easy-to-get-subtly-wrong transformation** (dropping the `bag` argument and moving the method call onto the rule). The two `grep` checks in Ordered Implementation Steps 3-4 catch a missed site; the unmodified dependency-plan test files catch a wrong one.
-- **A handful of call sites are not setter/clearer pairs and must be excluded from the mechanical rewrite, not just found by it.** `_restoreChrome` and `pinPressedToResting` already call `.set()` directly on `pressedStyleRule` today, deliberately bypassing the class-bag comparison. Applying the same twenty-eight-site transformation to them would be a no-op syntactically (they already read `.set(...)`) while silently changing what that call does, once `pressedStyleRule` returns a `StateStyleRule`. This is why Ordered Implementation Steps 3 requires enumerating these sites *before* the rewrite, not relying on the same grep that catches the ordinary sites.
-- **`ClassStateRules.test.ts`'s per-test uniquely-named-local-class convention must be followed for the five new cases** (Expected Behaviour), or a new `Probe` collides with a class name an earlier case in that file already registered, silently taking the name-collision opt-out branch instead of the path the case means to test.
+- **The mechanical setter rewrite touches twenty-four call sites in `Button.ts`** (twelve pressed setter/clearer methods, twelve hover setter/clearer methods) with an identical, easy-to-get-subtly-wrong transformation. The greps in Ordered Implementation Steps 3 catch a missed site; the unmodified regression tests catch a wrong one.
+- **Five call sites are not setter/clearer methods and must be excluded from the mechanical rewrite, not just found by it.** `_restoreChrome`'s four forced writes and `pinPressedToResting`'s loop already call `.set(...)` directly today, deliberately bypassing the class-bag comparison. Applying the ordinary transformation to them would be a no-op syntactically (they already read `.set(...)`) while silently changing what that call does. Step 3 requires enumerating these sites before the rewrite, not relying on the same grep that catches the ordinary sites.
+- **`ClassStateRules.test.ts`'s per-case uniquely-named `ProbeState<N>` convention must be followed for all six of this plan's new cases**, continuing the numbering after the file's existing six, or a new probe collides with a class name an earlier case already registered, silently taking the name-collision opt-out branch instead of the path the case means to test.
+- **A future author extending `StateStyleRule` to `ToggleButton`/`TabButton` without first isolating their resting chrome would reintroduce the specificity bug this plan's scope decision avoids.** Flagged explicitly in `## Non-Goals` so it is not attempted by accident.
 
 ---
 
 ## Critical Files
 
-- [plans/hoist-button-tabbar-state-chrome-rules.md](hoist-button-tabbar-state-chrome-rules.md) — the first dependency; its Internal Structure section is this plan's "before" state for `Button.ts` / `ToggleButton.ts` / `TabButton.ts` and for `ensureClassStateRule` / `writeClassStateDeclaration` / `writeManyClassStateDeclarations`. Its `## Implementation Notes` records the base-`#id`-rule specificity conflict that motivates the safety invariant in Architecture Decisions and why `getPressedClassDeclarations()` originally narrowed to `pressedForegroundColor` alone.
-- [plans/button-resting-chrome-state-isolation.md](button-resting-chrome-state-isolation.md) — the second dependency; widens `getPressedClassDeclarations()` back to four properties and adds the `_restoreChrome` / `pinPressedToResting` forced-write call sites this plan's Ordered Implementation Steps 3 must reroute. Read its Internal Structure for their exact shape.
-- [packages/lib/src/typescript/lib/core/ClassStyleRules.ts](packages/lib/src/typescript/lib/core/ClassStyleRules.ts) — `ensureClassStyleRule` (196) and (once the dependency lands) `ensureClassStateRule` / `writeClassStateDeclaration` / `writeManyClassStateDeclarations` — the functions `StateStyleRule` wraps.
-- [packages/lib/src/typescript/lib/core/Component.ts](packages/lib/src/typescript/lib/core/Component.ts) — `createStyleRule` (1009), `writeRuleDeclaration` (4720), `getClassStyleDefaults` (4736), `applyStyle` (4757) — the base-tier precedent this plan's design decisions cite, and the existing per-instance builder `createStateStyleRule` wraps unchanged.
-- [packages/lib/src/typescript/lib/core/StyleTarget.ts](packages/lib/src/typescript/lib/core/StyleTarget.ts) — `StyleTarget.set` / `setMany` (35-50) — the semantics `StateStyleRule.set` / `setMany` delegate through, via `writeClassStateDeclaration`.
-- [packages/lib/tests/core/ClassStyleRules.test.ts](packages/lib/tests/core/ClassStyleRules.test.ts) — the test-harness conventions (`declarationsDuring`, `idSelector`, uniquely-named local subclasses, `_ruleCacheHas`) the new cases in `ClassStateRules.test.ts` follow.
-- `packages/lib/tests/core/ClassStateRules.test.ts` (created by the dependency plan) — the file this plan's five new cases are appended to.
-- `packages/lib/tests/component/button/Button.pressedHoverClassHoisting.test.ts` (created by the first dependency, extended by the second) — its `setChromeless` round-trip case is this plan's regression check for `_restoreChrome`'s original `color` forced write (Expected Behaviour case 6); read it before Ordered Implementation Steps 3 rather than writing a new test.
-- `packages/lib/tests/component/button/Button.restingChromeIsolation.test.ts` (created by the second dependency) — its `setFlat` round-trip case is this plan's regression check for `_restoreChrome`'s three widened forced writes (Expected Behaviour case 6); read it alongside the file above.
-- [packages/lib/src/typescript/lib/component/button/Button.ts](packages/lib/src/typescript/lib/component/button/Button.ts) and [ToggleButton.ts](packages/lib/src/typescript/lib/component/button/ToggleButton.ts) — read both dependency plans' Internal Structure for their exact post-dependency shape; this plan's line-number references (1009-1018, 24, 4720, 4736, 4757 in `Component.ts`) are only for `Component.ts`, which neither dependency modifies. `Button.ts` / `ToggleButton.ts` line numbers will differ once both dependencies land — locate `pressedStyleRule` / `hoverStyleRule` / `selectedStyleRule`, `_restoreChrome`, `pinPressedToResting`, and the pressed/hover/selected setters by name.
+- [plans/implemented/hoist-button-tabbar-state-chrome-rules.md](implemented/hoist-button-tabbar-state-chrome-rules.md) — first dependency. Its `## Implementation Notes` records why `Button.getPressedClassDeclarations()` was narrowed to `color` alone, and why `ToggleButton.selectedClassBag` was hardcoded `null` and `TabButton`'s hover/selected overrides deleted — the source for this plan's ToggleButton/TabButton scope decision.
+- [plans/implemented/button-resting-chrome-state-isolation.md](implemented/button-resting-chrome-state-isolation.md) — second dependency. Its `## Internal Structure` is this plan's "before" state for `Button.ts`'s pressed/hover mechanism; its `## Implementation Notes` records the materialisation-nudge bug and fix (`writePressedDeclaration` / `writePressedDeclarations` / `materialisePressedRule`) this plan folds into `StateStyleRule`. Read both sections before Ordered Implementation Steps 3.
+- [packages/lib/src/typescript/lib/component/button/Button.ts](packages/lib/src/typescript/lib/component/button/Button.ts) — read `pressedStyleRule` / `hoverStyleRule` / `restingStyleRule` (L558-L597), `materialisePressedRule` / `writePressedDeclaration` / `writePressedDeclarations` / `pressedClassBag` / `hoverClassBag` (L679-L731), `getPressedClassDeclarations` / `getHoverClassDeclarations` (L751-L780), `applyChromeOptions`'s chromeless branch (L1083-L1157), `_restoreChrome` (L2085-L2144), `pinPressedToResting` (L2155-L2174), and the pressed/hover setters (L2493-L2929). Line numbers verified at time of writing; they will shift once edits land — locate members by name.
+- [packages/lib/src/typescript/lib/component/button/ToggleButton.ts](packages/lib/src/typescript/lib/component/button/ToggleButton.ts) — read `selectedClassBag` (around L72) and its doc comment in full; it is this plan's primary evidence for why `.selected` dedup stays disabled.
+- [packages/lib/src/typescript/lib/core/ClassStyleRules.ts](packages/lib/src/typescript/lib/core/ClassStyleRules.ts) — `ensureClassStateRule` (L287), `writeClassStateDeclaration` (L347), `writeManyClassStateDeclarations` (L361) — the functions `StateStyleRule` wraps.
+- [packages/lib/src/typescript/lib/core/Component.ts](packages/lib/src/typescript/lib/core/Component.ts) — `createStyleRule` (L1009), `getElement` (L1027), `matchesClassStyle` (L4716), `writeRuleDeclaration` (L4736), `getClassStyleDefaults` (L4778), `applyStyle` (L4799), `materialiseWhenNeeded` (L5063) — the base-tier precedent this plan's design decisions cite, the `getElement`/materialise idiom `StateStyleRule` reuses, and the existing per-instance builder `createStateStyleRule` wraps unchanged.
+- [packages/lib/src/typescript/lib/core/StyleTarget.ts](packages/lib/src/typescript/lib/core/StyleTarget.ts) — `StyleRule.set` / `queue` (L35, L61), `hasQueuedDeclarations` (L108), `ensure` (L307) — the methods `StateStyleRule.set()` / `setMany()` / `_materialise()` call directly.
+- [packages/lib/tests/core/ClassStateRules.test.ts](packages/lib/tests/core/ClassStateRules.test.ts) — the file this plan's six new cases are appended to; read its existing six cases for the `ProbeState<N>` naming and helper conventions.
+- [packages/lib/tests/component/button/Button.restingChromeIsolation.test.ts](packages/lib/tests/component/button/Button.restingChromeIsolation.test.ts) — its "a runtime setPressedBackgroundColor call on an already-rendered, previously-default Button reaches the stylesheet" case (around L217) is this plan's regression check that folding the nudge into `StateStyleRule` doesn't reintroduce the bug `writePressedDeclaration` was built to fix; read it before Ordered Implementation Steps 3 rather than writing a new test.
+- [packages/lib/tests/component/button/Button.pressedHoverClassHoisting.test.ts](packages/lib/tests/component/button/Button.pressedHoverClassHoisting.test.ts) — its `setChromeless` round-trip cases are the other half of this plan's forced-write regression check.
 
 ---
 
 ## Non-Goals
 
-- **Converting any other `createStyleRule` caller** (`AccordionIndicator`, `CollapseButton`, `DiagramNode`, `WindowBorder`, `Header`, …) onto `createStateStyleRule`. Structurally the same opportunity, but out of scope — a future plan can reuse `createStateStyleRule` directly, the same way the dependency plan left `ensureClassStateRule` / `writeClassStateDeclaration` exported for reuse.
+- **Converting any other `createStyleRule` caller** (`AccordionIndicator`, `CollapseButton`, `DiagramNode`, `WindowBorder`, `Header`, …) onto `createStateStyleRule`. Structurally the same opportunity, but out of scope — a future plan can reuse `createStateStyleRule` directly, the same way `hoist-button-tabbar-state-chrome-rules` left `ensureClassStateRule` / `writeClassStateDeclaration` exported for reuse.
 - **Deprecating or removing `Component.createStyleRule`.** It remains the correct primitive for a per-instance state rule with no class-level default to dedupe against.
-- **Changing the signatures of `ensureClassStateRule`, `writeClassStateDeclaration`, or `writeManyClassStateDeclarations`.** This plan reuses them exactly as the dependency plan defines them.
+- **Changing the signatures of `ensureClassStateRule`, `writeClassStateDeclaration`, or `writeManyClassStateDeclarations`.** This plan reuses them exactly as they exist today.
 - **Giving `createStateStyleRule` a resting-tier / mutual-exclusion mode.** See Architecture Decisions — that pattern stays manual and per-component.
-- **Adding a forced-write / bypass-comparison method to `StateStyleRule`'s public surface** (e.g. a `setForced`). Unnecessary: `createStyleRule(suffix)`'s existing per-suffix cache already gives any call site that needs an unconditional write a way to reach the same underlying `StyleRule` without going through the wrapper.
-- **Editing `plans/button-resting-chrome-state-isolation.md`.** Its `_restoreChrome` / `pinPressedToResting` call sites are written correctly against `Button.ts`'s current, pre-this-plan `pressedStyleRule` shape; adding it to `depends-on` is what keeps them correct, so no edit to that plan is needed.
-- **`plans/suppress-empty-style-rules.md`.** Unrelated empty-CSS-rule fix; only relevant here as the reason `ARCHITECTURE.md` is listed under `touches-shared`.
+- **Adding a forced-write / bypass-comparison *setter* to `StateStyleRule`'s public surface** (e.g. a `setForced`). Unnecessary: `createStyleRule(suffix)`'s existing per-suffix cache already gives any call site that needs an unconditional write a way to reach the same underlying `StyleRule` without going through the wrapper. `classBag` is a read accessor to the same bag `set()` / `setMany()` already compare against — it exposes no new way to skip the comparison, so it does not reopen this.
+- **`ToggleButton.ts` and `TabButton.ts`.** Their `.selected` class-tier dedup stays disabled, exactly as it is today — see Architecture Decisions. Re-enabling it needs the same resting-chrome isolation `button-resting-chrome-state-isolation` built for `Button`, which is out of scope here; a future plan that does that work can then route `ToggleButton.selectedStyleRule` onto `createStateStyleRule` unchanged.
+- **Editing `plans/implemented/button-resting-chrome-state-isolation.md` or `plans/implemented/hoist-button-tabbar-state-chrome-rules.md`.** Historical record of what shipped; not edited by this plan.
+- **`plans/implemented/suppress-empty-style-rules.md`.** Unrelated empty-CSS-rule fix; only relevant here as the reason `ARCHITECTURE.md` is listed under `touches-shared`.
 - **Bumping the package version.** Recorded for release time, not this plan.
 
 ---
 
 ## Notes
 
-[^no-render-pass]: Unlike the base `#id` rule, which is fully re-derived from getters on every `applyStyle` call (so a stale imperative write is never observed — see `Component.ts`'s `applyBoxAndVisibilityStyles` and siblings), a state rule's declarations are whatever the setter last wrote, from whichever call site last ran. There is no single pass that re-derives all of them together, so there is nowhere to cache "what this render already delivers" the way `_inheritedStyleBag` does for the base tier. This is the dependency plan's own stated reason for `writeClassStateDeclaration`'s explicit-parameter shape (its Internal Structure section, on `writeClassStateDeclaration`), carried over unchanged into why `StateStyleRule` binds the rule and bag to the object instead.
+[^no-render-pass]: Unlike the base `#id` rule, which is fully re-derived from getters on every `applyStyle` call (so a stale imperative write is never observed), a state rule's declarations are whatever the setter last wrote, from whichever call site last ran. There is no single pass that re-derives all of them together, so there is nowhere to cache "what this render already delivers" the way `_inheritedStyleBag` does for the base tier. This is `writeClassStateDeclaration`'s own reason for its explicit-parameter shape, carried over unchanged into why `StateStyleRule` binds the rule and bag to the object instead.
 
-[^tabbutton-untouched]: `TabButton` inherits `Button`'s `pressedStyleRule` / `hoverStyleRule` getters and `ToggleButton`'s `selectedStyleRule` getter; it only overrides `getHoverClassDeclarations()` and `getSelectedClassDeclarations()`, which those getters call polymorphically through `this`. Rewriting the getters in `Button.ts` / `ToggleButton.ts` to route through `createStateStyleRule` doesn't change which method gets called on a `TabButton` instance — `this.getHoverClassDeclarations()` still resolves to `TabButton`'s override at runtime regardless of which class's getter contains that call. This is the same virtual-dispatch guarantee the dependency plan already relied on for its own hand-rolled getters; this plan doesn't introduce a new dependency on it, just carries it forward.
+[^materialise-in-primitive]: `button-resting-chrome-state-isolation`'s own `## Implementation Notes` (`plans/implemented/button-resting-chrome-state-isolation.md`) records this in full. A first fix attempt added `materialisePressedRule()` and called it explicitly from two orchestration methods, `_clearChrome()` and `_applyFlatChrome()`. The audit round found this placement too narrow: a direct runtime call to `setPressedX` / `clearPressedX` — the ordinary way to customise an already-rendered button — bypasses both of those methods and still silently drops its write, reproduced concretely as `new Button('X'); btn.getElement(true); btn.setPressedBackgroundColor('purple')` recording zero stylesheet writes. The fix that shipped moved the nudge to the actual choke point every pressed-tier write funnels through — the two wrapper methods `writePressedDeclaration` / `writePressedDeclarations`, which every one of the twelve `setPressedX` / `clearPressedX` methods now calls instead of the shared comparison helper directly. `StateStyleRule.set()` / `.setMany()` are that same choke point, generalised: any caller's write path — construction, a runtime setter, a chrome-mode toggle — funnels through one of these two methods with no way to add a new pressed/hover-tier write that skips the nudge.
 
-[^invariant-grounding]: The safety invariant above rests on two precedents. First, `hoist-button-tabbar-state-chrome-rules`'s own audit (its `## Implementation Notes`) found `backgroundColor` / `backgroundImage` / `boxShadow` unsafe to dedupe at Button's `.pressed` tier, because Button's resting chrome wrote them unconditionally onto the bare `#id` rule `(1,0,0)`, which always outranks `.Button.pressed` `(0,2,0)` regardless of state — the fix was to narrow `getPressedClassDeclarations()` down to `pressedForegroundColor`, the one property whose resting write was *already* comparison-gated: `foregroundColor` is hoisted onto the class tier by the pre-existing base-tier `ClassStyleDefaults` mechanism, so nothing on `#id` competed for `color` at all. Second, `button-resting-chrome-state-isolation.md` restores the invariant for the three narrowed-out properties not by adding a value comparison, but by removing the competition entirely: it moves Button's resting `background-color` / `background-image` / `box-shadow` off the bare `#id` rule onto a `#id:not(.pressed)` rule, which structurally cannot match the same element `.pressed` matches — so the two rules are never simultaneously in the cascade and there is nothing left to compare. Either mechanism — an explicit value comparison, or a selector that makes two tiers mutually exclusive — satisfies the invariant; a bare, ungated write on a higher-specificity selector satisfies neither.
+[^toggle-selected-disabled]: `ToggleButton.ts`'s `selectedClassBag` getter reads `return null;` with an inline comment explaining why: `.selected:not(:hover)`'s three fields are not safe to dedupe against a shared class rule, because `ToggleButton` / `TabButton`'s resting chrome writes the same three properties unconditionally onto the bare `#id` rule, and `button-resting-chrome-state-isolation` — which fixed the equivalent problem for `Button`'s `.pressed` — did not touch these two classes. `hoist-button-tabbar-state-chrome-rules`'s own `## Implementation Notes` records the original finding: `ToggleButton.getSelectedClassDeclarations()` was removed entirely as a dedup source, because none of `.selected`'s three fields are safe and `ToggleButton` has no `color`-equivalent to fall back on — unlike Button's resting `color`, already hoisted onto the class tier, leaving nothing on `#id` for `pressedForegroundColor` to compete with. `TabButton.getHoverClassDeclarations()` / `getSelectedClassDeclarations()` were deleted for the same reason: every field either override would have contributed was unsafe.
 
-[^resting-tier-manual]: `button-resting-chrome-state-isolation.md`'s own `## Non-Goals` rejects deduping the resting tier onto a shared class rule: a component's `clear*()` setters remove a property by writing `null` to the instance rule, and once a class-tier resting rule exists, that removal lets the class rule's value show through instead of truly clearing — fixing that needs a per-property neutral-value convention across every `Component` clear setter, a `Component`-wide change that plan explicitly scopes out. `createStateStyleRule` always builds both an instance rule and a class-tier dedup rule together (Architecture Decisions, `Component.createStateStyleRule` is a new sibling of `createStyleRule`); there is no way to ask it for the instance-only half without either introducing the class-tier rule the resting tier must not have, or adding a second code path that defeats the point of one primitive with one contract. Which base-tier properties need isolating is also component-specific — Button's set is `background` / `backgroundColor` / `backgroundImage` / `boxShadow`, derived by inspecting what that component's resting chrome writes unconditionally, not from a formula a shared primitive could apply generically. `button-resting-chrome-state-isolation.md`'s own solution is a per-component `RESTING_ISOLATED_KEYS` set plus overrides of `writeRuleDeclaration` / `setElementCSSRule`, built directly in `Button.ts`, not in `ClassStyleRules.ts`, `StyleTarget.ts`, or `Component.ts`.
+[^invariant-grounding]: The safety invariant rests on Button's own history. `hoist-button-tabbar-state-chrome-rules`'s audit found `backgroundColor` / `backgroundImage` / `boxShadow` unsafe to dedupe at Button's `.pressed` tier, because Button's resting chrome wrote them unconditionally onto the bare `#id` rule `(1,0,0)`, which always outranks `.Button.pressed` `(0,2,0)` regardless of state — the fix was to narrow `getPressedClassDeclarations()` down to `pressedForegroundColor`, the one property whose resting write was *already* comparison-gated. `button-resting-chrome-state-isolation` restored the invariant for the three narrowed-out properties not by adding a value comparison, but by removing the competition entirely: it moved Button's resting `background-color` / `background-image` / `box-shadow` off the bare `#id` rule onto a `#id:not(.pressed)` rule, which structurally cannot match the same element `.pressed` matches. The identical conflict blocks `ToggleButton` / `TabButton`'s `.selected` state today, for the same reason — see the ToggleButton/TabButton scope decision above — because neither ever got the analogous resting-tier isolation.
 
-[^forced-write-hazard]: Confirmed by reading the current, already-implemented `Button.ts` on this branch: exactly one call site does this today — `_restoreChrome`'s `this.pressedStyleRule.set("color", d.pressedForegroundColor)` at [Button.ts:1929](packages/lib/src/typescript/lib/component/button/Button.ts#L1929) (`grep -n '\.pressedStyleRule\.set(\|\.hoverStyleRule\.set(\|\.pressedStyleRule\.setMany(\|\.hoverStyleRule\.setMany(' packages/lib/src/typescript/lib/component/button/Button.ts` returns exactly this one line before this plan runs). `button-resting-chrome-state-isolation.md`'s `## Internal Structure` widens `_restoreChrome` to force `backgroundColor` / `backgroundImage` / `boxShadow` the same way, and adds `pinPressedToResting()`, which loops over the pressed class bag's keys calling `this.pressedStyleRule.set(key, resting[key])` for the same reason — "outrank the class rule even when the two values coincide," per that plan's own comment. Neither call site is a `writeClassStateDeclaration(this...)` call, so neither would be touched by this plan's own mechanical transformation or caught by its original regression grep, which only searched for `writeClassStateDeclaration(this.` / `writeManyClassStateDeclarations(this.` — a pattern these sites never matched, before or after.
+[^resting-tier-manual]: `button-resting-chrome-state-isolation`'s own `## Non-Goals` rejects deduping the resting tier onto a shared class rule: a component's `clear*()` setters remove a property by writing `null` to the instance rule, and once a class-tier resting rule exists, that removal lets the class rule's value show through instead of truly clearing — fixing that needs a per-property neutral-value convention across every `Component` clear setter, a `Component`-wide change that plan explicitly scoped out. `createStateStyleRule` always builds both an instance rule and a class-tier dedup rule together; there is no way to ask it for the instance-only half without either introducing the class-tier rule the resting tier must not have, or adding a second code path that defeats the point of one primitive with one contract.
 
-[^ordering-not-symmetric]: The dependency is one-directional because only one of the two plans can be edited here. `button-resting-chrome-state-isolation.md` is drafted and read as fixed content for this amendment — its Internal Structure literally writes `this.pressedStyleRule.set(...)` in `pinPressedToResting()` and in `_restoreChrome`'s widened block, correct only when `pressedStyleRule` is still the plain `StyleRule` it is today. If this plan's `createStateStyleRule` refactor landed first, that text would need to say `this.createStyleRule(".pressed").set(...)` instead — but this plan cannot rewrite another plan's file. Requiring `button-resting-chrome-state-isolation` to land first, and having this plan's own Ordered Implementation Steps enumerate and reroute the resulting forced-write call sites (Architecture Decisions, "Forced writes on `pressedStyleRule`..."), keeps both plans correct as written.
+[^classbag-accessor]: `classBag` returns the identical value a caller could already get by calling `ensureClassStateRule(ctor, suffix, resolveDefaults())` a second time — `StateStyleRule` just avoids the redundant call and the extra `resolveDefaults()` invocation that would otherwise cost. It is a read accessor, not a write bypass: reading `classBag` cannot skip a comparison or write a declaration, so it does not reopen the "no forced-write method on `StateStyleRule`'s public surface" Non-Goal, which is about *writing* around the comparison, not about *reading* the bag the comparison itself already computed.
+
+[^forced-write-hazard]: Confirmed by reading the current, already-implemented `Button.ts` on this branch: `grep -n '\.pressedStyleRule\.set(\|\.pressedStyleRule\.setMany(' packages/lib/src/typescript/lib/component/button/Button.ts` returns exactly five lines before this plan runs — `_restoreChrome`'s four forced writes for `color` / `backgroundColor` / `backgroundImage` / `boxShadow` ([Button.ts:2119-2131](packages/lib/src/typescript/lib/component/button/Button.ts#L2119-L2131)) and `pinPressedToResting`'s loop ([Button.ts:2171](packages/lib/src/typescript/lib/component/button/Button.ts#L2171)). `button-resting-chrome-state-isolation`'s `## Internal Structure` widened `_restoreChrome` to force `backgroundColor` / `backgroundImage` / `boxShadow` the same way its inherited `color` write already did, and added `pinPressedToResting()`, which loops over the pressed class bag's keys for the same reason — "outrank the class rule even when the two values coincide," per that plan's own comment. None of these five are `writeClassStateDeclaration(this...)` / `writePressedDeclaration(...)` calls, so none would be touched by this plan's mechanical setter-rewrite or caught by its regression grep for those two names — they must be found and rerouted separately, per Ordered Implementation Steps 3.
+
+[^ordering-not-symmetric]: The dependency is one-directional because only one of the two plans can be edited here. `plans/implemented/button-resting-chrome-state-isolation.md` is read as fixed, already-implemented content for this amendment — its Internal Structure literally writes `this.pressedStyleRule.set(...)` in `pinPressedToResting()` and in `_restoreChrome`'s widened block, correct only when `pressedStyleRule` was still the plain `StyleRule` it was before this plan. Requiring `button-resting-chrome-state-isolation` to land first, and having this plan's own Ordered Implementation Steps enumerate and reroute the resulting forced-write call sites (Architecture Decisions, "Forced writes on `pressedStyleRule`..."), keeps both plans correct as written without editing the earlier one.
