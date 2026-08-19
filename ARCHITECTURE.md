@@ -266,7 +266,7 @@ If you find yourself reaching for `.style.X` on a `CSSStyleRule` or `HTMLElement
 
 Construction must stay JS-only. Every framework primitive buffers DOM writes until first render — keep them queued:
 
-- **Component CSS rule**: `setElementCSSRule(s)` queues into `styleRule`; `applyStyle` flushes at render, and inserts the rule only when something was queued. Never call `ensureCSSRule()` from a setter.
+- **Component CSS rule**: `setElementCSSRule(s)` queues into `styleRule`; `applyStyle` flushes at render, and inserts the rule only when a real declaration is queued — not for a bag holding only no-op `null` removals. Never call `ensureCSSRule()` from a setter.
 - **Per-component state rules** (`:active`, `:hover`, `.selected`, …): allocate via `this.createStyleRule(suffix)`. The builder dedupes by suffix and registers for render-time materialisation. Don't construct a `StyleRule` directly for these — go through `createStyleRule` so the dedupe + register path runs.
 - **Module-level shared class rules** (`.SortPriorityBadge`, `.ResizeHandle`, …): `new StyleRule({ scope: "class", name: "Foo" })` inside a module-singleton `ensureXClassRule()` is the correct path; the `StyleRule` buffer is the public seam over `CSSStyleRule.style`.
 - **Inline styles**: `setElementStyle(s)` queues into `inlineStyle`; `init()` attaches and flushes.

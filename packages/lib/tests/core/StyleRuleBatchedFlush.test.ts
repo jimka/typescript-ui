@@ -39,6 +39,14 @@ class DeferredRuleProbe extends _Component {
     }
 }
 
+/** A component whose deferred rule is queued with only a no-op null removal. */
+class NullOnlyDeferredRuleProbe extends _Component {
+    constructor() {
+        super();
+        this.createStyleRule('.probe').set('display', null);
+    }
+}
+
 describe('StyleRule — batched flush (bare buffer)', () => {
     it('case 1: queue then materialise batches into one setRuleStyles op', () => {
         const sink = DOM.sink as RecordingDOMSink;
@@ -262,5 +270,122 @@ describe('StyleRule — lazy materialisation gate', () => {
         // pins the positive half (one queued declaration ⇒ exactly one rule).
         expect(sink.writes.filter((w) => w.op === 'ensureStyleRule' && w.args[0] === selector).length).toBe(0);
         expect(_ruleCacheHas(selector)).toBe(false);
+    });
+
+    it('case 16: an empty autoCommitStyle window inserts no rule', () => {
+        const c = new Component({});
+        c.getElement(true);
+
+        const sink     = DOM.sink as RecordingDOMSink;
+        const selector = '#' + c.getId();
+
+        c.setAutoCommitStyle(false);
+        c.setAutoCommitStyle(true);
+
+        expect(sink.writes.some((w) => w.op === 'ensureStyleRule' && w.args[0] === selector)).toBe(false);
+        expect(_ruleCacheHas(selector)).toBe(false);
+    });
+
+    it('case 17: a real declaration queued inside the window still materialises exactly once', () => {
+        const probe = new RuleProbe();
+        probe.getElement(true);
+
+        const sink     = DOM.sink as RecordingDOMSink;
+        const selector = '#' + probe.getId();
+
+        probe.setAutoCommitStyle(false);
+        probe.rule('color', 'red');
+        probe.setAutoCommitStyle(true);
+
+        expect(sink.writes.filter((w) => w.op === 'ensureStyleRule' && w.args[0] === selector).length).toBe(1);
+
+        const ops = sink.writes.filter((w) => w.op === 'setRuleStyles' && w.args[0] === selector);
+        expect(ops.length).toBe(1);
+        expect(ops[0].args[1]).toEqual({ color: 'red' });
+    });
+
+    it('case 18: a null removal on an already-materialised rule still flushes', () => {
+        const probe = new RuleProbe();
+        probe.rule('color', 'red');
+        probe.getElement(true);
+
+        const sink     = DOM.sink as RecordingDOMSink;
+        const selector = '#' + probe.getId();
+        const before   = sink.writes.filter((w) => w.op === 'setRuleStyles' && w.args[0] === selector).length;
+
+        probe.setAutoCommitStyle(false);
+        probe.rule('color', null);
+        probe.setAutoCommitStyle(true);
+
+        const ops = sink.writes.filter((w) => w.op === 'setRuleStyles' && w.args[0] === selector);
+        expect(ops.length).toBe(before + 1);
+        expect(ops[ops.length - 1].args[1]).toEqual({ color: null });
+    });
+
+    it('case 19: teardown after a skipped window is a clean no-op', () => {
+        const c = new Component({});
+        c.getElement(true);
+
+        const sink     = DOM.sink as RecordingDOMSink;
+        const selector = '#' + c.getId();
+
+        c.setAutoCommitStyle(false);
+        c.setAutoCommitStyle(true);
+
+        expect(() => c.dispose()).not.toThrow();
+
+        expect(sink.writes.some((w) => w.op === 'deleteStyleRule' && w.args[0] === selector)).toBe(false);
+        expect(_ruleCacheHas(selector)).toBe(false);
+    });
+
+    it('case 20: a deferred rule queued with only a null removal materialises nothing', () => {
+        const p = new NullOnlyDeferredRuleProbe();
+        p.getElement(true);
+
+        const sink     = DOM.sink as RecordingDOMSink;
+        const selector = '#' + p.getId() + '.probe';
+
+        expect(sink.writes.some((w) => w.op === 'ensureStyleRule' && w.args[0] === selector)).toBe(false);
+        expect(sink.writes.some((w) => w.op === 'setRuleStyles' && w.args[0] === selector)).toBe(false);
+        expect(_ruleCacheHas(selector)).toBe(false);
+    });
+
+    it('case 21: teardown of a skipped deferred rule is a clean no-op', () => {
+        const p = new NullOnlyDeferredRuleProbe();
+        p.getElement(true);
+
+        const sink     = DOM.sink as RecordingDOMSink;
+        const selector = '#' + p.getId() + '.probe';
+
+        expect(() => p.dispose()).not.toThrow();
+
+        expect(sink.writes.some((w) => w.op === 'deleteStyleRule' && w.args[0] === selector)).toBe(false);
+        expect(_ruleCacheHas(selector)).toBe(false);
+    });
+});
+
+describe('StyleRule — hasQueuedDeclarations', () => {
+    it('case 22: an empty dirty bag has no queued declarations', () => {
+        const rule = new StyleRule({ scope: 'selector', name: '.hqd-case22', materialize: false });
+
+        expect(rule.hasQueuedDeclarations()).toBe(false);
+    });
+
+    it('case 23: a bag of only null removals has no queued declarations', () => {
+        const rule = new StyleRule({ scope: 'selector', name: '.hqd-case23', materialize: false });
+
+        rule.set('border', null);
+        rule.set('color', null);
+
+        expect(rule.hasQueuedDeclarations()).toBe(false);
+    });
+
+    it('case 24: one real value among null removals counts', () => {
+        const rule = new StyleRule({ scope: 'selector', name: '.hqd-case24', materialize: false });
+
+        rule.set('border', null);
+        rule.set('color', 'red');
+
+        expect(rule.hasQueuedDeclarations()).toBe(true);
     });
 });

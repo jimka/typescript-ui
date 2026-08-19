@@ -248,6 +248,57 @@ From `packages/lib`:
 
 ---
 
+## Implementation Notes
+
+The plan's own Verification step 6 anticipated that `commitCSSRule()` and
+`materialiseDeferredRules()` are "exercised broadly across the component
+tests, so a wrong guard would show up as missing CSS." Running the full
+suite surfaced exactly that shape of fallout in three pre-existing tests —
+not a wrong guard, but tests whose setup had, without saying so, relied on
+the bug this plan removes:
+
+- `tests/overlay/Dock.closeDisposal.test.ts` (`D1`, `D5`) constructed a bare
+  `new Component({})` as panel content and asserted a `#id` rule existed for
+  it before checking disposal/survival. A stock `Component({})` queues no
+  real declaration, so it now correctly gets no rule at all (matching case
+  15/16's own dominant case) — there was never anything for these tests to
+  find a rule for except the empty `#id {}` `commitCSSRule()` used to insert
+  unconditionally on every `dock.doLayout()` commit. Fixed by giving the
+  test's `content` a real per-instance declaration
+  (`new Component({ backgroundColor: '#fff' })`, mirroring case 6's own
+  pattern in `StyleRuleBatchedFlush.test.ts`), which restores a real rule to
+  check disposal/survival against and leaves both tests' actual intent
+  unchanged.
+- `tests/component/shared/VirtualRowView.poolDisposal.test.ts`'s "disposes a
+  table body's pooled rows" case asserted pooled `Row` components carried a
+  surviving rule before teardown. `Row` itself queues no per-instance CSS-rule
+  declaration at all — its zebra-stripe/new/dirty tinting writes an inline
+  style directly (`Row.updateVisualState`), never through `_styleRule` — so
+  under this plan's fix it correctly never materialises one; the file's own
+  sibling "tree" case already made no such precondition assertion, for
+  (evidently) the same reason. Editing `Row.ts` to manufacture a rule for the
+  test to observe was out of this plan's scope (`Component.ts`/`StyleTarget.ts`
+  only) and would be a real behaviour change made solely to satisfy a test.
+  Removed the now-permanently-false precondition, kept the
+  no-leak-after-teardown assertion, and added a comment pointing out that the
+  destructor-recursion regression this file exists to catch is still fully
+  covered by the sibling "disposes the cells inside each pooled row" case
+  (a cell is only destroyed transitively through its owning row, so cell
+  disposal already proves the row's own teardown path ran).
+
+Case 25's manual check ran against the worktree's own dev server (a fresh
+`npm install` + `vite --port 8021`, kept separate from the already-running
+main-tree server per the project's dev-server convention) at `/#/misc`,
+including the wide (45-column) table and an `autoScroll: both` overlay-scroll
+panel to broaden coverage beyond the plan's own measurement session: 0 empty
+plain rules and 0 empty scrollbar rules across 2405 style rules, with exactly
+1 real (non-empty) scrollbar rule where the overlay panel's native-scrollbar
+hide genuinely applies — confirming the positive case (case 17's shape) still
+materialises correctly live. No visual difference observed against the
+pre-fix rendering.
+
+---
+
 ## Notes
 
 [^measurement]: Measured against the running dev server at `http://localhost:8015/#/misc` (serving the main tree; confirmed via `readlink /proc/<pid>/cwd`). Method: `navigate_page` with an `initScript` that wraps `CSSStyleSheet.prototype.insertRule` to record `{ rule, stack }` for every call, then a page script that scans `document.getElementById('Base').sheet.cssRules` for rules whose `style.length === 0`, matches each empty rule's selector back to its recorded insertion stack, and tallies which function name each stack passes through. Result: 178 empty plain rules, all via `commitCSSRule`; 6 empty `::-webkit-scrollbar` rules, all via `materialiseDeferredRules`; 0 via `materialiseStyleRule`. The original report (147 plain, 6 scrollbar) came from an earlier session on the same page — component count on this demo view depends on what's expanded/scrolled into existence, so the plain-rule count differs; the scrollbar count and the 100%/100%/0% call-site attribution were stable across both measurements.
