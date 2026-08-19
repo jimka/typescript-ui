@@ -2145,7 +2145,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._options.backgroundColor = backgroundColor;
-        this.setElementCSSRule("backgroundColor", backgroundColor);
+        this.setReconciledCSSRules({ backgroundColor });
 
         return this;
     }
@@ -2159,7 +2159,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // Set (not skip) the key so `getBackgroundColor` sees an explicit clear
         // and returns null, suppressing a class-level default.
         this._options.backgroundColor = undefined;
-        this.setElementCSSRule("backgroundColor", null);
+
+        // A bare removal would hand the property to the class rule when the
+        // class defaults it, repainting the background instead of clearing
+        // it — assert the CSS initial value instead so "clear" always means
+        // "paint nothing".
+        this.setReconciledCSSRules({ backgroundColor: this._defaultOptions.backgroundColor ? "transparent" : null });
 
         return this;
     }
@@ -2222,7 +2227,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     setBackgroundImage(backgroundImage: string): this {
         this._options.backgroundImage = backgroundImage;
-        this.setElementCSSRule("backgroundImage", backgroundImage);
+        this.setReconciledCSSRules({ backgroundImage });
 
         return this;
     }
@@ -2234,7 +2239,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     clearBackgroundImage(): this {
         this._options.backgroundImage = undefined;
-        this.setElementCSSRule("backgroundImage", null);
+
+        // Same reasoning as `clearBackgroundColor`: a defaulting class would
+        // repaint through a bare removal, so assert the CSS initial value.
+        this.setReconciledCSSRules({ backgroundImage: this._defaultOptions.backgroundImage ? "none" : null });
 
         return this;
     }
@@ -2349,7 +2357,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     clearBorder(): this {
         this._border       = { border: "none" };
         this._borderWidths = null;
-        this.setElementCSSRules(borderToStyle(this._border));
+        this.setReconciledCSSRules(borderToStyle(this._border));
 
         return this;
     }
@@ -2374,7 +2382,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this.subscribeTheme(() => this._borderWidths = null);
         }
 
-        this.setElementCSSRules(borderToStyle(this._border));
+        this.setReconciledCSSRules(borderToStyle(this._border));
 
         return this;
     }
@@ -2526,7 +2534,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._options.shadow = shadow;
-        this.setElementCSSRule("boxShadow", shadow);
+        this.setReconciledCSSRules({ boxShadow: shadow });
 
         return this;
     }
@@ -2544,7 +2552,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._options.shadow = undefined;
-        this.setElementCSSRule("boxShadow", "none");
+        this.setReconciledCSSRules({ boxShadow: "none" });
 
         return this;
     }
@@ -4704,6 +4712,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         return this;
     }
 
+    /** True when the framework or class rule already delivers `value` for `key`. */
+    private matchesClassStyle(key: string, value: string | null): boolean {
+        return this._inheritedStyleBag !== null && this._inheritedStyleBag[key] === value;
+    }
+
     /**
      * Routes one `applyStyle` rule declaration to the rule that should carry
      * it: dropped when the framework or class rule already delivers the same
@@ -4715,14 +4728,43 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @remarks Only skips a write issued from `applyStyle` itself — a runtime
      * setter calling `setElementCSSRule` never goes through this helper, so
      * it always reaches `#id` and wins on specificity regardless of what the
-     * framework or class rule already holds.
+     * framework or class rule already holds. The hoisted chrome properties
+     * are the exception: their runtime setters route through
+     * {@link setReconciledCSSRules} instead, which still writes on a match —
+     * as a removal — rather than skipping.
      */
     protected writeRuleDeclaration(key: string, value: string | null): void {
-        if (this._inheritedStyleBag !== null && this._inheritedStyleBag[key] === value) {
+        if (this.matchesClassStyle(key, value)) {
             return;
         }
 
         this._styleRule.queue(key, value);
+    }
+
+    /**
+     * `writeRuleDeclaration`'s clear-on-match sibling, for the hoisted chrome
+     * declarations. A match queues a removal rather than skipping, so a value the
+     * instance wrote earlier — during construction, or through a runtime setter —
+     * cannot survive on `#id` and outrank the class rule.
+     */
+    protected reconcileRuleDeclaration(key: string, value: string | null): void {
+        this._styleRule.queue(key, this.matchesClassStyle(key, value) ? null : value);
+    }
+
+    /**
+     * Runtime-setter form of `reconcileRuleDeclaration`. Routes through
+     * `setElementCSSRules` so the whole bag commits in one flush and the
+     * `autoCommitStyle` batching gate still applies. Inert before the first
+     * render, when `_inheritedStyleBag` is still null.
+     */
+    protected setReconciledCSSRules(values: Style): this {
+        const resolved: Style = {};
+
+        for (const key of Object.keys(values)) {
+            resolved[key] = this.matchesClassStyle(key, values[key]) ? null : values[key];
+        }
+
+        return this.setElementCSSRules(resolved);
     }
 
     /**
@@ -4823,12 +4865,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const backgroundColor = this.getBackgroundColor();
         if (backgroundColor) {
-            this.writeRuleDeclaration("backgroundColor", backgroundColor);
+            this.reconcileRuleDeclaration("backgroundColor", backgroundColor);
         }
 
         const backgroundImage = this.getBackgroundImage();
         if (backgroundImage) {
-            this.writeRuleDeclaration("backgroundImage", backgroundImage);
+            this.reconcileRuleDeclaration("backgroundImage", backgroundImage);
         }
     }
 
@@ -4914,7 +4956,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     private applyChromeStyles(): void {
         if (this._border) {
-            this._styleRule.queueMany(borderToStyle(this._border));
+            const border = borderToStyle(this._border);
+            for (const key of Object.keys(border)) {
+                this.reconcileRuleDeclaration(key, border[key]);
+            }
         } else {
             this.writeRuleDeclaration("border", null);
         }
@@ -4931,7 +4976,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const shadow = this.getShadow();
         if (shadow) {
-            this.writeRuleDeclaration("boxShadow", shadow);
+            this.reconcileRuleDeclaration("boxShadow", shadow);
         }
     }
 

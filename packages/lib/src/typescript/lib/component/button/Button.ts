@@ -920,11 +920,19 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (chromeless) {
             // The chrome group's class defaults are dispatched only by
             // `super.applyChromeOptions` (skipped here for chromeless), so a
-            // fresh chromeless button never receives them. The explicit
-            // `undefined` writes still matter on a re-apply (e.g. `setChromeless`
-            // after a chromeful pass): they clear a previously-written value so
-            // the chrome getters report `null` and `applyStyle` skips the
-            // property.
+            // fresh chromeless button never receives them.
+            //
+            // `borderRadius` isn't hoisted onto `.Button`'s class rule, so the
+            // explicit `undefined` write still works the old way on a
+            // re-apply (e.g. `setChromeless` after a chromeful pass): it
+            // clears a previously-written value so `getBorderRadius` reports
+            // `null` and `applyStyle` skips the property. `shadow` and
+            // `backgroundImage` are hoisted now, so the same option-only
+            // clear would no longer suppress them — a skipped `#id` write
+            // just hands the property to `.Button`'s own class-tier
+            // declaration instead of painting nothing. `setShadow("none")`
+            // / `setBackgroundImage("none")` assert the real neutral value
+            // instead, the same way `clearBorder()` does for the border below.
             //
             // Border goes through the private `_border` field, so `clearBorder`
             // clears it to a `none` border that overrides the UA `<button>` ridge.
@@ -937,9 +945,9 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             // the second "nobody pinned one" answer; a subclass fill
             // (`MenuBarButton`, `TabButton`) matches neither and survives.
             this.clearBorder();
-            this._options.borderRadius    = undefined;
-            this._options.shadow          = undefined;
-            this._options.backgroundImage = undefined;
+            this._options.borderRadius = undefined;
+            this.setShadow("none");
+            this.setBackgroundImage("none");
 
             const resting = this.getBackgroundColor();
 
