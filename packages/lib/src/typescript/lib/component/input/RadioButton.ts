@@ -3,9 +3,12 @@
 import { Animation } from "~/core/Animation.js";
 import { AbstractBooleanInput, AbstractBooleanInputOptions } from "~/component/input/AbstractBooleanInput.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM, type Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
+import { type StateStyleRule } from "~/core/ClassStyleRules.js";
+import { borderToStyle } from "~/primitive/Border.js";
 import { callable } from "~/core/Callable.js";
 import { circle } from "~/glyphs/solid/circle.js";
 
@@ -14,16 +17,71 @@ import { circle } from "~/glyphs/solid/circle.js";
 Glyph.register(circle);
 
 const _defaultRadioButtonRingOptions: Partial<ComponentOptions> = {
-    preferredSize: { width: 16, height: 16 },
-    minSize:       { width: 16, height: 16 },
-    maxSize:       { width: 16, height: 16 },
-    cursor:        "pointer",
+    preferredSize:   { width: 16, height: 16 },
+    minSize:         { width: 16, height: 16 },
+    maxSize:         { width: 16, height: 16 },
+    cursor:          "pointer",
+    backgroundColor: "var(--ts-ui-radio-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))",
+    border:          "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))",
 };
 
-/** The ring graphic behind a {@link RadioButton}. See `CheckboxBox`'s doc comment for the shape this mirrors. */
+/** `_ring`'s selected-state declarations. Read by both `getSelectedClassDeclarations` and `applyState`. */
+const RADIO_SELECTED_DECLARATIONS: Readonly<Record<string, string>> = Object.freeze({
+    backgroundColor: "var(--ts-ui-radio-bg-selected, rgb(30, 100, 200))",
+    border:          "1px solid var(--ts-ui-radio-bg-selected, rgb(30, 100, 200))",
+});
+
+/**
+ * The ring graphic behind a {@link RadioButton}. See `CheckboxBox`'s doc
+ * comment (Checkbox.ts) for the shape this mirrors — static geometry/cursor
+ * and the resting backgroundColor/border are class defaults; the selected
+ * background and border write through a `createStateStyleRule`-backed state
+ * rule — see `plans/implemented/checkbox-radio-delegate-state-style-defaults.md`.
+ */
 class RadioButtonRing extends Component {
+    private _selected: boolean = false;
+
+    private declare _selectedStyleRule?: StateStyleRule;
+    private get selectedStyleRule(): StateStyleRule {
+        return this._selectedStyleRule ??= this.createStateStyleRule(".selected", () => this.getSelectedClassDeclarations());
+    }
+
     constructor() {
         super(undefined, _defaultRadioButtonRingOptions);
+    }
+
+    protected getSelectedClassDeclarations(): Record<string, string | null> {
+        return {
+            backgroundColor: RADIO_SELECTED_DECLARATIONS.backgroundColor,
+            ...borderToStyle({ border: RADIO_SELECTED_DECLARATIONS.border }),
+        };
+    }
+
+    protected override getRestingExclusionSuffixes(): readonly string[] {
+        return [".selected"];
+    }
+
+    /** See `CheckboxBox.applyState`'s doc comment (Checkbox.ts) — identical reasoning, one state instead of two. */
+    applyState(selected: boolean): void {
+        this._selected = selected;
+
+        const element = this.getElement();
+        if (element) {
+            DOM.sink.apply(element, { toggleClass: { selected } });
+        }
+
+        if (selected) {
+            this.selectedStyleRule.setMany({
+                backgroundColor: RADIO_SELECTED_DECLARATIONS.backgroundColor,
+                ...borderToStyle({ border: RADIO_SELECTED_DECLARATIONS.border }),
+            });
+        }
+    }
+
+    protected render(): Handle {
+        const element = super.render();
+        DOM.sink.apply(element, { toggleClass: { selected: this._selected } });
+        return element;
     }
 }
 
@@ -84,7 +142,7 @@ const _defaultRadioButtonOptions: Partial<RadioButtonOptions> = {
 class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
     extends AbstractBooleanInput<TOptions>
 {
-    private _ring:  Component;
+    private _ring:  RadioButtonRing;
     private _dot:   Glyph;
 
     /**
@@ -112,8 +170,6 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
         // can't collapse the ring graphic when the radio is packed into a
         // tight container with siblings that have flexible widths.
         this._ring.setSize({ width: 16, height: 16 });
-        this._ring.setBackgroundColor("var(--ts-ui-radio-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))");
-        this._ring.setBorder("1px solid var(--ts-ui-form-border, rgb(160, 160, 160))");
         this._ring.setBorderRadius("50%");
 
         this._dot = new RadioButtonDot();
@@ -362,12 +418,7 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
     private applySelected(selected: boolean): void {
         this.getAria().setChecked(selected);
 
-        this._ring.setBackgroundColor(selected
-            ? "var(--ts-ui-radio-bg-selected, rgb(30, 100, 200))"
-            : "var(--ts-ui-radio-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))");
-        this._ring.setBorder(selected
-            ? "1px solid var(--ts-ui-radio-bg-selected, rgb(30, 100, 200))"
-            : "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))");
+        this._ring.applyState(selected);
 
         this._dot.setOpacity(selected ? 1 : 0);
     }

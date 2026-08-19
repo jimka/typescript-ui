@@ -3,9 +3,12 @@
 import { Animation } from "~/core/Animation.js";
 import { AbstractBooleanInput, AbstractBooleanInputOptions } from "~/component/input/AbstractBooleanInput.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM, type Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
+import { type StateStyleRule } from "~/core/ClassStyleRules.js";
+import { borderToStyle } from "~/primitive/Border.js";
 import { callable } from "~/core/Callable.js";
 import { check } from "~/glyphs/solid/check.js";
 
@@ -15,23 +18,121 @@ import { check } from "~/glyphs/solid/check.js";
 Glyph.register(check);
 
 const _defaultCheckboxBoxOptions: Partial<ComponentOptions> = {
-    preferredSize: { width: 16, height: 16 },
-    minSize:       { width: 16, height: 16 },
-    maxSize:       { width: 16, height: 16 },
-    cursor:        "pointer",
+    preferredSize:   { width: 16, height: 16 },
+    minSize:         { width: 16, height: 16 },
+    maxSize:         { width: 16, height: 16 },
+    cursor:          "pointer",
+    backgroundColor: "var(--ts-ui-checkbox-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))",
+    border:          "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))",
 };
+
+/** `_box`'s checked-state declarations. Read by both `getSelectedClassDeclarations` and `applyState` — one source of truth, mirroring `ToggleButton`'s `TOGGLE_SELECTED_DECLARATIONS`. */
+const CHECKBOX_SELECTED_DECLARATIONS: Readonly<Record<string, string>> = Object.freeze({
+    backgroundColor: "var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))",
+    border:          "1px solid var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))",
+});
+
+/** `_box`'s indeterminate-state declarations. Same shape as `CHECKBOX_SELECTED_DECLARATIONS`. */
+const CHECKBOX_INDETERMINATE_DECLARATIONS: Readonly<Record<string, string>> = Object.freeze({
+    backgroundColor: "var(--ts-ui-checkbox-bg-indeterminate, rgb(160, 160, 160))",
+    border:          "1px solid var(--ts-ui-checkbox-bg-indeterminate, rgb(160, 160, 160))",
+});
 
 /**
  * The box graphic behind a {@link Checkbox} — the click + cursor surface.
  * Module-private: constructed only from `Checkbox`'s own constructor. Static
  * geometry and cursor are class defaults so every instance shares one
- * `.CheckboxBox` CSS rule instead of repeating them; the checked/indeterminate
- * background and border stay per-instance, per-state writes — see
- * plans/checkbox-radio-delegate-state-style-defaults.md.
+ * `.CheckboxBox` CSS rule instead of repeating them; the resting
+ * backgroundColor/border are class defaults too, and the checked/indeterminate
+ * background and border write through `createStateStyleRule`-backed state
+ * rules — see `plans/implemented/checkbox-radio-delegate-state-style-defaults.md`.
  */
 class CheckboxBox extends Component {
+    private _selected:      boolean = false;
+    private _indeterminate: boolean = false;
+
+    private declare _selectedStyleRule?: StateStyleRule;
+    private get selectedStyleRule(): StateStyleRule {
+        return this._selectedStyleRule ??= this.createStateStyleRule(".selected", () => this.getSelectedClassDeclarations());
+    }
+
+    private declare _indeterminateStyleRule?: StateStyleRule;
+    private get indeterminateStyleRule(): StateStyleRule {
+        return this._indeterminateStyleRule ??= this.createStateStyleRule(".indeterminate", () => this.getIndeterminateClassDeclarations());
+    }
+
     constructor() {
         super(undefined, _defaultCheckboxBoxOptions);
+    }
+
+    protected getSelectedClassDeclarations(): Record<string, string | null> {
+        return {
+            backgroundColor: CHECKBOX_SELECTED_DECLARATIONS.backgroundColor,
+            ...borderToStyle({ border: CHECKBOX_SELECTED_DECLARATIONS.border }),
+        };
+    }
+
+    protected getIndeterminateClassDeclarations(): Record<string, string | null> {
+        return {
+            backgroundColor: CHECKBOX_INDETERMINATE_DECLARATIONS.backgroundColor,
+            ...borderToStyle({ border: CHECKBOX_INDETERMINATE_DECLARATIONS.border }),
+        };
+    }
+
+    /**
+     * `_box`'s own resting chrome must stay isolated from both non-resting
+     * states — see `plans/implemented/checkbox-radio-delegate-state-style-defaults.md`.
+     */
+    protected override getRestingExclusionSuffixes(): readonly string[] {
+        return [".selected", ".indeterminate"];
+    }
+
+    /**
+     * Applies the checked/indeterminate visual state: toggles the CSS state
+     * classes and, for a non-resting state, writes background + border
+     * through the matching state-tier rule. The resting branch writes
+     * nothing — `_box`'s base rule is never touched after construction (its
+     * `backgroundColor`/`border` come from `_defaultCheckboxBoxOptions`
+     * alone), so there is nothing to restore when a non-resting class is
+     * removed; see this plan's Architecture Decisions.
+     *
+     * `selected` and `indeterminate` are not mutually exclusive as *passed
+     * in* — `Checkbox.setIndeterminate` deliberately leaves `selected`
+     * untouched, so a checkbox that is selected when it becomes indeterminate
+     * reaches this method with both `true`. The `.selected` class is only
+     * ever toggled on when `!indeterminate`, so the resting-isolation
+     * selector's `:not(.selected):not(.indeterminate)` premise (the two CSS
+     * classes themselves are mutually exclusive) holds regardless, and the
+     * DOM matches the same indeterminate-wins priority the branch below
+     * already applies to the style write.
+     */
+    applyState(selected: boolean, indeterminate: boolean): void {
+        this._selected      = selected;
+        this._indeterminate = indeterminate;
+
+        const element = this.getElement();
+        if (element) {
+            DOM.sink.apply(element, { toggleClass: { selected: selected && !indeterminate, indeterminate } });
+        }
+
+        if (indeterminate) {
+            this.indeterminateStyleRule.setMany({
+                backgroundColor: CHECKBOX_INDETERMINATE_DECLARATIONS.backgroundColor,
+                ...borderToStyle({ border: CHECKBOX_INDETERMINATE_DECLARATIONS.border }),
+            });
+        } else if (selected) {
+            this.selectedStyleRule.setMany({
+                backgroundColor: CHECKBOX_SELECTED_DECLARATIONS.backgroundColor,
+                ...borderToStyle({ border: CHECKBOX_SELECTED_DECLARATIONS.border }),
+            });
+        }
+    }
+
+    /** Re-applies the cached state classes at render, for a state set before mount. */
+    protected render(): Handle {
+        const element = super.render();
+        DOM.sink.apply(element, { toggleClass: { selected: this._selected && !this._indeterminate, indeterminate: this._indeterminate } });
+        return element;
     }
 }
 
@@ -112,7 +213,7 @@ const _defaultCheckboxOptions: Partial<CheckboxOptions> = {
 class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     extends AbstractBooleanInput<TOptions>
 {
-    private _box:   Component;
+    private _box:   CheckboxBox;
     private _check: Glyph;
     private _dash:  Component;
 
@@ -138,8 +239,6 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         // can't collapse the box graphic when the checkbox sits next to
         // flexible siblings.
         this._box.setSize({ width: 16, height: 16 });
-        this._box.setBackgroundColor("var(--ts-ui-checkbox-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))");
-        this._box.setBorder("1px solid var(--ts-ui-form-border, rgb(160, 160, 160))");
         this._box.setBorderRadius("var(--ts-ui-checkbox-radius, 3px)");
 
         this._check = new CheckboxCheckGlyph();
@@ -425,19 +524,7 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
             this.getAria().setChecked(selected);
         }
 
-        const fill = indeterminate
-            ? "var(--ts-ui-checkbox-bg-indeterminate, rgb(160, 160, 160))"
-            : selected
-                ? "var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))"
-                : "var(--ts-ui-checkbox-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))";
-        const border = selected || indeterminate
-            ? "1px solid " + (indeterminate
-                ? "var(--ts-ui-checkbox-bg-indeterminate, rgb(160, 160, 160))"
-                : "var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))")
-            : "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))";
-
-        this._box.setBackgroundColor(fill);
-        this._box.setBorder(border);
+        this._box.applyState(selected, indeterminate);
 
         this._check.setOpacity(selected && !indeterminate ? 1 : 0);
         this._dash.setOpacity(indeterminate ? 1 : 0);
