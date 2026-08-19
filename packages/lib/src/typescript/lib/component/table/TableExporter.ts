@@ -20,13 +20,14 @@ export interface ExportOptions {
 }
 
 /**
- * Stateless helper that converts a column list and a record list into a CSV
- * or JSON download.
+ * Stateless helper that converts a column list and a record list into a CSV,
+ * JSON, or TSV download.
  *
  * @remarks
- * Used internally by {@link Table.exportCSV} and {@link Table.exportJSON}.
- * Combo, date, time, and datetime values are formatted the same way the
- * matching cell renderer displays them, so exports match what the user sees.
+ * Used internally by {@link Table.exportCSV}, {@link Table.exportJSON}, and
+ * {@link Table.exportTSV}. Combo, date, time, and datetime values are
+ * formatted the same way the matching cell renderer displays them, so
+ * exports match what the user sees.
  */
 export class TableExporter {
 
@@ -91,6 +92,33 @@ export class TableExporter {
     }
 
     /**
+     * Converts columns + records to a tab-separated string and triggers a download.
+     *
+     * @param columns       - The columns to include as fields in the TSV.
+     * @param records       - The records to serialize as rows.
+     * @param columnConfigs - Per-field column config map (carries `values` / `showSeconds`).
+     * @param display       - Resolver used to format combo/temporal values.
+     * @param options       - Optional export options.
+     */
+    static exportTSV(
+        columns      : Column[],
+        records      : ModelRecord[],
+        columnConfigs: Map<string, ColumnConfig>,
+        display      : CellTextResolver,
+        options     ?: ExportOptions
+    ): void {
+        const header = columns.map(c => c.getField().getName());
+
+        const rows = records.map(record =>
+            columns.map(c => String(TableExporter.formatValue(c, record.get(c.getField().getName()), columnConfigs, display) ?? ''))
+        );
+
+        const tsv = TableExporter.buildRectangularTSV([header, ...rows]);
+
+        TableExporter.download(tsv, options?.filename ?? 'table-export.tsv', 'text/tab-separated-values;charset=utf-8;');
+    }
+
+    /**
      * Formats a raw cell value the same way the matching cell renderer does.
      * Only two shapes are reformatted — everything else, including `null` /
      * `undefined`, a plain `number` / `string` / `boolean`, and a `Date` on a
@@ -143,6 +171,33 @@ export class TableExporter {
         }
 
         return str;
+    }
+
+    /**
+     * Joins a row-major grid of already-stringified cell values into a
+     * tab/newline-delimited string, escaping each field.
+     *
+     * @param rows - The grid, one array of cell strings per row.
+     * @returns The tab-separated, newline-joined text.
+     *
+     * @internal
+     */
+    static buildRectangularTSV(rows: string[][]): string {
+        return rows.map(row => row.map(TableExporter.escapeTSVField).join('\t')).join('\n');
+    }
+
+    /**
+     * Escapes a single TSV field value.
+     *
+     * @param value - The already-stringified value to escape.
+     * @returns The escaped TSV field, wrapped in quotes when it contains a tab, `"`, or `\n`.
+     */
+    private static escapeTSVField(value: string): string {
+        if (value.includes('\t') || value.includes('"') || value.includes('\n')) {
+            return '"' + value.replace(/"/g, '""') + '"';
+        }
+
+        return value;
     }
 
     /**

@@ -23,6 +23,7 @@ import { table_columns } from "~/glyphs/solid/table_columns.js";
 import { undo } from "~/glyphs/solid/undo.js";
 import { file_csv } from "~/glyphs/solid/file_csv.js";
 import { file_code } from "~/glyphs/solid/file_code.js";
+import { file_lines } from "~/glyphs/solid/file_lines.js";
 import { clipboard } from "~/glyphs/solid/clipboard.js";
 import { Column } from "~/component/table/Column.js";
 import type { CellType, ColumnConfig, ComboOption } from "~/component/table/ColumnConfig.js";
@@ -44,7 +45,7 @@ import { chainRoom, distributeDragChain, DRAG_DISTRIBUTION_EPSILON } from "~/cor
 // Register the column context menu's item glyphs eagerly at module load —
 // same pattern as PaginationBar's nav glyphs — so a consumer never has to
 // pre-register them before the menu can open.
-Glyph.register(table_columns, undo, file_csv, file_code, clipboard);
+Glyph.register(table_columns, undo, file_csv, file_code, file_lines, clipboard);
 
 /** Events emitted by {@link Table}. */
 export type TableEvent = "selection" | "cellclick";
@@ -1649,6 +1650,7 @@ class Table extends Component<TableOptions> {
             this._columnContextMenu.show(x, y, [
                 { text: 'Export as CSV',  glyph: 'file-csv',  action: () => this.exportCSV()  },
                 { text: 'Export as JSON', glyph: 'file-code', action: () => this.exportJSON() },
+                { text: 'Export as TSV',  glyph: 'file-lines', action: () => this.exportTSV() },
             ]);
 
             return;
@@ -1693,7 +1695,8 @@ class Table extends Component<TableOptions> {
             items.push(
                 { separator: true },
                 { text: 'Export as CSV',  glyph: 'file-csv',  action: () => this.exportCSV()  },
-                { text: 'Export as JSON', glyph: 'file-code', action: () => this.exportJSON() }
+                { text: 'Export as JSON', glyph: 'file-code', action: () => this.exportJSON() },
+                { text: 'Export as TSV',  glyph: 'file-lines', action: () => this.exportTSV() }
             );
         }
 
@@ -1942,8 +1945,8 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Enables or disables the "Export as CSV" / "Export as JSON" entries in
-     * the column context menu.
+     * Enables or disables the "Export as CSV" / "Export as JSON" / "Export
+     * as TSV" entries in the column context menu.
      *
      * @param enabled - When true the export items are appended to the menu.
      */
@@ -1979,6 +1982,20 @@ class Table extends Component<TableOptions> {
         const records = this._store.getRecords();
 
         TableExporter.exportJSON(columns, records, this._columnConfigs, this._cellText, options);
+    }
+
+    /**
+     * Triggers a TSV download of the current store view. Mode-independent:
+     * always exports the source table's records and columns, never the
+     * rotated field/value projection.
+     *
+     * @param options - Optional export options (e.g. include hidden columns, custom filename).
+     */
+    exportTSV(options?: ExportOptions): void {
+        const columns = this.getExportColumns(options?.includeHidden ?? false);
+        const records = this._store.getRecords();
+
+        TableExporter.exportTSV(columns, records, this._columnConfigs, this._cellText, options);
     }
 
     /**

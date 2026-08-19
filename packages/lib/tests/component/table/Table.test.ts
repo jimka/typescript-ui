@@ -130,6 +130,20 @@ describe('Column window — export and ARIA column count are scroll-independent'
         expect(spy.mock.calls[0][0]).toHaveLength(20);
     });
 
+    it('exportTSV on a wide table scrolled to the far right still emits every column, not just the windowed ones', async () => {
+        const table = await wideTable();
+        const body  = table.getBody();
+
+        (body as any)._scroller.setScrollX(100000); // clamps to the content's far right
+        expect((body as any)._scroller.getScrollX()).toBeGreaterThan(0);
+
+        const spy = vi.spyOn(TableExporter, 'exportTSV').mockImplementation(() => {});
+        table.exportTSV();
+
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy.mock.calls[0][0]).toHaveLength(20);
+    });
+
     it('aria-colcount equals the full column count regardless of scroll position', async () => {
         const table = await wideTable();
         const body  = table.getBody();

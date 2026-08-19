@@ -190,7 +190,7 @@ describe('TableExporter.formatValue', () => {
     });
 });
 
-describe('TableExporter.exportCSV / exportJSON (structural smoke)', () => {
+describe('TableExporter.exportCSV / exportJSON / exportTSV (structural smoke)', () => {
     const MODEL = new Model([
         { name: 'id',   type: 'number', order: 0 },
         { name: 'name', type: 'string', order: 1 },
@@ -223,8 +223,39 @@ describe('TableExporter.exportCSV / exportJSON (structural smoke)', () => {
         expect(sink.writes.filter(w => w.op === 'click').length).toBe(1);
     });
 
+    it('exportTSV does not throw and triggers exactly one anchor click', () => {
+        expect(() => TableExporter.exportTSV(columns, records(), configs, display)).not.toThrow();
+
+        expect(sink.writes.filter(w => w.op === 'createElement' && w.args[0] === 'a').length).toBe(1);
+        expect(sink.writes.filter(w => w.op === 'click').length).toBe(1);
+    });
+
+    it('exportTSV downloads with the default .tsv filename', () => {
+        TableExporter.exportTSV(columns, records(), configs, display);
+
+        const applyWrite = sink.writes.find(
+            w => w.op === 'apply' && (w.args[1] as { setAttr?: Record<string, string> }).setAttr?.download !== undefined
+        );
+
+        expect((applyWrite?.args[1] as { setAttr: Record<string, string> }).setAttr.download).toBe('table-export.tsv');
+    });
+
     it('header field count equals the column count', () => {
         // Structural invariant: one CSV header field per resolved column.
         expect(columns.length).toBe(MODEL.getFields().length);
+    });
+});
+
+describe('TableExporter.buildRectangularTSV', () => {
+    it('joins each row\'s cells with tabs and the rows with newlines', () => {
+        expect(TableExporter.buildRectangularTSV([['Alice', '25'], ['Bob', '30']])).toBe('Alice\t25\nBob\t30');
+    });
+
+    it('formats a single-cell grid with no separators', () => {
+        expect(TableExporter.buildRectangularTSV([['only']])).toBe('only');
+    });
+
+    it('quote-wraps a field containing a tab, a quote, or a newline', () => {
+        expect(TableExporter.buildRectangularTSV([['a\tb', 'c"d', 'e\nf']])).toBe('"a\tb"\t"c""d"\t"e\nf"');
     });
 });

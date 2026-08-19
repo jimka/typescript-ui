@@ -168,8 +168,8 @@ class TreeTablePanel extends Container {
     }
 
     /**
-     * Enables or disables the "Export as CSV" / "Export as JSON" entries in
-     * the underlying tree table's column context menu.
+     * Enables or disables the "Export as CSV" / "Export as JSON" / "Export
+     * as TSV" entries in the underlying tree table's column context menu.
      *
      * @param enabled - When true the export items are appended to the menu.
      */
@@ -195,6 +195,15 @@ class TreeTablePanel extends Container {
      */
     exportJSON(options?: ExportOptions): void {
         this._treeTable.exportJSON(options);
+    }
+
+    /**
+     * Triggers a TSV download of the current store view.
+     *
+     * @param options - Optional export options (e.g. include hidden columns, custom filename).
+     */
+    exportTSV(options?: ExportOptions): void {
+        this._treeTable.exportTSV(options);
     }
 
     /**

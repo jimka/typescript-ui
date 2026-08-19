@@ -202,33 +202,6 @@ function range(a: number, b: number): number[] {
 }
 
 /**
- * Builds a tab/newline-formatted clipboard payload from an already-sliced
- * rectangular grid: every row's cells are joined with tabs, and the rows
- * are joined with newlines. Unlike the row-major span the deleted `buildTsv` formatted, a
- * cell-range selection is a true rectangle — every row spans the same
- * `[minCol, maxCol]`, so there is no boundary-row special case and no
- * character offsets to trim.
- *
- * @param rows - The copy grid's cell text, row-major, already sliced to the
- *   selected rectangle.
- *
- * @returns The tab-separated, newline-separated clipboard text.
- *
- * @internal
- */
-export function buildRectangularTsv(rows: string[][]): string {
-    return rows.map(row => row.map(escapeTsvField).join("\t")).join("\n");
-}
-
-function escapeTsvField(value: string): string {
-    if (value.includes("\t") || value.includes("\n") || value.includes("\"")) {
-        return "\"" + value.replace(/"/g, "\"\"") + "\"";
-    }
-
-    return value;
-}
-
-/**
  * Inclusive row/column bounds of a rectangular cell-range selection, in
  * visible-row / visible-column index space.
  *
@@ -1716,7 +1689,7 @@ class Body extends VirtualRowView<Row> {
             rows.push(line);
         }
 
-        return buildRectangularTsv(rows);
+        return TableExporter.buildRectangularTSV(rows);
     }
 
     /**
