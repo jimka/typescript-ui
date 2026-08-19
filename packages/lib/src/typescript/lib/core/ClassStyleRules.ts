@@ -15,6 +15,7 @@
 import { StyleRule }   from "~/core/StyleTarget.js";
 import { Position }    from "~/primitive/Position.js";
 import { isUnbounded } from "~/primitive/Size.js";
+import { type BorderOptions, borderToStyle } from "~/primitive/Border.js";
 
 /** The CSS class every rendered component element carries. */
 export const COMPONENT_CLASS = "ts-ui-component";
@@ -25,9 +26,11 @@ const FRAMEWORK_SELECTOR = ":where(." + COMPONENT_CLASS + ")";
 
 /**
  * The class-default fields a rule body is derived from — the subset of
- * `Component._defaultOptions` that feeds the fifteen hoistable
- * declarations. Typed structurally rather than as `ComponentOptions` so this
- * module does not import from `core/Component.ts` and no import cycle forms.
+ * `Component._defaultOptions` that feeds the hoistable declarations, some
+ * unconditional and some (the chrome group and `font`) only present when the
+ * class actually defaults them. Typed structurally rather than as
+ * `ComponentOptions` so this module does not import from `core/Component.ts`
+ * and no import cycle forms.
  */
 export interface ClassStyleDefaults {
     visible?:         boolean | null;
@@ -40,6 +43,10 @@ export interface ClassStyleDefaults {
     outline?:         string | null;
     foregroundColor?: string | null;
     font?:            TextClassStyleDefaults | null;
+    backgroundColor?: string | null;
+    backgroundImage?: string | null;
+    shadow?:          string | null;
+    border?:          BorderOptions | string | null;
 }
 
 /**
@@ -111,8 +118,8 @@ function ensureFrameworkStyleRule(): void {
 }
 
 /**
- * The fifteen declarations an instance of this class produces from defaults
- * alone. A key the phase would *not* write gets the value that reproduces "no
+ * The declarations an instance of this class produces from defaults alone. A
+ * key the phase would *not* write gets the value that reproduces "no
  * declaration", so the framework rule's value is undone rather than inherited.
  */
 function resolveDeclarations(defaults: ClassStyleDefaults): Record<string, string | null> {
@@ -144,6 +151,18 @@ function resolveDeclarations(defaults: ClassStyleDefaults): Record<string, strin
     // never introduce a key with value `undefined`.
     if (defaults.outline)         declarations.outline = defaults.outline;
     if (defaults.foregroundColor) declarations.color   = defaults.foregroundColor;
+
+    if (defaults.backgroundColor) declarations.backgroundColor = defaults.backgroundColor;
+    if (defaults.backgroundImage) declarations.backgroundImage = defaults.backgroundImage;
+    if (defaults.shadow)          declarations.boxShadow       = defaults.shadow;
+
+    const border = defaults.border;
+    if (border) {
+        // `borderToStyle` always yields all four longhands, resolving each side
+        // through `side ?? border ?? "none"` — the same expansion Component's own
+        // border writers use, so the two tiers compare key for key.
+        Object.assign(declarations, borderToStyle(typeof border === "string" ? { border } : border));
+    }
 
     const font = defaults.font;
     if (font?.fontFamily)     declarations.fontFamily     = font.fontFamily;
