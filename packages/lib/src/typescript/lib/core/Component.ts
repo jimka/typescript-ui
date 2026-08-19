@@ -4713,7 +4713,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /** True when the framework or class rule already delivers `value` for `key`. */
-    private matchesClassStyle(key: string, value: string | null): boolean {
+    protected matchesClassStyle(key: string, value: string | null): boolean {
         return this._inheritedStyleBag !== null && this._inheritedStyleBag[key] === value;
     }
 

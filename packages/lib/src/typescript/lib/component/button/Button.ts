@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "~/core/Component.js";
+import { Component, ComponentOptions, Style } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Fit } from "~/layout/Fit.js";
@@ -212,6 +212,22 @@ const BUTTON_FLAT_GLYPH_INSETS: Insets = new Insets(4, 4, 4, 4);
  * comment.
  */
 const BUTTON_RESTING_BACKGROUND: string = "var(--ts-ui-button-bg, transparent)";
+
+/**
+ * The resting-chrome declarations Button routes onto its own
+ * `#id:not(.pressed)` rule rather than the bare `#id` rule, so the shared
+ * `.ClassName.pressed` rule is unopposed while the button is pressed. These
+ * are the three properties `Component` reconciles against the class-tier bag
+ * and the `.pressed` class rule also declares; the `background` shorthand is
+ * isolated too, through `setElementCSSRule` below, because its setters still
+ * use the plain single-key write path. `border-radius`, the border longhands
+ * and `color` are not isolated and stay on `#id`.
+ */
+const RESTING_RECONCILED_KEYS: ReadonlySet<string> = new Set([
+    "backgroundColor",
+    "backgroundImage",
+    "boxShadow",
+]);
 
 /**
  * User-overridable visual defaults forwarded to `super` via the options bag.
@@ -558,6 +574,152 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
     private _hoverBorder: BorderOptions | null = null;
 
+    // Lazy `:not(.pressed)` rule. Carries a deviating resting `background-color`
+    // / `background-image` / `box-shadow` / `background` — the properties the
+    // widened `.pressed` class rule also declares — so the two never compete
+    // on specificity: `:not(.pressed)` stops matching the instant `.pressed`
+    // is added, the same mutual-exclusion `hoverStyleRule` above already
+    // relies on one tier up.
+    private declare _restingStyleRule?: StyleRule;
+    private get restingStyleRule(): StyleRule {
+        return this._restingStyleRule ??= this.createStyleRule(":not(.pressed)");
+    }
+
+    // Routes the isolated resting keys onto `restingStyleRule` instead of the
+    // bare `#id` rule. Defaults to `true`; the chromeless branch of
+    // `applyChromeOptions` sets it `false`, since a chromeless button never
+    // dispatches pressed chrome and so has nothing to isolate from — see
+    // `isRestingChromeIsolated`. `declare` (not an initializer) because the
+    // chromeless branch can write it during the `super()` cascade; a plain
+    // `= true` initializer would run afterward and silently revert the write.
+    private declare _restingChromeIsolated?: boolean;
+    private isRestingChromeIsolated(): boolean {
+        return this._restingChromeIsolated ?? true;
+    }
+
+    /**
+     * Routes the three reconciled resting declarations onto `#id:not(.pressed)`.
+     * `applyStyle`'s phases reach the rule through this hook. The class-tier
+     * comparison is preserved: a value the class rule already delivers is written
+     * as a removal, so a button holding its class defaults leaves the isolated
+     * rule empty and it is never inserted.
+     */
+    protected override reconcileRuleDeclaration(key: string, value: string | null): void {
+        if (!this.isRestingChromeIsolated() || !RESTING_RECONCILED_KEYS.has(key)) {
+            super.reconcileRuleDeclaration(key, value);
+
+            return;
+        }
+
+        this.restingStyleRule.set(key, this.matchesClassStyle(key, value) ? null : value);
+    }
+
+    /**
+     * Runtime-setter counterpart of the hook above — `setBackgroundColor`,
+     * `setBackgroundImage`, `setShadow` and their `clear*` siblings arrive here.
+     * `setBorder` / `clearBorder` arrive here too, with a bag of four border
+     * longhands that are not isolated and go on to `super`.
+     */
+    protected override setReconciledCSSRules(values: Style): this {
+        if (!this.isRestingChromeIsolated()) {
+            return super.setReconciledCSSRules(values);
+        }
+
+        const rest: Style = {};
+        let   isolated    = false;
+
+        for (const key of Object.keys(values)) {
+            if (!RESTING_RECONCILED_KEYS.has(key)) {
+                rest[key] = values[key];
+
+                continue;
+            }
+
+            isolated = true;
+            this.restingStyleRule.set(key, this.matchesClassStyle(key, values[key]) ? null : values[key]);
+        }
+
+        if (isolated) {
+            this.materialiseRestingRule();
+        }
+
+        return Object.keys(rest).length > 0 ? super.setReconciledCSSRules(rest) : this;
+    }
+
+    /**
+     * Routes the `background` shorthand — the one isolated key whose setters still
+     * use Component's plain single-key write path. No class-tier bag ever carries
+     * `background`, so there is nothing to compare against and the value is
+     * written as given.
+     */
+    protected override setElementCSSRule(key: string, value: Object | null): this {
+        if (!this.isRestingChromeIsolated() || key !== "background") {
+            return super.setElementCSSRule(key, value);
+        }
+
+        this.restingStyleRule.set(key, value ? String(value) : null);
+        this.materialiseRestingRule();
+
+        return this;
+    }
+
+    /**
+     * Inserts the isolated rule when a setter has queued a real declaration onto
+     * it after the element exists. `applyStyle` materialises deferred rules at the
+     * end of a render pass; a setter firing later has no such pass behind it, so
+     * it nudges the rule itself. A bag holding only `null` removals is left
+     * unmaterialised, as `Component` does for every other deferred rule.
+     */
+    private materialiseRestingRule(): void {
+        if (this.getElement() && this.restingStyleRule.hasQueuedDeclarations()) {
+            this.restingStyleRule.ensure();
+        }
+    }
+
+    /**
+     * `pressedStyleRule` counterpart of {@link materialiseRestingRule}, needed
+     * only because of this plan's widening of {@link getPressedClassDeclarations}.
+     * Before that widening, a chromeful Button's own `.pressed` rule always
+     * carried at least one real (non-deduped) declaration — `backgroundColor`
+     * / `backgroundImage` / `boxShadow` were never in the class bag — so
+     * `materialiseDeferredRules` always materialised it during the first
+     * render. Now a fully default-styled Button's four pressed setters all
+     * match the class bag and are skipped, so nothing queues a real
+     * declaration at first render and the rule stays unmaterialised (see
+     * Expected Behaviour row 2), and any later runtime write can be the
+     * *first* real, deviating write the rule ever sees. Called from
+     * {@link writePressedDeclaration} / {@link writePressedDeclarations}
+     * rather than from each `setPressedX` / `clearPressedX` individually, so
+     * no pressed-tier write path can be added later without this nudge.
+     */
+    private materialisePressedRule(): void {
+        if (this.getElement() && this.pressedStyleRule.hasQueuedDeclarations()) {
+            this.pressedStyleRule.ensure();
+        }
+    }
+
+    /**
+     * Routes a single `.pressed`-state declaration through
+     * `writeClassStateDeclaration` and materialises the rule afterward. Every
+     * `setPressedX` / `clearPressedX` setter goes through this (or
+     * {@link writePressedDeclarations} for a multi-key write) instead of
+     * calling `writeClassStateDeclaration` directly, so a runtime call on an
+     * already-rendered, previously-default Button — where `pressedStyleRule`
+     * never needed materialising at first render, see
+     * {@link materialisePressedRule} — still reaches the stylesheet instead
+     * of sitting queued indefinitely.
+     */
+    private writePressedDeclaration(key: string, value: string | null): void {
+        writeClassStateDeclaration(this.pressedStyleRule, this.pressedClassBag, key, value);
+        this.materialisePressedRule();
+    }
+
+    /** Multi-key counterpart of {@link writePressedDeclaration}, for `setPressedBorder` / `clearPressedBorder`. */
+    private writePressedDeclarations(values: Record<string, string | null>): void {
+        writeManyClassStateDeclarations(this.pressedStyleRule, this.pressedClassBag, values);
+        this.materialisePressedRule();
+    }
+
     private declare _pressedClassBag?: Readonly<Record<string, string | null>> | null;
     private get pressedClassBag(): Readonly<Record<string, string | null>> | null {
         return this._pressedClassBag ??= ensureClassStateRule(this.constructor, ".pressed", this.getPressedClassDeclarations());
@@ -573,44 +735,45 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * `_defaultOptions` — the same frozen, per-concrete-class bag the base `#id`
      * tier reads.
      *
-     * @remarks Only `color` (from `pressedForegroundColor`) is included.
-     * `backgroundColor`, `backgroundImage`, and `boxShadow` are deliberately
-     * excluded, even though Button also defaults and dispatches them
-     * unconditionally: Button's own *resting* chrome writes these same three
-     * properties straight onto the instance's base `#id` rule (via
-     * `Component.setBackgroundColor`/`setBackgroundImage`/`setShadow`).
-     * `component-chrome-base-tier-hoisting` added all three to the base-tier
-     * hoistable set (`core/ClassStyleRules.ts`'s `ClassStyleDefaults`),
-     * which clears a default-matching value off `#id` — but a bare `#id`
-     * selector's specificity (1,0,0) still beats *any* class-only selector,
-     * including `.Button.pressed` (0,2,0) or `.TabButton:hover:not(.pressed)`
-     * (0,5,0) — no matter how many classes the latter chains — whenever an
-     * instance-level write for one of these three properties IS present
-     * (e.g. a real per-instance customization). `color` is spared today
-     * because Button's *resting* foreground already routes through the
-     * base-tier hoistable set (`ClassStyleDefaults.foregroundColor`), so for
-     * a default-styled instance nothing on `#id` competes for it at all —
-     * see this plan's Implementation Notes for the full empirical trace
-     * (verified live via chrome-devtools) and the byte-savings shortfall
-     * this leaves. Widen this bag only once `button-resting-chrome-state-isolation`
-     * (queued next) isolates Button's resting tier from `.pressed`, closing
-     * the remaining customization gap for real.
+     * @remarks All four pressed-chrome fields are included — `color`,
+     * `backgroundColor`, `backgroundImage`, and `boxShadow`. A deviating
+     * *resting* value for the latter three no longer competes with this
+     * class rule: `reconcileRuleDeclaration` / `setReconciledCSSRules` route
+     * it onto the instance's own `#id:not(.pressed)` rule instead of the
+     * bare `#id` rule, so `:not(.pressed)` and `.pressed` never match the
+     * same element at once and there is nothing left to arbitrate on
+     * specificity. A class whose own defaults are chromeless (e.g.
+     * `MenuBarButton`) never dispatches pressed chrome, so it publishes no
+     * shared rule at all — see `isRestingChromeIsolated` and the chromeless
+     * branch of `applyChromeOptions` for the instance-level counterpart of
+     * this exclusion.
      */
     protected getPressedClassDeclarations(): Record<string, string | null> {
         const d = this._defaultOptions;
+
+        if (d.chromeless) {
+            return {};
+        }
+
         const out: Record<string, string | null> = {};
 
-        if (d.pressedForegroundColor !== undefined) out.color = d.pressedForegroundColor;
+        if (d.pressedForegroundColor !== undefined) out.color           = d.pressedForegroundColor;
+        if (d.pressedBackgroundColor !== undefined) out.backgroundColor = d.pressedBackgroundColor;
+        if (d.pressedBackgroundImage !== undefined) out.backgroundImage = d.pressedBackgroundImage;
+        if (d.pressedShadow          !== undefined) out.boxShadow       = d.pressedShadow;
 
         return out;
     }
 
     /**
      * Hover-state counterpart of {@link getPressedClassDeclarations}. Always
-     * empty: `hoverForegroundColor` carries no class default to begin with
-     * (see the setter table in this plan), and `backgroundColor` /
-     * `backgroundImage` / `boxShadow` are excluded for the same
-     * per-instance-customization gap described there.
+     * empty: unlike the pressed tier, hover is never deduped onto the class
+     * rule. A class-tier hover rule would sit at `(0,3,0)` (`.ClassName:hover:not(.pressed)`),
+     * which loses to a deviating instance's isolated resting rule at
+     * `(1,1,0)` — the opposite of the pressed tier, where the class rule
+     * `(0,2,0)` wins because isolation removes the competing instance
+     * declaration entirely. `hoverForegroundColor` also carries no class
+     * default to begin with.
      */
     protected getHoverClassDeclarations(): Record<string, string | null> {
         return {};
@@ -920,6 +1083,21 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     protected override applyChromeOptions(options: TOptions): void {
         const chromeless = (options.chromeless ?? this.isChromeless()) === true;
         if (chromeless) {
+            // A chromeless button is not isolated: its resting chrome stays
+            // on the bare `#id` rule, at (1,0,0), which is what makes it
+            // outrank the shared `.ClassName.pressed` rule — `chromeless`'s
+            // documented contract. Clear whatever the earlier `setBackgroundColor`
+            // / `setBackground` dispatch (Component's `applyOptions`, before
+            // `applyChromeOptions` runs) may already have queued onto the
+            // isolated rule while isolation was still the default — read the
+            // backing slot directly (not the lazy getter) so a button that
+            // never allocated the rule does not allocate one here.
+            this._restingChromeIsolated = false;
+
+            if (this._restingStyleRule !== undefined) {
+                this._restingStyleRule.setMany({ background: null, backgroundColor: null, backgroundImage: null, boxShadow: null });
+            }
+
             // The chrome group's class defaults are dispatched only by
             // `super.applyChromeOptions` (skipped here for chromeless), so a
             // fresh chromeless button never receives them.
@@ -963,14 +1141,15 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             // by any *other*, chromeful Button in the same process) still
             // matches this element's `Button`/`pressed` CSS classes
             // regardless. With no instance-level declaration to outrank it,
-            // that shared rule's pressed-fg gray would silently leak onto a
-            // chromeless button's text on press, contradicting `chromeless`'s
-            // own contract ("suppresses… the twelve pressedX/hoverX fields").
-            // Pin the pressed color to the current resting color explicitly —
-            // this always differs from the class bag's token (a different
-            // `var()` expression), so it always writes for real and reliably
+            // that shared rule's four pressed declarations would silently
+            // leak onto a chromeless button on press, contradicting
+            // `chromeless`'s own contract ("suppresses… the twelve
+            // pressedX/hoverX fields"). Pin every declaration the shared bag
+            // carries to this instance's current resting values explicitly —
+            // each reliably differs from the class bag's token (a different
+            // `var()` expression), so each writes for real and reliably
             // outranks the shared rule via `#id.pressed`'s higher specificity.
-            this.setPressedForegroundColor(this.getForegroundColor() ?? "inherit");
+            this.pinPressedToResting();
 
             return;
         }
@@ -1925,22 +2104,32 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (d.pressedForegroundColor !== undefined) {
             this.setPressedForegroundColor(d.pressedForegroundColor);
 
-            // `setPressedForegroundColor` routes through `writeClassStateDeclaration`,
-            // which silently skips the write whenever the value matches the
-            // shared class bag — correct for a fresh instance, but wrong
-            // here: a button restoring from chromeless (or flat) may have a
-            // *stale* pinned `color` still sitting on its own `#id.pressed`
-            // rule (see `applyChromeOptions`'s chromeless branch and
-            // `_clearChrome`), and that pin's higher specificity would keep
-            // outranking `.Button.pressed`'s correct token forever unless
-            // explicitly overwritten. Force a real write here — `_restoreChrome`
-            // is specifically the "undo a prior pin" path, not the common
-            // fresh-default path the skip optimisation targets.
+            // `setPressedX` routes through `writeClassStateDeclaration`, which
+            // silently skips the write whenever the value matches the shared
+            // class bag — correct for a fresh instance, but wrong here: a
+            // button restoring from chromeless (or flat) may have a *stale*
+            // pinned value still sitting on its own `#id.pressed` rule (see
+            // `applyChromeOptions`'s chromeless branch and `_clearChrome`),
+            // and that pin's higher specificity would keep outranking
+            // `.Button.pressed`'s correct token forever unless explicitly
+            // overwritten. Force a real write here — for each of the four
+            // widened keys below — since `_restoreChrome` is specifically
+            // the "undo a prior pin" path, not the common fresh-default path
+            // the skip optimisation targets.
             this.pressedStyleRule.set("color", d.pressedForegroundColor);
         }
-        if (d.pressedBackgroundColor !== undefined) this.setPressedBackgroundColor(d.pressedBackgroundColor);
-        if (d.pressedBackgroundImage !== undefined) this.setPressedBackgroundImage(d.pressedBackgroundImage);
-        if (d.pressedShadow          !== undefined) this.setPressedShadow         (d.pressedShadow);
+        if (d.pressedBackgroundColor !== undefined) {
+            this.setPressedBackgroundColor(d.pressedBackgroundColor);
+            this.pressedStyleRule.set("backgroundColor", d.pressedBackgroundColor);
+        }
+        if (d.pressedBackgroundImage !== undefined) {
+            this.setPressedBackgroundImage(d.pressedBackgroundImage);
+            this.pressedStyleRule.set("backgroundImage", d.pressedBackgroundImage);
+        }
+        if (d.pressedShadow          !== undefined) {
+            this.setPressedShadow(d.pressedShadow);
+            this.pressedStyleRule.set("boxShadow", d.pressedShadow);
+        }
         if (d.pressedBorder          !== undefined) this.setPressedBorder         (d.pressedBorder);
         else                                        this.clearPressedBorder      ();
         if (d.pressedBorderRadius    !== undefined) this.setPressedBorderRadius   (d.pressedBorderRadius);
@@ -1952,6 +2141,36 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (d.hoverBorder            !== undefined) this.setHoverBorder           (d.hoverBorder);
         else                                        this.clearHoverBorder         ();
         if (d.hoverBorderRadius      !== undefined) this.setHoverBorderRadius     (d.hoverBorderRadius);
+    }
+
+    /**
+     * Writes every declaration the shared `.ClassName.pressed` rule carries onto
+     * this instance's own `#id.pressed` rule, at this instance's resting value.
+     * A chromeless button never dispatches pressed chrome, so without this the
+     * shared rule — materialised by any chromeful sibling of the same class —
+     * would show through on press. Writes straight to the rule rather than
+     * through `writeClassStateDeclaration`, because the point is to outrank the
+     * class rule even when the two values coincide.
+     */
+    private pinPressedToResting(): void {
+        const bag = this.pressedClassBag;
+
+        if (!bag) {
+            return;
+        }
+
+        const resting: Record<string, string> = {
+            color:           this.getForegroundColor() ?? "inherit",
+            backgroundColor: this.getBackgroundColor() ?? "transparent",
+            backgroundImage: this.getBackgroundImage() ?? "none",
+            boxShadow:       this.getShadow()          ?? "none",
+        };
+
+        for (const key of Object.keys(bag)) {
+            if (resting[key] !== undefined) {
+                this.pressedStyleRule.set(key, resting[key]);
+            }
+        }
     }
 
     /**
@@ -2289,19 +2508,20 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     setPressedBackgroundColor(backgroundColor: string): this {
         this._options.pressedBackgroundColor = backgroundColor;
-        writeClassStateDeclaration(this.pressedStyleRule, this.pressedClassBag, "backgroundColor", backgroundColor);
+        this.writePressedDeclaration("backgroundColor", backgroundColor);
 
         return this;
     }
 
     /**
-     * Removes the background-color from the `.pressed` CSS rule.
+     * Pins the `.pressed` background-color to this button's current resting
+     * background-color (or `"transparent"`), instead of removing the property.
      *
      * @returns This component, for method chaining.
      */
     clearPressedBackgroundColor(): this {
         this._options.pressedBackgroundColor = undefined;
-        writeClassStateDeclaration(this.pressedStyleRule, this.pressedClassBag, "backgroundColor", null);
+        this.writePressedDeclaration("backgroundColor", this.getBackgroundColor() ?? "transparent");
 
         return this;
     }
@@ -2324,19 +2544,20 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     setPressedBackgroundImage(backgroundImage: string): this {
         this._options.pressedBackgroundImage = backgroundImage;
-        writeClassStateDeclaration(this.pressedStyleRule, this.pressedClassBag, "backgroundImage", backgroundImage);
+        this.writePressedDeclaration("backgroundImage", backgroundImage);
 
         return this;
     }
 
     /**
-     * Removes the background-image from the `.pressed` CSS rule.
+     * Pins the `.pressed` background-image to this button's current resting
+     * background-image (or `"none"`), instead of removing the property.
      *
      * @returns This component, for method chaining.
      */
     clearPressedBackgroundImage(): this {
         this._options.pressedBackgroundImage = undefined;
-        writeClassStateDeclaration(this.pressedStyleRule, this.pressedClassBag, "backgroundImage", null);
+        this.writePressedDeclaration("backgroundImage", this.getBackgroundImage() ?? "none");
 
         return this;
     }
@@ -2359,7 +2580,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     setPressedForegroundColor(foregroundColor: string): this {
         this._options.pressedForegroundColor = foregroundColor;
-        writeClassStateDeclaration(this.pressedStyleRule, this.pressedClassBag, "color", foregroundColor);
+        this.writePressedDeclaration("color", foregroundColor);
 
         return this;
     }
@@ -2371,7 +2592,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     clearPressedForegroundColor(): this {
         this._options.pressedForegroundColor = undefined;
-        writeClassStateDeclaration(this.pressedStyleRule, this.pressedClassBag, "color", null);
+        this.writePressedDeclaration("color", null);
 
         return this;
     }
@@ -2395,7 +2616,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     setPressedBorder(options?: BorderOptions | string): this {
         this._pressedBorder = typeof options === "string" ? { border: options } : (options ?? {});
-        writeManyClassStateDeclarations(this.pressedStyleRule, this.pressedClassBag, borderToStyle(this._pressedBorder));
+        this.writePressedDeclarations(borderToStyle(this._pressedBorder));
 
         return this;
     }
@@ -2409,7 +2630,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     clearPressedBorder(): this {
         this._pressedBorder = null;
-        writeManyClassStateDeclarations(this.pressedStyleRule, this.pressedClassBag, {
+        this.writePressedDeclarations({
             borderTop:    null,
             borderRight:  null,
             borderBottom: null,
@@ -2437,7 +2658,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     setPressedBorderRadius(borderRadius: string): this {
         this._options.pressedBorderRadius = borderRadius;
-        writeClassStateDeclaration(this.pressedStyleRule, this.pressedClassBag, "borderRadius", borderRadius);
+        this.writePressedDeclaration("borderRadius", borderRadius);
 
         return this;
     }
@@ -2449,7 +2670,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     clearPressedBorderRadius(): this {
         this._options.pressedBorderRadius = undefined;
-        writeClassStateDeclaration(this.pressedStyleRule, this.pressedClassBag, "borderRadius", null);
+        this.writePressedDeclaration("borderRadius", null);
 
         return this;
     }
@@ -2472,19 +2693,20 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     setPressedShadow(shadow: string): this {
         this._options.pressedShadow = shadow;
-        writeClassStateDeclaration(this.pressedStyleRule, this.pressedClassBag, "boxShadow", shadow);
+        this.writePressedDeclaration("boxShadow", shadow);
 
         return this;
     }
 
     /**
-     * Removes the box-shadow from the `.pressed` CSS rule.
+     * Pins the `.pressed` box-shadow to this button's current resting box-shadow
+     * (or `"none"`), instead of removing the property.
      *
      * @returns This component, for method chaining.
      */
     clearPressedShadow(): this {
         this._options.pressedShadow = undefined;
-        writeClassStateDeclaration(this.pressedStyleRule, this.pressedClassBag, "boxShadow", null);
+        this.writePressedDeclaration("boxShadow", this.getShadow() ?? "none");
 
         return this;
     }

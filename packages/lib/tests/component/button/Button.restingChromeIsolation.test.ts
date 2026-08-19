@@ -1,0 +1,233 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+// Coverage for plans/implemented/button-resting-chrome-state-isolation.md —
+// Expected Behaviour rows 1-11 (rows 12-15 are cascade outcomes the
+// recording sink cannot evaluate; see the plan's `## Verification` section
+// for the mandatory browser check). A deviating resting `background-color` /
+// `background-image` / `box-shadow` / `background` now lands on a Button's
+// own `#id:not(.pressed)` rule instead of the bare `#id` rule, so the shared
+// `.ClassName.pressed` rule (widened by this plan to all four properties) is
+// unopposed while the button is pressed.
+//
+// `idSelector` / `declarationsDuring` are copied from
+// `Button.pressedHoverClassHoisting.test.ts`, which itself copied them from
+// `ClassStyleRules.test.ts`; this file also reuses that file's warm-up
+// convention for the process-global `.Button.pressed` rule.
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { Button } from '~/component/button/Button';
+import { MenuBarButton } from '~/component/menubar/MenuBarButton';
+import { SpinButton } from '~/component/input/SpinButton';
+import { DOM } from '~/core/DOM';
+import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
+import fontMetrics from '../../dom/font-metrics.test-font.json';
+import { _ruleCacheHas } from '~/core/StyleTarget';
+
+const DOM_CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
+
+let sink: RecordingDOMSink;
+
+beforeEach(() => { sink = installTestDOM(DOM_CONFIG); });
+afterEach(() => DOM.reset());
+
+/** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+function idSelector(component: { getId(): string }): string {
+    return '#' + DOM.source.escapeSelector(component.getId());
+}
+
+/** Sink writes recorded while `fn()` ran. */
+function writesDuring(recorder: RecordingDOMSink, fn: () => void): RecordingDOMSink['writes'] {
+    const start = recorder.writes.length;
+    fn();
+
+    return recorder.writes.slice(start);
+}
+
+/**
+ * Flattens the `setRuleStyles` writes for `selector` out of a captured
+ * writes array. Rows 4/6/7/8 need to inspect more than one selector from a
+ * single setter/render call — a setter's idempotency guard means it can't be
+ * called twice with the same value to capture each selector separately.
+ */
+function declarationsIn(writes: RecordingDOMSink['writes'], selector: string): Record<string, string | null> {
+    const out: Record<string, string | null> = {};
+    for (const w of writes) {
+        if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+            continue;
+        }
+
+        const styles = w.args[1] as Record<string, string | null>;
+        for (const key of Object.keys(styles)) {
+            out[key] = styles[key];
+        }
+    }
+
+    return out;
+}
+
+/**
+ * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+ * flattened into one key/value map. Copied from `ClassStyleRules.test.ts`.
+ */
+function declarationsDuring(
+    recorder: RecordingDOMSink,
+    selector: string,
+    fn: () => void,
+): Record<string, string | null> {
+    return declarationsIn(writesDuring(recorder, fn), selector);
+}
+
+describe('Button resting-chrome state isolation', () => {
+    it('row 1: a default Button renders — no write to #id:not(.pressed), and the rule is never inserted', () => {
+        const btn = new Button('Save');
+        const declarations = declarationsDuring(sink, idSelector(btn) + ':not(.pressed)', () => btn.getElement(true));
+
+        expect(declarations).toEqual({});
+        expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed)')).toBe(false);
+    });
+
+    it('row 2: a default Button renders after a first Button has warmed the class rule — no #id.pressed rule is inserted at all, and .Button.pressed is in the rule cache', () => {
+        new Button('Warmup').getElement(true);
+
+        const second = new Button('Second');
+        second.getElement(true);
+
+        expect(_ruleCacheHas(idSelector(second) + '.pressed')).toBe(false);
+        expect(_ruleCacheHas('.Button.pressed')).toBe(true);
+    });
+
+    it('row 3: a deviating resting backgroundColor lands on #id:not(.pressed), not the bare #id rule', () => {
+        new Button('Warmup').getElement(true);
+
+        const a = new Button('x', { backgroundColor: 'red' });
+        const isolated = declarationsDuring(sink, idSelector(a) + ':not(.pressed)', () => a.getElement(true));
+        expect(isolated.backgroundColor).toBe('red');
+
+        const b = new Button('y', { backgroundColor: 'red' });
+        const bare = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+        expect(bare.backgroundColor).toBeUndefined();
+    });
+
+    it('row 4: setBackgroundColor after render on a chromeful Button writes immediately to #id:not(.pressed), not the bare #id rule', () => {
+        new Button('Warmup').getElement(true);
+
+        const btn = new Button('x');
+        btn.getElement(true);
+
+        const writes = writesDuring(sink, () => btn.setBackgroundColor('red'));
+
+        expect(declarationsIn(writes, idSelector(btn) + ':not(.pressed)').backgroundColor).toBe('red');
+        expect(declarationsIn(writes, idSelector(btn)).backgroundColor).toBeUndefined();
+    });
+
+    it('row 5: setBackgroundColor back to the class-default token writes a removal on #id:not(.pressed), not a skipped write', () => {
+        new Button('Warmup').getElement(true);
+
+        const btn = new Button('x');
+        btn.getElement(true);
+        btn.setBackgroundColor('red'); // establish a real deviation to isolate first
+
+        // The literal token `Button.ts`'s BUTTON_RESTING_BACKGROUND resolves to.
+        const declarations = declarationsDuring(
+            sink,
+            idSelector(btn) + ':not(.pressed)',
+            () => btn.setBackgroundColor('var(--ts-ui-button-bg, transparent)'),
+        );
+
+        expect(declarations.backgroundColor).toBeNull();
+    });
+
+    it('row 6: setBackground after render on a chromeful Button writes to #id:not(.pressed), not the bare #id rule', () => {
+        new Button('Warmup').getElement(true);
+
+        const btn = new Button('x');
+        btn.getElement(true);
+
+        const writes = writesDuring(sink, () => btn.setBackground('red'));
+
+        expect(declarationsIn(writes, idSelector(btn) + ':not(.pressed)').background).toBe('red');
+        expect(declarationsIn(writes, idSelector(btn)).background).toBeUndefined();
+    });
+
+    it('row 7: an instance-level chromeless Button pins all four .pressed keys and keeps its resting backgroundColor on the bare #id rule; #id:not(.pressed) is never inserted', () => {
+        new Button('Warmup').getElement(true); // materialises .Button.pressed with all four keys
+
+        const btn = new Button({ chromeless: true });
+        const writes = writesDuring(sink, () => btn.getElement(true));
+
+        expect(declarationsIn(writes, idSelector(btn)).backgroundColor).toBeDefined();
+
+        const pressed = declarationsIn(writes, idSelector(btn) + '.pressed');
+        expect(pressed.color).toBeDefined();
+        expect(pressed.backgroundColor).toBeDefined();
+        expect(pressed.backgroundImage).toBeDefined();
+        expect(pressed.boxShadow).toBeDefined();
+
+        expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed)')).toBe(false);
+    });
+
+    it("row 8: an instance-level chromeless Button with a caller backgroundColor writes it to the bare #id rule — the chromeless branch clears what the earlier setBackgroundColor dispatch queued on #id:not(.pressed)", () => {
+        new Button('Warmup').getElement(true);
+
+        const btn = new Button('x', { backgroundColor: 'red', chromeless: true });
+        const declarations = declarationsDuring(sink, idSelector(btn), () => btn.getElement(true));
+
+        expect(declarations.backgroundColor).toBe('red');
+        expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed)')).toBe(false);
+    });
+
+    it('row 9: a chromeless-by-default MenuBarButton is not isolated — a deviating resting backgroundColor lands on the bare #id rule, and no .MenuBarButton.pressed rule is ever inserted', () => {
+        const btn = new MenuBarButton('File', () => {}, () => {});
+        btn.getElement(true);
+
+        const declarations = declarationsDuring(sink, idSelector(btn), () => btn.setActive(true));
+        expect(declarations.backgroundColor).toBeDefined();
+
+        expect(_ruleCacheHas('.MenuBarButton.pressed')).toBe(false);
+        expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed)')).toBe(false);
+    });
+
+    it("row 10: SpinButton's constructor-time clearPressedShadow() writes boxShadow: 'none' to #id.pressed, never null", () => {
+        const spin = new SpinButton('▲');
+        const declarations = declarationsDuring(sink, idSelector(spin) + '.pressed', () => spin.getElement(true));
+
+        expect(declarations.boxShadow).toBe('none');
+    });
+
+    it('row 11: setFlat(true) then setFlat(false) forces all four pressed keys back onto #id.pressed at their class-default values, even though each matches the class bag', () => {
+        new Button('Warmup').getElement(true); // materialises .Button.pressed with all four keys
+
+        const btn = new Button('X');
+        btn.getElement(true);
+        btn.setFlat(true);
+
+        const declarations = declarationsDuring(sink, idSelector(btn) + '.pressed', () => btn.setFlat(false));
+
+        expect(declarations.color).toBe('var(--ts-ui-button-pressed-fg, rgb(150, 150, 150))');
+        expect(declarations.backgroundColor).toBe('var(--ts-ui-button-pressed-bg, rgb(200, 200, 200))');
+        expect(declarations.backgroundImage).toBe('var(--ts-ui-button-pressed-bg, none)');
+        expect(declarations.boxShadow).toBe('var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2) inset)');
+    });
+
+    it('a runtime setPressedBackgroundColor call on an already-rendered, previously-default Button reaches the stylesheet, not just the dirty queue', () => {
+        // A fully default Button's own `#id.pressed` rule stays unmaterialised
+        // past first render (row 2) — every pressed setter it dispatches at
+        // construction matches the (now four-key) class bag and is skipped.
+        // A later runtime pressed setter is therefore the *first* real write
+        // this instance's pressedStyleRule ever sees, and must still reach
+        // the stylesheet rather than sit queued on an unmaterialised rule.
+        new Button('Warmup').getElement(true);
+
+        const btn = new Button('X');
+        btn.getElement(true);
+
+        const declarations = declarationsDuring(sink, idSelector(btn) + '.pressed', () => btn.setPressedBackgroundColor('purple'));
+
+        expect(declarations.backgroundColor).toBe('purple');
+    });
+});

@@ -357,7 +357,11 @@ describe('Component chrome base-tier hoisting', () => {
         btn.setChromeless(true); // pins real box-shadow:none/background-image:none on #id
 
         const sink = DOM.sink as RecordingDOMSink;
-        const declarations = declarationsDuring(sink, idSelector(btn), () => btn.setChromeless(false));
+        // `btn` is chromeful and therefore isolated (see
+        // plans/implemented/button-resting-chrome-state-isolation.md): both
+        // the setChromeless(true) neutrals and the setChromeless(false)
+        // removals below land on `#id:not(.pressed)`, not the bare `#id`.
+        const declarations = declarationsDuring(sink, idSelector(btn) + ':not(.pressed)', () => btn.setChromeless(false));
 
         // A removal (explicit null), not `undefined` — `undefined` would mean
         // the write was skipped, leaving the chromeless "none" pin stale.
