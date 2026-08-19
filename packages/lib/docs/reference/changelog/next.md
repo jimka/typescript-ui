@@ -89,6 +89,19 @@ consumer implementing its own `DOMSink` is affected.
   rendered column's cell assignment on every tick. A resize, a column-set
   change, or a jump larger than the visible window still reconciles the
   whole window as before. No consumer action is needed.
+- **A [`Button`](/api/component/button/classes/Button) that customises its
+  resting background or shadow now shares its pressed treatment with every
+  other `Button` of the same class again.** A caller-supplied
+  `backgroundColor`, a `flat` button's transparent fill, or a `Dialog` close
+  button's cleared shadow now carries that value on an internal
+  `:not(.pressed)` rule instead of the button's own `#id` rule, so the
+  shared `.ClassName.pressed` rule is no longer outranked while the button
+  is pressed. No consumer action is needed.
+- **`clearPressedBackgroundColor()`, `clearPressedBackgroundImage()`, and
+  `clearPressedShadow()` on `Button` now pin the `.pressed` declaration to
+  the button's current resting value** instead of removing the property —
+  the same rendered result, reached differently, and needed so the pinned
+  value keeps outranking the shared class-tier `.pressed` rule.
 
 ### Table
 
