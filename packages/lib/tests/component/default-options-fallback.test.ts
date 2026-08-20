@@ -303,6 +303,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'Scrollbar backgroundColor',    resolve: () => new Scrollbar().getBackgroundColor(),                       expected: 'var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))' },
     { label: 'Scrollbar touchAction',        resolve: () => new Scrollbar().getTouchAction(),                           expected: 'none' },
     { label: 'ScrollArrowButton backgroundColor', resolve: () => (new Scrollbar('vertical', { arrowsEnabled: true }).getComponents()[1] as any).getBackgroundColor(), expected: 'var(--ts-ui-scrollbar-arrow-bg, transparent)' },
+    { label: 'ScrollArrowButton foregroundColor', resolve: () => (new Scrollbar('vertical', { arrowsEnabled: true }).getComponents()[1] as any).getForegroundColor(), expected: 'var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))' },
     { label: 'ScrollbarThumb cursor',        resolve: () => (new Scrollbar() as any)._thumb.getCursor(),                expected: 'grab' },
     { label: 'ScrollbarThumb backgroundColor', resolve: () => (new Scrollbar() as any)._thumb.getBackgroundColor(),     expected: 'var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))' },
     { label: 'ResizeHandle cursor',          resolve: () => new ResizeHandle().getCursor(),                             expected: 'var(--ts-ui-table-resize-handle-cursor, ew-resize)' },

@@ -56,27 +56,15 @@ describe('AbstractWindow — style-rule disposal on teardown', () => {
         expect(leaked).toEqual([]);
     });
 
-    it('deletes both rules each resize border owns, not just its base rule', () => {
-        const before = new Set(_ruleCacheKeys());
-
-        const win = new Window('W');
-        win.getElement(true);
-
-        // Each strip carries a `#uuid.snap-target` companion rule for the drag
-        // highlight; a teardown that disposed only `#uuid` would leave these.
-        // Counted relative to `before`: the StyleTarget rule cache is module
-        // state that outlives DOM.reset(), so anything an earlier test left
-        // behind is still visible here.
-        const snapTargets = _ruleCacheKeys()
-            .filter((key) => key.endsWith('.snap-target') && !before.has(key));
-
-        expect(snapTargets.length).toBe(8);
-
-        destroy(win);
-
-        const leakedSnapTargets = _ruleCacheKeys()
-            .filter((key) => key.endsWith('.snap-target') && !before.has(key));
-
-        expect(leakedSnapTargets).toEqual([]);
-    });
+    // A former second test here ("deletes both rules each resize border owns,
+    // not just its base rule") pinned that each strip's `#uuid.snap-target`
+    // companion rule, not just its `#uuid` base rule, was disposed. Since
+    // plans/implemented/state-tier-rule-dedup-followups.md, `.snap-target`
+    // dedupes onto ONE shared `.WindowBorder.snap-target` class rule and no
+    // per-instance `.snap-target` rule ever materialises (for any strip, not
+    // just a second one) — the leak that test guarded is now structurally
+    // impossible, and a rewritten version of it could only ever assert an
+    // empty set both before and after `destroy()`, which cannot fail even if
+    // disposal were broken. Removed rather than kept as a tautology; the test
+    // above already covers the total per-instance-rule-leak contract.
 });

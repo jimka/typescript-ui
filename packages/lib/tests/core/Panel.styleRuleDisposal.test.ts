@@ -69,14 +69,14 @@ describe('Panel — overlay scrollbar style-rule disposal', () => {
 
         const panel = renderedPanel();
         const bars  = panel as unknown as {
-            _scrollbarV: { getId(): string; _arrowStart: { getId(): string } } | null;
-            _scrollbarH: { getId(): string; _arrowStart: { getId(): string } } | null;
+            _scrollbarV: { getId(): string; _arrowStart: { _glyph: { getId(): string } } } | null;
+            _scrollbarH: { getId(): string; _arrowStart: { _glyph: { getId(): string } } } | null;
         };
 
         const originalVId      = bars._scrollbarV!.getId();
         const originalHId      = bars._scrollbarH!.getId();
-        const originalVArrowId = bars._scrollbarV!._arrowStart.getId();
-        const originalHArrowId = bars._scrollbarH!._arrowStart.getId();
+        const originalVArrowId = bars._scrollbarV!._arrowStart._glyph.getId();
+        const originalHArrowId = bars._scrollbarH!._arrowStart._glyph.getId();
 
         panel.setScrollbarStyle('native');
 
@@ -100,17 +100,23 @@ describe('Panel — overlay scrollbar style-rule disposal', () => {
         // moved its resting cursor/backgroundColor onto the shared
         // `.ScrollbarThumb` class rule, so a thumb with no other deviation now
         // materialises no `#id` rule of its own at all. The start arrow button
-        // is the reliable per-instance proxy instead: its real, always-deviating
-        // `foregroundColor` (never hoisted — see that same plan's `## Non-Goals`)
-        // guarantees it a rule, and it is only reachable through the scrollbar's
-        // own destructor recursion, which is what B1-1/B1-2 actually guard.
+        // itself is no longer reliable either —
+        // plans/implemented/state-tier-rule-dedup-followups.md hoisted its
+        // resting `foregroundColor` onto the shared `.ScrollArrowButton` class
+        // rule too, so a never-disabled arrow now also materialises no `#id`
+        // rule of its own. Its glyph child is the reliable per-instance proxy
+        // instead: `Glyph.setFontSize` always writes its own `#id` rule
+        // directly (no class-default dedup for that property), and the glyph
+        // is only reachable through the scrollbar's own destructor recursion
+        // (Scrollbar -> ScrollArrowButton -> Glyph), which is what B1-1/B1-2
+        // actually guard.
         expect(bars._scrollbarV).not.toBeNull();
         expect(bars._scrollbarH).not.toBeNull();
 
         const freshVId      = bars._scrollbarV!.getId();
         const freshHId      = bars._scrollbarH!.getId();
-        const freshVArrowId = bars._scrollbarV!._arrowStart.getId();
-        const freshHArrowId = bars._scrollbarH!._arrowStart.getId();
+        const freshVArrowId = bars._scrollbarV!._arrowStart._glyph.getId();
+        const freshHArrowId = bars._scrollbarH!._arrowStart._glyph.getId();
 
         expect(freshVId).not.toBe(originalVId);
         expect(freshHId).not.toBe(originalHId);

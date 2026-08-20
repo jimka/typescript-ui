@@ -339,9 +339,6 @@ describe('Scrollbar arrow tick emits scroll on change', () => {
 // fields, not real DOM listeners — calling them directly exercises the same
 // logic a real mouseover/mousedown/mouseup would run without depending on the
 // offline harness's dispatch (which never invokes registered listeners).
-const HOVER_BG   = 'var(--ts-ui-scrollbar-thumb-hover, rgba(0, 0, 0, 0.55))';
-const RESTING_BG = 'var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))';
-
 const FAKE_MOUSEDOWN = { preventDefault: () => {}, clientY: 0 } as unknown as MouseEvent;
 
 /** Reaches the private drag/hover handlers under test, `Tree.test.ts`-style. */
@@ -354,25 +351,51 @@ function drive(bar: Scrollbar): {
     return bar as unknown as ReturnType<typeof drive>;
 }
 
+/**
+ * The most recently recorded `toggleClass[key]` value applied to `handle`, or
+ * `undefined` if `key` was never toggled on it. Since `applyHoverState` now
+ * drives the visual fill through a CSS state-class rather than a plain
+ * `setBackgroundColor` call (see `plans/implemented/state-tier-rule-dedup-followups.md`),
+ * the toggled class — not `getBackgroundColor()` — is the only offline-observable
+ * signal of the thumb's current hover state.
+ */
+function lastToggleClassValue(sink: RecordingDOMSink, handle: Handle, key: string): boolean | undefined {
+    for (let i = sink.writes.length - 1; i >= 0; i--) {
+        const w = sink.writes[i];
+        if (w.op !== 'apply' || w.args[0] !== handle) {
+            continue;
+        }
+
+        const patch = w.args[1] as { toggleClass?: Record<string, boolean> };
+        if (patch.toggleClass && key in patch.toggleClass) {
+            return patch.toggleClass[key];
+        }
+    }
+
+    return undefined;
+}
+
 describe('Scrollbar thumb hover highlight persists through a drag', () => {
     afterEach(() => DOM.reset());
 
     it('applies the hover fill on mouseover and the resting fill on mouseout', () => {
-        installTestDOM(CONFIG);
+        const sink = installTestDOM(CONFIG);
 
         const bar = new Scrollbar('vertical');
+        const el  = thumb(bar).getElement(true)!;
 
         drive(bar)._onThumbMouseOver();
-        expect(thumb(bar).getBackgroundColor()).toBe(HOVER_BG);
+        expect(lastToggleClassValue(sink, el, 'hover')).toBe(true);
 
         drive(bar)._onThumbMouseOut();
-        expect(thumb(bar).getBackgroundColor()).toBe(RESTING_BG);
+        expect(lastToggleClassValue(sink, el, 'hover')).toBe(false);
     });
 
     it('keeps the hover fill for the whole drag even after the pointer leaves the thumb', () => {
-        installTestDOM(CONFIG);
+        const sink = installTestDOM(CONFIG);
 
         const bar = new Scrollbar('vertical', { arrowsEnabled: false });
+        const el  = thumb(bar).getElement(true)!;
 
         bar.setHeight(400);
         bar.setMetrics(200, 1200, 0);
@@ -384,16 +407,17 @@ describe('Scrollbar thumb hover highlight persists through a drag', () => {
         // the thumb moves), firing a native mouseout — the highlight must not
         // drop while the drag is still in progress.
         drive(bar)._onThumbMouseOut();
-        expect(thumb(bar).getBackgroundColor()).toBe(HOVER_BG);
+        expect(lastToggleClassValue(sink, el, 'hover')).toBe(true);
 
         drive(bar)._onDragEnd({} as Event);
-        expect(thumb(bar).getBackgroundColor()).toBe(RESTING_BG);
+        expect(lastToggleClassValue(sink, el, 'hover')).toBe(false);
     });
 
     it('drops the hover fill on drag end only if the pointer is not still over the thumb', () => {
-        installTestDOM(CONFIG);
+        const sink = installTestDOM(CONFIG);
 
         const bar = new Scrollbar('vertical', { arrowsEnabled: false });
+        const el  = thumb(bar).getElement(true)!;
 
         bar.setHeight(400);
         bar.setMetrics(200, 1200, 0);
@@ -404,7 +428,7 @@ describe('Scrollbar thumb hover highlight persists through a drag', () => {
 
         // mouseout never fired mid-drag here, so the pointer is still (as far
         // as the component knows) over the thumb — the fill must stay hovered.
-        expect(thumb(bar).getBackgroundColor()).toBe(HOVER_BG);
+        expect(lastToggleClassValue(sink, el, 'hover')).toBe(true);
     });
 });
 
@@ -489,6 +513,80 @@ describe('Scrollbar thumb static style hoisting', () => {
         expect(declarations.backgroundColor).toBeUndefined();
         expect(declarations.cursor).toBeUndefined();
         expect(_ruleCacheHas('.ScrollbarThumb')).toBe(true);
+    });
+});
+
+// ScrollbarThumb-specific coverage for the state-tier dedup introduced by
+// plans/implemented/state-tier-rule-dedup-followups.md: the `.hover`
+// backgroundColor now writes through `createStateStyleRule`, isolated from
+// the resting `backgroundColor` via `getRestingExclusionSuffixes()`.
+describe('ScrollbarThumb hover state-class hoisting', () => {
+    afterEach(() => DOM.reset());
+
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    /**
+     * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+     * flattened into one key/value map. Copied from `ClassChromeRules.test.ts`.
+     */
+    function declarationsDuring(
+        sink: RecordingDOMSink,
+        selector: string,
+        fn: () => void,
+    ): Record<string, string | null> {
+        const start = sink.writes.length;
+        fn();
+
+        const out: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+                continue;
+            }
+
+            const styles = w.args[1] as Record<string, string | null>;
+            for (const key of Object.keys(styles)) {
+                out[key] = styles[key];
+            }
+        }
+
+        return out;
+    }
+
+    it('row 6: a second, warmed Scrollbar hovers its thumb writing no backgroundColor to its own #id.hover rule', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const warmup = new Scrollbar('vertical');
+        warmup.getElement(true);
+        drive(warmup)._onThumbMouseOver(); // warms .ScrollbarThumb.hover
+
+        const bar = new Scrollbar('vertical');
+        bar.getElement(true);
+
+        const declarations = declarationsDuring(sink, idSelector(thumb(bar)) + '.hover', () => {
+            drive(bar)._onThumbMouseOver();
+        });
+
+        expect(declarations.backgroundColor).toBeUndefined();
+        expect(_ruleCacheHas('.ScrollbarThumb.hover')).toBe(true);
+    });
+
+    it('row 6: a hover-in/hover-out cycle writes no backgroundColor to the resting #id:not(.hover) rule', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical');
+        bar.getElement(true);
+
+        const restingSelector = idSelector(thumb(bar)) + ':not(.hover)';
+
+        const declarations = declarationsDuring(sink, restingSelector, () => {
+            drive(bar)._onThumbMouseOver();
+            drive(bar)._onThumbMouseOut();
+        });
+
+        expect(declarations.backgroundColor).toBeUndefined();
     });
 });
 
