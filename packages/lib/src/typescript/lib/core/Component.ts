@@ -2530,7 +2530,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
         this._options.borderRadius = borderRadius;
-        this.setElementStyle("borderRadius", borderRadius);
+        this.setReconciledCSSRules({ borderRadius });
 
         return this;
     }
@@ -2545,7 +2545,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
         this._options.borderRadius = undefined;
-        this.setElementStyle("borderRadius", null);
+        this.setElementCSSRule("borderRadius", null);
 
         return this;
     }
@@ -5096,7 +5096,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const borderRadius = this.getBorderRadius();
         if (borderRadius) {
-            this.writeRuleDeclaration("borderRadius", borderRadius);
+            this.reconcileRuleDeclaration("borderRadius", borderRadius);
         }
 
         const shadow = this.getShadow();
