@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Scrollbar } from '~/component/container/Scrollbar';
 import { DOM } from '~/core/DOM';
-import { installTestDOM, makeEvent } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
+import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -125,5 +126,63 @@ describe('Scrollbar arrow enabled/disabled colour fade', () => {
         expect(arrowStart.getForegroundColor()).toBe(DISABLED_COLOR);
         expect(arrowEnd.getForegroundColor()).toBe(ENABLED_COLOR);
         expect(positions).toEqual([]);
+    });
+});
+
+describe('ScrollArrowButton static style hoisting', () => {
+    afterEach(() => DOM.reset());
+
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    /**
+     * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+     * flattened into one key/value map. Copied from `ClassChromeRules.test.ts`.
+     */
+    function declarationsDuring(
+        sink: RecordingDOMSink,
+        selector: string,
+        fn: () => void,
+    ): Record<string, string | null> {
+        const start = sink.writes.length;
+        fn();
+
+        const out: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+                continue;
+            }
+
+            const styles = w.args[1] as Record<string, string | null>;
+            for (const key of Object.keys(styles)) {
+                out[key] = styles[key];
+            }
+        }
+
+        return out;
+    }
+
+    it('row 1: neither arrow carries a static backgroundColor on its own #id rule, and the shared .ScrollArrowButton class rule exists once rendered', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical', { arrowsEnabled: true });
+        const [, arrowStart, arrowEnd] = bar.getComponents();
+
+        let endDeclarations: Record<string, string | null> = {};
+        const startDeclarations = declarationsDuring(sink, idSelector(arrowStart), () => {
+            endDeclarations = declarationsDuring(sink, idSelector(arrowEnd), () => bar.getElement(true));
+        });
+
+        // Both arrows always materialise their own `#id` rule regardless (the
+        // imperative, per-instance `foregroundColor` write, untouched by this
+        // plan — see `## Non-Goals`), so backgroundColor's now-matching value
+        // surfaces as an explicit removal in the same batch rather than being
+        // skipped in silence — the net rendered CSS (no declaration on #id,
+        // `.ScrollArrowButton` supplies the value) is unchanged.
+        expect(startDeclarations.backgroundColor).toBeNull();
+        expect(endDeclarations.backgroundColor).toBeNull();
+        expect(_ruleCacheHas('.ScrollArrowButton')).toBe(true);
     });
 });

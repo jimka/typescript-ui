@@ -23,8 +23,8 @@ class StringRenderer extends CellRenderer<String | null> {
     private _value:   String | null = null;
     private _display: string        = "";
 
-    constructor() {
-        super(_defaultStringRendererOptions);
+    constructor(subclassDefaults?: Partial<ComponentOptions>) {
+        super({ ..._defaultStringRendererOptions, ...(subclassDefaults ?? {}) });
 
         this._text.setText("");
         this._text.setPointerEvents("none");

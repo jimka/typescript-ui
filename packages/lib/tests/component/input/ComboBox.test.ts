@@ -3,7 +3,8 @@ import { ComboBox } from '~/component/input/ComboBox';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
+import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -231,5 +232,53 @@ describe('ComboBox — keyboard reducer forwarding', () => {
             ._dropdown.handleKey(key('ArrowDown'));
 
         expect(combo.getSelectedIndex()).toBe(1);      // observed through the public delegate
+    });
+});
+
+describe('ComboBoxCaret static style hoisting', () => {
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    /**
+     * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+     * flattened into one key/value map. Copied from `ClassChromeRules.test.ts`.
+     */
+    function declarationsDuring(
+        sink: RecordingDOMSink,
+        selector: string,
+        fn: () => void,
+    ): Record<string, string | null> {
+        const start = sink.writes.length;
+        fn();
+
+        const out: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+                continue;
+            }
+
+            const styles = w.args[1] as Record<string, string | null>;
+            for (const key of Object.keys(styles)) {
+                out[key] = styles[key];
+            }
+        }
+
+        return out;
+    }
+
+    it('row 4: a rendered caret carries no static min/max size declaration on its own #id rule, and the shared .ComboBoxCaret class rule exists once rendered', () => {
+        const sink  = installTestDOM(CONFIG);
+        const combo = new ComboBox() as any;
+        const caret = combo._caret;
+
+        const declarations = declarationsDuring(sink, idSelector(caret), () => combo.getElement(true));
+
+        expect(declarations.minWidth).toBeUndefined();
+        expect(declarations.minHeight).toBeUndefined();
+        expect(declarations.maxWidth).toBeUndefined();
+        expect(declarations.maxHeight).toBeUndefined();
+        expect(_ruleCacheHas('.ComboBoxCaret')).toBe(true);
     });
 });

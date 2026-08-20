@@ -69,22 +69,22 @@ describe('Panel — overlay scrollbar style-rule disposal', () => {
 
         const panel = renderedPanel();
         const bars  = panel as unknown as {
-            _scrollbarV: { getId(): string; _thumb: { getId(): string } } | null;
-            _scrollbarH: { getId(): string; _thumb: { getId(): string } } | null;
+            _scrollbarV: { getId(): string; _arrowStart: { getId(): string } } | null;
+            _scrollbarH: { getId(): string; _arrowStart: { getId(): string } } | null;
         };
 
         const originalVId      = bars._scrollbarV!.getId();
         const originalHId      = bars._scrollbarH!.getId();
-        const originalVThumbId = bars._scrollbarV!._thumb.getId();
-        const originalHThumbId = bars._scrollbarH!._thumb.getId();
+        const originalVArrowId = bars._scrollbarV!._arrowStart.getId();
+        const originalHArrowId = bars._scrollbarH!._arrowStart.getId();
 
         panel.setScrollbarStyle('native');
 
         // The original bars' own rules must be gone — not just their elements.
         expect(_ruleCacheKeys().some((key) => key.includes(originalVId))).toBe(false);
         expect(_ruleCacheKeys().some((key) => key.includes(originalHId))).toBe(false);
-        expect(_ruleCacheKeys().some((key) => key.includes(originalVThumbId))).toBe(false);
-        expect(_ruleCacheKeys().some((key) => key.includes(originalHThumbId))).toBe(false);
+        expect(_ruleCacheKeys().some((key) => key.includes(originalVArrowId))).toBe(false);
+        expect(_ruleCacheKeys().some((key) => key.includes(originalHArrowId))).toBe(false);
 
         panel.setScrollbarStyle('overlay');
         panel.doLayout();
@@ -95,22 +95,27 @@ describe('Panel — overlay scrollbar style-rule disposal', () => {
         // plans/implemented/reconciled-write-path-widening.md, its constructor's
         // `setUserSelect("none")` also dedupes onto the framework tier once
         // rendered, and nothing else about a fresh Scrollbar deviates from the
-        // class/framework baseline. The thumb child is the reliable per-instance
-        // proxy instead: its real, always-deviating backgroundColor/cursor
-        // guarantee it a rule, and it is only reachable through the scrollbar's
+        // class/framework baseline. The thumb is no longer a reliable proxy
+        // either — plans/implemented/delegate-class-style-defaults-followups.md
+        // moved its resting cursor/backgroundColor onto the shared
+        // `.ScrollbarThumb` class rule, so a thumb with no other deviation now
+        // materialises no `#id` rule of its own at all. The start arrow button
+        // is the reliable per-instance proxy instead: its real, always-deviating
+        // `foregroundColor` (never hoisted — see that same plan's `## Non-Goals`)
+        // guarantees it a rule, and it is only reachable through the scrollbar's
         // own destructor recursion, which is what B1-1/B1-2 actually guard.
         expect(bars._scrollbarV).not.toBeNull();
         expect(bars._scrollbarH).not.toBeNull();
 
         const freshVId      = bars._scrollbarV!.getId();
         const freshHId      = bars._scrollbarH!.getId();
-        const freshVThumbId = bars._scrollbarV!._thumb.getId();
-        const freshHThumbId = bars._scrollbarH!._thumb.getId();
+        const freshVArrowId = bars._scrollbarV!._arrowStart.getId();
+        const freshHArrowId = bars._scrollbarH!._arrowStart.getId();
 
         expect(freshVId).not.toBe(originalVId);
         expect(freshHId).not.toBe(originalHId);
 
-        expect(_ruleCacheKeys().some((key) => key.includes(freshVThumbId))).toBe(true);
-        expect(_ruleCacheKeys().some((key) => key.includes(freshHThumbId))).toBe(true);
+        expect(_ruleCacheKeys().some((key) => key.includes(freshVArrowId))).toBe(true);
+        expect(_ruleCacheKeys().some((key) => key.includes(freshHArrowId))).toBe(true);
     });
 });

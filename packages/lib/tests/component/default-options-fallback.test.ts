@@ -39,6 +39,10 @@ import { MenuSeparator } from '~/component/container/MenuSeparator';
 import { SortPriorityBadge } from '~/component/table/cell/SortPriorityBadge';
 import { FilterClauseBadge } from '~/component/table/cell/FilterClauseBadge';
 import { Scrollbar } from '~/component/container/Scrollbar';
+import { ResizeHandle } from '~/component/table/cell/ResizeHandle';
+import { ComboBox } from '~/component/input/ComboBox';
+import { List } from '~/component/list/List';
+import { HeaderCell } from '~/component/table/cell/Header';
 import { ToolBarSeparator } from '~/component/menubar/ToolBarSeparator';
 import { ChartLegend } from '~/component/chart/ChartLegend';
 import { Drawer } from '~/overlay/Drawer';
@@ -298,6 +302,16 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'FilterClauseBadge foregroundColor', resolve: () => new FilterClauseBadge().getForegroundColor(),          expected: 'var(--ts-ui-filter-clause-badge-color, inherit)' },
     { label: 'Scrollbar backgroundColor',    resolve: () => new Scrollbar().getBackgroundColor(),                       expected: 'var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))' },
     { label: 'Scrollbar touchAction',        resolve: () => new Scrollbar().getTouchAction(),                           expected: 'none' },
+    { label: 'ScrollArrowButton backgroundColor', resolve: () => (new Scrollbar('vertical', { arrowsEnabled: true }).getComponents()[1] as any).getBackgroundColor(), expected: 'var(--ts-ui-scrollbar-arrow-bg, transparent)' },
+    { label: 'ScrollbarThumb cursor',        resolve: () => (new Scrollbar() as any)._thumb.getCursor(),                expected: 'grab' },
+    { label: 'ScrollbarThumb backgroundColor', resolve: () => (new Scrollbar() as any)._thumb.getBackgroundColor(),     expected: 'var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))' },
+    { label: 'ResizeHandle cursor',          resolve: () => new ResizeHandle().getCursor(),                             expected: 'var(--ts-ui-table-resize-handle-cursor, ew-resize)' },
+    { label: 'ResizeHandle backgroundImage', resolve: () => new ResizeHandle().getBackgroundImage(),                    expected: 'linear-gradient(to right,transparent 80%,var(--ts-ui-table-resize-handle-color,rgba(0,0,0,0.2)) 80%)' },
+    { label: 'ComboBoxCaret minSize',        resolve: () => (new ComboBox() as any)._caret.getMinSizeConstraint(),      expected: { width: 14, height: 14 } },
+    { label: 'SelectableListRow cursor',     resolve: () => (new List({ items: ['a'] }) as any)._rowPool[0].getCursor(), expected: 'pointer' },
+    { label: 'SelectableListRow border',     resolve: () => (new List({ items: ['a'] }) as any)._rowPool[0].getBorder(), expected: { borderBottom: '1px solid var(--ts-ui-list-row-separator, transparent)' } },
+    { label: 'HeaderCellRenderer cursor',    resolve: () => new HeaderCell('Name', 'name').getRenderer().getCursor(),   expected: 'default' },
+    { label: 'HeaderCellRenderer userSelect', resolve: () => new HeaderCell('Name', 'name').getRenderer().getUserSelect(), expected: 'none' },
     { label: 'ToolBarSeparator backgroundColor', resolve: () => new ToolBarSeparator().getBackgroundColor(),            expected: 'var(--ts-ui-toolbar-separator-color, rgb(220, 220, 220))' },
     { label: 'ChartLegend backgroundColor',  resolve: () => new ChartLegend().getBackgroundColor(),                     expected: 'transparent' },
     { label: 'Popover backgroundColor',      resolve: () => new Popover().getBackgroundColor(),                        expected: 'var(--ts-ui-popover-bg, rgb(255, 255, 255))' },

@@ -14,10 +14,8 @@ import { callable } from "~/core/Callable.js";
  */
 class DefaultCell extends Cell<String | null> {
 
-    constructor(tag?: string) {
-        let renderer = new StringRenderer();
-
-        super(tag || "td", renderer);
+    constructor(tag?: string, renderer?: StringRenderer) {
+        super(tag || "td", renderer ?? new StringRenderer());
     }
 
     /**
