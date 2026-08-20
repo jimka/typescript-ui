@@ -31,6 +31,7 @@ import { Legend } from '~/component/container/Legend';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
+import { _ruleCacheHas } from '~/core/StyleTarget';
 
 const DOM_CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -123,15 +124,17 @@ describe('Text applyStyle class-rule hoisting', () => {
         expect(classDeclarations.textShadow).toBeUndefined();
     });
 
-    it('a fresh Text with no font/text setter called writes none of the eleven skippable declarations to its own #id rule', () => {
+    it('a fresh Text with no font/text setter called writes none of the ten skippable declarations to its own #id rule (lineHeight queues an explicit removal)', () => {
         const sink = DOM.sink as RecordingDOMSink;
         const b = new Text('x');
 
         const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
 
         for (const key of SKIPPABLE_FONT_KEYS) {
+            if (key === 'lineHeight') continue;
             expect(declarations[key]).toBeUndefined();
         }
+        expect(declarations.lineHeight).toBeNull();
     });
 
     it('a fresh Text still writes textOverflow to #id — the documented setTruncate exception', () => {
@@ -234,14 +237,19 @@ describe('Text applyStyle class-rule hoisting', () => {
         expect(declarations.fontSize).toBe('var(--ts-ui-header-font-size, 14px)');
     });
 
-    it('a constructor-time numeric lineHeight is honoured by both the getter and the render', () => {
+    it('a constructor-time numeric lineHeight is honoured by the getter and a shared value-class rule, not #id', () => {
         const sink = DOM.sink as RecordingDOMSink;
         const b = new Text('x', { lineHeight: 30 });
 
         const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
 
         expect(b.getLineHeight()).toBe(30);
-        expect(declarations.lineHeight).toBe('30px');
+        // The constructor-time numeric call enters numeric mode from the
+        // default additive rule, reconciling it away on #id as an explicit
+        // removal (queued pre-render, flushed at this first render) — not a
+        // real value, and not merely absent.
+        expect(declarations.lineHeight).toBeNull();
+        expect(_ruleCacheHas('.Text.lh30px')).toBe(true);
     });
 
     it('a pre-render setTextAlign call is honoured by the render-time rule write', () => {
@@ -254,23 +262,25 @@ describe('Text applyStyle class-rule hoisting', () => {
         expect(declarations.textAlign).toBe('center');
     });
 
-    it("Legend's #id rule is not empty even though the eleven skippable font declarations are all skipped", () => {
+    it("Legend's #id rule is not empty even though the ten skippable font declarations are all skipped (lineHeight queues an explicit removal)", () => {
         const sink = DOM.sink as RecordingDOMSink;
         const legend = new Legend();
 
         const declarations = declarationsDuring(sink, idSelector(legend), () => legend.getElement(true));
 
         // Legend's own applyStyle override always re-asserts marginLeft, so
-        // the #id rule is non-empty — proof the eleven skippable keys are
+        // the #id rule is non-empty — proof the ten skippable keys are
         // absent because they diverge on nothing, not because no rule
         // materialised.
         expect(declarations.marginLeft).toBe('10px');
         for (const key of SKIPPABLE_FONT_KEYS) {
+            if (key === 'lineHeight') continue;
             expect(declarations[key]).toBeUndefined();
         }
+        expect(declarations.lineHeight).toBeNull();
     });
 
-    it('a pre-render setLineHeight call is honoured at render, tracking the exact px value', () => {
+    it('a pre-render setLineHeight call is honoured via a shared value-class rule, tracking the exact px value', () => {
         const sink = DOM.sink as RecordingDOMSink;
 
         const cellText1 = new Text('42');
@@ -278,7 +288,11 @@ describe('Text applyStyle class-rule hoisting', () => {
         cellText1.setLineHeight(18);
         const decl1 = declarationsDuring(sink, idSelector(cellText1), () => cellText1.getElement(true));
 
-        expect(decl1.lineHeight).toBe('18px');
+        // Entering numeric mode from the default additive rule reconciles it
+        // away on #id as an explicit removal, not merely absent — see the
+        // constructor-time numeric lineHeight test above.
+        expect(decl1.lineHeight).toBeNull();
+        expect(_ruleCacheHas('.Text.lh18px')).toBe(true);
         for (const key of SKIPPABLE_FONT_KEYS) {
             if (key === 'lineHeight') continue;
             expect(decl1[key]).toBeUndefined();
@@ -289,7 +303,8 @@ describe('Text applyStyle class-rule hoisting', () => {
         cellText2.setLineHeight(24);
         const decl2 = declarationsDuring(sink, idSelector(cellText2), () => cellText2.getElement(true));
 
-        expect(decl2.lineHeight).toBe('24px');
+        expect(decl2.lineHeight).toBeNull();
+        expect(_ruleCacheHas('.Text.lh24px')).toBe(true);
         for (const key of SKIPPABLE_FONT_KEYS) {
             if (key === 'lineHeight') continue;
             expect(decl2[key]).toBeUndefined();
@@ -308,21 +323,34 @@ describe('Text applyStyle class-rule hoisting', () => {
     // own doc comment) — so this drives `applyStyle` a second time directly,
     // stress-testing the mechanism the plan asked for rather than that one
     // call site literally.
-    it('a second applyStyle pass on the same instance re-derives lineHeight, leaving the other eleven still absent', () => {
+    it('setLineHeight changing value mid-lifetime swaps the value-class token; a later applyStyle pass does not reintroduce a stale #id declaration', () => {
         const sink = DOM.sink as RecordingDOMSink;
 
         const cellText = new Text('42');
         cellText.setAutoMeasure(false);
 
-        cellText.setLineHeight(18);
+        cellText.setLineHeight(40);
         const decl1 = declarationsDuring(sink, idSelector(cellText), () => cellText.getElement(true));
-        expect(decl1.lineHeight).toBe('18px');
+        // Entering numeric mode from the default additive rule reconciles it
+        // away on #id as an explicit removal, not merely absent.
+        expect(decl1.lineHeight).toBeNull();
+        expect(_ruleCacheHas('.Text.lh40px')).toBe(true);
+        for (const key of SKIPPABLE_FONT_KEYS) {
+            if (key === 'lineHeight') continue;
+            expect(decl1[key]).toBeUndefined();
+        }
 
-        cellText.setLineHeight(24);
+        const start = sink.writes.length;
+        cellText.setLineHeight(46);
+        const toggleWrite = sink.writes.slice(start).find((w: any) => w.op === 'apply' && (w.args[1] as { addClass?: unknown }).addClass);
+        expect(toggleWrite).toBeDefined();
+        expect((toggleWrite!.args[1] as { addClass: string[] }).addClass).toEqual(['lh46px']);
+        expect((toggleWrite!.args[1] as { removeClass: string[] }).removeClass).toEqual(['lh40px']);
+
         const element = cellText.getElement()!;
         const decl2 = declarationsDuring(sink, idSelector(cellText), () => cellText.applyStyle(element));
 
-        expect(decl2.lineHeight).toBe('24px');
+        expect(decl2.lineHeight).toBeUndefined();
         for (const key of SKIPPABLE_FONT_KEYS) {
             if (key === 'lineHeight') continue;
             expect(decl2[key]).toBeUndefined();
@@ -338,8 +366,9 @@ describe('Text applyStyle class-rule hoisting', () => {
 
         expect(declarations.fontSize).toBe('var(--ts-ui-header-font-size, 14px)');
         for (const key of SKIPPABLE_FONT_KEYS) {
-            if (key === 'fontSize') continue;
+            if (key === 'fontSize' || key === 'lineHeight') continue;
             expect(declarations[key]).toBeUndefined();
         }
+        expect(declarations.lineHeight).toBeNull();
     });
 });
