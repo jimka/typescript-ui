@@ -62,6 +62,10 @@ consumer implementing its own `DOMSink` is affected.
   real, redundant `#id` declaration — it now writes a removal instead, so the
   shared `.ClassName` rule (or the framework rule) supplies the value. No
   consumer action is needed; the rendered result is unchanged.
+- **`visibility` now dedupes against the class-tier default the same way
+  `foregroundColor`/`outline`/`userSelect`/`minSize`/`maxSize`/`overflowX`/
+  `overflowY` already do.** No consumer action needed; nothing changes
+  visually.
 - **[`Text`](/api/component/input/classes/Text)'s font/text declarations
   (`font-family`, `text-align`, `font-weight`, and most of the rest of the
   twelve `applyStyle` writes) now join the hoisted style declarations too.**
