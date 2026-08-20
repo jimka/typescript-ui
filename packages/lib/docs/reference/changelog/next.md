@@ -88,6 +88,25 @@ consumer implementing its own `DOMSink` is affected.
   every component without a border, which forced a rule for it. Nothing
   changes visually; a component that sets anything genuinely per-instance
   still gets its own rule.
+- **The class-tier stylesheet is now hierarchy-aware, and rendered elements
+  additionally carry every ancestor class's own name — this is a breaking
+  change for a consumer stylesheet selector that targets one of those
+  ancestor names.** A class's `.ClassName` rule now declares only its own
+  deviation from its nearest ancestor's rule, instead of independently
+  repeating every declaration that ancestor already shares; this is a pure
+  size/dedup win with no rendering consequence on its own. What *is*
+  consumer-visible: rendered elements for `Cell` and its built-in subclasses,
+  `Text` and its built-in subclasses (`Label`, `Legend`, `Link`,
+  `SelectableText`), `TextInput` and its subclasses, `AbstractPickerField`'s
+  date/time field subclasses, `List`/`MultiSelectList`, `Window`/`TabWindow`,
+  chart components, and the `AnimatedDropdown` family now additionally carry
+  every ancestor class's own name (e.g. a `StringCell` element now also
+  carries `Cell`). **A consumer stylesheet selector that targets one of
+  these ancestor class names (`.Cell { ... }`, `.Text { ... }`) — previously
+  matching nothing, since no framework element ever carried a bare
+  ancestor's class name — now matches every concrete subclass instance
+  too.** Audit any such selector before upgrading; this is a change in what
+  a selector matches, not merely a specificity tie like the notes above.
 
 ### Components
 
