@@ -145,6 +145,14 @@ consumer implementing its own `DOMSink` is affected.
   their fixed styling on every instance's own CSS rule.** Each now shares one
   CSS rule per piece across every instance in the app. Nothing changes
   visually; no consumer action needed.
+- **[`Text`](/api/component/input/classes/Text)'s numeric-pixel
+  `setLineHeight`/`centerInHeight` (used by table cell renderers, tree/list
+  rows, and other row-height-synced text) now shares one CSS rule across
+  every instance that resolves the same pixel value, instead of each
+  instance writing its own.** The CSS-variable and theme-revert forms of
+  `setLineHeight`/`centerInHeight` now also dedupe against the class-tier
+  default the same way other hoisted properties do. No consumer action
+  needed; nothing changes visually.
 
 ### Table
 
