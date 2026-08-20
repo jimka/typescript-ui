@@ -2,6 +2,7 @@
 
 import { Text, TextOptions } from "~/component/input/Text.js";
 import { callable } from "~/core/Callable.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link SelectableText}.
@@ -31,6 +32,15 @@ const _defaultSelectableTextOptions: Partial<SelectableTextOptions> = {
  * @category Components
  */
 class SelectableText extends Text<SelectableTextOptions> {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. `SelectableText`
+    // deviates from `Text` on `cursor`/`userSelect` (unlike `Label`/`Legend`,
+    // which inherit `Text` untouched), so — like `Text` itself — it needs
+    // its own registration for the hierarchy walk to see that deviation;
+    // without it, `SelectableText` would silently pass through to `Text`'s
+    // shared rule and lose it.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultSelectableTextOptions;
 
     constructor(
         text?: String,

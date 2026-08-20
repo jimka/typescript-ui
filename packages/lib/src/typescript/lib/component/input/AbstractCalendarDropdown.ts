@@ -18,6 +18,7 @@ import { Grid } from "~/layout/Grid.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { PickerCell, PickerColumn } from "~/component/input/PickerColumn.js";
 import { isScrollbarTarget } from "~/component/container/Scrollbar.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 
 Glyph.register(chevron_left);
 Glyph.register(chevron_right);
@@ -449,6 +450,21 @@ export interface AbstractCalendarDropdownOptions extends AnimatedDropdownOptions
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * Split out from the constructor's inline literal (which also carries
+ * fresh-per-instance `layoutManager`/`insets` values) so the CSS-relevant
+ * subset alone can double as this class's `ownClassStyleDefaults` — sharing
+ * a `Fit()` layout manager across every dropdown would be a real bug, so
+ * that field (and `zIndex`/`insets`) stays inline at the call site.
+ */
+const _defaultAbstractCalendarDropdownOptions: Partial<AbstractCalendarDropdownOptions> = {
+    backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
+    border:          "var(--ts-ui-input-border)",
+    borderRadius:    "var(--ts-ui-border-radius, 4px)",
+    shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
+};
+
+/**
  * Abstract base for the two calendar dropdowns
  * ({@link DatePickerDropdown}, {@link DateTimePickerDropdown}). Owns the
  * shared structure (header row, weekday row, day grid, year scroller),
@@ -467,6 +483,17 @@ export interface AbstractCalendarDropdownOptions extends AnimatedDropdownOptions
 abstract class AbstractCalendarDropdown<
     TOptions extends AbstractCalendarDropdownOptions = AbstractCalendarDropdownOptions
 > extends AnimatedDropdown<TOptions> {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. `AbstractCalendarDropdown`
+    // deviates from `AnimatedDropdown` on `backgroundColor`/`border`/
+    // `borderRadius`/`shadow` (`AnimatedDropdown` itself declares none of
+    // these), so it needs its own registration or the hierarchy walk would
+    // silently pass through to `AnimatedDropdown`'s shared rule and lose its
+    // entire visible chrome — this is the one most concrete subclasses
+    // (`DatePickerDropdown`, `DateTimePickerDropdown`) depend on, since
+    // neither adds a `subclassDefaults` of its own.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultAbstractCalendarDropdownOptions;
 
     /**
      * Constructor-supplied callback. Fired with a fresh copy of `_value`
@@ -534,13 +561,10 @@ abstract class AbstractCalendarDropdown<
         super(
             options,
             {
-                zIndex:          10050,
-                layoutManager:   new Fit(),
-                backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
-                border:          "var(--ts-ui-input-border)",
-                borderRadius:    "var(--ts-ui-border-radius, 4px)",
-                shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
-                insets:          new Insets(6, 6, 6, 6),
+                zIndex:        10050,
+                layoutManager: new Fit(),
+                insets:        new Insets(6, 6, 6, 6),
+                ..._defaultAbstractCalendarDropdownOptions,
                 ...(subclassDefaults ?? {}),
             } as Partial<TOptions>,
         );

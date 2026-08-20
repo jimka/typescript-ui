@@ -113,6 +113,33 @@ const DEFAULT_FONT_SIZE_RULE = "var(--ts-ui-font-size, 14px)";
  */
 class Text<TOptions extends TextOptions = TextOptions> extends Component<TOptions> {
 
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. `_defaultTextOptions`
+    // carries no non-font `ClassStyleDefaults` field (no class in this file
+    // defaults `cursor`/`userSelect`/etc.; `SelectableText`/`Link` set those
+    // per-subclass instead), so this class's own contribution is the `font`
+    // sub-bag alone — the same values `getClassStyleDefaults()` below
+    // resolves, kept as one source so the two can never drift apart (the
+    // hierarchy walk's static resolution and the per-instance override must
+    // agree for every participating class — see the plan's Internal
+    // Structure).
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = {
+        font: {
+            fontFamily:     _defaultTextOptions.fontFamily     ?? null,
+            fontKerning:    _defaultTextOptions.fontKerning    ?? null,
+            fontSize:       DEFAULT_FONT_SIZE_RULE,
+            fontSizeAdjust: _defaultTextOptions.fontSizeAdjust ?? null,
+            fontStretch:    _defaultTextOptions.fontStretch    ?? null,
+            fontStyle:      _defaultTextOptions.fontStyle      ?? null,
+            fontVariant:    _defaultTextOptions.fontVariant    ?? null,
+            fontWeight:     _defaultTextOptions.fontWeight     ?? null,
+            textAlign:      _defaultTextOptions.textAlign      ?? null,
+            textShadow:     _defaultTextOptions.textShadow     ?? null,
+            lineHeight:     ADDITIVE_LINE_HEIGHT_RULE,
+            textOverflow:   (_defaultTextOptions.truncate ?? true) ? "ellipsis" : null,
+        },
+    };
+
     private _hasExplicitPreferredSize: boolean = false;
     private _fontSizeCSSVar : string | null = "--ts-ui-font-size";
     private _fontSizeCSSRule: string | null = DEFAULT_FONT_SIZE_RULE;
@@ -1455,28 +1482,16 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * see in `_defaultOptions`: `fontSize`/`lineHeight` resolve through private
      * derived fields (`_fontSizeCSSRule`, `_lineHeightCSSRule`), not the raw
      * numeric options, and `textOverflow` is pre-resolved from `truncate` here
-     * rather than inside the generic resolver. Every value below is the literal
-     * a *fresh, non-customized* instance of this concrete class would produce —
-     * verified true for every current Text-family class (Link, Label, Legend),
-     * none of which touch these fields in their own defaults.
+     * rather than inside the generic resolver. Delegates to this class's own
+     * `ownClassStyleDefaults` (above), which resolves the identical bag from
+     * the same module-level constants — verified true for every current
+     * Text-family class (Link, Label, Legend), none of which touch these
+     * fields in their own defaults.
      */
     protected getClassStyleDefaults(): ClassStyleDefaults {
         return {
             ...super.getClassStyleDefaults(),
-            font: {
-                fontFamily:     this._defaultOptions.fontFamily     ?? null,
-                fontKerning:    this._defaultOptions.fontKerning    ?? null,
-                fontSize:       DEFAULT_FONT_SIZE_RULE,
-                fontSizeAdjust: this._defaultOptions.fontSizeAdjust ?? null,
-                fontStretch:    this._defaultOptions.fontStretch    ?? null,
-                fontStyle:      this._defaultOptions.fontStyle      ?? null,
-                fontVariant:    this._defaultOptions.fontVariant    ?? null,
-                fontWeight:     this._defaultOptions.fontWeight     ?? null,
-                textAlign:      this._defaultOptions.textAlign      ?? null,
-                textShadow:     this._defaultOptions.textShadow     ?? null,
-                lineHeight:     ADDITIVE_LINE_HEIGHT_RULE,
-                textOverflow:   (this._defaultOptions.truncate ?? true) ? "ellipsis" : null,
-            },
+            font: Text.ownClassStyleDefaults.font,
         };
     }
 

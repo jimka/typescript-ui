@@ -4,6 +4,7 @@ import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { Util } from "~/core/Util.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link UsernameField}.
@@ -37,6 +38,14 @@ const _defaultUsernameFieldOptions: Partial<UsernameFieldOptions> = {
  * @category Components
  */
 class UsernameField extends TextInput<UsernameFieldOptions> {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. `UsernameField` deviates
+    // from `TextInput` on `cursor`/`foregroundColor` (`TextInput` itself
+    // declares neither), so it needs its own registration or the hierarchy
+    // walk would silently pass through to `TextInput`'s shared rule and
+    // lose them.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultUsernameFieldOptions;
 
     /**
      * @param options - Optional construction options.

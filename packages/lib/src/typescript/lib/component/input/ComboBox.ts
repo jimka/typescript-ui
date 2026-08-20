@@ -19,6 +19,7 @@ import { Fit } from "~/layout/Fit.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { chevron_down } from "~/glyphs/solid/chevron_down.js";
 import { callable } from "~/core/Callable.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 
 Glyph.register(chevron_down);
 
@@ -111,7 +112,31 @@ const COMBOBOX_DROPDOWN_ROW_PADDING_PX = 16;
  */
 const COMBOBOX_DROPDOWN_MIN_WIDTH_PX = 200;
 
+/**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * Split out from the constructor's inline literal (which also carries a
+ * fresh-per-instance `layoutManager: new Fit()`) so the CSS-relevant subset
+ * alone can double as this class's `ownClassStyleDefaults` — sharing a
+ * `Fit()` instance across every dropdown would be a real bug, so that field
+ * stays inline at the call site.
+ */
+const _defaultComboBoxDropdownOptions: Partial<AnimatedDropdownOptions> = {
+    backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
+    border:          "var(--ts-ui-input-border)",
+    borderRadius:    "var(--ts-ui-border-radius, 4px)",
+    shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
+};
+
 class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. `ComboBoxDropdown`
+    // deviates from `AnimatedDropdown` on `backgroundColor`/`border`/
+    // `borderRadius`/`shadow` (`AnimatedDropdown` itself declares none of
+    // these), so it needs its own registration or the hierarchy walk would
+    // silently pass through to `AnimatedDropdown`'s shared rule and lose
+    // its entire visible chrome.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultComboBoxDropdownOptions;
 
     /**
      * Inner [`List`](/api/component/list/classes/List) hosting the option rows.
@@ -131,14 +156,15 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
      *   Fired on click (`SelectableListRow.onClick`) and on Enter / Space
      *   forwarded into the inner list — both paths route through the
      *   list's `change` event.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults. Forwarded even though no subclass exists yet, per
+     *   the framework's `subclassDefaults` convention.
      */
-    constructor(onSelect: (index: number) => void) {
+    constructor(onSelect: (index: number) => void, subclassDefaults?: Partial<AnimatedDropdownOptions>) {
         super(undefined, {
-            layoutManager:   new Fit(),
-            backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
-            border:          "var(--ts-ui-input-border)",
-            borderRadius:    "var(--ts-ui-border-radius, 4px)",
-            shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
+            layoutManager: new Fit(),
+            ..._defaultComboBoxDropdownOptions,
+            ...(subclassDefaults ?? {}),
         });
 
         // The inner List already exposes `role="listbox"` from

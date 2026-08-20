@@ -9,6 +9,7 @@ import { Fit } from "~/layout/Fit.js";
 import { TimeColumns } from "~/component/input/TimeColumns.js";
 import { isScrollbarTarget } from "~/component/container/Scrollbar.js";
 import { callable } from "~/core/Callable.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 
 /** Pixel width of the time picker panel (Hour + Minute). */
 const PANEL_WIDTH:          number = 140;
@@ -44,7 +45,31 @@ export interface TimePickerDropdownOptions extends AnimatedDropdownOptions {
  *
  * @category Components
  */
+/**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * Split out from the constructor's inline literal (which also carries
+ * fresh-per-instance `layoutManager`/`insets` values) so the CSS-relevant
+ * subset alone can double as this class's `ownClassStyleDefaults` — sharing
+ * a `Fit()` layout manager across every dropdown would be a real bug, so
+ * that field (and `zIndex`/`insets`) stays inline at the call site.
+ */
+const _defaultTimePickerDropdownOptions: Partial<TimePickerDropdownOptions> = {
+    backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
+    border:          "var(--ts-ui-input-border)",
+    borderRadius:    "var(--ts-ui-border-radius, 4px)",
+    shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
+};
+
 class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. `TimePickerDropdown`
+    // deviates from `AnimatedDropdown` on `backgroundColor`/`border`/
+    // `borderRadius`/`shadow` (`AnimatedDropdown` itself declares none of
+    // these), so it needs its own registration or the hierarchy walk would
+    // silently pass through to `AnimatedDropdown`'s shared rule and lose
+    // its entire visible chrome.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultTimePickerDropdownOptions;
 
     private readonly _showSeconds: boolean;
     /** The shared Hour/Min(/Sec) selection grid. Built once; re-highlighted in place. */
@@ -54,16 +79,21 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
      * @param onSelect - Called with `(hours, minutes, seconds)` whenever the user picks a value.
      * The `seconds` argument is always `0` when the picker is not configured with `showSeconds`.
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults. Forwarded even though no subclass exists yet, per
+     *   the framework's `subclassDefaults` convention.
      */
-    constructor(onSelect: (hours: number, minutes: number, seconds: number) => void, options?: TimePickerDropdownOptions) {
+    constructor(
+        onSelect: (hours: number, minutes: number, seconds: number) => void,
+        options?: TimePickerDropdownOptions,
+        subclassDefaults?: Partial<TimePickerDropdownOptions>,
+    ) {
         super(options, {
-            zIndex:          10050,
-            layoutManager:   new Fit(),
-            backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
-            border:          "var(--ts-ui-input-border)",
-            borderRadius:    "var(--ts-ui-border-radius, 4px)",
-            shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
-            insets:          new Insets(4, 4, 4, 4),
+            zIndex:        10050,
+            layoutManager: new Fit(),
+            insets:        new Insets(4, 4, 4, 4),
+            ..._defaultTimePickerDropdownOptions,
+            ...(subclassDefaults ?? {}),
         });
 
         this._showSeconds = options?.showSeconds ?? false;

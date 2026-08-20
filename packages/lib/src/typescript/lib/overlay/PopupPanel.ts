@@ -8,6 +8,7 @@ import { Insets } from "~/primitive/Insets.js";
 import type { Size } from "~/primitive/Size.js";
 import { VBox } from "~/layout/VBox.js";
 import { callable } from "~/core/Callable.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link PopupPanel}. Adds no fields of its
@@ -24,6 +25,21 @@ export interface PopupPanelOptions extends AnimatedDropdownOptions {}
  *  inset used by other floating panels (e.g. {@link Menu}); purely cosmetic
  *  breathing room. */
 const VIEWPORT_MARGIN = 4;
+
+/**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * Split out from the constructor's inline literal (which also carries
+ * fresh-per-instance `layoutManager`/`insets` values) so the CSS-relevant
+ * subset alone can double as this class's `ownClassStyleDefaults` — sharing
+ * a `VBox` layout manager across every panel would be a real bug, so that
+ * field (and `insets`) stays inline at the call site.
+ */
+const _defaultPopupPanelOptions: Partial<PopupPanelOptions> = {
+    backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
+    border:          "var(--ts-ui-input-border)",
+    borderRadius:    "var(--ts-ui-border-radius, 4px)",
+    shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
+};
 
 /**
  * A floating panel that sizes itself to its content, places itself against a
@@ -62,6 +78,15 @@ const VIEWPORT_MARGIN = 4;
  */
 class PopupPanel<TOptions extends PopupPanelOptions = PopupPanelOptions> extends AnimatedDropdown<TOptions> {
 
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. `PopupPanel` deviates
+    // from `AnimatedDropdown` on `backgroundColor`/`border`/`borderRadius`/
+    // `shadow` (`AnimatedDropdown` itself declares none of these), so it
+    // needs its own registration or the hierarchy walk would silently pass
+    // through to `AnimatedDropdown`'s shared rule and lose its entire
+    // visible chrome.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultPopupPanelOptions;
+
     // Opener currently driving the panel via toggleFor, or null when the panel
     // was opened some other way (a direct showAt) or is closed. A plain
     // initializer is correct here — no cascade-dispatched setter writes it.
@@ -79,12 +104,9 @@ class PopupPanel<TOptions extends PopupPanelOptions = PopupPanelOptions> extends
             {
                 // Constructed inline (never hoisted to a module constant) so
                 // every panel gets its own layout manager instance.
-                layoutManager:   new VBox({ stretching: true }),
-                insets:          new Insets(4, 4, 4, 4),
-                backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
-                border:          "var(--ts-ui-input-border)",
-                borderRadius:    "var(--ts-ui-border-radius, 4px)",
-                shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
+                layoutManager: new VBox({ stretching: true }),
+                insets:        new Insets(4, 4, 4, 4),
+                ..._defaultPopupPanelOptions,
                 ...(subclassDefaults ?? {}),
             } as Partial<TOptions>,
         );
