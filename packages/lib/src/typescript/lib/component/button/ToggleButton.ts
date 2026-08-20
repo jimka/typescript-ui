@@ -43,7 +43,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
     // `_pressedStyleRule` for the full explanation.
     private declare _selectedStyleRule?: StateStyleRule;
     private get selectedStyleRule(): StateStyleRule {
-        return this._selectedStyleRule ??= this.createStateStyleRule(".selected:not(:hover)", () => this.getSelectedClassDeclarations());
+        return this._selectedStyleRule ??= this.createStateStyleRule(".selected:not(:hover)", () => this.getSelectedClassDeclarations(), "extractSelectedClassDeclarations");
     }
 
     /**
@@ -52,8 +52,8 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      * three properties from `.selected` the same way `Button` isolates them
      * from `.pressed` — see `plans/implemented/state-chrome-isolation-generalization.md`.
      */
-    protected getSelectedClassDeclarations(): Record<string, string | null> {
-        if (this._defaultOptions.chromeless) {
+    protected static extractSelectedClassDeclarations(defaults: Partial<ButtonOptions>): Record<string, string | null> {
+        if (defaults.chromeless) {
             return {};
         }
 
@@ -62,6 +62,10 @@ class ToggleButton extends Button<ToggleButtonOptions> {
             backgroundColor: TOGGLE_SELECTED_DECLARATIONS.backgroundColor!,
             backgroundImage: TOGGLE_SELECTED_DECLARATIONS.backgroundImage!,
         };
+    }
+
+    protected getSelectedClassDeclarations(): Record<string, string | null> {
+        return (this.constructor as typeof ToggleButton).extractSelectedClassDeclarations(this._defaultOptions);
     }
 
     /**

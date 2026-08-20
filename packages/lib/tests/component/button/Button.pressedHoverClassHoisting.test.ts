@@ -20,10 +20,17 @@
 // — and no `.Button:hover:not(.pressed)` class rule is ever created.
 //
 // Same module-state caveat as `ClassStyleRules.test.ts`: `.Button.pressed`
-// and `.SpinButton.pressed` are process-module state (fresh per test
-// *file*, not per test), materialising the first time any Button/SpinButton
-// in this file renders — every test below either warms up explicitly or
-// relies on being the first Button use in the file.
+// is process-module state (fresh per test *file*, not per test),
+// materialising the first time any Button/SpinButton in this file renders —
+// every test below either warms up explicitly or relies on being the first
+// Button use in the file.
+//
+// Since plans/implemented/button-family-hierarchy-cascade.md, `SpinButton`
+// contributes nothing of its own to the pressed tier (it never overrides
+// `getPressedClassDeclarations()`), so its `.pressed` state resolves
+// entirely to `.Button.pressed` via the state-tier hierarchy walk — no
+// `.SpinButton.pressed` rule is ever created, the same way `.TabButton.pressed`
+// isn't (see `TabButton.stateClassHoisting.test.ts`).
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Button } from '~/component/button/Button';
 import { SpinButton } from '~/component/input/SpinButton';
@@ -130,18 +137,26 @@ describe('Button pressed/hover state-class hoisting', () => {
         expect(classDeclarations).toEqual({});
     });
 
+    it("SpinButton's .pressed state resolves entirely to .Button.pressed — no .SpinButton.pressed class rule is ever created", () => {
+        new SpinButton('▲').getElement(true);
+
+        expect(_ruleCacheHas('.Button.pressed')).toBe(true);
+        expect(_ruleCacheHas('.SpinButton.pressed')).toBe(false);
+    });
+
     it("SpinButton's constructor-time clearPressedShadow pins boxShadow to 'none' on its own instance rule, not the class default it inherits from Button", () => {
         const spin = new SpinButton('▲');
 
-        const classDeclarations = declarationsDuring(sink, '.SpinButton.pressed', () => spin.getElement(true));
-        // The class rule materialises eagerly, during construction (when the
-        // first setPressedX call resolves `pressedClassBag`) — well before
-        // this capture window starts, so nothing shows up here regardless of
-        // what the bag holds. `boxShadow` is now IN that bag (SpinButton
-        // inherits Button's `pressedShadow` default), which is exactly why
-        // `clearPressedShadow` below must pin a real value rather than
-        // writing `null` — a `null` write can never outrank the class rule's
-        // now-shared boxShadow token.
+        // `.Button.pressed` (the rule SpinButton's `.pressed` state actually
+        // resolves to — see the case above) materialises eagerly, during
+        // construction (when the first setPressedX call resolves
+        // `pressedClassBag`) — well before this capture window starts, so
+        // nothing shows up here regardless of what the bag holds. `boxShadow`
+        // is IN that bag (SpinButton inherits Button's `pressedShadow`
+        // default), which is exactly why `clearPressedShadow` below must pin
+        // a real value rather than writing `null` — a `null` write can never
+        // outrank the class rule's shared boxShadow token.
+        const classDeclarations = declarationsDuring(sink, '.Button.pressed', () => spin.getElement(true));
         expect(classDeclarations).toEqual({});
 
         const second = new SpinButton('▼');

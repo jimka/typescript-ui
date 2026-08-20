@@ -11,7 +11,7 @@ import { Tooltip } from "~/overlay/Tooltip.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
-import type { StateStyleRule } from "~/core/ClassStyleRules.js";
+import type { ClassStyleDefaults, StateStyleRule } from "~/core/ClassStyleRules.js";
 import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
@@ -260,6 +260,13 @@ const _defaultButtonOptions: Partial<ButtonOptions> = {
  * @category Components
  */
 class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<TOptions> {
+
+    // Opts the resting tier into the hierarchy-aware class cascade — see
+    // plans/implemented/class-hierarchy-cascade.md. The same constant this
+    // class's own defaults resolve from, exposed at the class level so
+    // `ToggleButton`/`SpinButton`/… that add nothing of their own share
+    // `.Button`'s rule instead of each repeating it.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultButtonOptions;
 
     private _text!:    Text;
     /**
@@ -544,7 +551,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     // construction.
     private declare _pressedStyleRule?: StateStyleRule;
     private get pressedStyleRule(): StateStyleRule {
-        return this._pressedStyleRule ??= this.createStateStyleRule(".pressed", () => this.getPressedClassDeclarations());
+        return this._pressedStyleRule ??= this.createStateStyleRule(".pressed", () => this.getPressedClassDeclarations(), "extractPressedClassDeclarations");
     }
     private _pressedBorder: BorderOptions | null = null;
 
@@ -557,7 +564,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     // hold instead of falling through to the plain resting look.
     private declare _hoverStyleRule?: StateStyleRule;
     private get hoverStyleRule(): StateStyleRule {
-        return this._hoverStyleRule ??= this.createStateStyleRule(":hover:not(.pressed)", () => this.getHoverClassDeclarations());
+        return this._hoverStyleRule ??= this.createStateStyleRule(":hover:not(.pressed)", () => this.getHoverClassDeclarations(), "extractHoverClassDeclarations");
     }
     private _hoverBorder: BorderOptions | null = null;
 
@@ -606,25 +613,27 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * branch of `applyChromeOptions` for the instance-level counterpart of
      * this exclusion.
      */
-    protected getPressedClassDeclarations(): Record<string, string | null> {
-        const d = this._defaultOptions;
-
-        if (d.chromeless) {
+    protected static extractPressedClassDeclarations(defaults: Partial<ButtonOptions>): Record<string, string | null> {
+        if (defaults.chromeless) {
             return {};
         }
 
         const out: Record<string, string | null> = {};
 
-        if (d.pressedForegroundColor !== undefined) out.color           = d.pressedForegroundColor;
-        if (d.pressedBackgroundColor !== undefined) out.backgroundColor = d.pressedBackgroundColor;
-        if (d.pressedBackgroundImage !== undefined) out.backgroundImage = d.pressedBackgroundImage;
-        if (d.pressedShadow          !== undefined) out.boxShadow       = d.pressedShadow;
+        if (defaults.pressedForegroundColor !== undefined) out.color           = defaults.pressedForegroundColor;
+        if (defaults.pressedBackgroundColor !== undefined) out.backgroundColor = defaults.pressedBackgroundColor;
+        if (defaults.pressedBackgroundImage !== undefined) out.backgroundImage = defaults.pressedBackgroundImage;
+        if (defaults.pressedShadow          !== undefined) out.boxShadow       = defaults.pressedShadow;
 
         return out;
     }
 
+    protected getPressedClassDeclarations(): Record<string, string | null> {
+        return (this.constructor as typeof Button).extractPressedClassDeclarations(this._defaultOptions);
+    }
+
     /**
-     * Hover-state counterpart of {@link getPressedClassDeclarations}. Always
+     * Hover-state counterpart of {@link extractPressedClassDeclarations}. Always
      * empty: unlike the pressed tier, hover is never deduped onto the class
      * rule. A class-tier hover rule would sit at `(0,3,0)` (`.ClassName:hover:not(.pressed)`),
      * which loses to a deviating instance's isolated resting rule at
@@ -633,8 +642,12 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * declaration entirely. `hoverForegroundColor` also carries no class
      * default to begin with.
      */
-    protected getHoverClassDeclarations(): Record<string, string | null> {
+    protected static extractHoverClassDeclarations(_defaults: Partial<ButtonOptions>): Record<string, string | null> {
         return {};
+    }
+
+    protected getHoverClassDeclarations(): Record<string, string | null> {
+        return (this.constructor as typeof Button).extractHoverClassDeclarations(this._defaultOptions);
     }
 
     /**
