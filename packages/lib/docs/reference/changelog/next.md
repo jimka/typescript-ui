@@ -233,6 +233,15 @@ consumer implementing its own `DOMSink` is affected.
   works the same way `cursor` already did, and a subclass can seed it as a
   class default. `getUserSelect()` folds that default, so a class-level value
   is visible to consumers and to the render path alike.
+- **`ComponentOptions.styleGroup`** (with `setStyleGroup`/`getStyleGroup`)
+  lets several instances of the same concrete class share one generated
+  `.ClassName--<group>` CSS rule instead of each carrying its own — for
+  callers who want many identically-configured instances (e.g. fifty
+  `Button`s sharing one non-default `backgroundColor`) to share bytes without
+  writing a dedicated subclass. The shared rule's content is fixed by
+  whichever instance in the group renders first; a later member whose own
+  value genuinely differs still writes it to its own rule. Instances with
+  different `styleGroup` values, or none, are unaffected.
 
 ### Components
 
