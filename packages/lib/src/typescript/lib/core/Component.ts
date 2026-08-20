@@ -1879,7 +1879,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             ruleValue = "inherit";
         }
 
-        this.setElementCSSRule("visibility", ruleValue);
+        this.setReconciledCSSRules({ visibility: ruleValue });
         this.scheduleEffectiveVisibilityReconcile();
 
         return this;
@@ -4968,9 +4968,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             // is switched away). This mirrors the live `setVisible` setter, which
             // also writes `inherit` for `true`; writing `visible` here would pin
             // the element on screen and defeat ancestor-based hiding.
-            this.writeRuleDeclaration("visibility", visible ? "inherit" : "hidden");
+            this.reconcileRuleDeclaration("visibility", visible ? "inherit" : "hidden");
         } else {
-            this.writeRuleDeclaration("visibility", "inherit");
+            this.reconcileRuleDeclaration("visibility", "inherit");
         }
 
         const displayed = this.isDisplayed();
