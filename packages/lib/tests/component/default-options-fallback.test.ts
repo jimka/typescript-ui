@@ -391,7 +391,11 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     // plan changes (Step 8 only makes the *border* argument options-aware).
     { label: 'TabBar under-border (theme default: cleared)', resolve: () => new TabBar().getBorder(),                    expected: { border: 'none' } },
     { label: 'Checkbox outline',             resolve: () => new Checkbox().getOutline(),                                expected: 'none' },
+    { label: 'Checkbox _box cursor',         resolve: () => (new Checkbox() as any)._box.getCursor(),                   expected: 'pointer' },
+    { label: 'Checkbox _check minSize',      resolve: () => (new Checkbox() as any)._check.getMinSizeConstraint(),      expected: { width: 12, height: 12 } },
     { label: 'RadioButton outline',          resolve: () => new RadioButton().getOutline(),                             expected: 'none' },
+    { label: 'RadioButton _ring cursor',     resolve: () => (new RadioButton() as any)._ring.getCursor(),               expected: 'pointer' },
+    { label: 'RadioButton _dot minSize',     resolve: () => (new RadioButton() as any)._dot.getMinSizeConstraint(),     expected: { width: 8, height: 8 } },
     { label: 'Toggle outline',               resolve: () => new Toggle().getOutline(),                                  expected: 'none' },
     { label: 'Slider outline',               resolve: () => new Slider().getOutline(),                                  expected: 'none' },
     { label: 'Slider cursor',                resolve: () => new Slider().getCursor(),                                   expected: 'pointer' },

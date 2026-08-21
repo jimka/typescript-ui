@@ -3,8 +3,52 @@
 // bare (unmounted) radio button: setSelected updates state through the
 // framework ListenerBag (no DOM event loop), the positional-text shim and the
 // radioName back-compat field are pure option reads.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { RadioButton } from '~/component/input/RadioButton';
+import { DOM } from '~/core/DOM';
+import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
+import { _ruleCacheHas } from '~/core/StyleTarget';
+import fontMetrics from '../../dom/font-metrics.test-font.json';
+
+const CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
+
+/** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+function idSelector(component: { getId(): string }): string {
+    return '#' + DOM.source.escapeSelector(component.getId());
+}
+
+/**
+ * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+ * flattened into one key/value map. Copied from `ClassChromeRules.test.ts`.
+ */
+function declarationsDuring(
+    sink: RecordingDOMSink,
+    selector: string,
+    fn: () => void,
+): Record<string, string | null> {
+    const start = sink.writes.length;
+    fn();
+
+    const out: Record<string, string | null> = {};
+    for (const w of sink.writes.slice(start)) {
+        if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+            continue;
+        }
+
+        const styles = w.args[1] as Record<string, string | null>;
+        for (const key of Object.keys(styles)) {
+            out[key] = styles[key];
+        }
+    }
+
+    return out;
+}
 
 describe('RadioButton positional text label', () => {
     it('uses the positional text arg as the label when no label/text option is present', () => {
@@ -101,5 +145,48 @@ describe('RadioButton label round-trip', () => {
 
         rb.setLabel(null);
         expect(rb.getLabel()).toBe(null);
+    });
+});
+
+describe('RadioButton delegate static style hoisting', () => {
+    afterEach(() => DOM.reset());
+
+    it('row 7: a rendered _ring carries no static size/cursor declaration on its own #id rule', () => {
+        const sink = installTestDOM(CONFIG);
+        const rb   = new RadioButton() as any;
+        const ring = rb._ring;
+
+        const declarations = declarationsDuring(sink, idSelector(ring), () => rb.getElement(true));
+
+        expect(declarations.minWidth).toBeUndefined();
+        expect(declarations.minHeight).toBeUndefined();
+        expect(declarations.maxWidth).toBeUndefined();
+        expect(declarations.maxHeight).toBeUndefined();
+        expect(declarations.cursor).toBeUndefined();
+    });
+
+    it('row 8: a rendered _dot carries no static color declaration on its own #id rule', () => {
+        // Size is deliberately not asserted here — see RadioButtonDot's doc
+        // comment (mirrors CheckboxCheckGlyph's): Glyph.applyOptions always
+        // re-pins minSize/maxSize via a real setter call when a preferred size
+        // resolves, so size can never dedupe onto the class rule for a Glyph
+        // delegate and stays an imperative, per-instance #id write.
+        const sink = installTestDOM(CONFIG);
+        const rb   = new RadioButton() as any;
+        const dot  = rb._dot;
+
+        const declarations = declarationsDuring(sink, idSelector(dot), () => rb.getElement(true));
+
+        expect(declarations.color).toBeUndefined();
+    });
+
+    it('row 9: the shared .RadioButtonRing/.RadioButtonDot class rules exist once RadioButtons have rendered', () => {
+        installTestDOM(CONFIG);
+
+        new RadioButton().getElement(true);
+        new RadioButton().getElement(true);
+
+        expect(_ruleCacheHas('.RadioButtonRing')).toBe(true);
+        expect(_ruleCacheHas('.RadioButtonDot')).toBe(true);
     });
 });
