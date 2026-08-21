@@ -21,7 +21,7 @@ import { ElementAttributes } from "~/core/ElementAttributes.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
-import { COMPONENT_CLASS, ensureClassStyleRule, getStyleClassChain, registerStyleChainRoot, type ClassStyleDefaults, StateStyleRule } from "~/core/ClassStyleRules.js";
+import { COMPONENT_CLASS, ensureClassStyleRule, ensureStyleGroupRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, styleGroupClassSuffix, type ClassStyleDefaults, StateStyleRule } from "~/core/ClassStyleRules.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
 import { measureBorderWidths } from "~/core/BorderWidths.js";
 
@@ -158,6 +158,12 @@ export interface ComponentOptions {
     attributes?:      Record<string, string>;
     components?:      Array<Component | ComponentFactory | ConstrainedComponent>;
     styleRules?:      ComponentStyleRuleSpec[];
+    /**
+     * Opt-in token that lets several instances of the same concrete class
+     * share one generated `.ClassName--<group>` CSS rule instead of each
+     * carrying its own.
+     */
+    styleGroup?:      string | null;
 }
 
 // Module-level state for the rAF-coalesced layout queue. Setters and event handlers call
@@ -284,6 +290,33 @@ function formatSizeTerm(value: number): string {
  */
 function formatSizeAttr(width: number, height: number): string {
     return formatSizeTerm(width) + " " + formatSizeTerm(height);
+}
+
+/**
+ * The declarations a specific instance's own resolved hoistable style
+ * produces — read through the same per-field getters a caller would use
+ * (`getBackgroundColor()`, `getBorder()`, ...), then passed through
+ * `resolveDeclarations` exactly as `getClassStyleDefaults()`'s class-only
+ * bag is. Seeds `ensureStyleGroupRule` with what *this instance* would
+ * actually render, not the class's plain default — see
+ * plans/implemented/shared-instance-style-groups.md. Scoped to the same
+ * fields the class tier hoists via `ClassStyleDefaults`, minus
+ * `backgroundImage`/`borderRadius`/`visible`/`displayed`/`font`, which a
+ * `styleGroup` does not cover.
+ */
+function resolveInstanceStyleDeclarations(component: Component): Record<string, string | null> {
+    return resolveDeclarations({
+        backgroundColor: component.getBackgroundColor(),
+        border:          component.getBorder(),
+        cursor:          component.getCursor(),
+        foregroundColor: component.getForegroundColor(),
+        outline:         component.getOutline(),
+        userSelect:      component.getUserSelect(),
+        shadow:          component.getShadow(),
+        minSize:         component.getMinSizeConstraint(),
+        maxSize:         component.getMaxSizeConstraint(),
+        overflow:        component.getOverflow(),
+    });
 }
 
 /**
@@ -459,6 +492,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // Set at the top of `applyStyle` and consulted by `writeRuleDeclaration`
     // so each phase can skip a write already served by a lower tier.
     private _inheritedStyleBag    : Readonly<Record<string, string | null>> | null = null;
+    // Per-render cache of what this instance's `styleGroup` (if any) already
+    // delivers — the bag `ensureStyleGroupRule` returns, or `null` when no
+    // group is set. Checked by `matchesClassStyle` ahead of
+    // `_inheritedStyleBag`; see plans/implemented/shared-instance-style-groups.md.
+    private _styleGroupBag        : Readonly<Record<string, string | null>> | null = null;
     // Optional clip frame: a presentational wrapper element interposed between
     // this component's element and its DOM parent, sized to a cell rect with
     // `overflow: hidden` so a layout manager can visually clip an element that
@@ -637,6 +675,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (options.pointerEvents   !== undefined) this.setPointerEvents(options.pointerEvents);
         if (options.writingMode     !== undefined) this.setWritingMode(options.writingMode);
         if (options.touchAction     !== undefined) this.setTouchAction(options.touchAction);
+        if (options.styleGroup      !== undefined) this.setStyleGroup(options.styleGroup);
 
         if (options.attributes !== undefined) {
             // The options bag's `attributes` is a raw-HTML-attribute escape
@@ -1769,6 +1808,44 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     setName(name: string | null): this {
         this._options.name = name;
+
+        return this;
+    }
+
+    /**
+     * Returns this component's `styleGroup` token — the caller-supplied
+     * string that lets several instances of the same concrete class share
+     * one generated `.ClassName--<group>` CSS rule instead of each carrying
+     * its own. `null` when unset.
+     *
+     * @returns The `styleGroup` token, or `null` when none has been set.
+     */
+    getStyleGroup(): string | null {
+        return this._options.styleGroup ?? null;
+    }
+
+    /**
+     * Sets this component's `styleGroup` token. Two instances of the same
+     * concrete class constructed with the same token compare their resolved
+     * hoistable style (background/border/cursor/foregroundColor/outline/
+     * userSelect/shadow/minSize/maxSize/overflow) and share one rule for
+     * whatever agrees; a genuine deviation still writes to that instance's
+     * own rule, exactly as an ungrouped instance would.
+     *
+     * @remarks The group's shared content is fixed by whichever instance in
+     * the group renders *first* — a later instance passing a different
+     * value under the same token is treated as a per-instance deviation
+     * (written to its own rule), not an error. Choose a token deliberately
+     * for instances that are meant to look identical; the group's exact
+     * resolved content is otherwise not predictable from source alone
+     * without knowing render order.
+     *
+     * @param group - The new token, or `null` to clear it.
+     *
+     * @returns This component, for method chaining.
+     */
+    setStyleGroup(group: string | null): this {
+        this._options.styleGroup = group;
 
         return this;
     }
@@ -4759,8 +4836,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         return this;
     }
 
-    /** True when the framework or class rule already delivers `value` for `key`. */
+    /** True when the framework, class, or group rule already delivers `value` for `key`. */
     protected matchesClassStyle(key: string, value: string | null): boolean {
+        if (this._styleGroupBag !== null && this._styleGroupBag[key] === value) {
+            return true;
+        }
+
         return this._inheritedStyleBag !== null && this._inheritedStyleBag[key] === value;
     }
 
@@ -4936,6 +5017,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // class rules before the phases run, so each phase can skip one it
         // already gets from a lower tier.
         this._inheritedStyleBag = ensureClassStyleRule(this.constructor, this.getClassStyleDefaults());
+
+        const group = this.getStyleGroup();
+        this._styleGroupBag = group
+            ? ensureStyleGroupRule(this.constructor, group, resolveInstanceStyleDeclarations(this))
+            : null;
 
         this.applyBoxAndVisibilityStyles();
         this.replayGeometryStyles();
@@ -6074,7 +6160,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._inlineStyle.attach(element);
         this._elementAttributes.attach(element);
 
-        DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, ...getStyleClassChain(this.constructor)] });
+        const group = this.getStyleGroup();
+        // Whitespace-normalised (see `styleGroupClassSuffix`) so this is
+        // always a valid single `classList` token — a raw caller-supplied
+        // token containing a space would otherwise throw here, since
+        // CSS-escaping (used only for the class-tier selector) does not
+        // remove whitespace.
+        const groupClass = group ? [this.constructor.name + "--" + styleGroupClassSuffix(group)] : [];
+        DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, ...getStyleClassChain(this.constructor), ...groupClass] });
 
         this.applyStyle(element);
 

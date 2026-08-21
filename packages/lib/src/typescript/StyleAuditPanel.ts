@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { callable, Panel, Event } from '@jimka/typescript-ui/core';
-import { VBox } from '@jimka/typescript-ui/layout';
+import { callable, Component, Panel, Event } from '@jimka/typescript-ui/core';
+import { HBox, VBox } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { Table } from '@jimka/typescript-ui/component/table';
 import type { ColumnSpec } from '@jimka/typescript-ui/component/table';
@@ -206,6 +206,28 @@ class StyleAuditPanel extends Panel {
             + "could collapse to one copy. Switch tabs to populate more components, then refresh.",
             { whiteSpace: "normal" },
         ));
+
+        this.addComponent(new Header("Shared Instance Style Groups"));
+        this.addComponent(new Text(
+            "The five 'Grouped' buttons below all pass the same non-default backgroundColor and "
+            + "the same styleGroup token, so they share one .Button--warning-demo rule instead of "
+            + "each carrying its own #id rule. The three 'Ungrouped' buttons use the identical "
+            + "backgroundColor with no styleGroup, so each still writes its own #id rule — refresh "
+            + "the audit above and compare their row counts.",
+            { whiteSpace: "normal" },
+        ));
+
+        const styleGroupDemoRow = new Component({ layoutManager: new HBox({ spacing: 8 }) });
+        for (let i = 1; i <= 5; i++) {
+            styleGroupDemoRow.addComponent(new Button("Grouped " + i, {
+                backgroundColor: "#b58900",
+                styleGroup:      "warning-demo",
+            }));
+        }
+        for (let i = 1; i <= 3; i++) {
+            styleGroupDemoRow.addComponent(new Button("Ungrouped " + i, { backgroundColor: "#b58900" }));
+        }
+        this.addComponent(styleGroupDemoRow);
 
         const refreshButton = new Button("Refresh");
         Event.addListener(refreshButton, "click", () => this.refresh());
