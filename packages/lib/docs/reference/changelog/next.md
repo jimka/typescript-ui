@@ -78,11 +78,22 @@ consumer implementing its own `DOMSink` is affected.
   A `Text` (or `Link`/`Label`/`Legend`/`SelectableText`) instance with no
   per-instance font override no longer writes eleven of the twelve to its
   own `#id` rule; it shares its concrete class's `.Text`/`.Link`/`.Label`/
-  `.Legend`/`.SelectableText` rule instead (`text-overflow` is the one
-  exception — it keeps writing per-instance for now). As with the note
-  above, a consumer stylesheet targeting one of these classes now ties on
-  specificity with the generated class rule rather than always losing to the
-  framework's per-instance rule, for every declaration but that one.
+  `.Legend`/`.SelectableText` rule instead. As with the note above, a
+  consumer stylesheet targeting one of these classes now ties on specificity
+  with the generated class rule rather than always losing to the framework's
+  per-instance rule.
+- **`white-space` and `text-overflow` now dedupe against the shared tier
+  too, shrinking the per-instance CSS rule most `Text` instances write.**
+  Every `Text` used to write `white-space: nowrap; text-overflow: ellipsis`
+  to its own `#id` rule, even though the framework rule and the shared
+  `.Text` rule already supply both — a `Text` with no per-instance font
+  override no longer writes either declaration for real; both now resolve
+  to an explicit removal instead. As with the earlier hoisting notes, a
+  consumer stylesheet rule that sets `white-space` or `text-overflow` on a
+  component by class now ties with the generated class rule (or beats the
+  framework rule outright) where the framework's per-instance rule
+  previously always won. Raise the selector's specificity, or target the
+  component's id, if a consumer rule starts winning where it should not.
 - **A stock component now materialises no per-instance CSS rule at all on
   first render.** Previously `border: null` was written unconditionally by
   every component without a border, which forced a rule for it. Nothing
