@@ -3,10 +3,49 @@
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 import { ComponentOptions } from "~/core/Component.js";
 import { Text } from "~/component/input/Text.js";
-import { SelectableText } from "~/component/input/SelectableText.js";
+import { SelectableText, SelectableTextOptions } from "~/component/input/SelectableText.js";
 import { callable } from "~/core/Callable.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 
 const _defaultNumberRendererOptions: Partial<ComponentOptions> = { cursor: "text", userSelect: "text" };
+
+// NumberRenderer's own right-aligned convention (see its constructor doc,
+// below) — shared by the class default and the instance default bag so the
+// two can never drift apart.
+const NUMBER_RENDERER_TEXT_ALIGN = "right";
+
+const _defaultNumberRendererTextOptions: Partial<SelectableTextOptions> = {
+    textAlign: NUMBER_RENDERER_TEXT_ALIGN,
+};
+
+/**
+ * The value text for a right-aligned {@link NumberRenderer} — every typed
+ * `number` column renders with this alignment by default, so without a
+ * shared class rule, every cell would carry an identical `text-align: right`
+ * declaration on its own `#id` rule. Registers `textAlign` as a class
+ * default, spread over `Text`'s own font declarations so every other font
+ * property still resolves through the inherited `.Text` rule instead of
+ * being duplicated too — see `## Architecture Decisions`. Mirrors
+ * `SelectableText`'s own `cursor`/`userSelect` deviation from `Text`, one
+ * class further down the same chain.
+ *
+ * {@link DynamicCell}'s left-aligned number row uses plain `SelectableText`
+ * instead — `"left"` already matches `Text`'s own class default, so it needs
+ * no dedicated class; see `NumberRenderer`'s constructor.
+ */
+class NumberRendererText extends SelectableText {
+
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = {
+        font: {
+            ...Text.ownClassStyleDefaults.font,
+            textAlign: NUMBER_RENDERER_TEXT_ALIGN,
+        },
+    };
+
+    constructor() {
+        super(undefined, undefined, _defaultNumberRendererTextOptions);
+    }
+}
 
 /**
  * A read-only renderer for numeric cell values.
@@ -20,7 +59,7 @@ const _defaultNumberRendererOptions: Partial<ComponentOptions> = { cursor: "text
  */
 class NumberRenderer extends CellRenderer<Number | null> {
 
-    private _text:    Text          = new SelectableText();
+    private _text:    Text;
     private _value:   Number | null = null;
     private _display: string        = "";
 
@@ -34,8 +73,11 @@ class NumberRenderer extends CellRenderer<Number | null> {
     constructor(align: "left" | "right" = "right") {
         super(_defaultNumberRendererOptions);
 
+        // "right" gets its own class default (NumberRendererText); "left"
+        // already matches Text's own class default, so a plain
+        // SelectableText needs no setTextAlign call either.
+        this._text = align === "right" ? new NumberRendererText() : new SelectableText();
         this._text.setPointerEvents("none");
-        this._text.setTextAlign(align);
         this._text.setText("");
         this._text.setAutoMeasure(false);
 

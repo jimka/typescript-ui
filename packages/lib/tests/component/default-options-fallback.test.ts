@@ -58,6 +58,7 @@ import { MarkdownViewer } from '~/component/display/MarkdownViewer';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { SelectableText } from '~/component/input/SelectableText';
 import { StringCell } from '~/component/table/cell/String';
+import { NumberRenderer } from '~/component/table/cell/renderer/Number';
 import { Canvas, CanvasOptions } from '~/component/display/Canvas';
 import { WebGLCanvas, WebGLCanvasOptions } from '~/component/display/WebGLCanvas';
 import { Insets } from '~/primitive/Insets';
@@ -427,6 +428,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'StringCell border',            resolve: () => new StringCell().getBorder(),                                expected: { border: 'var(--ts-ui-table-cell-border, none)' } },
     { label: 'SelectableText userSelect',    resolve: () => new SelectableText().getUserSelect(),                       expected: 'text' },
     { label: 'SelectableText cursor',        resolve: () => new SelectableText().getCursor(),                           expected: 'text' },
+    { label: 'NumberRenderer _text textAlign (default, right)', resolve: () => (new NumberRenderer() as any)._text.getTextAlign(), expected: 'right' },
     { label: 'MarkdownEditor surface userSelect', resolve: () => (new MarkdownEditor() as any)._wysiwyg.getUserSelect(), expected: 'text' },
     { label: 'MarkdownEditor surface cursor', resolve: () => (new MarkdownEditor() as any)._wysiwyg.getCursor(),          expected: 'text' },
     { label: 'Link userSelect',              resolve: () => new Link().getUserSelect(),                                 expected: 'text' },

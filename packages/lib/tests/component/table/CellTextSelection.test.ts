@@ -258,4 +258,32 @@ describe('selectable text resolves through the class rule, not a per-instance ru
         expect(Object.keys(declarations)).toEqual([]);
         expect(_ruleCacheHas('.SelectableText')).toBe(true);
     });
+
+    it("a right-aligned NumberRenderer's Text writes no per-instance declarations at all", () => {
+        const sink = DOM.sink as RecordingDOMSink;
+
+        new NumberRenderer().getElement(true);
+
+        const r    = new NumberRenderer();
+        const text = (r as any)._text;
+
+        const declarations = declarationsDuring(sink, idSelector(text), () => r.getElement(true));
+
+        expect(Object.keys(declarations)).toEqual([]);
+        expect(_ruleCacheHas('.NumberRendererText')).toBe(true);
+    });
+
+    it("a left-aligned NumberRenderer (DynamicCell's alignment) keeps sharing Text's own default", () => {
+        const sink = DOM.sink as RecordingDOMSink;
+
+        new NumberRenderer('left').getElement(true);
+
+        const r    = new NumberRenderer('left');
+        const text = (r as any)._text;
+
+        const declarations = declarationsDuring(sink, idSelector(text), () => r.getElement(true));
+
+        expect(Object.keys(declarations)).toEqual([]);
+        expect(text.constructor.name).toBe('SelectableText');
+    });
 });
