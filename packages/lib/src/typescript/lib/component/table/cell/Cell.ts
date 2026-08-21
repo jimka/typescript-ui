@@ -19,11 +19,19 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
  */
 export type CellEvent = "commit" | "editend";
 
-// Every cell resolves its text colour to the same theme token, on every
-// instance and every subclass, so it is a class default rather than a
-// per-instance write — which keeps the `color` declaration on the shared
-// `.Cell`-family class rule instead of each cell's own `#id` rule.
-const _defaultCellOptions: Partial<ComponentOptions> = { foregroundColor: 'var(--ts-ui-table-cell-color, inherit)' };
+// Every cell resolves its text colour, resting background, and resting
+// border to the same theme tokens, on every instance and every subclass, so
+// they are class defaults rather than per-instance writes — which keeps
+// these declarations on the shared `.Cell`-family class rule instead of
+// each cell's own `#id` rule. A subclass that paints a different resting
+// background (`ParentHeaderCell`, `GroupSeparatorCell`, `FilterCell`) sets
+// it imperatively in its own constructor, which still wins on `#id` over
+// this default.
+const _defaultCellOptions: Partial<ComponentOptions> = {
+    foregroundColor: 'var(--ts-ui-table-cell-color, inherit)',
+    backgroundColor: 'var(--ts-ui-table-cell-bg, transparent)',
+    border:          'var(--ts-ui-table-cell-border, none)',
+};
 
 /**
  * Base class for table cells that support both a display renderer and an optional in-place editor.
@@ -67,10 +75,17 @@ export class Cell<T> extends Component {
         this._editor = editor;
         this.setInsets(new Insets(0, 0, 0, 0));
 
+        // `border` is dispatched automatically from `_defaultCellOptions` by
+        // `Component.applyChromeOptions`'s always-dispatch during `super()`
+        // above, so `_border` is already set here — no explicit call needed.
+        // `backgroundColor` is not in that always-dispatch group (its class
+        // default is resolved lazily by `getBackgroundColor()`'s folding
+        // getter instead), so it still needs this explicit call: it seeds
+        // `_options.backgroundColor` for `_applyStateTint`'s equality guard
+        // (`setReadOnly` / `setRequiredEmpty` / `setRangeSelected` /
+        // `setBaseBackground`), which compares against the cached value
+        // rather than reading through the folding getter.
         this.setBackgroundColor('var(--ts-ui-table-cell-bg, transparent)');
-        this.setBorder('var(--ts-ui-table-cell-border, none)');
-
-        this.subscribeTheme(() => this.setBorder('var(--ts-ui-table-cell-border, none)'));
 
         this.addComponent(renderer, rendererConstraints);
 

@@ -201,6 +201,36 @@ No exported symbol changes — `_defaultCellOptions` is module-private and the t
 
 ---
 
+## Implementation Notes
+
+`tests/component/shared/VirtualRowView.poolDisposal.test.ts`'s "disposes the
+cells inside each pooled row" test carried a positive-control assertion
+(`survivingRulesFor(cells).length` greater than zero, checked *before*
+teardown) proving its disposal check wasn't vacuous. That assertion relied
+on a freshly-built cell already carrying a per-instance `background-color` /
+`border-*` declaration on its own `#id` rule — exactly the duplication this
+plan removes. Once `backgroundColor` and `border` became class defaults, a
+fresh `StringCell` in that test's table (no state ever set on it) writes
+*nothing* to its own `#id` rule, so the positive control started failing
+pre-teardown, independent of whether disposal itself still worked.
+
+Root-caused by running the full suite (`npm test`) after the plan's Cell.ts
+edit: passed before the change (confirmed via `git stash`), failed after,
+with the failure isolated to that one assertion, not the post-teardown
+`toEqual([])` check. Confirmed via a scratch test that the two pooled cells'
+ids no longer appeared anywhere in `_ruleCacheKeys()` pre-teardown.
+
+Fixed by calling `cell.setRequiredEmpty(true)` on each pooled cell before
+the positive-control assertion — `setRequiredEmpty` writes a `boxShadow`
+declaration through `setShadow`'s `setReconciledCSSRules` path, which is
+unrelated to `backgroundColor`/`border` and still lands on the cell's own
+`#id` rule, so it restores a genuine (non-vacuous) rule for the disposal
+check to prove gets cleaned up. This was a deviation from the plan as
+written (the plan's "Files to Create/Modify/Delete" table does not list this
+file); it was necessary because the plan's own intended change — eliminating
+per-instance duplication — is what invalidated the pre-existing test's
+assumption.
+
 ## Notes
 
 [^popup-panel-precedent]: `PopupPanel`'s constructor ([overlay/PopupPanel.ts:76-89](packages/lib/src/typescript/lib/overlay/PopupPanel.ts#L76-L89)) passes `backgroundColor` and `border` inline in the `subclassDefaults` object forwarded to `super()`, with zero matching `setBackgroundColor` / `setBorder` calls in its own constructor body — it relies entirely on the folding getter and the chrome-group always-dispatch. The `default-options-fallback.test.ts` registry already has rows proving this resolves correctly (`'PopupPanel backgroundColor'`, `'PopupPanel border'` at lines 370-371). `Cell` differs from this precedent only in keeping its own `setBackgroundColor` call, for the `_applyStateTint` reason given in its own decision above — `PopupPanel` has no equivalent direct-cache-write consumer to preserve.

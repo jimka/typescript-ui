@@ -140,6 +140,15 @@ consumer implementing its own `DOMSink` is affected.
   `exportCSV`/`exportJSON` already do. The active range highlights with a new
   themed `--ts-ui-table-cell-range-selected` background. No consumer action
   is needed.
+- **Table cells no longer duplicate their resting background and border on
+  every instance's own CSS rule.** `Cell` and its built-in subclasses
+  (`StringCell`, `NumberCell`, `BooleanCell`, `DateCell`, `TimeCell`,
+  `DateTimeCell`, `ComboCell`, `GlyphCell`, `DefaultCell`, `HeaderCell`,
+  `DynamicCell`) now share both on their concrete class's own rule, the same
+  way the text colour already did. Nothing changes visually; a cell that
+  paints its own resting background (`FilterCell`, a grouped row's tint, a
+  `ParentHeaderCell` / `GroupSeparatorCell` group colour) keeps its
+  per-instance override exactly as before.
 
 ## Added
 
