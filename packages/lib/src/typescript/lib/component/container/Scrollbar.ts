@@ -9,7 +9,7 @@ import type { Handle } from "~/core/DOM.js";
 import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { AutoRepeat } from "~/core/AutoRepeat.js";
-import { Glyph } from "~/component/display/Glyph.js";
+import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import type { HorizontalSide } from "~/primitive/Edge.js";
 import { callable } from "~/core/Callable.js";
 import type { AxisOrientation } from "~/primitive/Axis.js";
@@ -126,6 +126,39 @@ const SCROLL_ARROW_DISABLED_DECLARATIONS: Readonly<Record<string, string>> = Obj
     color: "var(--ts-ui-scrollbar-arrow-disabled-color, rgba(0, 0, 0, 0.18))",
 });
 
+const _defaultScrollArrowGlyphOptions: Partial<GlyphOptions> = {
+    minSize: { width: TRACK_WIDTH, height: TRACK_WIDTH },
+    maxSize: { width: TRACK_WIDTH, height: TRACK_WIDTH },
+};
+
+/**
+ * The Unicode-triangle glyph inside a {@link ScrollArrowButton}. `minSize`/
+ * `maxSize` are a class default (TRACK_WIDTH square), so every arrow across
+ * every Scrollbar shares one `.ScrollArrowGlyph` CSS rule instead of each
+ * repeating the same four declarations. `ScrollArrowButton`'s own constructor
+ * still calls `setPreferredSize`/`setFontSize` imperatively (a `Glyph`'s
+ * construction-time size pin cannot itself be deferred to a defaults bag —
+ * see `Glyph.applyOptions`), but the size call now resolves to the same
+ * TRACK_WIDTH value this class already defaults, so `Component.applyStyle`'s
+ * render-time reconciliation (`reconcileRuleDeclaration`) turns it into a
+ * removal instead of a redundant per-instance declaration. `fontSize`/
+ * `lineHeight`/`textAlign` are NOT defaulted here: `Glyph`'s setters for
+ * those three write through the raw, non-reconciled `setElementCSSRule`
+ * path, so a class default for them would never be compared against and
+ * would do nothing — they stay real per-instance declarations regardless.
+ */
+class ScrollArrowGlyph extends Glyph {
+    /**
+     * @param direction - One of `"up"`, `"down"`, `"left"`, `"right"`.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; forwarded so a subclass can seed a default without
+     *   editing this constant.
+     */
+    constructor(direction: ArrowDirection, subclassDefaults?: Partial<GlyphOptions>) {
+        super("unicode-arrow-" + direction, undefined, { ..._defaultScrollArrowGlyphOptions, ...(subclassDefaults ?? {}) });
+    }
+}
+
 /**
  * A press-and-hold arrow button rendered at one end of a {@link Scrollbar}'s
  * track when arrows are enabled. File-local — not exported from the container
@@ -203,7 +236,7 @@ class ScrollArrowButton extends Component {
         // font-size) fits inside the 12 px element box and isn't clipped at
         // the bottom by `overflow: hidden` — mirrors the same fix
         // AccordionIndicator applies to its `▶` chevron.
-        this._glyph = new Glyph("unicode-arrow-" + direction);
+        this._glyph = new ScrollArrowGlyph(direction);
         this._glyph.setPreferredSize({ width: TRACK_WIDTH, height: TRACK_WIDTH });
         this._glyph.setFontSize(ARROW_GLYPH_FONT_SIZE);
         // The glyph fills the whole button, so without this a click's target is

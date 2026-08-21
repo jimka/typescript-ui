@@ -213,6 +213,13 @@ consumer implementing its own `DOMSink` is affected.
   (`HeaderCell`'s label also for `user-select`). This is separate from
   `HeaderCellRenderer`'s own cursor/user-select, already deduped. Nothing
   changes visually; no consumer action needed.
+- **`ScrollArrowButton`'s arrow glyph no longer duplicates its fixed size on
+  every instance's own CSS rule.** Each `Scrollbar` arrow's Unicode-triangle
+  glyph now shares one `.ScrollArrowGlyph` CSS rule for its 12×12 min/max
+  size across every arrow in the app; its font-size, line-height, and
+  text-align stay per-instance (unaffected by this change — they never
+  participated in the framework's CSS dedup mechanism). Nothing changes
+  visually; no consumer action needed.
 
 ### Table
 
