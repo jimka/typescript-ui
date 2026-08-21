@@ -243,11 +243,17 @@ describe('selectable text resolves through the class rule, not a per-instance ru
         // pre-queues `textOverflow`'s write before the class-rule comparison
         // ever runs — see plans/implemented/text-applystyle-class-hoisting.md's
         // Implementation Notes. Every other font/text declaration, plus
-        // `userSelect`/`cursor`, now resolves through the shared
-        // `.SelectableText` tier instead.
+        // `cursor`, now resolves through the shared `.SelectableText` tier
+        // instead. `userSelect` also resolves through that shared tier, but
+        // since `#id` already materialises for `textOverflow` regardless,
+        // plans/implemented/reconciled-write-path-widening.md's render-phase
+        // migration means the match now surfaces as an explicit removal in
+        // the same batch rather than being skipped in silence — the net
+        // rendered CSS (no declaration on #id, `.SelectableText` supplies the
+        // value) is unchanged.
         expect(declarations.textOverflow).toBe('ellipsis');
         expect(declarations.fontFamily).toBeUndefined();
-        expect(declarations.userSelect).toBeUndefined();
+        expect(declarations.userSelect).toBeNull();
         expect(declarations.cursor).toBeUndefined();
         expect(_ruleCacheHas('.SelectableText')).toBe(true);
     });

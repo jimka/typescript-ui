@@ -54,6 +54,11 @@ function scrollbarsOf(tree: Tree): { v: Scrollbar; h: Scrollbar } {
     return { v: bars._scrollbarV, h: bars._scrollbarH };
 }
 
+/** A scrollbar's thumb id — its own, reliable per-instance rule proxy. */
+function thumbIdOf(bar: Scrollbar): string {
+    return (bar as unknown as { _thumb: { getId(): string } })._thumb.getId();
+}
+
 describe('VirtualScroller — overlay scrollbar style-rule disposal', () => {
     it('B1-3: destroying a Tree leaves no rule naming either of its scroller\'s scrollbars', () => {
         installTestDOM(CONFIG);
@@ -64,12 +69,25 @@ describe('VirtualScroller — overlay scrollbar style-rule disposal', () => {
         const vId = v.getId();
         const hId = h.getId();
 
-        expect(_ruleCacheKeys().some((key) => key.includes(vId))).toBe(true);
-        expect(_ruleCacheKeys().some((key) => key.includes(hId))).toBe(true);
+        // The scrollbar root itself may legitimately materialise no rule of its
+        // own — since plans/implemented/reconciled-write-path-widening.md, its
+        // constructor's `setUserSelect("none")` also dedupes onto the framework
+        // tier once rendered, and nothing else about it deviates from the
+        // class/framework baseline. The thumb child is the reliable proxy
+        // instead: its real, always-deviating backgroundColor/cursor guarantee
+        // it a rule, and it is only reachable through the scrollbar's own
+        // destructor recursion, which is what this test actually guards (Bug 1).
+        const vThumbId = thumbIdOf(v);
+        const hThumbId = thumbIdOf(h);
+
+        expect(_ruleCacheKeys().some((key) => key.includes(vThumbId))).toBe(true);
+        expect(_ruleCacheKeys().some((key) => key.includes(hThumbId))).toBe(true);
 
         destroy(tree);
 
         expect(_ruleCacheKeys().some((key) => key.includes(vId))).toBe(false);
         expect(_ruleCacheKeys().some((key) => key.includes(hId))).toBe(false);
+        expect(_ruleCacheKeys().some((key) => key.includes(vThumbId))).toBe(false);
+        expect(_ruleCacheKeys().some((key) => key.includes(hThumbId))).toBe(false);
     });
 });

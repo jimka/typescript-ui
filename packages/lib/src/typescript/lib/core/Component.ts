@@ -2327,7 +2327,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._options.foregroundColor = foregroundColor;
-        this.setElementCSSRule("color", foregroundColor);
+        this.setReconciledCSSRules({ color: foregroundColor });
 
         return this;
     }
@@ -2616,7 +2616,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     setOutline(outline: string): this {
         this._outline = outline;
 
-        this.setElementCSSRule("outline", outline);
+        this.setReconciledCSSRules({ outline });
 
         return this;
     }
@@ -3022,7 +3022,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const next: Size = { width: size.width, height: size.height };
         this._options.minSize = next;
 
-        this.setElementCSSRules({
+        this.setReconciledCSSRules({
             minWidth:  next.width  + "px",
             minHeight: next.height + "px"
         });
@@ -3063,7 +3063,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const next: Size = { width: size.width, height: size.height };
         this._options.maxSize = next;
 
-        this.setElementCSSRules({
+        this.setReconciledCSSRules({
             maxWidth:  isUnbounded(next.width)  ? "none" : next.width  + "px",
             maxHeight: isUnbounded(next.height) ? "none" : next.height + "px"
         });
@@ -4045,7 +4045,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._overflowX = value;
-        this.setElementCSSRule("overflowX", value);
+        this.setReconciledCSSRules({ overflowX: value });
         this.refreshWheelScrolling();
 
         return this;
@@ -4090,7 +4090,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._overflowY = value;
-        this.setElementCSSRule("overflowY", value);
+        this.setReconciledCSSRules({ overflowY: value });
         this.refreshWheelScrolling();
 
         return this;
@@ -4690,7 +4690,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
         this._options.userSelect = value;
-        this.setElementCSSRule("userSelect", value);
+        this.setReconciledCSSRules({ userSelect: value });
 
         return this;
     }
@@ -4834,8 +4834,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @remarks Only skips a write issued from `applyStyle` itself — a runtime
      * setter calling `setElementCSSRule` never goes through this helper, so
      * it always reaches `#id` and wins on specificity regardless of what the
-     * framework or class rule already holds. The hoisted chrome properties
-     * are the exception: their runtime setters route through
+     * framework or class rule already holds. A hoisted property whose runtime
+     * setter also needs this treatment routes through
      * {@link setReconciledCSSRules} instead, which still writes on a match —
      * as a removal — rather than skipping.
      */
@@ -4848,10 +4848,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * `writeRuleDeclaration`'s clear-on-match sibling, for the hoisted chrome
-     * declarations. A match queues a removal rather than skipping, so a value the
-     * instance wrote earlier — during construction, or through a runtime setter —
-     * cannot survive on `#id` and outrank the class rule.
+     * `writeRuleDeclaration`'s clear-on-match sibling. A match queues a removal
+     * rather than skipping, so a value the instance wrote earlier — during
+     * construction, or through a runtime setter — cannot survive on `#id` and
+     * outrank the class rule.
      */
     protected reconcileRuleDeclaration(key: string, value: string | null): void {
         if (this.isRestingChromeIsolated() && RESTING_ISOLATION_KEYS.has(key)) {
@@ -4985,7 +4985,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const foregroundColor = this.getForegroundColor();
         if (foregroundColor) {
-            this.writeRuleDeclaration("color", foregroundColor);
+            this.reconcileRuleDeclaration("color", foregroundColor);
         }
 
         const backgroundColor = this.getBackgroundColor();
@@ -5042,14 +5042,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // engine). Read the option/default directly, never via the getter.
         const minSize = this.getMinSizeConstraint();
         if (minSize) {
-            this.writeRuleDeclaration("minWidth",  minSize.width  + "px");
-            this.writeRuleDeclaration("minHeight", minSize.height + "px");
+            this.reconcileRuleDeclaration("minWidth",  minSize.width  + "px");
+            this.reconcileRuleDeclaration("minHeight", minSize.height + "px");
         }
 
         const maxSize = this.getMaxSizeConstraint();
         if (maxSize) {
-            this.writeRuleDeclaration("maxWidth",  isUnbounded(maxSize.width)  ? "none" : maxSize.width  + "px");
-            this.writeRuleDeclaration("maxHeight", isUnbounded(maxSize.height) ? "none" : maxSize.height + "px");
+            this.reconcileRuleDeclaration("maxWidth",  isUnbounded(maxSize.width)  ? "none" : maxSize.width  + "px");
+            this.reconcileRuleDeclaration("maxHeight", isUnbounded(maxSize.height) ? "none" : maxSize.height + "px");
             this.setDataAttribute("maxSize", formatSizeAttr(maxSize.width, maxSize.height));
         }
     }
@@ -5061,11 +5061,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private applyOverflowStyles(): void {
         const overflowX = this.getOverflowX();
         if (overflowX !== null) {
-            this.writeRuleDeclaration("overflowX", overflowX);
+            this.reconcileRuleDeclaration("overflowX", overflowX);
         }
         const overflowY = this.getOverflowY();
         if (overflowY !== null) {
-            this.writeRuleDeclaration("overflowY", overflowY);
+            this.reconcileRuleDeclaration("overflowY", overflowY);
         }
 
         // A scrollable *default* overflow (e.g. Drawer's `"auto"`) no longer
@@ -5091,7 +5091,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const outline = this.getOutline();
         if (outline) {
-            this.writeRuleDeclaration("outline", outline);
+            this.reconcileRuleDeclaration("outline", outline);
         }
 
         const borderRadius = this.getBorderRadius();
@@ -5158,7 +5158,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const userSelect = this.getUserSelect();
         if (userSelect) {
-            this.writeRuleDeclaration("userSelect", userSelect);
+            this.reconcileRuleDeclaration("userSelect", userSelect);
         }
 
         const padding = this.getPadding();

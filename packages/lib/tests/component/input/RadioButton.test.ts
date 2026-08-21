@@ -158,10 +158,19 @@ describe('RadioButton delegate static style hoisting', () => {
 
         const declarations = declarationsDuring(sink, idSelector(ring), () => rb.getElement(true));
 
-        expect(declarations.minWidth).toBeUndefined();
-        expect(declarations.minHeight).toBeUndefined();
-        expect(declarations.maxWidth).toBeUndefined();
-        expect(declarations.maxHeight).toBeUndefined();
+        // `_ring`'s real backgroundColor/border/borderRadius force #id to
+        // materialise regardless, so since
+        // plans/implemented/reconciled-write-path-widening.md, minWidth/
+        // minHeight/maxWidth/maxHeight — which match RadioButtonRing's own
+        // class defaults — surface as explicit removals in the same batch
+        // rather than being skipped in silence; the net rendered CSS (no
+        // declaration on #id, the class rule supplies the value) is unchanged.
+        expect(declarations.minWidth).toBeNull();
+        expect(declarations.minHeight).toBeNull();
+        expect(declarations.maxWidth).toBeNull();
+        expect(declarations.maxHeight).toBeNull();
+        // cursor is untouched by that plan — still skip-based — so a match
+        // still leaves no trace at all.
         expect(declarations.cursor).toBeUndefined();
     });
 
@@ -177,7 +186,15 @@ describe('RadioButton delegate static style hoisting', () => {
 
         const declarations = declarationsDuring(sink, idSelector(dot), () => rb.getElement(true));
 
-        expect(declarations.color).toBeUndefined();
+        // RadioButtonDot defaults foregroundColor, and #id already materialises
+        // regardless (Glyph's preferredSize-driven minSize/maxSize setter calls
+        // always write real, per-instance values). Since
+        // plans/implemented/reconciled-write-path-widening.md, a `color` that
+        // matches that class default now surfaces in the same batch as an
+        // explicit removal instead of being skipped in silence; the net
+        // rendered CSS (no declaration on #id, `.RadioButtonDot` supplies the
+        // value) is unchanged.
+        expect(declarations.color).toBeNull();
     });
 
     it('row 9: the shared .RadioButtonRing/.RadioButtonDot class rules exist once RadioButtons have rendered', () => {
