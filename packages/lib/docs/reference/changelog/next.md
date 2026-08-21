@@ -206,6 +206,13 @@ consumer implementing its own `DOMSink` is affected.
   [`DynamicCell`](/api/component/table/classes/DynamicCell)'s left-aligned
   instances already share `Text`'s own default and are unaffected. Nothing
   changes visually; no consumer action needed.
+- **`Button`'s and `HeaderCell`'s internal title labels no longer duplicate
+  their fixed font styling on every instance's own CSS rule.** Each now
+  shares one CSS rule (`.ButtonLabelText`, `.HeaderCellText`) across every
+  `Button`/`HeaderCell` in the app for `text-align`/`font-weight`/`font-size`
+  (`HeaderCell`'s label also for `user-select`). This is separate from
+  `HeaderCellRenderer`'s own cursor/user-select, already deduped. Nothing
+  changes visually; no consumer action needed.
 
 ### Table
 

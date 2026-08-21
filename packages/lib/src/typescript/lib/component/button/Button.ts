@@ -6,7 +6,7 @@ import { Event } from "~/core/Event.js";
 import { Fit } from "~/layout/Fit.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
-import { Text } from "~/component/input/Text.js";
+import { Text, TextOptions } from "~/component/input/Text.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { FillType } from "~/layout/FillType.js";
@@ -240,6 +240,55 @@ const _defaultButtonOptions: Partial<ButtonOptions> = {
     hoverBackgroundImage:   "var(--ts-ui-button-hover-bg, none)",
     hoverShadow:            "var(--ts-ui-button-hover-shadow, 1px 3px 6px 0 rgba(0, 0, 0, 0.25))",
 };
+
+const BUTTON_LABEL_FONT_SIZE_VAR = "--ts-ui-button-font-size";
+
+// The CSS-ready form of BUTTON_LABEL_FONT_SIZE_VAR — its "14px" fallback is
+// Text's own base font-size default (unmodified here), matching exactly
+// what Text.setFontSize resolves the constructor's call below to.
+const BUTTON_LABEL_FONT_SIZE_RULE = `var(${BUTTON_LABEL_FONT_SIZE_VAR}, 14px)`;
+
+const _defaultButtonLabelTextOptions: Partial<TextOptions> = {
+    textAlign:  "center",
+    fontWeight: "bold",
+};
+
+/**
+ * `Button`'s own title label. `textAlign`/`fontWeight` are class defaults,
+ * resolved via the folding getter with no imperative dispatch needed.
+ * `fontSize` still needs the explicit `setFontSize` call below — see
+ * `## Architecture Decisions`. `Button.setTextAlign` can still change
+ * `textAlign` at runtime (a genuine per-instance deviation, unaffected by
+ * this class default); `fontWeight`/`fontSize` have no such runtime path
+ * and stay fixed for the lifetime of the instance.
+ */
+class ButtonLabelText extends Text {
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = {
+        font: {
+            ...Text.ownClassStyleDefaults.font,
+            textAlign:  "center",
+            fontWeight: "bold",
+            fontSize:   BUTTON_LABEL_FONT_SIZE_RULE,
+        },
+    };
+
+    constructor() {
+        super(undefined, undefined, _defaultButtonLabelTextOptions);
+        this.setFontSize(BUTTON_LABEL_FONT_SIZE_VAR);
+    }
+
+    /**
+     * `setFontSize` above queues a real, un-reconciled `fontSize` declaration
+     * before `.ButtonLabelText`'s class rule exists to compare it against
+     * (see `## Architecture Decisions`). Re-queues it through the reconciled
+     * path once the class rule is available, so the stale real value doesn't
+     * survive to `#id` on a default-styled instance.
+     */
+    protected override applySubclassStyles(): void {
+        super.applySubclassStyles();
+        this.reconcileRuleDeclaration("fontSize", BUTTON_LABEL_FONT_SIZE_RULE);
+    }
+}
 
 /**
  * A push button component with a text label and configurable pressed-state appearance.
@@ -714,7 +763,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // Build the text/glyph content row. The title (and optional subtitle)
         // live in a vertical `_titleColumn` so the description stacks below the
         // title; the glyph sits beside the whole column in the outer HBox.
-        this._text        = new Text();
+        this._text        = new ButtonLabelText();
         this._titleColumn = new Component();
         this._titleColumn.setLayoutManager(new VBox({ spacing: 0 }));
         this._titleColumn.setInsets(new Insets(0, 0, 0, 0));
@@ -728,9 +777,6 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this._content.addComponent(this._titleColumn);
 
         this._text.setPointerEvents("none");
-        this._text.setTextAlign("center");
-        this._text.setFontWeight("bold");
-        this._text.setFontSize("--ts-ui-button-font-size");
 
         this.addComponent(this._content, {
             fill:   this.getFill(),

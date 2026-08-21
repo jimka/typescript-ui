@@ -6,6 +6,7 @@ import { Tooltip } from '~/overlay/Tooltip';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
+import { _ruleCacheHas } from '~/core/StyleTarget';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -376,5 +377,57 @@ describe('Button preferred-size pin (size-setter-interface plan, case 9)', () =>
         button.setText('A considerably longer label than before');
 
         expect(button.getPreferredSize()).toEqual({ width: 100, height: 40 });
+    });
+});
+
+describe('ButtonLabelText style hoisting', () => {
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    /**
+     * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+     * flattened into one key/value map. Copied from `ClassChromeRules.test.ts`.
+     */
+    function declarationsDuring(
+        sink: RecordingDOMSink,
+        selector: string,
+        fn: () => void,
+    ): Record<string, string | null> {
+        const start = sink.writes.length;
+        fn();
+
+        const out: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+                continue;
+            }
+
+            const styles = w.args[1] as Record<string, string | null>;
+            for (const key of Object.keys(styles)) {
+                out[key] = styles[key];
+            }
+        }
+
+        return out;
+    }
+
+    it("a rendered Button's _text carries no textAlign/fontWeight/fontSize declaration on its own #id rule", () => {
+        const btn  = new Button('Save');
+        const text = (btn as any)._text;
+
+        const declarations = declarationsDuring(sink, idSelector(text), () => btn.getElement(true));
+
+        expect(declarations.textAlign).toBeUndefined();
+        expect(declarations.fontWeight).toBeUndefined();
+        expect(declarations.fontSize).toBeUndefined();
+    });
+
+    it('the shared .ButtonLabelText class rule exists once a Button has rendered', () => {
+        const btn = new Button('Save');
+        btn.getElement(true);
+
+        expect(_ruleCacheHas('.ButtonLabelText')).toBe(true);
     });
 });
