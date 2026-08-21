@@ -101,10 +101,10 @@ const _defaultTabButtonOptions: Partial<TabButtonOptions> = {
     backgroundColor: "var(--ts-ui-tab-button-bg, #b8b8c3)",
     backgroundImage: "var(--ts-ui-tab-button-bg, #b8b8c3)",
     border: {
-        borderTop:    "var(--ts-ui-tab-button-border-top,    var(--ts-ui-tab-button-border, none))",
-        borderRight:  "var(--ts-ui-tab-button-border-right,  var(--ts-ui-tab-button-border, none))",
+        borderTop   : "var(--ts-ui-tab-button-border-top,    var(--ts-ui-tab-button-border, none))",
+        borderRight : "var(--ts-ui-tab-button-border-right,  var(--ts-ui-tab-button-border, none))",
         borderBottom: "var(--ts-ui-tab-button-border-bottom, var(--ts-ui-tab-button-border, none))",
-        borderLeft:   "var(--ts-ui-tab-button-border-left,   var(--ts-ui-tab-button-border, none))",
+        borderLeft  : "var(--ts-ui-tab-button-border-left,   var(--ts-ui-tab-button-border, none))",
     },
     // Explicit `undefined` keys — not omitted — so these two win over Button's
     // own non-empty `_defaultButtonOptions.borderRadius`/`.shadow` in the
@@ -112,31 +112,31 @@ const _defaultTabButtonOptions: Partial<TabButtonOptions> = {
     // the keys would let Button's rounded/shadowed look leak through once the
     // unconditional `clearBorderRadius()`/`clearShadow()` calls below are
     // deleted.
-    borderRadius: undefined,
-    shadow:       undefined,
+    borderRadius        : undefined,
+    shadow              : undefined,
     hoverBackgroundColor: "var(--ts-ui-tab-button-hover-bg, #c4c4cf)",
     hoverBackgroundImage: "var(--ts-ui-tab-button-hover-bg, #c4c4cf)",
-    hoverShadow:          "none",
+    hoverShadow         : "none",
 };
 
 const TAB_BUTTON_HOVER_BORDER: BorderOptions = {
-    borderTop:    "var(--ts-ui-tab-button-hover-border-top,    var(--ts-ui-tab-button-hover-border, none))",
-    borderRight:  "var(--ts-ui-tab-button-hover-border-right,  var(--ts-ui-tab-button-hover-border, none))",
+    borderTop   : "var(--ts-ui-tab-button-hover-border-top,    var(--ts-ui-tab-button-hover-border, none))",
+    borderRight : "var(--ts-ui-tab-button-hover-border-right,  var(--ts-ui-tab-button-hover-border, none))",
     borderBottom: "var(--ts-ui-tab-button-hover-border-bottom, var(--ts-ui-tab-button-hover-border, none))",
-    borderLeft:   "var(--ts-ui-tab-button-hover-border-left,   var(--ts-ui-tab-button-hover-border, none))",
+    borderLeft  : "var(--ts-ui-tab-button-hover-border-left,   var(--ts-ui-tab-button-hover-border, none))",
 };
 
 const TAB_BUTTON_SELECTED_BORDER: BorderOptions = {
-    borderTop:    "var(--ts-ui-tab-button-selected-border-top,    var(--ts-ui-tab-button-selected-border, none))",
-    borderRight:  "var(--ts-ui-tab-button-selected-border-right,  var(--ts-ui-tab-button-selected-border, none))",
+    borderTop   : "var(--ts-ui-tab-button-selected-border-top,    var(--ts-ui-tab-button-selected-border, none))",
+    borderRight : "var(--ts-ui-tab-button-selected-border-right,  var(--ts-ui-tab-button-selected-border, none))",
     borderBottom: "var(--ts-ui-tab-button-selected-border-bottom, var(--ts-ui-tab-button-selected-border, none))",
-    borderLeft:   "var(--ts-ui-tab-button-selected-border-left,   var(--ts-ui-tab-button-selected-border, none))",
+    borderLeft  : "var(--ts-ui-tab-button-selected-border-left,   var(--ts-ui-tab-button-selected-border, none))",
 };
 
 const TAB_BUTTON_SELECTED_FILL = {
     backgroundColor: "var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))",
     backgroundImage: "var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))",
-    boxShadow:       "none",
+    boxShadow      : "none",
 } as const;
 
 /**
@@ -289,7 +289,7 @@ class TabButton extends ToggleButton {
         return {
             backgroundColor: TAB_BUTTON_SELECTED_FILL.backgroundColor,
             backgroundImage: TAB_BUTTON_SELECTED_FILL.backgroundImage,
-            boxShadow:       TAB_BUTTON_SELECTED_FILL.boxShadow,
+            boxShadow      : TAB_BUTTON_SELECTED_FILL.boxShadow,
             ...borderToStyle(TAB_BUTTON_SELECTED_BORDER),
         };
     }
