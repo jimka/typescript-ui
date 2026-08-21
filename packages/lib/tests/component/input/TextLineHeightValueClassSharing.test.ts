@@ -94,7 +94,7 @@ function classToggleWrites(
 }
 
 describe('Text numeric-pixel lineHeight value-class sharing', () => {
-    it('row 1: two separate, already-rendered SelectableText instances resolving the same pixel value write no real lineHeight to their own #id rule (only an explicit removal, reconciling the prior default), and both carry the shared class', () => {
+    it('row 1: two separate, already-rendered SelectableText instances resolving the same pixel value write nothing for lineHeight to their own #id rule (it never materialises), and both carry the shared class', () => {
         const sink = DOM.sink as RecordingDOMSink;
 
         const a = new SelectableText('a');
@@ -109,10 +109,14 @@ describe('Text numeric-pixel lineHeight value-class sharing', () => {
         })();
         // Entering numeric mode from the default additive rule (still active
         // at this point, since neither instance has touched lineHeight yet)
-        // reconciles away whatever #id inherited from that mode — a `null`
-        // removal, not a real value. See the CSS-var → numeric regression
-        // test below for the case this reconcile exists to fix.
-        expect(declarationsIn(writesA, idSelector(a)).lineHeight).toBeNull();
+        // reconciles the queued value to a match-and-remove null — and, per
+        // plans/implemented/applystyle-flush-order-empty-rule-fix.md,
+        // userSelect (SelectableText's one other divergence) already
+        // resolves through the shared `.SelectableText` class tier rather
+        // than #id, so neither instance's #id rule ever materialises here.
+        // See the CSS-var → numeric regression test below for the case this
+        // reconcile exists to fix, once #id does materialise for real.
+        expect(declarationsIn(writesA, idSelector(a)).lineHeight).toBeUndefined();
         expect(classToggleWrites(writesA)).toEqual([{ removeClass: [], addClass: ['lh18px'] }]);
 
         const writesB = (() => {
@@ -120,21 +124,20 @@ describe('Text numeric-pixel lineHeight value-class sharing', () => {
             b.setLineHeight(18);
             return sink.writes.slice(start);
         })();
-        expect(declarationsIn(writesB, idSelector(b)).lineHeight).toBeNull();
+        expect(declarationsIn(writesB, idSelector(b)).lineHeight).toBeUndefined();
         expect(classToggleWrites(writesB)).toEqual([{ removeClass: [], addClass: ['lh18px'] }]);
 
         expect(_ruleCacheHas('.SelectableText.lh18px')).toBe(true);
     });
 
-    it('row 2: setLineHeight(18) then setLineHeight(24) on a rendered SelectableText swaps the value-class token in one apply write; only the first (mode-entering) call reconciles #id, the second writes nothing further to it', () => {
+    it('row 2: setLineHeight(18) then setLineHeight(24) on a rendered SelectableText swaps the value-class token in one apply write; neither call writes anything further to #id', () => {
         const sink = DOM.sink as RecordingDOMSink;
         const t = new SelectableText('x');
         t.getElement(true);
 
         const decl1 = declarationsDuring(sink, idSelector(t), () => t.setLineHeight(18));
-        // First numeric call: entering numeric mode from the default additive
-        // rule reconciles it away on #id (see row 1).
-        expect(decl1.lineHeight).toBeNull();
+        // First numeric call: #id never materialises (see row 1).
+        expect(decl1.lineHeight).toBeUndefined();
 
         const start = sink.writes.length;
         t.setLineHeight(24);
@@ -183,7 +186,7 @@ describe('Text numeric-pixel lineHeight value-class sharing', () => {
         expect(declarationsIn(writes, idSelector(t)).lineHeight).toBeNull();
     });
 
-    it('row 4: centerInHeight(28) then centerInHeight(null) behaves like row 1, then reverts by removing the class and queuing a #id removal (the reverted value matches the class-tier default)', () => {
+    it('row 4: centerInHeight(28) then centerInHeight(null) behaves like row 1, then reverts by removing the class and writing nothing further to #id (the reverted value matches the class-tier default)', () => {
         const sink = DOM.sink as RecordingDOMSink;
         const t = new Text('x');
         t.getElement(true);
@@ -191,8 +194,13 @@ describe('Text numeric-pixel lineHeight value-class sharing', () => {
         const start1 = sink.writes.length;
         t.centerInHeight(28);
         const writes1 = sink.writes.slice(start1);
-        // Entering numeric mode from the default additive rule, same as row 1.
-        expect(declarationsIn(writes1, idSelector(t)).lineHeight).toBeNull();
+        // Unlike row 1's SelectableText, a bare Text has no other real
+        // deviation, so per
+        // plans/implemented/applystyle-flush-order-empty-rule-fix.md its #id
+        // rule never materialised at the `getElement(true)` above — this
+        // reconciled-to-null lineHeight queue is not a "real" declaration
+        // (see Component's materialiseWhenNeeded), so it stays unflushed too.
+        expect(declarationsIn(writes1, idSelector(t)).lineHeight).toBeUndefined();
         expect(classToggleWrites(writes1)).toEqual([{ removeClass: [], addClass: ['lh28px'] }]);
 
         const start2 = sink.writes.length;
@@ -200,27 +208,19 @@ describe('Text numeric-pixel lineHeight value-class sharing', () => {
         const writes2 = sink.writes.slice(start2);
 
         expect(classToggleWrites(writes2)).toEqual([{ removeClass: ['lh28px'] }]);
-        // #id already materialises regardless of this plan (the always-written
-        // textOverflow declaration forces it), so the reverted value — which
-        // matches the class-tier ADDITIVE_LINE_HEIGHT_RULE default — queues an
-        // explicit removal rather than omitting the key.
-        expect(declarationsIn(writes2, idSelector(t)).lineHeight).toBeNull();
+        // Same reasoning as above: #id never materialised, so the reverted
+        // value — matching the class-tier ADDITIVE_LINE_HEIGHT_RULE default —
+        // has nothing to flush onto either.
+        expect(declarationsIn(writes2, idSelector(t)).lineHeight).toBeUndefined();
     });
 
-    it('row 5: a fresh Text, never touching lineHeight, queues a bare #id removal for it (materialised only because textOverflow forces #id to exist) rather than a real value', () => {
+    it('row 5: a fresh Text, never touching lineHeight, writes nothing to its own #id rule at all', () => {
         const sink = DOM.sink as RecordingDOMSink;
         const t = new Text('x');
 
         const declarations = declarationsDuring(sink, idSelector(t), () => t.getElement(true));
 
-        expect(declarations.lineHeight).toBeNull();
-        // Per plans/implemented/text-truncate-write-path-cleanup.md,
-        // textOverflow itself now reconciles to a removal too (it no longer
-        // writes a real value) — #id still materialises for the reason this
-        // test's title names (the construction-time queue forces it before
-        // the class-rule comparison can run), but the value that ends up
-        // recorded there is a removal like lineHeight's, not a real string.
-        expect(declarations.textOverflow).toBeNull();
+        expect(declarations).toEqual({});
     });
 
     it('row 6: setLineHeight before mount produces no apply write; the class is applied at render via the render() override', () => {

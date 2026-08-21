@@ -121,26 +121,17 @@ describe('Text applyStyle class-rule hoisting', () => {
         expect(classDeclarations.textShadow).toBeUndefined();
     });
 
-    // `lineHeight` and `textOverflow` both queue an explicit removal rather
-    // than being skipped (see the file header). Per
-    // plans/implemented/text-truncate-write-path-cleanup.md's Implementation
-    // Notes, `textOverflow`'s setter is unconditionally dispatched from
-    // `setTruncate` at construction, before the class-rule bag exists, so it
-    // always queues a real value that forces the `#id` rule to materialise —
-    // `Text.applyStyle`'s own later correction still resolves it to `null`,
-    // but too late to prevent the (now-empty) rule from being inserted. Both
-    // read `null` here, not `undefined`.
-    it('a fresh Text with no font/text setter called writes none of the ten skippable declarations to its own #id rule (lineHeight and textOverflow queue an explicit removal)', () => {
+    // `textOverflow` now reconciles before `applyStyle`'s one render-time
+    // flush (see plans/implemented/applystyle-flush-order-empty-rule-fix.md),
+    // so with no other real deviation queued, the `#id` rule never
+    // materialises at all.
+    it('a fresh Text with no font/text setter called writes nothing to its own #id rule — no rule materialises at all', () => {
         const sink = DOM.sink as RecordingDOMSink;
         const b = new Text('x');
 
         const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
 
-        for (const key of SKIPPABLE_FONT_KEYS) {
-            expect(declarations[key]).toBeUndefined();
-        }
-        expect(declarations.lineHeight).toBeNull();
-        expect(declarations.textOverflow).toBeNull();
+        expect(declarations).toEqual({});
     });
 
     // Regression coverage for a second audit finding: `.Text`'s class rule
@@ -240,12 +231,10 @@ describe('Text applyStyle class-rule hoisting', () => {
 
         expect(b.getLineHeight()).toBe(30);
         // The constructor-time numeric call enters numeric mode from the
-        // default additive rule, reconciling it away on #id as an explicit
-        // removal (queued pre-render, flushed at this first render) — not a
-        // real value, and not merely absent. textOverflow reads the same
-        // (see the file header).
-        expect(declarations.lineHeight).toBeNull();
-        expect(declarations.textOverflow).toBeNull();
+        // default additive rule, and textOverflow reconciles too — with no
+        // other real deviation queued, the #id rule never materialises at
+        // all (see plans/implemented/applystyle-flush-order-empty-rule-fix.md).
+        expect(declarations).toEqual({});
         expect(_ruleCacheHas('.Text.lh30px')).toBe(true);
     });
 
@@ -285,28 +274,19 @@ describe('Text applyStyle class-rule hoisting', () => {
         cellText1.setLineHeight(18);
         const decl1 = declarationsDuring(sink, idSelector(cellText1), () => cellText1.getElement(true));
 
-        // Entering numeric mode from the default additive rule reconciles it
-        // away on #id as an explicit removal, not merely absent — see the
-        // constructor-time numeric lineHeight test above. textOverflow reads
-        // the same (see the file header).
-        expect(decl1.lineHeight).toBeNull();
-        expect(decl1.textOverflow).toBeNull();
+        // Entering numeric mode from the default additive rule, and
+        // textOverflow reconciling too, leaves no other real deviation
+        // queued — the #id rule never materialises at all.
+        expect(Object.keys(decl1)).toEqual([]);
         expect(_ruleCacheHas('.Text.lh18px')).toBe(true);
-        for (const key of SKIPPABLE_FONT_KEYS) {
-            expect(decl1[key]).toBeUndefined();
-        }
 
         const cellText2 = new Text('7');
         cellText2.setAutoMeasure(false);
         cellText2.setLineHeight(24);
         const decl2 = declarationsDuring(sink, idSelector(cellText2), () => cellText2.getElement(true));
 
-        expect(decl2.lineHeight).toBeNull();
-        expect(decl2.textOverflow).toBeNull();
+        expect(Object.keys(decl2)).toEqual([]);
         expect(_ruleCacheHas('.Text.lh24px')).toBe(true);
-        for (const key of SKIPPABLE_FONT_KEYS) {
-            expect(decl2[key]).toBeUndefined();
-        }
     });
 
     // Per the plan's Expected Behaviour ("Two renders of the same
@@ -329,15 +309,11 @@ describe('Text applyStyle class-rule hoisting', () => {
 
         cellText.setLineHeight(40);
         const decl1 = declarationsDuring(sink, idSelector(cellText), () => cellText.getElement(true));
-        // Entering numeric mode from the default additive rule reconciles it
-        // away on #id as an explicit removal, not merely absent. textOverflow
-        // reads the same (see the file header).
-        expect(decl1.lineHeight).toBeNull();
-        expect(decl1.textOverflow).toBeNull();
+        // Entering numeric mode from the default additive rule, and
+        // textOverflow reconciling too, leaves no other real deviation
+        // queued — the #id rule never materialises at all.
+        expect(Object.keys(decl1)).toEqual([]);
         expect(_ruleCacheHas('.Text.lh40px')).toBe(true);
-        for (const key of SKIPPABLE_FONT_KEYS) {
-            expect(decl1[key]).toBeUndefined();
-        }
 
         const start = sink.writes.length;
         cellText.setLineHeight(46);
