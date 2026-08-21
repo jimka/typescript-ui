@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Scrollbar } from '~/component/container/Scrollbar';
 import { DOM } from '~/core/DOM';
+import type { Handle } from '~/core/DOM';
 import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
 import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -62,8 +63,29 @@ describe('Scrollbar arrow mousedown drives a scroll step', () => {
     });
 });
 
-const ENABLED_COLOR  = 'var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))';
-const DISABLED_COLOR = 'var(--ts-ui-scrollbar-arrow-disabled-color, rgba(0, 0, 0, 0.18))';
+/**
+ * The most recently recorded `toggleClass[key]` value applied to `handle`, or
+ * `undefined` if `key` was never toggled on it. `setDisabledState` now drives
+ * the disabled visual through a CSS state-class rather than a plain
+ * `setForegroundColor` call (see `plans/implemented/state-tier-rule-dedup-followups.md`),
+ * so the toggled class — not `getForegroundColor()` — is the only
+ * offline-observable signal of the arrow's current disabled state.
+ */
+function lastToggleClassValue(sink: RecordingDOMSink, handle: Handle, key: string): boolean | undefined {
+    for (let i = sink.writes.length - 1; i >= 0; i--) {
+        const w = sink.writes[i];
+        if (w.op !== 'apply' || w.args[0] !== handle) {
+            continue;
+        }
+
+        const patch = w.args[1] as { toggleClass?: Record<string, boolean> };
+        if (patch.toggleClass && key in patch.toggleClass) {
+            return patch.toggleClass[key];
+        }
+    }
+
+    return undefined;
+}
 
 // Pins the enabled↔disabled colour crossfade added on top of the instant
 // `_disabled` gating covered above: both arrows declare the fade transition
@@ -73,30 +95,32 @@ describe('Scrollbar arrow enabled/disabled colour fade', () => {
     afterEach(() => DOM.reset());
 
     it('applies the disabled colour to the start arrow at the top extreme', () => {
-        installTestDOM(CONFIG);
+        const sink = installTestDOM(CONFIG);
 
         const bar = new Scrollbar('vertical', { arrowsEnabled: true });
+        const [, arrowStart, arrowEnd] = bar.getComponents();
+        bar.getElement(true);
+
         bar.setHeight(400);
         bar.setMetrics(200, 1000, 0); // scrolled to top
 
-        const [, arrowStart, arrowEnd] = bar.getComponents();
-
-        expect(arrowStart.getForegroundColor()).toBe(DISABLED_COLOR);
-        expect(arrowEnd.getForegroundColor()).toBe(ENABLED_COLOR);
+        expect(lastToggleClassValue(sink, arrowStart.getElement()!, 'disabled')).toBe(true);
+        expect(lastToggleClassValue(sink, arrowEnd.getElement()!, 'disabled')).toBe(false);
     });
 
     it('flips the disabled colour to the end arrow at the bottom extreme', () => {
-        installTestDOM(CONFIG);
+        const sink = installTestDOM(CONFIG);
 
         const bar = new Scrollbar('vertical', { arrowsEnabled: true });
+        const [, arrowStart, arrowEnd] = bar.getComponents();
+        bar.getElement(true);
+
         bar.setHeight(400);
         bar.setMetrics(200, 1000, 0);   // top: start disabled
         bar.setMetrics(200, 1000, 800); // bottom (maxScroll = 600): end disabled
 
-        const [, arrowStart, arrowEnd] = bar.getComponents();
-
-        expect(arrowStart.getForegroundColor()).toBe(ENABLED_COLOR);
-        expect(arrowEnd.getForegroundColor()).toBe(DISABLED_COLOR);
+        expect(lastToggleClassValue(sink, arrowStart.getElement()!, 'disabled')).toBe(false);
+        expect(lastToggleClassValue(sink, arrowEnd.getElement()!, 'disabled')).toBe(true);
     });
 
     it('declares the 120ms colour crossfade transition on both arrows', () => {
@@ -109,22 +133,23 @@ describe('Scrollbar arrow enabled/disabled colour fade', () => {
         expect(arrowEnd.getTransition()).toBe('color 120ms ease-out');
     });
 
-    it('is idempotent: a repeated no-op setMetrics leaves colours unchanged and emits no scroll', () => {
-        installTestDOM(CONFIG);
+    it('is idempotent: a repeated no-op setMetrics leaves the disabled state unchanged and emits no scroll', () => {
+        const sink = installTestDOM(CONFIG);
 
         const bar = new Scrollbar('vertical', { arrowsEnabled: true });
+        const [, arrowStart, arrowEnd] = bar.getComponents();
+        bar.getElement(true);
+
         bar.setHeight(400);
         bar.setMetrics(200, 1000, 0);
-
-        const [, arrowStart, arrowEnd] = bar.getComponents();
 
         const positions: number[] = [];
         bar.on('scroll', (p: number) => positions.push(p));
 
         bar.setMetrics(200, 1000, 0); // same metrics again
 
-        expect(arrowStart.getForegroundColor()).toBe(DISABLED_COLOR);
-        expect(arrowEnd.getForegroundColor()).toBe(ENABLED_COLOR);
+        expect(lastToggleClassValue(sink, arrowStart.getElement()!, 'disabled')).toBe(true);
+        expect(lastToggleClassValue(sink, arrowEnd.getElement()!, 'disabled')).toBe(false);
         expect(positions).toEqual([]);
     });
 });
@@ -175,14 +200,116 @@ describe('ScrollArrowButton static style hoisting', () => {
             endDeclarations = declarationsDuring(sink, idSelector(arrowEnd), () => bar.getElement(true));
         });
 
-        // Both arrows always materialise their own `#id` rule regardless (the
-        // imperative, per-instance `foregroundColor` write, untouched by this
-        // plan — see `## Non-Goals`), so backgroundColor's now-matching value
-        // surfaces as an explicit removal in the same batch rather than being
-        // skipped in silence — the net rendered CSS (no declaration on #id,
-        // `.ScrollArrowButton` supplies the value) is unchanged.
-        expect(startDeclarations.backgroundColor).toBeNull();
-        expect(endDeclarations.backgroundColor).toBeNull();
+        // `foregroundColor` is now a registered class default too (see
+        // `plans/implemented/state-tier-rule-dedup-followups.md`), so nothing
+        // else forces the arrow's own `#id` rule to materialise, and
+        // backgroundColor's matching value is skipped in silence rather than
+        // surfacing as an explicit removal — the net rendered CSS (no
+        // declaration on #id, `.ScrollArrowButton` supplies the value) is
+        // unchanged.
+        expect(startDeclarations.backgroundColor).toBeUndefined();
+        expect(endDeclarations.backgroundColor).toBeUndefined();
         expect(_ruleCacheHas('.ScrollArrowButton')).toBe(true);
+    });
+});
+
+// ScrollArrowButton-specific coverage for the state-tier dedup introduced by
+// plans/implemented/state-tier-rule-dedup-followups.md: the `.disabled` color
+// now writes through `createStateStyleRule`. No `getRestingExclusionSuffixes()`
+// override exists for this class: `color` (the CSS key `setForegroundColor`
+// writes under) is not a `RESTING_ISOLATION_KEYS` member, so a resting `color`
+// write always lands on the bare `#id` rule regardless of any override — see
+// the comment at Scrollbar.ts's `getDisabledClassDeclarations` for the detail.
+describe('ScrollArrowButton disabled state-class hoisting', () => {
+    afterEach(() => DOM.reset());
+
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    /**
+     * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+     * flattened into one key/value map. Copied from `ClassChromeRules.test.ts`.
+     */
+    function declarationsDuring(
+        sink: RecordingDOMSink,
+        selector: string,
+        fn: () => void,
+    ): Record<string, string | null> {
+        const start = sink.writes.length;
+        fn();
+
+        const out: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+                continue;
+            }
+
+            const styles = w.args[1] as Record<string, string | null>;
+            for (const key of Object.keys(styles)) {
+                out[key] = styles[key];
+            }
+        }
+
+        return out;
+    }
+
+    it('row 3: a second, warmed Scrollbar disables an arrow writing no color to its own #id.disabled rule', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const warmup = new Scrollbar('vertical', { arrowsEnabled: true });
+        warmup.getElement(true);
+        warmup.setHeight(400);
+        warmup.setMetrics(200, 1000, 0); // disables the start arrow, warming .ScrollArrowButton.disabled
+
+        const bar = new Scrollbar('vertical', { arrowsEnabled: true });
+        const [, arrowStart] = bar.getComponents();
+        bar.getElement(true);
+
+        const declarations = declarationsDuring(sink, idSelector(arrowStart) + '.disabled', () => {
+            bar.setHeight(400);
+            bar.setMetrics(200, 1000, 0); // disables the start arrow
+        });
+
+        expect(declarations.color).toBeUndefined();
+        expect(_ruleCacheHas('.ScrollArrowButton.disabled')).toBe(true);
+    });
+
+    it('row 4: a disabled-then-re-enabled arrow never writes color to its own resting #id rule', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical', { arrowsEnabled: true });
+        const [, arrowStart] = bar.getComponents();
+        bar.getElement(true);
+        bar.setHeight(400);
+
+        // No `getRestingExclusionSuffixes()` override on `ScrollArrowButton`
+        // (see Scrollbar.ts's comment where the override used to be): `color`
+        // is not a `RESTING_ISOLATION_KEYS` member, so a resting `color` write
+        // — if `setDisabledState`'s enable branch ever regained one — would
+        // land on the bare `#id` rule, not a `:not(.disabled)` one. That bare
+        // rule is what this test must watch to catch it.
+        const declarations = declarationsDuring(sink, idSelector(arrowStart), () => {
+            bar.setMetrics(200, 1000, 0);   // disables the start arrow (at top)
+            bar.setMetrics(200, 1000, 500); // re-enables it (scrolled away from top)
+        });
+
+        expect(declarations.color).toBeUndefined();
+    });
+
+    it('row 5: the pre-set disabled start arrow carries .disabled on its element once rendered', () => {
+        const sink = installTestDOM(CONFIG);
+
+        // Scrollbar.buildArrows() calls `_arrowStart.setDisabledState(true)`
+        // synchronously in the Scrollbar constructor, before the arrow's own
+        // element exists — the toggleClass write is a no-op at that point, so
+        // ScrollArrowButton.render() must re-assert the class once it mounts.
+        const bar = new Scrollbar('vertical', { arrowsEnabled: true });
+        const [, arrowStart] = bar.getComponents();
+
+        bar.getElement(true);
+
+        expect(lastToggleClassValue(sink, arrowStart.getElement()!, 'disabled')).toBe(true);
     });
 });

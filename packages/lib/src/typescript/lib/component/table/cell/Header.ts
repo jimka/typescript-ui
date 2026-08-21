@@ -10,6 +10,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { StyleRule } from "~/core/StyleTarget.js";
+import type { StateStyleRule } from "~/core/ClassStyleRules.js";
 import type { ComponentOptions } from "~/core/Component.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -74,6 +75,11 @@ const _defaultHeaderCellRendererOptions: Partial<ComponentOptions> = {
     userSelect: "none",
 };
 
+/** `:active`'s box-shadow declaration. One source of truth for both `activeStyleRule`'s resolver and the constructor's write. */
+const HEADER_CELL_ACTIVE_DECLARATIONS: Readonly<Record<string, string>> = Object.freeze({
+    boxShadow: "var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0,0,0,0.2) inset)",
+});
+
 /**
  * {@link HeaderCell}'s own text renderer. A column title is chrome, not
  * data, so it stays unselectable with a default cursor even though
@@ -113,6 +119,33 @@ class HeaderCell extends DefaultCell {
     private _columnFocused: boolean = false;
     private _required: boolean = false;
 
+    // Lazy `:active` rule. The slot is a fast-path cache for the wrapper
+    // returned by Component's `createStateStyleRule` builder, which dedupes
+    // across every HeaderCell instance via the shared `.HeaderCell:active`
+    // class-tier rule — see Button's `_pressedStyleRule` for the full
+    // explanation.
+    private declare _activeStyleRule?: StateStyleRule;
+    private get activeStyleRule(): StateStyleRule {
+        return this._activeStyleRule ??= this.createStateStyleRule(
+            ":active",
+            () => ({ boxShadow: HEADER_CELL_ACTIVE_DECLARATIONS.boxShadow }),
+        );
+    }
+
+    /**
+     * This cell's own resting `boxShadow` must stay isolated from `:active` —
+     * {@link setColumnFocused} writes a resting `boxShadow` via
+     * `setShadow`/`clearShadow`, which (unlike the plan's original "no
+     * competing resting declaration" analysis) is a real, live per-instance
+     * writer of the same property `:active` now shares on the class tier.
+     * Without this override that write lands on the bare `#id` rule, which
+     * outranks `.HeaderCell:active` and permanently defeats the pressed
+     * shadow on any column-focused (or previously column-focused) cell.
+     */
+    protected override getRestingExclusionSuffixes(): readonly string[] {
+        return [...super.getRestingExclusionSuffixes(), ":active"];
+    }
+
     /**
      * Creates a header cell with bold text and wires up the sort click listener.
      *
@@ -144,10 +177,7 @@ class HeaderCell extends DefaultCell {
         // render-time `applyStyle` flushes the queued `boxShadow` onto the
         // stylesheet, matching ARCHITECTURE.md's "construction stays
         // JS-only" rule.
-        this.createStyleRule(":active").set(
-            "boxShadow",
-            "var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0,0,0,0.2) inset)",
-        );
+        this.activeStyleRule.set("boxShadow", HEADER_CELL_ACTIVE_DECLARATIONS.boxShadow);
 
         // Wire the resize-handle drag lifecycle: mousedown installs viewport
         // mousemove/mouseup listeners that forward through the handle's

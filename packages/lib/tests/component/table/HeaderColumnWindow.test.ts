@@ -540,13 +540,28 @@ describe('Header column window — teardown', () => {
         table.setHeight(400);
         table.doLayout();
 
-        const dropped = cells(table).find(c => c.getFieldName() === 'c2')!;
-        const survivingBefore = _ruleCacheKeys().filter(key => key.includes(dropped.getId()));
+        // A plain HeaderCell no longer materialises any rule keyed on its own
+        // id: plans/implemented/state-tier-rule-dedup-followups.md moved its
+        // `:active` box-shadow onto the shared `.HeaderCell:active` class rule,
+        // which was the cell's only per-instance rule. Its side-loaded
+        // `_priorityBadge` child is the reliable proxy instead — `SortPriorityBadge`'s
+        // constructor always writes its own `visibility: hidden` rule
+        // (unaffected by this plan, and not itself a hoisted class default),
+        // and the badge is raw-appended (not `addComponent`-registered — see
+        // `HeaderCell.destructor`'s own doc comment), so it is only disposed
+        // when the reconciler correctly calls `dispose()` on the dropped cell,
+        // which is exactly what this test guards.
+        const dropped = cells(table).find(c => c.getFieldName() === 'c2')! as unknown as {
+            getId(): string;
+            _priorityBadge: { getId(): string };
+        };
+        const badgeId = dropped._priorityBadge.getId();
+        const survivingBefore = _ruleCacheKeys().filter(key => key.includes(badgeId));
         expect(survivingBefore.length).toBeGreaterThan(0);
 
         table.setColumnVisible('c2', false);
 
-        const survivingAfter = _ruleCacheKeys().filter(key => key.includes(dropped.getId()));
+        const survivingAfter = _ruleCacheKeys().filter(key => key.includes(badgeId));
         expect(survivingAfter).toEqual([]);
     });
 });

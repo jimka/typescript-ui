@@ -145,3 +145,70 @@ describe('HeaderCellRenderer static style hoisting', () => {
         expect(cell.getRenderer().getUserSelect()).toBe('text');
     });
 });
+
+// HeaderCell-specific coverage for the state-tier dedup introduced by
+// plans/implemented/state-tier-rule-dedup-followups.md: the `:active` box-shadow
+// now writes through `createStateStyleRule` instead of the older, non-deduping
+// `createStyleRule`.
+describe('HeaderCell :active state-class hoisting', () => {
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    /**
+     * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+     * flattened into one key/value map. Copied from `ClassChromeRules.test.ts`.
+     */
+    function declarationsDuring(
+        sink: RecordingDOMSink,
+        selector: string,
+        fn: () => void,
+    ): Record<string, string | null> {
+        const start = sink.writes.length;
+        fn();
+
+        const out: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+                continue;
+            }
+
+            const styles = w.args[1] as Record<string, string | null>;
+            for (const key of Object.keys(styles)) {
+                out[key] = styles[key];
+            }
+        }
+
+        return out;
+    }
+
+    it('row 2: a second HeaderCell writes no boxShadow to its own #id:active rule once the class rule is warmed', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+
+        new HeaderCell('Name', 'name').getElement(true);
+
+        const second = new HeaderCell('Name', 'name');
+        const declarations = declarationsDuring(sink, idSelector(second) + ':active', () => second.getElement(true));
+
+        expect(declarations.boxShadow).toBeUndefined();
+        expect(_ruleCacheHas('.HeaderCell:active')).toBe(true);
+    });
+
+    it("setColumnFocused's resting boxShadow write stays isolated from :active, on #id:not(:active) rather than bare #id", () => {
+        const sink = DOM.sink as RecordingDOMSink;
+
+        const cell = new HeaderCell('Name', 'name');
+        cell.getElement(true);
+
+        const restingDeclarations = declarationsDuring(sink, idSelector(cell) + ':not(:active)', () => {
+            cell.setColumnFocused(true);
+        });
+        expect(restingDeclarations.boxShadow).toBe('inset 0 -2px 0 0 var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))');
+
+        const bareDeclarations = declarationsDuring(sink, idSelector(cell), () => {
+            cell.setColumnFocused(false);
+        });
+        expect(bareDeclarations.boxShadow).toBeUndefined();
+    });
+});

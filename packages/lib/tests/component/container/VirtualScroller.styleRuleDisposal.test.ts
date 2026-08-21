@@ -55,17 +55,22 @@ function scrollbarsOf(tree: Tree): { v: Scrollbar; h: Scrollbar } {
 }
 
 /**
- * A scrollbar's start-arrow id — its own, reliable per-instance rule proxy.
- * The thumb is no longer reliable for this:
+ * A scrollbar's start-arrow's glyph id — the reliable per-instance rule
+ * proxy. The thumb is no longer reliable for this:
  * plans/implemented/delegate-class-style-defaults-followups.md moved its
  * resting cursor/backgroundColor onto the shared `.ScrollbarThumb` class
  * rule, so a thumb with no other deviation now materialises no `#id` rule of
- * its own at all. The start arrow's `foregroundColor` is never hoisted (see
- * that same plan's `## Non-Goals`), so it still always deviates and
- * guarantees a rule.
+ * its own at all. The arrow itself is no longer reliable either —
+ * plans/implemented/state-tier-rule-dedup-followups.md hoisted its resting
+ * `foregroundColor` onto the shared `.ScrollArrowButton` class rule too, so a
+ * never-disabled arrow now also materialises no `#id` rule of its own. Its
+ * glyph child still does: `Glyph.setFontSize` always writes its own `#id`
+ * rule directly (no class-default dedup for that property), and the glyph is
+ * only reachable through the scrollbar's own destructor recursion
+ * (Scrollbar -> ScrollArrowButton -> Glyph).
  */
 function arrowIdOf(bar: Scrollbar): string {
-    return (bar as unknown as { _arrowStart: { getId(): string } })._arrowStart.getId();
+    return (bar as unknown as { _arrowStart: { _glyph: { getId(): string } } })._arrowStart._glyph.getId();
 }
 
 describe('VirtualScroller — overlay scrollbar style-rule disposal', () => {
@@ -82,11 +87,11 @@ describe('VirtualScroller — overlay scrollbar style-rule disposal', () => {
         // own — since plans/implemented/reconciled-write-path-widening.md, its
         // constructor's `setUserSelect("none")` also dedupes onto the framework
         // tier once rendered, and nothing else about it deviates from the
-        // class/framework baseline. The start arrow button is the reliable
-        // proxy (see `arrowIdOf`'s doc comment for why the thumb no longer is):
-        // its real, always-deviating `foregroundColor` guarantees it a rule,
-        // and it is only reachable through the scrollbar's own destructor
-        // recursion, which is what this test actually guards (Bug 1).
+        // class/framework baseline. The start arrow's glyph is the reliable
+        // proxy (see `arrowIdOf`'s doc comment for why the arrow itself and
+        // the thumb no longer are): the glyph is only reachable through the
+        // scrollbar's own destructor recursion, which is what this test
+        // actually guards (Bug 1).
         const vArrowId = arrowIdOf(v);
         const hArrowId = arrowIdOf(h);
 

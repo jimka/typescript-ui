@@ -2,7 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
-import { StyleRule } from "~/core/StyleTarget.js";
+import type { StateStyleRule } from "~/core/ClassStyleRules.js";
 import { Event } from "~/core/Event.js";
 import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -64,6 +64,11 @@ const _defaultWindowBorderOptions: Partial<WindowBorderOptions> = {
     tag: "div",
 };
 
+/** `.snap-target`'s box-shadow declaration. One source of truth for both `snapTargetStyleRule`'s resolver and the constructor's write. */
+const WINDOW_BORDER_SNAP_TARGET_DECLARATIONS: Readonly<Record<string, string>> = Object.freeze({
+    boxShadow: "var(--ts-ui-window-snap-glow, 0 0 0 2px rgba(30, 100, 200, 0.7))",
+});
+
 /**
  * A resizable window border strip component.
  *
@@ -83,12 +88,16 @@ class WindowBorder extends Component<WindowBorderOptions> {
     private _snapTarget: boolean = false;
 
     // Lazy `.snap-target` rule. The slot is a fast-path cache for the wrapper
-    // returned by Component's `createStyleRule` builder, which dedupes by
-    // selector suffix — see Button's `_pressedStyleRule` for the full
+    // returned by Component's `createStateStyleRule` builder, which dedupes
+    // across every WindowBorder instance via the shared `.WindowBorder.snap-target`
+    // class-tier rule — see Button's `_pressedStyleRule` for the full
     // explanation.
-    private declare _snapTargetStyleRule?: StyleRule;
-    private get snapTargetStyleRule(): StyleRule {
-        return this._snapTargetStyleRule ??= this.createStyleRule("." + SNAP_TARGET_CLASS);
+    private declare _snapTargetStyleRule?: StateStyleRule;
+    private get snapTargetStyleRule(): StateStyleRule {
+        return this._snapTargetStyleRule ??= this.createStateStyleRule(
+            "." + SNAP_TARGET_CLASS,
+            () => ({ boxShadow: WINDOW_BORDER_SNAP_TARGET_DECLARATIONS.boxShadow }),
+        );
     }
 
     /**
@@ -119,7 +128,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
         // Queue the snap-target highlight into the lazy state rule. Materialises
         // at render time through Component's batched style channel.
-        this.snapTargetStyleRule.set("boxShadow", "var(--ts-ui-window-snap-glow, 0 0 0 2px rgba(30, 100, 200, 0.7))");
+        this.snapTargetStyleRule.set("boxShadow", WINDOW_BORDER_SNAP_TARGET_DECLARATIONS.boxShadow);
     }
 
     /**

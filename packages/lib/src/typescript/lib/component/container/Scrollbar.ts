@@ -2,6 +2,7 @@
 
 import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
+import type { StateStyleRule } from "~/core/ClassStyleRules.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
@@ -117,7 +118,13 @@ type ArrowDirection = HorizontalSide | "up" | "down";
 
 const _defaultScrollArrowButtonOptions: Partial<ComponentOptions> = {
     backgroundColor: "var(--ts-ui-scrollbar-arrow-bg, transparent)",
+    foregroundColor: "var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))",
 };
+
+/** `.disabled`'s color declaration. One source of truth for both `getDisabledClassDeclarations` and `setDisabledState`'s write. */
+const SCROLL_ARROW_DISABLED_DECLARATIONS: Readonly<Record<string, string>> = Object.freeze({
+    color: "var(--ts-ui-scrollbar-arrow-disabled-color, rgba(0, 0, 0, 0.18))",
+});
 
 /**
  * A press-and-hold arrow button rendered at one end of a {@link Scrollbar}'s
@@ -137,6 +144,33 @@ class ScrollArrowButton extends Component {
     private _listeners:     ListenerBag<ScrollArrowEvent>        = new ListenerBag<ScrollArrowEvent>();
     private _repeat:        AutoRepeat;
 
+    // Lazy `.disabled` rule. The slot is a fast-path cache for the wrapper
+    // returned by Component's `createStateStyleRule` builder, which dedupes
+    // across every ScrollArrowButton instance via the shared
+    // `.ScrollArrowButton.disabled` class-tier rule — see Button's
+    // `_pressedStyleRule` for the full explanation.
+    private declare _disabledStyleRule?: StateStyleRule;
+    private get disabledStyleRule(): StateStyleRule {
+        return this._disabledStyleRule ??= this.createStateStyleRule(
+            ".disabled",
+            () => this.getDisabledClassDeclarations(),
+        );
+    }
+
+    protected getDisabledClassDeclarations(): Record<string, string | null> {
+        return { color: SCROLL_ARROW_DISABLED_DECLARATIONS.color };
+    }
+
+    // No `getRestingExclusionSuffixes()` override: `RESTING_ISOLATION_KEYS`
+    // (Component.ts) is `{backgroundColor, backgroundImage, boxShadow}` —
+    // `color` (the CSS key `setForegroundColor`/`reconcileRuleDeclaration`
+    // write under) is not a member, so a resting `color` write always lands
+    // on the bare `#id` rule regardless of any override; the isolation
+    // mechanism cannot protect this property. This mirrors how `Button`
+    // itself never isolates its own resting `color` either — it has no live
+    // `this.setForegroundColor(...)` call on itself, only on child
+    // components with their own ids. See this plan's Implementation Notes.
+
     /**
      * Constructs a square TRACK_WIDTH × TRACK_WIDTH arrow button pointing in
      * the given direction.
@@ -152,7 +186,6 @@ class ScrollArrowButton extends Component {
         this.setWidth(TRACK_WIDTH);
         this.setHeight(TRACK_WIDTH);
         this.setCursor("default");
-        this.setForegroundColor("var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))");
 
         // Fade the enabled↔disabled colour swap in setDisabledState instead of a hard
         // switch. Declared at construction (mirrors Checkbox's crossfade) so the initial
@@ -262,10 +295,23 @@ class ScrollArrowButton extends Component {
 
         if (disabled) {
             this._repeat.stop();
-            this.setForegroundColor("var(--ts-ui-scrollbar-arrow-disabled-color, rgba(0, 0, 0, 0.18))");
-        } else {
-            this.setForegroundColor("var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))");
         }
+
+        const element = this.getElement();
+        if (element) {
+            DOM.sink.apply(element, { toggleClass: { disabled } });
+        }
+
+        if (disabled) {
+            this.disabledStyleRule.set("color", SCROLL_ARROW_DISABLED_DECLARATIONS.color);
+        }
+    }
+
+    /** Re-applies the cached disabled state at render, for a state set before mount. */
+    protected render(): Handle {
+        const element = super.render();
+        DOM.sink.apply(element, { toggleClass: { disabled: this._disabled } });
+        return element;
     }
 
     /**
@@ -327,14 +373,62 @@ const _defaultScrollbarThumbOptions: Partial<ComponentOptions> = {
     backgroundColor: "var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))",
 };
 
+/** `.hover`'s backgroundColor declaration. One source of truth for both `getHoverClassDeclarations` and `applyHoverState`'s write. */
+const SCROLLBAR_THUMB_HOVER_DECLARATIONS: Readonly<Record<string, string>> = Object.freeze({
+    backgroundColor: "var(--ts-ui-scrollbar-thumb-hover, rgba(0, 0, 0, 0.55))",
+});
+
 /**
  * The draggable thumb inside a {@link Scrollbar}'s track. File-local — not
  * exported from the container barrel because it is a Scrollbar implementation
  * detail, mirroring {@link ScrollArrowButton}.
  */
 class ScrollbarThumb extends Component {
+    private _hovered: boolean = false;
+
+    // Lazy `.hover` rule. The slot is a fast-path cache for the wrapper
+    // returned by Component's `createStateStyleRule` builder, which dedupes
+    // across every ScrollbarThumb instance via the shared
+    // `.ScrollbarThumb.hover` class-tier rule — see Button's
+    // `_pressedStyleRule` for the full explanation.
+    private declare _hoverStyleRule?: StateStyleRule;
+    private get hoverStyleRule(): StateStyleRule {
+        return this._hoverStyleRule ??= this.createStateStyleRule(
+            ".hover",
+            () => this.getHoverClassDeclarations(),
+        );
+    }
+
     constructor() {
         super(undefined, _defaultScrollbarThumbOptions);
+    }
+
+    protected getHoverClassDeclarations(): Record<string, string | null> {
+        return { backgroundColor: SCROLLBAR_THUMB_HOVER_DECLARATIONS.backgroundColor };
+    }
+
+    protected override getRestingExclusionSuffixes(): readonly string[] {
+        return [...super.getRestingExclusionSuffixes(), ".hover"];
+    }
+
+    /** Applies the hover/drag highlight. Called by `Scrollbar.updateThumbFill`. */
+    applyHoverState(hovered: boolean): void {
+        this._hovered = hovered;
+
+        const element = this.getElement();
+        if (element) {
+            DOM.sink.apply(element, { toggleClass: { hover: hovered } });
+        }
+
+        if (hovered) {
+            this.hoverStyleRule.set("backgroundColor", SCROLLBAR_THUMB_HOVER_DECLARATIONS.backgroundColor);
+        }
+    }
+
+    protected render(): Handle {
+        const element = super.render();
+        DOM.sink.apply(element, { toggleClass: { hover: this._hovered } });
+        return element;
     }
 }
 
@@ -611,9 +705,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
      * thumb's bounds (which fires a native mouseout mid-drag).
      */
     private updateThumbFill(): void {
-        this._thumb.setBackgroundColor(this._thumbHovered || this._thumbDragging
-            ? "var(--ts-ui-scrollbar-thumb-hover, rgba(0, 0, 0, 0.55))"
-            : "var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))");
+        this._thumb.applyHoverState(this._thumbHovered || this._thumbDragging);
     }
 
     /**
