@@ -219,28 +219,19 @@ describe('Checkbox delegate static style hoisting', () => {
         expect(declarations.cursor).toBeUndefined();
     });
 
-    it('row 2: a rendered _check carries no static color declaration on its own #id rule', () => {
-        // Size (minWidth/minHeight/maxWidth/maxHeight) is deliberately not
-        // asserted here — see CheckboxCheckGlyph's doc comment: Glyph.applyOptions
-        // always re-pins minSize/maxSize via a real setter call when a preferred
-        // size resolves, so size can never dedupe onto the class rule for a
-        // Glyph delegate and stays an imperative, per-instance #id write.
+    it('row 2: a rendered _check writes nothing to its own #id rule', () => {
+        // plans/glyph-preferredsize-reconciled-write-path.md closes the size
+        // gap too: CheckboxCheckGlyph now defaults minSize/maxSize as well as
+        // foregroundColor, so color and every size key reconcile to removals
+        // in the same batch and a rule with no real declaration never
+        // materialises.
         const sink  = installTestDOM(CONFIG);
         const cb    = new Checkbox() as any;
         const check = cb._check;
 
         const declarations = declarationsDuring(sink, idSelector(check), () => cb.getElement(true));
 
-        // CheckboxCheckGlyph defaults foregroundColor, and #id already
-        // materialises regardless (Glyph's preferredSize-driven minSize/maxSize
-        // setter calls always write real, per-instance values — see the doc
-        // comment above). Since
-        // plans/implemented/reconciled-write-path-widening.md, a `color` that
-        // matches that class default now surfaces in the same batch as an
-        // explicit removal instead of being skipped in silence; the net
-        // rendered CSS (no declaration on #id, `.CheckboxCheckGlyph` supplies
-        // the value) is unchanged.
-        expect(declarations.color).toBeNull();
+        expect(declarations).toEqual({});
     });
 
     it('row 3: a rendered _dash carries no static size/backgroundColor declaration on its own #id rule', () => {

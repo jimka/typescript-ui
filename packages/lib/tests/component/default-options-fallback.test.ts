@@ -330,6 +330,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     // with `tag: "svg"`. It must resolve to the same `span` as a char glyph, so
     // the animation class lands on a compositable HTML element.
     { label: 'Glyph tag (svg entry)',        resolve: () => withXmark(() => new Glyph('xmark').getTag()),               expected: 'span' },
+    { label: 'Glyph minSize',                resolve: () => new Glyph('unicode-arrow-up').getMinSizeConstraint(),       expected: { width: 16, height: 16 } },
     { label: 'Popover placement',            resolve: () => new Popover().getPlacement(),                               expected: 'auto' },
     { label: 'Drawer edge',                  resolve: () => new Drawer().getEdge(),                                     expected: 'west' },
     { label: 'Button flat',                  resolve: () => new Button({ text: 'x' }).isFlat(),                         expected: false },

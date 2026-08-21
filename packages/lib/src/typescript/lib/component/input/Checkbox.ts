@@ -137,26 +137,30 @@ class CheckboxBox extends Component {
     }
 }
 
+// The check glyph's fitted size inside the box (14×14 padding box, 1px
+// border): shared with Checkbox's own constructor below so the class
+// default and the imperative override can never drift apart.
+const CHECKBOX_CHECK_SIZE = { width: 12, height: 12 };
+
 const _defaultCheckboxCheckGlyphOptions: Partial<GlyphOptions> = {
     foregroundColor: "var(--ts-ui-checkbox-check-color, rgb(255, 255, 255))",
+    minSize:         CHECKBOX_CHECK_SIZE,
+    maxSize:         CHECKBOX_CHECK_SIZE,
 };
 
 /**
- * The check-mark glyph inside a {@link Checkbox}'s box. Only `foregroundColor`
- * is a class default — `preferredSize`/`maxSize` stay imperative constructor
- * calls, not `_default<Name>Options` entries. `Glyph.applyOptions` (not just
- * `Glyph.setPreferredSize`'s override) unconditionally re-pins `minSize` /
- * `maxSize` to the resolved preferred size via a real setter call whenever
- * `getPreferredSizeConstraint()` is non-null — including when that value
- * comes from a class default rather than an explicit option — and a setter
- * always writes straight to this instance's own `#id` rule, bypassing the
- * class-tier dedup entirely (see `Component.writeRuleDeclaration`'s remarks).
- * So a defaulted `preferredSize` here would not save any bytes (the size
- * would still land on `#id` on every instance) while adding a second,
- * redundant copy on `.CheckboxCheckGlyph` — worse than today, not better.
- * Opacity (which of unchecked/checked/indeterminate is showing) stays a
- * per-instance runtime write in `Checkbox.applySelected` — it is not a class
- * constant.
+ * The check-mark glyph inside a {@link Checkbox}'s box. `foregroundColor`
+ * and `minSize`/`maxSize` are class defaults, so every instance shares one
+ * `.CheckboxCheckGlyph` CSS rule instead of repeating them. `Checkbox`'s own
+ * constructor still calls `setPreferredSize`/`setMaxSize` imperatively (a
+ * `Glyph`'s construction-time size pin cannot itself be deferred to a
+ * defaults bag — see `Glyph.applyOptions`), but that call now resolves to
+ * the same value this class already defaults, so `Component.applyStyle`'s
+ * render-time reconciliation (`reconcileRuleDeclaration`, since
+ * `plans/implemented/reconciled-write-path-widening.md`) turns it into a
+ * removal instead of a redundant per-instance declaration. Opacity (which of
+ * unchecked/checked/indeterminate is showing) stays a per-instance runtime
+ * write in `Checkbox.applySelected` — it is not a class constant.
  */
 class CheckboxCheckGlyph extends Glyph {
     constructor() {
@@ -242,8 +246,8 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         this._box.setSize({ width: 16, height: 16 });
 
         this._check = new CheckboxCheckGlyph();
-        this._check.setPreferredSize({ width: 12, height: 12 });
-        this._check.setMaxSize({ width: 12, height: 12 });
+        this._check.setPreferredSize(CHECKBOX_CHECK_SIZE);
+        this._check.setMaxSize(CHECKBOX_CHECK_SIZE);
         // With box-sizing: border-box and the 1px box border, absolute children
         // are positioned relative to the 14×14 padding edge — so centering a
         // 12×12 glyph inside the 16×16 visible box means (14−12)/2 = 1, not 2.

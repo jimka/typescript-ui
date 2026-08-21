@@ -174,27 +174,19 @@ describe('RadioButton delegate static style hoisting', () => {
         expect(declarations.cursor).toBeUndefined();
     });
 
-    it('row 8: a rendered _dot carries no static color declaration on its own #id rule', () => {
-        // Size is deliberately not asserted here — see RadioButtonDot's doc
-        // comment (mirrors CheckboxCheckGlyph's): Glyph.applyOptions always
-        // re-pins minSize/maxSize via a real setter call when a preferred size
-        // resolves, so size can never dedupe onto the class rule for a Glyph
-        // delegate and stays an imperative, per-instance #id write.
+    it('row 8: a rendered _dot writes nothing to its own #id rule', () => {
+        // plans/glyph-preferredsize-reconciled-write-path.md closes the size
+        // gap too: RadioButtonDot now defaults minSize/maxSize as well as
+        // foregroundColor, so color and every size key reconcile to removals
+        // in the same batch and a rule with no real declaration never
+        // materialises.
         const sink = installTestDOM(CONFIG);
         const rb   = new RadioButton() as any;
         const dot  = rb._dot;
 
         const declarations = declarationsDuring(sink, idSelector(dot), () => rb.getElement(true));
 
-        // RadioButtonDot defaults foregroundColor, and #id already materialises
-        // regardless (Glyph's preferredSize-driven minSize/maxSize setter calls
-        // always write real, per-instance values). Since
-        // plans/implemented/reconciled-write-path-widening.md, a `color` that
-        // matches that class default now surfaces in the same batch as an
-        // explicit removal instead of being skipped in silence; the net
-        // rendered CSS (no declaration on #id, `.RadioButtonDot` supplies the
-        // value) is unchanged.
-        expect(declarations.color).toBeNull();
+        expect(declarations).toEqual({});
     });
 
     it('row 9: the shared .RadioButtonRing/.RadioButtonDot class rules exist once RadioButtons have rendered', () => {

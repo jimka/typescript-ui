@@ -168,8 +168,15 @@ export interface GlyphOptions extends ComponentOptions {
  * char-only `lineHeight`/`textAlign` defaults stay in the constructor body
  * because they depend on the per-instance `def.kind`.
  */
+// The size Glyph.applyOptions's re-pin always lands on when nothing
+// overrides preferredSize. Declared once and reused for minSize/maxSize
+// too, so the three fields below can never drift apart.
+const GLYPH_DEFAULT_SIZE = { width: 16, height: 16 };
+
 const _defaultGlyphOptions: Partial<GlyphOptions> = {
-    preferredSize: { width: 16, height: 16 } as GlyphOptions["preferredSize"],
+    preferredSize: GLYPH_DEFAULT_SIZE as GlyphOptions["preferredSize"],
+    minSize:       GLYPH_DEFAULT_SIZE as GlyphOptions["minSize"],
+    maxSize:       GLYPH_DEFAULT_SIZE as GlyphOptions["maxSize"],
 
     // Always an HTML element, both kinds. An SVG entry paints through an inner
     // `<svg>` rather than being one: Blink refuses to run a transform animation
