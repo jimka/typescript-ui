@@ -206,17 +206,14 @@ describe('Checkbox delegate static style hoisting', () => {
 
         const declarations = declarationsDuring(sink, idSelector(box), () => cb.getElement(true));
 
-        // `_box`'s real backgroundColor/border/borderRadius force #id to
-        // materialise regardless, so since
-        // plans/implemented/reconciled-write-path-widening.md, minWidth/
-        // minHeight/maxWidth/maxHeight — which match CheckboxBox's own class
-        // defaults — surface as explicit removals in the same batch rather
-        // than being skipped in silence; the net rendered CSS (no declaration
-        // on #id, the class rule supplies the value) is unchanged.
-        expect(declarations.minWidth).toBeNull();
-        expect(declarations.minHeight).toBeNull();
-        expect(declarations.maxWidth).toBeNull();
-        expect(declarations.maxHeight).toBeNull();
+        // `_box`'s backgroundColor/border/borderRadius are now all class
+        // defaults, so nothing on a default-styled `_box` deviates from
+        // `.CheckboxBox` at all — `#id` never materialises, and every key
+        // here (including size) is an absent write, not an explicit removal.
+        expect(declarations.minWidth).toBeUndefined();
+        expect(declarations.minHeight).toBeUndefined();
+        expect(declarations.maxWidth).toBeUndefined();
+        expect(declarations.maxHeight).toBeUndefined();
         // cursor is untouched by that plan — still skip-based — so a match
         // still leaves no trace at all.
         expect(declarations.cursor).toBeUndefined();
