@@ -285,6 +285,45 @@ One amendment to `packages/lib/docs/reference/changelog/next.md`, under `## Chan
 
 ---
 
+## Implementation Notes
+
+**The plan's test-impact enumeration was narrower than the actual blast radius.** Step 1 predicted the fix would only affect the six cases it listed, and `TextLineHeightValueClassSharing.test.ts`'s own check line stated "rows 1-4, 6-7 are unaffected (none rests on a bare, no-other-deviation `Text`)." That premise was wrong for three more cases in that file, plus one in `CellTextSelection.test.ts`, all beyond the four files' six enumerated cases — discovered only by running the full suite (`npx vitest run --no-file-parallelism`) after the source change, per the plan's own step 5:
+
+- **`TextLineHeightValueClassSharing.test.ts` row 1** (two bare-rendered `SelectableText` instances) and **row 2** (one bare-rendered `SelectableText`) both use `getElement(true)` on a plain `SelectableText` as their "`#id` already materialised" precondition, then assert that a subsequent `setLineHeight(18)` call reconciles a real `lineHeight` declaration to an explicit `null` removal on that already-existing rule. `SelectableText`'s one other divergence, `userSelect: "text"`, already resolves through the shared `.SelectableText` class-tier rule rather than `#id` (a pre-existing, unrelated routing) — so, same as a bare `Text`, nothing forces `#id` to exist once `textOverflow`'s stale construction-time value is corrected in time by this plan's fix. Both cases' `lineHeight` assertions changed from `.toBeNull()` (a real removal recorded on an existing rule) to `.toBeUndefined()` (nothing recorded — the rule never materialises), with titles/comments updated to match.
+- **`TextLineHeightValueClassSharing.test.ts` row 4** (`centerInHeight(28)` / `centerInHeight(null)` on a bare-rendered `Text`) has the identical precondition gap — `new Text('x'); t.getElement(true);` — that row 5 (the plan's own predicted case, in the same file) has. Same fix: both `lineHeight` assertions changed from `.toBeNull()` to `.toBeUndefined()`.
+- **`CellTextSelection.test.ts`'s `"a second StringRenderer writes no per-instance declarations at all"` case** (immediately above the plan's enumerated `SelectableText`-child case) used that same child `SelectableText`'s recorded declarations as a "positive control" proving the selector/window plumbing was live — relying on the pre-fix bug's guarantee that the child's `#id` rule always had *something* recorded on it (all-null removals). That guarantee is exactly what this plan removes: the child now legitimately records nothing either. Changed `expect(Object.keys(textDeclarations).length).toBeGreaterThan(0)` to `expect(textDeclarations).toEqual({})`, and replaced the lost positive control with a dedicated one: a throwaway `Text('control', { fontWeight: 'bold' })`, read through the same `declarationsDuring`/`idSelector` plumbing the absence assertions rely on, asserting `controlDeclarations.fontWeight === 'bold'` — so a mis-built selector or a broken recording window is still caught here, independent of the (now legitimately empty) renderer/child under test.
+
+All four fixes follow the same root cause already established by the plan's own six predicted cases — a bare-rendered `Text`-family instance with no other genuine per-instance divergence now never materialises `#id` at all — and were verified the same way: full suite green (329 files / 5122 tests) after the change, with no other file affected.
+
+## Manual Live-Browser Verification (Expected Behaviour rows 7-8)
+
+Performed per `## Verification`'s non-negotiable requirement, via `mcp__chrome-devtools__*` tools against a dev server started from this worktree on a spare port (8020), confirmed serving from `/home/jika/typescript/typescript-ui/.worktrees/applystyle-flush-order-empty-rule-fix/packages/lib` via `readlink /proc/<pid>/cwd`.
+
+**Row 7 — Style Audit panel, before/after.** Reproduced the plan's own navigation (open a table window via "Show window with table (slow)!", open and close "Dialog — confirm/cancel", then the "Style Audit" tab), once against the pre-fix source (`git checkout 6d84e704 -- core/Component.ts component/input/Text.ts`, matching the branch state immediately before the fix commit) and once against the fixed source, with a full page reload between:
+
+| | Total rules | Total size | Per-instance (#id) rules | Unique bodies | Dedupeable size | `Text`/`plain`/`{ }` group |
+|---|---|---|---|---|---|---|
+| Before | 726 | 109.08 KB | 641 | 76 | 56.55 KB | 134 instances / 0.39 KB |
+| After | 593 | 103.75 KB | 508 | 76 | 56.16 KB | absent — gone entirely |
+
+The before figures match the plan's own live measurement (Overview) exactly. The `Text`/`plain`/`{ }` row is completely absent from the after audit table; total per-instance rules dropped by 133 (641→508), consistent with removing the 134-instance empty-rule group (off by one from ordinary page-state variance between the two separate sessions, not a discrepancy in the fix).
+
+**Row 8 — computed styles, before/after.** Read via `getComputedStyle` (not screenshots) on the same before/after source-swap, for every component kind the row names:
+
+| Component | `white-space` | `text-overflow` | `margin-left` | Same before/after? |
+|---|---|---|---|---|
+| Plain `Text` (tab label) | `nowrap` | `ellipsis` | `0px` | yes |
+| `Button` label `Text` | `nowrap` | `ellipsis` | — | yes |
+| Table cell renderer (`SelectableText`) | `nowrap` | `ellipsis` | — | yes |
+| `MenuItem` title | `nowrap` | `ellipsis` | — | yes |
+| `Dialog` title | `nowrap` | `ellipsis` | — | yes |
+| `Tooltip` | `nowrap` | `clip` | — | yes |
+| `Legend` | `nowrap` | `ellipsis` | `10px` | yes |
+
+Every value read identically before and after the fix — confirming the reorder changes only *when* `#id` materialises, never what the cascade resolves to. `Legend`'s `margin-left: 10px` (its own `applyStyle` override, untouched by this plan) is unaffected, as the plan's `## Non-Goals` predicted.
+
+---
+
 ## Notes
 
 [^why-hook-not-cleanup]: The alternative of exposing `_inheritedStyleBag` to a subclass so `Text.applyStyle` could reconcile *before* calling `super.applyStyle()` was also considered and rejected: `_inheritedStyleBag` is only resolved *inside* `Component.applyStyle`'s own body (`ensureClassStyleRule(this.constructor, this.getClassStyleDefaults())`, packages/lib/src/typescript/lib/core/Component.ts#L5019), so a subclass would have to duplicate that resolution before calling `super()` — doubling the work and creating two potentially-divergent copies of the bag for one render pass. Running the subclass's contribution *inside* `Component.applyStyle`, after that resolution already happened once, is strictly simpler and is what the new hook does.
