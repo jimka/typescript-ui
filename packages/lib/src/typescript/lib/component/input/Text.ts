@@ -1310,7 +1310,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     setTextOverflow(value: string): this {
         this._options.textOverflow = value as TOptions["textOverflow"];
 
-        this.setElementCSSRule("textOverflow", value);
+        this.setReconciledCSSRules({ textOverflow: value });
 
         return this;
     }
@@ -1322,12 +1322,16 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      *
      * @remarks Writes that resolved value (substituting the CSS initial
-     * value `"clip"` for `null`) rather than removing the declaration —
-     * `.Text`'s class rule carries a non-null `text-overflow: ellipsis` for
-     * every current class (see `applyStyle`'s own `textOverflow` write), so
-     * a removed `#id` declaration would stop competing with the class rule
-     * rather than beating it, silently resurfacing the class default instead
-     * of the value this call means to establish.
+     * value `"clip"` for `null`) through the reconciled write path, rather
+     * than removing the declaration outright — `.Text`'s class rule carries
+     * a non-null `text-overflow: ellipsis` for every current class (see
+     * `applyStyle`'s own `textOverflow` write), so a bare `#id` removal
+     * would stop competing with the class rule rather than beating it,
+     * silently resurfacing the class default instead of the value this call
+     * means to establish. The reconciled write path still turns that
+     * resolved value into an explicit removal when it happens to equal what
+     * the class rule already supplies, so the write costs nothing when
+     * `truncate` is left at its default.
      */
     clearTextOverflow(): this {
         if (this._options.textOverflow === undefined) {
@@ -1335,7 +1339,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         }
 
         this._options.textOverflow = undefined;
-        this.setElementCSSRule("textOverflow", this.getTextOverflow() ?? "clip");
+        this.setReconciledCSSRules({ textOverflow: this.getTextOverflow() ?? "clip" });
 
         return this;
     }
@@ -1541,10 +1545,10 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         // imperative setter last wrote.
         //
         // Unlike the other eleven, this one bypasses `writeFontDeclaration`'s
-        // truthy guard and calls `writeRuleDeclaration` directly, substituting
+        // truthy guard and calls `reconcileRuleDeclaration` directly, substituting
         // the CSS initial value `"clip"` for a `null` `getTextOverflow()`
         // (`truncate: false`) rather than passing `null` straight through.
-        // `writeRuleDeclaration(key, null)` *removes* the `#id` declaration
+        // `reconcileRuleDeclaration(key, null)` *removes* the `#id` declaration
         // (see `DOM.ts`'s `writeDeclaration`) rather than asserting one — with
         // `.Text`'s class rule carrying a non-null `textOverflow: "ellipsis"`
         // (every current class defaults `truncate: true`), removing #id's
@@ -1557,7 +1561,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         // sets, and which happens to suppress ellipsis rendering regardless
         // of `text-overflow`'s value) to paper over the wrong CSS.
         const textOverflow = this.getTextOverflow();
-        this.writeRuleDeclaration("textOverflow", textOverflow ?? "clip");
+        this.reconcileRuleDeclaration("textOverflow", textOverflow ?? "clip");
 
         // `writeRuleDeclaration` only queues; `super.applyStyle` already
         // flushed once (`materialiseStyleRule` at the end of its own body).

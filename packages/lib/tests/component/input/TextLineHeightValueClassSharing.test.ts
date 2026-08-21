@@ -214,7 +214,13 @@ describe('Text numeric-pixel lineHeight value-class sharing', () => {
         const declarations = declarationsDuring(sink, idSelector(t), () => t.getElement(true));
 
         expect(declarations.lineHeight).toBeNull();
-        expect(declarations.textOverflow).toBe('ellipsis');
+        // Per plans/implemented/text-truncate-write-path-cleanup.md,
+        // textOverflow itself now reconciles to a removal too (it no longer
+        // writes a real value) — #id still materialises for the reason this
+        // test's title names (the construction-time queue forces it before
+        // the class-rule comparison can run), but the value that ends up
+        // recorded there is a removal like lineHeight's, not a real string.
+        expect(declarations.textOverflow).toBeNull();
     });
 
     it('row 6: setLineHeight before mount produces no apply write; the class is applied at render via the render() override', () => {
