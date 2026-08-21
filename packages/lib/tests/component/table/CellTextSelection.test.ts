@@ -12,6 +12,7 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Component } from '~/core/Component';
+import { Text } from '~/component/input/Text';
 import { _ruleCacheHas } from '~/core/StyleTarget';
 import { StringRenderer } from '~/component/table/cell/renderer/String';
 import { NumberRenderer } from '~/component/table/cell/renderer/Number';
@@ -205,17 +206,28 @@ describe('selectable text resolves through the class rule, not a per-instance ru
         const r    = new StringRenderer();
         const text = r.getText();
 
+        // Positive control: a Text with a genuine per-instance deviation,
+        // read through the same declarationsDuring/idSelector plumbing the
+        // absence assertions below rely on — proves a mis-built selector or
+        // a broken recording window would be caught here, rather than every
+        // absence assertion below passing vacuously.
+        const control = new Text('control', { fontWeight: 'bold' });
+        const controlDeclarations = declarationsDuring(sink, idSelector(control), () => control.getElement(true));
+        expect(controlDeclarations.fontWeight).toBe('bold');
+
         // The child's first render happens inside the parent's, so one window
-        // covers both. The child's declarations double as the positive control
-        // that this window and these selectors are live — without it, a
-        // mis-built selector would make every absence assertion below pass
-        // vacuously.
+        // covers both. Per
+        // plans/implemented/applystyle-flush-order-empty-rule-fix.md, the
+        // child SelectableText now also materialises no #id rule of its own
+        // (covered directly by the test immediately below) — both are empty
+        // for the same reason: neither diverges from its class-tier
+        // defaults.
         let textDeclarations: Record<string, string | null> = {};
         const declarations = declarationsDuring(sink, idSelector(r), () => {
             textDeclarations = declarationsDuring(sink, idSelector(text), () => r.getElement(true));
         });
 
-        expect(Object.keys(textDeclarations).length).toBeGreaterThan(0);
+        expect(textDeclarations).toEqual({});
 
         // The renderer diverges from its class bag in nothing — `cursor` and
         // `user-select` now resolve through `.StringRenderer` — so it
@@ -226,7 +238,7 @@ describe('selectable text resolves through the class rule, not a per-instance ru
         expect(_ruleCacheHas('.StringRenderer')).toBe(true);
     });
 
-    it("the renderer's SelectableText child skips its font block along with userSelect and cursor; textOverflow now reconciles too, but the #id rule still materialises empty", () => {
+    it("the renderer's SelectableText child writes no per-instance declarations at all", () => {
         const sink = DOM.sink as RecordingDOMSink;
 
         new StringRenderer().getElement(true);
@@ -236,27 +248,14 @@ describe('selectable text resolves through the class rule, not a per-instance ru
 
         const declarations = declarationsDuring(sink, idSelector(text), () => r.getElement(true));
 
-        // Per plans/implemented/text-truncate-write-path-cleanup.md's
-        // Implementation Notes: `setTruncate` is unconditionally dispatched
-        // from `Text`'s constructor (needed so `whiteSpace`/`overflow`, which
-        // have no render-time fallback, are always set), and that dispatch
-        // calls the public `setTextOverflow("ellipsis")` before
-        // `_inheritedStyleBag` exists, so it always queues a real value.
-        // `Text.applyStyle`'s own later correction resolves it to `null` (not
-        // the old real `"ellipsis"`), but not before `Component.applyStyle`'s
-        // own `materialiseStyleRule()` has already seen that stale value as
-        // real and inserted the `#id` rule — so, unlike the `StringRenderer`
-        // case just above, this rule does still materialise, just with every
-        // declaration reconciled to a removal rather than a real value.
-        // `userSelect` also resolves through the shared `.SelectableText`
-        // tier, and since `#id` already materialises regardless, the match
-        // surfaces as an explicit removal in the same batch rather than
-        // being skipped in silence — the net rendered CSS (no declaration on
-        // `#id`, `.SelectableText` supplies the value) is unchanged.
-        expect(declarations.textOverflow).toBeNull();
+        // Per plans/implemented/applystyle-flush-order-empty-rule-fix.md,
+        // Text's font/text declarations (including textOverflow's
+        // correction) now queue before applyStyle's one render-time flush,
+        // so with no other real deviation queued (userSelect/cursor also
+        // resolve through the shared .SelectableText tier), the #id rule
+        // never materialises at all.
         expect(declarations.fontFamily).toBeUndefined();
-        expect(declarations.userSelect).toBeNull();
-        expect(declarations.cursor).toBeUndefined();
+        expect(Object.keys(declarations)).toEqual([]);
         expect(_ruleCacheHas('.SelectableText')).toBe(true);
     });
 });

@@ -75,35 +75,21 @@ function idSelector(component: Component): string {
 }
 
 describe('Text truncate write-path cleanup', () => {
-    // The plan's row 1 predicted the #id rule would never materialise at all
-    // for a bare Text. That does not hold: `setTruncate`'s unconditional
-    // constructor-time dispatch (`applyOptions`, inside `super()`) calls the
-    // public `setTextOverflow("ellipsis")` before `_inheritedStyleBag`
-    // exists, so it queues "ellipsis" as a real value. `whiteSpace`'s
-    // matching construction-time queue is corrected in time because its
-    // render-phase fix (`applyMiscInlineStyles`) is one of `Component`'s own
-    // `applyStyle` phases, sharing the same flush boundary as the
-    // construction-time write. `textOverflow`'s render-phase fix lives in
-    // `Text.applyStyle`, which — per the depended-upon
-    // text-applystyle-class-hoisting plan's "Text.applyStyle flushes twice"
-    // — runs (and flushes) *after* `super.applyStyle()`'s own
-    // `materialiseStyleRule()` call already saw the stale "ellipsis" as real
-    // and inserted the rule. The correction still lands (both declarations
-    // end up null, not a stale real value — verified below), but the #id
-    // rule itself, now empty, still gets inserted. See the plan's
-    // Implementation Notes for the full analysis; closing this needs a
-    // genuine design decision (exposing `_inheritedStyleBag` to a subclass,
-    // or reordering `Text.applyStyle`), out of scope for this plan's
-    // mechanical write-path routing.
-    it('a fresh Text with no font override queues only removals — the #id rule still materialises empty', () => {
+    // plans/implemented/applystyle-flush-order-empty-rule-fix.md closes the
+    // ordering gap this comment used to describe: `Text`'s font/text
+    // declarations (including `textOverflow`'s correction) now queue via
+    // `Component.applyStyle`'s `applySubclassStyles` hook, before that
+    // method's one and only flush — not after a second flush of `Text`'s
+    // own. A construction-time real value later corrected to a
+    // class-tier-matching removal is corrected in time, so the #id rule for
+    // a plain `Text` is never materialised at all.
+    it('a fresh Text with no font override never materialises its own #id rule', () => {
         const sink = DOM.sink as RecordingDOMSink;
         const t = new Text('x');
 
         const declarations = declarationsDuring(sink, idSelector(t), () => t.getElement(true));
 
-        expect(Object.values(declarations).every((v) => v === null)).toBe(true);
-        expect(declarations.whiteSpace).toBeNull();
-        expect(declarations.textOverflow).toBeNull();
+        expect(declarations).toEqual({});
     });
 
     it('a fresh Text with a real font override materialises #id with whiteSpace/textOverflow as removals', () => {

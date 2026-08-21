@@ -5029,6 +5029,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this.applyOverflowStyles();
         this.applyChromeStyles();
         this.applyMiscInlineStyles();
+        this.applySubclassStyles();
 
         // Materialise last: every phase above queued into the dirty bag, so the
         // whole rule body reaches the stylesheet as one write — or none, if the
@@ -5266,6 +5267,26 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this.writeRuleDeclaration("margin", "0px 0px 0px 0px");
+    }
+
+    /**
+     * Extension point for a subclass that needs to queue more `#id` rule
+     * declarations — through `writeRuleDeclaration` / `reconcileRuleDeclaration`
+     * / `setReconciledCSSRules`, so they still compare against the class tier —
+     * before `applyStyle`'s one materialising flush runs. A no-op by default.
+     *
+     * A subclass overrides this, chaining onto `super()`'s call rather than
+     * replacing it, so a grandchild class's own contribution runs too. Only
+     * needed by a subclass whose extra declaration can itself resolve to a
+     * class-tier-matching removal (see
+     * plans/implemented/applystyle-flush-order-empty-rule-fix.md's Architecture
+     * Decisions) — a subclass that only ever writes a real, always-present
+     * value (`Legend`'s `marginLeft`, `Markdown`'s `maxWidth`) has no need of
+     * this hook and can keep overriding `applyStyle` directly, calling
+     * `super.applyStyle()` first.
+     */
+    protected applySubclassStyles(): void {
+        // No-op by default.
     }
 
     /**

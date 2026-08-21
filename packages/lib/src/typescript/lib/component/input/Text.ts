@@ -1509,12 +1509,19 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
-     * Applies all text-specific style properties to the element's CSS rule in addition to base styles.
+     * Queues Text's twelve font/text declarations, routed through the class-rule
+     * compare-and-skip/reconcile machinery so a Text with no per-instance font
+     * override contributes none of them for real.
      *
-     * @param element - The element handle to apply styles to.
+     * @remarks Runs as `Component.applyStyle`'s pre-flush hook — before its one
+     * materialising flush, not after a second one of Text's own — so a
+     * construction-time value later corrected to a class-tier-matching removal
+     * (`textOverflow`, from `setTruncate`'s unconditional dispatch in
+     * `applyOptions`) is already corrected by the time that flush inspects the
+     * dirty bag. See plans/implemented/applystyle-flush-order-empty-rule-fix.md.
      */
-    applyStyle(element: Handle): this {
-        super.applyStyle(element);
+    protected applySubclassStyles(): void {
+        super.applySubclassStyles();
 
         const fontSize = this.getFontSize();
 
@@ -1562,15 +1569,6 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         // of `text-overflow`'s value) to paper over the wrong CSS.
         const textOverflow = this.getTextOverflow();
         this.reconcileRuleDeclaration("textOverflow", textOverflow ?? "clip");
-
-        // `writeRuleDeclaration` only queues; `super.applyStyle` already
-        // flushed once (`materialiseStyleRule` at the end of its own body).
-        // A second flush here drains what this method just queued — skipped
-        // automatically when nothing diverged (see `materialiseStyleRule`'s
-        // own early return).
-        this.materialiseStyleRule();
-
-        return this;
     }
 
     /**
