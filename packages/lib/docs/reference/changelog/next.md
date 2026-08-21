@@ -178,6 +178,10 @@ consumer implementing its own `DOMSink` is affected.
   same way `Button`'s `.pressed` chrome already does.** The resting
   (unchecked/unselected) border also no longer duplicates per instance. No
   consumer action needed; nothing changes visually.
+- **`Checkbox`'s box graphic (`CheckboxBox`) no longer duplicates its
+  border-radius on every instance's own CSS rule**, the same way its fixed
+  size, cursor, resting background, and resting border already were
+  deduped. Nothing changes visually; no consumer action needed.
 - **`ScrollArrowButton`, `Scrollbar`'s thumb, `ResizeHandle`, `ComboBoxCaret`,
   `SelectableListRow`, and `HeaderCell`'s text renderer no longer duplicate
   their fixed styling on every instance's own CSS rule.** Each now shares one
