@@ -118,6 +118,10 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private _fontSizeCSSRule: string | null = DEFAULT_FONT_SIZE_RULE;
     private _lineHeightCSSVar : string | null = null;
     private _lineHeightCSSRule: string | null = ADDITIVE_LINE_HEIGHT_RULE;
+    // Tracks the DOM class token currently pointing this instance at its shared
+    // numeric-pixel value rule (e.g. "lh18px"), or null when in CSS-var/theme
+    // mode. See applyLineHeightValueClass / clearLineHeightValueClass.
+    private _lineHeightValueClass: string | null = null;
     private _measuredBaseline: number | null = null;
     private _measuredMinSize: Size | null = null;
     private _autoMeasure: boolean = true;
@@ -1109,6 +1113,54 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
+     * Points this instance at the shared `.ClassName.lh<value>` rule for
+     * `pxValue`, so every instance of this concrete class that resolves the same
+     * pixel line-height shares one rule instead of each writing its own `#id`
+     * declaration. Removes the previously-applied token first, if this instance
+     * already carried a different one. Reuses `createStateStyleRule` /
+     * `ensureClassStateRule` — the state tier's existing shared-rule-per-suffix
+     * mechanism — with a value-derived suffix instead of a fixed named state;
+     * see `## Architecture Decisions`.
+     *
+     * @param pxValue - The exact CSS length string being applied (e.g. `"18px"`),
+     *   used both as the declared value and, sanitized, as the class token.
+     */
+    private applyLineHeightValueClass(pxValue: string): void {
+        const token = "lh" + pxValue.replace(/[^a-zA-Z0-9]/g, "_");
+
+        this.createStateStyleRule("." + token, () => ({ lineHeight: pxValue }))
+            .setMany({ lineHeight: pxValue });
+
+        const element = this.getElement();
+        if (element) {
+            const removeClass = (this._lineHeightValueClass && this._lineHeightValueClass !== token)
+                ? [this._lineHeightValueClass]
+                : [];
+            DOM.sink.apply(element, { removeClass, addClass: [token] });
+        }
+
+        this._lineHeightValueClass = token;
+    }
+
+    /**
+     * Reverts to the class-tier default: removes any value-class token this
+     * instance currently carries. Called when switching out of numeric-pixel
+     * mode (`setLineHeight`'s string branch, `centerInHeight(null)`).
+     */
+    private clearLineHeightValueClass(): void {
+        if (!this._lineHeightValueClass) {
+            return;
+        }
+
+        const element = this.getElement();
+        if (element) {
+            DOM.sink.apply(element, { removeClass: [this._lineHeightValueClass] });
+        }
+
+        this._lineHeightValueClass = null;
+    }
+
+    /**
      * Sets the line height. Pass a number for an explicit fixed pixel value
      * (which stops tracking the theme — this is the per-control override of the
      * additive default), or a CSS variable name to bind the line box to a
@@ -1133,15 +1185,34 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
                 return this;
             }
 
+            // A non-null _lineHeightCSSRule here means this call is entering
+            // numeric-pixel mode from a mode whose own writes could have left
+            // a real lineHeight declaration on #id (CSS-var/theme mode, or
+            // the first render if ensureClassStyleRule opted this class out
+            // on a name collision — see reconcileRuleDeclaration's remarks).
+            // #id's (1,0,0) specificity always outranks the shared
+            // .ClassName.lh* rule (0,2,0) applyLineHeightValueClass below
+            // points this instance at, so that stale declaration must be
+            // reconciled away, not left in place. Once already in numeric
+            // mode (_lineHeightCSSRule already null), #id never carries a
+            // real declaration to begin with, so a same-mode value change
+            // (e.g. a row-height resize) skips this and queues nothing extra.
+            const wasReconciledMode = this._lineHeightCSSRule !== null;
+
             this._options.lineHeight = value as TOptions["lineHeight"];
             this._lineHeightCSSVar    = null;
             this._lineHeightCSSRule   = null;
-            this.setElementCSSRule("lineHeight", value + "px");
+            this.applyLineHeightValueClass(value + "px");
+
+            if (wasReconciledMode) {
+                this.setReconciledCSSRules({ lineHeight: null });
+            }
         } else {
+            this.clearLineHeightValueClass();
             this._lineHeightCSSVar    = value;
             this._lineHeightCSSRule   = `var(${value}, ${ADDITIVE_LINE_HEIGHT_RULE})`;
             this._options.lineHeight = this.readThemeLineHeightPx() as TOptions["lineHeight"];
-            this.setElementCSSRule("lineHeight", this._lineHeightCSSRule);
+            this.setReconciledCSSRules({ lineHeight: this._lineHeightCSSRule });
         }
 
         this._measurementDirty = true;
@@ -1168,10 +1239,11 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      */
     centerInHeight(px: number | null): this {
         if (px === null) {
+            this.clearLineHeightValueClass();
             this._lineHeightCSSVar   = null;
             this._lineHeightCSSRule  = ADDITIVE_LINE_HEIGHT_RULE;
             this._options.lineHeight = this.readThemeLineHeightPx() as TOptions["lineHeight"];
-            this.setElementCSSRule("lineHeight", this._lineHeightCSSRule);
+            this.setReconciledCSSRules({ lineHeight: this._lineHeightCSSRule });
 
             this._measurementDirty = true;
             (this.getParentComponent() ?? this).scheduleLayout();
@@ -1425,8 +1497,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     applyStyle(element: Handle): this {
         super.applyStyle(element);
 
-        const fontSize   = this.getFontSize();
-        const lineHeight = this.getLineHeight();
+        const fontSize = this.getFontSize();
 
         this.writeFontDeclaration("fontFamily",     this.getFontFamily());
         this.writeFontDeclaration("textAlign",      this.getTextAlign());
@@ -1438,7 +1509,15 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         this.writeFontDeclaration("fontStyle",      this.getFontStyle());
         this.writeFontDeclaration("fontVariant",    this.getFontVariant());
         this.writeFontDeclaration("fontWeight",     this.getFontWeight());
-        this.writeFontDeclaration("lineHeight",     this._lineHeightCSSRule ?? (lineHeight !== null ? `${lineHeight}px` : null));
+        // lineHeight is not routed through writeFontDeclaration: in numeric-pixel
+        // mode (_lineHeightCSSRule === null) applyLineHeightValueClass already owns
+        // this element's line-height via the shared value-class rule, and a
+        // render-phase write here would reintroduce a per-instance #id declaration
+        // that always wins the cascade over that shared rule (see
+        // `## Architecture Decisions`). In CSS-var/theme mode, reconcile normally.
+        if (this._lineHeightCSSRule) {
+            this.reconcileRuleDeclaration("lineHeight", this._lineHeightCSSRule);
+        }
         // `textOverflow` has no render-time recompute anywhere else
         // (unlike `whiteSpace`/`overflow`, `truncate`'s other two
         // properties, which are covered by Component's own field-backed
@@ -1476,7 +1555,11 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
-     * Renders the element and sets its text content.
+     * Renders the element and sets its text content. Also re-applies a
+     * pending numeric-pixel value-class token for a `setLineHeight(px)` call
+     * made before the element existed — mirrors `CheckboxBox.render()`'s
+     * re-assert (see
+     * plans/implemented/checkbox-radio-delegate-state-style-defaults.md).
      *
      * @returns The created element with textContent initialised.
      */
@@ -1484,6 +1567,10 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         let element = super.render();
 
         DOM.sink.apply(element, { text: this.getText().valueOf() });
+
+        if (this._lineHeightValueClass) {
+            DOM.sink.apply(element, { addClass: [this._lineHeightValueClass] });
+        }
 
         return element;
     }
