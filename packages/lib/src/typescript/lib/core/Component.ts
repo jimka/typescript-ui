@@ -1879,7 +1879,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             ruleValue = "inherit";
         }
 
-        this.setElementCSSRule("visibility", ruleValue);
+        this.setReconciledCSSRules({ visibility: ruleValue });
         this.scheduleEffectiveVisibilityReconcile();
 
         return this;
@@ -2530,7 +2530,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
         this._options.borderRadius = borderRadius;
-        this.setElementStyle("borderRadius", borderRadius);
+        this.setReconciledCSSRules({ borderRadius });
 
         return this;
     }
@@ -2545,7 +2545,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
         this._options.borderRadius = undefined;
-        this.setElementStyle("borderRadius", null);
+        this.setElementCSSRule("borderRadius", null);
 
         return this;
     }
@@ -4968,9 +4968,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             // is switched away). This mirrors the live `setVisible` setter, which
             // also writes `inherit` for `true`; writing `visible` here would pin
             // the element on screen and defeat ancestor-based hiding.
-            this.writeRuleDeclaration("visibility", visible ? "inherit" : "hidden");
+            this.reconcileRuleDeclaration("visibility", visible ? "inherit" : "hidden");
         } else {
-            this.writeRuleDeclaration("visibility", "inherit");
+            this.reconcileRuleDeclaration("visibility", "inherit");
         }
 
         const displayed = this.isDisplayed();
@@ -5096,7 +5096,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const borderRadius = this.getBorderRadius();
         if (borderRadius) {
-            this.writeRuleDeclaration("borderRadius", borderRadius);
+            this.reconcileRuleDeclaration("borderRadius", borderRadius);
         }
 
         const shadow = this.getShadow();

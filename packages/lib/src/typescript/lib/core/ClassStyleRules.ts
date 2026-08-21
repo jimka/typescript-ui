@@ -48,6 +48,7 @@ export interface ClassStyleDefaults {
     backgroundColor?: string | null;
     backgroundImage?: string | null;
     shadow?:          string | null;
+    borderRadius?:    string | null;
     border?:          BorderOptions | string | null;
 }
 
@@ -157,6 +158,7 @@ function resolveDeclarations(defaults: ClassStyleDefaults): Record<string, strin
     if (defaults.backgroundColor) declarations.backgroundColor = defaults.backgroundColor;
     if (defaults.backgroundImage) declarations.backgroundImage = defaults.backgroundImage;
     if (defaults.shadow)          declarations.boxShadow       = defaults.shadow;
+    if (defaults.borderRadius)    declarations.borderRadius    = defaults.borderRadius;
 
     const border = defaults.border;
     if (border) {

@@ -62,6 +62,16 @@ consumer implementing its own `DOMSink` is affected.
   real, redundant `#id` declaration — it now writes a removal instead, so the
   shared `.ClassName` rule (or the framework rule) supplies the value. No
   consumer action is needed; the rendered result is unchanged.
+- **`border-radius` now dedupes against the class-tier default the same way
+  `foregroundColor`/`outline`/`userSelect`/`minSize`/`maxSize`/`overflowX`/
+  `overflowY` already do, and `visibility` now does too.** `border-radius`
+  also moves from an inline style to the same `#id`/`.ClassName` stylesheet
+  tier its `border`/`shadow`/`background-image` siblings already use — a
+  consumer reading `element.style.borderRadius` directly will no longer find
+  it there, and (as with the earlier hoisting notes) a consumer stylesheet
+  rule targeting a component by class now ties with the generated
+  `.ClassName` rule where the framework's per-instance rule previously
+  always won. No other consumer action is needed; nothing changes visually.
 - **[`Text`](/api/component/input/classes/Text)'s font/text declarations
   (`font-family`, `text-align`, `font-weight`, and most of the rest of the
   twelve `applyStyle` writes) now join the hoisted style declarations too.**
