@@ -87,8 +87,8 @@ consumer implementing its own `DOMSink` is affected.
   Every `Text` used to write `white-space: nowrap; text-overflow: ellipsis`
   to its own `#id` rule, even though the framework rule and the shared
   `.Text` rule already supply both — a `Text` with no per-instance font
-  override no longer writes either declaration for real; both now resolve
-  to an explicit removal instead. As with the earlier hoisting notes, a
+  override no longer gets a `#id` rule inserted for either declaration at
+  all. As with the earlier hoisting notes, a
   consumer stylesheet rule that sets `white-space` or `text-overflow` on a
   component by class now ties with the generated class rule (or beats the
   framework rule outright) where the framework's per-instance rule
