@@ -409,6 +409,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'Checkbox _box cursor',         resolve: () => (new Checkbox() as any)._box.getCursor(),                   expected: 'pointer' },
     { label: 'Checkbox _box backgroundColor', resolve: () => (new Checkbox() as any)._box.getBackgroundColor(),         expected: 'var(--ts-ui-checkbox-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))' },
     { label: 'Checkbox _box border',         resolve: () => (new Checkbox() as any)._box.getBorder(),                   expected: { border: '1px solid var(--ts-ui-form-border, rgb(160, 160, 160))' } },
+    { label: 'Checkbox _box borderRadius',   resolve: () => (new Checkbox() as any)._box.getBorderRadius(),             expected: 'var(--ts-ui-checkbox-radius, 3px)' },
     { label: 'Checkbox _check minSize',      resolve: () => (new Checkbox() as any)._check.getMinSizeConstraint(),      expected: { width: 12, height: 12 } },
     { label: 'RadioButton outline',          resolve: () => new RadioButton().getOutline(),                             expected: 'none' },
     { label: 'RadioButton _ring cursor',     resolve: () => (new RadioButton() as any)._ring.getCursor(),               expected: 'pointer' },

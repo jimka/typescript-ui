@@ -24,6 +24,7 @@ const _defaultCheckboxBoxOptions: Partial<ComponentOptions> = {
     cursor:          "pointer",
     backgroundColor: "var(--ts-ui-checkbox-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))",
     border:          "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))",
+    borderRadius:    "var(--ts-ui-checkbox-radius, 3px)",
 };
 
 /** `_box`'s checked-state declarations. Read by both `getSelectedClassDeclarations` and `applyState` — one source of truth, mirroring `ToggleButton`'s `TOGGLE_SELECTED_DECLARATIONS`. */
@@ -41,8 +42,8 @@ const CHECKBOX_INDETERMINATE_DECLARATIONS: Readonly<Record<string, string>> = Ob
 /**
  * The box graphic behind a {@link Checkbox} — the click + cursor surface.
  * Module-private: constructed only from `Checkbox`'s own constructor. Static
- * geometry and cursor are class defaults so every instance shares one
- * `.CheckboxBox` CSS rule instead of repeating them; the resting
+ * geometry, cursor, and border-radius are class defaults so every instance
+ * shares one `.CheckboxBox` CSS rule instead of repeating them; the resting
  * backgroundColor/border are class defaults too, and the checked/indeterminate
  * background and border write through `createStateStyleRule`-backed state
  * rules — see `plans/implemented/checkbox-radio-delegate-state-style-defaults.md`.
@@ -239,7 +240,6 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         // can't collapse the box graphic when the checkbox sits next to
         // flexible siblings.
         this._box.setSize({ width: 16, height: 16 });
-        this._box.setBorderRadius("var(--ts-ui-checkbox-radius, 3px)");
 
         this._check = new CheckboxCheckGlyph();
         this._check.setPreferredSize({ width: 12, height: 12 });

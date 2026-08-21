@@ -103,18 +103,15 @@ describe('Checkbox delegate state-class hoisting', () => {
         const cb   = new Checkbox() as any;
         const box  = cb._box;
 
-        // Resting: relies entirely on the .CheckboxBox class rule established
-        // at construction — no real border value reaches the instance rule.
-        // A `null` (rather than an absent key) is still expected here: _box's
-        // constructor also sets a genuinely per-instance borderRadius, which
-        // shares this same underlying #id rule, so border's "clear on match,
-        // never skip" queue rides along in the same flush as an inert removal
-        // — it declares nothing, so the class rule's border cascades through.
+        // Resting relies entirely on the .CheckboxBox class rule; borderRadius
+        // is a class default too now, so nothing on a default-styled `_box`
+        // deviates from `.CheckboxBox` at all — `#id` never materialises, and
+        // border comes back as an absent key, not a `null` removal.
         const restingDeclarations = declarationsDuring(sink, idSelector(box), () => cb.getElement(true));
-        expect(restingDeclarations.borderTop).toBeNull();
-        expect(restingDeclarations.borderRight).toBeNull();
-        expect(restingDeclarations.borderBottom).toBeNull();
-        expect(restingDeclarations.borderLeft).toBeNull();
+        expect(restingDeclarations.borderTop).toBeUndefined();
+        expect(restingDeclarations.borderRight).toBeUndefined();
+        expect(restingDeclarations.borderBottom).toBeUndefined();
+        expect(restingDeclarations.borderLeft).toBeUndefined();
 
         // Checked/indeterminate: border is now part of getSelectedClassDeclarations()/
         // getIndeterminateClassDeclarations(), so it dedupes onto the shared
