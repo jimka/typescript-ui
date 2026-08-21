@@ -170,9 +170,9 @@ consumer implementing its own `DOMSink` is affected.
   instance's own CSS rule**, and the check-mark/dot glyphs no longer duplicate
   their fixed colour. Each now shares one CSS rule per graphic across every
   `Checkbox`/`RadioButton` in the app for those properties. The check-mark
-  and dot glyphs' size still writes per-instance, as it always has — a
-  `Glyph`'s own construction-time size pinning cannot be deduped onto a
-  shared class rule. Nothing changes visually; no consumer action needed.
+  and dot glyphs' fixed size now also dedupes the same way, so `_check`/`_dot`
+  write no per-instance CSS rule at all. Nothing changes visually; no
+  consumer action needed.
 - **`Checkbox`'s checked/indeterminate and `RadioButton`'s selected
   background and border now dedupe across instances of the same class, the
   same way `Button`'s `.pressed` chrome already does.** The resting
