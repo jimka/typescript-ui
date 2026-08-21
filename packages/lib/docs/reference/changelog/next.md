@@ -102,6 +102,11 @@ consumer implementing its own `DOMSink` is affected.
   the button's current resting value** instead of removing the property —
   the same rendered result, reached differently, and needed so the pinned
   value keeps outranking the shared class-tier `.pressed` rule.
+- **`ToggleButton`'s `.selected` background, background-image, and box-shadow
+  now dedupe across instances of the same class, the same way `Button`'s
+  `.pressed` chrome already does** — no consumer action needed, and
+  `TabButton` inherits the same behaviour for its own selected fill and now
+  also dedupes its own `.selected` border the same way.
 
 ### Table
 

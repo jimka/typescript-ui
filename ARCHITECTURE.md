@@ -262,12 +262,38 @@ rule.ensure();
 
 If you find yourself reaching for `.style.X` on a `CSSStyleRule` or `HTMLElement`, stop — there is a `StyleRule` / `InlineStyle` (or a Component setter that wraps one) that should own that write.
 
+## Component CSS tiers and state-rule dedup
+
+Every rendered element can be styled from three CSS rules, ranked by specificity — written `(id, class, type)`, the standard three-number comparison:
+
+| Tier | Selector shape | Specificity | Who writes it |
+|---|---|---|---|
+| Framework | `:where(.ts-ui-component)` | `(0,0,0)` | `core/ClassStyleRules.ts`, once per process |
+| Class | `.ButtonName`, `.ButtonName.pressed`, `.ButtonName.selected`, … | `(0,1,0)` per class chained | `ClassStyleDefaults` / `ensureClassStyleRule` / `ensureClassStateRule`, once per concrete component class |
+| Instance | `#c17`, `#c17.pressed`, `#c17:not(.pressed)`, … | `(1,0,0)` regardless of how many classes are chained | Each `Component`'s own setters |
+
+An id always outranks any number of chained classes. That makes a bare `#id` declaration beat a class-tier state rule like `.ButtonName.pressed` even though the latter chains two classes — so an instance that customizes a resting property (a caller-supplied `backgroundColor`, say) while its class also shares a `.pressed` rule for that property silently defeats `.pressed` for that one instance, permanently.
+
+| Selectors compared | Specificity | Winner |
+|---|---|---|
+| `#c17` vs `.Button.pressed` | `(1,0,0)` vs `(0,2,0)` | `#c17` — the id wins regardless of pressed state |
+| `#c17:not(.pressed)` vs `.Button.pressed` | `(1,1,0)` vs `(0,2,0)` | Neither: `:not(.pressed)` never matches while `.pressed` does, so only one selector applies at a time |
+
+The fix is `:not()`: give the resting-tier write its own instance rule that excludes the toggle class, e.g. `#c17:not(.pressed)`. Because the two selectors can never match the same element at the same moment, there's nothing left to arbitrate.
+
+`Component` automates this for the properties most often deviated per instance while a toggle state is active — `backgroundColor`, `backgroundImage`, `boxShadow`, written through `reconcileRuleDeclaration` / `setReconciledCSSRules`. Adding a new toggle-class state:
+
+1. Build the state rule with `this.createStateStyleRule(suffix, resolveDefaults)` (see *Defer DOM work to render time* below) — this dedupes the state rule itself onto a shared `.ClassName<suffix>` rule.
+2. If that state's class-tier rule declares `backgroundColor` / `backgroundImage` / `boxShadow`, override `getRestingExclusionSuffixes()` to add the toggle class: `return [...super.getRestingExclusionSuffixes(), ".selected"];`. `reconcileRuleDeclaration` / `setReconciledCSSRules` isolate those three properties onto the computed `:not(...)` rule automatically — no other code needed.
+
+`Button` (`.pressed`) and `ToggleButton` (`.selected`) are the two components that need step 2 today.
+
 ## Defer DOM work to render time
 
 Construction must stay JS-only. Every framework primitive buffers DOM writes until first render — keep them queued:
 
 - **Component CSS rule**: `setElementCSSRule(s)` queues into `styleRule`; `applyStyle` flushes at render, and inserts the rule only when a real declaration is queued — not for a bag holding only no-op `null` removals. Never call `ensureCSSRule()` from a setter.
-- **Per-component state rules** (`:active`, `:hover`, `.selected`, …): allocate via `this.createStyleRule(suffix)`. The builder dedupes by suffix and registers for render-time materialisation. Don't construct a `StyleRule` directly for these — go through `createStyleRule` so the dedupe + register path runs. When the state also has class-level defaults to dedupe against, prefer `this.createStateStyleRule(suffix, resolveDefaults)` instead — it wraps the same per-instance rule with the class-tier comparison and materialisation nudge, so a caller gets both by calling the returned wrapper's own `set()` / `setMany()`.
+- **Per-component state rules** (`:active`, `:hover`, `.selected`, …): allocate via `this.createStyleRule(suffix)`. The builder dedupes by suffix and registers for render-time materialisation. Don't construct a `StyleRule` directly for these — go through `createStyleRule` so the dedupe + register path runs. When the state also has class-level defaults to dedupe against, prefer `this.createStateStyleRule(suffix, resolveDefaults)` instead — it wraps the same per-instance rule with the class-tier comparison and materialisation nudge, so a caller gets both by calling the returned wrapper's own `set()` / `setMany()`. When that state also competes with the resting tier for the same property (a shared `.selected` background, say), override `getRestingExclusionSuffixes()` too — see *Component CSS tiers and state-rule dedup* above.
 - **Module-level shared class rules** (`.SortPriorityBadge`, `.ResizeHandle`, …): `new StyleRule({ scope: "class", name: "Foo" })` inside a module-singleton `ensureXClassRule()` is the correct path; the `StyleRule` buffer is the public seam over `CSSStyleRule.style`.
 - **Inline styles**: `setElementStyle(s)` queues into `inlineStyle`; `init()` attaches and flushes.
 - **Measurement**: never read layout (`getBoundingClientRect`, `getComputedStyle`) during construction. Defer to a layout pass or theme-change callback.

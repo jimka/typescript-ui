@@ -6,17 +6,14 @@
 // Button-specific coverage lives in Button.pressedHoverClassHoisting.test.ts;
 // TabButton-specific coverage lives in TabButton.stateClassHoisting.test.ts.
 //
-// IMPORTANT SCOPE NOTE (see this plan's Implementation Notes): unlike
-// Button's `.pressed`, ToggleButton's `.selected:not(:hover)` state is
-// deliberately NOT deduped at all — `selectedClassBag` is hardcoded to
-// `null`. Its three fields (`boxShadow`/`backgroundColor`/`backgroundImage`)
-// have the same base-`#id`-rule specificity conflict Button's
-// backgroundColor/backgroundImage/boxShadow have (see the sibling Button
-// test file), and ToggleButton has no `color`-equivalent field to fall back
-// on. This test locks in that every `.selected` setter always writes
-// directly to the instance rule, exactly as it did before this plan, so a
-// future well-intentioned attempt to "finish" deduping `.selected` doesn't
-// silently reintroduce the visual regression this plan's audit caught.
+// UPDATED by plans/implemented/state-chrome-isolation-generalization.md
+// (Expected Behaviour row 8): `.selected:not(:hover)` now dedupes across
+// instances of the same class, the same way `Button`'s `.pressed` already
+// does. `ToggleButton` gained its own `getRestingExclusionSuffixes()`
+// override (adding `.selected` to the isolation list `Button` already
+// contributes for `.pressed`), which closes the specificity gap that
+// previously forced `selectedClassBag` to stay hardcoded `null` — see that
+// plan's Architecture Decisions for the full explanation.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ToggleButton } from '~/component/button/ToggleButton';
 import { DOM } from '~/core/DOM';
@@ -70,16 +67,13 @@ function declarationsDuring(
 }
 
 describe('ToggleButton selected state-class hoisting', () => {
-    it("a default ToggleButton's .selected:not(:hover) fields always write to its own instance rule — no class rule is ever created", () => {
+    it('row 8: a second, default-styled ToggleButton renders after a first has warmed the class rule — no write to its own #id.selected:not(:hover) rule, and .ToggleButton.selected:not(:hover) is in the rule cache', () => {
         new ToggleButton('Warmup').getElement(true);
 
         const second = new ToggleButton('Second');
         const declarations = declarationsDuring(sink, idSelector(second) + '.selected:not(:hover)', () => second.getElement(true));
 
-        expect(declarations.boxShadow).toBeDefined();
-        expect(declarations.backgroundColor).toBeDefined();
-        expect(declarations.backgroundImage).toBeDefined();
-
-        expect(_ruleCacheHas('.ToggleButton.selected:not(:hover)')).toBe(false);
+        expect(declarations).toEqual({});
+        expect(_ruleCacheHas('.ToggleButton.selected:not(:hover)')).toBe(true);
     });
 });

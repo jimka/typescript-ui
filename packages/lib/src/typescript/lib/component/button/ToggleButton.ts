@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DOM } from "~/core/DOM.js";
-import { StyleRule } from "~/core/StyleTarget.js";
-import { writeClassStateDeclaration, writeManyClassStateDeclarations } from "~/core/ClassStyleRules.js";
+import type { StateStyleRule } from "~/core/ClassStyleRules.js";
 import { Event } from "~/core/Event.js";
 import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
 import { Button, ButtonOptions, ClickListener } from "~/component/button/Button.js";
@@ -40,37 +39,39 @@ const TOGGLE_SELECTED_DECLARATIONS: Readonly<Record<string, string | null>> = Ob
 class ToggleButton extends Button<ToggleButtonOptions> {
 
     // Lazy `.selected` rule. The slot is a fast-path cache for the wrapper
-    // returned by Component's `createStyleRule` builder, which dedupes by
-    // selector suffix — see Button's `_pressedStyleRule` for the full
-    // explanation.
-    private declare _selectedStyleRule?: StyleRule;
-    private get selectedStyleRule(): StyleRule {
-        return this._selectedStyleRule ??= this.createStyleRule(".selected:not(:hover)");
+    // returned by Component's `createStateStyleRule` builder — see Button's
+    // `_pressedStyleRule` for the full explanation.
+    private declare _selectedStyleRule?: StateStyleRule;
+    private get selectedStyleRule(): StateStyleRule {
+        return this._selectedStyleRule ??= this.createStateStyleRule(".selected:not(:hover)", () => this.getSelectedClassDeclarations());
     }
 
     /**
-     * Always `null`: `.selected:not(:hover)`'s three fields
-     * (`boxShadow`/`backgroundColor`/`backgroundImage`) are *not* safe to
-     * dedupe against a shared `.ClassName.selected:not(:hover)` rule, unlike
-     * Button's `pressedForegroundColor`. `ToggleButton`'s (and `TabButton`'s)
-     * *resting* chrome writes these same three properties straight onto the
-     * instance's base `#id` rule via `Component.setBackgroundColor`/
-     * `setBackgroundImage`/`setShadow`. `component-chrome-base-tier-hoisting`
-     * added all three to the base-tier hoistable set
-     * (`core/ClassStyleRules.ts`'s `ClassStyleDefaults`), which clears a
-     * default-matching value off `#id` — but a bare `#id` selector's
-     * specificity still beats a class-only selector such as
-     * `.ToggleButton.selected:not(:hover)`, however many classes it chains,
-     * whenever an instance-level write for one of these keys IS present
-     * (e.g. a real per-instance customization). Unlike Button — whose
-     * equivalent gap `button-resting-chrome-state-isolation` closes —
-     * `ToggleButton`/`TabButton` are not touched by that plan, so this bag
-     * stays `null` until an equivalent resting-tier isolation is done for
-     * them too. See this plan's Implementation Notes for the full empirical
-     * trace.
+     * This class's resolved `.selected:not(:hover)` declarations. Safe to
+     * dedupe now that `getRestingExclusionSuffixes()` (below) isolates the same
+     * three properties from `.selected` the same way `Button` isolates them
+     * from `.pressed` — see `plans/implemented/state-chrome-isolation-generalization.md`.
      */
-    private get selectedClassBag(): Readonly<Record<string, string | null>> | null {
-        return null;
+    protected getSelectedClassDeclarations(): Record<string, string | null> {
+        if (this._defaultOptions.chromeless) {
+            return {};
+        }
+
+        return {
+            boxShadow:       TOGGLE_SELECTED_DECLARATIONS.boxShadow!,
+            backgroundColor: TOGGLE_SELECTED_DECLARATIONS.backgroundColor!,
+            backgroundImage: TOGGLE_SELECTED_DECLARATIONS.backgroundImage!,
+        };
+    }
+
+    /**
+     * `.selected`'s resting chrome must stay isolated too, the same way
+     * `Button`'s own `.pressed` does — a `ToggleButton`'s resting
+     * `backgroundColor` / `backgroundImage` / `boxShadow` must not undercut the
+     * shared `.ClassName.selected:not(:hover)` rule above.
+     */
+    protected override getRestingExclusionSuffixes(): readonly string[] {
+        return [...super.getRestingExclusionSuffixes(), ".selected"];
     }
 
     constructor(text: string, options?: ToggleButtonOptions, subclassDefaults?: Partial<ToggleButtonOptions>) {
@@ -85,9 +86,19 @@ class ToggleButton extends Button<ToggleButtonOptions> {
         // tab fill) still layer in even though `options` waits.
         super(text, undefined, subclassDefaults);
 
-        this.setSelectedShadow(TOGGLE_SELECTED_DECLARATIONS.boxShadow!);
-        this.setSelectedBackgroundColor(TOGGLE_SELECTED_DECLARATIONS.backgroundColor!);
-        this.setSelectedBackgroundImage(TOGGLE_SELECTED_DECLARATIONS.backgroundImage!);
+        // Warms the `.selected:not(:hover)` state rule so its class-tier rule
+        // (see `getSelectedClassDeclarations`) exists from construction, without
+        // queuing a per-instance write: `resolveDefaults` (called eagerly by
+        // `createStateStyleRule`, via virtual dispatch) already seeds the
+        // class-tier rule with this instance's own resolved tokens. Writing
+        // `TOGGLE_SELECTED_DECLARATIONS`' literal values here (as this line
+        // once did) would queue a real, base-class-tokened deviation into the
+        // per-instance dirty bag before a subclass constructor (e.g.
+        // `TabButton`'s `applyTabStyling`) gets to run its own, correctly
+        // deduping writes — which, once they match their own class's resolved
+        // bag, are skipped rather than clearing that stale value. See this
+        // plan's Implementation Notes.
+        void this.selectedStyleRule;
 
         Event.addListener(this, "click", () => this.onAction());
 
@@ -196,7 +207,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      * @returns This button, for method chaining.
      */
     setSelectedBackgroundColor(backgroundColor: string): this {
-        writeClassStateDeclaration(this.selectedStyleRule, this.selectedClassBag, "backgroundColor", backgroundColor);
+        this.selectedStyleRule.set("backgroundColor", backgroundColor);
 
         return this;
     }
@@ -212,7 +223,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      * @returns This button, for method chaining.
      */
     setSelectedBackgroundImage(backgroundImage: string): this {
-        writeClassStateDeclaration(this.selectedStyleRule, this.selectedClassBag, "backgroundImage", backgroundImage);
+        this.selectedStyleRule.set("backgroundImage", backgroundImage);
 
         return this;
     }
@@ -226,7 +237,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      * @returns This button, for method chaining.
      */
     setSelectedShadow(shadow: string): this {
-        writeClassStateDeclaration(this.selectedStyleRule, this.selectedClassBag, "boxShadow", shadow);
+        this.selectedStyleRule.set("boxShadow", shadow);
 
         return this;
     }
@@ -243,7 +254,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      */
     setSelectedBorder(options: BorderOptions | string): this {
         const border = typeof options === "string" ? { border: options } : options;
-        writeManyClassStateDeclarations(this.selectedStyleRule, this.selectedClassBag, borderToStyle(border));
+        this.selectedStyleRule.setMany(borderToStyle(border));
 
         return this;
     }
