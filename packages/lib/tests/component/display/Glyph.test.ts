@@ -133,6 +133,24 @@ describe('Glyph size lock', () => {
         expect(pref.width).toBe(16);
         expect(pref.height).toBe(16);
     });
+    it('a fresh Glyph at the default 16x16 size writes no real min/max declaration to its own #id rule', () => {
+        const glyph = new Glyph('unicode-arrow-up');
+        glyph.getElement(true);
+
+        const sizeRows = ruleStyleWrites(sink).filter(r =>
+            r.selector === '#' + glyph.getId()
+            && ['minWidth', 'minHeight', 'maxWidth', 'maxHeight'].includes(r.key));
+
+        // #id still materialises for this char-mode glyph — lineHeight/
+        // textAlign are real, unrelated per-instance declarations written
+        // from the constructor body (see _defaultGlyphOptions's doc comment)
+        // — so the four size keys ride along in the same batch as explicit
+        // removals rather than vanishing outright, the same pattern
+        // CheckboxBox's row 1 test (Checkbox.test.ts) already established for
+        // a rule forced to materialise by other real content.
+        expect(sizeRows.map(r => r.key).sort()).toEqual(['maxHeight', 'maxWidth', 'minHeight', 'minWidth']);
+        expect(sizeRows.every(r => r.value === null)).toBe(true);
+    });
     it('case 8: setPreferredSize(size) locks min == pref == max to the given Size', () => {
         const glyph = new Glyph('unicode-arrow-up');
 

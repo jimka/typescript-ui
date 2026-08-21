@@ -85,18 +85,28 @@ class RadioButtonRing extends Component {
     }
 }
 
+// The dot glyph's fitted size inside the ring (14×14 padding box, 1px
+// border): shared with RadioButton's own constructor below so the class
+// default and the imperative override can never drift apart.
+const RADIO_DOT_SIZE = { width: 8, height: 8 };
+
 const _defaultRadioButtonDotOptions: Partial<GlyphOptions> = {
     foregroundColor: "var(--ts-ui-radio-dot-color, rgb(255, 255, 255))",
+    minSize:         RADIO_DOT_SIZE,
+    maxSize:         RADIO_DOT_SIZE,
 };
 
 /**
- * The filled dot inside a {@link RadioButton}'s ring. Only `foregroundColor`
- * is a class default — see `CheckboxCheckGlyph`'s doc comment (Checkbox.ts)
- * for why `preferredSize`/`maxSize` stay imperative constructor calls instead
- * of `_default<Name>Options` entries: `Glyph.applyOptions` unconditionally
- * re-pins `minSize`/`maxSize` via a real setter whenever a preferred size
- * resolves, and a setter always writes straight to `#id`, bypassing the
- * class-tier dedup — so defaulting size here would add bytes, not save them.
+ * The filled dot inside a {@link RadioButton}'s ring. `foregroundColor` and
+ * `minSize`/`maxSize` are class defaults, so every instance shares one
+ * `.RadioButtonDot` CSS rule instead of repeating them. `RadioButton`'s own
+ * constructor still calls `setPreferredSize`/`setMaxSize` imperatively (a
+ * `Glyph`'s construction-time size pin cannot itself be deferred to a
+ * defaults bag — see `Glyph.applyOptions`), but that call now resolves to
+ * the same value this class already defaults, so `Component.applyStyle`'s
+ * render-time reconciliation (`reconcileRuleDeclaration`, since
+ * `plans/implemented/reconciled-write-path-widening.md`) turns it into a
+ * removal instead of a redundant per-instance declaration.
  */
 class RadioButtonDot extends Glyph {
     constructor() {
@@ -173,8 +183,8 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
         this._ring.setBorderRadius("50%");
 
         this._dot = new RadioButtonDot();
-        this._dot.setPreferredSize({ width: 8, height: 8 });
-        this._dot.setMaxSize({ width: 8, height: 8 });
+        this._dot.setPreferredSize(RADIO_DOT_SIZE);
+        this._dot.setMaxSize(RADIO_DOT_SIZE);
         this._dot.setX(3);
         this._dot.setY(3);
         this._dot.setOpacity(0);
