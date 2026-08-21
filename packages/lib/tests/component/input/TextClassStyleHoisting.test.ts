@@ -15,15 +15,13 @@
 // `.Text` class rule's contents runs first, before any other `Text` render
 // could have already materialised it.
 //
-// `textOverflow` is deliberately excluded from the "skipped" assertions below
-// — see the plan's `## Implementation Notes` for why it's a documented
-// exception rather than an oversight: `setTruncate` is unconditionally
-// dispatched from `Text`'s constructor (needed so `whiteSpace`/`overflow`,
-// which have no render-time fallback, are always set), and that dispatch
-// calls the public `setTextOverflow`/`clearTextOverflow`, which queue their
-// write directly — bypassing the class-rule comparison before it ever runs,
-// the same pre-existing gap already shipped (untested) for `whiteSpace`/
-// `overflowX`/`overflowY` under the depended-upon plan.
+// After plans/implemented/text-truncate-write-path-cleanup.md, `whiteSpace`,
+// `textOverflow`, and `lineHeight` are the three keys the render phase
+// reconciles to an explicit removal instead of skipping. On an instance
+// whose `#id` rule materialises — something real is queued for it in the
+// same batch — each reads `null`. On an instance whose rule never
+// materialises, no write is recorded at all and each reads `undefined`.
+// Every other font key is skipped outright and reads `undefined` either way.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Component } from '~/core/Component';
 import { Text } from '~/component/input/Text';
@@ -52,13 +50,12 @@ const FONT_KEYS = [
 ] as const;
 
 /**
- * `FONT_KEYS` minus `textOverflow` — the subset that actually reaches a
- * skipped (absent) `#id` write for a default instance. `textOverflow` is
- * excluded here, not because its comparison is wrong, but because
- * `setTruncate`'s unconditional constructor dispatch (see the file header)
- * always pre-queues it before the comparison can run.
+ * `FONT_KEYS` minus `lineHeight` and `textOverflow` — the ten keys that are
+ * skipped outright (never reconciled to an explicit removal). `lineHeight`
+ * and `textOverflow` are excluded here because both are reconciled to `null`
+ * rather than skipped — see the file header.
  */
-const SKIPPABLE_FONT_KEYS = FONT_KEYS.filter((key) => key !== 'textOverflow');
+const SKIPPABLE_FONT_KEYS = FONT_KEYS.filter((key) => key !== 'lineHeight' && key !== 'textOverflow');
 
 /**
  * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
@@ -124,28 +121,26 @@ describe('Text applyStyle class-rule hoisting', () => {
         expect(classDeclarations.textShadow).toBeUndefined();
     });
 
-    it('a fresh Text with no font/text setter called writes none of the ten skippable declarations to its own #id rule (lineHeight queues an explicit removal)', () => {
+    // `lineHeight` and `textOverflow` both queue an explicit removal rather
+    // than being skipped (see the file header). Per
+    // plans/implemented/text-truncate-write-path-cleanup.md's Implementation
+    // Notes, `textOverflow`'s setter is unconditionally dispatched from
+    // `setTruncate` at construction, before the class-rule bag exists, so it
+    // always queues a real value that forces the `#id` rule to materialise —
+    // `Text.applyStyle`'s own later correction still resolves it to `null`,
+    // but too late to prevent the (now-empty) rule from being inserted. Both
+    // read `null` here, not `undefined`.
+    it('a fresh Text with no font/text setter called writes none of the ten skippable declarations to its own #id rule (lineHeight and textOverflow queue an explicit removal)', () => {
         const sink = DOM.sink as RecordingDOMSink;
         const b = new Text('x');
 
         const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
 
         for (const key of SKIPPABLE_FONT_KEYS) {
-            if (key === 'lineHeight') continue;
             expect(declarations[key]).toBeUndefined();
         }
         expect(declarations.lineHeight).toBeNull();
-    });
-
-    it('a fresh Text still writes textOverflow to #id — the documented setTruncate exception', () => {
-        const sink = DOM.sink as RecordingDOMSink;
-        const b = new Text('x');
-
-        const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
-
-        // Correct value, just not skipped — see the file header and the
-        // plan's `## Implementation Notes`.
-        expect(declarations.textOverflow).toBe('ellipsis');
+        expect(declarations.textOverflow).toBeNull();
     });
 
     // Regression coverage for a second audit finding: `.Text`'s class rule
@@ -247,8 +242,10 @@ describe('Text applyStyle class-rule hoisting', () => {
         // The constructor-time numeric call enters numeric mode from the
         // default additive rule, reconciling it away on #id as an explicit
         // removal (queued pre-render, flushed at this first render) — not a
-        // real value, and not merely absent.
+        // real value, and not merely absent. textOverflow reads the same
+        // (see the file header).
         expect(declarations.lineHeight).toBeNull();
+        expect(declarations.textOverflow).toBeNull();
         expect(_ruleCacheHas('.Text.lh30px')).toBe(true);
     });
 
@@ -274,10 +271,10 @@ describe('Text applyStyle class-rule hoisting', () => {
         // materialised.
         expect(declarations.marginLeft).toBe('10px');
         for (const key of SKIPPABLE_FONT_KEYS) {
-            if (key === 'lineHeight') continue;
             expect(declarations[key]).toBeUndefined();
         }
         expect(declarations.lineHeight).toBeNull();
+        expect(declarations.textOverflow).toBeNull();
     });
 
     it('a pre-render setLineHeight call is honoured via a shared value-class rule, tracking the exact px value', () => {
@@ -290,11 +287,12 @@ describe('Text applyStyle class-rule hoisting', () => {
 
         // Entering numeric mode from the default additive rule reconciles it
         // away on #id as an explicit removal, not merely absent — see the
-        // constructor-time numeric lineHeight test above.
+        // constructor-time numeric lineHeight test above. textOverflow reads
+        // the same (see the file header).
         expect(decl1.lineHeight).toBeNull();
+        expect(decl1.textOverflow).toBeNull();
         expect(_ruleCacheHas('.Text.lh18px')).toBe(true);
         for (const key of SKIPPABLE_FONT_KEYS) {
-            if (key === 'lineHeight') continue;
             expect(decl1[key]).toBeUndefined();
         }
 
@@ -304,9 +302,9 @@ describe('Text applyStyle class-rule hoisting', () => {
         const decl2 = declarationsDuring(sink, idSelector(cellText2), () => cellText2.getElement(true));
 
         expect(decl2.lineHeight).toBeNull();
+        expect(decl2.textOverflow).toBeNull();
         expect(_ruleCacheHas('.Text.lh24px')).toBe(true);
         for (const key of SKIPPABLE_FONT_KEYS) {
-            if (key === 'lineHeight') continue;
             expect(decl2[key]).toBeUndefined();
         }
     });
@@ -332,11 +330,12 @@ describe('Text applyStyle class-rule hoisting', () => {
         cellText.setLineHeight(40);
         const decl1 = declarationsDuring(sink, idSelector(cellText), () => cellText.getElement(true));
         // Entering numeric mode from the default additive rule reconciles it
-        // away on #id as an explicit removal, not merely absent.
+        // away on #id as an explicit removal, not merely absent. textOverflow
+        // reads the same (see the file header).
         expect(decl1.lineHeight).toBeNull();
+        expect(decl1.textOverflow).toBeNull();
         expect(_ruleCacheHas('.Text.lh40px')).toBe(true);
         for (const key of SKIPPABLE_FONT_KEYS) {
-            if (key === 'lineHeight') continue;
             expect(decl1[key]).toBeUndefined();
         }
 
@@ -350,9 +349,12 @@ describe('Text applyStyle class-rule hoisting', () => {
         const element = cellText.getElement()!;
         const decl2 = declarationsDuring(sink, idSelector(cellText), () => cellText.applyStyle(element));
 
+        // lineHeight specifically (not textOverflow, which reconciles
+        // unconditionally on every render): its own reconcile is guarded by
+        // `_lineHeightCSSRule`, which numeric mode already left null, so no
+        // write is attempted for this key on this second pass.
         expect(decl2.lineHeight).toBeUndefined();
         for (const key of SKIPPABLE_FONT_KEYS) {
-            if (key === 'lineHeight') continue;
             expect(decl2[key]).toBeUndefined();
         }
     });
@@ -366,9 +368,10 @@ describe('Text applyStyle class-rule hoisting', () => {
 
         expect(declarations.fontSize).toBe('var(--ts-ui-header-font-size, 14px)');
         for (const key of SKIPPABLE_FONT_KEYS) {
-            if (key === 'fontSize' || key === 'lineHeight') continue;
+            if (key === 'fontSize') continue;
             expect(declarations[key]).toBeUndefined();
         }
         expect(declarations.lineHeight).toBeNull();
+        expect(declarations.textOverflow).toBeNull();
     });
 });

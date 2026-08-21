@@ -226,7 +226,7 @@ describe('selectable text resolves through the class rule, not a per-instance ru
         expect(_ruleCacheHas('.StringRenderer')).toBe(true);
     });
 
-    it("the renderer's SelectableText child skips its font block along with userSelect and cursor, keeping only textOverflow", () => {
+    it("the renderer's SelectableText child skips its font block along with userSelect and cursor; textOverflow now reconciles too, but the #id rule still materialises empty", () => {
         const sink = DOM.sink as RecordingDOMSink;
 
         new StringRenderer().getElement(true);
@@ -236,22 +236,24 @@ describe('selectable text resolves through the class rule, not a per-instance ru
 
         const declarations = declarationsDuring(sink, idSelector(text), () => r.getElement(true));
 
-        // Positive control, and the reason this is NOT an assertion that the
-        // `#id` rule is absent: `setTruncate` is unconditionally dispatched
+        // Per plans/implemented/text-truncate-write-path-cleanup.md's
+        // Implementation Notes: `setTruncate` is unconditionally dispatched
         // from `Text`'s constructor (needed so `whiteSpace`/`overflow`, which
         // have no render-time fallback, are always set), and that dispatch
-        // pre-queues `textOverflow`'s write before the class-rule comparison
-        // ever runs — see plans/implemented/text-applystyle-class-hoisting.md's
-        // Implementation Notes. Every other font/text declaration, plus
-        // `cursor`, now resolves through the shared `.SelectableText` tier
-        // instead. `userSelect` also resolves through that shared tier, but
-        // since `#id` already materialises for `textOverflow` regardless,
-        // plans/implemented/reconciled-write-path-widening.md's render-phase
-        // migration means the match now surfaces as an explicit removal in
-        // the same batch rather than being skipped in silence — the net
-        // rendered CSS (no declaration on #id, `.SelectableText` supplies the
-        // value) is unchanged.
-        expect(declarations.textOverflow).toBe('ellipsis');
+        // calls the public `setTextOverflow("ellipsis")` before
+        // `_inheritedStyleBag` exists, so it always queues a real value.
+        // `Text.applyStyle`'s own later correction resolves it to `null` (not
+        // the old real `"ellipsis"`), but not before `Component.applyStyle`'s
+        // own `materialiseStyleRule()` has already seen that stale value as
+        // real and inserted the `#id` rule — so, unlike the `StringRenderer`
+        // case just above, this rule does still materialise, just with every
+        // declaration reconciled to a removal rather than a real value.
+        // `userSelect` also resolves through the shared `.SelectableText`
+        // tier, and since `#id` already materialises regardless, the match
+        // surfaces as an explicit removal in the same batch rather than
+        // being skipped in silence — the net rendered CSS (no declaration on
+        // `#id`, `.SelectableText` supplies the value) is unchanged.
+        expect(declarations.textOverflow).toBeNull();
         expect(declarations.fontFamily).toBeUndefined();
         expect(declarations.userSelect).toBeNull();
         expect(declarations.cursor).toBeUndefined();

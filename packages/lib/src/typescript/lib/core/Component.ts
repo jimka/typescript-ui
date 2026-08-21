@@ -4733,7 +4733,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     setWhiteSpace(value: string): this {
         this._whiteSpace = value;
 
-        this.setElementCSSRule("whiteSpace", value);
+        this.setReconciledCSSRules({ whiteSpace: value });
 
         return this;
     }
@@ -5206,7 +5206,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     private applyMiscInlineStyles(): void {
         if (this._whiteSpace) {
-            this.writeRuleDeclaration("whiteSpace", this._whiteSpace);
+            this.reconcileRuleDeclaration("whiteSpace", this._whiteSpace);
         }
 
         const pointerEvents = this.getPointerEvents();
