@@ -146,6 +146,65 @@ describe('HeaderCellRenderer static style hoisting', () => {
     });
 });
 
+describe('HeaderCellText style hoisting', () => {
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    /**
+     * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+     * flattened into one key/value map. Copied from `ClassChromeRules.test.ts`.
+     */
+    function declarationsDuring(
+        sink: RecordingDOMSink,
+        selector: string,
+        fn: () => void,
+    ): Record<string, string | null> {
+        const start = sink.writes.length;
+        fn();
+
+        const out: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+                continue;
+            }
+
+            const styles = w.args[1] as Record<string, string | null>;
+            for (const key of Object.keys(styles)) {
+                out[key] = styles[key];
+            }
+        }
+
+        return out;
+    }
+
+    it("a rendered HeaderCell's renderer text carries no fontWeight/fontSize/userSelect declaration on its own #id rule", () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const cell = new HeaderCell('Name', 'name');
+        const text = cell.getRenderer().getText();
+
+        const declarations = declarationsDuring(sink, idSelector(text), () => cell.getElement(true));
+
+        expect(declarations.fontWeight).toBeUndefined();
+        expect(declarations.fontSize).toBeUndefined();
+        expect(declarations.userSelect).toBeUndefined();
+    });
+
+    it("the renderer text's cursor is unchanged (still 'text', inherited from SelectableText)", () => {
+        const cell = new HeaderCell('Name', 'name');
+
+        expect(cell.getRenderer().getText().getCursor()).toBe('text');
+    });
+
+    it('the shared .HeaderCellText class rule exists once a HeaderCell has rendered', () => {
+        const cell = new HeaderCell('Name', 'name');
+        cell.getElement(true);
+
+        expect(_ruleCacheHas('.HeaderCellText')).toBe(true);
+    });
+});
+
 // HeaderCell-specific coverage for the state-tier dedup introduced by
 // plans/implemented/state-tier-rule-dedup-followups.md: the `:active` box-shadow
 // now writes through `createStateStyleRule` instead of the older, non-deduping

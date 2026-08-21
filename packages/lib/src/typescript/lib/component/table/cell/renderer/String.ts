@@ -19,7 +19,7 @@ const _defaultStringRendererOptions: Partial<ComponentOptions> = { cursor: "text
  */
 class StringRenderer extends CellRenderer<String | null> {
 
-    private _text:    Text          = new SelectableText();
+    private _text:    Text          = this.createText();
     private _value:   String | null = null;
     private _display: string        = "";
 
@@ -38,6 +38,17 @@ class StringRenderer extends CellRenderer<String | null> {
         // in its own right, and a descendant's declaration is not inherited
         // from an ancestor's. Being a SelectableText, it now gets those values
         // from its own class defaults rather than imperative calls.
+    }
+
+    /**
+     * Constructs this renderer's text child. A subclass overrides this to
+     * swap in a differently-styled `Text` subclass — e.g. `HeaderCellRenderer`
+     * (component/table/cell/Header.ts), which needs header-specific
+     * font-weight/font-size/user-select defaults — without duplicating the
+     * rest of this constructor's setup.
+     */
+    protected createText(): Text {
+        return new SelectableText();
     }
 
     /**

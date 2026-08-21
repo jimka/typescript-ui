@@ -10,13 +10,15 @@ import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { StyleRule } from "~/core/StyleTarget.js";
-import type { StateStyleRule } from "~/core/ClassStyleRules.js";
+import type { ClassStyleDefaults, StateStyleRule } from "~/core/ClassStyleRules.js";
 import type { ComponentOptions } from "~/core/Component.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
+import { Text } from "~/component/input/Text.js";
+import { SelectableText, SelectableTextOptions } from "~/component/input/SelectableText.js";
 
 /**
  * String-literal union of the events emitted by {@link HeaderCell}. Extends
@@ -80,6 +82,54 @@ const HEADER_CELL_ACTIVE_DECLARATIONS: Readonly<Record<string, string>> = Object
     boxShadow: "var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0,0,0,0.2) inset)",
 });
 
+const HEADER_CELL_TEXT_FONT_SIZE_VAR = "--ts-ui-table-header-font-size";
+
+// The CSS-ready form of HEADER_CELL_TEXT_FONT_SIZE_VAR — its "14px" fallback is
+// Text's own base font-size default (unmodified here), matching exactly what
+// Text.setFontSize resolves the constructor's call below to.
+const HEADER_CELL_TEXT_FONT_SIZE_RULE = `var(${HEADER_CELL_TEXT_FONT_SIZE_VAR}, 14px)`;
+
+const _defaultHeaderCellTextOptions: Partial<SelectableTextOptions> = {
+    userSelect: "none",
+    fontWeight: "bold",
+};
+
+/**
+ * {@link HeaderCell}'s own title label. Extends `SelectableText` (not the
+ * base `Text`) so it keeps the same `cursor: "text"` every table cell's
+ * label already gets — `HeaderCell` has never overridden cursor for its
+ * title, only `userSelect` — and deviates only on `userSelect` and the
+ * bold/`--ts-ui-table-header-font-size` font. See
+ * `## Architecture Decisions`.
+ */
+class HeaderCellText extends SelectableText {
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = {
+        userSelect: "none",
+        font: {
+            ...Text.ownClassStyleDefaults.font,
+            fontWeight: "bold",
+            fontSize:   HEADER_CELL_TEXT_FONT_SIZE_RULE,
+        },
+    };
+
+    constructor() {
+        super(undefined, undefined, _defaultHeaderCellTextOptions);
+        this.setFontSize(HEADER_CELL_TEXT_FONT_SIZE_VAR);
+    }
+
+    /**
+     * `setFontSize` above queues a real, un-reconciled `fontSize` declaration
+     * before `.HeaderCellText`'s class rule exists to compare it against
+     * (see `## Architecture Decisions`). Re-queues it through the reconciled
+     * path once the class rule is available, so the stale real value doesn't
+     * survive to `#id` on a default-styled instance.
+     */
+    protected override applySubclassStyles(): void {
+        super.applySubclassStyles();
+        this.reconcileRuleDeclaration("fontSize", HEADER_CELL_TEXT_FONT_SIZE_RULE);
+    }
+}
+
 /**
  * {@link HeaderCell}'s own text renderer. A column title is chrome, not
  * data, so it stays unselectable with a default cursor even though
@@ -89,6 +139,10 @@ const HEADER_CELL_ACTIVE_DECLARATIONS: Readonly<Record<string, string>> = Object
 class HeaderCellRenderer extends StringRenderer {
     constructor() {
         super(_defaultHeaderCellRendererOptions);
+    }
+
+    protected override createText(): Text {
+        return new HeaderCellText();
     }
 }
 
@@ -164,11 +218,7 @@ class HeaderCell extends DefaultCell {
         this._headerGlyph = headerGlyph ?? null;
 
         let renderer = this.getRenderer();
-        renderer.getText().setFontSize("--ts-ui-table-header-font-size");
-        renderer.getText().setFontWeight("bold");
         renderer.getText().setText(text);
-
-        renderer.getText().setUserSelect("none");
 
         // DefaultCell's `(tag?: string)` super-signature cannot carry the
         // `styleRules` options bag, so the rule is allocated here via the
