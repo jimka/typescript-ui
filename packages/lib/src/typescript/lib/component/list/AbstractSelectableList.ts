@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Panel } from "~/core/Panel.js";
@@ -257,6 +257,11 @@ const _defaultAbstractSelectableListOptions: Partial<AbstractSelectableListOptio
     });
 })();
 
+const _defaultSelectableListRowOptions: Partial<ComponentOptions> = {
+    cursor: "pointer",
+    border: { borderBottom: "1px solid var(--ts-ui-list-row-separator, transparent)" },
+};
+
 /**
  * A single row inside an {@link AbstractSelectableList}. Holds the static
  * row styling via the `.SelectableListRow` / `.SelectableListRow:hover` /
@@ -294,9 +299,17 @@ class SelectableListRow extends Component {
      * @param index - Initial pool index.
      * @param rendererFactory - Zero-argument factory producing this row's
      *   content renderer.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; forwarded so a subclass can seed a default without
+     *   editing this constant.
      */
-    constructor(handlers: RowHandlers, index: number, rendererFactory: () => ListItemRenderer) {
-        super({ tag: "div" });
+    constructor(
+        handlers: RowHandlers,
+        index: number,
+        rendererFactory: () => ListItemRenderer,
+        subclassDefaults?: Partial<ComponentOptions>,
+    ) {
+        super({ tag: "div" }, { ..._defaultSelectableListRowOptions, ...(subclassDefaults ?? {}) });
 
         this._handlers = handlers;
         this._index    = index;
@@ -312,16 +325,13 @@ class SelectableListRow extends Component {
         // ROW_HEIGHT_PX by its preferredSize above; leave its max unbounded (the
         // Component default).
         this.setPadding(new Insets(0, ROW_PADDING_X_PX, 0, ROW_PADDING_X_PX));
-        // Declared through the typed setter rather than the shared class rule so
-        // getBorderSize() sees the 1px the separator takes out of the row's
-        // content box; a class-rule border is invisible to the framework's box
-        // math, and the renderer would be sized a pixel too tall and clipped.
-        this.setBorder({ borderBottom: "1px solid var(--ts-ui-list-row-separator, transparent)" });
-        // Component's framework default writes `cursor: default` as an
-        // inline style, which would beat the `.SelectableListRow` class rule
-        // — set the inline cursor explicitly so rows show the hand
-        // cursor on hover.
-        this.setCursor("pointer");
+        // The border is a registered class default (_defaultSelectableListRowOptions),
+        // not a hand-rolled module-level class rule — Component.applyChromeOptions
+        // always-dispatches it through the real setBorder() setter once at
+        // construction, populating this._border, the exact field getBorderSize()
+        // reads. A hand-rolled `.SelectableListRow { border-bottom: ... }` rule
+        // would be invisible to the framework's box math, and the renderer would
+        // be sized a pixel too tall and clipped.
 
         Event.addListener(this, "pointerdown", { prevent: true, handler: this.onPointerDown });
         Event.addListener(this, "click",       this.onClick);

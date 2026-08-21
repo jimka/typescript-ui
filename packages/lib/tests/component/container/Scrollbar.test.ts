@@ -4,7 +4,8 @@ import { Scrollbar, isScrollbarTarget, TRACK_WIDTH } from '~/component/container
 import { Event } from '~/core/Event';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
-import { installTestDOM, makeEvent } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
+import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -438,6 +439,56 @@ describe('Scrollbar thumb cursor', () => {
 
         drive(bar)._onDragEnd({} as Event);
         expect(styleFor('HTML')).toEqual({ cursor: '' });
+    });
+});
+
+describe('Scrollbar thumb static style hoisting', () => {
+    afterEach(() => DOM.reset());
+
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    /**
+     * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+     * flattened into one key/value map. Copied from `ClassChromeRules.test.ts`.
+     */
+    function declarationsDuring(
+        sink: RecordingDOMSink,
+        selector: string,
+        fn: () => void,
+    ): Record<string, string | null> {
+        const start = sink.writes.length;
+        fn();
+
+        const out: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+                continue;
+            }
+
+            const styles = w.args[1] as Record<string, string | null>;
+            for (const key of Object.keys(styles)) {
+                out[key] = styles[key];
+            }
+        }
+
+        return out;
+    }
+
+    it('row 2: the thumb carries no static backgroundColor/cursor declaration on its own #id rule, and the shared .ScrollbarThumb class rule exists once rendered', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical');
+        const declarations = declarationsDuring(sink, idSelector(thumb(bar)), () => bar.getElement(true));
+
+        // Unlike ScrollArrowButton, nothing else forces the thumb's own `#id`
+        // rule to materialise, so a matching value is skipped in silence
+        // rather than surfacing as an explicit removal.
+        expect(declarations.backgroundColor).toBeUndefined();
+        expect(declarations.cursor).toBeUndefined();
+        expect(_ruleCacheHas('.ScrollbarThumb')).toBe(true);
     });
 });
 

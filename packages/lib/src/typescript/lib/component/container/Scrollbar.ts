@@ -115,6 +115,10 @@ export interface ScrollbarOptions extends ComponentOptions {
  */
 type ArrowDirection = HorizontalSide | "up" | "down";
 
+const _defaultScrollArrowButtonOptions: Partial<ComponentOptions> = {
+    backgroundColor: "var(--ts-ui-scrollbar-arrow-bg, transparent)",
+};
+
 /**
  * A press-and-hold arrow button rendered at one end of a {@link Scrollbar}'s
  * track when arrows are enabled. File-local — not exported from the container
@@ -138,14 +142,16 @@ class ScrollArrowButton extends Component {
      * the given direction.
      *
      * @param direction - One of `"up"`, `"down"`, `"left"`, `"right"`.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; forwarded so a subclass can seed a default without
+     *   editing this constant.
      */
-    constructor(direction: ArrowDirection) {
-        super();
+    constructor(direction: ArrowDirection, subclassDefaults?: Partial<ComponentOptions>) {
+        super(undefined, { ..._defaultScrollArrowButtonOptions, ...(subclassDefaults ?? {}) });
 
         this.setWidth(TRACK_WIDTH);
         this.setHeight(TRACK_WIDTH);
         this.setCursor("default");
-        this.setBackgroundColor("var(--ts-ui-scrollbar-arrow-bg, transparent)");
         this.setForegroundColor("var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))");
 
         // Fade the enabled↔disabled colour swap in setDisabledState instead of a hard
@@ -316,6 +322,22 @@ const _defaultScrollbarOptions: Partial<ScrollbarOptions> = {
     touchAction:     "none",
 };
 
+const _defaultScrollbarThumbOptions: Partial<ComponentOptions> = {
+    cursor:          "grab",
+    backgroundColor: "var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))",
+};
+
+/**
+ * The draggable thumb inside a {@link Scrollbar}'s track. File-local — not
+ * exported from the container barrel because it is a Scrollbar implementation
+ * detail, mirroring {@link ScrollArrowButton}.
+ */
+class ScrollbarThumb extends Component {
+    constructor() {
+        super(undefined, _defaultScrollbarThumbOptions);
+    }
+}
+
 /**
  * The DOM class every {@link Scrollbar} root element carries. `Component.init`
  * stamps `this.constructor.name` on every component's element unconditionally
@@ -384,7 +406,7 @@ export function isScrollbarTarget(e: Event): boolean {
 class Scrollbar extends Component<ScrollbarOptions> {
 
     private _orientation     : AxisOrientation     = "vertical";
-    private _thumb           : Component;
+    private _thumb           : ScrollbarThumb;
     private _viewportSize    : number                   = 0;
     private _contentSize     : number                   = 0;
     private _scrollPosition  : number                   = 0;
@@ -449,9 +471,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
             this.setHeight(TRACK_WIDTH);
         }
 
-        this._thumb = new Component();
-        this._thumb.setBackgroundColor("var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))");
-        this._thumb.setCursor("grab");
+        this._thumb = new ScrollbarThumb();
 
         // Pre-promote to its own compositor layer: setThumbPos moves the
         // thumb via translate on every scroll tick, so the layer should

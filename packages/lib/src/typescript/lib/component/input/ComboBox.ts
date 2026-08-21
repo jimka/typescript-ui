@@ -522,7 +522,6 @@ class ComboBoxCaret extends Component {
     private _size:  number;
 
     constructor() {
-        super({ tag: "span" });
         // Size the caret to the field's text font so the chevron matches the
         // trigger icons of sibling fields (DateField/TimeField), whose
         // Button-hosted glyphs already sync to the text line. A bare Glyph
@@ -530,9 +529,11 @@ class ComboBoxCaret extends Component {
         // than every other field icon. Lock min == max so the box stays square
         // regardless of content (the glyph child contributes no intrinsic
         // height); the glyph fills the box so it centres trivially.
-        this._size = Util.lineHeightPx({ linePadding: false });
-        this.setMinSize({ width: this._size, height: this._size });
-        this.setMaxSize({ width: this._size, height: this._size });
+        const size = Util.lineHeightPx({ linePadding: false });
+
+        super({ tag: "span" }, { minSize: { width: size, height: size }, maxSize: { width: size, height: size } });
+
+        this._size = size;
         this.setPointerEvents("none");
 
         this._glyph.setPreferredSize({ width: this._size, height: this._size });

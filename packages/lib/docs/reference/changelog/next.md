@@ -140,6 +140,11 @@ consumer implementing its own `DOMSink` is affected.
   same way `Button`'s `.pressed` chrome already does.** The resting
   (unchecked/unselected) border also no longer duplicates per instance. No
   consumer action needed; nothing changes visually.
+- **`ScrollArrowButton`, `Scrollbar`'s thumb, `ResizeHandle`, `ComboBoxCaret`,
+  `SelectableListRow`, and `HeaderCell`'s text renderer no longer duplicate
+  their fixed styling on every instance's own CSS rule.** Each now shares one
+  CSS rule per piece across every instance in the app. Nothing changes
+  visually; no consumer action needed.
 
 ### Table
 

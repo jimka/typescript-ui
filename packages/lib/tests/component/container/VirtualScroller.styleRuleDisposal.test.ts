@@ -54,9 +54,18 @@ function scrollbarsOf(tree: Tree): { v: Scrollbar; h: Scrollbar } {
     return { v: bars._scrollbarV, h: bars._scrollbarH };
 }
 
-/** A scrollbar's thumb id — its own, reliable per-instance rule proxy. */
-function thumbIdOf(bar: Scrollbar): string {
-    return (bar as unknown as { _thumb: { getId(): string } })._thumb.getId();
+/**
+ * A scrollbar's start-arrow id — its own, reliable per-instance rule proxy.
+ * The thumb is no longer reliable for this:
+ * plans/implemented/delegate-class-style-defaults-followups.md moved its
+ * resting cursor/backgroundColor onto the shared `.ScrollbarThumb` class
+ * rule, so a thumb with no other deviation now materialises no `#id` rule of
+ * its own at all. The start arrow's `foregroundColor` is never hoisted (see
+ * that same plan's `## Non-Goals`), so it still always deviates and
+ * guarantees a rule.
+ */
+function arrowIdOf(bar: Scrollbar): string {
+    return (bar as unknown as { _arrowStart: { getId(): string } })._arrowStart.getId();
 }
 
 describe('VirtualScroller — overlay scrollbar style-rule disposal', () => {
@@ -73,21 +82,22 @@ describe('VirtualScroller — overlay scrollbar style-rule disposal', () => {
         // own — since plans/implemented/reconciled-write-path-widening.md, its
         // constructor's `setUserSelect("none")` also dedupes onto the framework
         // tier once rendered, and nothing else about it deviates from the
-        // class/framework baseline. The thumb child is the reliable proxy
-        // instead: its real, always-deviating backgroundColor/cursor guarantee
-        // it a rule, and it is only reachable through the scrollbar's own
-        // destructor recursion, which is what this test actually guards (Bug 1).
-        const vThumbId = thumbIdOf(v);
-        const hThumbId = thumbIdOf(h);
+        // class/framework baseline. The start arrow button is the reliable
+        // proxy (see `arrowIdOf`'s doc comment for why the thumb no longer is):
+        // its real, always-deviating `foregroundColor` guarantees it a rule,
+        // and it is only reachable through the scrollbar's own destructor
+        // recursion, which is what this test actually guards (Bug 1).
+        const vArrowId = arrowIdOf(v);
+        const hArrowId = arrowIdOf(h);
 
-        expect(_ruleCacheKeys().some((key) => key.includes(vThumbId))).toBe(true);
-        expect(_ruleCacheKeys().some((key) => key.includes(hThumbId))).toBe(true);
+        expect(_ruleCacheKeys().some((key) => key.includes(vArrowId))).toBe(true);
+        expect(_ruleCacheKeys().some((key) => key.includes(hArrowId))).toBe(true);
 
         destroy(tree);
 
         expect(_ruleCacheKeys().some((key) => key.includes(vId))).toBe(false);
         expect(_ruleCacheKeys().some((key) => key.includes(hId))).toBe(false);
-        expect(_ruleCacheKeys().some((key) => key.includes(vThumbId))).toBe(false);
-        expect(_ruleCacheKeys().some((key) => key.includes(hThumbId))).toBe(false);
+        expect(_ruleCacheKeys().some((key) => key.includes(vArrowId))).toBe(false);
+        expect(_ruleCacheKeys().some((key) => key.includes(hArrowId))).toBe(false);
     });
 });

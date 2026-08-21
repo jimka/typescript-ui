@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DefaultCell } from "~/component/table/cell/Default.js";
+import { StringRenderer } from "~/component/table/cell/renderer/String.js";
 import { ResizeHandle, RESIZE_HANDLE_CURSOR } from "~/component/table/cell/ResizeHandle.js";
 import { SortPriorityBadge } from "~/component/table/cell/SortPriorityBadge.js";
 import { CellEvent } from "~/component/table/cell/Cell.js";
@@ -9,6 +10,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { StyleRule } from "~/core/StyleTarget.js";
+import type { ComponentOptions } from "~/core/Component.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -67,6 +69,23 @@ function ensureHeaderCellGlyphClassRule(): void {
     });
 }
 
+const _defaultHeaderCellRendererOptions: Partial<ComponentOptions> = {
+    cursor:     "default",
+    userSelect: "none",
+};
+
+/**
+ * {@link HeaderCell}'s own text renderer. A column title is chrome, not
+ * data, so it stays unselectable with a default cursor even though
+ * {@link StringRenderer} itself now opts into `cursor: "text"` /
+ * `userSelect: "text"` for ordinary data cells.
+ */
+class HeaderCellRenderer extends StringRenderer {
+    constructor() {
+        super(_defaultHeaderCellRendererOptions);
+    }
+}
+
 /**
  * A non-editable header cell rendered as a `<th>` element.
  *
@@ -102,7 +121,7 @@ class HeaderCell extends DefaultCell {
      * @param headerGlyph - Optional registry glyph name mounted to the left of the text.
      */
     constructor(text: String, fieldName: string, headerGlyph?: string | null) {
-        super("th");
+        super("th", new HeaderCellRenderer());
 
         this.getAria().setRole("columnheader");
         this.getAria().setSort("none");
@@ -116,16 +135,7 @@ class HeaderCell extends DefaultCell {
         renderer.getText().setFontWeight("bold");
         renderer.getText().setText(text);
 
-        // A column title is chrome, not data, so it stays unselectable even
-        // though StringRenderer (which DefaultCell built this cell's
-        // renderer from) now opts in via class defaults.
-        renderer.setUserSelect("none");
         renderer.getText().setUserSelect("none");
-        // StringRenderer's constructor now sets cursor: 'text' via its class
-        // defaults (_defaultStringRendererOptions), so this overrides it back
-        // to the framework default via _options, the same pattern as the
-        // user-select opt-out above.
-        renderer.setCursor("default");
 
         // DefaultCell's `(tag?: string)` super-signature cannot carry the
         // `styleRules` options bag, so the rule is allocated here via the
