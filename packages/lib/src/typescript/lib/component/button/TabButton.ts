@@ -3,12 +3,14 @@
 import { DOM } from "~/core/DOM.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { ToggleButton, ToggleButtonOptions } from "~/component/button/ToggleButton.js";
+import type { ButtonOptions } from "~/component/button/Button.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
 import { callable } from "~/core/Callable.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Component } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
 import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link TabButton}.
@@ -143,6 +145,13 @@ const TAB_BUTTON_SELECTED_FILL = {
  */
 class TabButton extends ToggleButton {
 
+    // Opts the resting tier into the hierarchy-aware class cascade — see
+    // plans/implemented/class-hierarchy-cascade.md. The same constant this
+    // class's constructor forwards as `subclassDefaults`, exposed at the
+    // class level so `.TabButton`'s rule carries only its own deviation from
+    // `.Button`'s.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultTabButtonOptions;
+
     // Whether this tab carries a close affordance. Construction-time only (the
     // close button is built or not when the tab is created), so it is set once
     // in the constructor and never via an option-dispatched setter — hence a
@@ -263,13 +272,17 @@ class TabButton extends ToggleButton {
      * per-class bag, so `applyTabStyling`'s writes dedupe against it instead of
      * always deviating from a mismatched shared rule.
      */
-    protected override getSelectedClassDeclarations(): Record<string, string | null> {
+    protected static override extractSelectedClassDeclarations(_defaults: Partial<ButtonOptions>): Record<string, string | null> {
         return {
             backgroundColor: TAB_BUTTON_SELECTED_FILL.backgroundColor,
             backgroundImage: TAB_BUTTON_SELECTED_FILL.backgroundImage,
             boxShadow:       TAB_BUTTON_SELECTED_FILL.boxShadow,
             ...borderToStyle(TAB_BUTTON_SELECTED_BORDER),
         };
+    }
+
+    protected override getSelectedClassDeclarations(): Record<string, string | null> {
+        return (this.constructor as typeof TabButton).extractSelectedClassDeclarations(this._defaultOptions);
     }
 
     /**

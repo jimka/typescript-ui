@@ -1040,12 +1040,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *                         to form the shared class-tier rule's selector.
      * @param resolveDefaults - Returns this class's resolved declarations for
      *                          the suffixed state, e.g. `() => this.getPressedClassDeclarations()`.
+     * @param extractorMethodName - Name of the `protected static` extraction
+     *                          method (e.g. `"extractPressedClassDeclarations"`)
+     *                          each hierarchy-participating ancestor may
+     *                          declare its own copy of. Omit to keep the flat,
+     *                          non-hierarchy-aware behaviour every existing
+     *                          caller already gets.
      *
      * @returns The `StateStyleRule` wrapper.
      */
     protected createStateStyleRule(
         selectorSuffix: string,
         resolveDefaults: () => Record<string, string | null>,
+        extractorMethodName?: string,
     ): StateStyleRule {
         return new StateStyleRule(
             this.constructor,
@@ -1053,6 +1060,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this.createStyleRule(selectorSuffix),
             resolveDefaults,
             () => !!this.getElement(),
+            extractorMethodName,
         );
     }
 

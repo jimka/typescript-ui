@@ -72,12 +72,18 @@ function declarationsDuring(
 }
 
 describe('TabButton state-class hoisting', () => {
-    it('gets its own independent .pressed class rule (all four widened pressed-chrome keys), distinct from .Button.pressed', () => {
+    // Since plans/implemented/button-family-hierarchy-cascade.md, TabButton
+    // contributes nothing of its own to the pressed tier (it never overrides
+    // `getPressedClassDeclarations()`), so the state-tier hierarchy walk
+    // resolves its `.pressed` state to `.Button.pressed` — no separate
+    // `.TabButton.pressed` rule is created at all.
+    it('shares .Button.pressed instead of creating its own — TabButton contributes nothing new to the pressed tier', () => {
         new TabButton('Warmup').getElement(true);
 
-        expect(_ruleCacheHas('.TabButton.pressed')).toBe(true);
+        expect(_ruleCacheHas('.Button.pressed')).toBe(true);
+        expect(_ruleCacheHas('.TabButton.pressed')).toBe(false);
 
-        const classDeclarations = declarationsDuring(sink, '.TabButton.pressed', () => {
+        const classDeclarations = declarationsDuring(sink, '.Button.pressed', () => {
             new TabButton('Second').getElement(true);
         });
         // Cached from the warm-up instance — no further write for a second instance.
@@ -114,5 +120,28 @@ describe('TabButton state-class hoisting', () => {
         expect(selectedDeclarations.borderLeft).toBeUndefined();
 
         expect(_ruleCacheHas('.TabButton.selected:not(:hover)')).toBe(true);
+    });
+
+    it('row 10: a rendered element carries ts-ui-component, Button, ToggleButton, and TabButton', () => {
+        const start  = sink.writes.length;
+        const tab    = new TabButton('Widened');
+        const handle = tab.getElement(true);
+
+        // TabButton builds child components of its own (a Text label, an
+        // HBox row, ...), each also widening onto its own ts-ui-component
+        // class — scope to this instance's own handle so a child's addClass
+        // op isn't mistaken for the TabButton's own.
+        const addClassOps = sink.writes.slice(start).filter((w) => {
+            if (w.op !== 'apply' || w.args[0] !== handle) {
+                return false;
+            }
+            const patch = w.args[1] as { addClass?: string[] };
+            return Array.isArray(patch.addClass) && patch.addClass.includes('ts-ui-component');
+        });
+
+        expect(addClassOps.length).toBe(1);
+        expect((addClassOps[0].args[1] as { addClass: string[] }).addClass).toEqual([
+            'ts-ui-component', 'Button', 'ToggleButton', 'TabButton',
+        ]);
     });
 });

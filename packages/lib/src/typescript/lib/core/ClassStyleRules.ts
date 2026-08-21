@@ -423,6 +423,124 @@ function resolveClassLevel(rawCtor: Function): ResolvedClassLevel {
     return level;
 }
 
+/** A class's own resolved declarations for one state suffix — see
+ *  {@link resolveClassStateLevel}. */
+interface ResolvedClassStateLevel {
+    resolved: ClassStyleBag;
+}
+
+/** A `protected static` extraction method's shape — e.g.
+ *  `Button.extractPressedClassDeclarations`. Takes a plain defaults bag
+ *  (never an instance) so the hierarchy walk can call it against any
+ *  ancestor's own `ownClassStyleDefaults`, not just a live instance's
+ *  merged `_defaultOptions`. */
+type StaticExtractor = (defaults: ClassStyleDefaults) => Record<string, string | null>;
+
+// (ctor -> (suffix -> resolved level)). State-tier sibling of `_levels`,
+// memoizing `resolveClassStateLevel`'s walk per class *and* per suffix,
+// since one class can own several state rules (Button: .pressed,
+// :hover:not(.pressed)).
+const _stateLevels: Map<Function, Map<string, ResolvedClassStateLevel>> = new Map();
+
+/**
+ * Hierarchy-aware resolution of `ctor`'s class-tier declarations for one
+ * state suffix (`.pressed`, `.selected:not(:hover)`, …) — the state-tier
+ * sibling of {@link resolveClassLevel}, mirroring its recursive shape
+ * (resolve the parent first, merge this level's own contribution over it,
+ * diff, insert only a genuine deviation) and reusing its `_owners`
+ * collision registry, so a name claimed by one tier is respected by the
+ * other regardless of which one claims it first.
+ *
+ * The one place this walk cannot simply reuse {@link resolveClassLevel}'s
+ * shape verbatim: "this level's own contribution" is not a fixed field
+ * (`ownClassStyleDefaults`) but a *named* `protected static` method
+ * (`extractorMethodName`) that only some levels declare, and — critically —
+ * whether a level declares a *resting*-tier `ownClassStyleDefaults` is
+ * independent of whether it declares a *state*-tier extractor for a given
+ * suffix (`ToggleButton` declares `extractSelectedClassDeclarations` but no
+ * `ownClassStyleDefaults` of its own — it contributes nothing new to the
+ * resting tier, see `button-family-hierarchy-cascade.md`'s Architecture
+ * Decisions). Gating a level's own contribution on `ownClassStyleDefaults`
+ * being non-null (as well as owning the extractor) would therefore wrongly
+ * report `ToggleButton` as having no `.selected` contribution at all. The
+ * own-property check on `extractorMethodName` is the *sole* gate for
+ * whether this level contributes; `ownDefaultsOf(ctor) ?? {}` is only the
+ * *argument* handed to that extractor (empty when this level has no
+ * resting-tier defaults of its own to read from) — never a second
+ * precondition.
+ */
+function resolveClassStateLevel(
+    rawCtor: Function,
+    suffix: string,
+    extractorMethodName: string,
+): ResolvedClassStateLevel {
+    const ctor = canonicalCtor(rawCtor);
+
+    let bySuffix = _stateLevels.get(ctor);
+    if (!bySuffix) {
+        bySuffix = new Map();
+        _stateLevels.set(ctor, bySuffix);
+    }
+
+    const cached = bySuffix.get(suffix);
+    if (cached) {
+        return cached;
+    }
+
+    // `_rootCtor` (Component) is a terminal node for this walk too, exactly
+    // like `resolveClassLevel` — Component and whatever it extends never
+    // declare a state extractor, so there is nothing to gain by walking
+    // further, and stopping here keeps the two tiers' walks symmetric.
+    const rawParentCtor = ctor === _rootCtor ? null : (Object.getPrototypeOf(ctor) as Function | null);
+    const parentCtor = rawParentCtor ? canonicalCtor(rawParentCtor) : null;
+    const parent = (typeof parentCtor === "function" && parentCtor.name)
+        ? resolveClassStateLevel(parentCtor, suffix, extractorMethodName)
+        : { resolved: Object.freeze({}) as ClassStyleBag };
+
+    const name    = ctor.name;
+    const owner   = _owners.get(name);
+    const collides = !name || (owner !== undefined && owner !== ctor);
+
+    // Own-property checked, exactly like `ownDefaultsOf` — a level that
+    // doesn't declare `extractorMethodName` itself contributes nothing for
+    // this suffix, regardless of what an ancestor or a same-named method
+    // inherited from further up the static prototype chain would answer.
+    const hasOwnExtractor = !collides && Object.prototype.hasOwnProperty.call(ctor, extractorMethodName);
+    const own: Record<string, string | null> = hasOwnExtractor
+        ? (ctor as unknown as Record<string, StaticExtractor>)[extractorMethodName](ownDefaultsOf(ctor) ?? {})
+        : {};
+
+    if (Object.keys(own).length === 0) {
+        const level = { resolved: parent.resolved };
+
+        bySuffix.set(suffix, level);
+
+        // Every level, participating or not, still claims its own name in
+        // `_owners` (when unclaimed) so a later same-named class is
+        // detected as colliding even if this level itself inserted no
+        // rule — mirrors `resolveClassLevel`'s pass-through branch.
+        if (!collides && name) {
+            _owners.set(name, ctor);
+        }
+
+        return level;
+    }
+
+    const resolved   = { ...parent.resolved, ...own };
+    const deviations = deviationsFrom(resolved, parent.resolved);
+
+    _owners.set(name, ctor);
+    if (Object.keys(deviations).length > 0) {
+        new StyleRule({ scope: "class", name, suffix, styles: deviations });
+    }
+
+    const level = Object.freeze({ resolved: Object.freeze(resolved) });
+
+    bySuffix.set(suffix, level);
+
+    return level;
+}
+
 /**
  * Ensures the framework-wide `:where(.ts-ui-component)` rule exists and,
  * when `ctor`'s resolved defaults deviate from it, ensures a `.ClassName`
@@ -597,7 +715,21 @@ const _stateBags: Map<Function, Map<string, ClassStyleBag | null>> = new Map();
  *   `":hover:not(.pressed)"`), matching whatever the instance rule's own
  *   `createStyleRule(suffix)` call uses.
  * @param declarations - This class's resolved declarations for the
- *   suffixed state.
+ *   suffixed state — the non-hierarchy-aware fallback bag, used only when
+ *   `extractorMethodName` is omitted or `ctor`'s chain doesn't participate
+ *   in the hierarchy mechanism (see `extractorMethodName` below).
+ * @param extractorMethodName - The name of the `protected static`
+ *   extraction method (e.g. `"extractPressedClassDeclarations"`) each
+ *   participating ancestor may declare its own copy of. When supplied and
+ *   `ctor`'s chain participates in the hierarchy mechanism (i.e.
+ *   {@link chainParticipates}), resolution delegates to
+ *   {@link resolveClassStateLevel} instead of the flat per-`(ctor, suffix)`
+ *   cache below — this is what makes a subclass sharing its nearest
+ *   contributing ancestor's rule (rather than always creating its own)
+ *   safe now that `class-hierarchy-cascade.md`'s DOM widening applies to
+ *   this chain too. Omitted (or `ctor` non-participating) keeps today's
+ *   exact flat behaviour, so every other `createStateStyleRule` call site
+ *   in the library needs no change.
  *
  * @returns The declarations bag, or `null` when `ctor`'s name is empty or
  *   already claimed by a different constructor (the same name-collision
@@ -608,7 +740,19 @@ export function ensureClassStateRule(
     ctor: Function,
     suffix: string,
     declarations: Record<string, string | null>,
+    extractorMethodName?: string,
 ): ClassStyleBag | null {
+    if (extractorMethodName && chainParticipates(ctor)) {
+        const name  = ctor.name;
+        const owner = _owners.get(name);
+
+        if (!name || (owner !== undefined && owner !== ctor)) {
+            return null;
+        }
+
+        return resolveClassStateLevel(ctor, suffix, extractorMethodName).resolved;
+    }
+
     let bySuffix = _stateBags.get(ctor);
     if (!bySuffix) {
         bySuffix = new Map();
@@ -712,9 +856,10 @@ export class StateStyleRule {
         rule: StyleRule,
         resolveDefaults: () => Record<string, string | null>,
         hasElement: () => boolean,
+        extractorMethodName?: string,
     ) {
         this._rule       = rule;
-        this._bag        = ensureClassStateRule(ctor, suffix, resolveDefaults());
+        this._bag        = ensureClassStateRule(ctor, suffix, resolveDefaults(), extractorMethodName);
         this._hasElement = hasElement;
     }
 

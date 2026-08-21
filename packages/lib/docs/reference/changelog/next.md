@@ -145,6 +145,14 @@ consumer implementing its own `DOMSink` is affected.
   `.pressed` chrome already does** — no consumer action needed, and
   `TabButton` inherits the same behaviour for its own selected fill and now
   also dedupes its own `.selected` border the same way.
+- **`Button`, `ToggleButton`, `TabButton`, and `SpinButton` elements now
+  additionally carry their ancestor classes** (`Button`, and for `TabButton`
+  also `ToggleButton`) — the same consumer-facing selector-matching change
+  noted above for `Cell`/`Text`/… applies here too. `TabButton`'s
+  pressed-state rule now shares `Button`'s `.pressed` class rule instead of
+  carrying its own copy. Nothing changes visually; no consumer action needed
+  unless a consumer stylesheet targets `.Button`/`.ToggleButton` expecting to
+  match only literal instances of those classes.
 - **[`Checkbox`](/api/component/input/classes/Checkbox) and
   [`RadioButton`](/api/component/input/classes/RadioButton)'s internal box/ring
   graphics no longer duplicate their fixed size and cursor on every
