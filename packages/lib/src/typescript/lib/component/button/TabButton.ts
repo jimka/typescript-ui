@@ -7,7 +7,7 @@ import type { ButtonOptions } from "~/component/button/Button.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
 import { callable } from "~/core/Callable.js";
 import { StyleRule } from "~/core/StyleTarget.js";
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
 import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
 import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
@@ -50,18 +50,22 @@ function ensureBusyIndicatorClassRule(): void {
     }
 
     _busyClassRule = new StyleRule({
-        scope:  "class",
-        name:   "TabBusyIndicator",
+        scope: "class",
+        name: "TabBusyIndicator",
         styles: {
-            position:      "absolute",
-            top:           "0",
-            right:         "0",
-            bottom:        "0",
-            left:          "0",
+            position     : "absolute",
+            top          : "0",
+            right        : "0",
+            bottom       : "0",
+            left         : "0",
             pointerEvents: "none",
         },
     });
 }
+
+const _defaultTabBusyIndicatorOptions: Partial<ComponentOptions> = {
+    backgroundColor: "var(--ts-ui-tab-busy-color, var(--ts-ui-tab-indicator-color, #1a73e8))"
+};
 
 /**
  * The per-tab loading wash: a translucent accent-coloured overlay filling its
@@ -70,12 +74,21 @@ function ensureBusyIndicatorClassRule(): void {
  * size, and left at the default z-index so the overlaid close ✕ stays above it.
  */
 class TabBusyIndicator extends Component {
-    constructor() {
+
+    // Exposes the same bag the constructor already merges into its defaults
+    // at the class level, so `ensureClassStyleRule` can hoist `backgroundColor`
+    // onto the shared `.TabBusyIndicator` rule instead of every instance
+    // writing its own `#id` declaration.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultTabBusyIndicatorOptions;
+
+    constructor(options?: ComponentOptions, subclassDefaults?: Partial<ComponentOptions>) {
         ensureBusyIndicatorClassRule();
 
-        super();
-
-        this.setBackgroundColor("var(--ts-ui-tab-busy-color, var(--ts-ui-tab-indicator-color, #1a73e8))");
+        super(options, {
+            ..._defaultTabBusyIndicatorOptions,
+            ...(subclassDefaults ?? {})
+        } as Partial<ComponentOptions>
+        );
     }
 }
 
