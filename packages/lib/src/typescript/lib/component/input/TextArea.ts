@@ -6,6 +6,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link TextArea}.
@@ -51,6 +52,16 @@ const _defaultTextAreaOptions: Partial<TextAreaOptions> = {
  * @category Components
  */
 class TextArea extends TextInput<TextAreaOptions> {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. `TextArea` deviates from
+    // `TextInput` on `cursor`/`overflow`/`minSize`/`foregroundColor`
+    // (`TextInput` itself declares none of these), so it needs its own
+    // registration or the hierarchy walk would silently pass through to
+    // `TextInput`'s shared rule and lose them — the `overflow: "auto"`
+    // override in particular is what makes the native `<textarea>` scroll
+    // its own content instead of clipping it.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultTextAreaOptions;
 
     /**
      * @param text - Initial text content.

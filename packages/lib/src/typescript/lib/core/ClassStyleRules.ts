@@ -100,6 +100,23 @@ const FRAMEWORK_DECLARATIONS: ClassStyleBag = Object.freeze({
     overflowY:  "hidden",
 });
 
+// The `ClassStyleDefaults` input that reproduces `FRAMEWORK_DECLARATIONS` via
+// `resolveDeclarations` — i.e. `Component`'s own true base defaults, used as
+// the hierarchy walk's base case (the "ancestor" above `Component` itself).
+// Every hoistable field's absent-value fallback inside `resolveDeclarations`
+// already coincides with `FRAMEWORK_DECLARATIONS` *except* `minSize` and
+// `overflow`, whose fallbacks (`"auto"` / `"visible"`) diverge from the
+// framework's hoisted baseline (`"0px"` / `"hidden"`) — those two are
+// restated here so a participating class that leaves them untouched (e.g.
+// `Cell`, which customises only colour/background/border) still resolves
+// them to the framework baseline instead of spuriously "deviating" on them,
+// matching what an un-migrated (flat) class's own `_defaultOptions` merge
+// chain already produces automatically via `Component`'s real base bag.
+const FRAMEWORK_DEFAULTS: ClassStyleDefaults = Object.freeze({
+    minSize:  { width: 0, height: 0 },
+    overflow: "hidden",
+});
+
 // Per-class inherited declarations: the framework body with this class's
 // deviations merged over it. A `null` entry means the class opted out (its
 // selector is owned by a different constructor, or it is anonymous).
@@ -107,6 +124,28 @@ const _bags: Map<Function, ClassStyleBag | null> = new Map();
 
 // Selector owner, so a name shared by two classes is detected.
 const _owners: Map<string, Function> = new Map();
+
+// The `Component` class itself, registered once by `core/Component.ts` at
+// module load via `registerStyleChainRoot` — this module cannot import
+// `Component` directly (it would form an import cycle, since Component
+// imports this module). Every hierarchy walk (`resolveClassLevel`,
+// `getStyleClassChain`) treats this constructor as the top: it never
+// recurses past it (so `BaseObject` and anything above are never visited),
+// and its own name never joins a DOM class list or claims a `.ClassName`
+// rule — `Component` was never a meaningful CSS-styling target before this
+// plan (only a concrete subclass's `this.constructor.name` was ever added),
+// and this mechanism preserves that.
+let _rootCtor: Function | null = null;
+
+/**
+ * Registers the topmost class the hierarchy walk should ever visit. Called
+ * once, by `core/Component.ts` at module load. Canonicalized (see
+ * `canonicalCtor`) so it matches regardless of whether the caller passes the
+ * raw class or its `callable()` wrapper.
+ */
+export function registerStyleChainRoot(ctor: Function): void {
+    _rootCtor = canonicalCtor(ctor);
+}
 
 let _frameworkRuleCreated = false;
 
@@ -200,6 +239,191 @@ function classDeviations(defaults: ClassStyleDefaults): Record<string, string | 
 }
 
 /**
+ * A class's own, subclass-independent contribution to the hoistable style
+ * defaults — the same shape as `ClassStyleDefaults`, but declared once per
+ * class (not resolved per instance). A class that adds no hoistable default
+ * of its own declares no field at all; `Component` declares none.
+ *
+ * Read only via an own-property check (`Object.prototype.hasOwnProperty`) —
+ * never via a plain property read, which would report an inherited value
+ * from whichever ancestor last declared the field. See
+ * plans/implemented/class-hierarchy-cascade.md's Architecture Decisions.
+ */
+interface ClassStyleLevelHost {
+    ownClassStyleDefaults?: ClassStyleDefaults;
+}
+
+/**
+ * Normalizes a constructor reference — the raw class or its `callable()`
+ * wrapper — to the same canonical (raw) reference, via
+ * `ctor.prototype.constructor`. A `callable()` Proxy only traps `apply`;
+ * every other operation (including a `prototype` read) forwards to the
+ * wrapped target by default, and `callable()` never reassigns
+ * `prototype.constructor`, so this always lands on the original class
+ * regardless of which reference was passed in.
+ *
+ * This matters because the *same* conceptual class is reached through
+ * *different* references depending on the path: `this.constructor` (an
+ * instance's own leaf class) is always raw, but `Object.getPrototypeOf` on a
+ * subclass returns whatever reference appeared in that subclass's `extends`
+ * clause — always the callable, per ARCHITECTURE.md's "Imports always use
+ * the callable name... This holds even for extends clauses." Without
+ * normalizing, a class constructed directly (raw reference) and the same
+ * class reached as a subclass's ancestor (callable reference) would be keyed
+ * under two different `Map` entries, silently splitting its registration and
+ * defeating the `_owners` name-collision check.
+ */
+function canonicalCtor(ctor: Function): Function {
+    const proto = (ctor as { prototype?: { constructor?: Function } }).prototype;
+
+    return proto?.constructor ?? ctor;
+}
+
+/** This class's fully-merged declaration bag plus the resolved CSS it
+ *  produces — see {@link resolveClassLevel}. */
+interface ResolvedClassLevel {
+    /** This class's fully-merged `ClassStyleDefaults` — its own contribution
+     *  layered onto every ancestor's, in the same shape `resolveDeclarations`
+     *  consumes. */
+    defaults: ClassStyleDefaults;
+    /** `resolveDeclarations(defaults)` — this class's full resolved CSS bag,
+     *  used both to diff the next level down and, at the leaf, as the
+     *  instance-comparison bag `_inheritedStyleBag` needs. */
+    resolved: ClassStyleBag;
+}
+
+// (ctor -> resolved level). Memoizes the hierarchy walk so a deep chain is
+// only ever traversed once per constructor across the whole process.
+const _levels: Map<Function, ResolvedClassLevel> = new Map();
+
+/**
+ * Own-property read of a class's `ownClassStyleDefaults` field — `null` when
+ * this exact class doesn't declare one, regardless of what an ancestor
+ * declares. A plain property read would silently return the nearest
+ * ancestor's field once any ancestor defines one (normal JS static-member
+ * inheritance), making every subclass that doesn't override it look like it
+ * declares its parent's fields all over again — exactly wrong for a delta
+ * computation.
+ */
+function ownDefaultsOf(ctor: Function): ClassStyleDefaults | null {
+    return Object.prototype.hasOwnProperty.call(ctor, "ownClassStyleDefaults")
+        ? ((ctor as unknown as ClassStyleLevelHost).ownClassStyleDefaults ?? null)
+        : null;
+}
+
+/** Shallow merge — a subclass that redeclares `border` or `font` replaces
+ *  the whole sub-value, matching how `_default<Name>Options` bags already
+ *  merge through `subclassDefaults` object-spread forwarding. */
+function mergeClassStyleDefaults(parent: ClassStyleDefaults, child: ClassStyleDefaults): ClassStyleDefaults {
+    return { ...parent, ...child };
+}
+
+/** The subset of `resolved` that differs from `against` — `classDeviations`,
+ *  generalised to diff against any resolved bag, not only the framework one. */
+function deviationsFrom(resolved: ClassStyleBag, against: ClassStyleBag): Record<string, string | null> {
+    const out: Record<string, string | null> = {};
+
+    for (const key of Object.keys(resolved)) {
+        if (resolved[key] !== against[key]) {
+            out[key] = resolved[key];
+        }
+    }
+
+    return out;
+}
+
+/**
+ * Whether `ctor` or any ancestor up its `Object.getPrototypeOf` chain
+ * declares an `ownClassStyleDefaults` field. A class outside this set is
+ * untouched by this hierarchy mechanism — `ensureClassStyleRule` falls back
+ * to its pre-hierarchy flat behaviour for it, since only a participating
+ * chain's static fields can be trusted to reproduce a caller-supplied
+ * instance's actual defaults (see `ensureClassStyleRule`'s own comment).
+ */
+function chainParticipates(ctor: Function): boolean {
+    let cur: Function | null = canonicalCtor(ctor);
+
+    while (typeof cur === "function" && cur.name) {
+        if (ownDefaultsOf(cur) !== null) {
+            return true;
+        }
+
+        const parent = Object.getPrototypeOf(cur) as Function | null;
+
+        cur = parent ? canonicalCtor(parent) : null;
+    }
+
+    return false;
+}
+
+/**
+ * Hierarchy-aware resolution of `ctor`'s class-tier declarations. Walks
+ * `Object.getPrototypeOf(ctor)` upward, resolving (and, for a class that owns
+ * a genuine deviation, inserting) each ancestor's `.ClassName` rule before
+ * this class's own — so a plain, unweighted `.ClassName` selector is always
+ * correct with no `:where()` needed between hierarchy levels (an ancestor's
+ * rule is always in the stylesheet before a descendant's by the time either
+ * could match a rendered element). Memoized per `ctor`.
+ *
+ * A class with no own contribution (`ownDefaultsOf` returns null) resolves to
+ * exactly its parent's level — no new rule, no new cache work beyond
+ * memoizing the pass-through. Every level, participating or not, still claims
+ * its own name in `_owners` (when unclaimed) so a later same-named class is
+ * detected as colliding even if this level itself inserted no rule.
+ */
+function resolveClassLevel(rawCtor: Function): ResolvedClassLevel {
+    const ctor = canonicalCtor(rawCtor);
+    const cached = _levels.get(ctor);
+
+    if (cached) {
+        return cached;
+    }
+
+    // `_rootCtor` (Component) is a terminal node for this walk — never
+    // recurse above it, regardless of which class the walk started from.
+    const rawParentCtor = ctor === _rootCtor ? null : (Object.getPrototypeOf(ctor) as Function | null);
+    const parentCtor = rawParentCtor ? canonicalCtor(rawParentCtor) : null;
+    const parent = (typeof parentCtor === "function" && parentCtor.name)
+        ? resolveClassLevel(parentCtor)
+        : { defaults: FRAMEWORK_DEFAULTS, resolved: FRAMEWORK_DECLARATIONS };
+
+    const name    = ctor.name;
+    const owner   = _owners.get(name);
+    const collides = !name || (owner !== undefined && owner !== ctor);
+
+    const own = collides ? null : ownDefaultsOf(ctor);
+
+    if (!own) {
+        const level = { defaults: parent.defaults, resolved: parent.resolved };
+
+        _levels.set(ctor, level);
+
+        if (!collides && name) {
+            _owners.set(name, ctor);
+        }
+
+        return level;
+    }
+
+    ensureFrameworkStyleRule();
+    _owners.set(name, ctor);
+
+    const defaults   = mergeClassStyleDefaults(parent.defaults, own);
+    const resolved   = resolveDeclarations(defaults);
+    const deviations = deviationsFrom(resolved, parent.resolved);
+
+    if (Object.keys(deviations).length > 0) {
+        new StyleRule({ scope: "class", name, styles: deviations });
+    }
+
+    const level = Object.freeze({ defaults, resolved: Object.freeze(resolved) });
+
+    _levels.set(ctor, level);
+
+    return level;
+}
+
+/**
  * Ensures the framework-wide `:where(.ts-ui-component)` rule exists and,
  * when `ctor`'s resolved defaults deviate from it, ensures a `.ClassName`
  * rule carrying only those deviations. Idempotent per `ctor` — the first
@@ -207,24 +431,41 @@ function classDeviations(defaults: ClassStyleDefaults): Record<string, string | 
  * (including from other instances of the same class) returns the cached
  * result without touching the stylesheet again.
  *
+ * For a class participating in the hierarchy mechanism (`ctor` or an
+ * ancestor declares `ownClassStyleDefaults`), the returned bag is
+ * `resolveClassLevel(ctor).resolved` — a delta against the nearest
+ * ancestor's rule rather than the framework tier directly, so a subclass
+ * that changes nothing shares its ancestor's rule instead of repeating it.
+ * A class outside the hierarchy mechanism falls back to the original flat
+ * behaviour: `defaults` (the caller's own fully-merged
+ * `getClassStyleDefaults()` result) diffed directly against
+ * `FRAMEWORK_DECLARATIONS`, unchanged from before this mechanism existed —
+ * this is what keeps every not-yet-migrated class, and any subclass that
+ * customises a hoistable field without registering its own
+ * `ownClassStyleDefaults`, exactly as correct as it was before.
+ *
  * @param ctor - The concrete component class constructor (`this.constructor`
  *   from `Component`), used as the cache key. `ctor.name` is not unique in
  *   this tree, so the constructor itself — not its name — is what identifies
  *   the class; the name is only used to derive the CSS selector.
  * @param defaults - The class's frozen `_defaultOptions` bag (or a
- *   structurally-compatible subset of it).
+ *   structurally-compatible subset of it) — for a participating class, must
+ *   agree with its `ownClassStyleDefaults` chain (see
+ *   plans/implemented/class-hierarchy-cascade.md's Internal Structure).
  *
  * @returns The inherited declaration bag — the framework declarations with
- *   this class's deviations merged over them, mirroring what the cascade
- *   delivers to one of its elements from the two lower tiers. `null` when
- *   `ctor`'s name is empty (an anonymous class) or already claimed by a
- *   different constructor — the name-collision opt-out — in which case the
- *   caller must write every hoistable declaration to its own `#id` rule.
+ *   this class's (and, for a participating class, every ancestor's)
+ *   deviations merged over them, mirroring what the cascade delivers to one
+ *   of its elements from the lower tiers. `null` when `ctor`'s name is empty
+ *   (an anonymous class) or already claimed by a different constructor — the
+ *   name-collision opt-out — in which case the caller must write every
+ *   hoistable declaration to its own `#id` rule.
  */
 export function ensureClassStyleRule(
-    ctor: Function,
+    rawCtor: Function,
     defaults: ClassStyleDefaults,
 ): ClassStyleBag | null {
+    const ctor = canonicalCtor(rawCtor);
     const existing = _bags.get(ctor);
 
     if (existing !== undefined) {
@@ -242,22 +483,97 @@ export function ensureClassStyleRule(
         return null;
     }
 
-    const deviations = classDeviations(defaults);
+    if (!chainParticipates(ctor)) {
+        const deviations = classDeviations(defaults);
 
-    // Claim the selector whether or not a rule is inserted, so a second class
-    // of the same name still opts out. An empty body would insert a rule that
-    // declares nothing, so skip it.
-    _owners.set(name, ctor);
+        // Claim the selector whether or not a rule is inserted, so a second
+        // class of the same name still opts out. An empty body would insert
+        // a rule that declares nothing, so skip it.
+        _owners.set(name, ctor);
 
-    if (Object.keys(deviations).length > 0) {
-        new StyleRule({ scope: "class", name, styles: deviations });
+        if (Object.keys(deviations).length > 0) {
+            new StyleRule({ scope: "class", name, styles: deviations });
+        }
+
+        const inherited = Object.freeze({ ...FRAMEWORK_DECLARATIONS, ...deviations });
+
+        _bags.set(ctor, inherited);
+
+        return inherited;
     }
 
-    const inherited = Object.freeze({ ...FRAMEWORK_DECLARATIONS, ...deviations });
+    const level = resolveClassLevel(ctor);
 
-    _bags.set(ctor, inherited);
+    _bags.set(ctor, level.resolved);
 
-    return inherited;
+    return level.resolved;
+}
+
+const _classChains: Map<Function, readonly string[]> = new Map();
+
+/**
+ * Every ancestor's own class name, from the topmost ancestor down to `ctor`
+ * itself — the full list `Component.init()` adds to the element. Memoized
+ * per constructor; independent of which *level* has registered
+ * `ownClassStyleDefaults`, so a chain that has opted in anywhere gets its
+ * full ancestor chain even through a non-contributing middle level (e.g.
+ * `DefaultCell`, between `Cell` and `HeaderCell`).
+ *
+ * Gated on `chainParticipates`, though, at the top: a chain with **no**
+ * `ownClassStyleDefaults` *anywhere* keeps today's exact pre-hierarchy
+ * behaviour — this class's own name only, not its ancestors'. Widening such
+ * a chain would be actively unsafe, not merely useless: `Button` /
+ * `ToggleButton` / `TabButton` / `SpinButton` (and `MenuButton` /
+ * `PopupButton`) each still have their own independent flat `.ClassName`
+ * rule (including an independently-created state-tier `.pressed` rule) via
+ * the pre-hierarchy mechanism, at the same `(0,1,0)` specificity as every
+ * other level's rule. Widening their DOM classes without also making the
+ * state tier hierarchy-aware would let two same-specificity rules start
+ * matching one element, with the winner decided by stylesheet insertion
+ * order — the exact hazard `plans/implemented/class-hierarchy-cascade.md`'s
+ * "Rollout is scoped to the confirmed-safe chains" decision documents for
+ * that family specifically; `chainParticipates` generalises the exclusion to
+ * every non-participating chain rather than naming `Button`'s family only,
+ * since the same hazard recurs for any other pre-existing multi-level flat
+ * hierarchy this plan doesn't touch.
+ */
+export function getStyleClassChain(rawCtor: Function): readonly string[] {
+    const ctor = canonicalCtor(rawCtor);
+    const cached = _classChains.get(ctor);
+
+    if (cached) {
+        return cached;
+    }
+
+    // `_rootCtor` (Component) is excluded from every chain — a bare
+    // `Component` instance's chain is `[]`, matching every concrete
+    // subclass never seeing "Component" as an ancestor's own class name.
+    if (ctor === _rootCtor) {
+        const chain: readonly string[] = [];
+
+        _classChains.set(ctor, chain);
+
+        return chain;
+    }
+
+    if (!chainParticipates(ctor)) {
+        const chain: readonly string[] = ctor.name ? Object.freeze([ctor.name]) : [];
+
+        _classChains.set(ctor, chain);
+
+        return chain;
+    }
+
+    const parentCtor = canonicalCtor(Object.getPrototypeOf(ctor) as Function);
+    const parentChain = (typeof parentCtor === "function" && parentCtor.name)
+        ? getStyleClassChain(parentCtor)
+        : [];
+
+    const chain = ctor.name ? Object.freeze([...parentChain, ctor.name]) : parentChain;
+
+    _classChains.set(ctor, chain);
+
+    return chain;
 }
 
 // (ctor -> (suffix -> bag)). Parallel to `_bags`, but keyed on suffix too, since

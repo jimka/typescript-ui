@@ -18,7 +18,7 @@ import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
 import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
-import { COMPONENT_CLASS } from "~/core/ClassStyleRules.js";
+import { COMPONENT_CLASS, type ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 import { Text } from "~/component/input/Text.js";
 
 /**
@@ -726,6 +726,10 @@ abstract class AbstractSelectableList<
 >
     extends AbstractInput<TValue, TOptions>
 {
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultAbstractSelectableListOptions;
+
     protected _items:        Array<SelectableListItem> = [];
     protected _rowPool:      Array<SelectableListRow>  = [];
     protected _selectedSet:  Set<number>           = new Set();

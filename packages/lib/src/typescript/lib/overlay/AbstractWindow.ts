@@ -11,6 +11,7 @@ import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerMa
 import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
 import { createSpinnerWrap } from "~/component/display/SpinnerWrap.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
@@ -183,6 +184,10 @@ const RESIZE_BORDER_Z_INDEX: number = 10;
  * @category Core
  */
 export abstract class AbstractWindow extends Container<WindowOptions> implements DismissableLayer {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultWindowOptions;
 
     private static openWindows: Set<AbstractWindow> = new Set<AbstractWindow>();
 

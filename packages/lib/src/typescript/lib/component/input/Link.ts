@@ -5,6 +5,7 @@ import { Event } from "~/core/Event.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import type { ClickListener } from "~/component/button/Button.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 
 /**
  * The link foreground colour. `--ts-ui-link-color` lets a theme retint every
@@ -141,6 +142,15 @@ const _defaultLinkOptions: Partial<LinkOptions> = {
  * @category Components
  */
 class Link extends Text<LinkOptions> {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. `Link` deviates from
+    // `Text` on `cursor`/`userSelect`/`foregroundColor` (unlike `Label`/
+    // `Legend`, which inherit `Text` untouched), so — like `Text` itself —
+    // it needs its own registration for the hierarchy walk to see that
+    // deviation; without it, `Link` would silently pass through to `Text`'s
+    // shared rule and lose it.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultLinkOptions;
 
     // No `_interactive` backing field: `_options` is the cache. A field
     // initializer here would run after super() and clobber the value the

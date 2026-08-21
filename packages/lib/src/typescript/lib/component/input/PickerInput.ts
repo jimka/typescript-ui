@@ -2,6 +2,7 @@
 
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { callable } from "~/core/Callable.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 
 /**
  * User-overridable visual defaults forwarded to `super` via the options bag.
@@ -30,6 +31,17 @@ const _defaultPickerInputOptions: Partial<TextInputOptions> = {
  * @category Components
  */
 class PickerInput extends TextInput<TextInputOptions> {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. `PickerInput` deviates
+    // from `TextInput` on `cursor`/`border`/`outline` (`TextInput` itself
+    // declares neither `cursor` nor `outline`, and a different `border`), so
+    // it needs its own registration or the hierarchy walk would silently
+    // pass through to `TextInput`'s shared rule and lose them — the
+    // `border`/`outline: "none"` pair in particular is what suppresses
+    // `TextInput`'s visible border and the browser focus ring so
+    // `AbstractPickerField`'s outer chrome doesn't double up.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultPickerInputOptions;
 
     constructor() {
         super(undefined, _defaultPickerInputOptions);

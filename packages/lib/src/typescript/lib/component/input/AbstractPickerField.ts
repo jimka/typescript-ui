@@ -2,6 +2,7 @@
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { AnimatedDropdown } from "~/core/AnimatedDropdown.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 import type { Handle } from "~/core/DOM.js";
 import { PickerInput } from "~/component/input/PickerInput.js";
 import { PickerButton } from "~/component/input/PickerButton.js";
@@ -72,6 +73,10 @@ abstract class AbstractPickerField<
 >
     extends AbstractInput<TValue | null, TOptions>
 {
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultPickerFieldOptions;
+
     protected _input:    PickerInput;
     protected _button:   PickerButton;
     protected _dropdown: TDropdown | null = null;

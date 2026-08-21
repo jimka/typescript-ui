@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { DOM } from "~/core/DOM.js";
@@ -46,6 +47,13 @@ const _defaultCellOptions: Partial<ComponentOptions> = {
  * @category Components
  */
 export class Cell<T> extends Component {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. The same constant this
+    // class's constructor forwards as `subclassDefaults`, exposed at the
+    // class level so `DefaultCell`/`StringCell`/… share `.Cell`'s rule
+    // instead of each repeating it.
+    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultCellOptions;
 
     private _readOnly: boolean;
     private _requiredEmpty: boolean = false;

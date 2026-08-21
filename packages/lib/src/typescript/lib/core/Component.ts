@@ -21,7 +21,7 @@ import { ElementAttributes } from "~/core/ElementAttributes.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
-import { COMPONENT_CLASS, ensureClassStyleRule, type ClassStyleDefaults, StateStyleRule } from "~/core/ClassStyleRules.js";
+import { COMPONENT_CLASS, ensureClassStyleRule, getStyleClassChain, registerStyleChainRoot, type ClassStyleDefaults, StateStyleRule } from "~/core/ClassStyleRules.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
 import { measureBorderWidths } from "~/core/BorderWidths.js";
 
@@ -6066,7 +6066,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._inlineStyle.attach(element);
         this._elementAttributes.attach(element);
 
-        DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, this.constructor.name] });
+        DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, ...getStyleClassChain(this.constructor)] });
 
         this.applyStyle(element);
 
@@ -6150,6 +6150,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
 const ComponentCallable = callable(Component);
 type ComponentCallable<TOptions extends ComponentOptions = ComponentOptions> = Component<TOptions>;
+
+// Every real subclass (`class Foo extends Component`) resolves its
+// `Object.getPrototypeOf` link against this *callable*, public-facing
+// reference — the import consumers use — not the raw class above, so this
+// is the reference the hierarchy walk in `core/ClassStyleRules.ts` must
+// treat as its root. See ARCHITECTURE.md's "Components are exported through
+// `callable()`": the wrapper preserves the prototype chain, but `extends`
+// stores the exact reference on the right-hand side of the clause.
+registerStyleChainRoot(ComponentCallable);
+
 export {
     Component         as _Component,
     ComponentCallable as Component
