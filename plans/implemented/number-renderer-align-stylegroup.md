@@ -493,6 +493,79 @@ Run `npm run docs:api` — zero warnings.
 
 ---
 
+## Implementation Notes
+
+- **The `## Ordered Implementation Steps` step 3 / `## Verification` grep
+  invariant (`grep -n 'setTextAlign' Number.ts` — zero matches) does not
+  literally hold against the exact code this plan's own `## Internal
+  Structure` prescribes.** `NumberRenderer`'s constructor comment (`"...a
+  plain SelectableText needs no setTextAlign call either."`) contains the
+  substring `setTextAlign`, so the plain-text grep reports one match — that
+  comment line — not zero. The invariant's actual intent, that no raw
+  `.setTextAlign(...)` call remains, is satisfied: `grep -n
+  '\.setTextAlign('` returns zero matches, and the new
+  `CellTextSelection.test.ts` cases pin the resulting behaviour directly.
+  Implemented the file exactly as `## Internal Structure` specifies rather
+  than reword the comment to dodge the plain-text grep, since the comment's
+  wording is correct and useful; noting the discrepancy here so a future
+  re-run of the literal `## Verification` command isn't mistaken for a
+  regression.
+
+- **Manual browser verification (`## Ordered Implementation Steps` step 8,
+  `## Verification` rows 6-7) performed and recorded here**, per
+  `implement/worker.md`'s requirement that non-automatable behaviour get a
+  documented manual-verify step. Ran `npx vite --port 8021 --strictPort`
+  from `packages/lib` in this worktree; confirmed via `readlink
+  /proc/<pid>/cwd` that the server resolved to this worktree, not the main
+  tree or another worktree. Row 6: navigated to `#/misc`, clicked "Show
+  window with table (slow)!" (its `col3` is a typed `number` column), then
+  "Style Audit", then "Refresh" — the resulting audit table (Total rules:
+  527, per-instance rules: 438) carries no `Text` / `{ text-align: right;
+  }` row; a script probe found 57 live elements with class `...
+  NumberRendererText ...` in that table, every one resolving computed
+  `text-align: right`. Row 7: navigated to `#/property-grid` — the
+  `DynamicCell`-rendered "Count" row's value text (`"5"`) resolves to class
+  `ts-ui-component Text SelectableText lh20px` (no `NumberRendererText`)
+  with computed `text-align: left`, confirming `DynamicCell`'s left-aligned
+  number row is unaffected and still shares `Text`'s own default. Server
+  stopped and the extra browser tab closed after verification.
+
+- **`## Architecture Decisions`' "Use the class tier's `ownClassStyleDefaults`"
+  section (lines 78-87) overclaims what its two cited precedents did.**
+  Neither `checkboxbox-borderradius-hoist.md` nor
+  `glyph-preferredsize-reconciled-write-path.md` registered a
+  `protected static readonly ownClassStyleDefaults` field — both fixed their
+  bug via the *other*, flat/pre-hierarchy mechanism instead: moving the
+  literal into a `_default<Name>Options` bag consulted by the class's plain
+  `getClassStyleDefaults()` override, with no ancestor in the chain
+  declaring `ownClassStyleDefaults` at all
+  (`checkboxbox-borderradius-hoist.md:28`). The Glyph plan is explicit that
+  this was a deliberate choice, not an oversight: it considered and
+  *rejected* opting `Glyph` into `ownClassStyleDefaults`
+  (`glyph-preferredsize-reconciled-write-path.md:285`, footnote
+  `^why-not-hierarchy`), specifically because doing so on `Glyph` alone
+  (without also touching `CheckboxCheckGlyph`/`RadioButtonDot`) would have
+  regressed dedup that already worked. `grep -rn "ownClassStyleDefaults"
+  packages/lib/src/typescript/lib/component/input/Checkbox.ts
+  packages/lib/src/typescript/lib/component/input/RadioButton.ts
+  packages/lib/src/typescript/lib/component/display/Glyph.ts` returns zero
+  matches today, confirming neither class carries the field this plan's
+  prose attributes to them. This does **not** implicate `NumberRendererText`'s
+  own use of `ownClassStyleDefaults`, which is independently correct on its
+  own terms: unlike `CheckboxBox`/`Glyph` (which extend `Component`
+  directly, with no ancestor already on the hierarchy-walk branch),
+  `NumberRendererText`'s ancestors `SelectableText` and `Text` **already**
+  declare `ownClassStyleDefaults` (`SelectableText.ts:43`, `Text.ts:126`),
+  so the class is already on the hierarchy-walk branch of
+  `ensureClassStyleRule` regardless of what `NumberRendererText` itself
+  does — per ARCHITECTURE.md's *The class tier is hierarchy-aware*, a
+  participating leaf registers its own `ownClassStyleDefaults` rather than
+  falling back to `getClassStyleDefaults()`, which the hierarchy-walk
+  branch ignores once any ancestor participates. The code is unaffected;
+  only the plan's precedent citation is corrected here.
+
+---
+
 ## Notes
 
 [^probe-before]: Verified directly against this branch's current (unfixed)

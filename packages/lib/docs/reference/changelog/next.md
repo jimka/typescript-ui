@@ -199,6 +199,13 @@ consumer implementing its own `DOMSink` is affected.
   `setLineHeight`/`centerInHeight` now also dedupe against the class-tier
   default the same way other hoisted properties do. No consumer action
   needed; nothing changes visually.
+- **[`NumberRenderer`](/api/component/table/classes/NumberRenderer)'s
+  value text no longer duplicates its text alignment on every instance's own
+  CSS rule.** Its right-aligned value text (the default for a typed `number`
+  column) now shares one CSS rule across every instance in the app;
+  [`DynamicCell`](/api/component/table/classes/DynamicCell)'s left-aligned
+  instances already share `Text`'s own default and are unaffected. Nothing
+  changes visually; no consumer action needed.
 
 ### Table
 
