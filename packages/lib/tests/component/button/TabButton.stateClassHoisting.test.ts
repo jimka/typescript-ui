@@ -17,7 +17,7 @@
 // with its own tab-specific tokens, so `backgroundColor` / `backgroundImage`
 // / `boxShadow` / the four border longhands (mirroring the border the
 // constructor's `applyTabStyling` separately writes via `setSelectedBorder`)
-// all dedupe onto the shared `.TabButton.selected:not(:hover)` class rule the
+// all dedupe onto the shared `.TabButton.selected:not(.pressed):not(:hover)` class rule the
 // same way `.pressed` already does.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TabButton } from '~/component/button/TabButton';
@@ -109,7 +109,7 @@ describe('TabButton state-class hoisting', () => {
         new TabButton('Warmup').getElement(true);
 
         const second = new TabButton('Second');
-        const selectedDeclarations = declarationsDuring(sink, idSelector(second) + '.selected:not(:hover)', () => second.getElement(true));
+        const selectedDeclarations = declarationsDuring(sink, idSelector(second) + '.selected:not(.pressed):not(:hover)', () => second.getElement(true));
 
         expect(selectedDeclarations.backgroundColor).toBeUndefined();
         expect(selectedDeclarations.backgroundImage).toBeUndefined();
@@ -119,7 +119,7 @@ describe('TabButton state-class hoisting', () => {
         expect(selectedDeclarations.borderBottom).toBeUndefined();
         expect(selectedDeclarations.borderLeft).toBeUndefined();
 
-        expect(_ruleCacheHas('.TabButton.selected:not(:hover)')).toBe(true);
+        expect(_ruleCacheHas('.TabButton.selected:not(.pressed):not(:hover)')).toBe(true);
     });
 
     it('row 10: a rendered element carries ts-ui-component, Button, ToggleButton, and TabButton', () => {

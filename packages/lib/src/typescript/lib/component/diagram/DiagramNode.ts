@@ -7,6 +7,7 @@
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
 import { StyleRule } from "~/core/StyleTarget.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Fit } from "~/layout/Fit.js";
@@ -52,6 +53,9 @@ const _defaultDiagramNodeOptions: Partial<DiagramNodeOptions> = {
 // name.
 const BADGE_OPACITY = 0.6;
 
+/** `.selected`'s background-color declaration. One source of truth for both `ownStyleStates`' extract and the constructor's write. */
+const DIAGRAM_NODE_SELECTED_BACKGROUND_COLOR = "var(--ts-ui-diagram-node-selected-bg, var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15)))";
+
 /**
  * The default themed node renderer for a
  * [`DiagramView`](/api/component/diagram/classes/DiagramView). Composes a glyph
@@ -61,6 +65,19 @@ const BADGE_OPACITY = 0.6;
  * @category Components
  */
 class DiagramNode extends Panel<DiagramNodeOptions> {
+
+    // Declares `.selected` so `styleLayers()`/`restingGuardSuffix` know
+    // about it — see `Button`'s `ownStyleStates` for the full mechanism.
+    // Only `backgroundColor` is extracted: the state's `borderColor`
+    // declaration (set alongside it below) is a longhand no `StyleBag` key
+    // covers, so it stays outside this bag (mirrors `Button`'s partial
+    // `.pressed` extract).
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".selected",
+            extract:  (): StyleBag => ({ backgroundColor: DIAGRAM_NODE_SELECTED_BACKGROUND_COLOR }),
+        },
+    ];
 
     /** The glyph+label (or bare label) component. */
     private _label!: IconText | Text;
@@ -92,7 +109,7 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
         });
 
         this.selectedStyleRule.set("borderColor",     "var(--ts-ui-accent-color, rgb(30, 100, 200))");
-        this.selectedStyleRule.set("backgroundColor", "var(--ts-ui-diagram-node-selected-bg, var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15)))");
+        this.selectedStyleRule.set("backgroundColor", DIAGRAM_NODE_SELECTED_BACKGROUND_COLOR);
 
         // Content children are built here (not during super's cascade), so the
         // label/glyph/badge/selected values cached pure in `applyOptions` are
@@ -202,11 +219,11 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
     setSelected(value: boolean): this {
         this._options.selected = value;
 
-        const element = this.getElement();
-
-        if (element) {
-            DOM.sink.apply(element, { toggleClass: { selected: value } });
-        }
+        // Unconditional, not gated on `this.getElement()`: `setStyleState`
+        // updates `_activeStates` regardless of whether an element exists
+        // yet (only its own DOM write is internally element-gated) — see
+        // `ToggleButton.setSelected`'s own comment for the full reasoning.
+        this.setStyleState(".selected", value);
 
         return this;
     }

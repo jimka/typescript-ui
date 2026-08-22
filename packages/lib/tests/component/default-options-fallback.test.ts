@@ -306,7 +306,12 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'Scrollbar backgroundColor',    resolve: () => new Scrollbar().getBackgroundColor(),                       expected: 'var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))' },
     { label: 'Scrollbar touchAction',        resolve: () => new Scrollbar().getTouchAction(),                           expected: 'none' },
     { label: 'ScrollArrowButton backgroundColor', resolve: () => (new Scrollbar('vertical', { arrowsEnabled: true }).getComponents()[1] as any).getBackgroundColor(), expected: 'var(--ts-ui-scrollbar-arrow-bg, transparent)' },
-    { label: 'ScrollArrowButton foregroundColor', resolve: () => (new Scrollbar('vertical', { arrowsEnabled: true }).getComponents()[1] as any).getForegroundColor(), expected: 'var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))' },
+    // Index [2] (`_arrowEnd`), not [1] (`_arrowStart`): `buildArrows` force-disables
+    // the start arrow unconditionally at construction (scroll position starts at 0),
+    // and `ownStyleStates`' `.disabled` state now resolves through `getForegroundColor`
+    // like any other active-state layer — so index [1] would report the dimmed
+    // disabled-state token here, not the resting default this row means to check.
+    { label: 'ScrollArrowButton foregroundColor', resolve: () => (new Scrollbar('vertical', { arrowsEnabled: true }).getComponents()[2] as any).getForegroundColor(), expected: 'var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))' },
     { label: 'ScrollArrowGlyph minSize',     resolve: () => (new Scrollbar('vertical', { arrowsEnabled: true }).getComponents()[1] as any)._glyph.getMinSizeConstraint(), expected: { width: 12, height: 12 } },
     { label: 'ScrollbarThumb cursor',        resolve: () => (new Scrollbar() as any)._thumb.getCursor(),                expected: 'grab' },
     { label: 'ScrollbarThumb backgroundColor', resolve: () => (new Scrollbar() as any)._thumb.getBackgroundColor(),     expected: 'var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))' },

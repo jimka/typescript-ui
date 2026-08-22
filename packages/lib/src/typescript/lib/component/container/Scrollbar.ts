@@ -2,7 +2,7 @@
 
 import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
-import type { StateStyleRule } from "~/core/ClassStyleRules.js";
+import type { StateStyleRule, StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
@@ -172,6 +172,13 @@ class ScrollArrowGlyph extends Glyph {
  */
 class ScrollArrowButton extends Component {
 
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".disabled",
+            extract: (): StyleBag => ({ foregroundColor: SCROLL_ARROW_DISABLED_DECLARATIONS.color }),
+        },
+    ];
+
     private _glyph:         Glyph;
     private _disabled:      boolean                              = false;
     private _listeners:     ListenerBag<ScrollArrowEvent>        = new ListenerBag<ScrollArrowEvent>();
@@ -194,15 +201,14 @@ class ScrollArrowButton extends Component {
         return { color: SCROLL_ARROW_DISABLED_DECLARATIONS.color };
     }
 
-    // No `getRestingExclusionSuffixes()` override: `RESTING_ISOLATION_KEYS`
-    // (Component.ts) is `{backgroundColor, backgroundImage, boxShadow}` —
-    // `color` (the CSS key `setForegroundColor`/`reconcileRuleDeclaration`
-    // write under) is not a member, so a resting `color` write always lands
-    // on the bare `#id` rule regardless of any override; the isolation
-    // mechanism cannot protect this property. This mirrors how `Button`
-    // itself never isolates its own resting `color` either — it has no live
-    // `this.setForegroundColor(...)` call on itself, only on child
-    // components with their own ids. See this plan's Implementation Notes.
+    // `restingGuardSuffix`/`restingIsolationKeys` (core/Component.ts) are
+    // now derived from `ownStyleStates` above, so `color` — the CSS key
+    // `.disabled` declares — is isolated automatically. The old fixed
+    // isolation-key set couldn't protect it (it was hand-picked to
+    // `{backgroundColor, backgroundImage, boxShadow}` only), which is
+    // exactly the gap this plan's derived isolation set closes; moot in
+    // practice either way, since nothing calls
+    // `this.setForegroundColor(...)` on this component's own resting tier.
 
     /**
      * Constructs a square TRACK_WIDTH × TRACK_WIDTH arrow button pointing in
@@ -330,10 +336,12 @@ class ScrollArrowButton extends Component {
             this._repeat.stop();
         }
 
-        const element = this.getElement();
-        if (element) {
-            DOM.sink.apply(element, { toggleClass: { disabled } });
-        }
+        // Unconditional, not gated on `this.getElement()`: `setStyleState`
+        // updates `_activeStates` regardless of whether an element exists
+        // yet (only its own DOM write is internally element-gated) — a
+        // pre-render `setDisabledState` call (this method is invoked from
+        // the constructor) must still record the state.
+        this.setStyleState(".disabled", disabled);
 
         if (disabled) {
             this.disabledStyleRule.set("color", SCROLL_ARROW_DISABLED_DECLARATIONS.color);
@@ -417,6 +425,13 @@ const SCROLLBAR_THUMB_HOVER_DECLARATIONS: Readonly<Record<string, string>> = Obj
  * detail, mirroring {@link ScrollArrowButton}.
  */
 class ScrollbarThumb extends Component {
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".hover",
+            extract: (): StyleBag => ({ backgroundColor: SCROLLBAR_THUMB_HOVER_DECLARATIONS.backgroundColor }),
+        },
+    ];
+
     private _hovered: boolean = false;
 
     // Lazy `.hover` rule. The slot is a fast-path cache for the wrapper
@@ -440,18 +455,13 @@ class ScrollbarThumb extends Component {
         return { backgroundColor: SCROLLBAR_THUMB_HOVER_DECLARATIONS.backgroundColor };
     }
 
-    protected override getRestingExclusionSuffixes(): readonly string[] {
-        return [...super.getRestingExclusionSuffixes(), ".hover"];
-    }
-
     /** Applies the hover/drag highlight. Called by `Scrollbar.updateThumbFill`. */
     applyHoverState(hovered: boolean): void {
         this._hovered = hovered;
 
-        const element = this.getElement();
-        if (element) {
-            DOM.sink.apply(element, { toggleClass: { hover: hovered } });
-        }
+        // Unconditional, not gated on `this.getElement()` — see
+        // `ScrollArrowButton.setDisabledState`'s comment for why.
+        this.setStyleState(".hover", hovered);
 
         if (hovered) {
             this.hoverStyleRule.set("backgroundColor", SCROLLBAR_THUMB_HOVER_DECLARATIONS.backgroundColor);

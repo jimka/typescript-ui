@@ -38,29 +38,39 @@ const CONFIG = {
 
 afterEach(() => DOM.reset());
 
-/** True when the last `toggleClass: { pressed }` write to `handle` set it on. */
-function isPressed(sink: RecordingDOMSink, handle: Handle): boolean {
-    const writes = sink.writes.filter(w =>
-        w.op === 'apply' && w.args[0] === handle &&
-        (w.args[1] as { toggleClass?: Record<string, boolean> }).toggleClass?.pressed !== undefined
-    );
-    const last = writes[writes.length - 1];
+/** True when `w` is an `addClass`/`removeClass` write touching the "pressed"
+ *  token — `setStyleState` (core/Component.ts) toggles a state's DOM token
+ *  via `addClass`/`removeClass`, not the `toggleClass` shape this file used
+ *  to check. */
+function touchesPressed(w: RecordingDOMSink['writes'][number]): boolean {
+    if (w.op !== 'apply') {
+        return false;
+    }
 
-    return !!(last?.args[1] as { toggleClass: Record<string, boolean> } | undefined)?.toggleClass.pressed;
+    const patch = w.args[1] as { addClass?: readonly string[]; removeClass?: readonly string[] };
+
+    return !!(patch.addClass?.includes('pressed') || patch.removeClass?.includes('pressed'));
+}
+
+/** True when the last write touching the "pressed" token on `handle` added it
+ *  (rather than removed it). */
+function isPressed(sink: RecordingDOMSink, handle: Handle): boolean {
+    const writes = sink.writes.filter(w => w.args[0] === handle && touchesPressed(w));
+    const last = writes[writes.length - 1];
+    const patch = last?.args[1] as { addClass?: readonly string[] } | undefined;
+
+    return !!patch?.addClass?.includes('pressed');
 }
 
 /**
- * True when ANY `toggleClass: { pressed }` write has ever targeted `handle`.
- * Unlike {@link isPressed}, this distinguishes "never touched" from "last
- * write said false" — needed where the claim under test is that a handle is
- * never written to at all, which a plain `isPressed(...) === false` check
- * would pass vacuously for regardless of whether the code under test ran.
+ * True when ANY write touching the "pressed" token has ever targeted
+ * `handle`. Unlike {@link isPressed}, this distinguishes "never touched"
+ * from "last write said false" — needed where the claim under test is that a
+ * handle is never written to at all, which a plain `isPressed(...) === false`
+ * check would pass vacuously for regardless of whether the code under test ran.
  */
 function hasPressedWrite(sink: RecordingDOMSink, handle: Handle): boolean {
-    return sink.writes.some(w =>
-        w.op === 'apply' && w.args[0] === handle &&
-        (w.args[1] as { toggleClass?: Record<string, boolean> }).toggleClass?.pressed !== undefined
-    );
+    return sink.writes.some(w => w.args[0] === handle && touchesPressed(w));
 }
 
 /** Number of `setPointerCapture` calls the sink has recorded so far, across all handles. */
@@ -68,11 +78,9 @@ function capturedPointerCount(sink: RecordingDOMSink): number {
     return sink.writes.filter(w => w.op === 'setPointerCapture').length;
 }
 
-/** Number of `toggleClass: { pressed }` writes the sink has recorded so far, across all handles. */
+/** Number of writes touching the "pressed" token the sink has recorded so far, across all handles. */
 function pressedWriteCount(sink: RecordingDOMSink): number {
-    return sink.writes.filter(w =>
-        w.op === 'apply' && (w.args[1] as { toggleClass?: Record<string, boolean> }).toggleClass?.pressed !== undefined
-    ).length;
+    return sink.writes.filter(touchesPressed).length;
 }
 
 /** Dispatches `type` on `handle` with `init`, returning the preventDefault call count. */

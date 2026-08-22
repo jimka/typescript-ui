@@ -21,7 +21,7 @@ import { ElementAttributes } from "~/core/ElementAttributes.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
-import { COMPONENT_CLASS, ensureClassStyleRule, ensureStyleGroupRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, resolvePartialDeclarations, styleGroupClassSuffix, type StyleBag, type StyleLayer, type TextStyleBag, StateStyleRule } from "~/core/ClassStyleRules.js";
+import { COMPONENT_CLASS, ensureClassStyleRule, ensureStyleGroupRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, resolvePartialDeclarations, resolveStyleStates, restingGuardSuffix, styleGroupClassSuffix, type StyleBag, type StyleLayer, type TextStyleBag, StateStyleRule } from "~/core/ClassStyleRules.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
 import { measureBorderWidths } from "~/core/BorderWidths.js";
 
@@ -363,15 +363,6 @@ const _componentFinalizer = new FinalizationRegistry<OwnedResources>(({ handles,
     }
 });
 
-// The chrome properties the resting-isolation mechanism intercepts. Fixed —
-// see Architecture Decisions for why this isn't per-component configurable.
-// Moved here from Button.ts's RESTING_RECONCILED_KEYS, unchanged in content.
-const RESTING_ISOLATION_KEYS: ReadonlySet<string> = new Set([
-    "backgroundColor",
-    "backgroundImage",
-    "boxShadow",
-]);
-
 // CSS keys the retired phase methods routed through the skip-on-match
 // `writeRuleDeclaration` (rather than the write-null-on-match
 // `reconcileRuleDeclaration`) — a matching value queues nothing at all for
@@ -543,6 +534,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // which re-derived every hoistable property unconditionally on every
     // render) rather than only what changed since the last flush.
     private _pendingStyleKeys     : Set<string> | null = null;
+    // Currently-active declared states (`.pressed`, `:hover`, `.selected`,
+    // …) — the selectors from this class's own `ownStyleStates` this
+    // instance has toggled on via `setStyleState`. Scanned by `styleLayers()`
+    // ahead of the instance layer, in declared order, so the first active
+    // entry wins. Plain initializer: `setStyleState` is never called before
+    // `super()` returns (unlike `_instanceStyle`, which cascade-dispatched
+    // setters can reach mid-`super()`).
+    private _activeStates         : Set<string> = new Set();
     // Optional clip frame: a presentational wrapper element interposed between
     // this component's element and its DOM parent, sized to a cell rect with
     // `overflow: hidden` so a layout manager can visually clip an element that
@@ -4867,10 +4866,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * The component's style layers, highest-priority first: this instance's
-     * own writes, then its `styleGroup` (if any), then its class tier. Later
-     * stages push further layers (active meta-classes) above the instance
-     * layer.
+     * The component's style layers, highest-priority first: every currently
+     * active declared state (in declared order — see `ownStyleStates`),
+     * then this instance's own writes, then its `styleGroup` (if any), then
+     * its class tier.
      *
      * @remarks `_classLayer` is only populated by `applyStyle`, i.e. once
      * this component has rendered at least once — but a getter like
@@ -4885,7 +4884,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * CSS-backed `_classLayer` is already in place.
      */
     protected styleLayers(): ReadonlyArray<StyleLayer> {
-        const layers: StyleLayer[] = [this.instanceLayer()];
+        const layers: StyleLayer[] = [];
+
+        for (const state of resolveStyleStates(this.constructor)) {
+            if (this._activeStates.has(state.selector)) {
+                layers.push(state.layer);
+            }
+        }
+
+        layers.push(this.instanceLayer());
 
         if (this._groupLayer) layers.push(this._groupLayer);
 
@@ -4903,16 +4910,34 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         return { authored: this._instanceStyle, resolved: resolvePartialDeclarations(this._instanceStyle) };
     }
 
+    /** The layers *below* the instance layer — group (if any), then class —
+     *  built directly from the cached fields rather than by slicing
+     *  `styleLayers()`, since that array's prefix (zero or more active
+     *  meta-class layers) has no fixed length to slice past. Used by
+     *  `matchesClassStyle` and `flushStyleBag`'s per-key dedup, both of
+     *  which need "does a tier *other than this instance's own* already
+     *  supply this value", never a meta-class layer's. */
+    protected layersBelowInstance(): ReadonlyArray<StyleLayer> {
+        const layers: StyleLayer[] = [];
+
+        if (this._groupLayer) layers.push(this._groupLayer);
+
+        layers.push(this._classLayer ?? { authored: this.getClassStyleDefaults(), resolved: {} });
+
+        return layers;
+    }
+
     /** True when a lower-tier layer already delivers `value` for `key` — the
-     *  first layer *below the instance layer* (highest priority first)
-     *  whose resolved bag *contains* `key` decides; a layer that doesn't
-     *  declare `key` is skipped, not treated as a mismatch. Excludes the
-     *  instance layer itself (`styleLayers()`'s first entry) — a caller
-     *  checking this mid-write, after its own `writeStyle`/`cacheStyleValue`
-     *  already updated `_instanceStyle`, must compare against what a
-     *  *different* tier supplies, not its own just-written value. */
+     *  first layer *below the instance layer* (highest priority first,
+     *  see `layersBelowInstance`) whose resolved bag *contains* `key`
+     *  decides; a layer that doesn't declare `key` is skipped, not treated
+     *  as a mismatch. Excludes the instance layer itself (and any active
+     *  meta-class layer above it) — a caller checking this mid-write, after
+     *  its own `writeStyle`/`cacheStyleValue` already updated
+     *  `_instanceStyle`, must compare against what a *different* tier
+     *  supplies, not its own just-written value. */
     protected matchesClassStyle(key: string, value: string | null): boolean {
-        for (const layer of this.styleLayers().slice(1)) {
+        for (const layer of this.layersBelowInstance()) {
             if (key in layer.resolved) {
                 return layer.resolved[key] === value;
             }
@@ -5119,7 +5144,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * the plan's Architecture Decisions for why that ordering is what fixes
      * the two shipped construction-time bugs), with the same
      * resting-chrome-isolation routing `reconcileRuleDeclaration` /
-     * `setReconciledCSSRules` use for `RESTING_ISOLATION_KEYS` — otherwise a
+     * `setReconciledCSSRules` use for `restingIsolationKeys()` — otherwise a
      * migrated property (e.g. `backgroundColor`) would bypass
      * `restingStyleRule` and land back on the bare `#id` rule that isolation
      * exists to keep clear of.
@@ -5138,8 +5163,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._pendingStyleKeys = null;
 
         const instanceDeclared = resolvePartialDeclarations(this._instanceStyle);
-        const lowerLayers       = this.styleLayers().slice(1);
+        const lowerLayers       = this.layersBelowInstance();
         const isolated          = this.isRestingChromeIsolated();
+        const isolationKeys     = isolated ? this.restingIsolationKeys() : null;
         const resolved: Style   = {};
 
         for (const key of pending) {
@@ -5208,7 +5234,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
             const toWrite = matchesLower ? null : value;
 
-            if (isolated && RESTING_ISOLATION_KEYS.has(key)) {
+            if (isolationKeys?.has(key)) {
                 // Queue only — `restingStyleRule.set` writes through
                 // immediately once the rule is materialised, which would
                 // jump ahead of a still-to-run `applySubclassStyles`
@@ -5268,58 +5294,59 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
     }
 
-    /**
-     * Selector suffixes (e.g. `.pressed`, `.selected`) whose class-tier state
-     * rule this component's resting chrome must stay isolated from — see
-     * `reconcileRuleDeclaration` / `setReconciledCSSRules`. Empty by default: a
-     * component with no mutually-exclusive toggle-state class needs no
-     * isolation, and its resting chrome writes straight to `#id`, exactly as
-     * before this mechanism existed.
-     *
-     * A subclass overrides this to add its own suffix, chaining onto
-     * `super()`'s list rather than replacing it, so a grandchild class inherits
-     * every ancestor's exclusion automatically. Expected to return a fixed,
-     * construction-time-stable list per class — the same expectation
-     * `getClassStyleDefaults()` already carries — because it is read from as
-     * early as the `super()` construction cascade.
-     */
-    protected getRestingExclusionSuffixes(): readonly string[] {
-        return [];
+    // An instance-level opt-out for a class whose own construction-time
+    // defaults publish no state-tier chrome to isolate from (e.g. a
+    // chromeless Button) — `resolveStyleStates` is memoized once per
+    // *class*, so it cannot know that *this* instance's own defaults happen
+    // to be chromeless the way the pre-migration per-instance
+    // `extractPressedClassDeclarations(this._defaultOptions)` check could.
+    // `declare` because a subclass may write it during the `super()`
+    // cascade (Button's chromeless branch runs inside `applyChromeOptions`,
+    // itself dispatched from `super()`); a plain initializer would run
+    // afterward and revert the write.
+    private declare _isolationSuppressed?: boolean;
+
+    protected isIsolationSuppressed(): boolean {
+        return this._isolationSuppressed ?? false;
     }
 
-    private get restingIsolationSuffix(): string {
-        return this.getRestingExclusionSuffixes().map((suffix) => ":not(" + suffix + ")").join("");
-    }
-
-    // Generalizes Button's original `_restingChromeIsolated` flag: an
-    // instance-level opt-out for a class whose own defaults publish no
-    // state-tier chrome to isolate from (e.g. a chromeless Button). `declare`
-    // because a subclass may write it during the `super()` cascade (Button's
-    // chromeless branch runs inside `applyChromeOptions`, itself dispatched from
-    // `super()`); a plain initializer would run afterward and revert the write.
-    private declare _chromeIsolationEnabled?: boolean;
-
-    protected isChromeIsolationEnabled(): boolean {
-        return this._chromeIsolationEnabled ?? true;
-    }
-
-    protected setChromeIsolationEnabled(enabled: boolean): void {
-        this._chromeIsolationEnabled = enabled;
+    protected suppressIsolation(suppressed: boolean): void {
+        this._isolationSuppressed = suppressed;
     }
 
     /** True when this instance currently isolates its resting chrome from at
-     *  least one registered state class. */
+     *  least one of its class's declared states (see `ownStyleStates`),
+     *  and `suppressIsolation` hasn't disabled it for this instance. */
     protected isRestingChromeIsolated(): boolean {
-        return this.isChromeIsolationEnabled() && this.restingIsolationSuffix !== "";
+        return !this.isIsolationSuppressed() && restingGuardSuffix(this.constructor) !== "";
+    }
+
+    /** The CSS keys `flushStyleBag` / `reconcileRuleDeclaration` /
+     *  `setReconciledCSSRules` route onto `restingStyleRule` instead of the
+     *  bare `#id` rule — the union of every key this class's own declared
+     *  states carry (see `ownStyleStates`). Replaces the old fixed
+     *  three-property isolation-key constant: a state layer that declares a
+     *  fourth property is protected automatically now, instead of silently
+     *  unprotected until someone remembers to widen a hand-kept set. */
+    protected restingIsolationKeys(): ReadonlySet<string> {
+        const keys = new Set<string>();
+
+        for (const state of resolveStyleStates(this.constructor)) {
+            for (const key of Object.keys(state.layer.resolved)) {
+                keys.add(key);
+            }
+        }
+
+        return keys;
     }
 
     // Lazy resting-isolation rule. Never allocated unless isRestingChromeIsolated()
     // is true somewhere on a write path — see the guard in
     // reconcileRuleDeclaration / setReconciledCSSRules below, which never calls
-    // this getter with an empty restingIsolationSuffix.
+    // this getter with an empty guard suffix.
     protected declare _restingStyleRule?: StyleRule;
     protected get restingStyleRule(): StyleRule {
-        return this._restingStyleRule ??= this.createStyleRule(this.restingIsolationSuffix);
+        return this._restingStyleRule ??= this.createStyleRule(restingGuardSuffix(this.constructor));
     }
 
     /**
@@ -5333,6 +5360,83 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (this.getElement() && this.restingStyleRule.hasQueuedDeclarations()) {
             this.restingStyleRule.ensure();
         }
+    }
+
+    /**
+     * Toggles one of this class's declared states (see `ownStyleStates`) on
+     * this instance — e.g. `setStyleState(".pressed", true)`. Updates
+     * `_activeStates` (so `styleLayers()`, and every getter built on
+     * `resolveStyleValue`, immediately reflect the new state) and the DOM
+     * class token, when the state has one: a `.`-prefixed selector's class
+     * name is that selector minus the leading dot; a `:`-prefixed
+     * pseudo-class (`:hover`, `:active`) carries no DOM token at all — the
+     * browser drives those itself, and only a component that already tracks
+     * its own hover/active state (the way `Button` tracks `.pressed`) should
+     * ever call this for one.
+     *
+     * No CSS write happens here: the state's own declarations already live
+     * on the shared `.ClassName<guardedSuffix>` rule `ownStyleStates`
+     * registers, and the resting rule's own `:not(...)` guard (see
+     * `restingGuardSuffix`) is what stops it from competing once the token
+     * is present — the cascade resolves the rest.
+     *
+     * @param name - The declared state's own selector, e.g. `".pressed"` or `":hover"`.
+     * @param active - Whether the state should be active on this instance.
+     * @returns This component, for method chaining.
+     */
+    setStyleState(name: string, active: boolean): this {
+        if (active === this._activeStates.has(name)) {
+            return this;
+        }
+
+        if (active) {
+            this._activeStates.add(name);
+        } else {
+            this._activeStates.delete(name);
+        }
+
+        this._resolvedCache = null;
+
+        const element = this.getElement();
+        if (element && !name.startsWith(":")) {
+            const token = name.slice(1);   // ".selected" -> "selected"
+            DOM.sink.apply(element, active ? { addClass: [token] } : { removeClass: [token] });
+        }
+
+        return this;
+    }
+
+    /**
+     * Whether one of this class's declared states is currently active on
+     * this instance.
+     *
+     * @param name - The declared state's own selector, e.g. `".pressed"`.
+     */
+    isStyleState(name: string): boolean {
+        return this._activeStates.has(name);
+    }
+
+    /**
+     * Writes one key onto the resting-guarded rule directly, bypassing the
+     * layer/dedup machinery — the escape hatch for a shorthand no `StyleBag`
+     * key covers (e.g. Button's `background`), which therefore has no class
+     * tier to compare against and nothing for `flushStyleBag` to resolve.
+     * Falls back to the plain `#id` write when this instance isn't
+     * isolated (see `isRestingChromeIsolated`): with no state to guard
+     * against, the value belongs on the bare rule instead.
+     *
+     * @param key - The CSS property name (camelCase).
+     * @param value - The value to set, or null to remove the property.
+     */
+    protected writeGuardedCSSRule(key: string, value: string | null): void {
+        if (!this.isRestingChromeIsolated()) {
+            this.setElementCSSRule(key, value);
+
+            return;
+        }
+
+        this.restingStyleRule.set(key, value);
+        this.materialiseRestingRule();
     }
 
     /**
@@ -5366,7 +5470,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * outrank the class rule.
      */
     protected reconcileRuleDeclaration(key: string, value: string | null): void {
-        if (this.isRestingChromeIsolated() && RESTING_ISOLATION_KEYS.has(key)) {
+        if (this.isRestingChromeIsolated() && this.restingIsolationKeys().has(key)) {
             this.restingStyleRule.set(key, this.matchesClassStyle(key, value) ? null : value);
 
             return;
@@ -5382,12 +5486,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * render, when `_classLayer` is still null.
      */
     protected setReconciledCSSRules(values: Style): this {
-        const isolated = this.isRestingChromeIsolated();
+        const isolated      = this.isRestingChromeIsolated();
+        const isolationKeys = isolated ? this.restingIsolationKeys() : null;
         const resolved: Style = {};
         let   wroteIsolated = false;
 
         for (const key of Object.keys(values)) {
-            if (isolated && RESTING_ISOLATION_KEYS.has(key)) {
+            if (isolationKeys?.has(key)) {
                 wroteIsolated = true;
                 this.restingStyleRule.set(key, this.matchesClassStyle(key, values[key]) ? null : values[key]);
 

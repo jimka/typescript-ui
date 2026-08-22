@@ -10,7 +10,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { StyleRule } from "~/core/StyleTarget.js";
-import type { StyleBag, StateStyleRule } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StateStyleRule, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import type { ComponentOptions } from "~/core/Component.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -161,6 +161,26 @@ class HeaderCellRenderer extends StringRenderer {
  */
 class HeaderCell extends DefaultCell {
 
+    // `:active` is a pseudo-class the browser drives natively — nothing
+    // here ever calls `setStyleState(":active", …)` to track it in JS (see
+    // that method's own doc comment on pseudo-class states), so this exists
+    // purely to generate `.HeaderCell:active`'s class-tier rule and widen
+    // the resting guard (`restingGuardSuffix`) to `:not(:active)` — the
+    // same job the old hand-maintained per-class suffix-override chain
+    // used to do by hand. Isolation matters here because it's not just a
+    // latent gap: `setColumnFocused` (below) writes a *resting* `boxShadow`
+    // via `setShadow`/`clearShadow` — a real, live per-instance writer of
+    // the exact property `:active` shares on the class tier — so without
+    // isolation that write would land on the bare `#id` rule, which
+    // outranks `.HeaderCell:active` and permanently defeats the pressed
+    // shadow on any column-focused (or previously column-focused) cell.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ":active",
+            extract: (): StyleBag => ({ shadow: HEADER_CELL_ACTIVE_DECLARATIONS.boxShadow }),
+        },
+    ];
+
     private _text: String;
     private _fieldName: string;
     private _isDragging: boolean = false;
@@ -184,20 +204,6 @@ class HeaderCell extends DefaultCell {
             ":active",
             () => ({ boxShadow: HEADER_CELL_ACTIVE_DECLARATIONS.boxShadow }),
         );
-    }
-
-    /**
-     * This cell's own resting `boxShadow` must stay isolated from `:active` —
-     * {@link setColumnFocused} writes a resting `boxShadow` via
-     * `setShadow`/`clearShadow`, which (unlike the plan's original "no
-     * competing resting declaration" analysis) is a real, live per-instance
-     * writer of the same property `:active` now shares on the class tier.
-     * Without this override that write lands on the bare `#id` rule, which
-     * outranks `.HeaderCell:active` and permanently defeats the pressed
-     * shadow on any column-focused (or previously column-focused) cell.
-     */
-    protected override getRestingExclusionSuffixes(): readonly string[] {
-        return [...super.getRestingExclusionSuffixes(), ":active"];
     }
 
     /**

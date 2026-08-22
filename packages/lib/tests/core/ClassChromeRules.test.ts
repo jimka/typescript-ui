@@ -360,8 +360,10 @@ describe('Component chrome base-tier hoisting', () => {
         // `btn` is chromeful and therefore isolated (see
         // plans/implemented/button-resting-chrome-state-isolation.md): both
         // the setChromeless(true) neutrals and the setChromeless(false)
-        // removals below land on `#id:not(.pressed)`, not the bare `#id`.
-        const declarations = declarationsDuring(sink, idSelector(btn) + ':not(.pressed)', () => btn.setChromeless(false));
+        // removals below land on `#id:not(.pressed):not(:hover)` (Button's
+        // `ownStyleStates` declares both `.pressed` and `:hover`), not the
+        // bare `#id`.
+        const declarations = declarationsDuring(sink, idSelector(btn) + ':not(.pressed):not(:hover)', () => btn.setChromeless(false));
 
         // A removal (explicit null), not `undefined` — `undefined` would mean
         // the write was skipped, leaving the chromeless "none" pin stale.

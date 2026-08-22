@@ -352,12 +352,18 @@ function drive(bar: Scrollbar): {
 }
 
 /**
- * The most recently recorded `toggleClass[key]` value applied to `handle`, or
- * `undefined` if `key` was never toggled on it. Since `applyHoverState` now
- * drives the visual fill through a CSS state-class rather than a plain
- * `setBackgroundColor` call (see `plans/implemented/state-tier-rule-dedup-followups.md`),
- * the toggled class — not `getBackgroundColor()` — is the only offline-observable
- * signal of the thumb's current hover state.
+ * The most recently recorded add/remove state for the "key" DOM class token
+ * applied to `handle`, or `undefined` if it was never touched. Since
+ * `applyHoverState` now drives the visual fill through a CSS state-class
+ * rather than a plain `setBackgroundColor` call (see
+ * `plans/implemented/state-tier-rule-dedup-followups.md`), the toggled class
+ * — not `getBackgroundColor()` — is the only offline-observable signal of
+ * the thumb's current hover state. `setStyleState` (core/Component.ts)
+ * toggles the token via `addClass`/`removeClass`; its own `render()`'s
+ * pre-mount catch-up write (a state set before the element existed,
+ * re-asserted once it does — `setStyleState`'s "already matches" guard
+ * would otherwise skip it) still uses the older `toggleClass` shape, so
+ * both are recognised here.
  */
 function lastToggleClassValue(sink: RecordingDOMSink, handle: Handle, key: string): boolean | undefined {
     for (let i = sink.writes.length - 1; i >= 0; i--) {
@@ -366,7 +372,13 @@ function lastToggleClassValue(sink: RecordingDOMSink, handle: Handle, key: strin
             continue;
         }
 
-        const patch = w.args[1] as { toggleClass?: Record<string, boolean> };
+        const patch = w.args[1] as { addClass?: readonly string[]; removeClass?: readonly string[]; toggleClass?: Record<string, boolean> };
+        if (patch.addClass?.includes(key)) {
+            return true;
+        }
+        if (patch.removeClass?.includes(key)) {
+            return false;
+        }
         if (patch.toggleClass && key in patch.toggleClass) {
             return patch.toggleClass[key];
         }

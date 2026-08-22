@@ -687,6 +687,180 @@ function resolveClassStateLevel(
 }
 
 /**
+ * One declared toggle state (`.pressed`, `:hover`, `.selected`, …). Array
+ * order — wherever a class declares its full list, via `ownStyleStates` — is
+ * priority: the first entry wins when several are active at once.
+ */
+export interface StyleStateSpec {
+    /** Selector fragment the state activates on, e.g. `".pressed"`, `":hover"`. */
+    readonly selector: string;
+    /** This state's own contribution, read from the declaring class's own
+     *  `ownClassStyleDefaults` (empty `{}` for a class outside the
+     *  hierarchy-cascade mechanism — see `resolveStyleStates`'s own comment
+     *  on why an extractor is free to ignore this and close over its own
+     *  module-level defaults instead, the way `Button`'s pressed/hover
+     *  extractors do). */
+    readonly extract: (defaults: StyleBag) => StyleBag;
+}
+
+/** One resolved entry from a class's declared `ownStyleStates` — its own
+ *  selector, the generated `:not(...)`-guarded suffix that makes it mutually
+ *  exclusive with every higher-priority entry, and the `StyleLayer` (authored
+ *  + resolved CSS) it contributes when active. */
+export interface ResolvedStyleState {
+    /** e.g. `".pressed"`. */
+    readonly selector:      string;
+    /** e.g. `":hover:not(.pressed)"` — `selector` plus a `:not(...)` guard
+     *  against every entry earlier in the declared order. This is the
+     *  suffix the generated `.ClassName<guardedSuffix>` rule actually uses. */
+    readonly guardedSuffix: string;
+    readonly layer:         StyleLayer;
+}
+
+interface StyleStateLevelHost {
+    ownStyleStates?: readonly StyleStateSpec[];
+}
+
+/** Own-property read of a class's `ownStyleStates` field — `null` when this
+ *  exact class doesn't declare one, regardless of what an ancestor declares.
+ *  Mirrors `ownDefaultsOf`'s own-property discipline (see its own comment):
+ *  a plain property read would report an inherited array from whichever
+ *  ancestor last declared it. */
+function ownStyleStatesOf(ctor: Function): readonly StyleStateSpec[] | null {
+    return Object.prototype.hasOwnProperty.call(ctor, "ownStyleStates")
+        ? ((ctor as unknown as StyleStateLevelHost).ownStyleStates ?? null)
+        : null;
+}
+
+/** `selector` guarded against every entry before it in `specs` — the
+ *  suffix construction {@link resolveStyleStates} and {@link restingGuardSuffix}
+ *  both use. `index === 0` guards against nothing, matching the plan's own
+ *  "first entry wins" contract needing no `:not(...)` at all. */
+function guardedSuffixFor(selector: string, specs: readonly StyleStateSpec[], index: number): string {
+    let suffix = selector;
+
+    for (let i = 0; i < index; i++) {
+        suffix += ":not(" + specs[i].selector + ")";
+    }
+
+    return suffix;
+}
+
+// (declaring ctor -> its resolved states). Keyed on whichever class's own
+// `ownStyleStates` a lookup resolves to (see `resolveStyleStates`) — several
+// concrete subclasses sharing one non-overriding ancestor all resolve to,
+// and share, the same cached array.
+const _resolvedStates: Map<Function, readonly ResolvedStyleState[]> = new Map();
+
+/**
+ * A class's declared toggle states, resolved and ordered highest-priority
+ * first — the state-tier sibling of {@link ensureClassStyleRule}, but for an
+ * array (priority order) rather than a single merged bag, so it does not
+ * reuse that function's hierarchy-merge shape.
+ *
+ * Unlike `ownClassStyleDefaults` (merged down through every participating
+ * ancestor — see `resolveClassLevel`), `ownStyleStates` is a whole-list,
+ * own-property declaration: whichever class in `ctor`'s chain nearest
+ * declares it (own-property-checked exactly like `ownDefaultsOf`) owns the
+ * *entire* list for this whole subtree, until some deeper subclass
+ * redeclares its own (typically restating the inherited entries and
+ * appending its own — see `ToggleButton`, which restates `Button`'s
+ * `.pressed`/`:hover` and appends `.selected`). A class that declares no
+ * `ownStyleStates` anywhere in its chain resolves to `[]`.
+ *
+ * Each entry's `extract` runs against the *declaring* class's own
+ * `ownDefaultsOf(...)` bag (`{}` when that class has none) — the same
+ * `defaults` shape `resolveClassLevel`'s hierarchy walk feeds its own
+ * per-level contribution. A class outside that hierarchy mechanism (e.g.
+ * `Button`, whose pressed/hover tokens live in a module-level
+ * `_defaultButtonOptions` constant, not a static `ownClassStyleDefaults`
+ * field) is free to have its `extract` closures ignore the parameter
+ * entirely and close over their own module-level source instead — the
+ * signature exists for the classes that *do* have a genuine
+ * `ownClassStyleDefaults` to read from, not as a requirement every
+ * extractor must use.
+ *
+ * Registers each entry's `.ClassName<guardedSuffix>` rule the first time a
+ * given declaring class is resolved (idempotent per class, mirroring every
+ * other tier's `ensureXRule` shape) — empty declarations register no rule,
+ * matching `resolveClassLevel`'s own "no genuine deviation, no rule" case.
+ * Shares the `_owners` name-collision registry with every other tier, so a
+ * name already claimed by the resting or group tier is respected here too,
+ * and vice versa.
+ */
+export function resolveStyleStates(rawCtor: Function): readonly ResolvedStyleState[] {
+    let cur: Function | null = canonicalCtor(rawCtor);
+
+    while (typeof cur === "function" && cur.name) {
+        const specs = ownStyleStatesOf(cur);
+
+        if (specs) {
+            const cached = _resolvedStates.get(cur);
+            if (cached) {
+                return cached;
+            }
+
+            const resolved = buildResolvedStates(cur, specs);
+            _resolvedStates.set(cur, resolved);
+
+            return resolved;
+        }
+
+        cur = cur === _rootCtor ? null : canonicalCtor(Object.getPrototypeOf(cur) as Function);
+    }
+
+    return [];
+}
+
+/** The one-time resolution `resolveStyleStates` memoizes per declaring class. */
+function buildResolvedStates(declaringCtor: Function, specs: readonly StyleStateSpec[]): readonly ResolvedStyleState[] {
+    const name     = declaringCtor.name;
+    const owner    = _owners.get(name);
+    const collides = !name || (owner !== undefined && owner !== declaringCtor);
+
+    if (collides) {
+        // Same name-collision opt-out every tier uses: no shared rule for
+        // any entry, so the caller must materialise every declaration on
+        // its own instance rule (`Component.flushStyleBag`'s null-`_classLayer`
+        // fallback already does this for the resting tier; a state layer
+        // with an empty resolved bag never "matches" for dedup purposes,
+        // which is the same effect).
+        return specs.map((spec, i) => ({
+            selector:      spec.selector,
+            guardedSuffix: guardedSuffixFor(spec.selector, specs, i),
+            layer:         { authored: {}, resolved: {} },
+        }));
+    }
+
+    _owners.set(name, declaringCtor);
+
+    const defaults = ownDefaultsOf(declaringCtor) ?? {};
+
+    return specs.map((spec, i) => {
+        const guardedSuffix = guardedSuffixFor(spec.selector, specs, i);
+        const authored      = spec.extract(defaults);
+        const resolved      = resolvePartialDeclarations(authored);
+
+        if (Object.keys(resolved).length > 0) {
+            new StyleRule({ scope: "class", name, suffix: guardedSuffix, styles: resolved });
+        }
+
+        return { selector: spec.selector, guardedSuffix, layer: { authored, resolved } };
+    });
+}
+
+/**
+ * The generated `:not(...)` chain guarding a class's resting chrome from
+ * every one of its own declared states — replaces the hand-maintained,
+ * per-class suffix-override chain each state-using class used to write by
+ * hand. Empty when `ctor` declares no states anywhere in its chain, matching
+ * that old override chain's own `[]` base case.
+ */
+export function restingGuardSuffix(ctor: Function): string {
+    return resolveStyleStates(ctor).map((state) => ":not(" + state.selector + ")").join("");
+}
+
+/**
  * Ensures the framework-wide `:where(.ts-ui-component)` rule exists and,
  * when `ctor`'s resolved defaults deviate from it, ensures a `.ClassName`
  * rule carrying only those deviations. Idempotent per `ctor` — the first
