@@ -679,6 +679,12 @@ export interface DOMSink {
     writeClipboardText(text: string): void;
 
     /**
+     * Clears the document's current text selection. Page-level; no element
+     * receiver.
+     */
+    clearDocumentSelection(): void;
+
+    /**
      * Registers a native event listener on a target. The framework's
      * {@link Event} class is the component-level routing layer; this seam covers
      * the low-level native hook it (and a few primitives) sits on.
@@ -1780,6 +1786,11 @@ export class ProductionDOMSink implements DOMSink {
     /** @inheritDoc */
     writeClipboardText(text: string): void {
         navigator.clipboard?.writeText(text);
+    }
+
+    /** @inheritDoc */
+    clearDocumentSelection(): void {
+        window.getSelection()?.removeAllRanges();
     }
 
     /** @inheritDoc */

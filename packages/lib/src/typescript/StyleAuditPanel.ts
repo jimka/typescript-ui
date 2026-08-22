@@ -12,9 +12,6 @@ import { Button } from '@jimka/typescript-ui/component/button';
 /** How many duplicate-body rows to show, ranked by bytes wasted. */
 const MAX_ROWS = 25;
 
-/** Byte length past which a rule body is truncated in the table (full text is a quote-and-paste job, not a table cell's). */
-const BODY_PREVIEW_LENGTH = 160;
-
 /** The marker class every framework component's root element carries alongside its concrete class name (`class="ts-ui-component Button"`). */
 const COMPONENT_MARKER_CLASS = "ts-ui-component";
 
@@ -166,7 +163,7 @@ function auditBaseStylesheet(): { summary: StyleAuditSummary; duplicates: Duplic
         wastedKB:  formatKB(stat.wastedBytes),
         component: stat.componentNames.size > 0 ? Array.from(stat.componentNames).sort().join(", ") : "—",
         scope:     stat.scope,
-        body:      stat.body.length > BODY_PREVIEW_LENGTH ? stat.body.slice(0, BODY_PREVIEW_LENGTH - 1) + "…" : stat.body,
+        body:      stat.body,
     }));
 
     return {
