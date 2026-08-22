@@ -14,7 +14,7 @@
 // through a full layout pass. A few cases (1, 2, 17-20, 25) exercise the full
 // `Table` → `layout/Table.doLayout` → header pipeline instead, because the
 // contract under test is that integration itself.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -883,5 +883,43 @@ describe('Header column window — geometry diffing', () => {
         cell.doLayout();
 
         expect(snapshot()).not.toBe(before);
+    });
+});
+
+// Offline coverage for plans/column-window-edge-stability.md's `## Expected
+// Behaviour` §D — `reconcileColumnCells`'s pass 3 no longer writes a
+// surviving cell's ARIA column index unconditionally on every reconcile;
+// only a retargeted cell, or every cell once `_columnsDirty` widens the
+// scope, gets the write.
+describe('Header column window — ARIA scoping', () => {
+    it('38. a surviving cell does not receive a redundant setColIndex call on a slide; a recycled one does', async () => {
+        const table = await wideTable(20);
+
+        render20At100(table, 550); // window [3,10]: columns 3..10 at slots 0..7
+
+        // The slide to [4,11] drops column 3 (slot 0) and adds column 11
+        // (new slot 7); columns 4..10 survive, shifting down one slot.
+        const departing = cells(table)[0]; // column 3 — recycled onto the entering column 11
+        const survivor  = cells(table)[1]; // column 4 — survives at the new slot 0
+
+        const departingSpy = vi.spyOn(departing.getAria(), 'setColIndex');
+        const survivorSpy  = vi.spyOn(survivor.getAria(), 'setColIndex');
+
+        header(table).setScrollX(650); // window [4,11]
+
+        expect(survivorSpy).not.toHaveBeenCalled();
+        expect(departingSpy).toHaveBeenCalledWith(12); // recycled onto column 11, slot 7
+
+        // The recycled cell instance is the one now rendering column 11.
+        expect(cells(table)[cells(table).length - 1]).toBe(departing);
+        expect(departing.getFieldName()).toBe('c11');
+
+        // Case 6's assertion, re-run after the slide: every rendered cell
+        // still reports the correct index, survivors and recycled alike.
+        const start = header(table).getColumnWindowStart();
+
+        cells(table).forEach((cell, slot) => {
+            expect(cell.getAria().getColIndex()).toBe(start + slot + 1);
+        });
     });
 });

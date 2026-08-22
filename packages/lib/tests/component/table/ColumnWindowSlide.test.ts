@@ -266,3 +266,47 @@ describe('Row column-window fast path — slide reconciliation', () => {
         expect(spy.mock.calls.length).toBeGreaterThanOrEqual(6);
     });
 });
+
+// Offline coverage for plans/column-window-edge-stability.md's `## Expected
+// Behaviour` §C — the full-reconcile path's pass 3 no longer writes a
+// survivor's ARIA column index unconditionally on every reconcile; only a
+// retargeted cell (or every cell, once `_columnsDirty` widens the scope)
+// gets the write. No `plan` is passed to `setColumnWindow` below, so these
+// cases exercise the full path, not the fast-path slide covered above.
+describe('Row column-window full-reconcile path — ARIA scoping', () => {
+    it('a survivor cell does not receive a redundant setColIndex call, and keeps its correct index', () => {
+        const model = wideModel(9); // c0..c8, all string
+        const row = new Row(model, undefined, new Set(), new Map());
+
+        row.setColumnWindow(0, 5); // width 6, window [0,5]
+
+        const survivor = row.getComponents()[3] as Cell<any>; // column 3, survives into [3,8]
+        const spy = vi.spyOn(survivor.getAria(), 'setColIndex');
+
+        row.setColumnWindow(3, 8); // width 6, window [3,8], no plan -> full path
+
+        expect(spy).not.toHaveBeenCalled();
+        expect(survivor.getAria().getColIndex()).toBe(4); // column 3, 1-based
+
+        // Every cell in the new window reports the correct index, survivors
+        // and recycled/entering cells alike.
+        row.getComponents().forEach((cell, slot) => {
+            expect((cell as Cell<any>).getAria().getColIndex()).toBe(3 + slot + 1);
+        });
+    });
+
+    it('a setColumnFields call in between widens the scope: the next reconcile does call setColIndex on survivors', () => {
+        const model = wideModel(9);
+        const row = new Row(model, undefined, new Set(), new Map());
+
+        row.setColumnWindow(0, 5);
+
+        const survivor = row.getComponents()[3] as Cell<any>;
+        const spy = vi.spyOn(survivor.getAria(), 'setColIndex');
+
+        row.setColumnFields(model, new Set(), new Map()); // sets _columnsDirty
+        row.setColumnWindow(3, 8);
+
+        expect(spy).toHaveBeenCalledWith(4);
+    });
+});

@@ -603,13 +603,18 @@ class Row extends Component {
         }
 
         // Pass 3 — per-column state that a shift can invalidate even for a
-        // survivor: ARIA column index, group tint, and (for a retargeted
-        // cell only) the bound value.
+        // survivor: group tint always, and (for a retargeted cell, or every
+        // cell once a field/config change makes columnsDirtyAtEntry true)
+        // the ARIA column index and the bound value. A survivor's own index
+        // cannot be stale outside those cases: it was matched by field name
+        // in pass 1, and a field's index into `_visibleFields` cannot change
+        // without `_columnsDirty` being set (`setColumnFields`/
+        // `renderSeparator`), which is exactly what `columnsDirtyAtEntry`
+        // captures here.
         for (let col = firstCol; col <= lastCol; col++) {
             const cell  = assigned[col - firstCol]!;
             const field = this._visibleFields[col];
 
-            cell.getAria().setColIndex(col + 1);
             cell.setBaseBackground(this._columnConfigs.get(field.getName())?.groupColor ?? null);
 
             if (retargeted.has(col)) {
@@ -617,6 +622,7 @@ class Row extends Component {
             }
 
             if (retargeted.has(col) || columnsDirtyAtEntry) {
+                cell.getAria().setColIndex(col + 1);
                 this._lastRetargeted.push({ cell, fieldName: field.getName() });
             }
         }
