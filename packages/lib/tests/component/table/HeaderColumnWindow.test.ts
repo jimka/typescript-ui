@@ -19,8 +19,10 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
-import type { TableHeader } from '~/component/table/Header';
-import type { HeaderCell } from '~/component/table/cell/Header';
+import { TableHeader } from '~/component/table/Header';
+import { HeaderCell } from '~/component/table/cell/Header';
+import { FilterCell } from '~/component/table/cell/Filter';
+import { columnFilterOperators } from '~/component/table/ColumnFilter';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ColumnConfig, ColumnSpec } from '~/component/table/ColumnConfig';
@@ -886,36 +888,410 @@ describe('Header column window — geometry diffing', () => {
     });
 });
 
+describe('Header column window — fast-path slide', () => {
+    // Offline coverage for plans/header-column-window-rotation.md's `## Expected
+    // Behaviour` — `reconcileColumnCells`/`reconcileFilterCells`'s fast path for
+    // an ordinary same-width slide: it repoints only the `|delta|` entering
+    // cells and leaves every surviving cell untouched. Cases are numbered to
+    // continue this file's existing 1-37 list.
+    //
+    // "Zero construction" is pinned via `TableHeader.prototype.wireCell` /
+    // `wireFilterCell` rather than the `HeaderCell`/`FilterCell` constructor
+    // directly: both are wired exactly once, at creation (see their own doc
+    // comments), so a spy on either is an exact proxy for "a cell was built"
+    // that plays nicely with the module's `callable()`-wrapped export. Every
+    // prototype-level spy this block installs is restored after each test so
+    // no call count bleeds into a later case.
+    afterEach(() => vi.restoreAllMocks());
+
+    function filterCells(table: Table): FilterCell[] {
+        return header(table).getFilterRow().getComponents() as FilterCell[];
+    }
+
+    /** `wideModel(n)` with per-index type overrides, e.g. `{ 11: 'number' }` — mirrors ColumnWindowSlide.test.ts's own helper. */
+    function typedModel(n: number, types: Record<number, string> = {}): Model {
+        const fields = Array.from({ length: n }, (_, i) => ({
+            name: `c${i}`, type: (types[i] ?? 'string') as 'string' | 'number', order: i, description: `desc-${i}`,
+        }));
+
+        return new Model(fields, 'c0');
+    }
+
+    it('38. a one-column right slide repoints the departing header cell onto the entering column with zero HeaderCell construction', async () => {
+        const table = await wideTable(20);
+        render20At100(table, 550); // window 3-10
+
+        const wireSpy = vi.spyOn(TableHeader.prototype as any, 'wireCell');
+
+        header(table).setScrollX(650); // window 4-11 — an ordinary one-column slide
+
+        expect(wireSpy).not.toHaveBeenCalled();
+    });
+
+    it('39. the same slide calls setFieldName/setHeaderText/getAria().setColIndex exactly once each — not once per rendered cell', async () => {
+        const table = await wideTable(20);
+        render20At100(table, 550);
+
+        const setFieldNameSpy  = vi.spyOn(HeaderCell.prototype, 'setFieldName');
+        const setHeaderTextSpy = vi.spyOn(HeaderCell.prototype, 'setHeaderText');
+        const colIndexSpies    = cells(table).map(cell => vi.spyOn(cell.getAria(), 'setColIndex'));
+
+        header(table).setScrollX(650);
+
+        expect(setFieldNameSpy).toHaveBeenCalledTimes(1);
+        expect(setHeaderTextSpy).toHaveBeenCalledTimes(1);
+        expect(colIndexSpies.filter(spy => spy.mock.calls.length > 0)).toHaveLength(1);
+    });
+
+    it('40. a multi-column slide within one tick touches exactly |delta| cells, not width many', async () => {
+        const table = await wideTable(20);
+        render20At100(table, 550); // window 3-10, width 8
+
+        const fieldBefore = new Map(cells(table).map(cell => [cell, cell.getFieldName()]));
+
+        header(table).setScrollX(950); // window 7-14 — a 4-column slide
+
+        expect(header(table).getColumnWindowStart()).toBe(7);
+
+        const touched   = cells(table).filter(cell => fieldBefore.get(cell) !== cell.getFieldName());
+        const untouched = cells(table).filter(cell => fieldBefore.get(cell) === cell.getFieldName());
+
+        expect(touched).toHaveLength(4);
+        expect(untouched).toHaveLength(4);
+
+        // The 4 untouched cells are the exact same objects at the exact same
+        // field — not merely 4 cells that happen to report the same name.
+        untouched.forEach(cell => expect(fieldBefore.has(cell)).toBe(true));
+
+        // Pins the *whole* window's slot-to-field mapping, entering cells
+        // included — `touched`/`untouched` alone only prove 4 cells changed
+        // and 4 didn't, not that entering cell i landed on entering column i
+        // rather than some other permutation of the same 4 columns.
+        expect(cells(table).map(c => c.getFieldName()))
+            .toEqual(['c7', 'c8', 'c9', 'c10', 'c11', 'c12', 'c13', 'c14']);
+    });
+
+    it('41. a left slide repoints the cell(s) at the trailing edge, not the leading edge', async () => {
+        const table = await wideTable(20);
+        render20At100(table, 900); // window 6-13, width 8
+        expect(header(table).getColumnWindowStart()).toBe(6);
+
+        const before = [...cells(table)];
+        const trailing = before.slice(6);    // columns 12-13
+        const leading   = before.slice(0, 6); // columns 6-11
+
+        header(table).setScrollX(650); // window 4-11 — a 2-column left slide
+
+        expect(header(table).getColumnWindowStart()).toBe(4);
+
+        const after = cells(table);
+
+        // The cells that were rendering the trailing columns (12-13) now
+        // render the new leading columns (4-5) — same objects, new fields.
+        expect(after.slice(0, 2)).toEqual(expect.arrayContaining(trailing));
+        expect(after.slice(0, 2).map(c => c.getFieldName()).sort()).toEqual(['c4', 'c5']);
+
+        // The cells that were rendering columns 6-11 are untouched, at their shifted slots.
+        leading.forEach((cell, i) => {
+            expect(after[i + 2]).toBe(cell);
+            expect(cell.getFieldName()).toBe(`c${6 + i}`);
+        });
+
+        // Pins the whole window's slot-to-field mapping — the two checks
+        // above only prove which cell objects moved where, not that the two
+        // entering cells (outCount 2) each landed on the *matching* entering
+        // column rather than each other's.
+        expect(after.map(c => c.getFieldName()))
+            .toEqual(['c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c10', 'c11']);
+    });
+
+    it('42. a one-column slide repoints the departing filter cell onto the entering column with zero FilterCell construction', async () => {
+        const table = await wideTable(20);
+        table.setFilterRowVisible(true);
+        render20At100(table, 550);
+
+        const wireSpy = vi.spyOn(TableHeader.prototype as any, 'wireFilterCell');
+
+        header(table).setScrollX(650);
+
+        expect(wireSpy).not.toHaveBeenCalled();
+    });
+
+    it('43. the recycled filter cell\'s field, operators, and numeric-only flag match the entering column, not the departing one', async () => {
+        const model = typedModel(20, { 11: 'number' });
+        const table = await wideTable(20, undefined, model);
+        table.setFilterRowVisible(true);
+        render20At100(table, 550); // window 3-10 — column 3 (string) at slot 0
+
+        const setOperatorsSpy   = vi.spyOn(FilterCell.prototype, 'setOperators');
+        const setNumericOnlySpy = vi.spyOn(FilterCell.prototype, 'setNumericOnly');
+
+        header(table).setScrollX(650); // column 3 leaves, column 11 (number) enters
+
+        const recycled = filterCells(table).find(c => c.getFieldName() === 'c11')!;
+
+        expect(recycled).toBeDefined();
+        expect(setOperatorsSpy).toHaveBeenLastCalledWith(columnFilterOperators('number'));
+        expect(setNumericOnlySpy).toHaveBeenLastCalledWith(true);
+    });
+
+    it('44. a column\'s cached filter text survives a fast-path slide out and back within one session', async () => {
+        const table = await wideTable(20);
+        table.setFilterRowVisible(true);
+        render20At100(table, 550); // window 3-10 — column 3 at slot 0
+
+        const cellAtCol3 = filterCells(table)[0] as unknown as PrivCell;
+        cellAtCol3.emit('filterchange', 'c3', { clauses: [{ operator: 'contains', text: 'needle' }] }, true);
+
+        header(table).setScrollX(650); // column 3 slides out (fast path)
+        header(table).setScrollX(550); // column 3 slides back in (fast path)
+
+        const reentered = filterCells(table).find(c => c.getFieldName() === 'c3')!;
+
+        expect(reentered.getFilterState()).toEqual({ clauses: [{ operator: 'contains', text: 'needle' }] });
+    });
+
+    it('44b. a right slide places the entering filter cell at the trailing slot, not merely somewhere in the row', async () => {
+        const table = await wideTable(20);
+        table.setFilterRowVisible(true);
+        render20At100(table, 550); // window 3-10
+        const departing = filterCells(table)[0]; // column 3
+
+        header(table).setScrollX(650); // window 4-11 — column 3 leaves, column 11 enters at the trailing slot
+
+        const after = filterCells(table);
+
+        expect(after[after.length - 1]).toBe(departing);
+        expect(after[after.length - 1].getFieldName()).toBe('c11');
+
+        // Survivors keep their shifted slot positions too — this is what
+        // catches a slotOf assignment with the survivor/entering branches
+        // swapped, which a field-name-only lookup (case 43) cannot.
+        for (let i = 0; i < after.length - 1; i++) {
+            expect(after[i].getFieldName()).toBe(`c${4 + i}`);
+        }
+    });
+
+    it('44c. a left slide places the entering filter cell(s) at the leading slot(s), not the trailing one', async () => {
+        const table = await wideTable(20);
+        table.setFilterRowVisible(true);
+        render20At100(table, 900); // window 6-13
+        const trailing = filterCells(table).slice(6); // columns 12-13
+
+        header(table).setScrollX(650); // window 4-11 — a 2-column left slide
+
+        const after = filterCells(table);
+
+        expect(after.slice(0, 2)).toEqual(expect.arrayContaining(trailing));
+
+        // Pins the whole window's slot-to-field mapping, not just that the
+        // 2 entering cells landed *somewhere* in the leading pair — an
+        // unordered check here cannot tell entering cell i landing on
+        // entering column i apart from the two landing swapped.
+        expect(after.map(c => c.getFieldName()))
+            .toEqual(['c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c10', 'c11']);
+
+        for (let i = 2; i < after.length; i++) {
+            expect(after[i].getFieldName()).toBe(`c${4 + i}`);
+        }
+    });
+
+    it('45. a fast-path slide does not call setSortState/clearSortState on any surviving cell', async () => {
+        const table = await wideTable(20);
+        const priv  = header(table) as unknown as PrivHeader;
+
+        render20At100(table, 550); // window 3-10
+        priv.handleSortClick('c5', false); // c5 stays in the window across the coming slide
+
+        const survivor      = cells(table).find(c => c.getFieldName() === 'c5')!;
+        const setSortSpy     = vi.spyOn(survivor, 'setSortState');
+        const clearSortSpy   = vi.spyOn(survivor, 'clearSortState');
+
+        header(table).setScrollX(650); // window 4-11 — c5 survives
+
+        expect(setSortSpy).not.toHaveBeenCalled();
+        expect(clearSortSpy).not.toHaveBeenCalled();
+    });
+
+    it('46. a fast-path slide that brings in a sorted column shows the arrow on the entering cell', async () => {
+        const table = await wideTable(20);
+        const priv  = header(table) as unknown as PrivHeader;
+
+        render20At100(table, 550); // window 3-10
+        priv.handleSortClick('c11', false); // c11 is outside the window — no visible effect yet
+
+        header(table).setScrollX(650); // window 4-11 — c11 enters at the last slot (fast path)
+
+        const entering = cells(table).find(c => c.getFieldName() === 'c11')!;
+
+        expect(entering.getSortState()?.state).toBe('asc');
+    });
+
+    it('46b. a full-path reconcile following a fast-path slide sweeps every cell, not just the previous slide\'s entering cell', async () => {
+        const table = await wideTable(20);
+        render20At100(table, 550); // window 3-10 — full path (first render)
+
+        header(table).setScrollX(650); // window 4-11 — fast path; _lastEnteredCells is now just the c11 cell
+
+        // Not awaited: `_activeSorters` updates synchronously, but the
+        // 'sortchange' event (and this suite's own subscription-driven
+        // repair — see the next describe block) only fires on a later
+        // microtask, so it cannot mask what this reconcile alone does.
+        void table.getStore().sort('c9', 'asc'); // c9 is a survivor of the slide above, still in the window
+
+        // Bypasses setScrollX's own render so this tick sees both a scroll
+        // and a resize together, forcing the full path exactly as case 47
+        // does — while column 9 stays inside the new window.
+        (header(table) as unknown as { _scrollX: number })._scrollX = 650;
+        header(table).renderColumnWindow({
+            columnWidths:    Array(20).fill(100),
+            viewportWidth:   350,
+            columnHeight:    20,
+            parentRowHeight: 0,
+            filterRowHeight: 0,
+        });
+
+        const c9 = cells(table).find(c => c.getFieldName() === 'c9')!;
+
+        // If the fast path's leftover `_lastEnteredCells` were not reset
+        // before this full-path reconcile ran, `renderColumnWindow` would
+        // wrongly scope this sweep to the previous slide's single entering
+        // cell (c11) and miss c9 entirely.
+        expect(c9.getSortState()?.state).toBe('asc');
+    });
+
+    it('47. a viewport resize (window-width change) still takes the full path even though the same tick also scrolled', async () => {
+        const table = await wideTable(20);
+        render20At100(table, 550); // window 3-10, width 8
+
+        // Bypasses `setScrollX`'s own render call so this one tick sees both
+        // a scroll offset change AND a width change together, mirroring
+        // Body.test.ts's own `_scroller._scrollX = ...` white-box technique.
+        (header(table) as unknown as { _scrollX: number })._scrollX = 650;
+
+        const setFieldNameSpy = vi.spyOn(HeaderCell.prototype, 'setFieldName');
+
+        header(table).renderColumnWindow({
+            columnWidths:    Array(20).fill(100),
+            viewportWidth:   350, // widened viewport -> a wider window, not just a slide
+            columnHeight:    20,
+            parentRowHeight: 0,
+            filterRowHeight: 0,
+        });
+
+        expect(header(table).getColumnWindowStart()).toBe(4);
+        expect(cells(table).length).toBe(9); // width grew 8 -> 9 — not a same-width slide
+        // The full path re-applies every rendered slot, not just the entering ones.
+        expect(setFieldNameSpy).toHaveBeenCalledTimes(9);
+    });
+
+    it('48. a jump (|delta| >= width) still reconciles via the full path', async () => {
+        const table = await wideTable(20);
+        render20At100(table, 550); // window 3-10, width 8
+
+        const setFieldNameSpy = vi.spyOn(HeaderCell.prototype, 'setFieldName');
+
+        header(table).setScrollX(1350); // window 11-18 — delta 8 === width, no overlap
+
+        expect(header(table).getColumnWindowStart()).toBe(11);
+        // Every rendered cell is touched — the full path, not the |delta| fast path.
+        expect(setFieldNameSpy).toHaveBeenCalledTimes(8);
+    });
+
+    it('49. a column-set change (_columnsDirty) takes the full path even when the numeric window looks like a slide', async () => {
+        const table = await wideTable(20);
+        render20At100(table, 550); // window 3-10, width 8
+
+        table.setColumnVisible('c1', false); // marks _columnsDirty; does not re-render yet
+
+        const setFieldNameSpy = vi.spyOn(HeaderCell.prototype, 'setFieldName');
+
+        header(table).setScrollX(650); // the resulting window numerically matches an ordinary one-column slide
+
+        expect(header(table).getColumnWindowStart()).toBe(4);
+        // A generic HeaderCell can serve any column, so this hide (width
+        // unchanged) never forces construction or disposal on its own — the
+        // full path's own signature is that it re-applies every rendered
+        // slot's state, not just the |delta| that numerically moved.
+        expect(setFieldNameSpy).toHaveBeenCalledTimes(8);
+    });
+});
+
+describe('Header column window — external sort-change subscription', () => {
+    // The fast-path slide above only refreshes the entering cells' sort
+    // indicators (see `_lastEnteredCells`), which is safe only because a
+    // survivor's own indicator is otherwise kept correct some other way. It
+    // is not kept correct by anything in `renderColumnWindow` itself — a
+    // sort applied any way other than a click on this header (a
+    // programmatic `AbstractStore.sort()`/`clearSort()`) needs its own
+    // subscription, mirroring the header's existing `'filterchange'`
+    // subscription, so these cases exercise that path directly rather than
+    // through a slide.
+    function storeOf(table: Table): MemoryStore {
+        return (table as unknown as { _store: MemoryStore })._store;
+    }
+
+    it('50. an out-of-band store sort (not a click on this header) updates a rendered cell with no reconcile in between', async () => {
+        const table = await wideTable(20);
+        render20At100(table, 550); // window 3-10 — c5 is rendered
+
+        await storeOf(table).sort('c5', 'asc');
+
+        const c5 = cells(table).find(c => c.getFieldName() === 'c5')!;
+        expect(c5.getSortState()?.state).toBe('asc');
+    });
+
+    it('51. that external sort change survives a later fast-path slide, since the survivor was already correct entering it', async () => {
+        const table = await wideTable(20);
+        render20At100(table, 550); // window 3-10
+        await storeOf(table).sort('c5', 'asc'); // c5 stays in the window across the coming slide
+
+        header(table).setScrollX(650); // window 4-11 — c5 survives (fast path)
+
+        const c5 = cells(table).find(c => c.getFieldName() === 'c5')!;
+        expect(c5.getSortState()?.state).toBe('asc');
+    });
+});
+
 // Offline coverage for plans/column-window-edge-stability.md's `## Expected
-// Behaviour` §D — `reconcileColumnCells`'s pass 3 no longer writes a
-// surviving cell's ARIA column index unconditionally on every reconcile;
-// only a retargeted cell, or every cell once `_columnsDirty` widens the
-// scope, gets the write.
+// Behaviour` §D — `reconcileColumnCells`'s full-reconcile pass 3 no longer
+// writes a surviving cell's ARIA column index unconditionally on every
+// reconcile; only a retargeted cell, or every cell once `_columnsDirty`
+// widens the scope, gets the write. An ordinary same-width slide now always
+// takes the fast-path slide above instead, which was already scoped this
+// way from its own introduction — so this case has to force the full path
+// (case 47's own technique: a scroll and a width change land in the same
+// tick) to still land on the code this fix touches.
 describe('Header column window — ARIA scoping', () => {
-    it('38. a surviving cell does not receive a redundant setColIndex call on a slide; a recycled one does', async () => {
+    it('52. a full-path reconcile with survivors does not rewrite a surviving cell\'s ARIA column index; an entering cell\'s is set', async () => {
         const table = await wideTable(20);
 
-        render20At100(table, 550); // window [3,10]: columns 3..10 at slots 0..7
+        render20At100(table, 550); // window 3-10, width 8
 
-        // The slide to [4,11] drops column 3 (slot 0) and adds column 11
-        // (new slot 7); columns 4..10 survive, shifting down one slot.
-        const departing = cells(table)[0]; // column 3 — recycled onto the entering column 11
-        const survivor  = cells(table)[1]; // column 4 — survives at the new slot 0
+        const survivor = cells(table).find(c => c.getFieldName() === 'c4')!; // stays in the window after the resize below
+        const survivorSpy = vi.spyOn(survivor.getAria(), 'setColIndex');
 
-        const departingSpy = vi.spyOn(departing.getAria(), 'setColIndex');
-        const survivorSpy  = vi.spyOn(survivor.getAria(), 'setColIndex');
+        (header(table) as unknown as { _scrollX: number })._scrollX = 650;
 
-        header(table).setScrollX(650); // window [4,11]
+        header(table).renderColumnWindow({
+            columnWidths:    Array(20).fill(100),
+            viewportWidth:   350, // widened viewport -> window 4-12, width 9 -> the full path, not a slide
+            columnHeight:    20,
+            parentRowHeight: 0,
+            filterRowHeight: 0,
+        });
 
+        expect(header(table).getColumnWindowStart()).toBe(4);
+        expect(cells(table).length).toBe(9);
+
+        // c4 held column index 5 before the resize and holds it after, so
+        // the full path's pass 3 must not rewrite it.
         expect(survivorSpy).not.toHaveBeenCalled();
-        expect(departingSpy).toHaveBeenCalledWith(12); // recycled onto column 11, slot 7
+        expect(survivor.getAria().getColIndex()).toBe(5);
 
-        // The recycled cell instance is the one now rendering column 11.
-        expect(cells(table)[cells(table).length - 1]).toBe(departing);
-        expect(departing.getFieldName()).toBe('c11');
-
-        // Case 6's assertion, re-run after the slide: every rendered cell
-        // still reports the correct index, survivors and recycled alike.
+        // Every rendered cell still reports the correct index regardless —
+        // case 6's assertion, re-run after a full-path reconcile with
+        // survivors present.
         const start = header(table).getColumnWindowStart();
 
         cells(table).forEach((cell, slot) => {

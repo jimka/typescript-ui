@@ -471,9 +471,13 @@ class HeaderCell extends DefaultCell {
     /**
      * Replaces the base header label. The required marker and sort arrow are
      * re-composed onto the new label automatically, so neither is lost.
-     * Re-applied on every header reconcile so a column config that overrides
-     * the label — or clears the override — takes effect on a surviving cell,
-     * mirroring {@link setRequired}.
+     * Re-applied on every full header reconcile — first render, a resize, a
+     * column-set change, or a jump — so a column config that overrides the
+     * label, or clears the override, takes effect on every rendered cell,
+     * mirroring {@link setRequired}. An ordinary same-width slide's fast
+     * path calls this only for the cell(s) actually entering the window; a
+     * surviving cell keeps whatever label it already had, since its own
+     * column and config are unchanged by the slide.
      *
      * @param text - The new base label.
      * @returns This header cell, for method chaining.

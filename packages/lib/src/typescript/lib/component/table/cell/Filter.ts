@@ -67,8 +67,10 @@ const NO_OPERAND_PLACEHOLDER = "No value needed";
  *
  * Stateless across a column-window recycle: {@link TableHeader} owns the
  * per-column {@link ColumnFilterState} map and re-applies it via
- * {@link FilterCell.setFilterState} on every reconcile, mirroring how
- * {@link HeaderCell} re-applies sort state to a recycled cell.
+ * {@link FilterCell.setFilterState} whenever a cell is (re)pointed at a
+ * column — every cell on a full reconcile, or just the entering cell(s) on
+ * an ordinary same-width slide's fast path — mirroring how {@link HeaderCell}
+ * re-applies sort state the same way.
  *
  * @category Components
  */
@@ -216,8 +218,11 @@ class FilterCell extends Cell<string | null> {
      * header's filter-row reconciler when recycling a cell whose column
      * left the window for one entering it. Closes an open clauses popover
      * only when the incoming name is a true recycle onto a different
-     * field — not on every resync pass, since the header re-applies
-     * `setFieldName` unconditionally on every reconcile.
+     * field — not on every resync pass, since a full reconcile re-applies
+     * `setFieldName` unconditionally to every cell, including a survivor
+     * whose field didn't actually change. An ordinary same-width slide's
+     * fast path only ever calls this for a cell genuinely entering a new
+     * column, so every fast-path call is a true recycle by construction.
      *
      * @param name - The new field name this cell reports on `"filterchange"`.
      * @returns This cell, for method chaining.

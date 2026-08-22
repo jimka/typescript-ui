@@ -56,6 +56,11 @@ const MENU_BUTTON_Z_INDEX = 1;
  */
 const COLUMN_FILTER_DEBOUNCE_MS = 200;
 
+/** Inclusive integer range `[a, b]` as an array, e.g. `range(2, 4)` -> `[2, 3, 4]`. */
+function range(a: number, b: number): number[] {
+    return Array.from({ length: b - a + 1 }, (_, i) => a + i);
+}
+
 // The header surface, themed via `--ts-ui-table-header-bg`. The value is
 // applied as BOTH a background-color and a background-image because the token
 // is a flat colour in some themes (e.g. ModernTheme) and a gradient in others
@@ -127,11 +132,24 @@ class TableHeader extends Component {
     private _windowFirst  : number = 0;
     private _scrollX      : number = 0;
     private _focusedCol   : number | null = null;
+    // A fast-path slide only refreshes the sort indicator on the cells that
+    // actually entered the window this tick (see `_lastEnteredCells`) — a
+    // survivor's own indicator is otherwise never touched again once
+    // rendered, so an external sort change (anything that isn't a click on
+    // this header, e.g. a programmatic `AbstractStore.sort()`) needs its own
+    // subscription to reach it, mirroring `_boundOnStoreFilterChange` below.
+    private _boundOnStoreSortChange: () => void = () => this.onStoreSortChange();
     // Set by `rebuildCells` so the next `renderColumnWindow` reconciles even
     // when the requested range happens to match the current one — a
     // column-set change can leave the range unchanged while the cells
     // behind it need to change.
     private _columnsDirty : boolean = true;
+    // Cells `reconcileColumnCells` repointed at a new column on its last fast-path
+    // slide, in no particular order. `undefined` means the last reconcile either
+    // made no change or took the full path, so `renderColumnWindow` must sweep
+    // every rendered cell instead of scoping to this list. Reset at the top of
+    // every `reconcileColumnCells` call.
+    private _lastEnteredCells: HeaderCell[] | undefined = undefined;
     private _geometry      : HeaderColumnGeometry = { columnWidths: [], viewportWidth: 0, columnHeight: 0, parentRowHeight: 0, filterRowHeight: 0 };
 
     // Filter-row state. `_filterStates` is keyed per store (rather than held
@@ -171,6 +189,7 @@ class TableHeader extends Component {
         this._model = model;
         this._store = store;
         this._store.on('filterchange', this._boundOnStoreFilterChange);
+        this._store.on('sortchange', this._boundOnStoreSortChange);
 
         // Three `Row` children — parent row at index 0, column row at index 1,
         // filter row at index 2. The parent row collapses to zero height when
@@ -288,8 +307,10 @@ class TableHeader extends Component {
      */
     setStore(store: AbstractStore): this {
         this._store.off('filterchange', this._boundOnStoreFilterChange);
+        this._store.off('sortchange', this._boundOnStoreSortChange);
         this._store = store;
         this._store.on('filterchange', this._boundOnStoreFilterChange);
+        this._store.on('sortchange', this._boundOnStoreSortChange);
 
         return this;
     }
@@ -691,7 +712,14 @@ class TableHeader extends Component {
      * Reconciles the column-row's rendered header cells to the
      * horizontally-visible column range `[firstCol, lastCol]`. A header
      * cell carries no per-kind identity — unlike the body's cell
-     * reconciler — so any leftover cell can serve any entering column:
+     * reconciler — so any leftover cell can serve any entering column.
+     *
+     * An ordinary same-width slide (see {@link reconcileColumnWindowSlide})
+     * takes a cheaper fast path instead: only the `|delta|` entering cells
+     * are repointed, and only their per-column state is re-applied — a
+     * surviving cell is left untouched rather than re-applied a second time
+     * with the same values. The full path below runs on every other route
+     * (first render, a resize, a jump, or a column-set change):
      *
      * 1. A column keeps the cell that already holds its field, matched by
      *    field name.
@@ -716,10 +744,24 @@ class TableHeader extends Component {
     private reconcileColumnCells(firstCol: number, lastCol: number): boolean {
         const row = this.getComponents()[1] as Row;
 
-        if (!this._columnsDirty
-            && firstCol === this._windowFirst
-            && lastCol === this._windowFirst + row.getComponents().length - 1) {
+        this._lastEnteredCells = undefined;
+
+        const prevFirst = this._windowFirst;
+        const prevWidth = row.getComponents().length;
+        const prevLast  = prevFirst + prevWidth - 1;
+
+        if (!this._columnsDirty && firstCol === prevFirst && lastCol === prevLast) {
             return false;
+        }
+
+        const width = lastCol - firstCol + 1;
+        const delta = firstCol - prevFirst;
+
+        if (!this._columnsDirty && width === prevWidth && delta !== 0 && Math.abs(delta) < width) {
+            this._lastEnteredCells = this.reconcileColumnWindowSlide(row, firstCol, lastCol, delta);
+            this._windowFirst = firstCol;
+
+            return true;
         }
 
         const columnMap = new Map(this._columns.map(c => [c.getField().getName(), c]));
@@ -847,6 +889,75 @@ class TableHeader extends Component {
         this._columnsDirty = false;
 
         return true;
+    }
+
+    /**
+     * Reconciles an ordinary same-width slide: repoints the `|delta|`
+     * departing cells directly onto the `|delta|` entering columns and leaves
+     * every surviving cell untouched. A header cell carries no per-column type
+     * identity — unlike a body `Cell` — so the departing edge is always exactly
+     * the right size and shape to serve the entering edge: no cache,
+     * construction, or disposal is needed, and no detach/reattach either, since
+     * every cell stays a mounted child throughout.
+     *
+     * @param row - The column row.
+     * @param firstCol - The first visible-column index to render, inclusive.
+     * @param lastCol - The last visible-column index to render, inclusive.
+     * @param delta - `firstCol` minus this header's previous window start.
+     *   Positive: window moved right. Negative: moved left. Never zero.
+     * @returns The cells repointed at a new column this call, for the caller to
+     *   scope `syncSortIndicators` to.
+     */
+    private reconcileColumnWindowSlide(row: Row, firstCol: number, lastCol: number, delta: number): HeaderCell[] {
+        const width    = lastCol - firstCol + 1;
+        const outCount = Math.abs(delta);
+
+        // Snapshot first — `sortComponents` below reorders the live array, and
+        // nothing here may observe that reordering mid-method.
+        const cells = [...row.getComponents()] as HeaderCell[];
+
+        const survivorCells = delta > 0 ? cells.slice(outCount) : cells.slice(0, width - outCount);
+        const enteringCells = delta > 0 ? cells.slice(0, outCount) : cells.slice(width - outCount);
+
+        const enteringCols = delta > 0
+            ? range(lastCol - outCount + 1, lastCol)
+            : range(firstCol, firstCol + outCount - 1);
+
+        enteringCols.forEach((col, i) => {
+            const cell   = enteringCells[i];
+            const field  = this._visibleFields[col];
+            const column = this._columns.find(c => c.getField().getName() === field.getName());
+
+            row.setLayoutConstraints(cell, { data: field });
+
+            cell.setFieldName(field.getName());
+            cell.setHeaderText(column?.getHeaderText() ?? field.getName());
+
+            const description = field.getDescription();
+
+            if (cell.getTooltip() !== description) {
+                cell.setTooltip(description);
+            }
+
+            const headerGlyph = column?.getHeaderGlyph() ?? null;
+
+            if (cell.getHeaderGlyph() !== headerGlyph) {
+                cell.setHeaderGlyph(headerGlyph);
+            }
+
+            cell.setBaseBackground(column?.getGroupColor() ?? null);
+            cell.setRequired(column?.isRequired() ?? false);
+            cell.getAria().setColIndex(col + 1);
+        });
+
+        const slotOf = new Map<HeaderCell, number>();
+
+        survivorCells.forEach((cell, i) => slotOf.set(cell, delta > 0 ? i : i + outCount));
+        enteringCells.forEach((cell, i) => slotOf.set(cell, delta > 0 ? width - outCount + i : i));
+
+        row.sortComponents((c1, c2) => (slotOf.get(c1 as HeaderCell) ?? 0) - (slotOf.get(c2 as HeaderCell) ?? 0));
+
+        return enteringCells;
     }
 
     /**
@@ -1012,25 +1123,47 @@ class TableHeader extends Component {
     }
 
     /**
-     * Refreshes every rendered header cell's sort arrow and priority badge
-     * to match the store's current `activeSorters` list.
+     * Refreshes a rendered header cell's sort arrow and priority badge to
+     * match the store's current `activeSorters` list.
+     *
+     * @param cells - The cells to refresh. Omit to sweep every rendered
+     *   cell — the default for first render, a resize, a column-set change,
+     *   or a jump. Passed explicitly only by {@link renderColumnWindow}'s
+     *   fast-path branch, to scope the sweep to the cells that actually
+     *   entered the window this tick: a survivor's own field never changes
+     *   across a slide, and its sort/priority state depends only on that
+     *   field plus `_store.getActiveSorters()`, which is also unchanged
+     *   mid-slide, so a survivor's indicator cannot go stale from a slide.
      */
-    private syncSortIndicators(): void {
-        const cells         = this.getColumns() as HeaderCell[];
+    private syncSortIndicators(cells?: HeaderCell[]): void {
         const sorters       = this._store.getActiveSorters();
         const fieldToSorter = new Map(sorters.map((s, i) => [s.field, { dir: s.dir, priority: i + 1 }]));
         const showPriority  = sorters.length > 1;
 
-        cells.forEach((cell, slot) => {
-            const field = this._visibleFields[this._windowFirst + slot];
-            const entry = field ? fieldToSorter.get(field.getName()) : undefined;
+        for (const cell of cells ?? (this.getColumns() as HeaderCell[])) {
+            const entry = fieldToSorter.get(cell.getFieldName());
 
             if (entry) {
                 cell.setSortState(entry.dir, showPriority ? entry.priority : null);
             } else {
                 cell.clearSortState();
             }
-        });
+        }
+    }
+
+    /**
+     * Registered on the store's `'sortchange'` event so a sort applied any
+     * way other than clicking this header — a programmatic
+     * `AbstractStore.sort()`/`clearSort()`, or {@link Table.setDisplayMode}
+     * swapping in a store whose sort already differs — still reaches every
+     * rendered cell. {@link handleSortClick} already does this for its own
+     * clicks; this covers every other path, including a survivor a
+     * fast-path slide would otherwise leave untouched (see
+     * {@link _lastEnteredCells}), by always sweeping the full rendered set
+     * rather than scoping to whatever the last reconcile touched.
+     */
+    private onStoreSortChange(): void {
+        this.syncSortIndicators();
     }
 
     /**
@@ -1202,11 +1335,14 @@ class TableHeader extends Component {
     /**
      * Reconciles the filter row's rendered cells to the horizontally-visible
      * column range `[firstCol, lastCol]`, mirroring
-     * {@link reconcileColumnCells}'s three-pass recycle algorithm and
-     * tracked by its own {@link _filterCellsDirty} flag and
-     * {@link _filterWindowFirst} offset. A column that is not filterable
-     * still gets a cell, so the row stays column-aligned; an empty operator
-     * list is what renders that cell blank.
+     * {@link reconcileColumnCells}'s three-pass recycle algorithm — and,
+     * for an ordinary same-width slide, its cheaper fast path too (see
+     * {@link reconcileFilterWindowSlide}), which repoints only the `|delta|`
+     * entering cells and leaves every survivor untouched — tracked by its
+     * own {@link _filterCellsDirty} flag and {@link _filterWindowFirst}
+     * offset. A column that is not filterable still gets a cell, so the row
+     * stays column-aligned; an empty operator list is what renders that
+     * cell blank.
      *
      * When {@link hasFilterRow} is `false` every cell is disposed and the
      * row stays empty, mirroring {@link rebuildParentCells}'s own
@@ -1234,10 +1370,22 @@ class TableHeader extends Component {
             return true;
         }
 
-        if (!this._filterCellsDirty
-            && firstCol === this._filterWindowFirst
-            && lastCol === this._filterWindowFirst + row.getComponents().length - 1) {
+        const prevFirst = this._filterWindowFirst;
+        const prevWidth = row.getComponents().length;
+        const prevLast  = prevFirst + prevWidth - 1;
+
+        if (!this._filterCellsDirty && firstCol === prevFirst && lastCol === prevLast) {
             return false;
+        }
+
+        const width = lastCol - firstCol + 1;
+        const delta = firstCol - prevFirst;
+
+        if (!this._filterCellsDirty && width === prevWidth && delta !== 0 && Math.abs(delta) < width) {
+            this.reconcileFilterWindowSlide(row, firstCol, lastCol, delta);
+            this._filterWindowFirst = firstCol;
+
+            return true;
         }
 
         const columnMap = new Map(this._columns.map(c => [c.getField().getName(), c]));
@@ -1337,6 +1485,64 @@ class TableHeader extends Component {
     }
 
     /**
+     * Reconciles an ordinary same-width slide for the filter row, mirroring
+     * {@link reconcileColumnWindowSlide}: repoints the `|delta|` departing
+     * cells directly onto the `|delta|` entering columns and leaves every
+     * surviving cell untouched. No return value is needed since
+     * {@link reconcileFilterCells} has no downstream scoped sweep to hand it
+     * to, unlike the column row's `syncSortIndicators`.
+     *
+     * @param row - The filter row.
+     * @param firstCol - The first visible-column index to render, inclusive.
+     * @param lastCol - The last visible-column index to render, inclusive.
+     * @param delta - `firstCol` minus this header's previous filter-window
+     *   start. Positive: window moved right. Negative: moved left. Never zero.
+     */
+    private reconcileFilterWindowSlide(row: Row, firstCol: number, lastCol: number, delta: number): void {
+        const width    = lastCol - firstCol + 1;
+        const outCount = Math.abs(delta);
+
+        const cells = [...row.getComponents()] as FilterCell[];
+
+        const survivorCells = delta > 0 ? cells.slice(outCount) : cells.slice(0, width - outCount);
+        const enteringCells = delta > 0 ? cells.slice(0, outCount) : cells.slice(width - outCount);
+
+        const enteringCols = delta > 0
+            ? range(lastCol - outCount + 1, lastCol)
+            : range(firstCol, firstCol + outCount - 1);
+
+        enteringCols.forEach((col, i) => {
+            const cell      = enteringCells[i];
+            const field     = this._visibleFields[col];
+            const column    = this._columns.find(c => c.getField().getName() === field.getName());
+            const operators = column?.isFilterable() ? columnFilterOperators(field.getType()) : [];
+
+            row.setLayoutConstraints(cell, { data: field });
+
+            cell.setFieldName(field.getName());
+            cell.setColumnLabel(column?.getHeaderText() ?? field.getName());
+            cell.setOperators(operators);
+
+            const target = this.filterTarget(field.getName());
+
+            cell.setNumericOnly(target !== null && columnFilterTakesNumericOperand(target));
+            cell.getAria().setColIndex(col + 1);
+
+            if (operators.length > 0) {
+                cell.setFilterState(this.filterState().get(field.getName())
+                    ?? { clauses: [{ operator: operators[0], text: '' }] });
+            }
+        });
+
+        const slotOf = new Map<FilterCell, number>();
+
+        survivorCells.forEach((cell, i) => slotOf.set(cell, delta > 0 ? i : i + outCount));
+        enteringCells.forEach((cell, i) => slotOf.set(cell, delta > 0 ? width - outCount + i : i));
+
+        row.sortComponents((c1, c2) => (slotOf.get(c1 as FilterCell) ?? 0) - (slotOf.get(c2 as FilterCell) ?? 0));
+    }
+
+    /**
      * Reconciles the rendered header cells to the horizontally-visible column
      * range and positions every rendered cell in all three rows.
      *
@@ -1355,7 +1561,7 @@ class TableHeader extends Component {
         const changed = this.reconcileColumnCells(win.firstCol, win.lastCol);
 
         if (changed) {
-            this.syncSortIndicators();
+            this.syncSortIndicators(this._lastEnteredCells);
             this.applyFocusedColumn();
         }
 
@@ -1531,6 +1737,7 @@ class TableHeader extends Component {
         }
 
         this._store.off('filterchange', this._boundOnStoreFilterChange);
+        this._store.off('sortchange', this._boundOnStoreSortChange);
         this._cellText.dispose();
 
         super.destructor();
