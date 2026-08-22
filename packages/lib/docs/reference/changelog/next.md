@@ -12,6 +12,18 @@ page resets to empty.
 `DOMSink` gains one required member: `clearDocumentSelection()`. Only a
 consumer implementing its own `DOMSink` is affected.
 
+## Changed
+
+### Table
+
+**Horizontal scrolling to either end of a wide table is no longer slower
+than scrolling through its middle.** The rendered column window keeps a
+constant width at every scroll offset, so reaching the first or last
+columns no longer forces every visible row to re-derive its whole cell
+set. A few more columns are rendered when the table is scrolled hard
+against either end — the same number it renders mid-scroll. No consumer
+action is needed.
+
 ## Fixed
 
 ### Table
