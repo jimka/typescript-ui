@@ -14,6 +14,15 @@ consumer implementing its own `DOMSink` is affected.
 
 ## Changed
 
+### Components
+
+- **The table header's column and filter rows now touch only the columns
+  entering or leaving the visible window during an ordinary horizontal
+  scroll**, instead of re-deriving every rendered cell's state on every
+  tick. A resize, a column-set change, or a jump larger than the visible
+  window still reconciles the whole window as before. No consumer action is
+  needed.
+
 ### Table
 
 **Horizontal scrolling to either end of a wide table is no longer slower
@@ -71,3 +80,13 @@ another cell.
   once (an unusual but reachable combination — press-and-hold on an
   already-selected toggle); `.pressed` now wins wherever the two declare
   the same property. No consumer action is needed.
+
+- **A sort applied any way other than clicking a column header — a
+  programmatic `AbstractStore.sort()`/`clearSort()`, or a display-mode swap
+  to a store whose sort already differs — could leave a header cell showing
+  a stale sort indicator, or none at all, until the next unrelated
+  reconcile happened to sweep it back into sync.** `TableHeader` had no
+  subscription to the store's `'sortchange'` event; the correct indicator
+  only ever appeared as an incidental side effect of some other full
+  reconcile. It now subscribes directly, mirroring the header's existing
+  `'filterchange'` subscription. No consumer action is needed.
