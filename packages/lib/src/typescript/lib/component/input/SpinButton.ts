@@ -10,7 +10,7 @@ import { callable } from "~/core/Callable.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { chevron_up } from "~/glyphs/solid/chevron_up.js";
 import { chevron_down } from "~/glyphs/solid/chevron_down.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * String-literal union of the events emitted by {@link SpinButton}. Extends
@@ -68,7 +68,7 @@ class SpinButton extends Button<SpinButtonOptions> {
     // class's constructor forwards as part of `subclassDefaults`, exposed at
     // the class level so `.SpinButton`'s rule carries only its own deviation
     // (the flush `border`/`borderRadius`/`insets`) from `.Button`'s.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultSpinButtonOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultSpinButtonOptions;
 
     private _listeners    : ListenerBag<SpinButtonEvent> = new ListenerBag<SpinButtonEvent>();
     private _repeat       : AutoRepeat;

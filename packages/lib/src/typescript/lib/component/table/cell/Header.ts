@@ -10,7 +10,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { StyleRule } from "~/core/StyleTarget.js";
-import type { ClassStyleDefaults, StateStyleRule } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StateStyleRule } from "~/core/ClassStyleRules.js";
 import type { ComponentOptions } from "~/core/Component.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -103,7 +103,7 @@ const _defaultHeaderCellTextOptions: Partial<SelectableTextOptions> = {
  * `## Architecture Decisions`.
  */
 class HeaderCellText extends SelectableText {
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = {
+    protected static readonly ownClassStyleDefaults: StyleBag = {
         userSelect: "none",
         font: {
             ...Text.ownClassStyleDefaults.font,

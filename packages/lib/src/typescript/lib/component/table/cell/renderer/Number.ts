@@ -5,7 +5,7 @@ import { ComponentOptions } from "~/core/Component.js";
 import { Text } from "~/component/input/Text.js";
 import { SelectableText, SelectableTextOptions } from "~/component/input/SelectableText.js";
 import { callable } from "~/core/Callable.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 const _defaultNumberRendererOptions: Partial<ComponentOptions> = { cursor: "text", userSelect: "text" };
 
@@ -35,7 +35,7 @@ const _defaultNumberRendererTextOptions: Partial<SelectableTextOptions> = {
  */
 class NumberRendererText extends SelectableText {
 
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = {
+    protected static readonly ownClassStyleDefaults: StyleBag = {
         font: {
             ...Text.ownClassStyleDefaults.font,
             textAlign: NUMBER_RENDERER_TEXT_ALIGN,

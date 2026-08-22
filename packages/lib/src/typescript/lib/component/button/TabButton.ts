@@ -10,7 +10,7 @@ import { StyleRule } from "~/core/StyleTarget.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
 import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link TabButton}.
@@ -79,7 +79,7 @@ class TabBusyIndicator extends Component {
     // at the class level, so `ensureClassStyleRule` can hoist `backgroundColor`
     // onto the shared `.TabBusyIndicator` rule instead of every instance
     // writing its own `#id` declaration.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultTabBusyIndicatorOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultTabBusyIndicatorOptions;
 
     constructor(options?: ComponentOptions, subclassDefaults?: Partial<ComponentOptions>) {
         ensureBusyIndicatorClassRule();
@@ -163,7 +163,7 @@ class TabButton extends ToggleButton {
     // class's constructor forwards as `subclassDefaults`, exposed at the
     // class level so `.TabButton`'s rule carries only its own deviation from
     // `.Button`'s.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultTabButtonOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultTabButtonOptions;
 
     // Whether this tab carries a close affordance. Construction-time only (the
     // close button is built or not when the tab is created), so it is set once

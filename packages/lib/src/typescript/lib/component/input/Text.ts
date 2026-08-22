@@ -7,7 +7,7 @@ import { Util } from "~/core/Util.js";
 import type { TextMetrics } from "~/core/Util.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link Text}.
@@ -115,7 +115,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
     // Own contribution to the hierarchy-aware class tier — see
     // plans/implemented/class-hierarchy-cascade.md. `_defaultTextOptions`
-    // carries no non-font `ClassStyleDefaults` field (no class in this file
+    // carries no non-font `StyleBag` field (no class in this file
     // defaults `cursor`/`userSelect`/etc.; `SelectableText`/`Link` set those
     // per-subclass instead), so this class's own contribution is the `font`
     // sub-bag alone — the same values `getClassStyleDefaults()` below
@@ -123,7 +123,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     // hierarchy walk's static resolution and the per-instance override must
     // agree for every participating class — see the plan's Internal
     // Structure).
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = {
+    protected static readonly ownClassStyleDefaults: StyleBag = {
         font: {
             fontFamily:     _defaultTextOptions.fontFamily     ?? null,
             fontKerning:    _defaultTextOptions.fontKerning    ?? null,
@@ -1492,7 +1492,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * Text-family class (Link, Label, Legend), none of which touch these
      * fields in their own defaults.
      */
-    protected getClassStyleDefaults(): ClassStyleDefaults {
+    protected getClassStyleDefaults(): StyleBag {
         return {
             ...super.getClassStyleDefaults(),
             font: Text.ownClassStyleDefaults.font,

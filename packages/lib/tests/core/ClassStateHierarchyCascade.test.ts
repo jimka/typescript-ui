@@ -31,7 +31,7 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { _ruleCacheHas } from '~/core/StyleTarget';
-import type { ClassStyleDefaults } from '~/core/ClassStyleRules';
+import type { StyleBag } from '~/core/ClassStyleRules';
 
 const DOM_CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -84,7 +84,7 @@ describe('Class-hierarchy state-tier cascade', () => {
         class ProbeRow1Base extends Component {
             protected static readonly ownClassStyleDefaults = row1Defaults;
 
-            protected static extractOn(_defaults: ClassStyleDefaults): Record<string, string | null> {
+            protected static extractOn(_defaults: StyleBag): Record<string, string | null> {
                 return { color: 'red' };
             }
 
@@ -115,7 +115,7 @@ describe('Class-hierarchy state-tier cascade', () => {
         class ProbeRow2Base extends Component {
             protected static readonly ownClassStyleDefaults = row2Defaults;
 
-            protected static extractOn(_defaults: ClassStyleDefaults): Record<string, string | null> {
+            protected static extractOn(_defaults: StyleBag): Record<string, string | null> {
                 return { color: 'red', backgroundColor: 'blue' };
             }
 
@@ -129,7 +129,7 @@ describe('Class-hierarchy state-tier cascade', () => {
             }
         }
         class ProbeRow2Mid extends ProbeRow2Base {
-            protected static override extractOn(_defaults: ClassStyleDefaults): Record<string, string | null> {
+            protected static override extractOn(_defaults: StyleBag): Record<string, string | null> {
                 return { color: 'red', backgroundColor: 'green' };
             }
         }
@@ -151,7 +151,7 @@ describe('Class-hierarchy state-tier cascade', () => {
         class ProbeRow3Base extends Component {
             protected static readonly ownClassStyleDefaults = row3Defaults;
 
-            protected static extractOn(_defaults: ClassStyleDefaults): Record<string, string | null> {
+            protected static extractOn(_defaults: StyleBag): Record<string, string | null> {
                 return { color: 'red', backgroundColor: 'blue' };
             }
 
@@ -165,13 +165,13 @@ describe('Class-hierarchy state-tier cascade', () => {
             }
         }
         class ProbeRow3Mid extends ProbeRow3Base {
-            protected static override extractOn(_defaults: ClassStyleDefaults): Record<string, string | null> {
+            protected static override extractOn(_defaults: StyleBag): Record<string, string | null> {
                 return { color: 'red', backgroundColor: 'green' };
             }
         }
         class ProbeRow3Leaf extends ProbeRow3Mid {
             // Same bag as Mid's — no new deviation.
-            protected static override extractOn(_defaults: ClassStyleDefaults): Record<string, string | null> {
+            protected static override extractOn(_defaults: StyleBag): Record<string, string | null> {
                 return { color: 'red', backgroundColor: 'green' };
             }
         }
@@ -191,7 +191,7 @@ describe('Class-hierarchy state-tier cascade', () => {
         class ProbeRow4Base extends Component {
             protected static readonly ownClassStyleDefaults = row4Defaults;
 
-            protected static extractOn(_defaults: ClassStyleDefaults): Record<string, string | null> {
+            protected static extractOn(_defaults: StyleBag): Record<string, string | null> {
                 return { color: 'red', backgroundColor: 'blue' };
             }
 
@@ -207,7 +207,7 @@ describe('Class-hierarchy state-tier cascade', () => {
         // No own `extractOn` — inherits Base's, so `hasOwnProperty` is false.
         class ProbeRow4Mid extends ProbeRow4Base {}
         class ProbeRow4Leaf extends ProbeRow4Mid {
-            protected static override extractOn(_defaults: ClassStyleDefaults): Record<string, string | null> {
+            protected static override extractOn(_defaults: StyleBag): Record<string, string | null> {
                 return { color: 'red', backgroundColor: 'purple' };
             }
         }
@@ -231,7 +231,7 @@ describe('Class-hierarchy state-tier cascade', () => {
         class ProbeRow5Base extends Component {
             protected static readonly ownClassStyleDefaults = row5Defaults;
 
-            protected static extractOn(_defaults: ClassStyleDefaults): Record<string, string | null> {
+            protected static extractOn(_defaults: StyleBag): Record<string, string | null> {
                 return { color: 'red', backgroundColor: 'blue' };
             }
 
@@ -245,7 +245,7 @@ describe('Class-hierarchy state-tier cascade', () => {
             }
         }
         class ProbeRow5Mid extends ProbeRow5Base {
-            protected static override extractOn(_defaults: ClassStyleDefaults): Record<string, string | null> {
+            protected static override extractOn(_defaults: StyleBag): Record<string, string | null> {
                 return { color: 'red', backgroundColor: 'green' };
             }
         }
@@ -270,7 +270,7 @@ describe('Class-hierarchy state-tier cascade', () => {
         class ProbeRow6Base extends Component {
             protected static readonly ownClassStyleDefaults = row6Defaults;
 
-            protected static extractOn(_defaults: ClassStyleDefaults): Record<string, string | null> {
+            protected static extractOn(_defaults: StyleBag): Record<string, string | null> {
                 return { color: 'red' };
             }
 
@@ -294,7 +294,7 @@ describe('Class-hierarchy state-tier cascade', () => {
 
     it('case 7: a class with no ownClassStyleDefaults anywhere in its chain falls back to today\'s flat behaviour, even when an extractor name is passed', () => {
         class ProbeRow7 extends Component {
-            protected static extractOn(_defaults: ClassStyleDefaults): Record<string, string | null> {
+            protected static extractOn(_defaults: StyleBag): Record<string, string | null> {
                 return { color: 'red' };
             }
 

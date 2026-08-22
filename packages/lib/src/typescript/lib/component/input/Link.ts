@@ -5,7 +5,7 @@ import { Event } from "~/core/Event.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import type { ClickListener } from "~/component/button/Button.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * The link foreground colour. `--ts-ui-link-color` lets a theme retint every
@@ -150,7 +150,7 @@ class Link extends Text<LinkOptions> {
     // it needs its own registration for the hierarchy walk to see that
     // deviation; without it, `Link` would silently pass through to `Text`'s
     // shared rule and lose it.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultLinkOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultLinkOptions;
 
     // No `_interactive` backing field: `_options` is the cache. A field
     // initializer here would run after super() and clobber the value the

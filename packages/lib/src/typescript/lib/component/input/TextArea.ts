@@ -6,7 +6,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link TextArea}.
@@ -61,7 +61,7 @@ class TextArea extends TextInput<TextAreaOptions> {
     // `TextInput`'s shared rule and lose them — the `overflow: "auto"`
     // override in particular is what makes the native `<textarea>` scroll
     // its own content instead of clipping it.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultTextAreaOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultTextAreaOptions;
 
     /**
      * @param text - Initial text content.

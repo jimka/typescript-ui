@@ -11,7 +11,7 @@ import { Tooltip } from "~/overlay/Tooltip.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
-import type { ClassStyleDefaults, StateStyleRule } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StateStyleRule } from "~/core/ClassStyleRules.js";
 import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
@@ -263,7 +263,7 @@ const _defaultButtonLabelTextOptions: Partial<TextOptions> = {
  * and stay fixed for the lifetime of the instance.
  */
 class ButtonLabelText extends Text {
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = {
+    protected static readonly ownClassStyleDefaults: StyleBag = {
         font: {
             ...Text.ownClassStyleDefaults.font,
             textAlign:  "center",
@@ -315,7 +315,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     // class's own defaults resolve from, exposed at the class level so
     // `ToggleButton`/`SpinButton`/… that add nothing of their own share
     // `.Button`'s rule instead of each repeating it.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultButtonOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultButtonOptions;
 
     private _text!:    Text;
     /**

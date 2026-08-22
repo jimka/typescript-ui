@@ -21,7 +21,7 @@ import { ElementAttributes } from "~/core/ElementAttributes.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
-import { COMPONENT_CLASS, ensureClassStyleRule, ensureStyleGroupRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, styleGroupClassSuffix, type ClassStyleDefaults, StateStyleRule } from "~/core/ClassStyleRules.js";
+import { COMPONENT_CLASS, ensureClassStyleRule, ensureStyleGroupRule, getStyleClassChain, registerStyleChainRoot, styleGroupClassSuffix, type StyleBag, type StyleLayer, StateStyleRule } from "~/core/ClassStyleRules.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
 import { measureBorderWidths } from "~/core/BorderWidths.js";
 
@@ -293,19 +293,20 @@ function formatSizeAttr(width: number, height: number): string {
 }
 
 /**
- * The declarations a specific instance's own resolved hoistable style
- * produces — read through the same per-field getters a caller would use
- * (`getBackgroundColor()`, `getBorder()`, ...), then passed through
- * `resolveDeclarations` exactly as `getClassStyleDefaults()`'s class-only
- * bag is. Seeds `ensureStyleGroupRule` with what *this instance* would
- * actually render, not the class's plain default — see
+ * A specific instance's own resolved hoistable style, authored — read
+ * through the same per-field getters a caller would use
+ * (`getBackgroundColor()`, `getBorder()`, ...), in the same `StyleBag` shape
+ * `getClassStyleDefaults()` returns for the class-only bag.
+ * `ensureStyleGroupRule` resolves this through `resolveDeclarations` itself,
+ * so this seeds it with what *this instance* would actually render, not the
+ * class's plain default — see
  * plans/implemented/shared-instance-style-groups.md. Scoped to the same
- * fields the class tier hoists via `ClassStyleDefaults`, minus
+ * fields the class tier hoists via `StyleBag`, minus
  * `backgroundImage`/`borderRadius`/`visible`/`displayed`/`font`, which a
  * `styleGroup` does not cover.
  */
-function resolveInstanceStyleDeclarations(component: Component): Record<string, string | null> {
-    return resolveDeclarations({
+function resolveInstanceStyleDeclarations(component: Component): StyleBag {
+    return {
         backgroundColor: component.getBackgroundColor(),
         border:          component.getBorder(),
         cursor:          component.getCursor(),
@@ -316,7 +317,7 @@ function resolveInstanceStyleDeclarations(component: Component): Record<string, 
         minSize:         component.getMinSizeConstraint(),
         maxSize:         component.getMaxSizeConstraint(),
         overflow:        component.getOverflow(),
-    });
+    };
 }
 
 /**
@@ -488,15 +489,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _styleRule            : StyleRule    = new StyleRule({ scope: "component", name: this.getId(), materialize: false });
     private _inlineStyle          : InlineStyle  = new InlineStyle();
     // Per-render cache of what the framework and class rules already deliver
-    // for this concrete class — the merged bag `ensureClassStyleRule` returns.
+    // for this concrete class — the layer `ensureClassStyleRule` returns.
     // Set at the top of `applyStyle` and consulted by `writeRuleDeclaration`
     // so each phase can skip a write already served by a lower tier.
-    private _inheritedStyleBag    : Readonly<Record<string, string | null>> | null = null;
+    private _classLayer           : StyleLayer | null = null;
     // Per-render cache of what this instance's `styleGroup` (if any) already
-    // delivers — the bag `ensureStyleGroupRule` returns, or `null` when no
-    // group is set. Checked by `matchesClassStyle` ahead of
-    // `_inheritedStyleBag`; see plans/implemented/shared-instance-style-groups.md.
-    private _styleGroupBag        : Readonly<Record<string, string | null>> | null = null;
+    // delivers — the layer `ensureStyleGroupRule` returns, or `null` when no
+    // group is set. Scanned by `styleLayers()` ahead of `_classLayer`; see
+    // plans/implemented/shared-instance-style-groups.md.
+    private _groupLayer           : StyleLayer | null = null;
     // Optional clip frame: a presentational wrapper element interposed between
     // this component's element and its DOM parent, sized to a cell rect with
     // `overflow: hidden` so a layout manager can visually clip an element that
@@ -4836,13 +4837,32 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         return this;
     }
 
-    /** True when the framework, class, or group rule already delivers `value` for `key`. */
+    /**
+     * The component's style layers, highest-priority first. Stage 1 holds
+     * exactly the group and class tiers (in that order) — the same two this
+     * mechanism generalises; later stages push further layers above them.
+     */
+    protected styleLayers(): ReadonlyArray<StyleLayer> {
+        const layers: StyleLayer[] = [];
+
+        if (this._groupLayer) layers.push(this._groupLayer);
+        if (this._classLayer) layers.push(this._classLayer);
+
+        return layers;
+    }
+
+    /** True when a lower-tier layer already delivers `value` for `key` — the
+     *  first layer (highest priority first) whose resolved bag *contains*
+     *  `key` decides; a layer that doesn't declare `key` is skipped, not
+     *  treated as a mismatch. */
     protected matchesClassStyle(key: string, value: string | null): boolean {
-        if (this._styleGroupBag !== null && this._styleGroupBag[key] === value) {
-            return true;
+        for (const layer of this.styleLayers()) {
+            if (key in layer.resolved) {
+                return layer.resolved[key] === value;
+            }
         }
 
-        return this._inheritedStyleBag !== null && this._inheritedStyleBag[key] === value;
+        return false;
     }
 
     /**
@@ -4956,7 +4976,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Runtime-setter form of `reconcileRuleDeclaration`. Routes through
      * `setElementCSSRules` so the whole bag commits in one flush and the
      * `autoCommitStyle` batching gate still applies. Inert before the first
-     * render, when `_inheritedStyleBag` is still null.
+     * render, when `_classLayer` is still null.
      */
     protected setReconciledCSSRules(values: Style): this {
         const isolated = this.isRestingChromeIsolated();
@@ -4989,7 +5009,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * (e.g. `Text`, whose `fontSize`/`lineHeight` resolve through private
      * derived fields).
      */
-    protected getClassStyleDefaults(): ClassStyleDefaults {
+    protected getClassStyleDefaults(): StyleBag {
         return this._defaultOptions;
     }
 
@@ -5016,10 +5036,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // Resolve the declarations this class inherits from the framework and
         // class rules before the phases run, so each phase can skip one it
         // already gets from a lower tier.
-        this._inheritedStyleBag = ensureClassStyleRule(this.constructor, this.getClassStyleDefaults());
+        this._classLayer = ensureClassStyleRule(this.constructor, this.getClassStyleDefaults());
 
         const group = this.getStyleGroup();
-        this._styleGroupBag = group
+        this._groupLayer = group
             ? ensureStyleGroupRule(this.constructor, group, resolveInstanceStyleDeclarations(this))
             : null;
 

@@ -35,7 +35,7 @@ const FRAMEWORK_SELECTOR = ":where(." + COMPONENT_CLASS + ")";
  * `ComponentOptions` so this module does not import from `core/Component.ts`
  * and no import cycle forms.
  */
-export interface ClassStyleDefaults {
+export interface StyleBag {
     visible?:         boolean | null;
     displayed?:       boolean;
     minSize?:         { width: number; height: number } | null;
@@ -45,7 +45,7 @@ export interface ClassStyleDefaults {
     userSelect?:      string | null;
     outline?:         string | null;
     foregroundColor?: string | null;
-    font?:            TextClassStyleDefaults | null;
+    font?:            TextStyleBag | null;
     backgroundColor?: string | null;
     backgroundImage?: string | null;
     shadow?:          string | null;
@@ -55,7 +55,7 @@ export interface ClassStyleDefaults {
 
 /**
  * The class-uniform font/text declarations a `Text`-family class produces
- * from its own defaults alone. Namespaced under `ClassStyleDefaults.font`
+ * from its own defaults alone. Namespaced under `StyleBag.font`
  * rather than added as flat keys: `Glyph` (component/display/Glyph.ts),
  * `TabBar` (component/container/TabBar.ts), and `TextInput`
  * (component/input/TextInput.ts) each declare their own, differently-typed
@@ -65,7 +65,7 @@ export interface ClassStyleDefaults {
  * `_defaultOptions` through verbatim for every class that doesn't override
  * it. Only `Text.getClassStyleDefaults()` ever sets `font`.
  */
-interface TextClassStyleDefaults {
+export interface TextStyleBag {
     fontFamily?:     string | null;
     fontKerning?:    string | null;
     fontSize?:       string | null;   // CSS-ready value, e.g. "var(--ts-ui-font-size, 14px)"
@@ -80,10 +80,10 @@ interface TextClassStyleDefaults {
     textOverflow?:   string | null;   // pre-resolved from `truncate`; see Text.getClassStyleDefaults
 }
 
-type ClassStyleBag = Readonly<Record<string, string | null>>;
+export type ResolvedStyleBag = Readonly<Record<string, string | null>>;
 
 // The fifteen hoistable keys at the value Component's own defaults resolve to.
-const FRAMEWORK_DECLARATIONS: ClassStyleBag = Object.freeze({
+const FRAMEWORK_DECLARATIONS: ResolvedStyleBag = Object.freeze({
     boxSizing:  "border-box",
     position:   Position.ABSOLUTE,
     display:    "block",
@@ -101,7 +101,7 @@ const FRAMEWORK_DECLARATIONS: ClassStyleBag = Object.freeze({
     overflowY:  "hidden",
 });
 
-// The `ClassStyleDefaults` input that reproduces `FRAMEWORK_DECLARATIONS` via
+// The `StyleBag` input that reproduces `FRAMEWORK_DECLARATIONS` via
 // `resolveDeclarations` — i.e. `Component`'s own true base defaults, used as
 // the hierarchy walk's base case (the "ancestor" above `Component` itself).
 // Every hoistable field's absent-value fallback inside `resolveDeclarations`
@@ -113,7 +113,7 @@ const FRAMEWORK_DECLARATIONS: ClassStyleBag = Object.freeze({
 // them to the framework baseline instead of spuriously "deviating" on them,
 // matching what an un-migrated (flat) class's own `_defaultOptions` merge
 // chain already produces automatically via `Component`'s real base bag.
-const FRAMEWORK_DEFAULTS: ClassStyleDefaults = Object.freeze({
+const FRAMEWORK_DEFAULTS: StyleBag = Object.freeze({
     minSize:  { width: 0, height: 0 },
     overflow: "hidden",
 });
@@ -121,7 +121,7 @@ const FRAMEWORK_DEFAULTS: ClassStyleDefaults = Object.freeze({
 // Per-class inherited declarations: the framework body with this class's
 // deviations merged over it. A `null` entry means the class opted out (its
 // selector is owned by a different constructor, or it is anonymous).
-const _bags: Map<Function, ClassStyleBag | null> = new Map();
+const _bags: Map<Function, StyleLayer | null> = new Map();
 
 // Selector owner, so a name shared by two classes is detected.
 const _owners: Map<string, Function> = new Map();
@@ -170,8 +170,20 @@ function ensureFrameworkStyleRule(): void {
  * *instance's* own hoistable style for `ensureStyleGroupRule`, instead of a
  * class's plain `getClassStyleDefaults()` bag — see
  * plans/implemented/shared-instance-style-groups.md.
+ *
+ * Deliberately not built on {@link STYLE_WRITERS} / {@link
+ * resolvePartialDeclarations}: this function's absent-key fallbacks and
+ * truthy gates are the class-tier defaulting rules (a static class default
+ * has no "explicit clear" concept, so a `null` field and an omitted one must
+ * resolve identically here), while `resolvePartialDeclarations` is
+ * presence-driven so the instance/state layers can tell `clearX()` apart
+ * from never-set. Routing this body through the presence-driven table would
+ * turn an explicit `null` sub-field (e.g. `Text`'s `font` bag, which sets
+ * several optional sub-keys to `?? null`) into a spurious removal
+ * declaration instead of the absent-key silence this function's callers
+ * (and its byte-identical-output regression tests) require.
  */
-export function resolveDeclarations(defaults: ClassStyleDefaults): Record<string, string | null> {
+export function resolveDeclarations(defaults: StyleBag): Record<string, string | null> {
     const minSize  = defaults.minSize  ?? null;
     const maxSize  = defaults.maxSize  ?? null;
     const overflow = defaults.overflow ?? null;
@@ -231,8 +243,104 @@ export function resolveDeclarations(defaults: ClassStyleDefaults): Record<string
     return declarations;
 }
 
+/**
+ * One CSS-declaration writer per `StyleBag` key, keyed on the authored value
+ * as-is — including `null`, which every writer maps to a removal declaration
+ * for its own CSS key(s) (not a fallback), since this table backs
+ * {@link resolvePartialDeclarations}, the presence-driven resolver the
+ * instance and state layers use to support `clearX()` semantics. This is
+ * deliberately a different contract from `resolveDeclarations` below, whose
+ * absent-key fallbacks and truthy gates encode the *class-tier* defaulting
+ * rules (no "explicit clear" concept exists for a static class default) —
+ * see `resolveDeclarations`'s own comment for why it does not build on this
+ * table.
+ */
+const STYLE_WRITERS: { [K in keyof StyleBag]-?: (v: StyleBag[K]) => Record<string, string | null> } = {
+    visible:         (v) => ({ visibility: v === false ? "hidden" : "inherit" }),
+    displayed:       (v) => ({ display: v === false ? "none" : "block" }),
+    minSize:         (v) => ({ minWidth: v ? v.width + "px" : null, minHeight: v ? v.height + "px" : null }),
+    maxSize:         (v) => ({
+        maxWidth:  v ? (isUnbounded(v.width)  ? "none" : v.width  + "px") : null,
+        maxHeight: v ? (isUnbounded(v.height) ? "none" : v.height + "px") : null,
+    }),
+    overflow:        (v) => ({ overflowX: v ?? null, overflowY: v ?? null }),
+    cursor:          (v) => ({ cursor: v ?? null }),
+    userSelect:      (v) => ({ userSelect: v ?? null }),
+    outline:         (v) => ({ outline: v ?? null }),
+    foregroundColor: (v) => ({ color: v ?? null }),
+    font:            (v) => resolvePartialFontDeclarations(v),
+    backgroundColor: (v) => ({ backgroundColor: v ?? null }),
+    backgroundImage: (v) => ({ backgroundImage: v ?? null }),
+    shadow:          (v) => ({ boxShadow: v ?? null }),
+    borderRadius:    (v) => ({ borderRadius: v ?? null }),
+    border:          (v) => v
+        ? borderToStyle(typeof v === "string" ? { border: v } : v)
+        : { borderTop: null, borderRight: null, borderBottom: null, borderLeft: null },
+};
+
+/** One CSS-declaration writer per `TextStyleBag` key — the `font` sub-bag's
+ *  own {@link STYLE_WRITERS} table, same presence-driven contract. */
+const FONT_WRITERS: { [K in keyof TextStyleBag]-?: (v: TextStyleBag[K]) => Record<string, string | null> } = {
+    fontFamily:     (v) => ({ fontFamily:     v ?? null }),
+    fontKerning:    (v) => ({ fontKerning:    v ?? null }),
+    fontSize:       (v) => ({ fontSize:       v ?? null }),
+    fontSizeAdjust: (v) => ({ fontSizeAdjust: v ?? null }),
+    fontStretch:    (v) => ({ fontStretch:    v ?? null }),
+    fontStyle:      (v) => ({ fontStyle:      v ?? null }),
+    fontVariant:    (v) => ({ fontVariant:    v ?? null }),
+    fontWeight:     (v) => ({ fontWeight:     v ?? null }),
+    textAlign:      (v) => ({ textAlign:      v ?? null }),
+    textShadow:     (v) => ({ textShadow:     v ?? null }),
+    lineHeight:     (v) => ({ lineHeight:     v ?? null }),
+    textOverflow:   (v) => ({ textOverflow:   v ?? null }),
+};
+
+/** Only the sub-keys `font` itself declares — the `font`-nested sibling of
+ *  {@link resolvePartialDeclarations}. */
+function resolvePartialFontDeclarations(font: TextStyleBag | null | undefined): Record<string, string | null> {
+    const out: Record<string, string | null> = {};
+
+    if (!font) {
+        return out;
+    }
+
+    for (const key of Object.keys(font) as (keyof TextStyleBag)[]) {
+        // `key` correlates `FONT_WRITERS[key]`'s parameter with `font[key]`'s
+        // value by loop construction; TS cannot prove that correlation across
+        // a union of function types, so the writer is called through an
+        // `unknown`-parameter view rather than widening `FONT_WRITERS`' own
+        // (precisely-typed) signature.
+        const writer = FONT_WRITERS[key] as (v: unknown) => Record<string, string | null>;
+
+        Object.assign(out, writer(font[key]));
+    }
+
+    return out;
+}
+
+/**
+ * Only the keys `bag` actually declares (own-property presence, not
+ * truthiness — a key present with value `null` resolves to a removal
+ * declaration, distinct from a key absent entirely, which resolves to
+ * nothing at all). Used by the instance and state layers, where that
+ * distinction is exactly `clearX()` vs. never-set.
+ */
+export function resolvePartialDeclarations(bag: StyleBag): Record<string, string | null> {
+    const out: Record<string, string | null> = {};
+
+    for (const key of Object.keys(bag) as (keyof StyleBag)[]) {
+        // See the matching comment in `resolvePartialFontDeclarations` — same
+        // correlated-union limitation.
+        const writer = STYLE_WRITERS[key] as (v: unknown) => Record<string, string | null>;
+
+        Object.assign(out, writer(bag[key]));
+    }
+
+    return out;
+}
+
 /** The subset of `resolveDeclarations` that differs from the framework rule. */
-function classDeviations(defaults: ClassStyleDefaults): Record<string, string | null> {
+function classDeviations(defaults: StyleBag): Record<string, string | null> {
     const resolved = resolveDeclarations(defaults);
     const out: Record<string, string | null> = {};
 
@@ -247,7 +355,7 @@ function classDeviations(defaults: ClassStyleDefaults): Record<string, string | 
 
 /**
  * A class's own, subclass-independent contribution to the hoistable style
- * defaults — the same shape as `ClassStyleDefaults`, but declared once per
+ * defaults — the same shape as `StyleBag`, but declared once per
  * class (not resolved per instance). A class that adds no hoistable default
  * of its own declares no field at all; `Component` declares none.
  *
@@ -257,7 +365,7 @@ function classDeviations(defaults: ClassStyleDefaults): Record<string, string | 
  * plans/implemented/class-hierarchy-cascade.md's Architecture Decisions.
  */
 interface ClassStyleLevelHost {
-    ownClassStyleDefaults?: ClassStyleDefaults;
+    ownClassStyleDefaults?: StyleBag;
 }
 
 /**
@@ -286,17 +394,29 @@ function canonicalCtor(ctor: Function): Function {
     return proto?.constructor ?? ctor;
 }
 
+/**
+ * One layer of a component's style stack: an authored bag plus the CSS
+ * declarations it resolves to. Every tier — instance, meta-class, group,
+ * class — shares this shape; {@link ResolvedClassLevel} is the class tier's
+ * own instance of it (same two fields, its own JSDoc for that tier's
+ * specifics).
+ */
+export interface StyleLayer {
+    readonly authored: StyleBag;
+    readonly resolved: ResolvedStyleBag;
+}
+
 /** This class's fully-merged declaration bag plus the resolved CSS it
- *  produces — see {@link resolveClassLevel}. */
+ *  produces — see {@link resolveClassLevel}. Structurally a {@link StyleLayer}. */
 interface ResolvedClassLevel {
-    /** This class's fully-merged `ClassStyleDefaults` — its own contribution
+    /** This class's fully-merged `StyleBag` — its own contribution
      *  layered onto every ancestor's, in the same shape `resolveDeclarations`
      *  consumes. */
-    defaults: ClassStyleDefaults;
-    /** `resolveDeclarations(defaults)` — this class's full resolved CSS bag,
+    authored: StyleBag;
+    /** `resolveDeclarations(authored)` — this class's full resolved CSS bag,
      *  used both to diff the next level down and, at the leaf, as the
-     *  instance-comparison bag `_inheritedStyleBag` needs. */
-    resolved: ClassStyleBag;
+     *  instance-comparison bag `_classLayer` needs. */
+    resolved: ResolvedStyleBag;
 }
 
 // (ctor -> resolved level). Memoizes the hierarchy walk so a deep chain is
@@ -312,7 +432,7 @@ const _levels: Map<Function, ResolvedClassLevel> = new Map();
  * declares its parent's fields all over again — exactly wrong for a delta
  * computation.
  */
-function ownDefaultsOf(ctor: Function): ClassStyleDefaults | null {
+function ownDefaultsOf(ctor: Function): StyleBag | null {
     return Object.prototype.hasOwnProperty.call(ctor, "ownClassStyleDefaults")
         ? ((ctor as unknown as ClassStyleLevelHost).ownClassStyleDefaults ?? null)
         : null;
@@ -321,13 +441,13 @@ function ownDefaultsOf(ctor: Function): ClassStyleDefaults | null {
 /** Shallow merge — a subclass that redeclares `border` or `font` replaces
  *  the whole sub-value, matching how `_default<Name>Options` bags already
  *  merge through `subclassDefaults` object-spread forwarding. */
-function mergeClassStyleDefaults(parent: ClassStyleDefaults, child: ClassStyleDefaults): ClassStyleDefaults {
+function mergeClassStyleDefaults(parent: StyleBag, child: StyleBag): StyleBag {
     return { ...parent, ...child };
 }
 
 /** The subset of `resolved` that differs from `against` — `classDeviations`,
  *  generalised to diff against any resolved bag, not only the framework one. */
-function deviationsFrom(resolved: ClassStyleBag, against: ClassStyleBag): Record<string, string | null> {
+function deviationsFrom(resolved: ResolvedStyleBag, against: ResolvedStyleBag): Record<string, string | null> {
     const out: Record<string, string | null> = {};
 
     for (const key of Object.keys(resolved)) {
@@ -392,7 +512,7 @@ function resolveClassLevel(rawCtor: Function): ResolvedClassLevel {
     const parentCtor = rawParentCtor ? canonicalCtor(rawParentCtor) : null;
     const parent = (typeof parentCtor === "function" && parentCtor.name)
         ? resolveClassLevel(parentCtor)
-        : { defaults: FRAMEWORK_DEFAULTS, resolved: FRAMEWORK_DECLARATIONS };
+        : { authored: FRAMEWORK_DEFAULTS, resolved: FRAMEWORK_DECLARATIONS };
 
     const name    = ctor.name;
     const owner   = _owners.get(name);
@@ -401,7 +521,7 @@ function resolveClassLevel(rawCtor: Function): ResolvedClassLevel {
     const own = collides ? null : ownDefaultsOf(ctor);
 
     if (!own) {
-        const level = { defaults: parent.defaults, resolved: parent.resolved };
+        const level = { authored: parent.authored, resolved: parent.resolved };
 
         _levels.set(ctor, level);
 
@@ -415,15 +535,15 @@ function resolveClassLevel(rawCtor: Function): ResolvedClassLevel {
     ensureFrameworkStyleRule();
     _owners.set(name, ctor);
 
-    const defaults   = mergeClassStyleDefaults(parent.defaults, own);
-    const resolved   = resolveDeclarations(defaults);
+    const authored   = mergeClassStyleDefaults(parent.authored, own);
+    const resolved   = resolveDeclarations(authored);
     const deviations = deviationsFrom(resolved, parent.resolved);
 
     if (Object.keys(deviations).length > 0) {
         new StyleRule({ scope: "class", name, styles: deviations });
     }
 
-    const level = Object.freeze({ defaults, resolved: Object.freeze(resolved) });
+    const level = Object.freeze({ authored, resolved: Object.freeze(resolved) });
 
     _levels.set(ctor, level);
 
@@ -433,7 +553,7 @@ function resolveClassLevel(rawCtor: Function): ResolvedClassLevel {
 /** A class's own resolved declarations for one state suffix — see
  *  {@link resolveClassStateLevel}. */
 interface ResolvedClassStateLevel {
-    resolved: ClassStyleBag;
+    resolved: ResolvedStyleBag;
 }
 
 /** A `protected static` extraction method's shape — e.g.
@@ -441,7 +561,7 @@ interface ResolvedClassStateLevel {
  *  (never an instance) so the hierarchy walk can call it against any
  *  ancestor's own `ownClassStyleDefaults`, not just a live instance's
  *  merged `_defaultOptions`. */
-type StaticExtractor = (defaults: ClassStyleDefaults) => Record<string, string | null>;
+type StaticExtractor = (defaults: StyleBag) => Record<string, string | null>;
 
 // (ctor -> (suffix -> resolved level)). State-tier sibling of `_levels`,
 // memoizing `resolveClassStateLevel`'s walk per class *and* per suffix,
@@ -502,7 +622,7 @@ function resolveClassStateLevel(
     const parentCtor = rawParentCtor ? canonicalCtor(rawParentCtor) : null;
     const parent = (typeof parentCtor === "function" && parentCtor.name)
         ? resolveClassStateLevel(parentCtor, suffix, extractorMethodName)
-        : { resolved: Object.freeze({}) as ClassStyleBag };
+        : { resolved: Object.freeze({}) as ResolvedStyleBag };
 
     const name    = ctor.name;
     const owner   = _owners.get(name);
@@ -588,8 +708,8 @@ function resolveClassStateLevel(
  */
 export function ensureClassStyleRule(
     rawCtor: Function,
-    defaults: ClassStyleDefaults,
-): ClassStyleBag | null {
+    defaults: StyleBag,
+): StyleLayer | null {
     const ctor = canonicalCtor(rawCtor);
     const existing = _bags.get(ctor);
 
@@ -621,17 +741,18 @@ export function ensureClassStyleRule(
         }
 
         const inherited = Object.freeze({ ...FRAMEWORK_DECLARATIONS, ...deviations });
+        const layer = Object.freeze({ authored: defaults, resolved: inherited });
 
-        _bags.set(ctor, inherited);
+        _bags.set(ctor, layer);
 
-        return inherited;
+        return layer;
     }
 
     const level = resolveClassLevel(ctor);
 
-    _bags.set(ctor, level.resolved);
+    _bags.set(ctor, level);
 
-    return level.resolved;
+    return level;
 }
 
 const _classChains: Map<Function, readonly string[]> = new Map();
@@ -703,7 +824,7 @@ export function getStyleClassChain(rawCtor: Function): readonly string[] {
 
 // (ctor -> (suffix -> bag)). Parallel to `_bags`, but keyed on suffix too, since
 // one class can own several state rules (Button: .pressed, :hover:not(.pressed)).
-const _stateBags: Map<Function, Map<string, ClassStyleBag | null>> = new Map();
+const _stateBags: Map<Function, Map<string, ResolvedStyleBag | null>> = new Map();
 
 /**
  * State-rule sibling of {@link ensureClassStyleRule}. Ensures a shared
@@ -748,7 +869,7 @@ export function ensureClassStateRule(
     suffix: string,
     declarations: Record<string, string | null>,
     extractorMethodName?: string,
-): ClassStyleBag | null {
+): ResolvedStyleBag | null {
     if (extractorMethodName && chainParticipates(ctor)) {
         const name  = ctor.name;
         const owner = _owners.get(name);
@@ -795,7 +916,7 @@ export function ensureClassStateRule(
 // (ctor -> (group -> bag)). Parallel to `_stateBags`, but keyed by a
 // caller-supplied `styleGroup` token instead of a framework-defined state
 // suffix — see plans/implemented/shared-instance-style-groups.md.
-const _groupBags: Map<Function, Map<string, ClassStyleBag | null>> = new Map();
+const _groupBags: Map<Function, Map<string, StyleLayer | null>> = new Map();
 
 /**
  * The safe `ClassName--<suffix>` contribution a `styleGroup` token makes to a
@@ -828,12 +949,13 @@ export function styleGroupClassSuffix(group: string): string {
  * @param ctor - The concrete component class constructor.
  * @param group - The caller-supplied `styleGroup` token, verbatim (not yet
  *   escaped — see the selector construction below).
- * @param declarations - This instance's own fully resolved hoistable
- *   declarations (`core/Component.ts`'s `resolveInstanceStyleDeclarations`)
- *   — the *first* call for a given `(ctor, group)` pair determines what every
- *   later instance in the same group compares against.
+ * @param authored - This instance's own hoistable style bag
+ *   (`core/Component.ts`'s `resolveInstanceStyleDeclarations`) — the *first*
+ *   call for a given `(ctor, group)` pair determines what every later
+ *   instance in the same group compares against. Run through
+ *   `resolveDeclarations` internally to produce the layer's resolved half.
  *
- * @returns The group's declaration bag, or `null` when the selector name
+ * @returns The group's style layer, or `null` when the selector name
  *   (`ClassName--group`) is already claimed by a different constructor — the
  *   same name-collision opt-out the base and state tiers use, in which case
  *   the caller must write every declaration to its own `#id` rule.
@@ -841,8 +963,8 @@ export function styleGroupClassSuffix(group: string): string {
 export function ensureStyleGroupRule(
     ctor: Function,
     group: string,
-    declarations: Record<string, string | null>,
-): ClassStyleBag | null {
+    authored: StyleBag,
+): StyleLayer | null {
     // Cached by the *normalised* suffix (see `styleGroupClassSuffix`), not
     // the raw token — the DOM class and CSS selector this function produces
     // are both derived from the normalised form, so two raw tokens that
@@ -884,14 +1006,16 @@ export function ensureStyleGroupRule(
 
     _owners.set(selectorName, ctor);
 
+    const declarations = resolveDeclarations(authored);
+
     if (Object.keys(declarations).length > 0) {
         new StyleRule({ scope: "class", name: selectorName, styles: declarations });
     }
 
-    const bag = Object.freeze({ ...declarations });
-    byGroup.set(normalizedGroup, bag);
+    const layer = Object.freeze({ authored, resolved: Object.freeze({ ...declarations }) });
+    byGroup.set(normalizedGroup, layer);
 
-    return bag;
+    return layer;
 }
 
 /**
@@ -899,7 +1023,7 @@ export function ensureStyleGroupRule(
  * dropped when `bag` already delivers the same key/value, written to `rule`
  * otherwise. `writeRuleDeclaration`'s shape, generalised to take the target
  * rule and comparison bag as parameters instead of reading `this._styleRule`
- * / `this._inheritedStyleBag` — a state-rule setter can fire from many call
+ * / `this._classLayer` — a state-rule setter can fire from many call
  * sites (construction, a runtime setter, a chrome-mode toggle), not from one
  * `applyStyle` pass, so there is no single per-render cache to read from.
  *
@@ -919,7 +1043,7 @@ export function ensureStyleGroupRule(
  */
 export function writeClassStateDeclaration(
     rule: StyleRule,
-    bag: ClassStyleBag | null,
+    bag: ResolvedStyleBag | null,
     key: string,
     value: string | null,
 ): void {
@@ -933,7 +1057,7 @@ export function writeClassStateDeclaration(
 /** Bulk form of {@link writeClassStateDeclaration}, one call per key of `values`. */
 export function writeManyClassStateDeclarations(
     rule: StyleRule,
-    bag: ClassStyleBag | null,
+    bag: ResolvedStyleBag | null,
     values: Record<string, string | null>,
 ): void {
     for (const key of Object.keys(values)) {
@@ -956,7 +1080,7 @@ export function writeManyClassStateDeclarations(
  */
 export class StateStyleRule {
     private readonly _rule:       StyleRule;
-    private readonly _bag:        ClassStyleBag | null;
+    private readonly _bag:        ResolvedStyleBag | null;
     private readonly _hasElement: () => boolean;
 
     constructor(
@@ -979,7 +1103,7 @@ export class StateStyleRule {
      * is the one in-repo example) reads this instead of bypassing the
      * comparison `set()` / `setMany()` perform.
      */
-    get classBag(): ClassStyleBag | null {
+    get classBag(): ResolvedStyleBag | null {
         return this._bag;
     }
 

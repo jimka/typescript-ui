@@ -26,7 +26,7 @@ import { Component, ComponentOptions } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
-import type { ClassStyleDefaults } from '~/core/ClassStyleRules';
+import type { StyleBag } from '~/core/ClassStyleRules';
 import { getStyleClassChain } from '~/core/ClassStyleRules';
 
 const DOM_CONFIG = {
