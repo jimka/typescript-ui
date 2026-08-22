@@ -123,19 +123,21 @@ describe('VirtualRowView — pooled-row disposal on teardown', () => {
         // row's own recursive teardown. They are the bulk of the leak: the
         // 45-column demo window retained roughly one rule per cell per cycle.
         const cells = poolOf(table).flatMap(
-            (row) => (row as unknown as { _components: Array<{ getId(): string; setRequiredEmpty(v: boolean): void }> })._components,
+            (row) => (row as unknown as { _components: Array<{ getId(): string; setShadow(v: string): void }> })._components,
         );
 
         expect(cells.length).toBeGreaterThan(0);
 
         // A freshly-built cell now carries zero declarations of its own —
         // background/border/foreground all resolve as class defaults (see
-        // plans/implemented/table-cell-class-style-defaults.md) — so the
-        // positive control below needs a real per-instance rule to exist
-        // before disposal can be proven non-vacuous. `setRequiredEmpty`
-        // writes a `boxShadow` declaration straight to the cell's own
-        // `#id` rule via `setShadow`.
-        cells.forEach((cell) => cell.setRequiredEmpty(true));
+        // plans/implemented/table-cell-class-style-defaults.md), and since
+        // plans/layered-style-bag.md's Stage 5 the range-selected/read-only/
+        // required-empty tints route through shared `ownStyleStates` class
+        // rules rather than a per-instance write too — so the positive
+        // control below needs a real per-instance rule to exist before
+        // disposal can be proven non-vacuous. `setShadow` still writes a
+        // `boxShadow` declaration straight to the cell's own `#id` rule.
+        cells.forEach((cell) => cell.setShadow('inset 0 0 0 1px red'));
         expect(survivingRulesFor(cells).length).toBeGreaterThan(0);
 
         destroy(table);

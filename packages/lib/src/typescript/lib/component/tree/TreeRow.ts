@@ -3,6 +3,7 @@
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import type { StateStyleRule, StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
@@ -16,6 +17,11 @@ Glyph.register(caret_down, caret_right);
 
 /** Width in pixels reserved for the expand/collapse toggle icon. */
 export const TOGGLE_WIDTH = 20;
+
+/** CSS background applied to the selected row. Owned here (not `Tree.ts`,
+ *  which constructs `TreeRow` and would create a circular import) since
+ *  `ownStyleStates`' extract, below, is this token's only consumer now. */
+const SELECTED_BG = "var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))";
 
 /**
  * A single visible row in the {@link Tree} virtual-scroll pool.
@@ -38,6 +44,37 @@ export const TOGGLE_WIDTH = 20;
  */
 class TreeRow extends Component {
 
+    // Declares the ephemeral `.selected` tint — see `## Architecture
+    // Decisions`. `.focused` (the keyboard-focus ring) is deliberately *not*
+    // in this list: it shares no property with `.selected` (`outline` only,
+    // vs `.selected`'s `backgroundColor`), so guarding it against
+    // `.selected` — `guardedSuffixFor` guards a state against *every*
+    // higher-priority entry unconditionally, not only ones sharing a
+    // property — would suppress the ring entirely on a selected-and-focused
+    // row (the normal state of the current node during keyboard
+    // navigation), rather than layering it on top. It carries its own
+    // unguarded shared rule instead, below.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".selected",
+            extract: (): StyleBag => ({ backgroundColor: SELECTED_BG }),
+        },
+    ];
+
+    // Lazy shared `.TreeRow.focused` rule for the keyboard-focus ring —
+    // `outline` plus its `outline-offset` sibling (which has no `StyleBag`
+    // key of its own: a shorthand-less longhand no framework declaration
+    // covers). Unguarded — see `ownStyleStates`' own comment for why
+    // `.focused` stays out of that list, and therefore needs no `:not(...)`
+    // suffix of its own to layer correctly on top of `.selected`.
+    private declare _focusedStyleRule?: StateStyleRule;
+    private get focusedStyleRule(): StateStyleRule {
+        return this._focusedStyleRule ??= this.createStateStyleRule(".focused", () => ({
+            outline:       "2px solid var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))",
+            outlineOffset: "-2px",
+        }));
+    }
+
     private _toggle:   Glyph | null           = null;
     private _spinner:  ProgressSpinner | null = null;
     private _renderer: TreeNodeRenderer;
@@ -50,6 +87,11 @@ class TreeRow extends Component {
         this.getAria().setRole("treeitem");
 
         this._renderer = rendererFactory();
+
+        // Warms the shared `.TreeRow.focused` rule from construction,
+        // without queuing a per-instance write of its own — mirrors
+        // `Cell`'s identical `void this.focusedStyleRule;`.
+        void this.focusedStyleRule;
     }
 
     /**

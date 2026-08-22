@@ -13,6 +13,7 @@ import fontMetrics from '../../../dom/font-metrics.test-font.json';
 import { Cell } from '~/component/table/cell/Cell';
 import { StringRenderer } from '~/component/table/cell/renderer/String';
 import { StringEditor } from '~/component/table/cell/editor/String';
+import { _ruleCacheHas } from '~/core/StyleTarget';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -162,41 +163,44 @@ describe('Cell background/cursor/outline state precedence', () => {
         expect(spy).not.toHaveBeenCalled();
     });
 
-    // Pins the exact reported path (see plans/implemented/table-scroll-recycling-cost.md):
-    // unlike setRequiredEmpty above, setBaseBackground has no upstream guard of its
-    // own — by design, since Row.setColumnWindow's Pass 3 must call it unconditionally
-    // on every rendered cell on every reconcile — so it always reaches
-    // `_applyStateTint` -> `clearShadow`. The stale shadow planted below stands in for
-    // a recycled cell's carried-over value from a previous, differently-configured
-    // row; the idempotence guard lives in `clearShadow` itself (Component.ts), not
-    // here, so this only proves it is reached with nothing left to change.
-    it('setBaseBackground reaching clearShadow with nothing to change writes only once, not on the redundant reconcile', () => {
-        const sink         = DOM.sink as RecordingDOMSink;
-        const cell         = editableCell();
-        const cellSelector = '#' + cell.getId();
+    // Stage 5 of plans/layered-style-bag.md decouples setBaseBackground from
+    // shadow entirely: shadow is now solely `.requiredEmpty`'s own declared
+    // state (see `ownStyleStates`), so setBaseBackground no longer reaches
+    // it at all — unlike the pre-migration `_applyStateTint`, which was a
+    // single resolver every setter funnelled through. This instead pins
+    // setBaseBackground's own idempotence: a redundant call (same resolved
+    // value) toggles the shared `.Cell.bg<color>` class token only once.
+    it('setBaseBackground called redundantly with the same value toggles the shared value-class token only once', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const cell = editableCell();
 
-        cell.setShadow('inset 0 0 0 1px red'); // stale shadow from a prior recycle target
+        const start = sink.writes.length;
+        cell.setBaseBackground('rgb(1,2,3)');
+        const firstToggle = sink.writes.slice(start).filter((w) => w.op === 'apply' && (w.args[1] as { addClass?: unknown }).addClass);
 
-        cell.setBaseBackground(null); // real transition: red -> none
-        const afterFirst = ruleStyleWrites(sink).filter((w) => w.key === 'boxShadow' && w.selector === cellSelector);
+        expect(firstToggle).toHaveLength(1);
 
-        expect(afterFirst.at(-1)?.value).toBe('none');
+        const start2 = sink.writes.length;
+        cell.setBaseBackground('rgb(1,2,3)'); // redundant: already this value
+        const secondToggle = sink.writes.slice(start2).filter((w) => w.op === 'apply' && ((w.args[1] as { addClass?: unknown }).addClass || (w.args[1] as { removeClass?: unknown }).removeClass));
 
-        cell.setBaseBackground(null); // redundant reconcile: none -> none
-        const afterSecond = ruleStyleWrites(sink).filter((w) => w.key === 'boxShadow' && w.selector === cellSelector);
-
-        expect(afterSecond.length).toBe(afterFirst.length);
+        expect(secondToggle).toHaveLength(0);
     });
 
-    // A pooled cell is rebound on every column-window recycle: Row.setColumnWindow
-    // and Header's reconciler call setBaseBackground (and Body.applyReadOnlyState
-    // calls setReadOnly) unconditionally, not only on a real change. Routing that
-    // through setBackgroundColor re-materialised the cell's own `#id` stylesheet
-    // rule every single time — the cost Row.updateVisualState already avoids for
-    // rows. The rebind now paints an inline style instead, while still caching the
-    // resolved value so getBackgroundColor() keeps answering (the precedence block
-    // above is that half of the contract).
-    it('a rebind paints the background inline, never re-materialising the #id rule', () => {
+    // A pooled cell is rebound on every column-window recycle:
+    // Row.setColumnWindow and Header's reconciler call setBaseBackground
+    // (and Body.applyReadOnlyState calls setReadOnly) unconditionally, not
+    // only on a real change. Routing that through setBackgroundColor
+    // re-materialised the cell's own `#id` stylesheet rule every single
+    // time — the cost Row.updateVisualState already avoids for rows.
+    // setBaseBackground now points this instance at a shared
+    // `.Cell.bg<color>` class-tier rule instead (deduped across every cell
+    // resolving the same groupColor), and setReadOnly toggles the
+    // `.Cell.readOnly` state token declared via `ownStyleStates` — neither
+    // ever touches this cell's own `#id` rule. `cacheStyleValue` still
+    // keeps getBackgroundColor() answering the resolved value throughout
+    // (the precedence block above is that half of the contract).
+    it('a rebind toggles shared class tokens, never re-materialising the #id rule', () => {
         const sink         = DOM.sink as RecordingDOMSink;
         const cell         = editableCell();
         const cellSelector = '#' + cell.getId();
@@ -204,10 +208,19 @@ describe('Cell background/cursor/outline state precedence', () => {
         const before = sink.writes.length;
 
         cell.setBaseBackground('rgb(1,2,3)');
+        expect(cell.getBackgroundColor()).toBe('rgb(1,2,3)');
+
         cell.setBaseBackground('rgb(4,5,6)');
+        expect(cell.getBackgroundColor()).toBe('rgb(4,5,6)');
+
         cell.setReadOnly(true);
+        expect(cell.getBackgroundColor()).toBe('var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))');
+
         cell.setReadOnly(false);
+        expect(cell.getBackgroundColor()).toBe('rgb(4,5,6)');
+
         cell.setBaseBackground(null);
+        expect(cell.getBackgroundColor()).toBe('var(--ts-ui-table-cell-bg, transparent)');
 
         const window = sink.writes.slice(before);
 
@@ -219,21 +232,24 @@ describe('Cell background/cursor/outline state precedence', () => {
         expect(backgroundRuleWrites).toEqual([]);
         expect(window.some((w) => w.op === 'ensureStyleRule' && w.args[0] === cellSelector)).toBe(false);
 
-        // Positive control: the writes did happen, just inline. Without this the
-        // absences above would pass vacuously if the rebinds were skipped entirely.
-        const inlineBackgrounds = window
-            .filter((w) => w.op === 'apply')
-            .map((w) => (w.args[1] as { style?: Record<string, string | null> })?.style)
-            .filter((style): style is Record<string, string | null> => !!style && 'background-color' in style)
-            .map((style) => style['background-color']);
+        // Positive control: the writes did happen, just as class-token
+        // toggles. Without this the absences above would pass vacuously if
+        // the rebinds were skipped entirely.
+        const toggles = window
+            .filter((w) => w.op === 'apply' && w.args[0] === cell.getElement())
+            .map((w) => w.args[1] as { addClass?: string[]; removeClass?: string[] })
+            .filter((patch) => patch.addClass !== undefined || patch.removeClass !== undefined);
 
-        expect(inlineBackgrounds).toEqual([
-            'rgb(1,2,3)',
-            'rgb(4,5,6)',
-            'var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))',
-            'rgb(4,5,6)',
-            'var(--ts-ui-table-cell-bg, transparent)',
+        expect(toggles).toEqual([
+            { removeClass: [], addClass: ['bgrgb_1_2_3_'] },                       // setBaseBackground('rgb(1,2,3)')
+            { removeClass: ['bgrgb_1_2_3_'], addClass: ['bgrgb_4_5_6_'] },        // setBaseBackground('rgb(4,5,6)')
+            { addClass: ['readOnly'] },                                            // setReadOnly(true)
+            { removeClass: ['readOnly'] },                                         // setReadOnly(false)
+            { removeClass: ['bgrgb_4_5_6_'] },                                    // setBaseBackground(null)
         ]);
+
+        expect(_ruleCacheHas('.Cell.bgrgb_1_2_3_')).toBe(true);
+        expect(_ruleCacheHas('.Cell.bgrgb_4_5_6_')).toBe(true);
     });
 
     it('a read-only cell shows the default cursor; requiredEmpty and base both clear the cursor', () => {

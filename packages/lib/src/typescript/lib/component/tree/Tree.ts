@@ -49,9 +49,6 @@ const ROW_HEIGHT = 24;
 /** Default preferred width when the caller sets no explicit `preferredSize`. */
 const DEFAULT_PREFERRED_WIDTH = 200;
 
-/** CSS background applied to the selected row. */
-const SELECTED_BG = "var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))";
-
 /**
  * A pre-flattened entry in the visible subtree used by the virtual scroll.
  */
@@ -1275,22 +1272,15 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             const isSelected = node !== null && this._selectedNodes.has(node!);
             const isFocused = node !== null && node === this._focusNode;
 
-            // Per-node ephemeral selection/focus styling on a pooled row re-bound
-            // to a different node on every render. Routing this through cached
-            // Component setters would persist it into _options and replay it onto
-            // the next node bound to this reused row, so write/remove the inline
-            // styles directly instead.
-            if (isSelected) {
-                DOM.sink.apply(rowEl, { style: { "background-color": SELECTED_BG } });
-            } else {
-                DOM.sink.apply(rowEl, { style: { "background-color": null } });
-            }
-
-            if (isFocused) {
-                DOM.sink.apply(rowEl, { style: { "outline": "2px solid var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))", "outline-offset": "-2px" } });
-            } else {
-                DOM.sink.apply(rowEl, { style: { "outline": null, "outline-offset": null } });
-            }
+            // Per-node ephemeral selection/focus styling on a pooled row
+            // re-bound to a different node on every render: `setStyleState`
+            // toggles the shared `.TreeRow.selected`/`.TreeRow.focused`
+            // class-tier rules (see `TreeRow.ownStyleStates`, which also
+            // carries the `outline-offset` sibling) via a DOM class token,
+            // so nothing here persists into `_instanceStyle` to replay onto
+            // the next node bound to this reused row.
+            row.setStyleState(".selected", isSelected);
+            row.setStyleState(".focused", isFocused);
 
             row.getAria().setSelected(isSelected);
         }

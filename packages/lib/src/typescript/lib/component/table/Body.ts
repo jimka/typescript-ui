@@ -262,6 +262,12 @@ class Body extends VirtualRowView<Row> {
     private _selectedRecords : Set<ModelRecord>          = new Set();
     private _anchorRecord    : ModelRecord | null        = null;
     private _focusedColIndex: number                    = 0;
+    // The pool cell `_updateFocusStyle` last set `.focused` on, so the next
+    // call can clear just that one cell instead of sweeping the whole pool
+    // — see that method's own comment. `null` when nothing is focused, or
+    // once the tracked cell falls out of the pool (a resize / field-set
+    // change / window jump), which forces the full-sweep fallback.
+    private _previousFocusedCell: Cell<any> | null       = null;
     // Rectangular cell-range selection, keyed by record identity + visible-
     // column index — mirrors `_selectedRecords`/`_anchorRecord`'s tolerance
     // for a since-removed/filtered record (see `getCellRangeBounds`).
@@ -2188,22 +2194,15 @@ class Body extends VirtualRowView<Row> {
         }
 
         const row = this._rowPool[i];
-        const rowEl = row.getElement()!;
         const isSelected = this._selectedRecords.has(record);
 
-        // Per-record ephemeral selection highlight on a pooled row re-bound to a
-        // different record on every render. Routing this through cached Component
-        // setters would persist it into _options and replay it onto the next record
-        // bound to this reused row, so write/remove the inline styles directly.
-        if (isSelected) {
-            DOM.sink.apply(rowEl, { style: {
-                'background-color': 'var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))',
-                'box-shadow':       'var(--ts-ui-table-row-selected-border, none)',
-            } });
-        } else {
-            DOM.sink.apply(rowEl, { style: { 'box-shadow': null } });
-            row.updateVisualState();
-        }
+        // `.selected` (declared on `Row.ownStyleStates`) always outranks
+        // new/dirty/stripe via its own higher-priority guard, so the
+        // new/dirty/stripe sweep below can run unconditionally rather than
+        // only in the not-selected branch — the CSS cascade, not this call
+        // site, now decides which one actually paints.
+        row.setStyleState(".selected", isSelected);
+        row.updateVisualState();
 
         row.getAria().setSelected(isSelected);
     }
@@ -2236,19 +2235,28 @@ class Body extends VirtualRowView<Row> {
      * for consumer use.
      */
     protected _updateFocusStyle(): void {
-        // Per-cell ephemeral focus outline on pooled cells re-bound to different
-        // records on every render. Routing this through cached Component setters
-        // would persist it into _options and replay it onto the next record bound
-        // to the reused cell, so write/remove the inline styles directly.
-        for (const row of this._rowPool) {
-            for (const cell of row.getComponents()) {
-                const el = cell.getElement();
-
-                if (el) {
-                    DOM.sink.apply(el, { style: { "outline": null, "outline-offset": null } });
+        // Per-cell ephemeral focus outline on pooled cells re-bound to
+        // different records on every render: `setStyleState` toggles the
+        // shared `.Cell.focused` class-tier rule (see `Cell.ownStyleStates`,
+        // which also carries the `outline-offset` sibling — see its own
+        // comment) via a DOM class token, so clearing just the
+        // previously-focused cell is enough, rather than sweeping the whole
+        // pool every tick. Falls back to the full sweep when that cell is no
+        // longer attached to a row — a field-set rebuild can detach/dispose
+        // a cell entirely; a plain column-window recycle never does, it only
+        // repositions/rebinds — so no stale `.focused` token survives on a
+        // cell this pass never visits.
+        if (this._previousFocusedCell?.getParentComponent()) {
+            this._previousFocusedCell.setStyleState(".focused", false);
+        } else {
+            for (const row of this._rowPool) {
+                for (const cell of row.getComponents() as Cell<any>[]) {
+                    cell.setStyleState(".focused", false);
                 }
             }
         }
+
+        this._previousFocusedCell = null;
 
         this._header?.setFocusedColumn(this._anchorRecord ? this._focusedColIndex : null);
 
@@ -2264,20 +2272,13 @@ class Body extends VirtualRowView<Row> {
         }
 
         const row   = this._rowPool[poolSlotIdx];
-        const cells = row.getComponents();
+        const cells = row.getComponents() as Cell<any>[];
         const slot  = this._focusedColIndex - row.getColumnWindowStart();
         const cell  = (slot >= 0 && slot < cells.length) ? cells[slot] : undefined;
 
         if (cell) {
-            const el = cell.getElement();
-
-            if (el) {
-                // Pooled-cell ephemeral focus style; see note at method top.
-                DOM.sink.apply(el, { style: {
-                    "outline":        "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))",
-                    "outline-offset": "-1px",
-                } });
-            }
+            cell.setStyleState(".focused", true);
+            this._previousFocusedCell = cell;
         }
     }
 

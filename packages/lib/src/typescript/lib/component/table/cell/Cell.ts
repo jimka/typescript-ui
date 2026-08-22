@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import type { StyleBag } from "~/core/ClassStyleRules.js";
+import type { StateStyleRule, StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
-import { DOM } from "~/core/DOM.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Card } from "~/layout/Card.js";
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
@@ -55,6 +54,61 @@ export class Cell<T> extends Component {
     // instead of each repeating it.
     protected static readonly ownClassStyleDefaults: StyleBag = _defaultCellOptions;
 
+    // Declares the three ephemeral background/cursor/shadow tints — see
+    // `## Architecture Decisions` — highest priority first: `.rangeSelected`
+    // beats `.readOnly`, which beats `.requiredEmpty` (matching
+    // `setReadOnly`'s own precedence note over the required-empty outline).
+    // `.readOnly` also declares `shadow: null` — not because `readOnly`
+    // itself has an opinion on shadow, but because `resolveStyleValue`'s
+    // active-state walk is per-*key*, not per-state: without it, a
+    // read-only *and* required-empty cell would still resolve `getShadow()`
+    // to `.requiredEmpty`'s ring (the first active layer that *declares*
+    // `shadow`, skipping over `.readOnly`, which doesn't) even though
+    // `.requiredEmpty`'s own CSS rule is correctly guarded off by
+    // `:not(.readOnly)` and never paints — see Cell.test.ts's precedence
+    // block, which pins `getShadow()` alongside the CSS declarations.
+    //
+    // `.focused` (Body's keyboard-focus ring) is deliberately *not* in this
+    // list: it shares no property with any of these three (`outline` only),
+    // so guarding them against it — `guardedSuffixFor` guards a state
+    // against *every* higher-priority entry unconditionally, not only ones
+    // sharing a property — would suppress a focused cell's entire
+    // background/cursor/shadow tint rather than just layering the ring on
+    // top of it. It carries its own unguarded shared rule instead, below.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".rangeSelected",
+            extract: (): StyleBag => ({ backgroundColor: "var(--ts-ui-table-cell-range-selected, rgba(30, 100, 200, 0.15))" }),
+        },
+        {
+            selector: ".readOnly",
+            extract: (): StyleBag => ({
+                backgroundColor: "var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))",
+                cursor:          "default",
+                shadow:          null,
+            }),
+        },
+        {
+            selector: ".requiredEmpty",
+            extract: (): StyleBag => ({ shadow: "inset 0 0 0 1px var(--ts-ui-table-cell-required-outline, rgba(220, 60, 60, 0.6))" }),
+        },
+    ];
+
+    // Lazy shared `.Cell.focused` rule for the keyboard-focus ring —
+    // `outline` plus its `outline-offset` sibling (which has no `StyleBag`
+    // key of its own: a shorthand-less longhand no framework declaration
+    // covers). Unguarded — see `ownStyleStates`' own comment for why
+    // `.focused` stays out of that list, and therefore needs no `:not(...)`
+    // suffix of its own to layer correctly on top of any of the three
+    // declared states.
+    private declare _focusedStyleRule?: StateStyleRule;
+    private get focusedStyleRule(): StateStyleRule {
+        return this._focusedStyleRule ??= this.createStateStyleRule(".focused", () => ({
+            outline:       "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))",
+            outlineOffset: "-1px",
+        }));
+    }
+
     private _readOnly: boolean;
     private _requiredEmpty: boolean = false;
     private _rangeSelected: boolean = false;
@@ -94,6 +148,12 @@ export class Cell<T> extends Component {
         // `setRangeSelected` / `setBaseBackground`), which compares against
         // the cached value rather than reading through the folding getter.
         this.setBackgroundColor('var(--ts-ui-table-cell-bg, transparent)');
+
+        // Warms the shared `.Cell.focused` rule (see `focusedStyleRule`'s
+        // own comment) from construction, without queuing a per-instance
+        // write of its own — mirrors `ToggleButton`'s identical
+        // `void this.selectedStyleRule;`.
+        void this.focusedStyleRule;
 
         this.addComponent(renderer, rendererConstraints);
 
@@ -390,60 +450,44 @@ export class Cell<T> extends Component {
      * @returns This cell, for method chaining.
      */
     setBaseBackground(color: string | null): this {
-        this._baseBackground = color ?? 'var(--ts-ui-table-cell-bg, transparent)';
-        this._applyStateTint();
+        const background = color ?? 'var(--ts-ui-table-cell-bg, transparent)';
+
+        if (this._baseBackground === background) {
+            return this;
+        }
+
+        this._baseBackground = background;
+
+        // Pooled, frequently-rebound cell: Row.setColumnWindow / Header's
+        // column reconciler call this on every recycle pass, not just on a
+        // real change. `cacheStyleValue` keeps `getBackgroundColor()`
+        // answering `background` (see Cell.test.ts's background/cursor/
+        // outline precedence block) without itself queuing a CSS write —
+        // the actual paint routes through the shared `.Cell.bg<color>`
+        // value-class rule below instead, so cells sharing one groupColor
+        // (a whole grouped column, typically) share one rule rather than
+        // each materialising its own `#id` declaration.
+        this.cacheStyleValue('backgroundColor', background);
+
+        if (color === null) {
+            this.clearValueStyleState("bg");
+        } else {
+            this.setValueStyleState("bg", color, { backgroundColor: color });
+        }
 
         return this;
     }
 
     /**
-     * Resolves this cell's background + cursor from precedence
-     * range-selected ▸ read-only ▸ base background, and separately resolves
-     * the required-empty outline (shown only when required-empty and NOT
-     * read-only). The single owner of both so the read-only and
-     * required-empty states cannot fight over either.
+     * Toggles the range-selected, read-only, and required-empty state tints
+     * — see `ownStyleStates`. Their relative priority (and against
+     * `.focused`) is resolved by the generated CSS guard suffixes, not
+     * here, so this can just reflect each flag independently.
      */
     private _applyStateTint(): void {
-        const background = this._rangeSelected
-            ? 'var(--ts-ui-table-cell-range-selected, rgba(30, 100, 200, 0.15))'
-            : this._readOnly
-                ? 'var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))'
-                : this._baseBackground;
-
-        // Pooled, frequently-rebound cell: Row.setColumnWindow / Header's column
-        // reconciler call setBaseBackground (and Body.applyReadOnlyState calls
-        // setReadOnly) on every recycle pass, not just on a real change. Routing
-        // through the persistent setBackgroundColor setter would re-materialise
-        // this cell's #id stylesheet rule every time — the same cost
-        // Row.updateVisualState already avoids for rows. Cache the resolved
-        // value directly (so getBackgroundColor() keeps answering correctly —
-        // see Cell.test.ts's background/cursor/outline precedence block) and
-        // paint it as a direct inline style instead.
-        if (this.getBackgroundColor() !== background) {
-            this.cacheStyleValue('backgroundColor', background);
-
-            const el = this.getElement();
-            if (el) {
-                DOM.sink.apply(el, { style: { 'background-color': background } });
-            }
-        }
-
-        if (this._readOnly) {
-            this.setCursor('default');
-        } else {
-            this.clearCursor();
-        }
-
-        // Read-only wins: a read-only cell cannot be filled, so ringing it
-        // as required would be misleading. Uses an inset box-shadow (the
-        // same "border via shadow" idiom the cell editors use for their own
-        // focus border) rather than the CSS `outline` property, which
-        // `Body._updateFocusStyle` already owns for the keyboard-focus ring.
-        if (this._requiredEmpty && !this._readOnly) {
-            this.setShadow('inset 0 0 0 1px var(--ts-ui-table-cell-required-outline, rgba(220, 60, 60, 0.6))');
-        } else {
-            this.clearShadow();
-        }
+        this.setStyleState(".rangeSelected", this._rangeSelected);
+        this.setStyleState(".readOnly", this._readOnly);
+        this.setStyleState(".requiredEmpty", this._requiredEmpty);
     }
 
     /**

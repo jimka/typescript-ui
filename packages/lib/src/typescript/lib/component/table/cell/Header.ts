@@ -4,13 +4,13 @@ import { DefaultCell } from "~/component/table/cell/Default.js";
 import { StringRenderer } from "~/component/table/cell/renderer/String.js";
 import { ResizeHandle, RESIZE_HANDLE_CURSOR } from "~/component/table/cell/ResizeHandle.js";
 import { SortPriorityBadge } from "~/component/table/cell/SortPriorityBadge.js";
-import { CellEvent } from "~/component/table/cell/Cell.js";
+import { Cell, CellEvent } from "~/component/table/cell/Cell.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { StyleRule } from "~/core/StyleTarget.js";
-import type { StyleBag, StateStyleRule, StyleStateSpec } from "~/core/ClassStyleRules.js";
+import { resolveStyleStates, type StyleBag, type StateStyleRule, type StyleStateSpec } from "~/core/ClassStyleRules.js";
 import type { ComponentOptions } from "~/core/Component.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -149,12 +149,20 @@ class HeaderCellRenderer extends StringRenderer {
  */
 class HeaderCell extends DefaultCell {
 
+    // Restates `Cell`'s own `[.rangeSelected, .readOnly,
+    // .requiredEmpty]` list and appends `:active` — see
+    // `ToggleButton.ownStyleStates` for why a subclass adding a state
+    // restates its ancestor's whole list rather than merging (`ownStyleStates`
+    // is a whole-list, own-property declaration: HeaderCell declaring its own
+    // would otherwise shadow Cell's three states for this whole subtree, not
+    // add to them).
+    //
     // `:active` is a pseudo-class the browser drives natively — nothing
     // here ever calls `setStyleState(":active", …)` to track it in JS (see
     // that method's own doc comment on pseudo-class states), so this exists
     // purely to generate `.HeaderCell:active`'s class-tier rule and widen
-    // the resting guard (`restingGuardSuffix`) to `:not(:active)` — the
-    // same job the old hand-maintained per-class suffix-override chain
+    // the resting guard (`restingGuardSuffix`) to include `:not(:active)` —
+    // the same job the old hand-maintained per-class suffix-override chain
     // used to do by hand. Isolation matters here because it's not just a
     // latent gap: `setColumnFocused` (below) writes a *resting* `boxShadow`
     // via `setShadow`/`clearShadow` — a real, live per-instance writer of
@@ -163,6 +171,7 @@ class HeaderCell extends DefaultCell {
     // outranks `.HeaderCell:active` and permanently defeats the pressed
     // shadow on any column-focused (or previously column-focused) cell.
     protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        ...Cell.ownStyleStates,
         {
             selector: ":active",
             extract: (): StyleBag => ({ shadow: HEADER_CELL_ACTIVE_DECLARATIONS.boxShadow }),
@@ -183,15 +192,23 @@ class HeaderCell extends DefaultCell {
 
     // Lazy `:active` rule. The slot is a fast-path cache for the wrapper
     // returned by Component's `createStateStyleRule` builder, which dedupes
-    // across every HeaderCell instance via the shared `.HeaderCell:active`
+    // across every HeaderCell instance via the shared `.HeaderCell<guard>`
     // class-tier rule — see Button's `_pressedStyleRule` for the full
-    // explanation.
+    // explanation. The suffix is read off `ownStyleStates`'s own generated
+    // guard (`activeGuardedSuffix`) rather than the bare `":active"` this
+    // used before Cell's own four states pushed `:active` off index 0, so
+    // it can never drift from what `restingGuardSuffix` derives for the
+    // resting tier's own isolation — mirrors `ToggleButton.selectedStyleRule`.
     private declare _activeStyleRule?: StateStyleRule;
     private get activeStyleRule(): StateStyleRule {
         return this._activeStyleRule ??= this.createStateStyleRule(
-            ":active",
+            this.activeGuardedSuffix(),
             () => ({ boxShadow: HEADER_CELL_ACTIVE_DECLARATIONS.boxShadow }),
         );
+    }
+
+    private activeGuardedSuffix(): string {
+        return resolveStyleStates(this.constructor).find((state) => state.selector === ":active")!.guardedSuffix;
     }
 
     /**
