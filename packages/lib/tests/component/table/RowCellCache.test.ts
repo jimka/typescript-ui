@@ -243,16 +243,32 @@ describe('Row cell cache', () => {
     });
 
     it('11. a table torn down after narrowing leaves no stylesheet rules behind', async () => {
+        // A 12-column model, not the file's shared 6-column MODEL: the fixed
+        // column-window width floors at 2 + 2*COLUMN_BUFFER = 6 columns, so a
+        // narrow of a 6-column table no longer displaces anything into the
+        // cache — this case needs a column count past that floor for the
+        // narrow below to still exercise cached-cell disposal.
+        const WIDE_MODEL = new Model(
+            Array.from({ length: 12 }, (_, i) => ({
+                name: `c${i}`, type: (i % 2 === 0 ? 'string' : 'number') as 'string' | 'number', order: i,
+            })),
+        );
+
         async function narrowedTable(): Promise<Table> {
-            const data = { c0: 'a', c1: 'b', c2: 'c', c3: 1, c4: 2, c5: 3 };
-            const store = new MemoryStore(MODEL, [data]);
+            const data: Record<string, string | number> = {};
+
+            for (let i = 0; i < 12; i++) {
+                data[`c${i}`] = i % 2 === 0 ? `v${i}` : i;
+            }
+
+            const store = new MemoryStore(WIDE_MODEL, [data]);
 
             await store.load();
 
             const table = new Table(store);
 
             table.getElement(true);
-            table.setWidth(700);
+            table.setWidth(1200);
             table.setHeight(200);
             table.doLayout();
 
@@ -264,15 +280,15 @@ describe('Row cell cache', () => {
             // computeColumnWindow (called from renderWindowPass) reads the
             // body's own committed width via `getWidth()`, not the
             // `bodyWidth` argument, so `setWidth` has to run first.
-            // Render the full 6-column window, then narrow to a 10px
+            // Render the full 12-column window, then narrow to a 10px
             // viewport so half the cells are displaced into the row's cache.
             const body = table.getBody();
 
-            body.setWidth(600);
-            body.renderWindow(600, Array(6).fill(100));
+            body.setWidth(1200);
+            body.renderWindow(1200, Array(12).fill(100));
 
             body.setWidth(10);
-            body.renderWindow(10, Array(6).fill(100));
+            body.renderWindow(10, Array(12).fill(100));
 
             return table;
         }

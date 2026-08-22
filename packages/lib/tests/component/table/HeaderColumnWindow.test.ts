@@ -763,26 +763,27 @@ describe('Header column window — geometry diffing', () => {
 
     it('34. a cell recycled onto a different column at matching geometry is laid out', async () => {
         const table = await wideTable(20, {
-            columns: [{ field: 'c4', headerGlyph: 'unicode-arrow-up' }],
+            columns: [{ field: 'c7', headerGlyph: 'unicode-arrow-up' }],
         });
-        render20At100(table); // window 0..4, so c4 is the last rendered column
+        render20At100(table); // window 0..7 (fixed width 8), so c7 is the last rendered column
 
-        const cell = cells(table)[4];
-        expect(cell.getFieldName()).toBe('c4');
+        const cell = cells(table)[7];
+        expect(cell.getFieldName()).toBe('c7');
         expect(cell.getHeaderGlyph()).toBe('unicode-arrow-up');
         const withGlyph = labelX(cell);
 
-        // Hiding c4 slides c5 into the last slot, so c4's cell is recycled onto
-        // a column sitting at the identical x and width — the one case the
+        // Hiding c7 slides c8 — not previously rendered, since the window
+        // stopped at c7 — into the last slot, so c7's cell is recycled onto a
+        // column sitting at the identical x and width — the one case the
         // geometry diff alone cannot catch, and the glyph has to come off.
-        table.setColumnVisible('c4', false);
+        table.setColumnVisible('c7', false);
         render20At100(table);
 
-        const recycled = cells(table)[4];
+        const recycled = cells(table)[7];
 
         expect(recycled).toBe(cell);
-        expect(recycled.getFieldName()).toBe('c5');
-        expect(recycled.getX()).toBe(400);
+        expect(recycled.getFieldName()).toBe('c8');
+        expect(recycled.getX()).toBe(700);
         expect(recycled.getHeaderGlyph()).toBeNull();
         expect(labelX(recycled)).toBeLessThan(withGlyph);
     });

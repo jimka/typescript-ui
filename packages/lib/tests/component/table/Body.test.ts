@@ -1271,11 +1271,11 @@ async function wideBody(
 }
 
 describe('Column window — rendered cell set', () => {
-    it('renders raw-visible columns plus COLUMN_BUFFER on each side, clamped at 0 — not every column', async () => {
+    it('renders a fixed-width window at the left edge — not every column', async () => {
         const b   = await wideBody(20, 300, 0);
         const row = (b as any).getRowPool()[0];
 
-        expect(row.getComponents().length).toBe(6);
+        expect(row.getComponents().length).toBe(9);
         expect(row.getColumnWindowStart()).toBe(0);
     });
 
@@ -1661,9 +1661,10 @@ describe('Column window — geometry diffing', () => {
             });
         }
 
-        // 300px crosses three column boundaries, so the window slides and every
-        // surviving cell moves slot while keeping its column.
-        (b as any)._scroller.setScrollX(300);
+        // 400px is past the fixed-width window's pinned-at-0 zone by one
+        // column, so the window slides by one and every surviving cell
+        // moves slot while keeping its column.
+        (b as any)._scroller.setScrollX(400);
         b.renderWindow(300, Array(20).fill(100));
 
         let survivors = 0;
@@ -1928,9 +1929,9 @@ describe('Column window — fast-path slide (Body integration)', () => {
         const b = await tallWideBody(20, 0, { 15: 'number' }); // window [0,8], c15 type-mismatched
         const row = (b as any).getRowPool()[0];
 
-        (b as any)._scroller.setScrollX(1500); // far jump — window lands at [12,19], no overlap with [0,8]
+        (b as any)._scroller.setScrollX(1500); // far jump — window lands at [11,19], no overlap with [0,8]
 
-        expect(row.getColumnWindowStart()).toBe(12);
+        expect(row.getColumnWindowStart()).toBe(11);
         expect(row.getFieldNames()).toContain('c15');
 
         // byName matching still works across the jump (a surviving string
