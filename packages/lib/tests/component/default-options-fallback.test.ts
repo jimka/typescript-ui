@@ -134,9 +134,9 @@ describe('default options as pure fallback', () => {
             expect(c._options[key], `_options.${key}`).toBeUndefined();
         }
         expect(c._border).toBeNull();
-        expect(c._outline).toBeNull();
-        expect(c._overflowX).toBeNull();
-        expect(c._overflowY).toBeNull();
+        expect(c._instanceStyle.outline).toBeUndefined();
+        expect(c._instanceStyle.overflowX).toBeUndefined();
+        expect(c._instanceStyle.overflowY).toBeUndefined();
     });
 
     it('resolves base-class defaults through the getters', () => {
@@ -163,27 +163,27 @@ describe('default options as pure fallback', () => {
         expect(c.getShadow()).toBe('0 0 2px black');
         expect(c.getOutline()).toBe('none');
         expect(c.getOverflowX()).toBe('auto');
-        // outline & overflow are pure fallbacks: the private field stays null,
-        // the value comes from _defaultOptions.
-        expect(c._outline).toBeNull();
-        expect(c._overflowX).toBeNull();
+        // outline & overflow are pure fallbacks: the instance layer never
+        // authors the key, the value comes from _defaultOptions.
+        expect(c._instanceStyle.outline).toBeUndefined();
+        expect(c._instanceStyle.overflowX).toBeUndefined();
         // Chrome fields (border/borderRadius/shadow) keep their default on the
         // dispatch path so clear*() can suppress an inherited default; they are
-        // therefore present in _options / _border, not lazily resolved.
-        expect(c._options.borderRadius).toBe('4px');
-        expect(c._options.shadow).toBe('0 0 2px black');
+        // therefore present in the instance layer / _border, not lazily resolved.
+        expect(c._instanceStyle.borderRadius).toBe('4px');
+        expect(c._instanceStyle.shadow).toBe('0 0 2px black');
         expect(c._border).not.toBeNull();
     });
 
     it('honors an explicit value equal to the default as explicit (key presence)', () => {
         const c = new Component({ cursor: 'default' }) as any;
-        expect(c._options.cursor).toBe('default');
+        expect(c._instanceStyle.cursor).toBe('default');
         expect(c.getCursor()).toBe('default');
     });
 
     it('keeps the bag free of default keys when only some fields are explicit', () => {
         const c = new Component({ cursor: 'pointer', zIndex: 5 }) as any;
-        expect(c._options.cursor).toBe('pointer');
+        expect(c._instanceStyle.cursor).toBe('pointer');
         expect(c._options.zIndex).toBe(5);
         expect(c._options.padding).toBeUndefined();
         expect(c._options.insets).toBeUndefined();

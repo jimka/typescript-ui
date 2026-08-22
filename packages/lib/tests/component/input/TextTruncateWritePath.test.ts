@@ -170,18 +170,32 @@ describe('Text truncate write-path cleanup', () => {
 
     // The plan's step 6 proposed routing this branch through
     // `clearWhiteSpace()` so `getWhiteSpace()` would read `null` here
-    // instead of the stale `"nowrap"`. That step was not implemented — see
-    // the plan's Implementation Notes: `clearWhiteSpace()` also resets the
-    // `_whiteSpace` field, which silently drops an explicit `whiteSpace`
-    // option the caller passed alongside `truncate: false` (`applyOptions`
-    // dispatches `setWhiteSpace` before `setTruncate`), permanently losing a
-    // caller-requested value like `'normal'` instead of just leaving a
-    // getter briefly stale. `getWhiteSpace()` keeps reporting the
-    // pre-existing stale `"nowrap"` after `setTruncate(false)`, unchanged
-    // from before this plan.
-    it('getWhiteSpace() keeps the pre-existing stale nowrap after setTruncate(false) — step 6 was not implemented', () => {
+    // instead of the stale `"nowrap"`. That step was not implemented at the
+    // time — see the plan's Implementation Notes: `clearWhiteSpace()` also
+    // reset the `_whiteSpace` field, which would have silently dropped an
+    // explicit `whiteSpace` option the caller passed alongside
+    // `truncate: false` (`applyOptions` dispatches `setWhiteSpace` before
+    // `setTruncate`), permanently losing a caller-requested value like
+    // `'normal'` instead of just leaving a getter briefly stale.
+    //
+    // plans/implemented/layered-style-bag.md resolves this for free: the
+    // hardcoded `this._whiteSpace = "nowrap"` constructor seed that caused
+    // the staleness is gone (the framework tier supplies that baseline via
+    // CSS instead — see its Stage 2), and `getWhiteSpace()` now reads the
+    // instance style layer, which `setTruncate(false)`'s raw
+    // `setElementCSSRule("whiteSpace", null)` bypass never touches. So a
+    // never-set `whiteSpace` now correctly reads `null` (no stale leftover)
+    // while a caller's explicit override survives untouched — the exact
+    // guarantee step 6's rejected `clearWhiteSpace()` approach couldn't make.
+    it('getWhiteSpace() reads null (no stale leftover) after setTruncate(false), with no caller override', () => {
         const t = new Text('x', { truncate: false });
 
-        expect(t.getWhiteSpace()).toBe('nowrap');
+        expect(t.getWhiteSpace()).toBeNull();
+    });
+
+    it('getWhiteSpace() preserves a caller-supplied whiteSpace option across setTruncate(false)', () => {
+        const t = new Text('x', { whiteSpace: 'normal', truncate: false });
+
+        expect(t.getWhiteSpace()).toBe('normal');
     });
 });

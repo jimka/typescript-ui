@@ -19,6 +19,7 @@ import { DOM }         from "~/core/DOM.js";
 import { Position }    from "~/primitive/Position.js";
 import { isUnbounded } from "~/primitive/Size.js";
 import { type BorderOptions, borderToStyle } from "~/primitive/Border.js";
+import { Insets }      from "~/primitive/Insets.js";
 
 /** The CSS class every rendered component element carries. */
 export const COMPONENT_CLASS = "ts-ui-component";
@@ -41,6 +42,8 @@ export interface StyleBag {
     minSize?:         { width: number; height: number } | null;
     maxSize?:         { width: number; height: number } | null;
     overflow?:        string | null;
+    overflowX?:       string | null;
+    overflowY?:       string | null;
     cursor?:          string | null;
     userSelect?:      string | null;
     outline?:         string | null;
@@ -51,6 +54,14 @@ export interface StyleBag {
     shadow?:          string | null;
     borderRadius?:    string | null;
     border?:          BorderOptions | string | null;
+    // The five properties `applyStyle` writes today outside the authored-bag
+    // path — from a raw field (`boxSizing`, `position`, `whiteSpace`), a
+    // hardcoded literal (`margin`), or its own options getter (`padding`).
+    boxSizing?:       string | null;
+    position?:        Position;
+    whiteSpace?:      string | null;
+    margin?:          string | null;
+    padding?:         Insets | null;
 }
 
 /**
@@ -202,8 +213,8 @@ export function resolveDeclarations(defaults: StyleBag): Record<string, string |
         minHeight:  minSize ? minSize.height + "px" : "auto",
         maxWidth:   maxSize ? (isUnbounded(maxSize.width)  ? "none" : maxSize.width  + "px") : "none",
         maxHeight:  maxSize ? (isUnbounded(maxSize.height) ? "none" : maxSize.height + "px") : "none",
-        overflowX:  overflow ?? "visible",
-        overflowY:  overflow ?? "visible",
+        overflowX:  defaults.overflowX ?? overflow ?? "visible",
+        overflowY:  defaults.overflowY ?? overflow ?? "visible",
     };
 
     // outline/color are conditional: most classes declare neither, and
@@ -264,6 +275,8 @@ const STYLE_WRITERS: { [K in keyof StyleBag]-?: (v: StyleBag[K]) => Record<strin
         maxHeight: v ? (isUnbounded(v.height) ? "none" : v.height + "px") : null,
     }),
     overflow:        (v) => ({ overflowX: v ?? null, overflowY: v ?? null }),
+    overflowX:       (v) => ({ overflowX: v ?? null }),
+    overflowY:       (v) => ({ overflowY: v ?? null }),
     cursor:          (v) => ({ cursor: v ?? null }),
     userSelect:      (v) => ({ userSelect: v ?? null }),
     outline:         (v) => ({ outline: v ?? null }),
@@ -276,6 +289,11 @@ const STYLE_WRITERS: { [K in keyof StyleBag]-?: (v: StyleBag[K]) => Record<strin
     border:          (v) => v
         ? borderToStyle(typeof v === "string" ? { border: v } : v)
         : { borderTop: null, borderRight: null, borderBottom: null, borderLeft: null },
+    boxSizing:       (v) => ({ boxSizing: v ?? null }),
+    position:        (v) => ({ position: v ?? null }),
+    whiteSpace:      (v) => ({ whiteSpace: v ?? null }),
+    margin:          (v) => ({ margin: v ?? null }),
+    padding:         (v) => ({ padding: v ? (v.render() as string) : null }),
 };
 
 /** One CSS-declaration writer per `TextStyleBag` key — the `font` sub-bag's

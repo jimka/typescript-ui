@@ -1042,14 +1042,14 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             // the second "nobody pinned one" answer; a subclass fill
             // (`MenuBarButton`, `TabButton`) matches neither and survives.
             this.clearBorder();
-            this._options.borderRadius = undefined;
+            this.cacheStyleValue("borderRadius", null);
             this.setShadow("none");
             this.setBackgroundImage("none");
 
             const resting = this.getBackgroundColor();
 
             if (resting === null || resting === BUTTON_RESTING_BACKGROUND) {
-                this._options.backgroundColor = "transparent";
+                this.cacheStyleValue("backgroundColor", "transparent");
             }
 
             // A chromeless button never reaches the pressed/hover dispatch
@@ -2009,7 +2009,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // `d.backgroundColor !== undefined` arm covers a subclass that
         // suppresses Button's default with an explicit `backgroundColor:
         // undefined` key — nothing to restore, so the sentinel stays.
-        if (this._options.backgroundColor === "transparent" && d.backgroundColor !== undefined) {
+        if (this.getBackgroundColor() === "transparent" && d.backgroundColor !== undefined) {
             this.setBackgroundColor(d.backgroundColor);
         }
 

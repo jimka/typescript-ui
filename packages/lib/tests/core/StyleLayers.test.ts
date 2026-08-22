@@ -62,10 +62,16 @@ describe('Component style layer stack (Stage 1)', () => {
         expect(c.exposeMatch('cursor', 'text')).toBe(true);
         expect(c.exposeMatch('cursor', 'pointer')).toBe(false);
 
+        // Stage 2 pushes the instance layer onto the front of the stack
+        // (see InstanceStyleLayer.test.ts for its own coverage), so the
+        // group-before-class order this row pins now shows up one layer
+        // further down: instance (this component's own `setCursor('text')`
+        // write) ▸ group (seeded from that same instance) ▸ class.
         const layers = c.exposeLayers();
-        expect(layers.length).toBe(2);
+        expect(layers.length).toBe(3);
         expect(layers[0].resolved.cursor).toBe('text');
-        expect(layers[1].resolved.cursor).toBe('pointer');
+        expect(layers[1].resolved.cursor).toBe('text');
+        expect(layers[2].resolved.cursor).toBe('pointer');
     });
 
     it('row 2: a key declared by no layer matches nothing', () => {
@@ -84,14 +90,20 @@ describe('Component style layer stack (Stage 1)', () => {
         }
     });
 
-    it('row 3: with no styleGroup, styleLayers() returns exactly the class layer', () => {
+    it('row 3: with no styleGroup, styleLayers() returns exactly the instance and class layers', () => {
         class ProbeRow3 extends LayerProbe {}
 
         const c = new ProbeRow3({});
         c.getElement(true);
 
+        // "exactly the class layer" was the Stage 1 (pre-instance-layer)
+        // shape — see this file's Expected Behaviour row 3, which the plan
+        // itself marks "before Stage 2". Stage 2 pushes the instance layer
+        // onto the front unconditionally; this component's own instance
+        // layer declares no cursor (no setCursor call), so the class
+        // layer's default still supplies it.
         const layers = c.exposeLayers();
-        expect(layers.length).toBe(1);
-        expect(layers[0].resolved.cursor).toBe('default');
+        expect(layers.length).toBe(2);
+        expect(layers[1].resolved.cursor).toBe('default');
     });
 });

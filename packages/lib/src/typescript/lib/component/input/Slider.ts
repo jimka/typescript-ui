@@ -134,7 +134,11 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             this.applyMax(this._options.max);
         }
 
-        this.applyOrientation(this.getOrientation(), this._options);
+        // The raw constructor argument, not `this._options`: `maxSize`'s
+        // instance-layer write no longer mirrors into `_options` (see
+        // core/Component.ts's layered style bag), so `_options.maxSize`
+        // can no longer stand in for "did the caller pass one".
+        this.applyOrientation(this.getOrientation(), options);
 
         if (this._options.value !== undefined) {
             const snapped = this.snap(this._options.value);

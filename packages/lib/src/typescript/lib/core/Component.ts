@@ -5,7 +5,7 @@ import { Absolute } from "~/layout/Absolute.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { isFirstLayoutHeld, startFirstLayoutDeadline } from "~/core/FirstLayoutGate.js";
-import { BorderOptions, borderToStyle, borderSideWidth } from "~/primitive/Border.js";
+import { BorderOptions, borderSideWidth } from "~/primitive/Border.js";
 import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
 import { BaseObject } from "~/core/BaseObject.js";
@@ -21,7 +21,7 @@ import { ElementAttributes } from "~/core/ElementAttributes.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
-import { COMPONENT_CLASS, ensureClassStyleRule, ensureStyleGroupRule, getStyleClassChain, registerStyleChainRoot, styleGroupClassSuffix, type StyleBag, type StyleLayer, StateStyleRule } from "~/core/ClassStyleRules.js";
+import { COMPONENT_CLASS, ensureClassStyleRule, ensureStyleGroupRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, resolvePartialDeclarations, styleGroupClassSuffix, type StyleBag, type StyleLayer, type TextStyleBag, StateStyleRule } from "~/core/ClassStyleRules.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
 import { measureBorderWidths } from "~/core/BorderWidths.js";
 
@@ -372,6 +372,36 @@ const RESTING_ISOLATION_KEYS: ReadonlySet<string> = new Set([
     "boxShadow",
 ]);
 
+// CSS keys the retired phase methods routed through the skip-on-match
+// `writeRuleDeclaration` (rather than the write-null-on-match
+// `reconcileRuleDeclaration`) — a matching value queues nothing at all for
+// these, mirroring that pre-migration split. See `flushStyleBag`.
+const SKIP_ON_MATCH_KEYS: ReadonlySet<string> = new Set([
+    "boxSizing",
+    "position",
+    "cursor",
+    "display",
+    "padding",
+    "margin",
+]);
+
+// The framework-baseline hoisted CSS keys — present, with a fallback value,
+// in *every* class's resolved bag unconditionally (mirrors
+// `ClassStyleRules.ts`'s `FRAMEWORK_DECLARATIONS`, minus `border`, which is
+// a non-DOM bookkeeping key there — see `flushStyleBag`'s own `"border"`
+// guard). Unlike `backgroundColor`/`shadow`/etc., which a class's resolved
+// bag carries only when it explicitly declares one, these always exist —
+// which is what makes them safe for `flushStyleBag`'s class-default-only
+// comprehensive write (see its own comment): every other key a lower
+// layer's resolved bag might carry is either that non-DOM bookkeeping key,
+// or belongs to an unmigrated subclass's own mechanism (e.g. `Text`'s font
+// sub-bag keys), and must never be written by this class's own flush.
+const FRAMEWORK_BASELINE_KEYS: ReadonlySet<string> = new Set([
+    "boxSizing", "position", "display", "visibility", "whiteSpace",
+    "userSelect", "cursor", "margin", "minWidth", "minHeight",
+    "maxWidth", "maxHeight", "overflowX", "overflowY",
+]);
+
 class Component<TOptions extends ComponentOptions = ComponentOptions> extends BaseObject {
 
     // Structural state that is NOT option-backed — runtime references, render
@@ -413,7 +443,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // initializer) because applyOptions dispatches setters — including the
     // `attributes` bag itself — that write it from inside super().
     private _elementAttributes    : ElementAttributes;
-    private _boxSizing            : string | null;
 
     // Geometry: NaN sentinels mean "never assigned", so equality guards on
     // setX/setY/setWidth/setHeight short-circuit only AFTER a real write —
@@ -436,20 +465,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _transition           : string | null           = null;
 
     // Derived / runtime-only fields that have no direct ComponentOptions counterpart.
-    // `_position` is intentionally NOT in `ComponentOptions` — the framework
+    // `position` is intentionally NOT in `ComponentOptions` — the framework
     // positions every component absolutely (see ARCHITECTURE.md). Subclasses
     // that need `FIXED` for a floating overlay or `STATIC` for a semantic
     // HTML carve-out (e.g. `Legend`) call the protected `setPosition` setter
-    // post-`super()`. Public callers cannot reach it.
-    private _position             : Position                = Position.ABSOLUTE;
+    // post-`super()`. Public callers cannot reach it. Its value now lives in
+    // `_instanceStyle.position`, the same as every other layering property.
     private _onPreferredSizeChange: (() => void) | null     = null;
     // Fired when this component's min/max constraint changes, so the parent
     // layout manager can re-clamp/relayout. Parallels `_onPreferredSizeChange`;
     // bound by the parent in add/insert, nulled on remove. `setMinSize`/
     // `setMaxSize` (not `applyOptions`) write it, so no `declare` is needed.
     private _onConstraintSizeChange: (() => void) | null    = null;
-    private _overflowX            : string | null           = null;
-    private _overflowY            : string | null           = null;
     // Eased wheel-scroll controller, lazily attached while an overflow axis is
     // scrollable (auto/scroll). Null otherwise — most components never scroll.
     private _wheelScroller        : SmoothScroller | null     = null;
@@ -467,7 +494,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _refocusOnRematerialize : boolean = false;
     // Cache for setAnimationPlayState. Plain initializer for the same reason.
     private _animationPlayState   : string | null            = null;
-    private _outline              : string | null           = null;
     private _appearance           : string | null           = null;
     private _borderImage          : string | null           = null;
     private _transform            : string | null           = null;
@@ -481,7 +507,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _autoCommitAttributes : boolean                 = true;
     private _layoutPaused         : boolean                 = false;
     private _aria                : Aria | null             = null;
-    private _whiteSpace           : string | null;
     private _verticalAlign        : string | null;
     // Deferred-write style buffers. `styleRule` lazily materialises the
     // component's per-id `CSSStyleRule` on first `ensure()` call; `inlineStyle`
@@ -498,6 +523,26 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // group is set. Scanned by `styleLayers()` ahead of `_classLayer`; see
     // plans/implemented/shared-instance-style-groups.md.
     private _groupLayer           : StyleLayer | null = null;
+    // The instance's own authored style — the single cache for every
+    // layering property (see ARCHITECTURE.md's *Always cache in memory*).
+    // Written unconditionally by `writeStyle`; survives an `applyStyle`
+    // rebuild (e.g. `setId`'s fresh `_styleRule`) since it, not the rule, is
+    // the source of truth `flushStyleBag` replays from.
+    private _instanceStyle        : StyleBag = {};
+    // `resolveStyleValue`/`resolveFontValue`'s per-authored-key memo, keyed
+    // on the `StyleBag` key name (a `"font."`-prefixed key for a font
+    // sub-field). Cleared whenever a layer that could change an answer
+    // changes: an instance-layer write, a meta-class toggle, or
+    // `setStyleGroup`. Class and framework layers are immutable per process,
+    // so nothing else can invalidate an entry.
+    private _resolvedCache        : Map<string, unknown> | null = null;
+    // CSS keys `flushStyleBag` still needs to resolve and write. `writeStyle`
+    // adds to it; `applyStyle` additionally seeds it with every key any
+    // layer currently resolves, so a full render pass always replays the
+    // complete state (matching the six phase methods this stage retires,
+    // which re-derived every hoistable property unconditionally on every
+    // render) rather than only what changed since the last flush.
+    private _pendingStyleKeys     : Set<string> | null = null;
     // Optional clip frame: a presentational wrapper element interposed between
     // this component's element and its DOM parent, sized to a cell rect with
     // `overflow: hidden` so a layout manager can visually clip an element that
@@ -589,9 +634,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._deferredStyleRules = new Map<string, StyleRule>();
         this.trackSelector(this._styleRule.getSelector());
 
-        // Constants without ComponentOptions counterpart.
-        this._boxSizing     = "border-box";
-        this._whiteSpace    = "nowrap";
+        // Constants without ComponentOptions counterpart. `boxSizing` /
+        // `whiteSpace` need no assignment here any more — the framework tier
+        // already emits `border-box` / `nowrap` as its baseline.
         this._verticalAlign = "baseline";
 
         // Class-level defaults — fallback values consulted by getters when the
@@ -1911,12 +1956,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns True if explicitly visible, false if explicitly hidden, null if inheriting from the parent.
      */
     isVisible(): boolean | null {
-        // Key-presence so a never-set component folds the class default (e.g.
-        // AnimatedDropdown's `visible: false`), while an explicit
-        // `setVisible(false)`/inherit still wins — mirrors getCursor/getPadding.
-        return "visible" in this._options
-            ? (this._options.visible ?? null)
-            : (this._defaultOptions.visible ?? null);
+        return this.resolveStyleValue("visible");
     }
 
     /**
@@ -1944,29 +1984,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // Idempotent short-circuit, mirroring setDisplayed: skip the redundant
         // CSS write + reconcile enqueue when the normalized value is unchanged
         // and the element exists. A detached component (no element) falls
-        // through to record the value at the `if (!element) return this;`
-        // guard below, so the intended state is never lost.
-        if (this._options.visible === normalized && this.getElement()) {
+        // through to record the value, so the intended state is never lost.
+        const authored = normalized ?? null;
+        if (this._instanceStyle.visible === authored && this.getElement()) {
             return this;
         }
 
-        this._options.visible = normalized;
+        this.writeStyle({ visible: authored });
 
-        let element = this.getElement();
-        if (!element) {
-            return this;
+        if (this.getElement()) {
+            this.scheduleEffectiveVisibilityReconcile();
         }
-
-        let ruleValue;
-        const visible = this._options.visible;
-        if (visible != null) {
-            ruleValue = visible ? "inherit" : "hidden";
-        } else {
-            ruleValue = "inherit";
-        }
-
-        this.setReconciledCSSRules({ visibility: ruleValue });
-        this.scheduleEffectiveVisibilityReconcile();
 
         return this;
     }
@@ -2019,19 +2047,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     setDisplayed(value: boolean): this {
         const v = !!value;
-        if (this._options.displayed === v && this.getElement()) {
+        if (this._instanceStyle.displayed === v && this.getElement()) {
             return this;
         }
 
-        this._options.displayed = v;
+        this.writeStyle({ displayed: v });
 
-        let element = this.getElement();
-        if (!element) {
-            return this;
+        if (this.getElement()) {
+            this.scheduleEffectiveVisibilityReconcile();
         }
-
-        this.setElementStyle("display", v ? "block" : "none");
-        this.scheduleEffectiveVisibilityReconcile();
 
         return this;
     }
@@ -2046,7 +2070,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *   (unlike `isVisible`, which is tri-state for inherited visibility).
      */
     isDisplayed(): boolean {
-        return (this._options.displayed ?? this._defaultOptions.displayed) as boolean;
+        return (this.resolveStyleValue("displayed") ?? this._defaultOptions.displayed) as boolean;
     }
 
     /**
@@ -2173,7 +2197,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The current padding Insets, or null if none are set.
      */
     getPadding(): Insets | null {
-        return "padding" in this._options ? (this._options.padding ?? null) : (this._defaultOptions.padding ?? null);
+        return this.resolveStyleValue("padding");
     }
 
     /**
@@ -2184,7 +2208,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setPadding(padding: Insets): this {
-        const current = this._options.padding;
+        const current = this._instanceStyle.padding;
         if (current &&
             current.getTop()    === padding.getTop()    &&
             current.getRight()  === padding.getRight()  &&
@@ -2193,8 +2217,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        this._options.padding = padding;
-        this.setElementCSSRule("padding", padding.render() as string);
+        this.writeStyle({ padding });
 
         return this;
     }
@@ -2209,7 +2232,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * legacy `setPadding(null)` behaviour as a reset, not a CSS-level clear.
      */
     clearPadding(): this {
-        this._options.padding = undefined;
+        // A bare removal would hand the property to a class default when the
+        // class defines one, repainting padding instead of clearing it —
+        // write the getter-facing null through the layer (so `getPadding()`
+        // suppresses any lower default) and assert the CSS reset directly,
+        // bypassing the layer dedup, exactly as before this migration.
+        this.writeStyle({ padding: null });
         this.setElementCSSRule("padding", "0px 0px 0px 0px");
 
         return this;
@@ -2254,7 +2282,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS color string, or null if none is set.
      */
     getBackgroundColor(): string | null {
-        return "backgroundColor" in this._options ? (this._options.backgroundColor ?? null) : (this._defaultOptions.backgroundColor ?? null);
+        return this.resolveStyleValue("backgroundColor");
     }
 
     /**
@@ -2265,12 +2293,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setBackgroundColor(backgroundColor: string): this {
-        if (this._options.backgroundColor === backgroundColor) {
+        if (this._instanceStyle.backgroundColor === backgroundColor) {
             return this;
         }
 
-        this._options.backgroundColor = backgroundColor;
-        this.setReconciledCSSRules({ backgroundColor });
+        this.writeStyle({ backgroundColor });
 
         return this;
     }
@@ -2281,15 +2308,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearBackgroundColor(): this {
-        // Set (not skip) the key so `getBackgroundColor` sees an explicit clear
-        // and returns null, suppressing a class-level default.
-        this._options.backgroundColor = undefined;
+        // Write the getter-facing null through the layer, so `getBackgroundColor`
+        // sees an explicit clear and returns null, suppressing a class-level
+        // default. A bare CSS removal would still hand the property to the
+        // class rule when the class defaults it, repainting the background
+        // instead of clearing it — assert the CSS initial value directly,
+        // bypassing the layer dedup, so "clear" always means "paint nothing".
+        this.writeStyle({ backgroundColor: null });
 
-        // A bare removal would hand the property to the class rule when the
-        // class defaults it, repainting the background instead of clearing
-        // it — assert the CSS initial value instead so "clear" always means
-        // "paint nothing".
-        this.setReconciledCSSRules({ backgroundColor: this._defaultOptions.backgroundColor ? "transparent" : null });
+        if (this._defaultOptions.backgroundColor) {
+            this.setElementCSSRule("backgroundColor", "transparent");
+        }
 
         return this;
     }
@@ -2340,7 +2369,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS background-image string, or null.
      */
     getBackgroundImage(): string | null {
-        return this._options.backgroundImage ?? null;
+        return this.resolveStyleValue("backgroundImage");
     }
 
     /**
@@ -2351,8 +2380,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setBackgroundImage(backgroundImage: string): this {
-        this._options.backgroundImage = backgroundImage;
-        this.setReconciledCSSRules({ backgroundImage });
+        this.writeStyle({ backgroundImage });
 
         return this;
     }
@@ -2363,11 +2391,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearBackgroundImage(): this {
-        this._options.backgroundImage = undefined;
-
         // Same reasoning as `clearBackgroundColor`: a defaulting class would
         // repaint through a bare removal, so assert the CSS initial value.
-        this.setReconciledCSSRules({ backgroundImage: this._defaultOptions.backgroundImage ? "none" : null });
+        this.writeStyle({ backgroundImage: null });
+
+        if (this._defaultOptions.backgroundImage) {
+            this.setElementCSSRule("backgroundImage", "none");
+        }
 
         return this;
     }
@@ -2397,7 +2427,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS color string, or null if none is set.
      */
     getForegroundColor(): string | null {
-        return "foregroundColor" in this._options ? (this._options.foregroundColor ?? null) : (this._defaultOptions.foregroundColor ?? null);
+        return this.resolveStyleValue("foregroundColor");
     }
 
     /**
@@ -2408,12 +2438,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setForegroundColor(foregroundColor: string): this {
-        if (this._options.foregroundColor === foregroundColor) {
+        if (this._instanceStyle.foregroundColor === foregroundColor) {
             return this;
         }
 
-        this._options.foregroundColor = foregroundColor;
-        this.setReconciledCSSRules({ color: foregroundColor });
+        this.writeStyle({ foregroundColor });
 
         return this;
     }
@@ -2424,10 +2453,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearForegroundColor(): this {
-        // Set (not skip) the key so `getForegroundColor` sees an explicit clear
-        // and returns null, suppressing a class-level default.
-        this._options.foregroundColor = undefined;
-        this.setElementCSSRule("color", null);
+        // Write the key (not skip it) so `getForegroundColor` sees an
+        // explicit clear and returns null, suppressing a class-level default.
+        this.writeStyle({ foregroundColor: null });
 
         return this;
     }
@@ -2469,7 +2497,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The current {@link BorderOptions}, or null.
      */
     getBorder(): BorderOptions | null {
-        return this._border;
+        // `StyleBag.border` also accepts a bare CSS shorthand string (a
+        // class-level default may author one directly) — `setBorder` already
+        // normalises an instance-level string to `{ border: <string> }`
+        // before caching it, so this mirrors that for a class-level one.
+        const value = this.resolveStyleValue("border");
+
+        return typeof value === "string" ? { border: value } : value;
     }
 
     /**
@@ -2482,7 +2516,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     clearBorder(): this {
         this._border       = { border: "none" };
         this._borderWidths = null;
-        this.setReconciledCSSRules(borderToStyle(this._border));
+        this.writeStyle({ border: this._border });
 
         return this;
     }
@@ -2507,7 +2541,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this.subscribeTheme(() => this._borderWidths = null);
         }
 
-        this.setReconciledCSSRules(borderToStyle(this._border));
+        this.writeStyle({ border: this._border });
 
         return this;
     }
@@ -2518,7 +2552,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS cursor string, or null if not set.
      */
     getCursor(): string | null {
-        return "cursor" in this._options ? (this._options.cursor ?? null) : (this._defaultOptions.cursor ?? null);
+        return this.resolveStyleValue("cursor");
     }
 
     /**
@@ -2529,26 +2563,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setCursor(cursor: string): this {
-        if (this._options.cursor === cursor) {
+        if (this._instanceStyle.cursor === cursor) {
             return this;
         }
-        this._options.cursor = cursor;
-        this.setElementStyle("cursor", cursor);
+        this.writeStyle({ cursor });
 
         return this;
     }
 
     /**
-     * Removes the inline cursor style from the element.
+     * Removes the cursor override from the element.
      *
      * @returns This component, for method chaining.
      */
     clearCursor(): this {
-        // Set (not skip) the key so `getCursor` sees an explicit clear and
+        // Write the key (not skip it) so `getCursor` sees an explicit clear and
         // returns null, suppressing the class default — distinct from the
         // never-set case where the key is absent and the default applies.
-        this._options.cursor = undefined;
-        this.setElementStyle("cursor", null);
+        this.writeStyle({ cursor: null });
 
         return this;
     }
@@ -2601,7 +2633,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS border-radius string, or null.
      */
     getBorderRadius(): string | null {
-        return this._options.borderRadius ?? null;
+        return this.resolveStyleValue("borderRadius");
     }
 
     /**
@@ -2612,11 +2644,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setBorderRadius(borderRadius: string): this {
-        if (this._options.borderRadius === borderRadius) {
+        if (this._instanceStyle.borderRadius === borderRadius) {
             return this;
         }
-        this._options.borderRadius = borderRadius;
-        this.setReconciledCSSRules({ borderRadius });
+        this.writeStyle({ borderRadius });
 
         return this;
     }
@@ -2627,11 +2658,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearBorderRadius(): this {
-        if (this._options.borderRadius === undefined) {
+        // Covers both "never set" (key absent, so the raw field access reads
+        // `undefined`) and "already cleared" (key present with `null`) —
+        // both mean there is nothing left to clear.
+        if (this._instanceStyle.borderRadius === undefined || this._instanceStyle.borderRadius === null) {
             return this;
         }
-        this._options.borderRadius = undefined;
-        this.setElementCSSRule("borderRadius", null);
+        this.writeStyle({ borderRadius: null });
 
         return this;
     }
@@ -2642,7 +2675,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS box-shadow string, or null.
      */
     getShadow(): string | null {
-        return this._options.shadow ?? null;
+        return this.resolveStyleValue("shadow");
     }
 
     /**
@@ -2654,12 +2687,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setShadow(shadow: string): this {
-        if (this._options.shadow === shadow) {
+        if (this._instanceStyle.shadow === shadow) {
             return this;
         }
 
-        this._options.shadow = shadow;
-        this.setReconciledCSSRules({ boxShadow: shadow });
+        this.writeStyle({ shadow });
 
         return this;
     }
@@ -2672,11 +2704,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearShadow(): this {
-        if (this._options.shadow === undefined) {
+        // Covers both "never set" (key absent) and "already cleared" (key
+        // present with `null`) — both mean there is nothing left to clear.
+        if (this._instanceStyle.shadow === undefined || this._instanceStyle.shadow === null) {
             return this;
         }
 
-        this._options.shadow = undefined;
+        // Write the getter-facing null through the layer (so `getShadow()`
+        // reports "cleared", not "none"). The CSS neutral is the literal
+        // "none" (preserving the legacy `setShadow(null)` semantic — not a
+        // bare removeProperty), not the getter-facing `null` above, so the
+        // generic instance-vs-lower-layer dedup `writeStyle` triggers can't
+        // make this comparison itself: route it through the reconcile path
+        // instead, which compares "none" against the tiers below the
+        // instance layer (a bare removal when one of them already resolves
+        // `boxShadow` to "none", a real "none" override otherwise) and
+        // still respects Button's chromeless resting-isolation rule when
+        // active.
+        this.writeStyle({ shadow: null });
         this.setReconciledCSSRules({ boxShadow: "none" });
 
         return this;
@@ -2689,7 +2734,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The outline string, or null.
      */
     getOutline(): string | null {
-        return this._outline ?? this._defaultOptions.outline ?? null;
+        return this.resolveStyleValue("outline");
     }
 
     /**
@@ -2700,9 +2745,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setOutline(outline: string): this {
-        this._outline = outline;
-
-        this.setReconciledCSSRules({ outline });
+        this.writeStyle({ outline });
 
         return this;
     }
@@ -2713,8 +2756,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearOutline(): this {
-        this._outline = null;
-        this.setElementCSSRule("outline", null);
+        this.writeStyle({ outline: null });
 
         return this;
     }
@@ -3030,7 +3072,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The constraint Size, or null when none is set.
      */
     getMinSizeConstraint(): Size | null {
-        return (this._options.minSize ?? this._defaultOptions.minSize) ?? null;
+        return this.resolveStyleValue("minSize");
     }
 
     /**
@@ -3041,7 +3083,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The constraint Size, or null when none is set.
      */
     getMaxSizeConstraint(): Size | null {
-        return (this._options.maxSize ?? this._defaultOptions.maxSize) ?? null;
+        return this.resolveStyleValue("maxSize");
     }
 
     /**
@@ -3100,20 +3142,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setMinSize(size: Size): this {
-        const current = this._options.minSize;
+        const current = this._instanceStyle.minSize;
         if (current && current.width === size.width && current.height === size.height) {
             return this;
         }
 
         const next: Size = { width: size.width, height: size.height };
-        this._options.minSize = next;
-
-        this.setReconciledCSSRules({
-            minWidth:  next.width  + "px",
-            minHeight: next.height + "px"
-        });
-
-        this.setDataAttribute("minSize", formatSizeAttr(next.width, next.height));
+        this.writeStyle({ minSize: next });
 
         this._onConstraintSizeChange?.();
 
@@ -3141,20 +3176,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setMaxSize(size: Size): this {
-        const current = this._options.maxSize;
+        const current = this._instanceStyle.maxSize;
         if (current && current.width === size.width && current.height === size.height) {
             return this;
         }
 
         const next: Size = { width: size.width, height: size.height };
-        this._options.maxSize = next;
-
-        this.setReconciledCSSRules({
-            maxWidth:  isUnbounded(next.width)  ? "none" : next.width  + "px",
-            maxHeight: isUnbounded(next.height) ? "none" : next.height + "px"
-        });
-
-        this.setDataAttribute("maxSize", formatSizeAttr(next.width, next.height));
+        this.writeStyle({ maxSize: next });
 
         this._onConstraintSizeChange?.();
 
@@ -4030,7 +4058,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Application code never needs to read or set it.
      */
     protected getPosition(): Position {
-        return this._position;
+        return this.resolveStyleValue("position") ?? Position.ABSOLUTE;
     }
 
     /**
@@ -4055,9 +4083,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     protected setPosition(position: Position): this {
-        this._position = position;
-
-        this.setElementCSSRule("position", position);
+        this.writeStyle({ position });
 
         return this;
     }
@@ -4115,7 +4141,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS overflow-x string, or null.
      */
     getOverflowX(): string | null {
-        return this._overflowX ?? this._defaultOptions.overflow ?? null;
+        // `overflowX` first (the axis-specific authored key), falling back
+        // to the combined `overflow` key, per layer — see
+        // `resolveOverflowAxis`'s own comment for why a per-layer walk
+        // (rather than two chained `resolveStyleValue` calls) is required.
+        // `setOverflow` never writes `overflow` to the instance layer
+        // directly (it delegates to `setOverflowX`/`Y`), so this only ever
+        // matters for a class-level `overflow` default.
+        return this.resolveOverflowAxis("overflowX");
     }
 
     /**
@@ -4126,13 +4159,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setOverflowX(value: string): this {
-        if (this._overflowX === value) {
+        if (this._instanceStyle.overflowX === value) {
             return this;
         }
 
-        this._overflowX = value;
-        this.setReconciledCSSRules({ overflowX: value });
-        this.refreshWheelScrolling();
+        this.writeStyle({ overflowX: value });
 
         return this;
     }
@@ -4143,13 +4174,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearOverflowX(): this {
-        if (this._overflowX === null) {
+        // Covers both "never set" (key absent) and "already cleared" (key
+        // present with `null`) — both mean there is nothing left to clear.
+        if (this._instanceStyle.overflowX === undefined || this._instanceStyle.overflowX === null) {
             return this;
         }
 
-        this._overflowX = null;
-        this.setElementCSSRule("overflowX", null);
-        this.refreshWheelScrolling();
+        this.writeStyle({ overflowX: null });
 
         return this;
     }
@@ -4160,7 +4191,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS overflow-y string, or null.
      */
     getOverflowY(): string | null {
-        return this._overflowY ?? this._defaultOptions.overflow ?? null;
+        // See `getOverflowX`'s comment for the axis-specific-then-combined
+        // fallback chain.
+        return this.resolveOverflowAxis("overflowY");
     }
 
     /**
@@ -4171,13 +4204,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setOverflowY(value: string): this {
-        if (this._overflowY === value) {
+        if (this._instanceStyle.overflowY === value) {
             return this;
         }
 
-        this._overflowY = value;
-        this.setReconciledCSSRules({ overflowY: value });
-        this.refreshWheelScrolling();
+        this.writeStyle({ overflowY: value });
 
         return this;
     }
@@ -4188,13 +4219,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearOverflowY(): this {
-        if (this._overflowY === null) {
+        // Covers both "never set" (key absent) and "already cleared" (key
+        // present with `null`) — both mean there is nothing left to clear.
+        if (this._instanceStyle.overflowY === undefined || this._instanceStyle.overflowY === null) {
             return this;
         }
 
-        this._overflowY = null;
-        this.setElementCSSRule("overflowY", null);
-        this.refreshWheelScrolling();
+        this.writeStyle({ overflowY: null });
 
         return this;
     }
@@ -4715,7 +4746,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The white-space string, or null.
      */
     getWhiteSpace(): string | null {
-        return this._whiteSpace;
+        return this.resolveStyleValue("whiteSpace");
     }
 
     /**
@@ -4732,9 +4763,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * call keeps the post-render state in lockstep with the cached value.
      */
     setWhiteSpace(value: string): this {
-        this._whiteSpace = value;
-
-        this.setReconciledCSSRules({ whiteSpace: value });
+        this.writeStyle({ whiteSpace: value });
 
         return this;
     }
@@ -4745,12 +4774,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearWhiteSpace(): this {
-        if (this._whiteSpace === null) {
+        // Covers both "never set" (key absent) and "already cleared" (key
+        // present with `null`) — both mean there is nothing left to clear.
+        if (this._instanceStyle.whiteSpace === undefined || this._instanceStyle.whiteSpace === null) {
             return this;
         }
 
-        this._whiteSpace = null;
-        this.setElementCSSRule("whiteSpace", null);
+        this.writeStyle({ whiteSpace: null });
 
         return this;
     }
@@ -4761,7 +4791,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS user-select string, or null if not set.
      */
     getUserSelect(): string | null {
-        return "userSelect" in this._options ? (this._options.userSelect ?? null) : (this._defaultOptions.userSelect ?? null);
+        return this.resolveStyleValue("userSelect");
     }
 
     /**
@@ -4772,11 +4802,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setUserSelect(value: string): this {
-        if (this._options.userSelect === value) {
+        if (this._instanceStyle.userSelect === value) {
             return this;
         }
-        this._options.userSelect = value;
-        this.setReconciledCSSRules({ userSelect: value });
+        this.writeStyle({ userSelect: value });
 
         return this;
     }
@@ -4787,11 +4816,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearUserSelect(): this {
-        // Set (not skip) the key so `getUserSelect` sees an explicit clear and
-        // returns null, suppressing the class default — distinct from the
-        // never-set case where the key is absent and the default applies.
-        this._options.userSelect = undefined;
-        this.setElementCSSRule("userSelect", null);
+        // Write the key (not skip it) so `getUserSelect` sees an explicit
+        // clear and returns null, suppressing the class default — distinct
+        // from the never-set case where the key is absent and the default
+        // applies.
+        this.writeStyle({ userSelect: null });
 
         return this;
     }
@@ -4838,31 +4867,405 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * The component's style layers, highest-priority first. Stage 1 holds
-     * exactly the group and class tiers (in that order) — the same two this
-     * mechanism generalises; later stages push further layers above them.
+     * The component's style layers, highest-priority first: this instance's
+     * own writes, then its `styleGroup` (if any), then its class tier. Later
+     * stages push further layers (active meta-classes) above the instance
+     * layer.
+     *
+     * @remarks `_classLayer` is only populated by `applyStyle`, i.e. once
+     * this component has rendered at least once — but a getter like
+     * `getCursor()` must resolve a class-level default correctly even
+     * earlier (construction, or any pre-render call), matching every
+     * pre-migration getter's `_options.X ?? _defaultOptions.X` fallback.
+     * Before first render, the class tier falls back to a *virtual* layer
+     * built straight from `getClassStyleDefaults()` — the same authored bag
+     * `applyStyle` will eventually seed `_classLayer` from — with an empty
+     * resolved half, since CSS dedup (`matchesClassStyle` / `flushStyleBag`)
+     * only ever runs once an element exists, by which point the real,
+     * CSS-backed `_classLayer` is already in place.
      */
     protected styleLayers(): ReadonlyArray<StyleLayer> {
-        const layers: StyleLayer[] = [];
+        const layers: StyleLayer[] = [this.instanceLayer()];
 
         if (this._groupLayer) layers.push(this._groupLayer);
-        if (this._classLayer) layers.push(this._classLayer);
+
+        layers.push(this._classLayer ?? { authored: this.getClassStyleDefaults(), resolved: {} });
 
         return layers;
     }
 
+    /** This instance's own authored style, and the CSS it resolves to. Not
+     *  cached as an object: `_instanceStyle` itself is the cache, and the
+     *  resolved half is cheap to recompute (bounded by the small number of
+     *  keys an instance ever declares) — see `resolveStyleValue`'s
+     *  `_resolvedCache` for the per-key memo that *is* worth caching. */
+    protected instanceLayer(): StyleLayer {
+        return { authored: this._instanceStyle, resolved: resolvePartialDeclarations(this._instanceStyle) };
+    }
+
     /** True when a lower-tier layer already delivers `value` for `key` — the
-     *  first layer (highest priority first) whose resolved bag *contains*
-     *  `key` decides; a layer that doesn't declare `key` is skipped, not
-     *  treated as a mismatch. */
+     *  first layer *below the instance layer* (highest priority first)
+     *  whose resolved bag *contains* `key` decides; a layer that doesn't
+     *  declare `key` is skipped, not treated as a mismatch. Excludes the
+     *  instance layer itself (`styleLayers()`'s first entry) — a caller
+     *  checking this mid-write, after its own `writeStyle`/`cacheStyleValue`
+     *  already updated `_instanceStyle`, must compare against what a
+     *  *different* tier supplies, not its own just-written value. */
     protected matchesClassStyle(key: string, value: string | null): boolean {
-        for (const layer of this.styleLayers()) {
+        for (const layer of this.styleLayers().slice(1)) {
             if (key in layer.resolved) {
                 return layer.resolved[key] === value;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Writes `patch` into the instance layer unconditionally — no comparison
+     * against any other layer; that happens later, in {@link flushStyleBag}.
+     * Shallow merge, one level deep for `font` (a partial font patch merges
+     * onto the previously-authored font sub-bag rather than replacing it).
+     * Every key `patch` declares (including an explicit `null`, i.e. a
+     * `clearX()`) joins the pending set `flushStyleBag` drains; when this
+     * component already has an element, the flush runs immediately.
+     *
+     * Before first render there is no element, so the CSS dedup/write in
+     * {@link flushStyleBag} stays pending for the render pass to drain — the
+     * class layer isn't resolved yet, and flushing early would reproduce the
+     * exact redundant-declaration bug this mechanism exists to fix. But
+     * {@link onStyleResolved}'s non-CSS side effects (a `data-*` attribute,
+     * `refreshWheelScrolling`) don't depend on the class layer at all, and
+     * pre-migration setters ran them unconditionally regardless of render
+     * state — so this instance's own newly-written keys still fire them now.
+     *
+     * When this component already has an element, `flushStyleBag` still only
+     * *queues* its writes (see its own comment) — this is the standalone
+     * (not-mid-`applyStyle`) caller, so it commits them itself: `#id`'s own
+     * rule via `commitCSSRule`, and the chromeless resting-isolation rule (a
+     * no-op unless `flushStyleBag` queued something onto it) via
+     * `materialiseRestingRule`.
+     *
+     * @param patch - The authored `StyleBag` keys this write touches.
+     */
+    protected writeStyle(patch: StyleBag): void {
+        this._instanceStyle = patch.font
+            ? { ...this._instanceStyle, ...patch, font: { ...this._instanceStyle.font, ...patch.font } }
+            : { ...this._instanceStyle, ...patch };
+
+        this._resolvedCache = null;
+
+        const patchKeys = Object.keys(resolvePartialDeclarations(patch));
+        const pending    = this._pendingStyleKeys ??= new Set();
+        for (const key of patchKeys) {
+            pending.add(key);
+        }
+
+        if (this.getElement()) {
+            this.flushStyleBag();
+            this.commitCSSRule();
+            this.materialiseRestingRule();
+        } else {
+            this.onStyleResolved(new Set(patchKeys));
+        }
+    }
+
+    /**
+     * Updates the instance layer's cached value for one key without touching
+     * CSS or scheduling a flush — the escape hatch for a call site that
+     * manages its own DOM write (or writes none at all) and only needs the
+     * typed getters / `resolveStyleValue` to reflect the new value. Pooled,
+     * frequently-rebound components (`Cell._applyStateTint`,
+     * `Button._applyFlatChrome`/`_restoreChrome`) use this instead of
+     * `writeStyle` specifically to avoid the per-recycle `#id` rule
+     * materialisation `writeStyle`'s flush would otherwise cost.
+     *
+     * @param key - The `StyleBag` key to update.
+     * @param value - The new authored value.
+     */
+    protected cacheStyleValue<K extends keyof StyleBag>(key: K, value: StyleBag[K]): void {
+        this._instanceStyle = { ...this._instanceStyle, [key]: value };
+        this._resolvedCache = null;
+    }
+
+    /**
+     * Resolves one authored `StyleBag` value: the first layer (instance,
+     * then group, then class — see {@link styleLayers}) whose authored bag
+     * *contains* `key` wins, even when its value is `null` — so a `clearX()`
+     * (which writes the key with `null`) suppresses a lower layer's default
+     * rather than falling through to it. Memoized in `_resolvedCache` until
+     * the next layer change.
+     *
+     * @param key - The `StyleBag` key to resolve.
+     * @returns The resolved authored value, or `null` when no layer declares `key`.
+     */
+    protected resolveStyleValue<K extends keyof StyleBag>(key: K): NonNullable<StyleBag[K]> | null {
+        if (this._resolvedCache?.has(key)) {
+            return this._resolvedCache.get(key) as NonNullable<StyleBag[K]> | null;
+        }
+
+        let result: NonNullable<StyleBag[K]> | null = null;
+
+        for (const layer of this.styleLayers()) {
+            if (key in layer.authored) {
+                result = (layer.authored[key] ?? null) as NonNullable<StyleBag[K]> | null;
+                break;
+            }
+        }
+
+        (this._resolvedCache ??= new Map()).set(key, result);
+
+        return result;
+    }
+
+    /**
+     * `resolveStyleValue`'s sibling for `overflowX`/`overflowY`: the
+     * axis-specific key first, falling back to the combined `overflow` key
+     * — mirroring `resolveDeclarations`'s CSS-level `overflowX ?? overflow`
+     * fallback — but *per layer*, not chained across layers via `??`.
+     * Chaining two separate `resolveStyleValue` calls (`resolveStyleValue
+     * ("overflowX") ?? resolveStyleValue("overflow")`) can't distinguish
+     * "this layer authors overflowX as an explicit null" (a `clearOverflowX()`,
+     * which must suppress every lower layer, including this layer's own
+     * `overflow`) from "no layer authors overflowX at all" (`??`'s trigger
+     * for falling through) — both read back as `null` from `resolveStyleValue`.
+     * Walking layers directly, checking both keys within each one before
+     * moving to the next, resolves that ambiguity.
+     *
+     * @param axisKey - `"overflowX"` or `"overflowY"`.
+     * @returns The resolved authored value, or `null` when no layer declares either key.
+     */
+    protected resolveOverflowAxis(axisKey: "overflowX" | "overflowY"): string | null {
+        const cacheKey = "axis." + axisKey;
+
+        if (this._resolvedCache?.has(cacheKey)) {
+            return this._resolvedCache.get(cacheKey) as string | null;
+        }
+
+        let result: string | null = null;
+
+        for (const layer of this.styleLayers()) {
+            if (axisKey in layer.authored) {
+                result = layer.authored[axisKey] ?? null;
+                break;
+            }
+
+            if ("overflow" in layer.authored) {
+                result = layer.authored.overflow ?? null;
+                break;
+            }
+        }
+
+        (this._resolvedCache ??= new Map()).set(cacheKey, result);
+
+        return result;
+    }
+
+    /**
+     * `resolveStyleValue`'s sibling for one `font` sub-key — the same
+     * first-layer-with-the-key-wins walk, over each layer's `authored.font`
+     * bag instead of `authored` itself.
+     *
+     * @param key - The `TextStyleBag` sub-key to resolve.
+     * @returns The resolved authored value, or `null` when no layer's `font` bag declares `key`.
+     */
+    protected resolveFontValue<K extends keyof TextStyleBag>(key: K): NonNullable<TextStyleBag[K]> | null {
+        const cacheKey = "font." + key;
+
+        if (this._resolvedCache?.has(cacheKey)) {
+            return this._resolvedCache.get(cacheKey) as NonNullable<TextStyleBag[K]> | null;
+        }
+
+        let result: NonNullable<TextStyleBag[K]> | null = null;
+
+        for (const layer of this.styleLayers()) {
+            const font = layer.authored.font;
+
+            if (font && key in font) {
+                result = (font[key] ?? null) as NonNullable<TextStyleBag[K]> | null;
+                break;
+            }
+        }
+
+        (this._resolvedCache ??= new Map()).set(cacheKey, result);
+
+        return result;
+    }
+
+    /**
+     * Drains the pending CSS-key set. A key the instance layer never
+     * declared (a class-default-only value, added to the pending set by
+     * `applyStyle`'s full sweep so `onStyleResolved` still fires for it) is
+     * usually skipped entirely — the instance has nothing to say about it,
+     * so `#id` writes neither a real value nor a removal, leaving the lower
+     * tier's own rule to supply it via the ordinary CSS cascade. The one
+     * exception is `FRAMEWORK_BASELINE_KEYS`, where a class-default-only
+     * value still queues a (harmless, always-matching) removal — see that
+     * constant's own comment for why only those keys are safe to treat this
+     * way, and `reconciled-write-path-widening.md` for why at all.
+     *
+     * For a key the instance *did* declare, this instance's own value is
+     * checked against the layers *below* the instance layer (group, then
+     * class). A mismatch always queues the real value. A match's treatment
+     * depends on which of today's two dedup primitives the key used:
+     * `SKIP_ON_MATCH_KEYS` (`writeRuleDeclaration`'s keys — cursor,
+     * boxSizing, position, display, padding, margin) queue nothing at all;
+     * every other key (`reconcileRuleDeclaration`'s keys) queues an explicit
+     * `null` removal — a harmless no-op that surfaces only if some *other*
+     * real declaration in the same flush already materialises the rule (see
+     * `StyleTarget.hasQueuedDeclarations`), otherwise the rule never
+     * materialises at all. This reproduces `reconcileRuleDeclaration`'s
+     * comparison at a point where every layer is guaranteed resolved (see
+     * the plan's Architecture Decisions for why that ordering is what fixes
+     * the two shipped construction-time bugs), with the same
+     * resting-chrome-isolation routing `reconcileRuleDeclaration` /
+     * `setReconciledCSSRules` use for `RESTING_ISOLATION_KEYS` — otherwise a
+     * migrated property (e.g. `backgroundColor`) would bypass
+     * `restingStyleRule` and land back on the bare `#id` rule that isolation
+     * exists to keep clear of.
+     *
+     * Runs from `applyStyle` (which first seeds the pending set with every
+     * key any layer currently resolves, so a full render pass replays
+     * everything, the same as the phase methods it replaces) and, for an
+     * already-rendered component, at the end of `writeStyle`.
+     */
+    protected flushStyleBag(): void {
+        if (!this._pendingStyleKeys || this._pendingStyleKeys.size === 0) {
+            return;
+        }
+
+        const pending = this._pendingStyleKeys;
+        this._pendingStyleKeys = null;
+
+        const instanceDeclared = resolvePartialDeclarations(this._instanceStyle);
+        const lowerLayers       = this.styleLayers().slice(1);
+        const isolated          = this.isRestingChromeIsolated();
+        const resolved: Style   = {};
+
+        for (const key of pending) {
+            const declaredByInstance = key in instanceDeclared;
+
+            if (!declaredByInstance && SKIP_ON_MATCH_KEYS.has(key)) {
+                // A skip-on-match key the instance has no opinion on: a
+                // class/group-default-only value always "matches" its own
+                // source, which is `writeRuleDeclaration`'s skip case too —
+                // so this can never produce a write either way.
+                continue;
+            }
+
+            if (!declaredByInstance && !FRAMEWORK_BASELINE_KEYS.has(key)) {
+                // Not one of the keys guaranteed real (see
+                // `FRAMEWORK_BASELINE_KEYS`) — e.g. `backgroundColor`/`shadow`
+                // (present in a lower layer's resolved bag only when that
+                // class explicitly declares one), the non-DOM `border`
+                // bookkeeping key `resolveDeclarations` always carries (the
+                // real per-side writes flow through this same loop under
+                // their own `borderTop`/… names instead), or a key belonging
+                // to an unmigrated subclass's own mechanism (`Text`'s font
+                // sub-bag). This instance has nothing to say about it and no
+                // lower tier's own rule needs a comprehensive-write nudge —
+                // leave it alone.
+                continue;
+            }
+
+            let value: string | null;
+            let matchesLower: boolean;
+
+            if (declaredByInstance) {
+                value = instanceDeclared[key];
+                matchesLower = false;
+
+                for (const layer of lowerLayers) {
+                    if (key in layer.resolved) {
+                        matchesLower = layer.resolved[key] === value;
+                        break;
+                    }
+                }
+            } else {
+                // No instance override at all — resolve the value a lower
+                // tier already supplies. Always "matches" (it *is* that
+                // tier's own value), so this only ever queues a removal —
+                // matching the retired phase methods, which wrote every
+                // hoistable property their getter resolved (folding the
+                // class default) unconditionally, not only instance
+                // overrides. Harmless on its own (an all-null batch never
+                // materialises `#id` — see `StyleTarget.hasQueuedDeclarations`),
+                // it only surfaces when another real declaration in the same
+                // batch materialises the rule anyway, keeping that rule's
+                // declaration set comprehensive rather than partial (see
+                // plans/implemented/reconciled-write-path-widening.md).
+                const lower = lowerLayers.find((layer) => key in layer.resolved);
+                if (!lower) {
+                    continue;
+                }
+                value = lower.resolved[key];
+                matchesLower = true;
+            }
+
+            if (matchesLower && SKIP_ON_MATCH_KEYS.has(key)) {
+                continue;
+            }
+
+            const toWrite = matchesLower ? null : value;
+
+            if (isolated && RESTING_ISOLATION_KEYS.has(key)) {
+                // Queue only — `restingStyleRule.set` writes through
+                // immediately once the rule is materialised, which would
+                // jump ahead of a still-to-run `applySubclassStyles`
+                // correction on the *bare* rule (see below). Materialising
+                // this rule is the caller's job: `writeStyle`'s standalone
+                // (non-`applyStyle`) call commits it explicitly, and a full
+                // render pass reaches it anyway via `materialiseDeferredRules`,
+                // since `restingStyleRule` is a `createStyleRule` allocation.
+                this.restingStyleRule.set(key, toWrite);
+            } else {
+                resolved[key] = toWrite;
+            }
+        }
+
+        // Queue only, never commit — committing here would materialise
+        // `_styleRule` mid-render, before a later `applyStyle` phase (e.g.
+        // `applySubclassStyles`) has queued its own corrections onto the
+        // same rule, permanently exposing a value that phase exists to
+        // dedupe away. `applyStyle`'s own `materialiseStyleRule()` commits
+        // once, at the end, after every phase has queued; `writeStyle`
+        // commits explicitly for a standalone (already-rendered) call.
+        if (Object.keys(resolved).length > 0) {
+            this._styleRule.queueMany(resolved);
+        }
+
+        this.onStyleResolved(pending);
+    }
+
+    /**
+     * Hook for a non-CSS effect that must also fire when a *lower* layer
+     * supplies the value, not only when this instance's own write does — the
+     * gap a construction-time-only side effect would otherwise fall into.
+     * Called by `flushStyleBag` after its writes, with the CSS keys just
+     * resolved. `Component`'s own effects: `refreshWheelScrolling()` when an
+     * overflow axis resolved, and the `data-minSize`/`data-maxSize`
+     * attributes when a size constraint resolved.
+     *
+     * @param keys - The CSS keys `flushStyleBag` just resolved, in `Style` key form.
+     */
+    protected onStyleResolved(keys: ReadonlySet<string>): void {
+        if (keys.has("overflowX") || keys.has("overflowY")) {
+            this.refreshWheelScrolling();
+        }
+
+        if (keys.has("minWidth") || keys.has("minHeight")) {
+            const minSize = this.getMinSizeConstraint();
+            if (minSize) {
+                this.setDataAttribute("minSize", formatSizeAttr(minSize.width, minSize.height));
+            }
+        }
+
+        if (keys.has("maxWidth") || keys.has("maxHeight")) {
+            const maxSize = this.getMaxSizeConstraint();
+            if (maxSize) {
+                this.setDataAttribute("maxSize", formatSizeAttr(maxSize.width, maxSize.height));
+            }
+        }
     }
 
     /**
@@ -5034,20 +5437,46 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         DOM.sink.apply(element, { removeAttr: ["style"] });
 
         // Resolve the declarations this class inherits from the framework and
-        // class rules before the phases run, so each phase can skip one it
-        // already gets from a lower tier.
+        // class rules before the flush runs, so it can skip one it already
+        // gets from a lower tier.
         this._classLayer = ensureClassStyleRule(this.constructor, this.getClassStyleDefaults());
+
+        // `ensureClassStyleRule` returns `null` when this class opted out of
+        // the shared `.ClassName` rule (a name collision — see its own doc
+        // comment) — nothing else supplies this class's own baseline
+        // declarations via CSS, so write them directly onto this instance's
+        // own `#id` rule instead. `flushStyleBag` below still applies on top
+        // of this (and, since `styleLayers()` falls back to an empty
+        // `resolved` bag for a null `_classLayer`, always writes for real,
+        // never skipping on a false "match"), so an instance-level override
+        // still wins the final declaration.
+        if (!this._classLayer) {
+            this.setElementCSSRules(resolveDeclarations(this.getClassStyleDefaults()));
+        }
 
         const group = this.getStyleGroup();
         this._groupLayer = group
             ? ensureStyleGroupRule(this.constructor, group, resolveInstanceStyleDeclarations(this))
             : null;
 
-        this.applyBoxAndVisibilityStyles();
+        this._resolvedCache = null;
+
+        // A full render pass replays every layering property, not only what
+        // changed since the last flush — matching the phase methods this
+        // mechanism replaces, which unconditionally re-derived every
+        // hoistable declaration on every render. Union every layer's own
+        // resolved CSS keys (not just the instance layer's) so a
+        // class-default-only value (no instance override at all) still
+        // reaches `onStyleResolved` — see Expected Behaviour row 8.
+        const pending = this._pendingStyleKeys ??= new Set();
+        for (const layer of this.styleLayers()) {
+            for (const key of Object.keys(layer.resolved)) {
+                pending.add(key);
+            }
+        }
+
+        this.flushStyleBag();
         this.replayGeometryStyles();
-        this.applySizeConstraintStyles();
-        this.applyOverflowStyles();
-        this.applyChromeStyles();
         this.applyMiscInlineStyles();
         this.applySubclassStyles();
 
@@ -5059,59 +5488,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this.materialiseDeferredRules();
 
         return this;
-    }
-
-    /**
-     * Writes the box-model, visibility, display, cursor, and colour styles — the
-     * first `applyStyle` phase.
-     */
-    private applyBoxAndVisibilityStyles(): void {
-        // Every option-backed read below goes through the field's getter (or an
-        // inline `_options.X ?? _defaultOptions.X` for the carve-out sizes), so
-        // class-level defaults reach the DOM even when no setter has fired —
-        // the getter owns the fallback; there is no merged bag to drift from.
-        if (this._boxSizing) {
-            this.writeRuleDeclaration("boxSizing", this._boxSizing);
-        }
-
-        this.writeRuleDeclaration("position", this._position);
-
-        const visible = this.isVisible();
-        if (visible != null) {
-            // `true` resolves to `inherit`, not `visible`, so an explicitly-shown
-            // component still hides when an ancestor hides (e.g. a Tab panel that
-            // is switched away). This mirrors the live `setVisible` setter, which
-            // also writes `inherit` for `true`; writing `visible` here would pin
-            // the element on screen and defeat ancestor-based hiding.
-            this.reconcileRuleDeclaration("visibility", visible ? "inherit" : "hidden");
-        } else {
-            this.reconcileRuleDeclaration("visibility", "inherit");
-        }
-
-        const displayed = this.isDisplayed();
-        if (displayed != null) {
-            this.writeRuleDeclaration("display", displayed ? "block" : "none");
-        }
-
-        const cursor = this.getCursor();
-        if (cursor) {
-            this.writeRuleDeclaration("cursor", cursor);
-        }
-
-        const foregroundColor = this.getForegroundColor();
-        if (foregroundColor) {
-            this.reconcileRuleDeclaration("color", foregroundColor);
-        }
-
-        const backgroundColor = this.getBackgroundColor();
-        if (backgroundColor) {
-            this.reconcileRuleDeclaration("backgroundColor", backgroundColor);
-        }
-
-        const backgroundImage = this.getBackgroundImage();
-        if (backgroundImage) {
-            this.reconcileRuleDeclaration("backgroundImage", backgroundImage);
-        }
     }
 
     /**
@@ -5147,89 +5523,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Writes the min/max CSS constraints and reflects `data-maxSize` — the third
-     * `applyStyle` phase.
-     */
-    private applySizeConstraintStyles(): void {
-        // Carve-out: the CSS min/max writes use the raw author *constraint*, not
-        // the computed `getMinSize()`/`getMaxSize()` (which fold in the layout
-        // manager and would push computed sizes into CSS, fighting the layout
-        // engine). Read the option/default directly, never via the getter.
-        const minSize = this.getMinSizeConstraint();
-        if (minSize) {
-            this.reconcileRuleDeclaration("minWidth",  minSize.width  + "px");
-            this.reconcileRuleDeclaration("minHeight", minSize.height + "px");
-        }
-
-        const maxSize = this.getMaxSizeConstraint();
-        if (maxSize) {
-            this.reconcileRuleDeclaration("maxWidth",  isUnbounded(maxSize.width)  ? "none" : maxSize.width  + "px");
-            this.reconcileRuleDeclaration("maxHeight", isUnbounded(maxSize.height) ? "none" : maxSize.height + "px");
-            this.setDataAttribute("maxSize", formatSizeAttr(maxSize.width, maxSize.height));
-        }
-    }
-
-    /**
-     * Writes the overflow styles and refreshes the wheel-scroll controller — the
-     * fourth `applyStyle` phase.
-     */
-    private applyOverflowStyles(): void {
-        const overflowX = this.getOverflowX();
-        if (overflowX !== null) {
-            this.reconcileRuleDeclaration("overflowX", overflowX);
-        }
-        const overflowY = this.getOverflowY();
-        if (overflowY !== null) {
-            this.reconcileRuleDeclaration("overflowY", overflowY);
-        }
-
-        // A scrollable *default* overflow (e.g. Drawer's `"auto"`) no longer
-        // dispatches `setOverflow` through `applyOptions`, so attach the eased
-        // wheel-scroll controller here from the effective overflow. Idempotent:
-        // `refreshWheelScrolling` no-ops when the scroller already matches.
-        this.refreshWheelScrolling();
-    }
-
-    /**
-     * Writes the border, outline, border-radius, and box-shadow chrome styles —
-     * the fifth `applyStyle` phase.
-     */
-    private applyChromeStyles(): void {
-        if (this._border) {
-            const border = borderToStyle(this._border);
-            for (const key of Object.keys(border)) {
-                this.reconcileRuleDeclaration(key, border[key]);
-            }
-        } else {
-            this.writeRuleDeclaration("border", null);
-        }
-
-        const outline = this.getOutline();
-        if (outline) {
-            this.reconcileRuleDeclaration("outline", outline);
-        }
-
-        const borderRadius = this.getBorderRadius();
-        if (borderRadius) {
-            this.reconcileRuleDeclaration("borderRadius", borderRadius);
-        }
-
-        const shadow = this.getShadow();
-        if (shadow) {
-            this.reconcileRuleDeclaration("boxShadow", shadow);
-        }
-    }
-
-    /**
-     * Writes the remaining inline and rule styles (white-space, pointer-events,
-     * writing-mode, touch-action, z-index, will-change, transition, opacity,
-     * user-select, padding, insets, margin) — the sixth `applyStyle` phase.
+     * Writes the remaining inline styles (pointer-events, writing-mode,
+     * touch-action, z-index, will-change, transition, opacity) and the
+     * `data-insets` attribute — the third `applyStyle` phase. Every other
+     * hoistable property (white-space, user-select, padding, margin, and
+     * the box-model/visibility/size/overflow/chrome properties the four
+     * retired phase methods used to own) is now covered by `flushStyleBag`.
      */
     private applyMiscInlineStyles(): void {
-        if (this._whiteSpace) {
-            this.reconcileRuleDeclaration("whiteSpace", this._whiteSpace);
-        }
-
         const pointerEvents = this.getPointerEvents();
         if (pointerEvents) {
             this._inlineStyle.set("pointerEvents", pointerEvents);
@@ -5271,22 +5572,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._inlineStyle.set("opacity", String(this._opacity));
         }
 
-        const userSelect = this.getUserSelect();
-        if (userSelect) {
-            this.reconcileRuleDeclaration("userSelect", userSelect);
-        }
-
-        const padding = this.getPadding();
-        if (padding) {
-            this.writeRuleDeclaration("padding", padding.render());
-        }
-
         const insets = this.getInsets();
         if (insets) {
             this.setDataAttribute("insets", insets.render());
         }
-
-        this.writeRuleDeclaration("margin", "0px 0px 0px 0px");
     }
 
     /**

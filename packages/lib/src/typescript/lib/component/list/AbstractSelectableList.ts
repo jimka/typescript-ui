@@ -832,10 +832,11 @@ abstract class AbstractSelectableList<
         this.addComponent(this._innerPanel);
 
         // Default floor, but let a caller-supplied minSize option win. The
-        // super() cascade writes `_options.minSize` only when the caller passed
-        // one (the class default {0,0} lives in the defaults bag, not `_options`),
-        // so its presence means "caller set it". maxSize stays unbounded.
-        if (this._options.minSize === undefined) {
+        // super() cascade writes the instance layer's minSize only when the
+        // caller passed one (the class default {0,0} lives in the defaults
+        // bag, resolved separately), so its presence means "caller set it".
+        // maxSize stays unbounded.
+        if (this.instanceLayer().authored.minSize === undefined) {
             // 100×100 keeps a short empty/placeholder list a usable size.
             this.setMinSize({ width: 100, height: 100 });
         }

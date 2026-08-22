@@ -89,10 +89,10 @@ export class Cell<T> extends Component {
         // `backgroundColor` is not in that always-dispatch group (its class
         // default is resolved lazily by `getBackgroundColor()`'s folding
         // getter instead), so it still needs this explicit call: it seeds
-        // `_options.backgroundColor` for `_applyStateTint`'s equality guard
-        // (`setReadOnly` / `setRequiredEmpty` / `setRangeSelected` /
-        // `setBaseBackground`), which compares against the cached value
-        // rather than reading through the folding getter.
+        // the instance layer's `backgroundColor` for `_applyStateTint`'s
+        // equality guard (`setReadOnly` / `setRequiredEmpty` /
+        // `setRangeSelected` / `setBaseBackground`), which compares against
+        // the cached value rather than reading through the folding getter.
         this.setBackgroundColor('var(--ts-ui-table-cell-bg, transparent)');
 
         this.addComponent(renderer, rendererConstraints);
@@ -419,8 +419,8 @@ export class Cell<T> extends Component {
         // value directly (so getBackgroundColor() keeps answering correctly —
         // see Cell.test.ts's background/cursor/outline precedence block) and
         // paint it as a direct inline style instead.
-        if (this._options.backgroundColor !== background) {
-            this._options.backgroundColor = background;
+        if (this.getBackgroundColor() !== background) {
+            this.cacheStyleValue('backgroundColor', background);
 
             const el = this.getElement();
             if (el) {
