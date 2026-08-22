@@ -235,6 +235,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     protected _preMinimizeState:  "normal" | "maximized" = "normal";
     private _restoreRect:       WindowRect | null = null;
+    private _normalMinSize:     Size | null = null;
     private _bodyHost:          Component | null = null;
 
     /** Rail this window minimizes into, or null for the built-in bottom strip. */
@@ -1027,6 +1028,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             this.animateRailExpand();
         }
 
+        // The dock branch below relaxes the window's normal-resize min size (see
+        // its comment) so `animateRect`/`relayoutMinimizedStack` can shrink the
+        // window to the compact strip. Restore it before the window leaves the
+        // minimized state, ahead of the growth tween the branches below start.
+        if (from === "minimized" && this._normalMinSize !== null) {
+            this.setMinSize(this._normalMinSize);
+            this._normalMinSize = null;
+        }
+
         if (state === "normal") {
             // Restore body visibility BEFORE the tween starts so the
             // animation plays against the body content, not against an
@@ -1058,6 +1068,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
                     this.emit("minimize");
                 });
             } else {
+                // The window's normal-resize min size (e.g. the 200px body floor
+                // `initChrome` seeds) is enforced independently of `chromeMinSize`
+                // (see `setWidth`/`setHeight`), so it would otherwise stop the dock
+                // animation from ever reaching the strip's compact height. Relax it
+                // for as long as the window stays docked; the `from === "minimized"`
+                // branch above restores it before the window can grow back.
+                this._normalMinSize = this.getMinSizeConstraint();
+                this.setMinSize({ width: 0, height: 0 });
+
                 const target = this.computeDockRect();
                 this.animateRect(target, () => {
                     this.setBodyHostDisplayed(false);
