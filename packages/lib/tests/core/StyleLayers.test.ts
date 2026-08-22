@@ -28,7 +28,7 @@ const DOM_CONFIG = {
 beforeEach(() => installTestDOM(DOM_CONFIG));
 afterEach(() => DOM.reset());
 
-/** Exposes the protected `styleLayers()` scan (and its `matchesClassStyle`
+/** Exposes the protected `styleLayers()` scan (and its `matchesLowerTier`
  *  consumer) for direct inspection from a test. */
 class LayerProbe extends Component {
     exposeLayers(): ReadonlyArray<StyleLayer> {
@@ -36,7 +36,7 @@ class LayerProbe extends Component {
     }
 
     exposeMatch(key: string, value: string | null): boolean {
-        return this.matchesClassStyle(key, value);
+        return this.matchesLowerTier(key, value);
     }
 }
 

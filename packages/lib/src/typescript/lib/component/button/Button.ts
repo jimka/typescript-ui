@@ -276,18 +276,6 @@ class ButtonLabelText extends Text {
         super(undefined, undefined, _defaultButtonLabelTextOptions);
         this.setFontSize(BUTTON_LABEL_FONT_SIZE_VAR);
     }
-
-    /**
-     * `setFontSize` above queues a real, un-reconciled `fontSize` declaration
-     * before `.ButtonLabelText`'s class rule exists to compare it against
-     * (see `## Architecture Decisions`). Re-queues it through the reconciled
-     * path once the class rule is available, so the stale real value doesn't
-     * survive to `#id` on a default-styled instance.
-     */
-    protected override applySubclassStyles(): void {
-        super.applySubclassStyles();
-        this.reconcileRuleDeclaration("fontSize", BUTTON_LABEL_FONT_SIZE_RULE);
-    }
 }
 
 /**

@@ -116,18 +116,6 @@ class HeaderCellText extends SelectableText {
         super(undefined, undefined, _defaultHeaderCellTextOptions);
         this.setFontSize(HEADER_CELL_TEXT_FONT_SIZE_VAR);
     }
-
-    /**
-     * `setFontSize` above queues a real, un-reconciled `fontSize` declaration
-     * before `.HeaderCellText`'s class rule exists to compare it against
-     * (see `## Architecture Decisions`). Re-queues it through the reconciled
-     * path once the class rule is available, so the stale real value doesn't
-     * survive to `#id` on a default-styled instance.
-     */
-    protected override applySubclassStyles(): void {
-        super.applySubclassStyles();
-        this.reconcileRuleDeclaration("fontSize", HEADER_CELL_TEXT_FONT_SIZE_RULE);
-    }
 }
 
 /**

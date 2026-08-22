@@ -363,10 +363,9 @@ const _componentFinalizer = new FinalizationRegistry<OwnedResources>(({ handles,
     }
 });
 
-// CSS keys the retired phase methods routed through the skip-on-match
-// `writeRuleDeclaration` (rather than the write-null-on-match
-// `reconcileRuleDeclaration`) — a matching value queues nothing at all for
-// these, mirroring that pre-migration split. See `flushStyleBag`.
+// CSS keys the retired phase methods routed through a skip-on-match write
+// (rather than a write-null-on-match one) — a matching value queues nothing
+// at all for these, mirroring that pre-migration split. See `flushStyleBag`.
 const SKIP_ON_MATCH_KEYS: ReadonlySet<string> = new Set([
     "boxSizing",
     "position",
@@ -385,8 +384,9 @@ const SKIP_ON_MATCH_KEYS: ReadonlySet<string> = new Set([
 // which is what makes them safe for `flushStyleBag`'s class-default-only
 // comprehensive write (see its own comment): every other key a lower
 // layer's resolved bag might carry is either that non-DOM bookkeeping key,
-// or belongs to an unmigrated subclass's own mechanism (e.g. `Text`'s font
-// sub-bag keys), and must never be written by this class's own flush.
+// or a class-specific declaration (e.g. `Text`'s font sub-bag keys) with no
+// framework-wide fallback, and must never be written by this class's own
+// flush on a class-default-only basis.
 const FRAMEWORK_BASELINE_KEYS: ReadonlySet<string> = new Set([
     "boxSizing", "position", "display", "visibility", "whiteSpace",
     "userSelect", "cursor", "margin", "minWidth", "minHeight",
@@ -506,8 +506,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _inlineStyle          : InlineStyle  = new InlineStyle();
     // Per-render cache of what the framework and class rules already deliver
     // for this concrete class — the layer `ensureClassStyleRule` returns.
-    // Set at the top of `applyStyle` and consulted by `writeRuleDeclaration`
-    // so each phase can skip a write already served by a lower tier.
+    // Set at the top of `applyStyle` and consulted by `flushStyleBag` so it
+    // can skip a write already served by a lower tier.
     private _classLayer           : StyleLayer | null = null;
     // Per-render cache of what this instance's `styleGroup` (if any) already
     // delivers — the layer `ensureStyleGroupRule` returns, or `null` when no
@@ -542,6 +542,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // `super()` returns (unlike `_instanceStyle`, which cascade-dispatched
     // setters can reach mid-`super()`).
     private _activeStates         : Set<string> = new Set();
+    // Per-prefix DOM class token currently pointing this instance at a shared
+    // `.ClassName.<prefix><value>` value-class rule (see `setValueStyleState`)
+    // — e.g. `"lh" -> "lh18px"` for `Text`'s line-height dedup. Plain
+    // initializer for the same reason as `_activeStates` above.
+    private _valueStyleTokens     : Map<string, string> = new Map();
     // Optional clip frame: a presentational wrapper element interposed between
     // this component's element and its DOM parent, sized to a cell rect with
     // `overflow: hidden` so a layout manager can visually clip an element that
@@ -2714,14 +2719,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // "none" (preserving the legacy `setShadow(null)` semantic — not a
         // bare removeProperty), not the getter-facing `null` above, so the
         // generic instance-vs-lower-layer dedup `writeStyle` triggers can't
-        // make this comparison itself: route it through the reconcile path
-        // instead, which compares "none" against the tiers below the
-        // instance layer (a bare removal when one of them already resolves
-        // `boxShadow` to "none", a real "none" override otherwise) and
-        // still respects Button's chromeless resting-isolation rule when
-        // active.
+        // make this comparison itself: compare "none" against the tiers
+        // below the instance layer directly (a bare removal when one of
+        // them already resolves `boxShadow` to "none", a real "none"
+        // override otherwise) and write it through the guarded escape
+        // hatch, which still respects Button's chromeless resting-isolation
+        // rule when active.
         this.writeStyle({ shadow: null });
-        this.setReconciledCSSRules({ boxShadow: "none" });
+        this.writeGuardedCSSRule("boxShadow", this.matchesLowerTier("boxShadow", "none") ? null : "none");
 
         return this;
     }
@@ -4879,7 +4884,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Before first render, the class tier falls back to a *virtual* layer
      * built straight from `getClassStyleDefaults()` — the same authored bag
      * `applyStyle` will eventually seed `_classLayer` from — with an empty
-     * resolved half, since CSS dedup (`matchesClassStyle` / `flushStyleBag`)
+     * resolved half, since CSS dedup (`matchesLowerTier` / `flushStyleBag`)
      * only ever runs once an element exists, by which point the real,
      * CSS-backed `_classLayer` is already in place.
      */
@@ -4914,7 +4919,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *  built directly from the cached fields rather than by slicing
      *  `styleLayers()`, since that array's prefix (zero or more active
      *  meta-class layers) has no fixed length to slice past. Used by
-     *  `matchesClassStyle` and `flushStyleBag`'s per-key dedup, both of
+     *  `matchesLowerTier` and `flushStyleBag`'s per-key dedup, both of
      *  which need "does a tier *other than this instance's own* already
      *  supply this value", never a meta-class layer's. */
     protected layersBelowInstance(): ReadonlyArray<StyleLayer> {
@@ -4935,8 +4940,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *  meta-class layer above it) — a caller checking this mid-write, after
      *  its own `writeStyle`/`cacheStyleValue` already updated
      *  `_instanceStyle`, must compare against what a *different* tier
-     *  supplies, not its own just-written value. */
-    protected matchesClassStyle(key: string, value: string | null): boolean {
+     *  supplies, not its own just-written value. The comparison primitive
+     *  a caller reaches for when it needs to decide between a real value and
+     *  a `null` removal itself, rather than letting `flushStyleBag`'s
+     *  generic per-key sweep decide — e.g. `clearShadow`'s CSS-facing
+     *  `"none"` doesn't match its getter-facing `null`, so `writeStyle`'s
+     *  own instance-vs-lower-layer dedup can't make this comparison alone. */
+    protected matchesLowerTier(key: string, value: string | null): boolean {
         for (const layer of this.layersBelowInstance()) {
             if (key in layer.resolved) {
                 return layer.resolved[key] === value;
@@ -5132,22 +5142,21 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * For a key the instance *did* declare, this instance's own value is
      * checked against the layers *below* the instance layer (group, then
      * class). A mismatch always queues the real value. A match's treatment
-     * depends on which of today's two dedup primitives the key used:
-     * `SKIP_ON_MATCH_KEYS` (`writeRuleDeclaration`'s keys — cursor,
-     * boxSizing, position, display, padding, margin) queue nothing at all;
-     * every other key (`reconcileRuleDeclaration`'s keys) queues an explicit
-     * `null` removal — a harmless no-op that surfaces only if some *other*
-     * real declaration in the same flush already materialises the rule (see
-     * `StyleTarget.hasQueuedDeclarations`), otherwise the rule never
-     * materialises at all. This reproduces `reconcileRuleDeclaration`'s
-     * comparison at a point where every layer is guaranteed resolved (see
-     * the plan's Architecture Decisions for why that ordering is what fixes
-     * the two shipped construction-time bugs), with the same
-     * resting-chrome-isolation routing `reconcileRuleDeclaration` /
-     * `setReconciledCSSRules` use for `restingIsolationKeys()` — otherwise a
-     * migrated property (e.g. `backgroundColor`) would bypass
-     * `restingStyleRule` and land back on the bare `#id` rule that isolation
-     * exists to keep clear of.
+     * depends on which of two dedup groups the key belongs to:
+     * `SKIP_ON_MATCH_KEYS` (cursor, boxSizing, position, display, padding,
+     * margin — the pre-migration skip-on-match keys) queue nothing at all;
+     * every other key (the pre-migration write-null-on-match keys) queues an
+     * explicit `null` removal — a harmless no-op that surfaces only if some
+     * *other* real declaration in the same flush already materialises the
+     * rule (see `StyleTarget.hasQueuedDeclarations`), otherwise the rule
+     * never materialises at all. This runs the same comparison the
+     * pre-migration phase methods made, at a point where every layer is
+     * guaranteed resolved (see the plan's Architecture Decisions for why
+     * that ordering is what fixes the two shipped construction-time bugs),
+     * with the same resting-chrome-isolation routing those methods used for
+     * `restingIsolationKeys()` — otherwise a migrated property (e.g.
+     * `backgroundColor`) would bypass `restingStyleRule` and land back on
+     * the bare `#id` rule that isolation exists to keep clear of.
      *
      * Runs from `applyStyle` (which first seeds the pending set with every
      * key any layer currently resolves, so a full render pass replays
@@ -5174,8 +5183,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             if (!declaredByInstance && SKIP_ON_MATCH_KEYS.has(key)) {
                 // A skip-on-match key the instance has no opinion on: a
                 // class/group-default-only value always "matches" its own
-                // source, which is `writeRuleDeclaration`'s skip case too —
-                // so this can never produce a write either way.
+                // source, so this can never produce a write either way.
                 continue;
             }
 
@@ -5321,12 +5329,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         return !this.isIsolationSuppressed() && restingGuardSuffix(this.constructor) !== "";
     }
 
-    /** The CSS keys `flushStyleBag` / `reconcileRuleDeclaration` /
-     *  `setReconciledCSSRules` route onto `restingStyleRule` instead of the
-     *  bare `#id` rule — the union of every key this class's own declared
-     *  states carry (see `ownStyleStates`). Replaces the old fixed
-     *  three-property isolation-key constant: a state layer that declares a
-     *  fourth property is protected automatically now, instead of silently
+    /** The CSS keys `flushStyleBag` / `writeGuardedCSSRule` route onto
+     *  `restingStyleRule` instead of the bare `#id` rule — the union of
+     *  every key this class's own declared states carry (see
+     *  `ownStyleStates`). Replaces the old fixed three-property
+     *  isolation-key constant: a state layer that declares a fourth
+     *  property is protected automatically now, instead of silently
      *  unprotected until someone remembers to widen a hand-kept set. */
     protected restingIsolationKeys(): ReadonlySet<string> {
         const keys = new Set<string>();
@@ -5341,9 +5349,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     // Lazy resting-isolation rule. Never allocated unless isRestingChromeIsolated()
-    // is true somewhere on a write path — see the guard in
-    // reconcileRuleDeclaration / setReconciledCSSRules below, which never calls
-    // this getter with an empty guard suffix.
+    // is true somewhere on a write path — see the guard in flushStyleBag /
+    // writeGuardedCSSRule, which never call this getter with an empty guard
+    // suffix.
     protected declare _restingStyleRule?: StyleRule;
     protected get restingStyleRule(): StyleRule {
         return this._restingStyleRule ??= this.createStyleRule(restingGuardSuffix(this.constructor));
@@ -5440,73 +5448,75 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Routes one `applyStyle` rule declaration to the rule that should carry
-     * it: dropped when the framework or class rule already delivers the same
-     * key/value, queued onto the per-component `#id` rule otherwise.
+     * Points this instance at the shared `.ClassName.<prefix><sanitizedValue>`
+     * rule for `cssValue`, so every instance of this concrete class that
+     * resolves the same value shares one rule instead of each writing its
+     * own `#id` declaration. Removes any previously-applied token for this
+     * same `prefix` first. Generalises `Text`'s original
+     * `applyLineHeightValueClass` (`prefix = "lh"`) so a future value-keyed
+     * toggle (a different property, or a different class) needs no bespoke
+     * per-property machinery of its own — see `## Architecture Decisions`.
      *
-     * @param key - The CSS property name (camelCase).
-     * @param value - The value to write, or null to remove the property.
+     * Bypasses the instance layer entirely: `patch`'s declarations live only
+     * on the shared class-tier rule, never in `_instanceStyle`, which is
+     * what lets every instance resolving the same value share one rule
+     * instead of each contributing its own `#id` deviation.
      *
-     * @remarks Only skips a write issued from `applyStyle` itself — a runtime
-     * setter calling `setElementCSSRule` never goes through this helper, so
-     * it always reaches `#id` and wins on specificity regardless of what the
-     * framework or class rule already holds. A hoisted property whose runtime
-     * setter also needs this treatment routes through
-     * {@link setReconciledCSSRules} instead, which still writes on a match —
-     * as a removal — rather than skipping.
+     * @param prefix - Namespaces this value-class's token from any other one
+     *   this class declares (e.g. `"lh"`).
+     * @param cssValue - The exact CSS value being applied (e.g. `"18px"`),
+     *   used both as the declared value and, sanitized, as the class token.
+     * @param patch - The `StyleBag` key(s) the shared rule declares.
      */
-    protected writeRuleDeclaration(key: string, value: string | null): void {
-        if (this.matchesClassStyle(key, value)) {
-            return;
+    protected setValueStyleState(prefix: string, cssValue: string, patch: StyleBag): void {
+        const token = prefix + cssValue.replace(/[^a-zA-Z0-9]/g, "_");
+        const declarations = resolvePartialDeclarations(patch);
+
+        this.createStateStyleRule("." + token, () => declarations).setMany(declarations);
+
+        const element = this.getElement();
+        const previous = this._valueStyleTokens.get(prefix);
+        if (element) {
+            const removeClass = (previous && previous !== token) ? [previous] : [];
+            DOM.sink.apply(element, { removeClass, addClass: [token] });
         }
 
-        this._styleRule.queue(key, value);
+        this._valueStyleTokens.set(prefix, token);
     }
 
     /**
-     * `writeRuleDeclaration`'s clear-on-match sibling. A match queues a removal
-     * rather than skipping, so a value the instance wrote earlier — during
-     * construction, or through a runtime setter — cannot survive on `#id` and
-     * outrank the class rule.
+     * The DOM class token `setValueStyleState` currently has this instance
+     * pointed at for `prefix`, or `null` when none is active — the read-back
+     * a `render()` override needs to re-apply a token recorded before the
+     * element existed (a fresh element starts with no classes; the write
+     * `setValueStyleState`/`clearValueStyleState` make while unrendered is
+     * deferred, not lost — mirrors `setStyleState`'s own render-time catch-up
+     * need, e.g. `CheckboxBox.render()`).
+     *
+     * @param prefix - The same namespace a prior `setValueStyleState` call used.
      */
-    protected reconcileRuleDeclaration(key: string, value: string | null): void {
-        if (this.isRestingChromeIsolated() && this.restingIsolationKeys().has(key)) {
-            this.restingStyleRule.set(key, this.matchesClassStyle(key, value) ? null : value);
-
-            return;
-        }
-
-        this._styleRule.queue(key, this.matchesClassStyle(key, value) ? null : value);
+    protected getValueStyleToken(prefix: string): string | null {
+        return this._valueStyleTokens.get(prefix) ?? null;
     }
 
     /**
-     * Runtime-setter form of `reconcileRuleDeclaration`. Routes through
-     * `setElementCSSRules` so the whole bag commits in one flush and the
-     * `autoCommitStyle` batching gate still applies. Inert before the first
-     * render, when `_classLayer` is still null.
+     * Reverts to the class-tier default: removes any value-class token this
+     * instance currently carries for `prefix` (see {@link setValueStyleState}).
+     *
+     * @param prefix - The same namespace a prior `setValueStyleState` call used.
      */
-    protected setReconciledCSSRules(values: Style): this {
-        const isolated      = this.isRestingChromeIsolated();
-        const isolationKeys = isolated ? this.restingIsolationKeys() : null;
-        const resolved: Style = {};
-        let   wroteIsolated = false;
-
-        for (const key of Object.keys(values)) {
-            if (isolationKeys?.has(key)) {
-                wroteIsolated = true;
-                this.restingStyleRule.set(key, this.matchesClassStyle(key, values[key]) ? null : values[key]);
-
-                continue;
-            }
-
-            resolved[key] = this.matchesClassStyle(key, values[key]) ? null : values[key];
+    protected clearValueStyleState(prefix: string): void {
+        const previous = this._valueStyleTokens.get(prefix);
+        if (!previous) {
+            return;
         }
 
-        if (wroteIsolated) {
-            this.materialiseRestingRule();
+        const element = this.getElement();
+        if (element) {
+            DOM.sink.apply(element, { removeClass: [previous] });
         }
 
-        return Object.keys(resolved).length > 0 ? this.setElementCSSRules(resolved) : this;
+        this._valueStyleTokens.delete(prefix);
     }
 
     /**
@@ -5685,9 +5695,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Extension point for a subclass that needs to queue more `#id` rule
-     * declarations — through `writeRuleDeclaration` / `reconcileRuleDeclaration`
-     * / `setReconciledCSSRules`, so they still compare against the class tier —
-     * before `applyStyle`'s one materialising flush runs. A no-op by default.
+     * declarations — through `writeStyle`/`writeGuardedCSSRule`, so they
+     * still compare against the class tier — before `applyStyle`'s one
+     * materialising flush runs. A no-op by default.
      *
      * A subclass overrides this, chaining onto `super()`'s call rather than
      * replacing it, so a grandchild class's own contribution runs too. Only

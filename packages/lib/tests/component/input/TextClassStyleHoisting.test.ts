@@ -30,6 +30,7 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { _ruleCacheHas } from '~/core/StyleTarget';
+import type { StyleBag } from '~/core/ClassStyleRules';
 
 const DOM_CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -94,6 +95,22 @@ function idSelector(component: Component): string {
 /** Recorded `ensureStyleRule` ops for the given selector. */
 function ensureStyleRuleOpsFor(sink: RecordingDOMSink, selector: string): Array<{ op: string; args: unknown[] }> {
     return sink.writes.filter((w) => w.op === 'ensureStyleRule' && w.args[0] === selector);
+}
+
+/**
+ * The `addClass`/`removeClass` patches from `apply` writes targeting
+ * `element` — the class-toggle side of `setValueStyleState`/
+ * `clearValueStyleState`. Mirrors `TextLineHeightValueClassSharing.test.ts`'s
+ * own `classToggleWrites`, scoped to one element's own writes.
+ */
+function classToggleWritesFor(
+    writes: RecordingDOMSink['writes'],
+    element: unknown,
+): Array<{ removeClass?: string[]; addClass?: string[] }> {
+    return writes
+        .filter((w) => w.op === 'apply' && w.args[0] === element)
+        .map((w) => w.args[1] as { removeClass?: string[]; addClass?: string[] })
+        .filter((patch) => patch.addClass !== undefined || patch.removeClass !== undefined);
 }
 
 describe('Text applyStyle class-rule hoisting', () => {
@@ -349,5 +366,67 @@ describe('Text applyStyle class-rule hoisting', () => {
         }
         expect(declarations.lineHeight).toBeNull();
         expect(declarations.textOverflow).toBeNull();
+    });
+
+    // Stage 4 (plans/layered-style-bag.md) Expected Behaviour rows 14-15.
+    it('row 14: a subclass whose class default supplies fontSize, with a constructor-time setFontSize call to the same value, emits no fontSize declaration and declares no applySubclassStyles override of its own', () => {
+        const ROW14_FONT_SIZE_VAR  = '--row14-font-size';
+        const ROW14_FONT_SIZE_RULE = `var(${ROW14_FONT_SIZE_VAR}, 14px)`;
+
+        class Row14Text extends Text {
+            protected static readonly ownClassStyleDefaults: StyleBag = {
+                font: { ...Text.ownClassStyleDefaults.font, fontSize: ROW14_FONT_SIZE_RULE },
+            };
+
+            constructor() {
+                super();
+                this.setFontSize(ROW14_FONT_SIZE_VAR);
+            }
+        }
+
+        // Mirrors the plan's Architecture Decisions: `ButtonLabelText`/
+        // `HeaderCellText` used to need an `applySubclassStyles` override
+        // purely to re-queue this exact same-value fontSize through the
+        // reconciled path once their class rule existed (see
+        // plans/implemented/*); `flushStyleBag`'s generic per-key
+        // comparison — which runs once the class layer is guaranteed
+        // resolved, not at construction time — makes that workaround
+        // unnecessary, so this subclass needs none of its own either.
+        expect(Object.prototype.hasOwnProperty.call(Row14Text.prototype, 'applySubclassStyles')).toBe(false);
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const a = new Row14Text();
+        const declarations = declarationsDuring(sink, idSelector(a), () => a.getElement(true));
+
+        expect(declarations.fontSize).toBeUndefined();
+        expect(a.getFontSize()).toBe(14);
+    });
+
+    it("row 15: two Text instances of one concrete class set to the same numeric line-height share one .ClassName.lh<value> rule and both carry the token; switching one to a CSS-var line-height removes only that instance's token", () => {
+        class Row15Text extends Text {}
+
+        const sink = DOM.sink as RecordingDOMSink;
+
+        const a = new Row15Text('a');
+        a.getElement(true);
+        const startA = sink.writes.length;
+        a.setLineHeight(21);
+        expect(classToggleWritesFor(sink.writes.slice(startA), a.getElement())).toEqual([{ removeClass: [], addClass: ['lh21px'] }]);
+
+        const b = new Row15Text('b');
+        b.getElement(true);
+        const startB = sink.writes.length;
+        b.setLineHeight(21);
+        expect(classToggleWritesFor(sink.writes.slice(startB), b.getElement())).toEqual([{ removeClass: [], addClass: ['lh21px'] }]);
+
+        expect(_ruleCacheHas('.Row15Text.lh21px')).toBe(true);
+
+        const startSwitch = sink.writes.length;
+        a.setLineHeight('--row15-var');
+        const switchWrites = sink.writes.slice(startSwitch);
+
+        // Only `a`'s own element loses the token — `b`'s write is untouched.
+        expect(classToggleWritesFor(switchWrites, a.getElement())).toEqual([{ removeClass: ['lh21px'] }]);
+        expect(classToggleWritesFor(switchWrites, b.getElement())).toEqual([]);
     });
 });
