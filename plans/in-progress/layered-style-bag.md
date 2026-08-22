@@ -893,6 +893,109 @@ Run from the repo root unless noted.
 
 ---
 
+## Implementation Notes
+
+Deviations made to reach a working implementation, beyond what the plan text
+spelled out:
+
+- **`.focused` (Cell, TreeRow) is deliberately excluded from `ownStyleStates`
+  entirely, carrying its own unguarded shared rule instead — found during
+  audit, not the plan's original shape.** The first implementation declared
+  `.focused` in the same `ownStyleStates` list as the background-bearing
+  states (`.rangeSelected`/`.readOnly`/`.requiredEmpty` on `Cell`, `.selected`
+  on `TreeRow`), reasoning that a hand-rolled rule just needed its guard
+  suffix read back via `resolveStyleStates(ctor).find(...).guardedSuffix`
+  (the `ToggleButton.selectedStyleRule` pattern) for `outline-offset`, which
+  has no `StyleBag` key of its own. That reasoning missed that
+  `guardedSuffixFor` guards a state against *every* higher-priority entry
+  unconditionally, not only ones sharing a CSS property — so with `.focused`
+  first in the list, a focused-and-read-only `Cell` lost its entire
+  read-only background/cursor tint, and a selected-and-focused `TreeRow` (the
+  ordinary state of the current node during keyboard navigation) lost its
+  focus ring outright. `.focused` shares no property with any of the other
+  declared states (`outline` only), so it now carries its own **unguarded**
+  shared rule (`Cell.focusedStyleRule` / `TreeRow.focusedStyleRule`, a
+  literal `".focused"` suffix — no guard needed since nothing else competes
+  for `outline`), entirely outside `ownStyleStates`. `outline-offset` rides
+  along on the same rule. See `Cell.ownStyleStates`'s own comment, and the
+  regression tests in `PooledTintMetaClasses.test.ts`.
+- **A related, independently-found bug: a cell `Row.setColumnWindow` retires
+  into its per-instance `_cellCache` — an ordinary horizontal narrow, not an
+  edge case — could carry a stale `.focused` token back out when later
+  restored.** `Body._updateFocusStyle`'s narrowed per-tick clear (see its own
+  comment) reaches neither the retired cell's own fast path (its
+  `getParentComponent()` is already `null`) nor the full-sweep fallback
+  (which only walks the *current* pool's `getComponents()`, never
+  `_cellCache`). `Row.retireCell` now clears `.focused` unconditionally
+  before caching or disposing, so a cell never carries the token out of the
+  cache in the first place.
+- **`HeaderCell`'s pre-existing `ownStyleStates` (Stage 3's `:active`)
+  silently shadowed `Cell`'s three new Stage 5 states.** `ownStyleStates` is a
+  whole-list, own-property declaration — a subclass that declares its own
+  replaces its ancestor's list for the whole subtree rather than adding to
+  it. `HeaderCell.ownStyleStates` now restates `Cell.ownStyleStates` and
+  appends `:active`, matching the `ToggleButton`-over-`Button` precedent the
+  plan already established for exactly this shape. This also widened
+  `:active`'s generated guard suffix from `:not(:active)` alone to the full
+  chain against `Cell`'s three states, which two pre-existing
+  `Header.test.ts` assertions needed updating to match.
+- **`Text.applySubclassStyles` is not fully retired.** Step 22 calls for
+  retiring the eleven `writeFontDeclaration`-routed calls; a twelfth,
+  narrower override survives for `textOverflow` alone. `textOverflow`'s
+  getter-facing value (`null`, from `clearTextOverflow` when not truncating)
+  diverges from the CSS declaration the instance actually needs (the CSS
+  initial value `"clip"`, not a bare removal — `.Text`'s class rule always
+  carries a non-null `text-overflow: ellipsis`) — the same
+  getter-facing-vs-CSS-facing duality `Component.clearShadow` already has.
+  `flushStyleBag`'s generic per-key sweep always writes the *authored* value
+  it finds, so it can't express this split; a per-render hook can. The
+  surviving override is three lines, not the twelve-property sweep step 22
+  retires.
+- **`matchesClassStyle` survives step 24's deletion, renamed to
+  `matchesLowerTier`.** `clearShadow` (pre-existing) and
+  `Text.clearTextOverflow` (Stage 4) both need the same
+  getter-facing-vs-CSS-facing comparison `matchesClassStyle` used to make
+  for `writeRuleDeclaration` / `reconcileRuleDeclaration` /
+  `setReconciledCSSRules`, all three of which step 24 does delete. Renaming
+  it satisfies that step's own grep invariant (`matchesClassStyle` — expect
+  zero outside comments) while keeping the one comparison primitive both
+  call sites still need.
+- **A latent `Text.getClassStyleDefaults()` bug, surfaced by Stage 4's
+  getter migration.** It hardcoded `Text.ownClassStyleDefaults.font` rather
+  than reading `(this.constructor as typeof Text).ownClassStyleDefaults`,
+  so `resolveFontValue`'s pre-render "virtual layer" fallback (used by
+  `NumberRendererText`, which declares a complete overriding `font` bag)
+  silently ignored a subclass's own font default — invisible before Stage 4
+  because the pre-migration getters read `_defaultOptions` instead, not
+  this method. Fixed to prefer the constructor's own bag, falling back to
+  `Text`'s for a subclass whose own bag carries no `font` key at all (e.g.
+  `SelectableText`, which only adds `cursor`/`userSelect`).
+- **`Cell.readOnly` declares `shadow: null`, though `readOnly` has no shadow
+  of its own.** `resolveStyleValue`'s active-state walk is per-*key*, not
+  per-state-priority: a higher-priority active state that doesn't declare a
+  given key is skipped for that key's resolution, letting a lower-priority
+  state that does declare it win — even though the lower state's own CSS
+  rule is correctly guarded off and never paints. Without the explicit
+  `null`, a read-only *and* required-empty cell's `getShadow()` would
+  incorrectly report `.requiredEmpty`'s ring. Cell.ts's own comment on
+  `ownStyleStates` documents this for the next state that needs it.
+- **Three of the "rename only" `ClassStyleDefaults` → `StyleBag` sites
+  needed a real behavioural fix, not a type-identifier rename.** The plan's
+  `## Files to Create / Modify / Delete` table characterises all 32
+  `ClassStyleDefaults`-importing files as "rename only." `component/display/
+  Image.ts` and `component/list/AbstractSelectableList.ts` each read
+  `this._options.minSize` directly to detect a caller-supplied preferred
+  size — a read that silently broke once Stage 2 moved `minSize` off
+  `_options` onto the instance style layer, since `_options.minSize` is
+  simply never set anymore. Both now read
+  `this.instanceLayer().authored.minSize` instead. `component/input/
+  Slider.ts`'s `applyOrientation` similarly read `this._options.maxSize`;
+  it now takes the raw `options` parameter instead, since `_options.maxSize`
+  no longer mirrors what `setMaxSize` writes. A repo-wide grep for every
+  other direct `_options.<layering property>` read (`backgroundColor`,
+  `border`, `cursor`, `outline`, `overflowX`/`overflowY`, `shadow`, `minSize`,
+  `maxSize`) found no other instance.
+
 ## Notes
 
 [^shape-inventory]: Verified by reading `core/Component.ts` end to end. The nine
