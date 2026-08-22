@@ -267,6 +267,12 @@ class Body extends VirtualRowView<Row> {
     // for a since-removed/filtered record (see `getCellRangeBounds`).
     private _rangeAnchor     : { record: ModelRecord, col: number } | null = null;
     private _rangeFocus      : { record: ModelRecord, col: number } | null = null;
+    // True once the live drag has widened from native text selection into
+    // rectangular cell-range selection — the one-way switch that installs the
+    // `selectstart` suppressor. Framework-managed bookkeeping (reset on every
+    // mousedown and mouseup), so per ARCHITECTURE.md's DOM-write rule this gets
+    // no `BodyOptions` field and no public setter.
+    private _rangeDragWidened: boolean                    = false;
     // The right-clicked cell, resolved fresh on every `"contextmenu"` and
     // left untouched by anything else — right-click never mutates the
     // persistent range (see the plan's right-click Architecture Decision).
@@ -965,7 +971,8 @@ class Body extends VirtualRowView<Row> {
         Event.addSubtreeListener(this, "click", this.onSubtreeClick);
 
         // Drives the cell-range-selection drag gesture (mousedown arms the
-        // move/up/selectstart viewport listeners — see `onCellMouseDown`) and
+        // move/up viewport listeners — see `onCellMouseDown`; the selectstart
+        // suppressor arms only once the drag widens past its origin cell) and
         // the right-click "Copy" menu target resolution.
         Event.addSubtreeListener(this, "mousedown",   this.onCellMouseDown);
         Event.addSubtreeListener(this, "contextmenu", this.onCellContextMenu);
@@ -1740,8 +1747,9 @@ class Body extends VirtualRowView<Row> {
      * Repaints the highlight, focuses the body (a genuine multi-cell drag
      * never fires a `click` event at all, so {@link onRowClick}'s own
      * focus() call cannot be relied on to run after one), and arms the
-     * mousemove/mouseup/selectstart viewport listeners that drive the rest
-     * of the gesture.
+     * mousemove/mouseup viewport listeners that drive the rest of the
+     * gesture. The `selectstart` suppressor arms only once the drag widens
+     * past its origin cell.
      *
      * A no-op — no anchor/focus change, no drag armed — when the mousedown
      * resolves to a separator row, an actively-editing cell, or no cell at all.
@@ -1768,9 +1776,12 @@ class Body extends VirtualRowView<Row> {
         this.refreshCellRangeHighlight();
         this.focus();
 
-        Event.addViewportListener(this, "mousemove",   this.onCellDragMove);
-        Event.addViewportListener(this, "mouseup",     this.onCellDragEnd);
-        Event.addViewportListener(this, "selectstart", this.onCellDragSelectStart);
+        this.resetRangeDragWidening();
+
+        Event.addViewportListener(this, "mousemove", this.onCellDragMove);
+        Event.addViewportListener(this, "mouseup",   this.onCellDragEnd);
+
+        this.widenRangeDragIfMultiCell();
     }
 
     /**
@@ -1783,6 +1794,10 @@ class Body extends VirtualRowView<Row> {
      * @param e - The mousemove event.
      */
     protected onCellDragMove(e: MouseEvent): Event.ListenerResult {
+        if (this._rangeDragWidened) {
+            DOM.sink.clearDocumentSelection();
+        }
+
         const target  = e.target === null ? null : DOM.source.intern(e.target);
         const located = this.locateCellFromTarget(target);
 
@@ -1797,6 +1812,7 @@ class Body extends VirtualRowView<Row> {
 
         this._rangeFocus = { record: located.record, col: located.col };
         this.refreshCellRangeHighlight();
+        this.widenRangeDragIfMultiCell();
     }
 
     /**
@@ -1807,22 +1823,59 @@ class Body extends VirtualRowView<Row> {
      * anchor === focus).
      */
     protected onCellDragEnd(): Event.ListenerResult {
-        Event.removeViewportListener(this, "mousemove",   this.onCellDragMove);
-        Event.removeViewportListener(this, "mouseup",     this.onCellDragEnd);
-        Event.removeViewportListener(this, "selectstart", this.onCellDragSelectStart);
+        Event.removeViewportListener(this, "mousemove", this.onCellDragMove);
+        Event.removeViewportListener(this, "mouseup",   this.onCellDragEnd);
+
+        this.resetRangeDragWidening();
     }
 
     /**
-     * Suppresses native text selection for the duration of a range drag —
-     * the same technique `DragManager`'s `onSelectStart` uses to stop a
-     * mouse-driven drag from painting a native selection alongside it, since
-     * `preventDefault()` on `mousemove` does not by itself stop the browser
-     * from extending one.
+     * Suppresses native text selection from the moment a drag widens past
+     * its origin cell until mouseup — the same technique `DragManager`'s
+     * `onSelectStart` uses to stop a mouse-driven drag from painting a
+     * native selection alongside it, since `preventDefault()` on `mousemove`
+     * does not by itself stop the browser from extending one.
      *
      * @returns Always suppresses the event while installed.
      */
     private onCellDragSelectStart(): Event.ListenerResult {
         return { stop: true, prevent: true };
+    }
+
+    /**
+     * Widens the live gesture from native text selection into rectangular
+     * cell-range selection, once the range spans more than the one cell it
+     * started in. A no-op while the range is still one cell, so an ordinary
+     * click-drag inside a cell keeps the browser's own text selection; once
+     * widened it clears that selection and stays widened until mouseup.
+     */
+    private widenRangeDragIfMultiCell(): void {
+        if (this._rangeDragWidened) {
+            return;
+        }
+
+        const bounds = this.getCellRangeBounds(this._rangeAnchor, this._rangeFocus);
+
+        if (!bounds || (bounds.minRow === bounds.maxRow && bounds.minCol === bounds.maxCol)) {
+            return;
+        }
+
+        this._rangeDragWidened = true;
+
+        DOM.sink.clearDocumentSelection();
+        Event.addViewportListener(this, "selectstart", this.onCellDragSelectStart);
+    }
+
+    /**
+     * Tears down the `selectstart` suppressor and re-arms native text
+     * selection for the next gesture. `Event.removeViewportListener`
+     * no-ops for a listener that was never installed, so it is safe to call
+     * for a gesture that never widened.
+     */
+    private resetRangeDragWidening(): void {
+        Event.removeViewportListener(this, "selectstart", this.onCellDragSelectStart);
+
+        this._rangeDragWidened = false;
     }
 
     /**
@@ -2306,6 +2359,8 @@ class Body extends VirtualRowView<Row> {
     /**
      * Handles keyboard navigation: ArrowUp/Down/Home/End move row selection; ArrowLeft/Right
      * move column focus; PageUp/Down move by a viewport-height page; Enter starts cell edit.
+     * Ctrl/Cmd+C copies the cell range, unless a live sub-cell text selection
+     * exists, in which case the browser's own copy runs instead.
      *
      * @param e - The keyboard event fired on the body element.
      *
@@ -2321,6 +2376,14 @@ class Body extends VirtualRowView<Row> {
         }
 
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+            // A live sub-cell text selection wins: let the browser copy the
+            // substring instead of overwriting the clipboard with whole cells.
+            // Returns null for a collapsed caret too, so a plain click still
+            // copies the range.
+            if (DOM.source.getDocumentSelection()) {
+                return;
+            }
+
             this.copySelectionToClipboard();
 
             return { prevent: true };

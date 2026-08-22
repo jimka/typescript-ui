@@ -12,6 +12,7 @@
 // editor.test pattern of poking a private to exercise a real contract.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
+import { Event } from '~/core/Event';
 import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Body, resolveClickedColumn } from '~/component/table/Body';
@@ -638,6 +639,107 @@ describe('Body range selection — mouse gestures', () => {
         expect((cellAt(b, 0, 2) as any)._rangeSelected).toBe(false);
         expect((cellAt(b, 1, 0) as any)._rangeSelected).toBe(false);
     });
+
+    function selectstartRegistrations(spy: ReturnType<typeof vi.spyOn>): unknown[] {
+        return spy.mock.calls.filter((call: unknown[]) => call[1] === 'selectstart');
+    }
+
+    function clearSelectionWrites(): unknown[] {
+        return (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'clearDocumentSelection');
+    }
+
+    // `Event` is a shared namespace object: `vi.spyOn` called again on an
+    // already-spied method returns the SAME mock rather than a fresh one, so
+    // its call history persists across `it` blocks unless cleared explicitly.
+    function spyOnAddViewportListener(): ReturnType<typeof vi.spyOn> {
+        const spy = vi.spyOn(Event, 'addViewportListener');
+        spy.mockClear();
+
+        return spy;
+    }
+
+    it('a drag that never leaves its origin cell does not touch native selection', async () => {
+        const b = await rangeBody();
+        const addSpy = spyOnAddViewportListener();
+
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 0, 0).getElement()!, 'mousedown'));
+        (b as any).onCellDragMove(makeEvent(cellAt(b, 0, 0).getElement()!, 'mousemove'));
+
+        expect(clearSelectionWrites()).toHaveLength(0);
+        expect(selectstartRegistrations(addSpy)).toHaveLength(0);
+    });
+
+    it('a cross-cell drag clears the selection and installs the suppressor', async () => {
+        const b = await rangeBody();
+        const addSpy = spyOnAddViewportListener();
+
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 0, 0).getElement()!, 'mousedown'));
+        (b as any).onCellDragMove(makeEvent(cellAt(b, 1, 0).getElement()!, 'mousemove'));
+
+        expect(clearSelectionWrites()).toHaveLength(1);
+        expect(selectstartRegistrations(addSpy)).toHaveLength(1);
+        expect((b as any)._rangeDragWidened).toBe(true);
+    });
+
+    it('a shift-click that already spans cells widens immediately', async () => {
+        const b = await rangeBody();
+
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 0, 0).getElement()!, 'mousedown'));
+        (b as any).onCellDragEnd();
+
+        const addSpy = spyOnAddViewportListener();
+
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 2, 2).getElement()!, 'mousedown', { shiftKey: true }));
+
+        expect(clearSelectionWrites()).toHaveLength(1);
+        expect(selectstartRegistrations(addSpy)).toHaveLength(1);
+    });
+
+    it('the suppressor is never registered twice in one gesture, but clearing keeps running every widened tick', async () => {
+        const b = await rangeBody();
+        const addSpy = spyOnAddViewportListener();
+
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 0, 0).getElement()!, 'mousedown'));
+        (b as any).onCellDragMove(makeEvent(cellAt(b, 1, 0).getElement()!, 'mousemove'));
+        (b as any).onCellDragMove(makeEvent(cellAt(b, 2, 0).getElement()!, 'mousemove'));
+        (b as any).onCellDragMove(makeEvent(cellAt(b, 3, 0).getElement()!, 'mousemove'));
+
+        expect(selectstartRegistrations(addSpy)).toHaveLength(1);
+        expect(clearSelectionWrites()).toHaveLength(3);
+    });
+
+    it('mouseup re-arms text mode', async () => {
+        const b = await rangeBody();
+
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 0, 0).getElement()!, 'mousedown'));
+        (b as any).onCellDragMove(makeEvent(cellAt(b, 1, 0).getElement()!, 'mousemove'));
+
+        const removeSpy = vi.spyOn(Event, 'removeViewportListener');
+        removeSpy.mockClear();
+        (b as any).onCellDragEnd();
+
+        expect((b as any)._rangeDragWidened).toBe(false);
+        expect(removeSpy.mock.calls.some(call => call[1] === 'selectstart')).toBe(true);
+
+        const addSpy = spyOnAddViewportListener();
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 0, 0).getElement()!, 'mousedown'));
+
+        expect(selectstartRegistrations(addSpy)).toHaveLength(0);
+    });
+
+    it('a shift-click landing on the anchor\'s own cell stays in text mode', async () => {
+        const b = await rangeBody();
+
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 1, 1).getElement()!, 'mousedown'));
+        (b as any).onCellDragEnd();
+
+        const addSpy = spyOnAddViewportListener();
+
+        (b as any).onCellMouseDown(makeEvent(cellAt(b, 1, 1).getElement()!, 'mousedown', { shiftKey: true }));
+
+        expect(clearSelectionWrites()).toHaveLength(0);
+        expect(selectstartRegistrations(addSpy)).toHaveLength(0);
+    });
 });
 
 describe('Body range selection — copy', () => {
@@ -752,6 +854,31 @@ describe('Body range selection — copy', () => {
 
         (b as any).onKeyDown(makeEvent(b.getElement()!, 'keydown', { key: 'c' }));
         expect(spy).toHaveBeenCalledTimes(2);
+    });
+
+    it('Ctrl/Cmd+C defers to a live text selection', async () => {
+        const store = new MemoryStore(MODEL, [{ a: '1', b: '2', c: '3' }]);
+        await store.load();
+
+        const b = new Body(store);
+        b.getElement(true);
+
+        const record = store.getAll()[0];
+        (b as any)._rangeAnchor = { record, col: 0 };
+        (b as any)._rangeFocus  = { record, col: 0 };
+
+        vi.spyOn(DOM.source, 'getDocumentSelection').mockReturnValue({
+            startContainer: b.getElement()!,
+            startOffset:    0,
+            endContainer:   b.getElement()!,
+            endOffset:      2,
+        });
+
+        expect((b as any).onKeyDown(makeEvent(b.getElement()!, 'keydown', { key: 'c', ctrlKey: true })))
+            .toBeUndefined();
+
+        const writes = (DOM.sink as RecordingDOMSink).writes.filter(w => w.op === 'writeClipboardText');
+        expect(writes).toHaveLength(0);
     });
 });
 

@@ -600,6 +600,10 @@ export class RecordingDOMSink implements DOMSink {
         this.record('writeClipboardText', text);
     }
 
+    clearDocumentSelection(): void {
+        this.record('clearDocumentSelection');
+    }
+
     addListener<T extends Event = Event>(target: Handle, type: string, handler: (event: T) => void, _options?: boolean | AddEventListenerOptions): void {
         this.record('addListener', type);
 
