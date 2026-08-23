@@ -14,7 +14,7 @@
 // through a full layout pass. A few cases (1, 2, 17-20, 25) exercise the full
 // `Table` → `layout/Table.doLayout` → header pipeline instead, because the
 // contract under test is that integration itself.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -763,26 +763,27 @@ describe('Header column window — geometry diffing', () => {
 
     it('34. a cell recycled onto a different column at matching geometry is laid out', async () => {
         const table = await wideTable(20, {
-            columns: [{ field: 'c4', headerGlyph: 'unicode-arrow-up' }],
+            columns: [{ field: 'c7', headerGlyph: 'unicode-arrow-up' }],
         });
-        render20At100(table); // window 0..4, so c4 is the last rendered column
+        render20At100(table); // window 0..7 (fixed width 8), so c7 is the last rendered column
 
-        const cell = cells(table)[4];
-        expect(cell.getFieldName()).toBe('c4');
+        const cell = cells(table)[7];
+        expect(cell.getFieldName()).toBe('c7');
         expect(cell.getHeaderGlyph()).toBe('unicode-arrow-up');
         const withGlyph = labelX(cell);
 
-        // Hiding c4 slides c5 into the last slot, so c4's cell is recycled onto
-        // a column sitting at the identical x and width — the one case the
+        // Hiding c7 slides c8 — not previously rendered, since the window
+        // stopped at c7 — into the last slot, so c7's cell is recycled onto a
+        // column sitting at the identical x and width — the one case the
         // geometry diff alone cannot catch, and the glyph has to come off.
-        table.setColumnVisible('c4', false);
+        table.setColumnVisible('c7', false);
         render20At100(table);
 
-        const recycled = cells(table)[4];
+        const recycled = cells(table)[7];
 
         expect(recycled).toBe(cell);
-        expect(recycled.getFieldName()).toBe('c5');
-        expect(recycled.getX()).toBe(400);
+        expect(recycled.getFieldName()).toBe('c8');
+        expect(recycled.getX()).toBe(700);
         expect(recycled.getHeaderGlyph()).toBeNull();
         expect(labelX(recycled)).toBeLessThan(withGlyph);
     });
@@ -882,5 +883,43 @@ describe('Header column window — geometry diffing', () => {
         cell.doLayout();
 
         expect(snapshot()).not.toBe(before);
+    });
+});
+
+// Offline coverage for plans/column-window-edge-stability.md's `## Expected
+// Behaviour` §D — `reconcileColumnCells`'s pass 3 no longer writes a
+// surviving cell's ARIA column index unconditionally on every reconcile;
+// only a retargeted cell, or every cell once `_columnsDirty` widens the
+// scope, gets the write.
+describe('Header column window — ARIA scoping', () => {
+    it('38. a surviving cell does not receive a redundant setColIndex call on a slide; a recycled one does', async () => {
+        const table = await wideTable(20);
+
+        render20At100(table, 550); // window [3,10]: columns 3..10 at slots 0..7
+
+        // The slide to [4,11] drops column 3 (slot 0) and adds column 11
+        // (new slot 7); columns 4..10 survive, shifting down one slot.
+        const departing = cells(table)[0]; // column 3 — recycled onto the entering column 11
+        const survivor  = cells(table)[1]; // column 4 — survives at the new slot 0
+
+        const departingSpy = vi.spyOn(departing.getAria(), 'setColIndex');
+        const survivorSpy  = vi.spyOn(survivor.getAria(), 'setColIndex');
+
+        header(table).setScrollX(650); // window [4,11]
+
+        expect(survivorSpy).not.toHaveBeenCalled();
+        expect(departingSpy).toHaveBeenCalledWith(12); // recycled onto column 11, slot 7
+
+        // The recycled cell instance is the one now rendering column 11.
+        expect(cells(table)[cells(table).length - 1]).toBe(departing);
+        expect(departing.getFieldName()).toBe('c11');
+
+        // Case 6's assertion, re-run after the slide: every rendered cell
+        // still reports the correct index, survivors and recycled alike.
+        const start = header(table).getColumnWindowStart();
+
+        cells(table).forEach((cell, slot) => {
+            expect(cell.getAria().getColIndex()).toBe(start + slot + 1);
+        });
     });
 });

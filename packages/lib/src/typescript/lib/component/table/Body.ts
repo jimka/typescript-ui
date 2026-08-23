@@ -119,6 +119,49 @@ export interface ColumnWindow {
 }
 
 /**
+ * Computes the fixed rendered-column-window width for a viewport: the
+ * number of slots that fits the largest raw-visible run any scroll offset
+ * can produce, plus {@link COLUMN_BUFFER} on each side, capped at the
+ * column count. Sizing the window from this fixed count rather than from
+ * the current scroll offset is the column-axis counterpart of row
+ * virtualization's pool-target sizing, which likewise sizes the row pool
+ * from the viewport alone so edge clamping cannot shrink it.
+ *
+ * @param lefts - Left offset per visible column, in display order.
+ * @param viewportWidth - The body's visible width in pixels.
+ *
+ * @returns The fixed slot count `computeColumnWindow` places its window with.
+ *
+ * @internal
+ */
+export function computeColumnWindowSize(lefts: number[], viewportWidth: number): number {
+    const n = lefts.length;
+
+    if (n === 0) {
+        return 0;
+    }
+
+    // Widest run of columns whose left edges all fall within one viewport
+    // width of each other. The raw-visible run at any scroll offset is one
+    // such run plus at most one extra column on its left, so `widest + 1`
+    // bounds every offset's raw-visible count.
+    let widest = 1;
+    let start  = 0;
+
+    for (let end = 0; end < n; end++) {
+        while (start < end && lefts[end] - lefts[start] > viewportWidth) {
+            start++;
+        }
+
+        if (end - start + 1 > widest) {
+            widest = end - start + 1;
+        }
+    }
+
+    return Math.min(n, widest + 1 + 2 * COLUMN_BUFFER);
+}
+
+/**
  * Computes the column window for a horizontal scroll offset and viewport width.
  *
  * Walks `widths` left to right, accumulating each column's left offset. A
@@ -126,8 +169,10 @@ export interface ColumnWindow {
  * left edge is at or before `scrollX + viewportWidth` — an inclusive
  * comparison, so a table with no known widths yet (`widths` full of zeros,
  * e.g. before the layout manager has run) degrades to "every column
- * renders" rather than "no column renders". The raw-visible run is widened
- * by {@link COLUMN_BUFFER} on each side and clamped to `[0, n-1]`.
+ * renders" rather than "no column renders". The window has a fixed width —
+ * see {@link computeColumnWindowSize} — and slides against the ends of the
+ * column list rather than being clamped at both ends, so it never narrows
+ * near an edge.
  *
  * @param widths - Effective width per visible column, in display order.
  * @param scrollX - The current horizontal scroll offset in pixels.
@@ -158,31 +203,24 @@ export function computeColumnWindow(
     const viewportRight = scrollX + viewportWidth;
 
     let firstRawVisible = -1;
-    let lastRawVisible   = -1;
 
     for (let i = 0; i < n; i++) {
-        const left  = lefts[i];
-        const right = left + widths[i];
-
-        if (right >= scrollX && left <= viewportRight) {
-            if (firstRawVisible === -1) {
-                firstRawVisible = i;
-            }
-
-            lastRawVisible = i;
+        if (lefts[i] + widths[i] >= scrollX && lefts[i] <= viewportRight) {
+            firstRawVisible = i;
+            break;
         }
     }
 
     if (firstRawVisible === -1) {
         // No column's span touches the viewport at all (e.g. scrolled past
-        // the content); fall back to rendering nothing beyond the buffer
-        // around the nearest edge so a window is still returned.
+        // the content); anchor the window at the left edge so a window is
+        // still returned.
         firstRawVisible = 0;
-        lastRawVisible  = 0;
     }
 
-    const firstCol = Math.max(0, firstRawVisible - COLUMN_BUFFER);
-    const lastCol  = Math.min(n - 1, lastRawVisible + COLUMN_BUFFER);
+    const slotCount = computeColumnWindowSize(lefts, viewportWidth);
+    const firstCol  = Math.min(Math.max(firstRawVisible - COLUMN_BUFFER, 0), n - slotCount);
+    const lastCol   = firstCol + slotCount - 1;
 
     return { firstCol, lastCol, widths, lefts };
 }

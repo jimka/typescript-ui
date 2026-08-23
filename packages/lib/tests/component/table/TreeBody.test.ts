@@ -229,9 +229,9 @@ describe('TreeBody moveFocusTo — selection event fires only on a real change',
 describe('TreeBody column window — tree column scrolling', () => {
     // `name` (the tree column) plus 19 filler string columns = 20 visible
     // columns at 100px, mirroring Body.test.ts's wide-table windowing math
-    // (COLUMN_BUFFER = 2, viewport 250): scrollX 0 -> window [0,4]; the
-    // clamped max scrollX -> window [15,19]. `id` / `parent` are hidden so
-    // `name` lands at visible-column index 0.
+    // (COLUMN_BUFFER = 2, viewport 250, fixed window width 8): scrollX 0 ->
+    // window [0,7]; the clamped max scrollX -> window [12,19]. `id` /
+    // `parent` are hidden so `name` lands at visible-column index 0.
     const WIDE_FIELDS = [
         { name: 'id',     type: 'number' as const, order: 0 },
         { name: 'parent', type: 'number' as const, order: 1 },

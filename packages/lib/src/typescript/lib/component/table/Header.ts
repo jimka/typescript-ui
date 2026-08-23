@@ -698,9 +698,12 @@ class TableHeader extends Component {
      * 2. Every other column in the range recycles a leftover cell, or
      *    builds a fresh one when none remains.
      * 3. Every per-column property (label, tooltip, glyph, group tint,
-     *    required marker, ARIA column index) is re-applied to every
-     *    rendered cell, whether or not it was re-targeted, so a recycled
-     *    cell never shows a trace of its previous column.
+     *    required marker) is re-applied to every rendered cell, whether or
+     *    not it was re-targeted, so a recycled cell never shows a trace of
+     *    its previous column. The ARIA column index is the one exception —
+     *    a survivor's own index cannot be stale, so that write is scoped to
+     *    a retargeted cell (or every cell, once a field/config change
+     *    widens the scope).
      *
      * Cells left over after the window is filled are removed and disposed.
      * Called from {@link renderColumnWindow}, which positions the returned
@@ -734,6 +737,7 @@ class TableHeader extends Component {
 
         const slotCount = lastCol - firstCol + 1;
         const assigned: (HeaderCell | undefined)[] = new Array(slotCount).fill(undefined);
+        const retargeted = new Set<number>();
 
         // Pass 1 — keep a cell for its own field.
         for (let col = firstCol; col <= lastCol; col++) {
@@ -778,10 +782,17 @@ class TableHeader extends Component {
             }
 
             assigned[slot] = cell;
+            retargeted.add(col);
         }
 
         // Pass 3 — per-column state, re-applied to every rendered cell so a
-        // recycled cell never shows a trace of its previous column.
+        // recycled cell never shows a trace of its previous column. The
+        // ARIA column index is the one exception: a survivor's index cannot
+        // be stale (it was matched by field name in pass 1, and a field's
+        // index into `_visibleFields` cannot change without `_columnsDirty`
+        // being set), so that write is scoped to a retargeted cell, or every
+        // cell once `_columnsDirty` widens the scope — read directly here,
+        // since this method does not clear it until after this pass.
         for (let col = firstCol; col <= lastCol; col++) {
             const cell   = assigned[col - firstCol]!;
             const field  = this._visibleFields[col];
@@ -804,7 +815,10 @@ class TableHeader extends Component {
 
             cell.setBaseBackground(column?.getGroupColor() ?? null);
             cell.setRequired(column?.isRequired() ?? false);
-            cell.getAria().setColIndex(col + 1);
+
+            if (retargeted.has(col) || this._columnsDirty) {
+                cell.getAria().setColIndex(col + 1);
+            }
         }
 
         // Discard what is left over.
