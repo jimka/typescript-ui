@@ -9,19 +9,16 @@
 // TabButton.styleRuleDisposal.test.ts convention.
 //
 // SCOPE NOTE (see plans/implemented/button-resting-chrome-state-isolation.md,
-// plans/implemented/state-chrome-isolation-generalization.md, and, for the
-// hierarchy-aware content walk, plans/implemented/state-tier-full-unification.md):
-// TabButton still declares no `:hover` entry of its own — hover stays
-// un-deduped, every field always writing to the instance, and no
-// `.TabButton:hover:not(.pressed)` class rule is ever created. `.selected`
-// is different now: TabButton's own `ownStyleStates` entry supplies its own
-// tab-specific `backgroundColor` / `backgroundImage` / `boxShadow`, so those
-// three dedupe onto the shared `.TabButton.selected:not(.pressed):not(:hover)`
-// class rule the same way `.pressed` already does. The four border longhands
-// stay a deliberate per-instance write (`applyTabStyling`'s `setSelectedBorder`
-// call) — never deduped, since border isn't part of that `ownStyleStates`
-// entry (see the plan's "TabButton's selected border stays a per-instance
-// write" Architecture Decision).
+// plans/implemented/state-chrome-isolation-generalization.md,
+// plans/implemented/state-tier-full-unification.md, and
+// plans/implemented/button-meta-class-dedup.md): TabButton now declares its
+// own `:hover` entry — tab-specific fill plus border, all four fields —
+// dedupeing onto the shared `.TabButton:hover:not(.pressed)` class rule the
+// same way `.pressed` already does. `.selected` is widened the same way:
+// TabButton's own `ownStyleStates` entry now supplies its tab-specific
+// `backgroundColor` / `backgroundImage` / `boxShadow` *and* the four border
+// longhands, so all seven dedupe onto the shared
+// `.TabButton.selected:not(.pressed):not(:hover)` class rule.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TabButton } from '~/component/button/TabButton';
 import { DOM } from '~/core/DOM';
@@ -93,30 +90,31 @@ describe('TabButton state-class hoisting', () => {
         expect(classDeclarations).toEqual({});
     });
 
-    it('never dedupes .hover — every field always writes to the instance, and no class rule is created', () => {
-        const tab = new TabButton('First');
+    it('dedupes .hover backgroundColor/backgroundImage/boxShadow and all four border longhands onto .TabButton:hover:not(.pressed)', () => {
+        new TabButton('Warmup').getElement(true);
+
+        const tab = new TabButton('Second');
         const hoverDeclarations = declarationsDuring(sink, idSelector(tab) + ':hover:not(.pressed)', () => tab.getElement(true));
 
-        expect(hoverDeclarations.backgroundColor).toBeDefined();
-        expect(hoverDeclarations.backgroundImage).toBeDefined();
-        expect(hoverDeclarations.boxShadow).toBeDefined();
-        expect(hoverDeclarations.borderTop).toBeDefined();
-        expect(hoverDeclarations.borderRight).toBeDefined();
-        expect(hoverDeclarations.borderBottom).toBeDefined();
-        expect(hoverDeclarations.borderLeft).toBeDefined();
+        expect(hoverDeclarations.backgroundColor).toBeUndefined();
+        expect(hoverDeclarations.backgroundImage).toBeUndefined();
+        expect(hoverDeclarations.boxShadow).toBeUndefined();
+        expect(hoverDeclarations.borderTop).toBeUndefined();
+        expect(hoverDeclarations.borderRight).toBeUndefined();
+        expect(hoverDeclarations.borderBottom).toBeUndefined();
+        expect(hoverDeclarations.borderLeft).toBeUndefined();
 
-        expect(_ruleCacheHas('.TabButton:hover:not(.pressed)')).toBe(false);
+        expect(_ruleCacheHas('.TabButton:hover:not(.pressed)')).toBe(true);
     });
 
-    // Since plans/in-progress/state-tier-full-unification.md, TabButton's own
+    // Since plans/implemented/button-meta-class-dedup.md, TabButton's own
     // `ownStyleStates` `.selected` entry supplies backgroundColor/
-    // backgroundImage/boxShadow directly (see TabButton.ts), so those three
-    // dedupe onto the shared class rule the same way `.pressed` does. The
-    // border stays a deliberate per-instance write (`applyTabStyling`'s
-    // `setSelectedBorder` call) — see the plan's "TabButton's selected border
-    // stays a per-instance write" Architecture Decision — so it is never
-    // deduped and always reaches the instance's own rule.
-    it('row 9: a second, default-styled TabButton dedupes .selected backgroundColor/backgroundImage/boxShadow onto the class rule, but always writes its own border', () => {
+    // backgroundImage/boxShadow *and* the border longhands (see TabButton.ts),
+    // so all seven dedupe onto the shared class rule the same way `.pressed`
+    // does. `applyTabStyling`'s `setSelectedBorder` call stays in place as
+    // the caller-override seam, but a default-styled instance's call now
+    // dedupes against the widened class bag instead of always writing.
+    it('row 9: a second, default-styled TabButton dedupes .selected backgroundColor/backgroundImage/boxShadow and all four border longhands onto the class rule', () => {
         new TabButton('Warmup').getElement(true);
 
         const second = new TabButton('Second');
@@ -125,10 +123,10 @@ describe('TabButton state-class hoisting', () => {
         expect(selectedDeclarations.backgroundColor).toBeUndefined();
         expect(selectedDeclarations.backgroundImage).toBeUndefined();
         expect(selectedDeclarations.boxShadow).toBeUndefined();
-        expect(selectedDeclarations.borderTop).toBeDefined();
-        expect(selectedDeclarations.borderRight).toBeDefined();
-        expect(selectedDeclarations.borderBottom).toBeDefined();
-        expect(selectedDeclarations.borderLeft).toBeDefined();
+        expect(selectedDeclarations.borderTop).toBeUndefined();
+        expect(selectedDeclarations.borderRight).toBeUndefined();
+        expect(selectedDeclarations.borderBottom).toBeUndefined();
+        expect(selectedDeclarations.borderLeft).toBeUndefined();
 
         expect(_ruleCacheHas('.TabButton.selected:not(.pressed):not(:hover)')).toBe(true);
     });

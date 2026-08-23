@@ -164,22 +164,34 @@ class TabButton extends ToggleButton {
     // `.Button`'s.
     protected static readonly ownClassStyleDefaults: StyleBag = _defaultTabButtonOptions;
 
-    // Restates ToggleButton's `.pressed`/`:hover` entries unchanged (own-property-
-    // declared, exactly like `ownClassStyleDefaults` — see `resolveStyleStates`'s
-    // own comment) and replaces `.selected` with the tab's own white fill —
-    // `backgroundColor`/`backgroundImage`/`shadow` only, the same three keys
-    // `ToggleButton`'s own entry carries. `TAB_BUTTON_SELECTED_BORDER` stays a
-    // per-instance write via `setSelectedBorder` (see `applyTabStyling`) rather
-    // than joining this bag, so `restingIsolationKeys()` doesn't grow border
-    // longhands — see the plan's matching Architecture Decision.
+    // Restates ToggleButton's `.pressed` entry unchanged (own-property-declared,
+    // exactly like `ownClassStyleDefaults` — see `resolveStyleStates`'s own
+    // comment), declares its own `:hover` entry (tab-specific fill plus
+    // border — genuinely different from `Button`'s generic hover, so it can
+    // only ever dedupe against `TabButton`'s own class rule, never Button's),
+    // and widens `.selected` with `TAB_BUTTON_SELECTED_BORDER` alongside the
+    // tab's own white fill. Both `.hover` and `.selected`'s border used to be
+    // a deliberate scope cut (see plans/implemented/state-tier-full-unification.md);
+    // every value here is a fixed constant with no per-instance variance, so
+    // declaring them is safe — see plans/implemented/button-meta-class-dedup.md.
     protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
-        ...ToggleButton.ownStyleStates.slice(0, 2),
+        ToggleButton.ownStyleStates[0],   // .pressed, restated unchanged
+        {
+            selector: ":hover",
+            extract: (): StyleBag => ({
+                backgroundColor: _defaultTabButtonOptions.hoverBackgroundColor,
+                backgroundImage: _defaultTabButtonOptions.hoverBackgroundImage,
+                shadow:          _defaultTabButtonOptions.hoverShadow,
+                border:          TAB_BUTTON_HOVER_BORDER,
+            }),
+        },
         {
             selector: ".selected",
             extract: (): StyleBag => ({
                 backgroundColor: TAB_BUTTON_SELECTED_FILL.backgroundColor,
                 backgroundImage: TAB_BUTTON_SELECTED_FILL.backgroundImage,
                 shadow:          TAB_BUTTON_SELECTED_FILL.boxShadow,
+                border:          TAB_BUTTON_SELECTED_BORDER,
             }),
         },
     ];
@@ -289,9 +301,10 @@ class TabButton extends ToggleButton {
     private applyTabStyling(options?: TabButtonOptions): void {
         this.setHoverBorder(options?.hoverBorder ?? TAB_BUTTON_HOVER_BORDER);
 
-        // Selected (active) state fill/shadow now come from this class's own
-        // `ownStyleStates` entry (see above) — only the border, which stays
-        // outside that entry, still needs an explicit per-instance write.
+        // Selected (active) state fill/shadow/border now all come from this
+        // class's own `ownStyleStates` entry (see above); this call is left
+        // in place as the caller-override seam a default-styled instance's
+        // call now dedupes against, exactly like `.pressed`'s fields already do.
         this.setSelectedBorder(TAB_BUTTON_SELECTED_BORDER);
     }
 
