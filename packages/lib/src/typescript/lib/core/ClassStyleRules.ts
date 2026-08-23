@@ -959,21 +959,16 @@ const _classChains: Map<Function, readonly string[]> = new Map();
  *
  * Gated on `chainParticipates`, though, at the top: a chain with **no**
  * `ownClassStyleDefaults` *anywhere* keeps today's exact pre-hierarchy
- * behaviour — this class's own name only, not its ancestors'. Widening such
- * a chain would be actively unsafe, not merely useless: `Button` /
- * `ToggleButton` / `TabButton` / `SpinButton` (and `MenuButton` /
- * `PopupButton`) each still have their own independent flat `.ClassName`
- * rule (including an independently-created state-tier `.pressed` rule) via
- * the pre-hierarchy mechanism, at the same `(0,1,0)` specificity as every
- * other level's rule. Widening their DOM classes without also making the
- * state tier hierarchy-aware would let two same-specificity rules start
- * matching one element, with the winner decided by stylesheet insertion
- * order — the exact hazard `plans/implemented/class-hierarchy-cascade.md`'s
- * "Rollout is scoped to the confirmed-safe chains" decision documents for
- * that family specifically; `chainParticipates` generalises the exclusion to
- * every non-participating chain rather than naming `Button`'s family only,
- * since the same hazard recurs for any other pre-existing multi-level flat
- * hierarchy this plan doesn't touch.
+ * behaviour — this class's own name only, not its ancestors'. The gate is
+ * for chains like that, not for the Button family: `Button` / `ToggleButton`
+ * / `TabButton` / `SpinButton` (and `MenuButton` / `PopupButton`) all declare
+ * or inherit `ownClassStyleDefaults` somewhere in the chain, so
+ * `chainParticipates` returns true and their DOM classes widen like any
+ * other participating chain (`plans/implemented/button-family-hierarchy-cascade.md`).
+ * `chainParticipates` still generalises the exclusion to every
+ * non-participating chain rather than a hand-picked list, since the same
+ * unsafe-widening hazard this gate exists to avoid recurs for any other
+ * pre-existing multi-level flat hierarchy that opts in nowhere.
  */
 export function getStyleClassChain(rawCtor: Function): readonly string[] {
     const ctor = canonicalCtor(rawCtor);
