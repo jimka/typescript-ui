@@ -6,8 +6,11 @@ import { VBox } from "~/layout/VBox.js";
 import { LabeledGrid, type LabeledRowDescriptor } from "~/component/container/LabeledGrid.js";
 import { Header } from "~/component/display/Header.js";
 import { Text } from "~/component/input/Text.js";
+import { Button } from "~/component/button/Button.js";
+import { Tooltip } from "~/overlay/Tooltip.js";
 import { Placement } from "~/primitive/Placement.js";
 import { DiagnosticsSampler, type DiagnosticsSample } from "~/diagnostics/DiagnosticsSampler.js";
+import { StyleAuditOverlay } from "~/diagnostics/StyleAuditOverlay.js";
 
 /** Overlay window size and starting position — see `## Internal Structure`. */
 const OVERLAY_X      = 24;
@@ -78,6 +81,9 @@ export class DiagnosticsOverlay extends Window {
 
     private readonly _boundOnSample: (sample: DiagnosticsSample) => void = (sample) => this.onSample(sample);
 
+    private readonly _styleAuditButton: Button = new Button("Show style audit");
+    private readonly _boundOnOpenStyleAudit: () => void = () => StyleAuditOverlay.open();
+
     /** Private — use the static methods; only one instance is ever created. */
     private constructor() {
         super("Diagnostics");
@@ -109,6 +115,9 @@ export class DiagnosticsOverlay extends Window {
             layoutManager: new VBox({ stretching: true }),
         });
         body.addComponent(new LabeledGrid({ columns: 1, rows }));
+
+        this._styleAuditButton.on("action", this._boundOnOpenStyleAudit);
+        body.addComponent(this._styleAuditButton);
 
         this.addComponent(body, { placement: Placement.CENTER });
 
@@ -166,12 +175,16 @@ export class DiagnosticsOverlay extends Window {
     }
 
     /**
-     * Stops the sampler and clears the static instance slot. Idempotent, and
+     * Stops the sampler, detaches the style-audit button's own hover tooltip
+     * (`Button` attaches one for any non-empty title but never detaches it
+     * itself — the same reason `LabeledGrid.destructor` detaches the row
+     * tooltips it owns), and clears the static instance slot. Idempotent, and
      * safe to call from both the animated close path ({@link onExitAction})
      * and a direct {@link destructor} (a `dispose()` that bypassed it).
      */
     private teardown(): void {
         this._sampler.stop();
+        Tooltip.detach(this._styleAuditButton);
 
         if (DiagnosticsOverlay.instance === this) {
             DiagnosticsOverlay.instance = null;

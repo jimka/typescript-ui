@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { StyleRule, _ruleCacheHas, styleRuleCounts } from '~/core/StyleTarget';
+import { StyleRule, _ruleCacheHas, _ruleCacheKeys, styleRuleCounts, styleRuleEntries } from '~/core/StyleTarget';
 import { DOM, ProductionDOMSink } from '~/core/DOM';
 import type { RecordingDOMSink } from '../dom/TestDOM';
 
@@ -134,5 +134,42 @@ describe('styleRuleCounts', () => {
         rule.dispose();
 
         expect(styleRuleCounts()).toEqual(before);
+    });
+});
+
+// Style-audit support (plans/in-progress/diagnostics-overlay-style-audit-window.md,
+// Expected Behaviour rows 1-2). `_ruleCache` is module state that outlives every
+// test in this file (see the `styleRuleCounts` describe above), so — same as
+// those cases — this diffs against a before/after snapshot rather than
+// asserting an absolute empty cache: "1." is the general invariant that
+// `styleRuleEntries()` always has exactly one entry per cache key (which a
+// literally-empty cache is just the zero case of), since no reset of the
+// module-level cache exists to observe that zero case in isolation here.
+describe('styleRuleEntries', () => {
+    it('1. has exactly one entry per key currently in the cache', () => {
+        expect(styleRuleEntries().length).toBe(_ruleCacheKeys().length);
+    });
+
+    it('2. materialising three distinct rules adds one entry per selector', () => {
+        const before = styleRuleEntries().length;
+
+        const a = new StyleRule({ scope: 'selector', name: '.entries-test-a' });
+        const b = new StyleRule({ scope: 'selector', name: '.entries-test-b' });
+        const c = new StyleRule({ scope: 'selector', name: '.entries-test-c' });
+
+        a.ensure();
+        b.ensure();
+        c.ensure();
+
+        const entries = styleRuleEntries();
+
+        expect(entries.length - before).toBe(3);
+        expect(entries.map((e) => e.selector)).toEqual(
+            expect.arrayContaining(['.entries-test-a', '.entries-test-b', '.entries-test-c']),
+        );
+
+        a.dispose();
+        b.dispose();
+        c.dispose();
     });
 });

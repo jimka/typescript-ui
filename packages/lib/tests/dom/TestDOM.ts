@@ -1195,6 +1195,11 @@ export class ModelledDOMSource implements DOMSource {
         return 0;
     }
 
+    /** No live stylesheet offline; nothing to read. */
+    getRuleCssText(_rule: CSSStyleRule): string {
+        return '';
+    }
+
     /** No selector engine offline; no element matches. */
     matches(_handle: Handle, _selector: string): boolean {
         return false;

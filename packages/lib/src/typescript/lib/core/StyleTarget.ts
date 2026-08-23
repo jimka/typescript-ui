@@ -282,6 +282,35 @@ export function styleRuleCounts(): StyleRuleCounts {
 }
 
 /**
+ * One cached rule's selector and full CSS text, as read by {@link styleRuleEntries}.
+ *
+ * @category Core
+ */
+export interface StyleRuleEntry {
+    /** The cached selector — the `_ruleCache` map key. */
+    selector: string;
+    /** The rule's full CSS text (selector + declaration body). */
+    cssText:  string;
+}
+
+/**
+ * Snapshots every currently-materialised rule in the module cache as its
+ * selector and full CSS text — the per-rule detail {@link styleRuleCounts}
+ * intentionally does not expose. Feeds the diagnostics style-audit view.
+ *
+ * @returns One {@link StyleRuleEntry} per cached rule.
+ */
+export function styleRuleEntries(): StyleRuleEntry[] {
+    const entries: StyleRuleEntry[] = [];
+
+    for (const [selector, rule] of _ruleCache) {
+        entries.push({ selector, cssText: DOM.source.getRuleCssText(rule) });
+    }
+
+    return entries;
+}
+
+/**
  * Deferred-write buffer that materialises into a
  * [`CSSStyleRule`](https://developer.mozilla.org/en-US/docs/Web/API/CSSStyleRule)
  * on the framework's shared `<style id="Base">` stylesheet the first time
