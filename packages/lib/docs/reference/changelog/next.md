@@ -140,6 +140,10 @@ another cell.
   just wrote, not the class-tier default. No consumer action is needed
   unless code reads one of these getters and assumed it ignored active
   toggle state, or relied on a matching write being silently dropped.
+- **The shared `<style id="Base">` stylesheet now dedupes `Button`'s hover
+  chrome, flat-mode pressed/hover chrome, and `TabButton`'s hover/selected
+  borders, the same way `.pressed` already deduped.** No consumer action is
+  needed.
 
 ### Components
 
@@ -159,3 +163,13 @@ another cell.
   only ever appeared as an incidental side effect of some other full
   reconcile. It now subscribes directly, mirroring the header's existing
   `'filterchange'` subscription. No consumer action is needed.
+
+- **On a flat `Button`, `getPressedBackgroundColor()` / `getPressedShadow()`
+  / `getHoverBackgroundColor()` now report the non-flat class default rather
+  than the flat token, and `getPressedBorder()` / `getHoverBorder()` now
+  report `null`; a flat, selected `ToggleButton`'s
+  `getSelectedBackgroundColor()` / `getSelectedShadow()` have the same
+  class-default change.** The actual rendered chrome is unchanged — only
+  what these getters report on a flat instance. No consumer action is
+  needed unless code reads one of these getters on a flat instance and
+  assumed it returned the flat token.
