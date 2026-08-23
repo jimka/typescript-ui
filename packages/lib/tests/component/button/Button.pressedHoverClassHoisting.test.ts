@@ -15,10 +15,12 @@
 // `#id:not(.pressed)` rule instead of the bare `#id` rule, so the two
 // selectors never match the same element at once. See
 // `Button.restingChromeIsolation.test.ts` for that plan's own coverage.
-// `:hover`'s `ownStyleStates` extract is still always empty — hover is never
-// deduped, because a class-tier hover rule would sit at `(0,3,0)`, which
-// loses to a deviating instance's isolated resting rule at `(1,1,0)` — and
-// no `.Button:hover:not(.pressed)` class rule is ever created.
+// `:hover`'s `ownStyleStates` extract now mirrors `.pressed`'s shape (see
+// plans/implemented/button-meta-class-dedup.md), so a default Button's
+// hover backgroundColor/backgroundImage/boxShadow dedupe onto
+// `.Button:hover:not(.pressed)` the same way `.pressed` already does.
+// `hoverForegroundColor` has no class default, so it stays caller-gated and
+// always writes for real.
 //
 // Same module-state caveat as `ClassStyleRules.test.ts`: `.Button.pressed`
 // is process-module state (fresh per test *file*, not per test),
@@ -101,17 +103,18 @@ describe('Button pressed/hover state-class hoisting', () => {
         expect(_ruleCacheHas('.Button.pressed')).toBe(true);
     });
 
-    it("a default Button's hover state is never deduped — no .Button:hover:not(.pressed) class rule is created", () => {
+    it("a default Button's hover backgroundColor, backgroundImage, and boxShadow are all deduped onto .Button:hover:not(.pressed)", () => {
         new Button('Warmup').getElement(true);
 
         const second = new Button('Second');
         const hoverDeclarations = declarationsDuring(sink, idSelector(second) + ':hover:not(.pressed)', () => second.getElement(true));
 
-        expect(hoverDeclarations.backgroundColor).toBeDefined();
-        expect(hoverDeclarations.backgroundImage).toBeDefined();
-        expect(hoverDeclarations.boxShadow).toBeDefined();
+        // Deduped: each matches the class-tier default, so the instance writes nothing.
+        expect(hoverDeclarations.backgroundColor).toBeUndefined();
+        expect(hoverDeclarations.backgroundImage).toBeUndefined();
+        expect(hoverDeclarations.boxShadow).toBeUndefined();
 
-        expect(_ruleCacheHas('.Button:hover:not(.pressed)')).toBe(false);
+        expect(_ruleCacheHas('.Button:hover:not(.pressed)')).toBe(true);
     });
 
     it('a caller-gated field with no class default always writes', () => {

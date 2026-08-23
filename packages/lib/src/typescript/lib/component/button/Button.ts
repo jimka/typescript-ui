@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { DOM } from "~/core/DOM.js";
+import { DOM, type Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Fit } from "~/layout/Fit.js";
 import { HBox } from "~/layout/HBox.js";
@@ -11,7 +11,7 @@ import { Tooltip } from "~/overlay/Tooltip.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
-import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
+import { resolvePartialDeclarations, type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { BorderOptions } from "~/primitive/Border.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
@@ -241,6 +241,28 @@ const _defaultButtonOptions: Partial<ButtonOptions> = {
     hoverShadow:            "var(--ts-ui-button-hover-shadow, 1px 3px 6px 0 rgba(0, 0, 0, 0.25))",
 };
 
+/**
+ * Shared `.flat.pressed` declarations, published once via `ensureSharedStateRule`
+ * from `_applyFlatChrome` — see `## Architecture Decisions` in
+ * plans/implemented/button-meta-class-dedup.md. Every literal value here is
+ * the same token `_applyFlatChrome` used to write per-instance before this
+ * plan.
+ */
+const BUTTON_FLAT_PRESSED_DECLARATIONS: StyleBag = {
+    backgroundColor: "var(--ts-ui-button-flat-pressed-bg, rgba(0, 0, 0, 0.10))",
+    backgroundImage: "none",
+    shadow:          "var(--ts-ui-button-flat-pressed-shadow, inset 1px 1px 3px rgba(0, 0, 0, 0.25))",
+    border:          "var(--ts-ui-button-flat-pressed-border, 1px solid rgb(180, 180, 180))",
+};
+
+/** Shared `.flat:hover:not(.pressed)` declarations — see {@link BUTTON_FLAT_PRESSED_DECLARATIONS}. */
+const BUTTON_FLAT_HOVER_DECLARATIONS: StyleBag = {
+    backgroundColor: "var(--ts-ui-button-flat-hover-bg, rgba(0, 0, 0, 0.06))",
+    backgroundImage: "none",
+    shadow:          "none",
+    border:          "var(--ts-ui-button-flat-hover-border, 1px solid rgb(200, 200, 200))",
+};
+
 const BUTTON_LABEL_FONT_SIZE_VAR = "--ts-ui-button-font-size";
 
 // The CSS-ready form of BUTTON_LABEL_FONT_SIZE_VAR — its "14px" fallback is
@@ -315,12 +337,11 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     // this plan's Implementation Notes for why a chromeless *instance* of a
     // chromeful class, and a chromeless-by-*default* subclass like
     // `MenuBarButton`, both still rely on `suppressIsolation` rather than an
-    // empty state layer. `:hover` stays empty — unlike `.pressed`, hover
-    // chrome is never deduped onto a shared class rule: a class-tier hover
-    // rule would sit at `(0,3,0)` (`.ClassName:hover:not(.pressed)`), which
-    // loses to a deviating instance's isolated resting rule at `(1,1,0)` —
-    // the opposite of the pressed tier, where the class rule `(0,2,0)` wins
-    // because isolation removes the competing instance declaration entirely.
+    // empty state layer. `:hover` now mirrors `.pressed`'s shape exactly —
+    // `flushStateStyleBag` queues an explicit `null` (a CSSOM removal, not
+    // merely a lower-priority value) whenever a per-instance write matches
+    // the class-tier bag, so a class-tier hover rule dedupes the same way
+    // the pressed one does (see plans/implemented/button-meta-class-dedup.md).
     // This still widens the *resting* guard to `:not(.pressed):not(:hover)`,
     // which is the actual fix `ownStyleStates` contributes for hover.
     protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
@@ -343,7 +364,20 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         },
         {
             selector: ":hover",
-            extract: (): StyleBag => ({}),
+            extract: (): StyleBag => {
+                const d = _defaultButtonOptions;
+                if (d.chromeless) {
+                    return {};
+                }
+
+                const out: StyleBag = {};
+                if (d.hoverForegroundColor !== undefined) out.foregroundColor = d.hoverForegroundColor;
+                if (d.hoverBackgroundColor !== undefined) out.backgroundColor = d.hoverBackgroundColor;
+                if (d.hoverBackgroundImage !== undefined) out.backgroundImage = d.hoverBackgroundImage;
+                if (d.hoverShadow          !== undefined) out.shadow          = d.hoverShadow;
+
+                return out;
+            },
         },
     ];
 
@@ -1903,6 +1937,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * orphan rules.
      */
     private _clearChrome(): void {
+        this.setStyleState(".flat", false);
+
         this.clearBorder();
         this.clearBorderRadius();
         this.clearShadow();
@@ -1943,6 +1979,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     private _restoreChrome(): void {
         const d = this._defaultOptions as ButtonOptions;
+
+        this.setStyleState(".flat", false);
 
         // Re-apply the chromeful resting background `_applyFlatChrome` cleared.
         // This is `_applyFlatChrome`'s inverse: flat (or chromeless) wrote the
@@ -2098,11 +2136,10 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
 
     /**
      * Suppresses the resting frame (border / radius / shadow / gradient) the
-     * same way the chromeless branch does, masks the inherited raised
-     * `pressedX` / `hoverX` defaults so a re-apply can't leak them, then
-     * installs the flat hover and sunken-pressed treatments sourced from the
-     * `--ts-ui-button-flat-*` tokens through the existing lazy style-rule
-     * setters. Glyph-only buttons (a glyph with an empty label) tighten to a
+     * same way the chromeless branch does, then installs the flat hover and
+     * sunken-pressed treatments sourced from the `--ts-ui-button-flat-*`
+     * tokens as a shared `.flat.pressed` / `.flat:hover:not(.pressed)` class
+     * rule. Glyph-only buttons (a glyph with an empty label) tighten to a
      * compact square inset so they read as toolbar icon buttons.
      */
     private _applyFlatChrome(): void {
@@ -2144,19 +2181,16 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this.setBackgroundColor("transparent");
         }
 
-        // Clear the inherited raised pressed/hover background images and the
-        // raised hover shadow (written by the chromeful path above) so they
-        // don't paint under the flat hover / pressed colours installed below.
-        this.clearPressedBackgroundImage();
-        this.clearHoverBackgroundImage();
-        this.clearHoverShadow();
-
-        // Install the flat hover frame + sunken pressed frame from the tokens.
-        this.setHoverBackgroundColor("var(--ts-ui-button-flat-hover-bg, rgba(0, 0, 0, 0.06))");
-        this.setHoverBorder("var(--ts-ui-button-flat-hover-border, 1px solid rgb(200, 200, 200))");
-        this.setPressedBackgroundColor("var(--ts-ui-button-flat-pressed-bg, rgba(0, 0, 0, 0.10))");
-        this.setPressedShadow("var(--ts-ui-button-flat-pressed-shadow, inset 1px 1px 3px rgba(0, 0, 0, 0.25))");
-        this.setPressedBorder("var(--ts-ui-button-flat-pressed-border, 1px solid rgb(180, 180, 180))");
+        // Flat's pressed/hover chrome never varies per instance, so it is
+        // published once as a shared `.flat.pressed` / `.flat:hover:not(.pressed)`
+        // class rule instead of writing through the public per-instance
+        // setters — see `## Architecture Decisions` in
+        // plans/implemented/button-meta-class-dedup.md. `.flat` adds one more
+        // chained class, so `.Button.flat.pressed` sits at strictly higher
+        // specificity than `.Button.pressed` regardless of insertion order.
+        this.setStyleState(".flat", true);
+        this.ensureSharedStateRule(".flat.pressed",             resolvePartialDeclarations(BUTTON_FLAT_PRESSED_DECLARATIONS));
+        this.ensureSharedStateRule(".flat:hover:not(.pressed)", resolvePartialDeclarations(BUTTON_FLAT_HOVER_DECLARATIONS));
 
         // Re-resolve the inset perimeter for the new flat state. Runs through
         // the shared resolver so the construction-time flat path — where
@@ -2867,6 +2901,21 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     isShowText(): boolean {
         return this._isShowText();
+    }
+
+    /**
+     * Replays the `flat` DOM class token onto a freshly rendered element.
+     * `_applyFlatChrome`'s `setStyleState(".flat", true)` call can fire
+     * during construction, before any element exists (`setStyleState`'s own
+     * DOM write is element-gated) — this catch-up mirrors
+     * `ToggleButton.render()`'s own replay of `.selected` so a
+     * construction-time `{ flat: true }` still carries the class after first
+     * render.
+     */
+    protected render(): Handle {
+        const element = super.render();
+        DOM.sink.apply(element, { toggleClass: { flat: this.isFlat() } });
+        return element;
     }
 }
 
