@@ -4,8 +4,9 @@
 // plans/implemented/text-lineheight-write-path-and-value-class-sharing.md:
 // Text's numeric-pixel setLineHeight()/centerInHeight() now share one CSS
 // rule per concrete class per resolved pixel value (`.ClassName.lh<value>`),
-// via createStateStyleRule/ensureClassStateRule keyed by a value-derived
-// suffix, instead of each instance writing its own #id declaration. The
+// via Component.setValueStyleState/ensureClassStateRule keyed by a
+// value-derived suffix, instead of each instance writing its own #id
+// declaration. The
 // CSS-var/theme-revert path now also dedupes against the class-tier default
 // through the reconciled write path. See the plan's Architecture Decisions
 // for why this reuses the state-tier mechanism with a dynamically-computed
