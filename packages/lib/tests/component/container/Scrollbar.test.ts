@@ -528,10 +528,11 @@ describe('Scrollbar thumb static style hoisting', () => {
     });
 });
 
-// ScrollbarThumb-specific coverage for the state-tier dedup introduced by
-// plans/implemented/state-tier-rule-dedup-followups.md: the `.hover`
-// backgroundColor now writes through `createStateStyleRule`, isolated from
-// the resting `backgroundColor` via `getRestingExclusionSuffixes()`.
+// ScrollbarThumb-specific coverage for the state-tier dedup: the `.hover`
+// backgroundColor is a declared `ownStyleStates` entry
+// (plans/implemented/layered-style-bag.md), isolated from the resting
+// `backgroundColor` via the guard suffix `restingGuardSuffix` derives from
+// the declared states.
 describe('ScrollbarThumb hover state-class hoisting', () => {
     afterEach(() => DOM.reset());
 

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-// WindowBorder-specific coverage for the state-tier dedup introduced by
-// plans/implemented/state-tier-rule-dedup-followups.md: `WindowBorder`'s
-// `.snap-target` box-shadow now writes through `createStateStyleRule`
-// instead of the older, non-deduping `createStyleRule`. Conventions
+// WindowBorder-specific coverage for the state-tier dedup: `WindowBorder`'s
+// `.snap-target` box-shadow is a declared `ownStyleStates` entry
+// (plans/implemented/layered-style-bag.md), sharing one class-tier rule
+// across every instance via `resolveStyleStates`. Conventions
 // (idSelector/declarationsDuring) copied from
 // Button.pressedHoverClassHoisting.test.ts.
 import { describe, it, expect, afterEach } from 'vitest';
