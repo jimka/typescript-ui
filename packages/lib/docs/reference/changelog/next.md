@@ -187,3 +187,11 @@ another cell.
   `clearTextAlign()` on such a class reverts to that default rather than
   removing alignment entirely — matching `clearCursor` and every other
   layered `clearX`.
+- **The triangle glyph inside a `Scrollbar`'s arrow buttons no longer
+  repeats its font-size/line-height/text-align on every instance's own CSS
+  rule.** These three properties now flow through the same shared
+  class-tier mechanism `Glyph`'s size already used, instead of a raw,
+  per-instance-only write. Nothing changes visually — every scrollbar's
+  arrows render identically — the shared `.ScrollArrowGlyph` rule grows by
+  three declarations and every instance's own rule shrinks by the same
+  three. No consumer action is needed.
