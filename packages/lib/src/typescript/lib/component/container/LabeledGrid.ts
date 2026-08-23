@@ -6,6 +6,7 @@ import { Grid } from "~/layout/Grid.js";
 import { GridConstraints } from "~/layout/GridConstraints.js";
 import { GridTrack } from "~/layout/GridTrack.js";
 import { Text } from "~/component/input/Text.js";
+import { Tooltip } from "~/overlay/Tooltip.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -27,6 +28,9 @@ export interface LabeledFieldDescriptor {
 
     /** The input/component placed beside the label. */
     component: Component;
+
+    /** Optional hover explanation, attached to both the label and the component. */
+    description?: string;
 }
 
 /**
@@ -87,6 +91,9 @@ class LabeledGrid extends Container<LabeledGridOptions> {
     /** Running grid-row count, pushed into the grid's `rows` + `rowTracks`. */
     private _rowCount: number = 0;
 
+    /** Components a description tooltip was attached to, detached on teardown. */
+    private _tooltipTargets: Component[] = [];
+
     /**
      * Builds the grid, installs the internal baseline grid, and replays any
      * declarative `rows`.
@@ -120,13 +127,24 @@ class LabeledGrid extends Container<LabeledGridOptions> {
      *
      * @param title - Label text placed in the content (title) column.
      * @param component - The input placed in the weight (field) column.
+     * @param description - Optional hover explanation, attached to both the
+     *   label and `component`. Omitted (or an empty string) attaches nothing.
      * @returns This component, for method chaining.
      */
-    addField(title: string, component: Component): this {
+    addField(title: string, component: Component, description?: string): this {
         this.openRow();
 
-        this.addComponent(new Text(title));
+        const label = new Text(title);
+
+        this.addComponent(label);
         this.addComponent(component);
+
+        if (description) {
+            Tooltip.attach(label, description);
+            Tooltip.attach(component, description);
+
+            this._tooltipTargets.push(label, component);
+        }
 
         this._flowCol += 2;
 
@@ -148,7 +166,7 @@ class LabeledGrid extends Container<LabeledGridOptions> {
         this.finishRow();
 
         for (const field of fields) {
-            this.addField(field.title, field.component);
+            this.addField(field.title, field.component, field.description);
         }
 
         this.finishRow();
@@ -255,6 +273,21 @@ class LabeledGrid extends Container<LabeledGridOptions> {
     private growRows(): void {
         this._grid.setRows(this._rowCount);
         this._grid.setRowTracks(Array.from({ length: this._rowCount }, () => ({ mode: "content" as const })));
+    }
+
+    /**
+     * Detaches every description tooltip this grid attached, so a component it
+     * hover-wired does not stay pinned in `Tooltip`'s attachment registry after
+     * the grid itself is torn down.
+     */
+    protected destructor(): void {
+        for (const target of this._tooltipTargets) {
+            Tooltip.detach(target);
+        }
+
+        this._tooltipTargets = [];
+
+        super.destructor();
     }
 }
 

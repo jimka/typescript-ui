@@ -72,10 +72,12 @@ class LabeledFieldSet extends _FieldSet {
      *
      * @param title - Label text placed in the content (title) column.
      * @param component - The input placed in the weight (field) column.
+     * @param description - Optional hover explanation, attached to both the
+     *   label and `component`. Omitted (or an empty string) attaches nothing.
      * @returns This component, for method chaining.
      */
-    addField(title: string, component: Component): this {
-        this._labeledGrid.addField(title, component);
+    addField(title: string, component: Component, description?: string): this {
+        this._labeledGrid.addField(title, component, description);
 
         return this;
     }
