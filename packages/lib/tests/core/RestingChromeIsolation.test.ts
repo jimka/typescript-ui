@@ -1,13 +1,23 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-// Coverage for plans/implemented/state-chrome-isolation-generalization.md —
-// Expected Behaviour rows 1-7: the generic `Component`-level mechanism
-// (`getRestingExclusionSuffixes()` / `isChromeIsolationEnabled()` /
-// `isRestingChromeIsolated()`), proven against a plain `Component` subclass
-// rather than `Button`, so the mechanism is shown to work independent of any
-// Button-specific plumbing. Rows 8-9 (the `ToggleButton`/`TabButton`
-// migration outcomes) live in their own test files
-// (`ToggleButton.selectedClassHoisting.test.ts` /
+// Coverage for the generic `Component`-level resting-chrome isolation
+// mechanism, proven against a plain `Component` subclass rather than
+// `Button`, so the mechanism is shown to work independent of any
+// Button-specific plumbing.
+//
+// Originally written against plans/implemented/state-chrome-isolation-generalization.md's
+// `getRestingExclusionSuffixes()` / `isChromeIsolationEnabled()` override
+// pair; plans/layered-style-bag.md's Stage 3 replaces both with a
+// declarative `ownStyleStates` list (`resolveStyleStates` /
+// `restingGuardSuffix` in core/ClassStyleRules.ts) plus a renamed
+// per-instance opt-out (`suppressIsolation` — the old
+// `setChromeIsolationEnabled` under a name that doesn't collide with the
+// deleted mechanism's own grep invariant), so every probe below is rewritten
+// to declare states instead of overriding a suffix-list method. The rows
+// still pin the same behaviours the original file did.
+//
+// Rows 8-9 (the `ToggleButton`/`TabButton` migration outcomes) live in their
+// own test files (`ToggleButton.selectedClassHoisting.test.ts` /
 // `TabButton.stateClassHoisting.test.ts`); rows 10-12 are cascade outcomes
 // the recording sink can't evaluate — see the plan's `## Verification`
 // section for the mandatory browser check.
@@ -23,6 +33,7 @@ import { Component, ComponentOptions } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
+import type { StyleBag, StyleStateSpec } from '~/core/ClassStyleRules';
 
 const DOM_CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -69,8 +80,24 @@ function declarationsDuring(
     return out;
 }
 
+/**
+ * A declared state whose only contribution is a `backgroundColor` — the
+ * property every row below isolates. Unlike the old `RESTING_ISOLATION_KEYS`
+ * fixed set (which isolated backgroundColor/backgroundImage/boxShadow
+ * *regardless* of whether any state actually declared them), the new
+ * mechanism derives its isolation key set from what a class's own declared
+ * states carry (`restingIsolationKeys`, core/Component.ts) — so a probe
+ * whose state declares nothing (as the pre-Stage-3 version of this file's
+ * probes did) isolates nothing. The declared value itself is never
+ * consulted by these rows (they only exercise the guard suffix / dedup
+ * routing), so an arbitrary constant is fine.
+ */
+function backgroundColorState(selector: string): StyleStateSpec {
+    return { selector, extract: (): StyleBag => ({ backgroundColor: 'var(--resting-probe-unused, black)' }) };
+}
+
 describe('Component resting-chrome isolation (generalized mechanism)', () => {
-    it('row 1: a subclass that never overrides getRestingExclusionSuffixes() writes straight to the bare #id rule', () => {
+    it('row 1: a subclass that declares no states writes straight to the bare #id rule', () => {
         class RestingProbeRow1 extends Component {}
 
         const a = new RestingProbeRow1({ backgroundColor: 'red' });
@@ -79,11 +106,9 @@ describe('Component resting-chrome isolation (generalized mechanism)', () => {
         expect(declarations.backgroundColor).toBe('red');
     });
 
-    it('row 2: a probe isolating .on writes a deviating backgroundColor to #id:not(.on), never the bare #id rule', () => {
+    it('row 2: a probe declaring .on writes a deviating backgroundColor to #id:not(.on), never the bare #id rule', () => {
         class RestingProbeRow2 extends Component {
-            protected override getRestingExclusionSuffixes(): readonly string[] {
-                return ['.on'];
-            }
+            protected static readonly ownStyleStates: readonly StyleStateSpec[] = [backgroundColorState('.on')];
         }
 
         const a = new RestingProbeRow2({});
@@ -99,11 +124,9 @@ describe('Component resting-chrome isolation (generalized mechanism)', () => {
 
     it('row 3: the same shape of probe — a write matching the class-tier default becomes a removal on #id:not(.on), not a skipped write', () => {
         class RestingProbeRow3 extends Component {
+            protected static readonly ownStyleStates: readonly StyleStateSpec[] = [backgroundColorState('.on')];
             constructor(options?: ComponentOptions) {
                 super(options, { backgroundColor: 'blue' });
-            }
-            protected override getRestingExclusionSuffixes(): readonly string[] {
-                return ['.on'];
             }
         }
 
@@ -115,11 +138,9 @@ describe('Component resting-chrome isolation (generalized mechanism)', () => {
         expect(declarations.backgroundColor).toBeNull();
     });
 
-    it('row 4: a probe isolating .on and .off computes selector #id:not(.on):not(.off), regardless of either class-tier default', () => {
+    it('row 4: a probe declaring .on and .off computes selector #id:not(.on):not(.off), regardless of either class-tier default', () => {
         class RestingProbeRow4 extends Component {
-            protected override getRestingExclusionSuffixes(): readonly string[] {
-                return ['.on', '.off'];
-            }
+            protected static readonly ownStyleStates: readonly StyleStateSpec[] = [backgroundColorState('.on'), backgroundColorState('.off')];
         }
 
         const probe = new RestingProbeRow4({});
@@ -129,11 +150,9 @@ describe('Component resting-chrome isolation (generalized mechanism)', () => {
         expect(declarations.backgroundColor).toBe('red');
     });
 
-    it('row 5: a border write (a key outside RESTING_ISOLATION_KEYS) always lands on the bare #id rule, isolation registered or not', () => {
+    it('row 5: a border write (a key no declared state carries) always lands on the bare #id rule, isolation registered or not', () => {
         class RestingProbeRow5 extends Component {
-            protected override getRestingExclusionSuffixes(): readonly string[] {
-                return ['.on'];
-            }
+            protected static readonly ownStyleStates: readonly StyleStateSpec[] = [backgroundColorState('.on')];
         }
 
         const probe = new RestingProbeRow5({});
@@ -143,34 +162,36 @@ describe('Component resting-chrome isolation (generalized mechanism)', () => {
         expect(declarations.borderTop).toBe('1px solid red');
     });
 
-    it('row 6: setChromeIsolationEnabled(false) suppresses isolation for this instance even though the suffix list is non-empty', () => {
+    it('row 6: suppressIsolation(true) suppresses isolation for this instance even though a state is declared', () => {
         class RestingProbeRow6 extends Component {
-            protected override getRestingExclusionSuffixes(): readonly string[] {
-                return ['.on'];
-            }
-            disableChromeIsolation(): void {
-                this.setChromeIsolationEnabled(false);
+            protected static readonly ownStyleStates: readonly StyleStateSpec[] = [backgroundColorState('.on')];
+            disableIsolation(): void {
+                this.suppressIsolation(true);
             }
         }
 
         const probe = new RestingProbeRow6({});
         probe.getElement(true);
-        probe.disableChromeIsolation();
+        probe.disableIsolation();
 
         const declarations = declarationsDuring(sink, idSelector(probe), () => probe.setBackgroundColor('red'));
         expect(declarations.backgroundColor).toBe('red');
     });
 
-    it('row 7: a probe subclass chains onto its parent\'s exclusion list — selector becomes #id:not(.on):not(.extra)', () => {
+    it('row 7: a probe subclass restates its parent\'s declared states and appends its own — selector becomes #id:not(.on):not(.extra)', () => {
         class RestingProbeRow7Base extends Component {
-            protected override getRestingExclusionSuffixes(): readonly string[] {
-                return ['.on'];
-            }
+            protected static readonly ownStyleStates: readonly StyleStateSpec[] = [backgroundColorState('.on')];
         }
         class RestingProbeRow7 extends RestingProbeRow7Base {
-            protected override getRestingExclusionSuffixes(): readonly string[] {
-                return [...super.getRestingExclusionSuffixes(), '.extra'];
-            }
+            // `ownStyleStates` is a whole-list, own-property declaration
+            // (see `resolveStyleStates`'s own comment) — a subclass that
+            // wants to add a state restates its ancestor's own list and
+            // appends, the same way `ToggleButton.ownStyleStates` restates
+            // `Button`'s.
+            protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+                ...RestingProbeRow7Base.ownStyleStates,
+                backgroundColorState('.extra'),
+            ];
         }
 
         const probe = new RestingProbeRow7({});

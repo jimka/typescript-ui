@@ -4,6 +4,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -78,6 +79,18 @@ function ensureAccordionIndicatorClassRule(): void {
  * @category Components
  */
 class AccordionIndicator extends Component<AccordionIndicatorOptions> {
+
+    // Declares `.expanded` so `styleLayers()`/`restingGuardSuffix` know about
+    // it — see `Button`'s `ownStyleStates` for the full mechanism. Empty
+    // extract: the state's only declaration is the `transform` rotation set
+    // below, a shorthand no `StyleBag` key covers (mirrors `Button`'s empty
+    // `:hover` entry).
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".expanded",
+            extract:  (): StyleBag => ({}),
+        },
+    ];
 
     declare private _expanded: boolean;
     declare private _character: string;
@@ -228,11 +241,11 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
     setExpanded(value: boolean): this {
         this._expanded = value;
 
-        const element = this.getElement();
-
-        if (element) {
-            DOM.sink.apply(element, { toggleClass: { expanded: value } });
-        }
+        // Unconditional, not gated on `this.getElement()`: `setStyleState`
+        // updates `_activeStates` regardless of whether an element exists
+        // yet (only its own DOM write is internally element-gated) — see
+        // `ToggleButton.setSelected`'s own comment for the full reasoning.
+        this.setStyleState(".expanded", value);
 
         return this;
     }

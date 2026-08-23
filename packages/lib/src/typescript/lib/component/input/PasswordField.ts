@@ -4,7 +4,7 @@ import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { Util } from "~/core/Util.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link PasswordField}.
@@ -46,7 +46,7 @@ class PasswordField extends TextInput<PasswordFieldOptions> {
     // declares neither), so it needs its own registration or the hierarchy
     // walk would silently pass through to `TextInput`'s shared rule and
     // lose them.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultPasswordFieldOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultPasswordFieldOptions;
 
     /**
      * @param options - Optional construction options.

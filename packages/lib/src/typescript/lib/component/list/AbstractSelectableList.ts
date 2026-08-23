@@ -18,7 +18,7 @@ import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
 import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
-import { COMPONENT_CLASS, type ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import { COMPONENT_CLASS, type StyleBag } from "~/core/ClassStyleRules.js";
 import { Text } from "~/component/input/Text.js";
 
 /**
@@ -728,7 +728,7 @@ abstract class AbstractSelectableList<
 {
     // Own contribution to the hierarchy-aware class tier — see
     // plans/implemented/class-hierarchy-cascade.md.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultAbstractSelectableListOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultAbstractSelectableListOptions;
 
     protected _items:        Array<SelectableListItem> = [];
     protected _rowPool:      Array<SelectableListRow>  = [];
@@ -832,10 +832,11 @@ abstract class AbstractSelectableList<
         this.addComponent(this._innerPanel);
 
         // Default floor, but let a caller-supplied minSize option win. The
-        // super() cascade writes `_options.minSize` only when the caller passed
-        // one (the class default {0,0} lives in the defaults bag, not `_options`),
-        // so its presence means "caller set it". maxSize stays unbounded.
-        if (this._options.minSize === undefined) {
+        // super() cascade writes the instance layer's minSize only when the
+        // caller passed one (the class default {0,0} lives in the defaults
+        // bag, resolved separately), so its presence means "caller set it".
+        // maxSize stays unbounded.
+        if (this.instanceLayer().authored.minSize === undefined) {
             // 100×100 keeps a short empty/placeholder list a usable size.
             this.setMinSize({ width: 100, height: 100 });
         }

@@ -66,7 +66,11 @@ describe('Checkbox delegate state-class hoisting', () => {
         const second = new Checkbox() as any;
         second.getElement(true);
 
-        const declarations = declarationsDuring(sink, idSelector(second._box) + '.selected', () => {
+        // `.selected` is guarded against `.indeterminate` (the
+        // higher-priority declared state — see CheckboxBox.ownStyleStates),
+        // so its generated class-tier/instance selector is
+        // `.selected:not(.indeterminate)`, not the bare `.selected`.
+        const declarations = declarationsDuring(sink, idSelector(second._box) + '.selected:not(.indeterminate)', () => {
             second.setSelected(true);
         });
 
@@ -75,7 +79,7 @@ describe('Checkbox delegate state-class hoisting', () => {
         expect(declarations.borderRight).toBeUndefined();
         expect(declarations.borderBottom).toBeUndefined();
         expect(declarations.borderLeft).toBeUndefined();
-        expect(_ruleCacheHas('.CheckboxBox.selected')).toBe(true);
+        expect(_ruleCacheHas('.CheckboxBox.selected:not(.indeterminate)')).toBe(true);
     });
 
     it('row 2: same dedup for setIndeterminate(true), including border', () => {
@@ -174,6 +178,9 @@ describe('Checkbox delegate state-class hoisting', () => {
         // (see its doc comment), so this sequence reaches applyState(true,
         // true) — the resting-isolation selector's premise that .selected and
         // .indeterminate are mutually exclusive CSS classes must still hold.
+        // `setStyleState` (core/Component.ts) toggles each state's own DOM
+        // token via `addClass`/`removeClass`, not the old single `toggleClass`
+        // patch carrying both classes at once.
         const sink = installTestDOM(CONFIG);
         const cb   = new Checkbox({ selected: true }) as any;
         cb.getElement(true);
@@ -181,12 +188,14 @@ describe('Checkbox delegate state-class hoisting', () => {
         const start = sink.writes.length;
         cb.setIndeterminate(true);
 
-        const toggleWrite = sink.writes.slice(start).find((w: any) => w.op === 'apply' && (w.args[1] as { toggleClass?: unknown }).toggleClass);
-        expect(toggleWrite).toBeDefined();
-        expect((toggleWrite!.args[1] as { toggleClass: Record<string, boolean> }).toggleClass).toEqual({
-            selected:      false,
-            indeterminate: true,
-        });
+        const writes = sink.writes.slice(start).filter((w: any) => w.op === 'apply');
+        const removedSelected = writes.some((w: any) => (w.args[1] as { removeClass?: readonly string[] }).removeClass?.includes('selected'));
+        const addedIndeterminate = writes.some((w: any) => (w.args[1] as { addClass?: readonly string[] }).addClass?.includes('indeterminate'));
+        const addedSelected = writes.some((w: any) => (w.args[1] as { addClass?: readonly string[] }).addClass?.includes('selected'));
+
+        expect(removedSelected).toBe(true);
+        expect(addedIndeterminate).toBe(true);
+        expect(addedSelected).toBe(false);
     });
 
     it('a Checkbox constructed selected AND indeterminate never carries .selected onto _box at render either', () => {

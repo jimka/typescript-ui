@@ -209,7 +209,17 @@ describe('HeaderCellText style hoisting', () => {
 // plans/implemented/state-tier-rule-dedup-followups.md: the `:active` box-shadow
 // now writes through `createStateStyleRule` instead of the older, non-deduping
 // `createStyleRule`.
+//
+// Since plans/layered-style-bag.md's Stage 5, `HeaderCell.ownStyleStates`
+// restates `Cell`'s own three background/cursor/shadow states
+// (`.rangeSelected`, `.readOnly`, `.requiredEmpty`) ahead of `:active` (see
+// that field's own comment) — `.focused` is deliberately not one of them
+// (see `Cell.ownStyleStates`' own comment on why it carries an unguarded
+// rule instead) — so `:active`'s generated guard now excludes all three,
+// not just itself — `ACTIVE_GUARDED_SUFFIX` below is that full chain.
 describe('HeaderCell :active state-class hoisting', () => {
+    const ACTIVE_GUARDED_SUFFIX = ':active:not(.rangeSelected):not(.readOnly):not(.requiredEmpty)';
+
     /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
     function idSelector(component: { getId(): string }): string {
         return '#' + DOM.source.escapeSelector(component.getId());
@@ -248,10 +258,10 @@ describe('HeaderCell :active state-class hoisting', () => {
         new HeaderCell('Name', 'name').getElement(true);
 
         const second = new HeaderCell('Name', 'name');
-        const declarations = declarationsDuring(sink, idSelector(second) + ':active', () => second.getElement(true));
+        const declarations = declarationsDuring(sink, idSelector(second) + ACTIVE_GUARDED_SUFFIX, () => second.getElement(true));
 
         expect(declarations.boxShadow).toBeUndefined();
-        expect(_ruleCacheHas('.HeaderCell:active')).toBe(true);
+        expect(_ruleCacheHas('.HeaderCell' + ACTIVE_GUARDED_SUFFIX)).toBe(true);
     });
 
     it("setColumnFocused's resting boxShadow write stays isolated from :active, on #id:not(:active) rather than bare #id", () => {
@@ -260,7 +270,7 @@ describe('HeaderCell :active state-class hoisting', () => {
         const cell = new HeaderCell('Name', 'name');
         cell.getElement(true);
 
-        const restingDeclarations = declarationsDuring(sink, idSelector(cell) + ':not(:active)', () => {
+        const restingDeclarations = declarationsDuring(sink, idSelector(cell) + ':not(.rangeSelected):not(.readOnly):not(.requiredEmpty):not(:active)', () => {
             cell.setColumnFocused(true);
         });
         expect(restingDeclarations.boxShadow).toBe('inset 0 -2px 0 0 var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))');

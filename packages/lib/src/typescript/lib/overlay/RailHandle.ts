@@ -2,8 +2,12 @@
 
 import { DOM } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { callable } from "~/core/Callable.js";
+
+/** `.selected`'s background-color declaration. One source of truth for both `ownStyleStates`' extract and the constructor's write. */
+const RAIL_HANDLE_SELECTED_BACKGROUND_COLOR = "var(--ts-ui-rail-handle-selected-bg)";
 
 /**
  * Construction-time options for {@link RailHandle}.
@@ -35,6 +39,22 @@ export interface RailHandleOptions extends ButtonOptions {
  */
 class RailHandle extends Button<RailHandleOptions> {
 
+    // Restates Button's own `[.pressed, :hover]` list and appends `.selected`
+    // — see `ToggleButton.ownStyleStates` for why a subclass adding a state
+    // restates its ancestor's whole list rather than merging. `.selected` is
+    // last, so its guarded selector is `.selected:not(.pressed):not(:hover)`
+    // — moot for isolation purposes (this class is always chromeless, so
+    // `suppressIsolation` is in effect — see `Button.applyChromeOptions`),
+    // but it lets `getBackgroundColor()` resolve `.selected`'s wash like any
+    // other active-state layer.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        ...Button.ownStyleStates,
+        {
+            selector: ".selected",
+            extract:  (): StyleBag => ({ backgroundColor: RAIL_HANDLE_SELECTED_BACKGROUND_COLOR }),
+        },
+    ];
+
     // Lazy `.selected` rule — the selected (target-open) wash. The slot is a
     // fast-path cache for the wrapper `createStyleRule` dedupes by suffix; see
     // Button's `_pressedStyleRule` for the full explanation.
@@ -60,7 +80,7 @@ class RailHandle extends Button<RailHandleOptions> {
         super(options.text, options, { chromeless: true });
 
         this.railHoverRule.set("backgroundColor", "var(--ts-ui-rail-handle-hover-bg)");
-        this.selectedRule.set("backgroundColor", "var(--ts-ui-rail-handle-selected-bg)");
+        this.selectedRule.set("backgroundColor", RAIL_HANDLE_SELECTED_BACKGROUND_COLOR);
     }
 
     /**
@@ -103,10 +123,11 @@ class RailHandle extends Button<RailHandleOptions> {
 
         this.getAria().setPressed(value);
 
-        const element = this.getElement();
-        if (element) {
-            DOM.sink.apply(element, { toggleClass: { selected: value } });
-        }
+        // Unconditional, not gated on `this.getElement()`: `setStyleState`
+        // updates `_activeStates` regardless of whether an element exists
+        // yet (only its own DOM write is internally element-gated) — see
+        // `ToggleButton.setSelected`'s own comment for the full reasoning.
+        this.setStyleState(".selected", value);
 
         return this;
     }

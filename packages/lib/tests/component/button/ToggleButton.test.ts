@@ -48,7 +48,7 @@ describe('ToggleButton selected state', () => {
 });
 
 describe('ToggleButton setSelected DOM write', () => {
-    it('writes a toggleClass { selected } to the rendered element', () => {
+    it('adds the "selected" DOM class token to the rendered element', () => {
         const btn = new ToggleButton('Bold');
 
         btn.getElement(true);
@@ -57,11 +57,13 @@ describe('ToggleButton setSelected DOM write', () => {
 
         btn.setSelected(true);
 
-        // setSelected resolves the element and toggles the `selected` class; the
-        // recorded apply patch carries `toggleClass: { selected: true }`.
+        // setSelected resolves the element and calls setStyleState(".selected",
+        // true), which toggles the DOM token via addClass/removeClass (see
+        // core/Component.ts) — the recorded apply patch carries
+        // `addClass: ["selected"]`, not the old `toggleClass: { selected: true }`.
         const wrote = sink.writes
             .slice(before)
-            .some(w => w.op === 'apply' && JSON.stringify(w.args).includes('"selected":true'));
+            .some(w => w.op === 'apply' && JSON.stringify(w.args).includes('"addClass":["selected"]'));
 
         expect(wrote).toBe(true);
     });

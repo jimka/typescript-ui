@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Panel, PanelOptions } from "~/core/Panel.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle, ElementPatch } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
@@ -123,7 +123,7 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
 
     // Own contribution to the hierarchy-aware class tier — see
     // plans/implemented/class-hierarchy-cascade.md.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultAbstractChartOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultAbstractChartOptions;
 
     private _listeners: ListenerBag<ChartEvent> = new ListenerBag<ChartEvent>();
 

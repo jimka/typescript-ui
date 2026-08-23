@@ -19,7 +19,7 @@ import { Fit } from "~/layout/Fit.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { chevron_down } from "~/glyphs/solid/chevron_down.js";
 import { callable } from "~/core/Callable.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 Glyph.register(chevron_down);
 
@@ -136,7 +136,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
     // these), so it needs its own registration or the hierarchy walk would
     // silently pass through to `AnimatedDropdown`'s shared rule and lose
     // its entire visible chrome.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultComboBoxDropdownOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultComboBoxDropdownOptions;
 
     /**
      * Inner [`List`](/api/component/list/classes/List) hosting the option rows.

@@ -18,7 +18,7 @@ import { ThemeManager }                              from "~/core/Theme.js";
 /**
  * Per-side pixel widths. Structural twin of `Component`'s `PerimeterSize` —
  * declared locally rather than imported so this module never imports
- * `core/Component.ts`, mirroring `ClassStyleRules.ts`'s own `ClassStyleDefaults`.
+ * `core/Component.ts`, mirroring `ClassStyleRules.ts`'s own `StyleBag`.
  */
 interface SideWidths {
     top:    number;

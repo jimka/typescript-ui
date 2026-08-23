@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 import { Animation } from "~/core/Animation.js";
 import { Position } from "~/primitive/Position.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
@@ -66,7 +66,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
 
     // Own contribution to the hierarchy-aware class tier — see
     // plans/implemented/class-hierarchy-cascade.md.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultAnimatedDropdownOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultAnimatedDropdownOptions;
 
     // Set true while a fade-out is in flight; reset to false either when the
     // fade completes (so the deferred detach runs) or when a fresh `showAnimated`

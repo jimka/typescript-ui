@@ -85,15 +85,15 @@ class Image extends Component<ImageOptions> {
      * Returns a minimum size derived from the image's intrinsic dimensions
      * (mirrors the `Math.min(natural, 100)` cap that `Text` applies), so
      * small images keep their full size while large images stay shrinkable
-     * by their parent layout. An explicit `setMinSize` from the caller
-     * wins via `Component.getMinSize`'s `_options.minSize` priority.
+     * by their parent layout. An explicit `setMinSize` from the caller wins
+     * via `Component.getMinSize`'s instance-layer `minSize` priority.
      *
      * @returns The minimum `{width, height}` from intrinsic dims, or a
      *   `20×20` pre-load fallback before the image has decoded.
      */
     getMinSize(): Size | null {
         const explicit = super.getMinSize();
-        if (this._options.minSize) {
+        if (this.instanceLayer().authored.minSize) {
             return explicit;
         }
 

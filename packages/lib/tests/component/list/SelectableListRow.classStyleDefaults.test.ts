@@ -2,7 +2,7 @@
 // imperative constructor setters into a registered
 // `_defaultSelectableListRowOptions` class default — see
 // plans/implemented/delegate-class-style-defaults-followups.md row 5.
-// `setPadding` stays imperative (padding is not a `ClassStyleDefaults`
+// `setPadding` stays imperative (padding is not a `StyleBag`
 // member — see the plan's `## Non-Goals`), so it is not asserted here.
 import { describe, it, expect, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';

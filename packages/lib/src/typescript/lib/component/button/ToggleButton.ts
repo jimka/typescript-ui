@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DOM } from "~/core/DOM.js";
-import type { StateStyleRule } from "~/core/ClassStyleRules.js";
+import { resolveStyleStates, type StateStyleRule, type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { Event } from "~/core/Event.js";
 import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
 import { Button, ButtonOptions, ClickListener } from "~/component/button/Button.js";
@@ -38,19 +38,47 @@ const TOGGLE_SELECTED_DECLARATIONS: Readonly<Record<string, string | null>> = Ob
  */
 class ToggleButton extends Button<ToggleButtonOptions> {
 
+    // Restates Button's `.pressed`/`:hover` entries (own-property-declared,
+    // exactly like `ownClassStyleDefaults` — see `resolveStyleStates`'s own
+    // comment) and appends `.selected`, so pressed beats hover beats
+    // selected — see the plan's `[^toggle-cycle]` note for why that specific
+    // order was chosen. `.selected`'s extractor doesn't need a `chromeless`
+    // guard the way `Button`'s pressed one does: unlike Button's chrome
+    // tokens, `TOGGLE_SELECTED_DECLARATIONS` is never threaded through
+    // `_defaultButtonOptions`-style options, so there is no chromeless
+    // subclass default for it to suppress.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        ...Button.ownStyleStates,
+        {
+            selector: ".selected",
+            extract: (): StyleBag => ({
+                shadow:          TOGGLE_SELECTED_DECLARATIONS.boxShadow!,
+                backgroundColor: TOGGLE_SELECTED_DECLARATIONS.backgroundColor!,
+                backgroundImage: TOGGLE_SELECTED_DECLARATIONS.backgroundImage!,
+            }),
+        },
+    ];
+
     // Lazy `.selected` rule. The slot is a fast-path cache for the wrapper
     // returned by Component's `createStateStyleRule` builder — see Button's
-    // `_pressedStyleRule` for the full explanation.
+    // `_pressedStyleRule` for the full explanation. The suffix is read off
+    // `ownStyleStates`'s own generated guard (`.selected:not(.pressed):not(:hover)`)
+    // rather than hand-written, so it can never drift from what
+    // `restingGuardSuffix` derives for the resting tier's own isolation.
     private declare _selectedStyleRule?: StateStyleRule;
     private get selectedStyleRule(): StateStyleRule {
-        return this._selectedStyleRule ??= this.createStateStyleRule(".selected:not(:hover)", () => this.getSelectedClassDeclarations(), "extractSelectedClassDeclarations");
+        return this._selectedStyleRule ??= this.createStateStyleRule(this.selectedGuardedSuffix(), () => this.getSelectedClassDeclarations(), "extractSelectedClassDeclarations");
+    }
+
+    private selectedGuardedSuffix(): string {
+        return resolveStyleStates(this.constructor).find((state) => state.selector === ".selected")!.guardedSuffix;
     }
 
     /**
-     * This class's resolved `.selected:not(:hover)` declarations. Safe to
-     * dedupe now that `getRestingExclusionSuffixes()` (below) isolates the same
-     * three properties from `.selected` the same way `Button` isolates them
-     * from `.pressed` — see `plans/implemented/state-chrome-isolation-generalization.md`.
+     * This class's resolved `.selected`-state declarations. Safe to dedupe
+     * now that `ownStyleStates` isolates the same three properties from
+     * `.selected` the same way `Button` isolates them from `.pressed` — see
+     * `plans/implemented/state-chrome-isolation-generalization.md`.
      */
     protected static extractSelectedClassDeclarations(defaults: Partial<ButtonOptions>): Record<string, string | null> {
         if (defaults.chromeless) {
@@ -66,16 +94,6 @@ class ToggleButton extends Button<ToggleButtonOptions> {
 
     protected getSelectedClassDeclarations(): Record<string, string | null> {
         return (this.constructor as typeof ToggleButton).extractSelectedClassDeclarations(this._defaultOptions);
-    }
-
-    /**
-     * `.selected`'s resting chrome must stay isolated too, the same way
-     * `Button`'s own `.pressed` does — a `ToggleButton`'s resting
-     * `backgroundColor` / `backgroundImage` / `boxShadow` must not undercut the
-     * shared `.ClassName.selected:not(:hover)` rule above.
-     */
-    protected override getRestingExclusionSuffixes(): readonly string[] {
-        return [...super.getRestingExclusionSuffixes(), ".selected"];
     }
 
     constructor(text: string, options?: ToggleButtonOptions, subclassDefaults?: Partial<ToggleButtonOptions>) {
@@ -194,10 +212,14 @@ class ToggleButton extends Button<ToggleButtonOptions> {
 
         this.getAria().setPressed(value);
 
-        let element = this.getElement();
-        if (element) {
-            DOM.sink.apply(element, { toggleClass: { selected: value } });
-        }
+        // Unconditional, not gated on `this.getElement()`: `setStyleState`
+        // updates `_activeStates` regardless of whether an element exists
+        // yet (only its own DOM write is internally element-gated) — a
+        // construction-time `{ selected: true }` option must still record
+        // the state, or `getBackgroundColor()` and friends would resolve
+        // the wrong layer once the element does exist, and `render()`'s own
+        // DOM catch-up write would have nothing correct backing it.
+        this.setStyleState(".selected", value);
 
         return this;
     }

@@ -5,7 +5,7 @@
 // recording sink cannot evaluate; see the plan's `## Verification` section
 // for the mandatory browser check). A deviating resting `background-color` /
 // `background-image` / `box-shadow` / `background` now lands on a Button's
-// own `#id:not(.pressed)` rule instead of the bare `#id` rule, so the shared
+// own `#id:not(.pressed):not(:hover)` rule instead of the bare `#id` rule, so the shared
 // `.ClassName.pressed` rule (widened by this plan to all four properties) is
 // unopposed while the button is pressed.
 //
@@ -83,12 +83,12 @@ function declarationsDuring(
 }
 
 describe('Button resting-chrome state isolation', () => {
-    it('row 1: a default Button renders — no write to #id:not(.pressed), and the rule is never inserted', () => {
+    it('row 1: a default Button renders — no write to #id:not(.pressed):not(:hover), and the rule is never inserted', () => {
         const btn = new Button('Save');
-        const declarations = declarationsDuring(sink, idSelector(btn) + ':not(.pressed)', () => btn.getElement(true));
+        const declarations = declarationsDuring(sink, idSelector(btn) + ':not(.pressed):not(:hover)', () => btn.getElement(true));
 
         expect(declarations).toEqual({});
-        expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed)')).toBe(false);
+        expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed):not(:hover)')).toBe(false);
     });
 
     it('row 2: a default Button renders after a first Button has warmed the class rule — no #id.pressed rule is inserted at all, and .Button.pressed is in the rule cache', () => {
@@ -101,11 +101,11 @@ describe('Button resting-chrome state isolation', () => {
         expect(_ruleCacheHas('.Button.pressed')).toBe(true);
     });
 
-    it('row 3: a deviating resting backgroundColor lands on #id:not(.pressed), not the bare #id rule', () => {
+    it('row 3: a deviating resting backgroundColor lands on #id:not(.pressed):not(:hover), not the bare #id rule', () => {
         new Button('Warmup').getElement(true);
 
         const a = new Button('x', { backgroundColor: 'red' });
-        const isolated = declarationsDuring(sink, idSelector(a) + ':not(.pressed)', () => a.getElement(true));
+        const isolated = declarationsDuring(sink, idSelector(a) + ':not(.pressed):not(:hover)', () => a.getElement(true));
         expect(isolated.backgroundColor).toBe('red');
 
         const b = new Button('y', { backgroundColor: 'red' });
@@ -113,7 +113,7 @@ describe('Button resting-chrome state isolation', () => {
         expect(bare.backgroundColor).toBeUndefined();
     });
 
-    it('row 4: setBackgroundColor after render on a chromeful Button writes immediately to #id:not(.pressed), not the bare #id rule', () => {
+    it('row 4: setBackgroundColor after render on a chromeful Button writes immediately to #id:not(.pressed):not(:hover), not the bare #id rule', () => {
         new Button('Warmup').getElement(true);
 
         const btn = new Button('x');
@@ -121,11 +121,11 @@ describe('Button resting-chrome state isolation', () => {
 
         const writes = writesDuring(sink, () => btn.setBackgroundColor('red'));
 
-        expect(declarationsIn(writes, idSelector(btn) + ':not(.pressed)').backgroundColor).toBe('red');
+        expect(declarationsIn(writes, idSelector(btn) + ':not(.pressed):not(:hover)').backgroundColor).toBe('red');
         expect(declarationsIn(writes, idSelector(btn)).backgroundColor).toBeUndefined();
     });
 
-    it('row 5: setBackgroundColor back to the class-default token writes a removal on #id:not(.pressed), not a skipped write', () => {
+    it('row 5: setBackgroundColor back to the class-default token writes a removal on #id:not(.pressed):not(:hover), not a skipped write', () => {
         new Button('Warmup').getElement(true);
 
         const btn = new Button('x');
@@ -135,14 +135,14 @@ describe('Button resting-chrome state isolation', () => {
         // The literal token `Button.ts`'s BUTTON_RESTING_BACKGROUND resolves to.
         const declarations = declarationsDuring(
             sink,
-            idSelector(btn) + ':not(.pressed)',
+            idSelector(btn) + ':not(.pressed):not(:hover)',
             () => btn.setBackgroundColor('var(--ts-ui-button-bg, transparent)'),
         );
 
         expect(declarations.backgroundColor).toBeNull();
     });
 
-    it('row 6: setBackground after render on a chromeful Button writes to #id:not(.pressed), not the bare #id rule', () => {
+    it('row 6: setBackground after render on a chromeful Button writes to #id:not(.pressed):not(:hover), not the bare #id rule', () => {
         new Button('Warmup').getElement(true);
 
         const btn = new Button('x');
@@ -150,11 +150,11 @@ describe('Button resting-chrome state isolation', () => {
 
         const writes = writesDuring(sink, () => btn.setBackground('red'));
 
-        expect(declarationsIn(writes, idSelector(btn) + ':not(.pressed)').background).toBe('red');
+        expect(declarationsIn(writes, idSelector(btn) + ':not(.pressed):not(:hover)').background).toBe('red');
         expect(declarationsIn(writes, idSelector(btn)).background).toBeUndefined();
     });
 
-    it('row 7: an instance-level chromeless Button pins all four .pressed keys and keeps its resting backgroundColor on the bare #id rule; #id:not(.pressed) is never inserted', () => {
+    it('row 7: an instance-level chromeless Button pins all four .pressed keys and keeps its resting backgroundColor on the bare #id rule; #id:not(.pressed):not(:hover) is never inserted', () => {
         new Button('Warmup').getElement(true); // materialises .Button.pressed with all four keys
 
         const btn = new Button({ chromeless: true });
@@ -168,17 +168,17 @@ describe('Button resting-chrome state isolation', () => {
         expect(pressed.backgroundImage).toBeDefined();
         expect(pressed.boxShadow).toBeDefined();
 
-        expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed)')).toBe(false);
+        expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed):not(:hover)')).toBe(false);
     });
 
-    it("row 8: an instance-level chromeless Button with a caller backgroundColor writes it to the bare #id rule — the chromeless branch clears what the earlier setBackgroundColor dispatch queued on #id:not(.pressed)", () => {
+    it("row 8: an instance-level chromeless Button with a caller backgroundColor writes it to the bare #id rule — the chromeless branch clears what the earlier setBackgroundColor dispatch queued on #id:not(.pressed):not(:hover)", () => {
         new Button('Warmup').getElement(true);
 
         const btn = new Button('x', { backgroundColor: 'red', chromeless: true });
         const declarations = declarationsDuring(sink, idSelector(btn), () => btn.getElement(true));
 
         expect(declarations.backgroundColor).toBe('red');
-        expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed)')).toBe(false);
+        expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed):not(:hover)')).toBe(false);
     });
 
     it('row 9: a chromeless-by-default MenuBarButton is not isolated — a deviating resting backgroundColor lands on the bare #id rule, and no .MenuBarButton.pressed rule is ever inserted', () => {
@@ -189,7 +189,7 @@ describe('Button resting-chrome state isolation', () => {
         expect(declarations.backgroundColor).toBeDefined();
 
         expect(_ruleCacheHas('.MenuBarButton.pressed')).toBe(false);
-        expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed)')).toBe(false);
+        expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed):not(:hover)')).toBe(false);
     });
 
     it("row 10: SpinButton's constructor-time clearPressedShadow() writes boxShadow: 'none' to #id.pressed, never null", () => {

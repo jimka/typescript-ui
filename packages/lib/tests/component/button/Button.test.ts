@@ -140,7 +140,7 @@ describe('Button flat state', () => {
         // construction (the old `=== undefined` guard never matched it), so
         // the UA `<button>` face painted through. Seeding `backgroundColor`
         // in `_defaultButtonOptions` makes the flat guard's `null` arm live.
-        expect((new Button('x', { flat: true }) as any)._options.backgroundColor).toBe('transparent');
+        expect(new Button('x', { flat: true }).getBackgroundColor()).toBe('transparent');
     });
     it('round-trips the resting background across setFlat', () => {
         const btn = new Button('x');

@@ -2,7 +2,7 @@
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { ComponentOptions } from "~/core/Component.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
@@ -92,7 +92,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
 
     // Own contribution to the hierarchy-aware class tier — see
     // plans/implemented/class-hierarchy-cascade.md.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultTextInputOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultTextInputOptions;
 
     constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
         super(

@@ -2,7 +2,7 @@
 
 import { Text, TextOptions } from "~/component/input/Text.js";
 import { callable } from "~/core/Callable.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link SelectableText}.
@@ -40,7 +40,7 @@ class SelectableText extends Text<SelectableTextOptions> {
     // its own registration for the hierarchy walk to see that deviation;
     // without it, `SelectableText` would silently pass through to `Text`'s
     // shared rule and lose it.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultSelectableTextOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultSelectableTextOptions;
 
     constructor(
         text?: String,

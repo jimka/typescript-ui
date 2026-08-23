@@ -6,7 +6,7 @@ import { Insets } from "~/primitive/Insets.js";
 import { BorderOptions } from "~/primitive/Border.js";
 import { isUnbounded } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link TextField}.
@@ -43,7 +43,7 @@ class TextField extends TextInput<TextFieldOptions> {
     // declares neither), so it needs its own registration or the hierarchy
     // walk would silently pass through to `TextInput`'s shared rule and
     // lose them.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultTextFieldOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultTextFieldOptions;
 
     /**
      * @param options - Optional construction options.

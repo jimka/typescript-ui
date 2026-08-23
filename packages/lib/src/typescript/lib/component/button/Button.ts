@@ -11,7 +11,7 @@ import { Tooltip } from "~/overlay/Tooltip.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
-import type { ClassStyleDefaults, StateStyleRule } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StateStyleRule, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
@@ -263,7 +263,7 @@ const _defaultButtonLabelTextOptions: Partial<TextOptions> = {
  * and stay fixed for the lifetime of the instance.
  */
 class ButtonLabelText extends Text {
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = {
+    protected static readonly ownClassStyleDefaults: StyleBag = {
         font: {
             ...Text.ownClassStyleDefaults.font,
             textAlign:  "center",
@@ -275,18 +275,6 @@ class ButtonLabelText extends Text {
     constructor() {
         super(undefined, undefined, _defaultButtonLabelTextOptions);
         this.setFontSize(BUTTON_LABEL_FONT_SIZE_VAR);
-    }
-
-    /**
-     * `setFontSize` above queues a real, un-reconciled `fontSize` declaration
-     * before `.ButtonLabelText`'s class rule exists to compare it against
-     * (see `## Architecture Decisions`). Re-queues it through the reconciled
-     * path once the class rule is available, so the stale real value doesn't
-     * survive to `#id` on a default-styled instance.
-     */
-    protected override applySubclassStyles(): void {
-        super.applySubclassStyles();
-        this.reconcileRuleDeclaration("fontSize", BUTTON_LABEL_FONT_SIZE_RULE);
     }
 }
 
@@ -315,7 +303,48 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     // class's own defaults resolve from, exposed at the class level so
     // `ToggleButton`/`SpinButton`/… that add nothing of their own share
     // `.Button`'s rule instead of each repeating it.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultButtonOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultButtonOptions;
+
+    // Declares the two states `styleLayers()` / `restingGuardSuffix` know
+    // about — pressed beats hover (see the plan's `[^toggle-cycle]` note).
+    // Both extractors close over `_defaultButtonOptions` directly rather
+    // than reading the `defaults` parameter `resolveStyleStates` passes:
+    // Button's chrome fields live in that module constant, not in a static
+    // `ownClassStyleDefaults`-reachable per-level bag the way a
+    // hierarchy-cascade-participating class's own extractor would need
+    // (`resolveStyleStates` has no per-*instance* hierarchy walk the way
+    // the retired `resolveClassStateLevel`/`extractorMethodName` mechanism
+    // did — see this plan's Implementation Notes for why a chromeless
+    // *instance* of a chromeful class, and a chromeless-by-*default*
+    // subclass like `MenuBarButton`, both still rely on `suppressIsolation`
+    // rather than an empty state layer). `:hover` stays empty — unlike
+    // `.pressed`, hover chrome is never deduped onto a shared class rule
+    // (see `extractHoverClassDeclarations`'s own comment for why); this
+    // still widens the *resting* guard to `:not(.pressed):not(:hover)`,
+    // which is the actual fix `ownStyleStates` contributes for hover.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".pressed",
+            extract: (): StyleBag => {
+                const d = _defaultButtonOptions;
+                if (d.chromeless) {
+                    return {};
+                }
+
+                const out: StyleBag = {};
+                if (d.pressedForegroundColor !== undefined) out.foregroundColor = d.pressedForegroundColor;
+                if (d.pressedBackgroundColor !== undefined) out.backgroundColor = d.pressedBackgroundColor;
+                if (d.pressedBackgroundImage !== undefined) out.backgroundImage = d.pressedBackgroundImage;
+                if (d.pressedShadow          !== undefined) out.shadow          = d.pressedShadow;
+
+                return out;
+            },
+        },
+        {
+            selector: ":hover",
+            extract: (): StyleBag => ({}),
+        },
+    ];
 
     private _text!:    Text;
     /**
@@ -458,13 +487,12 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     private _spaceHeld:            boolean = false;
 
     private _updatePressedClass(): void {
-        const element = this.getElement();
-        if (!element) {
+        if (!this.getElement()) {
             return;
         }
 
         const pressed = (this._pressedPointerId !== null && this._pressedPointerInside) || this._spaceHeld;
-        DOM.sink.apply(element, { toggleClass: { pressed } });
+        this.setStyleState(".pressed", pressed);
     }
 
     /**
@@ -618,28 +646,26 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     private _hoverBorder: BorderOptions | null = null;
 
     /**
-     * `Button`'s resting chrome (a deviating `backgroundColor` /
-     * `backgroundImage` / `boxShadow`, plus the `background` shorthand below)
-     * stays isolated from `.pressed`, so the shared `.ClassName.pressed` class
-     * rule is never undercut by a bare, higher-specificity `#id` declaration.
-     */
-    protected override getRestingExclusionSuffixes(): readonly string[] {
-        return [".pressed"];
-    }
-
-    /**
-     * Routes the `background` shorthand — the one isolated key whose setters still
-     * use Component's plain single-key write path. No class-tier bag ever carries
+     * Routes the `background` shorthand — the one isolated key whose setters
+     * still use Component's plain single-key write path — through the
+     * resting-guard escape hatch. No class-tier bag ever carries
      * `background`, so there is nothing to compare against and the value is
      * written as given.
      */
-    protected override setElementCSSRule(key: string, value: Object | null): this {
-        if (!this.isRestingChromeIsolated() || key !== "background") {
-            return super.setElementCSSRule(key, value);
+    override setBackground(value: string): this {
+        if (this._options.background === value) {
+            return this;
         }
 
-        this.restingStyleRule.set(key, value ? String(value) : null);
-        this.materialiseRestingRule();
+        this._options.background = value;
+        this.writeGuardedCSSRule("background", value);
+
+        return this;
+    }
+
+    override clearBackground(): this {
+        this._options.background = undefined;
+        this.writeGuardedCSSRule("background", null);
 
         return this;
     }
@@ -1009,7 +1035,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             // isolated rule while isolation was still the default — read the
             // backing slot directly (not the lazy getter) so a button that
             // never allocated the rule does not allocate one here.
-            this.setChromeIsolationEnabled(false);
+            this.suppressIsolation(true);
 
             if (this._restingStyleRule !== undefined) {
                 this._restingStyleRule.setMany({ background: null, backgroundColor: null, backgroundImage: null, boxShadow: null });
@@ -1042,14 +1068,14 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             // the second "nobody pinned one" answer; a subclass fill
             // (`MenuBarButton`, `TabButton`) matches neither and survives.
             this.clearBorder();
-            this._options.borderRadius = undefined;
+            this.cacheStyleValue("borderRadius", null);
             this.setShadow("none");
             this.setBackgroundImage("none");
 
             const resting = this.getBackgroundColor();
 
             if (resting === null || resting === BUTTON_RESTING_BACKGROUND) {
-                this._options.backgroundColor = "transparent";
+                this.cacheStyleValue("backgroundColor", "transparent");
             }
 
             // A chromeless button never reaches the pressed/hover dispatch
@@ -2009,7 +2035,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // `d.backgroundColor !== undefined` arm covers a subclass that
         // suppresses Button's default with an explicit `backgroundColor:
         // undefined` key — nothing to restore, so the sentinel stays.
-        if (this._options.backgroundColor === "transparent" && d.backgroundColor !== undefined) {
+        if (this.getBackgroundColor() === "transparent" && d.backgroundColor !== undefined) {
             this.setBackgroundColor(d.backgroundColor);
         }
 

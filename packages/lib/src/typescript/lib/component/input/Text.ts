@@ -7,7 +7,7 @@ import { Util } from "~/core/Util.js";
 import type { TextMetrics } from "~/core/Util.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link Text}.
@@ -115,7 +115,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
     // Own contribution to the hierarchy-aware class tier — see
     // plans/implemented/class-hierarchy-cascade.md. `_defaultTextOptions`
-    // carries no non-font `ClassStyleDefaults` field (no class in this file
+    // carries no non-font `StyleBag` field (no class in this file
     // defaults `cursor`/`userSelect`/etc.; `SelectableText`/`Link` set those
     // per-subclass instead), so this class's own contribution is the `font`
     // sub-bag alone — the same values `getClassStyleDefaults()` below
@@ -123,7 +123,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     // hierarchy walk's static resolution and the per-instance override must
     // agree for every participating class — see the plan's Internal
     // Structure).
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = {
+    protected static readonly ownClassStyleDefaults: StyleBag = {
         font: {
             fontFamily:     _defaultTextOptions.fontFamily     ?? null,
             fontKerning:    _defaultTextOptions.fontKerning    ?? null,
@@ -145,10 +145,6 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private _fontSizeCSSRule: string | null = DEFAULT_FONT_SIZE_RULE;
     private _lineHeightCSSVar : string | null = null;
     private _lineHeightCSSRule: string | null = ADDITIVE_LINE_HEIGHT_RULE;
-    // Tracks the DOM class token currently pointing this instance at its shared
-    // numeric-pixel value rule (e.g. "lh18px"), or null when in CSS-var/theme
-    // mode. See applyLineHeightValueClass / clearLineHeightValueClass.
-    private _lineHeightValueClass: string | null = null;
     private _measuredBaseline: number | null = null;
     private _measuredMinSize: Size | null = null;
     private _autoMeasure: boolean = true;
@@ -191,6 +187,21 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
         if (options?.lineHeight !== undefined) {
             this.setLineHeight(options.lineHeight);
+        } else {
+            // No explicit override: this instance stays in `setLineHeight`'s
+            // default var-bound/theme-tracking mode (`_lineHeightCSSRule`'s
+            // own field initializer, above, already reflects that), but
+            // nothing has told the instance layer yet — `setLineHeight`'s
+            // var-bound branch is the only other writer, and it never runs
+            // for an instance that never calls it. Establishing it here
+            // (matching the class tier's own default 1:1) is what lets
+            // `flushStyleBag` queue the harmless matching-null removal a
+            // materialised `#id` rule needs to stay comprehensive (see
+            // Expected Behaviour and `TextClassStyleHoisting.test.ts`'s
+            // Legend row) — the same "always assert something" guarantee
+            // `applySubclassStyles`'s retired lineHeight branch gave
+            // unconditionally, now scoped to just this one case.
+            this.writeStyle({ font: { lineHeight: this._lineHeightCSSRule } });
         }
 
         // Positional `text` constructor argument: write to the bag only when
@@ -840,7 +851,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns The CSS text-align string, or null if not set.
      */
     getTextAlign() {
-        return this._options.textAlign ?? this._defaultOptions.textAlign ?? null;
+        return this.resolveFontValue('textAlign');
     }
 
     /**
@@ -851,9 +862,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setTextAlign(align: string): this {
-        this._options.textAlign = align;
-
-        this.setElementCSSRule("textAlign", align);
+        this.writeStyle({ font: { textAlign: align } });
 
         return this;
     }
@@ -864,7 +873,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns The CSS text-shadow string, or null if not set.
      */
     getTextShadow() {
-        return this._options.textShadow ?? null;
+        return this.resolveFontValue('textShadow');
     }
 
     /**
@@ -875,9 +884,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setTextShadow(shadow: string): this {
-        this._options.textShadow = shadow;
-
-        this.setElementCSSRule("textShadow", shadow);
+        this.writeStyle({ font: { textShadow: shadow } });
 
         return this;
     }
@@ -888,12 +895,11 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     clearTextShadow(): this {
-        if (this._options.textShadow === undefined) {
+        if (this.instanceLayer().authored.font?.textShadow === undefined) {
             return this;
         }
 
-        this._options.textShadow = undefined;
-        this.setElementCSSRule("textShadow", null);
+        this.writeStyle({ font: { textShadow: null } });
 
         return this;
     }
@@ -904,7 +910,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns The CSS font-family string, or null if not set.
      */
     getFontFamily() {
-        return this._options.fontFamily ?? this._defaultOptions.fontFamily ?? null;
+        return this.resolveFontValue('fontFamily');
     }
 
     /**
@@ -915,9 +921,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setFontFamily(value: string): this {
-        this._options.fontFamily = value;
-
-        this.setElementCSSRule("fontFamily", value);
+        this.writeStyle({ font: { fontFamily: value } });
 
         this._measurementDirty = true;
         (this.getParentComponent() ?? this).scheduleLayout();
@@ -931,7 +935,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns The CSS font-kerning string, or null if not set.
      */
     getFontKerning() {
-        return this._options.fontKerning ?? this._defaultOptions.fontKerning ?? null;
+        return this.resolveFontValue('fontKerning');
     }
 
     /**
@@ -942,9 +946,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setFontKerning(value: string): this {
-        this._options.fontKerning = value;
-
-        this.setElementCSSRule("fontKerning", value);
+        this.writeStyle({ font: { fontKerning: value } });
 
         return this;
     }
@@ -984,12 +986,12 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             this._options.fontSize = value as TOptions["fontSize"];
             this._fontSizeCSSVar    = null;
             this._fontSizeCSSRule   = null;
-            this.setElementCSSRule("fontSize", value + "px");
+            this.writeStyle({ font: { fontSize: value + "px" } });
         } else {
             const fallbackPx      = (this.getFontSize() as number | undefined) ?? 14;
             this._fontSizeCSSVar  = value;
             this._fontSizeCSSRule = `var(${value}, ${fallbackPx}px)`;
-            this.setElementCSSRule("fontSize", this._fontSizeCSSRule);
+            this.writeStyle({ font: { fontSize: this._fontSizeCSSRule } });
 
             // Cache the resolved px so line-box/baseline math has the real size
             // even pre-attach — resolveBoundFontSizePx probes the cascade for a
@@ -1012,7 +1014,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns The CSS font-size-adjust string, or null if not set.
      */
     getFontSizeAdjust() {
-        return this._options.fontSizeAdjust ?? this._defaultOptions.fontSizeAdjust ?? null;
+        return this.resolveFontValue('fontSizeAdjust');
     }
 
     /**
@@ -1023,9 +1025,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setFontSizeAdjust(value: string): this {
-        this._options.fontSizeAdjust = value;
-
-        this.setElementCSSRule("fontSizeAdjust", value);
+        this.writeStyle({ font: { fontSizeAdjust: value } });
 
         return this;
     }
@@ -1036,7 +1036,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns The CSS font-stretch string, or null if not set.
      */
     getFontStretch() {
-        return this._options.fontStretch ?? this._defaultOptions.fontStretch ?? null;
+        return this.resolveFontValue('fontStretch');
     }
 
     /**
@@ -1047,9 +1047,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setFontStretch(value: string): this {
-        this._options.fontStretch = value;
-
-        this.setElementCSSRule("fontStretch", value);
+        this.writeStyle({ font: { fontStretch: value } });
 
         return this;
     }
@@ -1060,7 +1058,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns The CSS font-style string, or null if not set.
      */
     getFontStyle() {
-        return this._options.fontStyle ?? this._defaultOptions.fontStyle ?? null;
+        return this.resolveFontValue('fontStyle');
     }
 
     /**
@@ -1071,9 +1069,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setFontStyle(value: string): this {
-        this._options.fontStyle = value;
-
-        this.setElementCSSRule("fontStyle", value);
+        this.writeStyle({ font: { fontStyle: value } });
 
         return this;
     }
@@ -1084,7 +1080,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns The CSS font-variant string, or null if not set.
      */
     getFontVariant() {
-        return this._options.fontVariant ?? this._defaultOptions.fontVariant ?? null;
+        return this.resolveFontValue('fontVariant');
     }
 
     /**
@@ -1095,9 +1091,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setFontVariant(value: string): this {
-        this._options.fontVariant = value;
-
-        this.setElementCSSRule("fontVariant", value);
+        this.writeStyle({ font: { fontVariant: value } });
 
         return this;
     }
@@ -1108,7 +1102,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns The CSS font-weight string, or null if not set.
      */
     getFontWeight() {
-        return this._options.fontWeight ?? this._defaultOptions.fontWeight ?? null;
+        return this.resolveFontValue('fontWeight');
     }
 
     /**
@@ -1119,9 +1113,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setFontWeight(value: string): this {
-        this._options.fontWeight = value;
-
-        this.setElementCSSRule("fontWeight", value);
+        this.writeStyle({ font: { fontWeight: value } });
 
         this._measurementDirty = true;
         (this.getParentComponent() ?? this).scheduleLayout();
@@ -1137,54 +1129,6 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      */
     getLineHeight() {
         return (this._options.lineHeight as number | undefined) ?? (this._defaultOptions.lineHeight as number | undefined) ?? this.readThemeLineHeightPx();
-    }
-
-    /**
-     * Points this instance at the shared `.ClassName.lh<value>` rule for
-     * `pxValue`, so every instance of this concrete class that resolves the same
-     * pixel line-height shares one rule instead of each writing its own `#id`
-     * declaration. Removes the previously-applied token first, if this instance
-     * already carried a different one. Reuses `createStateStyleRule` /
-     * `ensureClassStateRule` — the state tier's existing shared-rule-per-suffix
-     * mechanism — with a value-derived suffix instead of a fixed named state;
-     * see `## Architecture Decisions`.
-     *
-     * @param pxValue - The exact CSS length string being applied (e.g. `"18px"`),
-     *   used both as the declared value and, sanitized, as the class token.
-     */
-    private applyLineHeightValueClass(pxValue: string): void {
-        const token = "lh" + pxValue.replace(/[^a-zA-Z0-9]/g, "_");
-
-        this.createStateStyleRule("." + token, () => ({ lineHeight: pxValue }))
-            .setMany({ lineHeight: pxValue });
-
-        const element = this.getElement();
-        if (element) {
-            const removeClass = (this._lineHeightValueClass && this._lineHeightValueClass !== token)
-                ? [this._lineHeightValueClass]
-                : [];
-            DOM.sink.apply(element, { removeClass, addClass: [token] });
-        }
-
-        this._lineHeightValueClass = token;
-    }
-
-    /**
-     * Reverts to the class-tier default: removes any value-class token this
-     * instance currently carries. Called when switching out of numeric-pixel
-     * mode (`setLineHeight`'s string branch, `centerInHeight(null)`).
-     */
-    private clearLineHeightValueClass(): void {
-        if (!this._lineHeightValueClass) {
-            return;
-        }
-
-        const element = this.getElement();
-        if (element) {
-            DOM.sink.apply(element, { removeClass: [this._lineHeightValueClass] });
-        }
-
-        this._lineHeightValueClass = null;
     }
 
     /**
@@ -1213,33 +1157,35 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             }
 
             // A non-null _lineHeightCSSRule here means this call is entering
-            // numeric-pixel mode from a mode whose own writes could have left
-            // a real lineHeight declaration on #id (CSS-var/theme mode, or
-            // the first render if ensureClassStyleRule opted this class out
-            // on a name collision — see reconcileRuleDeclaration's remarks).
-            // #id's (1,0,0) specificity always outranks the shared
-            // .ClassName.lh* rule (0,2,0) applyLineHeightValueClass below
-            // points this instance at, so that stale declaration must be
-            // reconciled away, not left in place. Once already in numeric
-            // mode (_lineHeightCSSRule already null), #id never carries a
-            // real declaration to begin with, so a same-mode value change
-            // (e.g. a row-height resize) skips this and queues nothing extra.
+            // numeric-pixel mode from a mode whose own writes left a real
+            // `font.lineHeight` declaration on the instance layer (CSS-var/
+            // theme mode). That declaration's own #id write outranks the
+            // shared `.ClassName.lh*` rule `setValueStyleState` below points
+            // this instance at (a per-instance declaration always beats a
+            // shared class-tier one), so it must be cleared, or #id's now-
+            // orphaned real value keeps outranking it. Once already in
+            // numeric mode (_lineHeightCSSRule already null), the instance
+            // layer never carries a real lineHeight declaration to begin
+            // with — never written there in the first place, precisely so a
+            // same-mode value change (e.g. a row-height resize, the hot path
+            // this whole mechanism exists for) needs no extra write here.
             const wasReconciledMode = this._lineHeightCSSRule !== null;
 
             this._options.lineHeight = value as TOptions["lineHeight"];
             this._lineHeightCSSVar    = null;
             this._lineHeightCSSRule   = null;
-            this.applyLineHeightValueClass(value + "px");
 
             if (wasReconciledMode) {
-                this.setReconciledCSSRules({ lineHeight: null });
+                this.writeStyle({ font: { lineHeight: null } });
             }
+
+            this.setValueStyleState("lh", value + "px", { font: { lineHeight: value + "px" } });
         } else {
-            this.clearLineHeightValueClass();
+            this.clearValueStyleState("lh");
             this._lineHeightCSSVar    = value;
             this._lineHeightCSSRule   = `var(${value}, ${ADDITIVE_LINE_HEIGHT_RULE})`;
             this._options.lineHeight = this.readThemeLineHeightPx() as TOptions["lineHeight"];
-            this.setReconciledCSSRules({ lineHeight: this._lineHeightCSSRule });
+            this.writeStyle({ font: { lineHeight: this._lineHeightCSSRule } });
         }
 
         this._measurementDirty = true;
@@ -1266,11 +1212,11 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      */
     centerInHeight(px: number | null): this {
         if (px === null) {
-            this.clearLineHeightValueClass();
+            this.clearValueStyleState("lh");
             this._lineHeightCSSVar   = null;
             this._lineHeightCSSRule  = ADDITIVE_LINE_HEIGHT_RULE;
             this._options.lineHeight = this.readThemeLineHeightPx() as TOptions["lineHeight"];
-            this.setReconciledCSSRules({ lineHeight: this._lineHeightCSSRule });
+            this.writeStyle({ font: { lineHeight: this._lineHeightCSSRule } });
 
             this._measurementDirty = true;
             (this.getParentComponent() ?? this).scheduleLayout();
@@ -1286,18 +1232,16 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * from {@link setTextOverflow} (or the `textOverflow` constructor
      * option), or — when neither was given — the value implied by
      * {@link isTruncate}'s resolved default ("ellipsis" when truncating,
-     * `null` otherwise). Mirrors this class's other getters (e.g.
-     * {@link getTextAlign}), which query `_options`/`_defaultOptions` rather
-     * than a dedicated field.
+     * `null` otherwise). `setTruncate` (below) dispatches one of
+     * {@link setTextOverflow}/{@link clearTextOverflow} unconditionally on
+     * every call — including from `applyOptions`'s own unconditional
+     * dispatch, which every construction reaches — so the instance layer
+     * always carries a resolved value by the time this getter runs.
      *
      * @returns The text-overflow string, or null.
      */
     getTextOverflow(): string | null {
-        if (this._options.textOverflow !== undefined) {
-            return this._options.textOverflow;
-        }
-
-        return this.isTruncate() ? "ellipsis" : null;
+        return this.resolveFontValue('textOverflow');
     }
 
     /**
@@ -1308,38 +1252,44 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setTextOverflow(value: string): this {
-        this._options.textOverflow = value as TOptions["textOverflow"];
-
-        this.setReconciledCSSRules({ textOverflow: value });
+        this.writeStyle({ font: { textOverflow: value } });
 
         return this;
     }
 
     /**
-     * Clears a per-instance `text-overflow` override, reverting to the value
-     * {@link getTextOverflow} derives from {@link isTruncate}.
+     * Reverts a per-instance `text-overflow` override to the value
+     * {@link isTruncate} implies.
      *
      * @returns This component, for method chaining.
      *
-     * @remarks Writes that resolved value (substituting the CSS initial
-     * value `"clip"` for `null`) through the reconciled write path, rather
-     * than removing the declaration outright — `.Text`'s class rule carries
-     * a non-null `text-overflow: ellipsis` for every current class (see
-     * `applyStyle`'s own `textOverflow` write), so a bare `#id` removal
-     * would stop competing with the class rule rather than beating it,
-     * silently resurfacing the class default instead of the value this call
-     * means to establish. The reconciled write path still turns that
-     * resolved value into an explicit removal when it happens to equal what
-     * the class rule already supplies, so the write costs nothing when
-     * `truncate` is left at its default.
+     * @remarks When truncating, the resolved value ("ellipsis") is also the
+     * class-tier default, so the plain `writeStyle` below is enough —
+     * `flushStyleBag` turns the match into a harmless `null` removal itself.
+     *
+     * When not truncating, `getTextOverflow()`'s getter-facing `null` and
+     * the CSS this instance needs diverge: `.Text`'s class rule carries a
+     * non-null `text-overflow: ellipsis` for every current class (see
+     * `Text.ownClassStyleDefaults`), so an *absent* `#id` declaration would
+     * stop competing with the class rule rather than beating it, silently
+     * resurfacing "ellipsis" instead of "no ellipsis" — the CSS initial
+     * value `"clip"` is what actually wins. `writeStyle`'s generic
+     * instance-vs-lower-layer dedup can't make that substitution on its
+     * own, so the correction is written explicitly here too — needed for a
+     * call reached with an element already attached, where `writeStyle`'s
+     * own immediate flush (this same call) is the only flush that runs;
+     * `applySubclassStyles`'s per-render hook covers the same correction
+     * for a *pre*-render call, whose own flush is deferred to whatever
+     * later render first materialises `#id`.
      */
     clearTextOverflow(): this {
-        if (this._options.textOverflow === undefined) {
-            return this;
-        }
+        const truncating = this.isTruncate();
 
-        this._options.textOverflow = undefined;
-        this.setReconciledCSSRules({ textOverflow: this.getTextOverflow() ?? "clip" });
+        this.writeStyle({ font: { textOverflow: truncating ? "ellipsis" : null } });
+
+        if (!truncating) {
+            this.writeGuardedCSSRule("textOverflow", this.matchesLowerTier("textOverflow", "clip") ? null : "clip");
+        }
 
         return this;
     }
@@ -1486,89 +1436,48 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * see in `_defaultOptions`: `fontSize`/`lineHeight` resolve through private
      * derived fields (`_fontSizeCSSRule`, `_lineHeightCSSRule`), not the raw
      * numeric options, and `textOverflow` is pre-resolved from `truncate` here
-     * rather than inside the generic resolver. Delegates to this class's own
-     * `ownClassStyleDefaults` (above), which resolves the identical bag from
-     * the same module-level constants — verified true for every current
-     * Text-family class (Link, Label, Legend), none of which touch these
-     * fields in their own defaults.
+     * rather than inside the generic resolver. Prefers `ownClassStyleDefaults`
+     * off `this.constructor` (virtual dispatch) over the literal `Text`
+     * class, so a subclass whose own bag is a *complete* font bag (e.g.
+     * `NumberRendererText`, which spreads `Text.ownClassStyleDefaults.font`
+     * and overrides just `textAlign`) is reflected here — `resolveFontValue`'s
+     * pre-render "virtual layer" fallback (see `styleLayers`) reads straight
+     * from this method's return value, with no hierarchy walk of its own the
+     * way the CSS-rule side (`ensureClassStyleRule`, keyed off the `ctor`
+     * argument `applyStyle` passes directly) already had. Falls back to
+     * `Text`'s own bag for a subclass whose `ownClassStyleDefaults` carries
+     * no `font` key at all (e.g. `SelectableText`, which only adds
+     * `cursor`/`userSelect`) — `Text`'s complete font bag is what such a
+     * subclass relies on inheriting.
      */
-    protected getClassStyleDefaults(): ClassStyleDefaults {
+    protected getClassStyleDefaults(): StyleBag {
         return {
             ...super.getClassStyleDefaults(),
-            font: Text.ownClassStyleDefaults.font,
+            font: (this.constructor as typeof Text).ownClassStyleDefaults.font ?? Text.ownClassStyleDefaults.font,
         };
     }
 
-    /** Writes one font/text declaration only when it has a value — mirrors the
-     *  `if (x) { this.writeRuleDeclaration(...) }` shape every Component phase
-     *  uses for an optional property (see applyChromeStyles's outline/color). */
-    private writeFontDeclaration(key: string, value: string | null): void {
-        if (value) {
-            this.writeRuleDeclaration(key, value);
-        }
-    }
-
     /**
-     * Queues Text's twelve font/text declarations, routed through the class-rule
-     * compare-and-skip/reconcile machinery so a Text with no per-instance font
-     * override contributes none of them for real.
-     *
-     * @remarks Runs as `Component.applyStyle`'s pre-flush hook — before its one
-     * materialising flush, not after a second one of Text's own — so a
-     * construction-time value later corrected to a class-tier-matching removal
-     * (`textOverflow`, from `setTruncate`'s unconditional dispatch in
-     * `applyOptions`) is already corrected by the time that flush inspects the
-     * dirty bag. See plans/implemented/applystyle-flush-order-empty-rule-fix.md.
+     * Re-asserts `textOverflow`'s CSS declaration on every render —
+     * `flushStyleBag`'s generic per-key handling (which the other eleven
+     * font/text properties fully rely on) always writes the *authored*
+     * value it finds on the instance layer, but `textOverflow` is the one
+     * property whose authored, getter-facing value (`null`, from
+     * {@link clearTextOverflow} when not truncating) diverges from the CSS
+     * declaration this instance actually needs (the CSS initial value
+     * `"clip"`, not a bare removal — see `clearTextOverflow`'s own
+     * comment). Running from this hook, not the setter itself, guarantees
+     * the correction reaches `#id` regardless of how many renders separate
+     * a pre-render `clearTextOverflow()` call (typically from `setTruncate`,
+     * during construction) from the first one — `flushStyleBag`'s own
+     * generic write for this same key, queued earlier in the same
+     * `applyStyle` pass, would otherwise survive to `#id` untouched.
      */
     protected applySubclassStyles(): void {
         super.applySubclassStyles();
 
-        const fontSize = this.getFontSize();
-
-        this.writeFontDeclaration("fontFamily",     this.getFontFamily());
-        this.writeFontDeclaration("textAlign",      this.getTextAlign());
-        this.writeFontDeclaration("textShadow",     this.getTextShadow());
-        this.writeFontDeclaration("fontKerning",    this.getFontKerning());
-        this.writeFontDeclaration("fontSize",       this._fontSizeCSSRule   ?? (fontSize !== null ? `${fontSize}px` : null));
-        this.writeFontDeclaration("fontSizeAdjust", this.getFontSizeAdjust());
-        this.writeFontDeclaration("fontStretch",    this.getFontStretch());
-        this.writeFontDeclaration("fontStyle",      this.getFontStyle());
-        this.writeFontDeclaration("fontVariant",    this.getFontVariant());
-        this.writeFontDeclaration("fontWeight",     this.getFontWeight());
-        // lineHeight is not routed through writeFontDeclaration: in numeric-pixel
-        // mode (_lineHeightCSSRule === null) applyLineHeightValueClass already owns
-        // this element's line-height via the shared value-class rule, and a
-        // render-phase write here would reintroduce a per-instance #id declaration
-        // that always wins the cascade over that shared rule (see
-        // `## Architecture Decisions`). In CSS-var/theme mode, reconcile normally.
-        if (this._lineHeightCSSRule) {
-            this.reconcileRuleDeclaration("lineHeight", this._lineHeightCSSRule);
-        }
-        // `textOverflow` has no render-time recompute anywhere else
-        // (unlike `whiteSpace`/`overflow`, `truncate`'s other two
-        // properties, which are covered by Component's own field-backed
-        // phases) — folding it in here matches how every property above
-        // is re-derived from a getter rather than left to whatever an
-        // imperative setter last wrote.
-        //
-        // Unlike the other eleven, this one bypasses `writeFontDeclaration`'s
-        // truthy guard and calls `reconcileRuleDeclaration` directly, substituting
-        // the CSS initial value `"clip"` for a `null` `getTextOverflow()`
-        // (`truncate: false`) rather than passing `null` straight through.
-        // `reconcileRuleDeclaration(key, null)` *removes* the `#id` declaration
-        // (see `DOM.ts`'s `writeDeclaration`) rather than asserting one — with
-        // `.Text`'s class rule carrying a non-null `textOverflow: "ellipsis"`
-        // (every current class defaults `truncate: true`), removing #id's
-        // declaration does not beat the class rule's, it just stops
-        // competing with it, so the cascade would still resolve to
-        // "ellipsis". Writing the property's own initial value instead is an
-        // actual, higher-specificity override that reads as "no ellipsis" —
-        // the same outcome `getTextOverflow() === null` represents — without
-        // relying on `overflow: visible` (which `setTruncate(false)` also
-        // sets, and which happens to suppress ellipsis rendering regardless
-        // of `text-overflow`'s value) to paper over the wrong CSS.
-        const textOverflow = this.getTextOverflow();
-        this.reconcileRuleDeclaration("textOverflow", textOverflow ?? "clip");
+        const textOverflow = this.getTextOverflow() ?? "clip";
+        this.writeGuardedCSSRule("textOverflow", this.matchesLowerTier("textOverflow", textOverflow) ? null : textOverflow);
     }
 
     /**
@@ -1585,8 +1494,9 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
         DOM.sink.apply(element, { text: this.getText().valueOf() });
 
-        if (this._lineHeightValueClass) {
-            DOM.sink.apply(element, { addClass: [this._lineHeightValueClass] });
+        const lineHeightToken = this.getValueStyleToken("lh");
+        if (lineHeightToken) {
+            DOM.sink.apply(element, { addClass: [lineHeightToken] });
         }
 
         return element;

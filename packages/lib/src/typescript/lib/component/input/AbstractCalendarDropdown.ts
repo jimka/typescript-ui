@@ -18,7 +18,7 @@ import { Grid } from "~/layout/Grid.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { PickerCell, PickerColumn } from "~/component/input/PickerColumn.js";
 import { isScrollbarTarget } from "~/component/container/Scrollbar.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 Glyph.register(chevron_left);
 Glyph.register(chevron_right);
@@ -493,7 +493,7 @@ abstract class AbstractCalendarDropdown<
     // entire visible chrome — this is the one most concrete subclasses
     // (`DatePickerDropdown`, `DateTimePickerDropdown`) depend on, since
     // neither adds a `subclassDefaults` of its own.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultAbstractCalendarDropdownOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultAbstractCalendarDropdownOptions;
 
     /**
      * Constructor-supplied callback. Fired with a fresh copy of `_value`

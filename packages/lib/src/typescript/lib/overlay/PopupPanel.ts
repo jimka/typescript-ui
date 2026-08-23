@@ -8,7 +8,7 @@ import { Insets } from "~/primitive/Insets.js";
 import type { Size } from "~/primitive/Size.js";
 import { VBox } from "~/layout/VBox.js";
 import { callable } from "~/core/Callable.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link PopupPanel}. Adds no fields of its
@@ -85,7 +85,7 @@ class PopupPanel<TOptions extends PopupPanelOptions = PopupPanelOptions> extends
     // needs its own registration or the hierarchy walk would silently pass
     // through to `AnimatedDropdown`'s shared rule and lose its entire
     // visible chrome.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultPopupPanelOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultPopupPanelOptions;
 
     // Opener currently driving the panel via toggleFor, or null when the panel
     // was opened some other way (a direct showAt) or is closed. A plain

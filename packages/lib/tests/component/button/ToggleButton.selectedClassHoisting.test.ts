@@ -7,7 +7,7 @@
 // TabButton-specific coverage lives in TabButton.stateClassHoisting.test.ts.
 //
 // UPDATED by plans/implemented/state-chrome-isolation-generalization.md
-// (Expected Behaviour row 8): `.selected:not(:hover)` now dedupes across
+// (Expected Behaviour row 8): `.selected:not(.pressed):not(:hover)` now dedupes across
 // instances of the same class, the same way `Button`'s `.pressed` already
 // does. `ToggleButton` gained its own `getRestingExclusionSuffixes()`
 // override (adding `.selected` to the isolation list `Button` already
@@ -67,13 +67,13 @@ function declarationsDuring(
 }
 
 describe('ToggleButton selected state-class hoisting', () => {
-    it('row 8: a second, default-styled ToggleButton renders after a first has warmed the class rule — no write to its own #id.selected:not(:hover) rule, and .ToggleButton.selected:not(:hover) is in the rule cache', () => {
+    it('row 8: a second, default-styled ToggleButton renders after a first has warmed the class rule — no write to its own #id.selected:not(.pressed):not(:hover) rule, and .ToggleButton.selected:not(.pressed):not(:hover) is in the rule cache', () => {
         new ToggleButton('Warmup').getElement(true);
 
         const second = new ToggleButton('Second');
-        const declarations = declarationsDuring(sink, idSelector(second) + '.selected:not(:hover)', () => second.getElement(true));
+        const declarations = declarationsDuring(sink, idSelector(second) + '.selected:not(.pressed):not(:hover)', () => second.getElement(true));
 
         expect(declarations).toEqual({});
-        expect(_ruleCacheHas('.ToggleButton.selected:not(:hover)')).toBe(true);
+        expect(_ruleCacheHas('.ToggleButton.selected:not(.pressed):not(:hover)')).toBe(true);
     });
 });

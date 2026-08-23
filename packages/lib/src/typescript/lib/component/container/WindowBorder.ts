@@ -2,7 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
-import type { StateStyleRule } from "~/core/ClassStyleRules.js";
+import type { StateStyleRule, StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { Event } from "~/core/Event.js";
 import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -79,6 +79,17 @@ const WINDOW_BORDER_SNAP_TARGET_DECLARATIONS: Readonly<Record<string, string>> =
  * @category Components
  */
 class WindowBorder extends Component<WindowBorderOptions> {
+
+    // Declares `.snap-target` so `styleLayers()`/`restingGuardSuffix` know
+    // about it — see `Button`'s `ownStyleStates` for the full mechanism. The
+    // extract mirrors `WINDOW_BORDER_SNAP_TARGET_DECLARATIONS`, the same
+    // source `snapTargetStyleRule` below resolves from.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: "." + SNAP_TARGET_CLASS,
+            extract:  (): StyleBag => ({ shadow: WINDOW_BORDER_SNAP_TARGET_DECLARATIONS.boxShadow }),
+        },
+    ];
 
     private _direction: Direction = Direction.NORTH;
     private _listeners: ListenerBag<WindowBorderEvent> = new ListenerBag<WindowBorderEvent>();
@@ -236,10 +247,11 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
         this._snapTarget = value;
 
-        const element = this.getElement();
-        if (element) {
-            DOM.sink.apply(element, { toggleClass: { [SNAP_TARGET_CLASS]: value } });
-        }
+        // Unconditional, not gated on `this.getElement()`: `setStyleState`
+        // updates `_activeStates` regardless of whether an element exists
+        // yet (only its own DOM write is internally element-gated) — see
+        // `ToggleButton.setSelected`'s own comment for the full reasoning.
+        this.setStyleState("." + SNAP_TARGET_CLASS, value);
 
         return this;
     }

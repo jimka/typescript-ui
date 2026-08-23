@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { DOM } from "~/core/DOM.js";
 import { AbstractModel } from "~/data/AbstractModel.js";
 import { Field } from "~/data/Field.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
@@ -23,6 +22,7 @@ import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 
 /**
  * Per-tick reconciliation aid `Body` computes once per render pass and hands
@@ -72,6 +72,39 @@ function range(a: number, b: number): number[] {
  * @category Components
  */
 class Row extends Component {
+
+    // Declares the four ephemeral per-record tints — see `## Architecture
+    // Decisions` — highest priority first: a selected row's wash always
+    // wins over new/dirty/stripe (declared later, so each one's generated
+    // guard suffix excludes `.selected`), and among new/dirty/stripe
+    // themselves, `updateVisualState`'s own call order below (each
+    // condition already excludes the ones before it, matching the old
+    // if/else-if chain) means only one of the three is ever actually
+    // active at once — no guard exclusivity between them is needed.
+    // `Body.updateRowVisualState` drives `.selected` directly via the
+    // inherited `setStyleState` (Row declares it; Body has no state
+    // machinery of its own to duplicate it in).
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".selected",
+            extract: (): StyleBag => ({
+                backgroundColor: "var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))",
+                shadow:          "var(--ts-ui-table-row-selected-border, none)",
+            }),
+        },
+        {
+            selector: ".new",
+            extract: (): StyleBag => ({ backgroundColor: "var(--ts-ui-table-row-new, rgba(70, 200, 70, 0.15))" }),
+        },
+        {
+            selector: ".dirty",
+            extract: (): StyleBag => ({ backgroundColor: "var(--ts-ui-table-row-dirty, rgba(255, 165, 0, 0.15))" }),
+        },
+        {
+            selector: ".stripe",
+            extract: (): StyleBag => ({ backgroundColor: "var(--ts-ui-table-row-stripe, rgba(0, 0, 0, 0.035))" }),
+        },
+    ];
 
     private _model?: AbstractModel;
     private _data?: ModelRecord;
@@ -286,24 +319,21 @@ class Row extends Component {
      * @remarks New records get a green tint, dirty records an orange tint, and clean records the zebra stripe (odd rows) or no tint (even rows).
      */
     updateVisualState(): void {
-        const el = this.getElement();
-        if (!el) {
-            return;
-        }
-
-        // Per-record ephemeral tint on a pooled row re-bound to a new record on
-        // every render. Going through a cached Component setter (setBackgroundColor)
-        // would persist this into _options and replay it onto the next record bound
-        // to this reused row, so write/remove the inline style directly instead.
-        if (this._data?.isNew()) {
-            DOM.sink.apply(el, { style: { 'background-color': 'var(--ts-ui-table-row-new, rgba(70, 200, 70, 0.15))' } });
-        } else if (this._data?.isDirty()) {
-            DOM.sink.apply(el, { style: { 'background-color': 'var(--ts-ui-table-row-dirty, rgba(255, 165, 0, 0.15))' } });
-        } else if (this._stripe) {
-            DOM.sink.apply(el, { style: { 'background-color': 'var(--ts-ui-table-row-stripe, rgba(0, 0, 0, 0.035))' } });
-        } else {
-            DOM.sink.apply(el, { style: { 'background-color': null } });
-        }
+        // Per-record ephemeral tint on a pooled row re-bound to a new record
+        // on every render: `setStyleState` toggles a shared `.Row.new`/
+        // `.Row.dirty`/`.Row.stripe` class-tier rule via a DOM class token
+        // rather than a cached setter, so nothing here persists into
+        // `_instanceStyle` to replay onto the next record bound to this
+        // reused row (see `## Architecture Decisions`) — no per-recycle
+        // stylesheet-rule materialisation, no inline style to clean up.
+        // Mutually exclusive by construction (each condition already
+        // excludes the ones before it, matching the old if/else-if chain),
+        // and `.selected` (see `ownStyleStates`, above) always wins
+        // regardless of which of these three is active, via its own
+        // higher-priority guard.
+        this.setStyleState(".new",    !!this._data?.isNew());
+        this.setStyleState(".dirty",  !this._data?.isNew() && !!this._data?.isDirty());
+        this.setStyleState(".stripe", !this._data?.isNew() && !this._data?.isDirty() && this._stripe);
     }
 
     /**
@@ -900,11 +930,23 @@ class Row extends Component {
      * @param cell - The cell to retire.
      * @param key - The cell's reuse key, or `undefined` when the slot it
      *   occupied carried no recorded key.
+     *
+     * @remarks Clears `.focused` before caching (or disposing) — a retired
+     * cell leaves `getComponents()` entirely (into `_cellCache`, or gone),
+     * so `Body._updateFocusStyle`'s narrowed per-tick clear can neither
+     * reach it via its own-cell fast path (its `getParentComponent()` is
+     * already `null` after `removeComponent` below) nor via the full-sweep
+     * fallback (which only walks `_rowPool`'s current `getComponents()`,
+     * never `_cellCache`). Without this, a cell retired while it still
+     * carried the keyboard-focus ring would carry the stale `.focused`
+     * token into whichever column later restores it from the cache.
      */
     private retireCell(cell: Cell<any>, key: string | undefined): void {
         if (cell.isEditing()) {
             cell.commitEdit();
         }
+
+        cell.setStyleState(".focused", false);
 
         this.removeComponent(cell);
 

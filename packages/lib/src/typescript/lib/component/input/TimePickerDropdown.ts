@@ -9,7 +9,7 @@ import { Fit } from "~/layout/Fit.js";
 import { TimeColumns } from "~/component/input/TimeColumns.js";
 import { isScrollbarTarget } from "~/component/container/Scrollbar.js";
 import { callable } from "~/core/Callable.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /** Pixel width of the time picker panel (Hour + Minute). */
 const PANEL_WIDTH:          number = 140;
@@ -69,7 +69,7 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
     // these), so it needs its own registration or the hierarchy walk would
     // silently pass through to `AnimatedDropdown`'s shared rule and lose
     // its entire visible chrome.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultTimePickerDropdownOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultTimePickerDropdownOptions;
 
     private readonly _showSeconds: boolean;
     /** The shared Hour/Min(/Sec) selection grid. Built once; re-highlighted in place. */

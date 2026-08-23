@@ -85,17 +85,24 @@ describe('RadioButton delegate state-class hoisting', () => {
 
         // Resting: relies entirely on the .RadioButtonRing class rule
         // established at construction — no real border value reaches the
-        // instance rule. A `null` (rather than an absent key) is still
-        // expected here: _ring's constructor also sets a genuinely
-        // per-instance borderRadius, which shares this same underlying #id
-        // rule, so border's "clear on match, never skip" queue rides along
-        // in the same flush as an inert removal — it declares nothing, so
-        // the class rule's border cascades through.
-        const restingDeclarations = declarationsDuring(sink, idSelector(ring), () => rb.getElement(true));
-        expect(restingDeclarations.borderTop).toBeNull();
-        expect(restingDeclarations.borderRight).toBeNull();
-        expect(restingDeclarations.borderBottom).toBeNull();
-        expect(restingDeclarations.borderLeft).toBeNull();
+        // instance rule. Unlike `borderRadius` (which shares the bare `#id`
+        // rule and so still needs a real "riding along" removal), border's
+        // own removal now queues on the isolated `#id:not(.selected)` rule
+        // instead: `.selected` declares a real `border` (see
+        // `ownStyleStates` above), so the derived isolation key set
+        // (core/Component.ts's `restingIsolationKeys`) protects it the same
+        // way it already protects `backgroundColor` — a class whose state
+        // layer declares a property is protected automatically, replacing
+        // the old hand-picked three-property `RESTING_ISOLATION_KEYS` set.
+        // With nothing else real queued in that isolated batch, the rule
+        // never materialises at all (see `StyleTarget.hasQueuedDeclarations`),
+        // so the keys are absent here, not present-as-null.
+        const restingDeclarations = declarationsDuring(sink, idSelector(ring) + ':not(.selected)', () => rb.getElement(true));
+        expect(restingDeclarations.borderTop).toBeUndefined();
+        expect(restingDeclarations.borderRight).toBeUndefined();
+        expect(restingDeclarations.borderBottom).toBeUndefined();
+        expect(restingDeclarations.borderLeft).toBeUndefined();
+        expect(_ruleCacheHas(idSelector(ring) + ':not(.selected)')).toBe(false);
 
         // Selected: border is now part of getSelectedClassDeclarations(), so it
         // dedupes onto the shared .RadioButtonRing.selected class rule the same

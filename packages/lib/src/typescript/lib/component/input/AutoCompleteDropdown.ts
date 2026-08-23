@@ -7,7 +7,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Fit } from "~/layout/Fit.js";
 import { List } from "~/component/list/List.js";
 import { callable } from "~/core/Callable.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /** Pixel height of a single row inside the dropdown. Matches `SelectableListRow`'s cached `preferredSize(0, 22)`. */
 const AUTOCOMPLETE_DROPDOWN_ROW_HEIGHT_PX = 22;
@@ -71,7 +71,7 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
     // these), so it needs its own registration or the hierarchy walk would
     // silently pass through to `AnimatedDropdown`'s shared rule and lose
     // its entire visible chrome.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultAutoCompleteDropdownOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultAutoCompleteDropdownOptions;
 
     private readonly _list: List;
     private readonly _onSelect: (value: string) => void;

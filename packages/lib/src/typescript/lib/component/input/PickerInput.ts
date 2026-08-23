@@ -2,7 +2,7 @@
 
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { callable } from "~/core/Callable.js";
-import type { ClassStyleDefaults } from "~/core/ClassStyleRules.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * User-overridable visual defaults forwarded to `super` via the options bag.
@@ -41,7 +41,7 @@ class PickerInput extends TextInput<TextInputOptions> {
     // `border`/`outline: "none"` pair in particular is what suppresses
     // `TextInput`'s visible border and the browser focus ring so
     // `AbstractPickerField`'s outer chrome doesn't double up.
-    protected static readonly ownClassStyleDefaults: ClassStyleDefaults = _defaultPickerInputOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultPickerInputOptions;
 
     constructor() {
         super(undefined, _defaultPickerInputOptions);

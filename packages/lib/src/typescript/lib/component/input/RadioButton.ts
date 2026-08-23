@@ -7,7 +7,7 @@ import { DOM, type Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
-import { type StateStyleRule } from "~/core/ClassStyleRules.js";
+import { type StateStyleRule, type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { borderToStyle } from "~/primitive/Border.js";
 import { callable } from "~/core/Callable.js";
 import { circle } from "~/glyphs/solid/circle.js";
@@ -39,6 +39,20 @@ const RADIO_SELECTED_DECLARATIONS: Readonly<Record<string, string>> = Object.fre
  * rule — see `plans/implemented/checkbox-radio-delegate-state-style-defaults.md`.
  */
 class RadioButtonRing extends Component {
+    // Single-entry list: with only one declared state, its guarded suffix
+    // is just its own selector (no `:not(...)` to add against a
+    // higher-priority entry that doesn't exist) — the same `.selected`
+    // `createStateStyleRule` already used.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".selected",
+            extract: (): StyleBag => ({
+                backgroundColor: RADIO_SELECTED_DECLARATIONS.backgroundColor,
+                border:          RADIO_SELECTED_DECLARATIONS.border,
+            }),
+        },
+    ];
+
     private _selected: boolean = false;
 
     private declare _selectedStyleRule?: StateStyleRule;
@@ -57,18 +71,15 @@ class RadioButtonRing extends Component {
         };
     }
 
-    protected override getRestingExclusionSuffixes(): readonly string[] {
-        return [".selected"];
-    }
-
     /** See `CheckboxBox.applyState`'s doc comment (Checkbox.ts) — identical reasoning, one state instead of two. */
     applyState(selected: boolean): void {
         this._selected = selected;
 
-        const element = this.getElement();
-        if (element) {
-            DOM.sink.apply(element, { toggleClass: { selected } });
-        }
+        // Unconditional, not gated on `this.getElement()`: `setStyleState`
+        // updates `_activeStates` regardless of whether an element exists
+        // yet — see `Checkbox.ts`'s `CheckboxBox.applyState` for the same
+        // reasoning.
+        this.setStyleState(".selected", selected);
 
         if (selected) {
             this.selectedStyleRule.setMany({

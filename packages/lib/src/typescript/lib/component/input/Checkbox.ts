@@ -7,7 +7,7 @@ import { DOM, type Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
-import { type StateStyleRule } from "~/core/ClassStyleRules.js";
+import { resolveStyleStates, type StateStyleRule, type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { borderToStyle } from "~/primitive/Border.js";
 import { callable } from "~/core/Callable.js";
 import { check } from "~/glyphs/solid/check.js";
@@ -49,17 +49,40 @@ const CHECKBOX_INDETERMINATE_DECLARATIONS: Readonly<Record<string, string>> = Ob
  * rules — see `plans/implemented/checkbox-radio-delegate-state-style-defaults.md`.
  */
 class CheckboxBox extends Component {
+    // Indeterminate wins when a box is (transiently) both — see `applyState`'s
+    // own comment for why that can happen — so it's declared first.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".indeterminate",
+            extract: (): StyleBag => ({
+                backgroundColor: CHECKBOX_INDETERMINATE_DECLARATIONS.backgroundColor,
+                border:          CHECKBOX_INDETERMINATE_DECLARATIONS.border,
+            }),
+        },
+        {
+            selector: ".selected",
+            extract: (): StyleBag => ({
+                backgroundColor: CHECKBOX_SELECTED_DECLARATIONS.backgroundColor,
+                border:          CHECKBOX_SELECTED_DECLARATIONS.border,
+            }),
+        },
+    ];
+
     private _selected:      boolean = false;
     private _indeterminate: boolean = false;
 
     private declare _selectedStyleRule?: StateStyleRule;
     private get selectedStyleRule(): StateStyleRule {
-        return this._selectedStyleRule ??= this.createStateStyleRule(".selected", () => this.getSelectedClassDeclarations());
+        return this._selectedStyleRule ??= this.createStateStyleRule(this.guardedSuffixFor(".selected"), () => this.getSelectedClassDeclarations());
     }
 
     private declare _indeterminateStyleRule?: StateStyleRule;
     private get indeterminateStyleRule(): StateStyleRule {
-        return this._indeterminateStyleRule ??= this.createStateStyleRule(".indeterminate", () => this.getIndeterminateClassDeclarations());
+        return this._indeterminateStyleRule ??= this.createStateStyleRule(this.guardedSuffixFor(".indeterminate"), () => this.getIndeterminateClassDeclarations());
+    }
+
+    private guardedSuffixFor(selector: string): string {
+        return resolveStyleStates(this.constructor).find((state) => state.selector === selector)!.guardedSuffix;
     }
 
     constructor() {
@@ -78,14 +101,6 @@ class CheckboxBox extends Component {
             backgroundColor: CHECKBOX_INDETERMINATE_DECLARATIONS.backgroundColor,
             ...borderToStyle({ border: CHECKBOX_INDETERMINATE_DECLARATIONS.border }),
         };
-    }
-
-    /**
-     * `_box`'s own resting chrome must stay isolated from both non-resting
-     * states — see `plans/implemented/checkbox-radio-delegate-state-style-defaults.md`.
-     */
-    protected override getRestingExclusionSuffixes(): readonly string[] {
-        return [".selected", ".indeterminate"];
     }
 
     /**
@@ -111,10 +126,14 @@ class CheckboxBox extends Component {
         this._selected      = selected;
         this._indeterminate = indeterminate;
 
-        const element = this.getElement();
-        if (element) {
-            DOM.sink.apply(element, { toggleClass: { selected: selected && !indeterminate, indeterminate } });
-        }
+        // Unconditional, not gated on `this.getElement()`: `setStyleState`
+        // updates `_activeStates` regardless of whether an element exists
+        // yet (only its own DOM write is internally element-gated) — a
+        // construction-time call must still record the state, or `render()`
+        // below would have nothing correct to re-assert once the element
+        // exists.
+        this.setStyleState(".selected", selected && !indeterminate);
+        this.setStyleState(".indeterminate", indeterminate);
 
         if (indeterminate) {
             this.indeterminateStyleRule.setMany({
