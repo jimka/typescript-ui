@@ -412,14 +412,15 @@ grep -n "this.syncSortIndicators(" src/typescript/lib/component/table/Header.ts 
 Existing tests that must keep passing **without modification**, now exercising the fast path (their setups are confirmed same-width, one-column-delta slides by direct computation against `render20At100`'s 20-column/100px/250px-viewport geometry):
 
 - `HeaderColumnWindow.test.ts` → cases 8, 9, 10, 11, 12, 13 (`'Header column window — recycling'`)
-- `HeaderColumnWindow.test.ts` → case 27, 27b (`'Header column window — slot order with tied field order'`)
-- `HeaderColumnWindow.test.ts` → case 28b, 29 (`'Header column window — geometry diffing'`)
+- `HeaderColumnWindow.test.ts` → case 28b (`'Header column window — geometry diffing'`)
 
-Existing tests that must keep passing **unmodified**, continuing to exercise the **full** path (their setups have a width change or a dirty flag, confirmed by direct computation, so this plan does not change which code they run):
+Existing tests that must keep passing **unmodified**, continuing to exercise the **full** path (their setups have a width change or a dirty flag, confirmed by direct computation, so this plan does not change which code they run — corrected during implementation: cases 27, 27b, and 29 were originally listed above as fast-path exercising, but each starts from a fresh `render20At100(table)` call whose first window necessarily differs in width from a zero-cell previous state, so they take the full path, not the fast one):
 
 - `HeaderColumnWindow.test.ts` → cases 1-7 (window coverage, slot mapping on first render/large jump)
 - `HeaderColumnWindow.test.ts` → cases 14-16 (sort state — `handleSortClick`'s own unscoped `syncSortIndicators()` call is untouched)
 - `HeaderColumnWindow.test.ts` → cases 17-26 (column-set changes, parent row, rotated mode, teardown)
+- `HeaderColumnWindow.test.ts` → case 27, 27b (`'Header column window — slot order with tied field order'`)
+- `HeaderColumnWindow.test.ts` → case 29 (`'Header column window — geometry diffing'`)
 - `HeaderColumnWindow.test.ts` → cases 30-37 (width changes, re-renders at identical geometry, glyph mounting)
 
 Manual re-measurement, mirroring the protocol sqladmin's `LIBRARY_NOTES.md` already established for this exact investigation (symlinked `dist/lib` build, `wide.cols_60` demo table, a maximized/large viewport, a Chrome performance trace during a direction-reversing `WheelEvent` burst): confirm the `DOMSize` insight's per-pass "elements affected" percentage drops from the ~63-71% baseline that entry measured, and that the horizontal-burst frame-gap numbers (worst gap, percentage of frames over 100 ms) move closer to the vertical-burst numbers from the same entry, rather than the roughly 3-4x gap it found. A successful result is not "no `DOMSize` insight at all" (the entry's own history shows that can be a viewport-size false negative) — it is a materially smaller affected-element percentage at the *same* maximized viewport size used before, checked against a fresh trace rather than assumed.
@@ -475,3 +476,123 @@ No consumer-visible export changes.
 [^find-vs-map]: Building `columnMap` once and doing `width` map lookups costs roughly `O(totalColumns + width)`; doing `|delta|` linear `.find()` calls costs `O(delta × totalColumns)`. For the fast path's own regime (`delta` small, typically 1-3, versus `width` which can be 10-20+), `.find()` wins in the common case and only approaches parity as `delta` grows toward `width` — at which point the eligibility guard is already close to excluding the slide entirely (`delta < width` is required, and the win shrinks as `delta` approaches that bound, the same diminishing-returns shape `table-column-window-rotation.md`'s own "threshold derivation" describes for `Row`'s equivalent boundary). The full path's own `columnMap` is untouched by this reasoning — it still touches every column in the window, where the `Map` remains the right tool.
 
 [^syncsort-simplification]: The rewrite from slot-indexed (`this._visibleFields[this._windowFirst + slot]`) to field-indexed (`cell.getFieldName()`) is safe because `reconcileColumnCells`'s pass 3 (full path) and `reconcileColumnWindowSlide` (fast path) both call `cell.setFieldName(field.getName())` on every cell they touch before `syncSortIndicators` ever runs — a rendered cell's own `getFieldName()` is therefore always authoritative for "which column does this cell actually present," independent of its position in the child array. This was a needed change, not an optional cleanup: the old slot-indexed version assumed `cells[slot]` and `_visibleFields[windowFirst + slot]` refer to the same column, which is exactly the assumption a scoped call (an arbitrary subset of cells, not a `cells[0..k]` prefix) breaks.
+
+---
+
+## Implementation Notes
+
+Two deviations from this plan's text, plus the manual re-measurement's result:
+
+- **The audit found a real regression in the plan's scoped-`syncSortIndicators`
+  safety argument, fixed by adding a store `'sortchange'` subscription.** The
+  plan's `## Architecture Decisions` argues a survivor's sort/priority state
+  "cannot be stale after a slide" because its field and `_store.getActiveSorters()`
+  are both unchanged mid-slide — but that assumes the survivor's *rendered*
+  indicator was already correct going into the slide, which nothing guaranteed:
+  `TableHeader` had no subscription to the store's `'sortchange'` event, so a
+  sort applied any way other than clicking this header (a programmatic
+  `AbstractStore.sort()`/`clearSort()`, or a display-mode swap) only ever
+  reached a rendered cell as an incidental side effect of the *old* full-path
+  `syncSortIndicators()` always running unscoped on every reconcile. The new
+  scoped call removes that incidental repair for a survivor on the fast path.
+  Reproduced (`render20At100(550)` → `setScrollX(650)` fast-path slide →
+  `await store.sort('c5', 'asc')` → a second fast-path slide): the previously-
+  entered survivor's cell reported `null` on this branch and `{state:'asc'}`
+  on `master`. Fixed by adding `_boundOnStoreSortChange` /
+  `onStoreSortChange()`, mirroring the header's existing `'filterchange'`
+  subscription exactly (wired in the constructor, `setStore`, and the
+  destructor), calling the full unscoped `syncSortIndicators()` on every
+  external sort change — which also fixes the narrower pre-existing gap where
+  a sort applied with **no** subsequent reconcile at all was never reflected.
+  Pinned by cases 50-51 (`HeaderColumnWindow.test.ts`, describe block
+  `'Header column window — external sort-change subscription'`) and case 46b
+  (the same leak for the fast path's `_lastEnteredCells` reset specifically,
+  proven by a mutation test: deleting `this._lastEnteredCells = undefined;`
+  at the top of `reconcileColumnCells` leaves the whole suite green without
+  case 46b, and fails with it). Cases 44b/44c were added the same way to
+  close a second audit-found gap — the filter row's `reconcileFilterWindowSlide`
+  slot assignment had zero test coverage that would fail if its `slotOf`
+  survivor/entering branches were swapped; both new cases fail against that
+  exact mutation and pass against the real code.
+- **The manual re-measurement in `## Verification` was run, and its result
+  does not confirm this plan's motivating hypothesis.** Protocol: sqladmin's
+  `wide.cols_60`, symlinked build of this branch (verified served — the
+  fetched `component/table.es.js` chunk contains `onStoreSortChange`, added
+  only in this branch's audit fixup), a maximized 5120×1932 viewport (this
+  machine's real display, matching the entry's own later correction), a
+  4-leg/80-event direction-reversing horizontal `WheelEvent` burst dispatched
+  at a fixed 16ms cadence via `chrome-devtools` `evaluate_script`, captured
+  in a Chrome performance trace. Run twice — once immediately after a fresh
+  `ignoreCache` reload (first interaction of the session) and once again
+  later in the same session — with consistent results both times: the
+  `DOMSize` insight's style-recalculation passes touched **12,834–14,143 of
+  19,183–19,184 total elements per pass (66.9%–73.7%)**, against the plan's
+  cited **~63–71%** pre-fix baseline
+  (`/home/jika/typescript/sqladmin/LIBRARY_NOTES.md:712`) — essentially
+  unchanged, not "materially smaller" as `## Verification` asks for.
+  `ForcedReflow` stayed at the same already-known-negligible `getScrollLeft`
+  cost the baseline entry also reports (≈1.5–1.8 s of ≈8–22 s per run,
+  "estimated savings: none" both times), confirming this plan didn't
+  reintroduce or worsen that separate, already-fixed mechanism.
+  A second-round audit finding noted `## Verification`'s other requested
+  metric — worst frame gap and percentage of frames over 100 ms — was
+  missing from this note. Captured separately (a `requestAnimationFrame`
+  timestamp recorder run through the identical burst, on a freshly reloaded
+  page, first interaction of that session): **worst gap 450 ms, 46.7 %
+  of frames (50/107) over 100 ms**, against the same entry's own recorded
+  0.7.0 horizontal numbers (**433–533 ms worst gap, ~30 % over 100 ms**) and
+  vertical numbers (**150–167 ms worst gap, ~4 % over 100 ms**,
+  `LIBRARY_NOTES.md:721-730`) — again essentially unchanged from the
+  horizontal baseline rather than moving toward the vertical one, consistent
+  with the `DOMSize` result above. (Methodology note: this run's dispatch
+  mechanism — synthetic `WheelEvent`s via `evaluate_script`, not real
+  hardware input — may itself carry different overhead than whatever the
+  baseline entry used for its own numbers, so the two are directionally but
+  not necessarily precisely comparable; the `DOMSize` percentage, computed
+  from the DOM itself rather than dispatch-loop wall-clock time, is the
+  more dispatch-method-independent of the two and tells the same story.)
+  **This does not mean the code change is wrong** — it is independently
+  correct, tested, and a real reduction in redundant per-survivor
+  setter/DOM-write calls during a header reconcile, matching its own
+  `## Architecture Decisions` exactly — but the plan's Overview's chain of
+  reasoning ("points at exactly the reconciler this plan targets... since it
+  is the only per-tick horizontal-scroll reconciler that never got the
+  equivalent fix") is not borne out: whatever drives the `DOMSize` insight's
+  whole-page style recalculation is still present after this fix, consistent
+  with `LIBRARY_NOTES.md`'s own prior conclusion for the identical question
+  ("Not root-caused past this point") rather than resolved by it. Left for a
+  future investigation, not this plan's scope to chase further (see
+  `## Non-Goals`, which already excludes the broader investigation).
+- **A second-round audit found the multi-column entering-cell ↔
+  entering-column pairing untested in both fast paths.** `reconcileColumnWindowSlide`
+  and `reconcileFilterWindowSlide` zip `enteringCols` against `enteringCells`
+  by shared index `i` — correct only if the two arrays are actually in
+  matching order. Every existing multi-column-slide case (40, 41, 44c)
+  asserted the entering group as an *unordered* set (`sort()`,
+  `arrayContaining`), which cannot distinguish entering cell `i` landing on
+  entering column `i` from the same cells landing in a scrambled order — a
+  mutation swapping the pairing to `enteringCells[outCount - 1 - i]` left
+  the entire suite green. Fixed by strengthening cases 40, 41, and 44c to
+  assert the *whole* window's slot-to-field sequence
+  (e.g. `['c7','c8',…,'c14']`) rather than just set membership; each new
+  assertion fails against the swapped-pairing mutation and passes against
+  the real code (re-verified after the fix). `reconcileColumnCells`'s and
+  `reconcileFilterCells`'s doc comments were also corrected — they still
+  described only the full three-pass path, with no mention that an eligible
+  slide now takes the cheaper fast path instead.
+
+- **The `grep -n "this.syncSortIndicators("` check in `## Verification` (and
+  step 11) expects exactly two matches; the actual file has five.** Besides
+  `renderColumnWindow`'s new `(this._lastEnteredCells)` call and
+  `handleSortClick`'s existing no-argument call, `setModel` and
+  `rebuildCells` each already call `syncSortIndicators()` with no argument
+  too — two pre-existing call sites the plan's grep prediction missed — and
+  this same Implementation Notes section's own `onStoreSortChange` fix above
+  adds a fifth. All three no-argument sites are unaffected by this plan's
+  scoping change: they correctly default to a full sweep (first render /
+  model swap / column-set change / an external sort change, exactly the
+  routes `## Architecture Decisions` already says must keep the full
+  sweep), and none needed further code changes beyond `onStoreSortChange`
+  itself. No test or behaviour depends on the exact count, so this is a
+  documentation-only inaccuracy in the plan's own verification command, not
+  a defect — recorded here rather than silently ignored.
