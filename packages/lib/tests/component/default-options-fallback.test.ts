@@ -20,6 +20,8 @@ import { HBox } from '~/layout/HBox';
 import { VBox } from '~/layout/VBox';
 import { ListItem } from '~/component/list/ListItem';
 import { TextField } from '~/component/input/TextField';
+import { NumberSpinner } from '~/component/input/NumberSpinner';
+import { NumberEditor } from '~/component/table/cell/editor/Number';
 import { Link } from '~/component/input/Link';
 import { NumberedList } from '~/component/list/NumberedList';
 import { NumberedListItemStyle } from '~/component/list/NumberedListItemStyle';
@@ -271,6 +273,8 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'Component userSelect',         resolve: () => new Component({}).getUserSelect(),                          expected: 'none' },
     { label: 'Component overflow',           resolve: () => new Component({}).getOverflowX(),                           expected: 'hidden' },
     { label: 'TextField padding',            resolve: () => insetsTuple(new TextField().getPadding()),                  expected: [3, 3, 3, 3] },
+    { label: 'NumberSpinner _input textAlign', resolve: () => (new NumberSpinner() as any)._input.getTextAlign(), expected: 'right' },
+    { label: 'NumberEditor _textField textAlign', resolve: () => (new NumberEditor() as any)._textField.getTextAlign(), expected: 'right' },
     { label: 'ToolBar orientation',          resolve: () => new ToolBar().getOrientation(),                             expected: 'horizontal' },
     { label: 'ToolBar compact',              resolve: () => new ToolBar().isCompact(),                                  expected: true },
     { label: 'ToolBar backgroundColor',      resolve: () => new ToolBar().getBackgroundColor(),                         expected: 'var(--ts-ui-toolbar-bg, rgb(245, 245, 245))' },

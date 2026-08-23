@@ -2,7 +2,7 @@
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { ComponentOptions } from "~/core/Component.js";
-import type { StyleBag } from "~/core/ClassStyleRules.js";
+import type { StyleBag, TextStyleBag } from "~/core/ClassStyleRules.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
@@ -74,6 +74,25 @@ const _defaultTextInputOptions: Partial<TextInputOptions> = {
     borderRadius:    "var(--ts-ui-border-radius, 4px)",
 };
 
+// The font baseline every text control shares. `line-height` renders the
+// input's single line at the same px line box every text control measures
+// against (`Util.lineHeightPx`), so the input doesn't inherit the UA
+// `line-height: normal` and its baseline coincides with a `Text`/`Label` in
+// the same row.
+const TEXT_INPUT_FONT: TextStyleBag = {
+    fontFamily: "var(--ts-ui-font-family, sans-serif)",
+    fontSize:   "var(--ts-ui-font-size, 14px)",
+    lineHeight: "calc(1em + var(--ts-ui-line-padding, 2px))",
+};
+
+// `_defaultTextInputOptions` is a `Partial<TextInputOptions>` and cannot carry
+// a `font` key; the class tier's own bag adds it here, so the CSS rule and the
+// getters read one source.
+const _textInputClassStyleDefaults: StyleBag = {
+    ..._defaultTextInputOptions,
+    font: TEXT_INPUT_FONT,
+};
+
 /**
  * Base class for `<input>`- and `<textarea>`-backed text controls. Owns
  * the `<input>`-by-default `render()`, the type/name HTML attributes, the
@@ -92,27 +111,13 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
 
     // Own contribution to the hierarchy-aware class tier — see
     // plans/implemented/class-hierarchy-cascade.md.
-    protected static readonly ownClassStyleDefaults: StyleBag = _defaultTextInputOptions;
+    protected static readonly ownClassStyleDefaults: StyleBag = _textInputClassStyleDefaults;
 
     constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
         super(
             options,
             { ..._defaultTextInputOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
         );
-
-        // Default sans-serif 12px font lives on the per-component CSS rule.
-        // Queueing through `setElementCSSRules` at construction defers the
-        // write until `applyStyle` flushes the buffer at render time, so we
-        // no longer need a class-level `applyStyle` override.
-        this.setElementCSSRules({
-            fontFamily: "var(--ts-ui-font-family, sans-serif)",
-            fontSize:   "var(--ts-ui-font-size, 14px)",
-            // Render the input's single line at the same px line box every text
-            // control measures against (`Util.lineHeightPx`), so the input no
-            // longer inherits the UA `line-height: normal` and its baseline
-            // coincides with a `Text`/`Label` in the same row.
-            lineHeight: "calc(1em + var(--ts-ui-line-padding, 2px))",
-        });
 
         // Single native `input` listener for every text-derived control: it
         // syncs the cached text from the live DOM, then fans the fresh value
@@ -122,6 +127,20 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
         // current before `on("change")` reads it — the fix for the
         // one-keystroke-behind value bug.
         Event.addListener(this, "input", this.onInput);
+    }
+
+    /**
+     * Supplies the class-level font defaults `ClassStyleRules.ts` cannot see in
+     * `_defaultOptions` — `TextInputOptions` has no `font` field. Prefers
+     * `ownClassStyleDefaults` off `this.constructor` (virtual dispatch) so a
+     * subclass whose own bag is a complete font bag is reflected here, and falls
+     * back to this class's own bag otherwise. Mirrors `Text.getClassStyleDefaults`.
+     */
+    protected getClassStyleDefaults(): StyleBag {
+        return {
+            ...super.getClassStyleDefaults(),
+            font: (this.constructor as typeof TextInput).ownClassStyleDefaults.font ?? TEXT_INPUT_FONT,
+        };
     }
 
     /**
@@ -429,10 +448,11 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
     /**
      * Returns the current CSS text-align value.
      *
-     * @returns The CSS text-align string, or null if not set.
+     * @returns The CSS text-align string, or `null` when neither this instance
+     *   nor its class declares one.
      */
     getTextAlign(): string | null {
-        return this._options.textAlign ?? null;
+        return this.resolveFontValue("textAlign");
     }
 
     /**
@@ -444,15 +464,14 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
      * @returns This component, for method chaining.
      */
     setTextAlign(align: string | null): this {
-        this._options.textAlign = align;
-
-        this.setElementCSSRule("textAlign", align);
+        this.writeStyle({ font: { textAlign: align } });
 
         return this;
     }
 
     /**
-     * Clears the CSS text-align value, removing the rule.
+     * Clears the CSS text-align value, reverting to the class-tier default
+     * when this class declares one.
      *
      * @returns This component, for method chaining.
      */

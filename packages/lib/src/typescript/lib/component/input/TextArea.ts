@@ -7,6 +7,17 @@ import { Insets } from "~/primitive/Insets.js";
 import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
+import { StyleRule } from "~/core/StyleTarget.js";
+
+// The `<textarea>` corner grip is the only user-resize affordance on any of
+// these components. Pin `resize: none` once, on the shared class rule, so the
+// area can never be drag-resized. There is no accompanying option or setter —
+// non-resizability is immutable by design. This rule and the `.TextArea` rule
+// the class-tier hierarchy walk generates share one underlying CSSStyleRule
+// and declare disjoint keys.
+(() => {
+    new StyleRule({ scope: "class", name: "TextArea", styles: { resize: "none" } });
+})();
 
 /**
  * Construction-time options for {@link TextArea}.
@@ -79,13 +90,6 @@ class TextArea extends TextInput<TextAreaOptions> {
             text ? { text, ...options } : options,
             { ..._defaultTextAreaOptions, ...(subclassDefaults ?? {}) },
         );
-
-        // The `<textarea>` corner grip is the only user-resize affordance on
-        // any of these components. Pin `resize: none` as a persistent CSS rule
-        // (not an inline style, which `applyStyle` would wipe on re-render) so
-        // the area can never be drag-resized. There is no accompanying option
-        // or setter — non-resizability is immutable by design.
-        this.setElementCSSRules({ resize: "none" });
     }
 
     /**

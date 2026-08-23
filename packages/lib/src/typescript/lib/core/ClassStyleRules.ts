@@ -75,7 +75,8 @@ export interface StyleBag {
  * would silently leak their unrelated defaults into this bag, since
  * `Component.applyStyle`'s default `getClassStyleDefaults()` passes
  * `_defaultOptions` through verbatim for every class that doesn't override
- * it. Only `Text.getClassStyleDefaults()` ever sets `font`.
+ * it. `Text.getClassStyleDefaults()` and `TextInput.getClassStyleDefaults()`
+ * are the two methods that set `font`.
  */
 export interface TextStyleBag {
     fontFamily?:     string | null;
