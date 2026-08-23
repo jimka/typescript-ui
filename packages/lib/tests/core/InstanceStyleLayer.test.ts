@@ -116,6 +116,27 @@ describe('Instance style layer (Stage 2)', () => {
         expect(b.getBackgroundColor()).toBe('red');
     });
 
+    it('setDisplayed(true) after setDisplayed(false), matching the class default, writes a null removal', () => {
+        // `display` is a `SKIP_ON_MATCH_KEYS` member (unlike `backgroundColor`
+        // in row 6 above), whose skip-on-match branch is meant only for a
+        // key the instance never authored at all — a pooled Table/Tree row
+        // toggles `displayed` at runtime via `setDisplayed`, so a value that
+        // now matches the class default is a stale override that must be
+        // explicitly cleared, not silently left in place. Left unfixed, a
+        // row hidden mid-scroll and later re-shown stays `display: none`
+        // forever, since nothing else ever rewrites that declaration.
+        const sink = DOM.sink as RecordingDOMSink;
+        const c    = new RedBgProbe({});
+        c.getElement(true);
+
+        c.setDisplayed(false);
+
+        const declarations = declarationsDuring(sink, idSelector(c), () => c.setDisplayed(true));
+
+        expect(declarations.display).toBeNull();
+        expect(c.isDisplayed()).toBe(true);
+    });
+
     it('row 7: clearOverflowX/clearOverflowY/clearOutline suppress the class default rather than re-resolving it', () => {
         class OverflowOutlineProbe extends Component {
             constructor(options?: ComponentOptions) {

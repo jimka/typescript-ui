@@ -364,8 +364,16 @@ const _componentFinalizer = new FinalizationRegistry<OwnedResources>(({ handles,
 });
 
 // CSS keys the retired phase methods routed through a skip-on-match write
-// (rather than a write-null-on-match one) — a matching value queues nothing
-// at all for these, mirroring that pre-migration split. See `flushStyleBag`.
+// (rather than a write-null-on-match one) when `applyStyle`'s full sweep
+// queued a key the instance layer never declared — mirroring that
+// pre-migration split, this queues nothing at all rather than a redundant
+// removal for a class-default-only value. Only that "no instance opinion"
+// case, though: a value the instance *did* declare (typically via a runtime
+// setter — see `flushStyleBag`'s own comment) always queues a real write or
+// an explicit removal on a match, regardless of this set, since the old
+// phase-method skip never applied to a live setter's own write in the first
+// place — every key here (`setDisplayed` included) had its runtime setter
+// write through unconditionally pre-migration. See `flushStyleBag`.
 const SKIP_ON_MATCH_KEYS: ReadonlySet<string> = new Set([
     "boxSizing",
     "position",
@@ -5141,12 +5149,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * For a key the instance *did* declare, this instance's own value is
      * checked against the layers *below* the instance layer (group, then
-     * class). A mismatch always queues the real value. A match's treatment
-     * depends on which of two dedup groups the key belongs to:
-     * `SKIP_ON_MATCH_KEYS` (cursor, boxSizing, position, display, padding,
-     * margin — the pre-migration skip-on-match keys) queue nothing at all;
-     * every other key (the pre-migration write-null-on-match keys) queues an
-     * explicit `null` removal — a harmless no-op that surfaces only if some
+     * class). A mismatch always queues the real value. A match always queues
+     * an explicit `null` removal instead — `SKIP_ON_MATCH_KEYS` plays no part
+     * here, only in the class-default-only case above: a value the instance
+     * itself authored (typically via a runtime setter — e.g. `setDisplayed`
+     * toggling a pooled Table/Tree row) may have been a *real* override a
+     * moment ago, so a later call that happens to land back on the class
+     * default must clear that stale declaration, not silently leave it in
+     * place. The removal is a harmless no-op that surfaces only if some
      * *other* real declaration in the same flush already materialises the
      * rule (see `StyleTarget.hasQueuedDeclarations`), otherwise the rule
      * never materialises at all. This runs the same comparison the
@@ -5234,10 +5244,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
                 }
                 value = lower.resolved[key];
                 matchesLower = true;
-            }
-
-            if (matchesLower && SKIP_ON_MATCH_KEYS.has(key)) {
-                continue;
             }
 
             const toWrite = matchesLower ? null : value;

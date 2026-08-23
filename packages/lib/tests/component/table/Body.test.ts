@@ -231,6 +231,66 @@ describe('Body virtual-scroll — hideExcessPoolRows', () => {
     });
 });
 
+/**
+ * Declarations written to `selector`'s stylesheet rule while `fn()` ran —
+ * local copy of `InstanceStyleLayer.test.ts`'s own helper; that file's
+ * header explains why it isn't shared across files (module isolation makes
+ * sharing pointless).
+ */
+function declarationsDuring(
+    sink: RecordingDOMSink,
+    selector: string,
+    fn: () => void,
+): Record<string, string | null> {
+    const start = sink.writes.length;
+    fn();
+
+    const out: Record<string, string | null> = {};
+    for (const w of sink.writes.slice(start)) {
+        if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+            continue;
+        }
+
+        const styles = w.args[1] as Record<string, string | null>;
+        for (const key of Object.keys(styles)) {
+            out[key] = styles[key];
+        }
+    }
+
+    return out;
+}
+
+describe('Body virtual-scroll — row re-display after pool recycle', () => {
+    // Reproduces the live "rows vanish while scrolling" report: a pooled row
+    // hidden by `hideExcessPoolRows` (its `#id` rule gains a real
+    // `display: none` override) and later brought back into the window by
+    // `bindAndPositionRows` -> `positionRow` must have that stale override
+    // explicitly cleared. `_rowDisplayed` bookkeeping alone isn't proof —
+    // the bug left it correctly `true` while the DOM stayed `display: none`
+    // forever, since nothing else ever rewrote that declaration.
+    it('clears the stale display:none override when a hidden pool row re-enters the window', async () => {
+        const { b } = await bodyWith(200, 240);
+        const p    = b as any;
+        const sink = DOM.sink as RecordingDOMSink;
+        const row  = p._rowPool[0];
+        const selector = '#' + DOM.source.escapeSelector(row.getId());
+
+        // Simulate the row having scrolled out of the pool's window on a
+        // previous tick.
+        p.hideExcessPoolRows(0);
+        expect(p._rowDisplayed[0]).toBe(false);
+
+        // Re-render at the same scroll position — the row re-enters the
+        // window at the same slot.
+        const declarations = declarationsDuring(sink, selector, () => {
+            b.renderWindow(300, [100, 100, 100]);
+        });
+
+        expect(declarations.display).toBeNull();
+        expect(row.isDisplayed()).toBe(true);
+    });
+});
+
 describe('Body virtual-scroll — single-row scroll pool rebind', () => {
     // Chrome's paint-flashing overlay lit up rows OUTSIDE the visible
     // viewport on every scroll tick. Root cause: the pool slot a row occupies
