@@ -54,12 +54,19 @@ describe('TabButton — close-button style-rule disposal', () => {
 
         button.getElement(true);
 
-        const closeButtonId = button.getCloseButton()!.getId();
+        const closeButton   = button.getCloseButton()!;
+        const closeButtonId = closeButton.getId();
 
-        // The close button really materialised a rule — otherwise the
-        // assertion below would pass against a button that never rendered
-        // one. Button eagerly allocates its :hover/:active state rules at
-        // render time, so no interaction is needed first.
+        // Since plans/implemented/button-variant-chrome-dedup.md, a
+        // default-styled close button's own resting/hover chrome dedupes
+        // entirely onto the shared `.TabCloseButton`/`.TabCloseButton:hover:
+        // not(.pressed)` class rules — it never materialises a rule of its
+        // own unless something on it actually deviates. Force a genuine
+        // per-instance deviation (a literal no class-tier token can ever
+        // equal) so the sanity check below still proves a rule really
+        // materialised, rather than passing vacuously against a button that
+        // never rendered one.
+        closeButton.setPressedForegroundColor('red');
         expect(_ruleCacheKeys().some((key) => key.includes(closeButtonId))).toBe(true);
 
         destroy(button);

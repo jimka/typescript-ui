@@ -297,6 +297,8 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'MenuBarButton foregroundColor (rendered)', resolve: () => { const b = new MenuBarButton('File', NOOP, NOOP); b.getElement(true); return b.getForegroundColor(); }, expected: 'var(--ts-ui-menu-bar-btn-fg, inherit)' },
     { label: 'MenuBarButton cursor (rendered)',          resolve: () => { const b = new MenuBarButton('File', NOOP, NOOP); b.getElement(true); return b.getCursor(); },          expected: 'pointer' },
     { label: 'TabCloseButton foregroundColor (rendered)', resolve: () => { const b = new TabCloseButton(); b.getElement(true); return b.getForegroundColor(); }, expected: 'var(--ts-ui-close-button-fg, #555)' },
+    { label: 'TabCloseButton backgroundColor (rendered)', resolve: () => { const b = new TabCloseButton(); b.getElement(true); return b.getBackgroundColor(); }, expected: 'transparent' },
+    { label: 'TabCloseButton borderRadius (rendered)',    resolve: () => { const b = new TabCloseButton(); b.getElement(true); return b.getBorderRadius(); },    expected: '3px' },
     // ToggleButton itself has no backgroundColor default of its own; the value
     // below now comes from `Button`'s own `_defaultButtonOptions.backgroundColor`
     // entry — this plan's fix folds it through the getter instead of an
