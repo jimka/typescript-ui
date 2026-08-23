@@ -3,14 +3,13 @@
 import { DOM } from "~/core/DOM.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { ToggleButton, ToggleButtonOptions } from "~/component/button/ToggleButton.js";
-import type { ButtonOptions } from "~/component/button/Button.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
 import { callable } from "~/core/Callable.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
-import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
-import type { StyleBag } from "~/core/ClassStyleRules.js";
+import { BorderOptions } from "~/primitive/Border.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link TabButton}.
@@ -165,6 +164,26 @@ class TabButton extends ToggleButton {
     // `.Button`'s.
     protected static readonly ownClassStyleDefaults: StyleBag = _defaultTabButtonOptions;
 
+    // Restates ToggleButton's `.pressed`/`:hover` entries unchanged (own-property-
+    // declared, exactly like `ownClassStyleDefaults` — see `resolveStyleStates`'s
+    // own comment) and replaces `.selected` with the tab's own white fill —
+    // `backgroundColor`/`backgroundImage`/`shadow` only, the same three keys
+    // `ToggleButton`'s own entry carries. `TAB_BUTTON_SELECTED_BORDER` stays a
+    // per-instance write via `setSelectedBorder` (see `applyTabStyling`) rather
+    // than joining this bag, so `restingIsolationKeys()` doesn't grow border
+    // longhands — see the plan's matching Architecture Decision.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        ...ToggleButton.ownStyleStates.slice(0, 2),
+        {
+            selector: ".selected",
+            extract: (): StyleBag => ({
+                backgroundColor: TAB_BUTTON_SELECTED_FILL.backgroundColor,
+                backgroundImage: TAB_BUTTON_SELECTED_FILL.backgroundImage,
+                shadow:          TAB_BUTTON_SELECTED_FILL.boxShadow,
+            }),
+        },
+    ];
+
     // Whether this tab carries a close affordance. Construction-time only (the
     // close button is built or not when the tab is created), so it is set once
     // in the constructor and never via an option-dispatched setter — hence a
@@ -270,32 +289,10 @@ class TabButton extends ToggleButton {
     private applyTabStyling(options?: TabButtonOptions): void {
         this.setHoverBorder(options?.hoverBorder ?? TAB_BUTTON_HOVER_BORDER);
 
-        // Selected (active) state.
-        this.setSelectedBackgroundColor(TAB_BUTTON_SELECTED_FILL.backgroundColor);
-        this.setSelectedBackgroundImage(TAB_BUTTON_SELECTED_FILL.backgroundImage);
-        this.setSelectedShadow(TAB_BUTTON_SELECTED_FILL.boxShadow);
+        // Selected (active) state fill/shadow now come from this class's own
+        // `ownStyleStates` entry (see above) — only the border, which stays
+        // outside that entry, still needs an explicit per-instance write.
         this.setSelectedBorder(TAB_BUTTON_SELECTED_BORDER);
-    }
-
-    /**
-     * `TabButton`'s own `.selected:not(:hover)` declarations — the tab-specific
-     * tokens `applyTabStyling` also writes per instance below. Overriding this
-     * (rather than inheriting `ToggleButton`'s base tokens) is what lets the
-     * shared `.TabButton.selected:not(:hover)` class rule cache the correct
-     * per-class bag, so `applyTabStyling`'s writes dedupe against it instead of
-     * always deviating from a mismatched shared rule.
-     */
-    protected static override extractSelectedClassDeclarations(_defaults: Partial<ButtonOptions>): Record<string, string | null> {
-        return {
-            backgroundColor: TAB_BUTTON_SELECTED_FILL.backgroundColor,
-            backgroundImage: TAB_BUTTON_SELECTED_FILL.backgroundImage,
-            boxShadow      : TAB_BUTTON_SELECTED_FILL.boxShadow,
-            ...borderToStyle(TAB_BUTTON_SELECTED_BORDER),
-        };
-    }
-
-    protected override getSelectedClassDeclarations(): Record<string, string | null> {
-        return (this.constructor as typeof TabButton).extractSelectedClassDeclarations(this._defaultOptions);
     }
 
     /**

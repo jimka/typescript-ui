@@ -201,15 +201,14 @@ describe('Button pressed/hover state-class hoisting', () => {
     });
 
     it('setChromeless(false) overwrites a stale pinned pressed color left by an earlier setChromeless(true)/construction-time pin', () => {
-        // `writeClassStateDeclaration`'s skip-on-match check only compares
-        // the requested value against the shared class bag — it has no way
-        // to know the instance's own `#id.pressed` rule already carries a
-        // *different*, previously-pinned value. `_restoreChrome()` (the
-        // setChromeless(false)/setFlat(false) round-trip) is specifically
-        // "undo a prior pin", so it must force a real write even when the
-        // restored value happens to match the class bag exactly — otherwise
-        // the stale pin from before would survive, silently outranking
-        // `.Button.pressed`'s correct token via `#id.pressed`'s specificity.
+        // `flushStateStyleBag` queues an explicit `null` when a write matches
+        // the class-tier bag, rather than skipping it (see
+        // plans/implemented/state-tier-full-unification.md's `[^restore-chrome]`
+        // note) — so `_restoreChrome()` (the setChromeless(false)/setFlat(false)
+        // round-trip) no longer needs to force a literal re-write of the class
+        // token: the ordinary `setPressedForegroundColor` call queues a `null`
+        // that removes the stale pin from before and hands the property back
+        // to `.Button.pressed`'s own rule.
         new Button('Warmup').getElement(true);
 
         const btn = new Button('X', { chromeless: true });
@@ -219,6 +218,6 @@ describe('Button pressed/hover state-class hoisting', () => {
         // this call then must overwrite.
 
         const restoreDeclarations = declarationsDuring(sink, idSelector(btn) + '.pressed', () => btn.setChromeless(false));
-        expect(restoreDeclarations.color).toBe('var(--ts-ui-button-pressed-fg, rgb(150, 150, 150))');
+        expect(restoreDeclarations.color).toBeNull();
     });
 });

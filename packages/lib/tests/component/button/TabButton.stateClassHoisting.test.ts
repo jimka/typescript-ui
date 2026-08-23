@@ -105,7 +105,15 @@ describe('TabButton state-class hoisting', () => {
         expect(_ruleCacheHas('.TabButton:hover:not(.pressed)')).toBe(false);
     });
 
-    it('row 9: a second, default-styled TabButton dedupes .selected backgroundColor/backgroundImage/boxShadow AND its border longhands onto the class rule', () => {
+    // Since plans/in-progress/state-tier-full-unification.md, TabButton's own
+    // `ownStyleStates` `.selected` entry supplies backgroundColor/
+    // backgroundImage/boxShadow directly (see TabButton.ts), so those three
+    // dedupe onto the shared class rule the same way `.pressed` does. The
+    // border stays a deliberate per-instance write (`applyTabStyling`'s
+    // `setSelectedBorder` call) — see the plan's "TabButton's selected border
+    // stays a per-instance write" Architecture Decision — so it is never
+    // deduped and always reaches the instance's own rule.
+    it('row 9: a second, default-styled TabButton dedupes .selected backgroundColor/backgroundImage/boxShadow onto the class rule, but always writes its own border', () => {
         new TabButton('Warmup').getElement(true);
 
         const second = new TabButton('Second');
@@ -114,10 +122,10 @@ describe('TabButton state-class hoisting', () => {
         expect(selectedDeclarations.backgroundColor).toBeUndefined();
         expect(selectedDeclarations.backgroundImage).toBeUndefined();
         expect(selectedDeclarations.boxShadow).toBeUndefined();
-        expect(selectedDeclarations.borderTop).toBeUndefined();
-        expect(selectedDeclarations.borderRight).toBeUndefined();
-        expect(selectedDeclarations.borderBottom).toBeUndefined();
-        expect(selectedDeclarations.borderLeft).toBeUndefined();
+        expect(selectedDeclarations.borderTop).toBeDefined();
+        expect(selectedDeclarations.borderRight).toBeDefined();
+        expect(selectedDeclarations.borderBottom).toBeDefined();
+        expect(selectedDeclarations.borderLeft).toBeDefined();
 
         expect(_ruleCacheHas('.TabButton.selected:not(.pressed):not(:hover)')).toBe(true);
     });

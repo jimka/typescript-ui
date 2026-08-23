@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DOM } from "~/core/DOM.js";
-import { resolveStyleStates, type StateStyleRule, type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
+import { type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { Event } from "~/core/Event.js";
-import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
+import { BorderOptions } from "~/primitive/Border.js";
 import { Button, ButtonOptions, ClickListener } from "~/component/button/Button.js";
 import { callable } from "~/core/Callable.js";
 
@@ -59,43 +59,6 @@ class ToggleButton extends Button<ToggleButtonOptions> {
         },
     ];
 
-    // Lazy `.selected` rule. The slot is a fast-path cache for the wrapper
-    // returned by Component's `createStateStyleRule` builder — see Button's
-    // `_pressedStyleRule` for the full explanation. The suffix is read off
-    // `ownStyleStates`'s own generated guard (`.selected:not(.pressed):not(:hover)`)
-    // rather than hand-written, so it can never drift from what
-    // `restingGuardSuffix` derives for the resting tier's own isolation.
-    private declare _selectedStyleRule?: StateStyleRule;
-    private get selectedStyleRule(): StateStyleRule {
-        return this._selectedStyleRule ??= this.createStateStyleRule(this.selectedGuardedSuffix(), () => this.getSelectedClassDeclarations(), "extractSelectedClassDeclarations");
-    }
-
-    private selectedGuardedSuffix(): string {
-        return resolveStyleStates(this.constructor).find((state) => state.selector === ".selected")!.guardedSuffix;
-    }
-
-    /**
-     * This class's resolved `.selected`-state declarations. Safe to dedupe
-     * now that `ownStyleStates` isolates the same three properties from
-     * `.selected` the same way `Button` isolates them from `.pressed` — see
-     * `plans/implemented/state-chrome-isolation-generalization.md`.
-     */
-    protected static extractSelectedClassDeclarations(defaults: Partial<ButtonOptions>): Record<string, string | null> {
-        if (defaults.chromeless) {
-            return {};
-        }
-
-        return {
-            boxShadow:       TOGGLE_SELECTED_DECLARATIONS.boxShadow!,
-            backgroundColor: TOGGLE_SELECTED_DECLARATIONS.backgroundColor!,
-            backgroundImage: TOGGLE_SELECTED_DECLARATIONS.backgroundImage!,
-        };
-    }
-
-    protected getSelectedClassDeclarations(): Record<string, string | null> {
-        return (this.constructor as typeof ToggleButton).extractSelectedClassDeclarations(this._defaultOptions);
-    }
-
     constructor(text: string, options?: ToggleButtonOptions, subclassDefaults?: Partial<ToggleButtonOptions>) {
         // Button is a children-build class: it builds its inner text/HBox row
         // in its constructor body. We forward the positional `text` to super
@@ -107,20 +70,6 @@ class ToggleButton extends Button<ToggleButtonOptions> {
         // from `options` — so a subclass's own defaults (e.g. `TabButton`'s
         // tab fill) still layer in even though `options` waits.
         super(text, undefined, subclassDefaults);
-
-        // Warms the `.selected:not(:hover)` state rule so its class-tier rule
-        // (see `getSelectedClassDeclarations`) exists from construction, without
-        // queuing a per-instance write: `resolveDefaults` (called eagerly by
-        // `createStateStyleRule`, via virtual dispatch) already seeds the
-        // class-tier rule with this instance's own resolved tokens. Writing
-        // `TOGGLE_SELECTED_DECLARATIONS`' literal values here (as this line
-        // once did) would queue a real, base-class-tokened deviation into the
-        // per-instance dirty bag before a subclass constructor (e.g.
-        // `TabButton`'s `applyTabStyling`) gets to run its own, correctly
-        // deduping writes — which, once they match their own class's resolved
-        // bag, are skipped rather than clearing that stale value. See this
-        // plan's Implementation Notes.
-        void this.selectedStyleRule;
 
         Event.addListener(this, "click", () => this.onAction());
 
@@ -233,7 +182,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      * @returns This button, for method chaining.
      */
     setSelectedBackgroundColor(backgroundColor: string): this {
-        this.selectedStyleRule.set("backgroundColor", backgroundColor);
+        this.writeStateStyle(".selected", { backgroundColor });
 
         return this;
     }
@@ -249,7 +198,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      * @returns This button, for method chaining.
      */
     setSelectedBackgroundImage(backgroundImage: string): this {
-        this.selectedStyleRule.set("backgroundImage", backgroundImage);
+        this.writeStateStyle(".selected", { backgroundImage });
 
         return this;
     }
@@ -263,7 +212,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      * @returns This button, for method chaining.
      */
     setSelectedShadow(shadow: string): this {
-        this.selectedStyleRule.set("boxShadow", shadow);
+        this.writeStateStyle(".selected", { shadow });
 
         return this;
     }
@@ -279,8 +228,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      * @returns This button, for method chaining.
      */
     setSelectedBorder(options: BorderOptions | string): this {
-        const border = typeof options === "string" ? { border: options } : options;
-        this.selectedStyleRule.setMany(borderToStyle(border));
+        this.writeStateStyle(".selected", { border: typeof options === "string" ? { border: options } : options });
 
         return this;
     }
