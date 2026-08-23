@@ -49,7 +49,7 @@ form.addFullWidthRow(noteField);       // spans both columns
 
 | Method | Purpose |
 | --- | --- |
-| `addField(title, component)` | Appends one title/field pair into the next free column, wrapping to a new row when the current one fills. |
+| `addField(title, component, description?)` | Appends one title/field pair into the next free column, wrapping to a new row when the current one fills. The optional description becomes a hover tooltip on both the label and the field. |
 | `addRow(fields)` | Appends a full row of pairs (one per column; a short array leaves trailing columns empty). |
 | `addFullWidthRow(component)` | Appends a component spanning every column on its own row. |
 | `getColumns()` | Returns the configured logical column count. |

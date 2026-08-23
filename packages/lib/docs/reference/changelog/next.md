@@ -30,6 +30,13 @@ implementing its own `DOMSource` is affected.
   always-loaded core chunk — one integer increment at seams the framework
   already runs on every request, so the always-on cost is negligible even
   when the overlay is never opened.
+- **[`DiagnosticsOverlay`](/components/DiagnosticsOverlay) now explains what
+  each metric row measures** as a hover tooltip on both the row's label and
+  its number — e.g. *Layout passes* now reads as a raw `doLayout()` call
+  count, not a cost figure. [`LabeledGrid`](/components/LabeledGrid) and
+  [`LabeledFieldSet`](/components/LabeledFieldSet) gain a matching optional
+  `description` on `addField` / row descriptors, attached the same way. Both
+  are additive — every existing call still compiles unchanged.
 
 ## Changed
 

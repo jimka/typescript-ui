@@ -12,6 +12,10 @@ DiagnosticsOverlay.open();
 
 ## What each row means
 
+The same explanation is available in-app: hover a row's label or its number for
+a tooltip explaining that row. The table below and the overlay's
+`ROW_DESCRIPTIONS` constant state the same facts and are edited together.
+
 | Row | Reads | Leak class it catches |
 |---|---|---|
 | FPS | Frames per second over the last sample window | A busy main thread — falls under load, is not an idle-activity indicator (the overlay's own frame loop keeps the tab painting at its ceiling while open) |
@@ -34,7 +38,7 @@ DiagnosticsOverlay.open();
 
 ## The overlay counts itself
 
-Its own ~30 components, their listeners, and their per-instance rules are inside every framework number. Read the numbers as trends across an interaction (open a `Window` ten times, watch **Components** / **DOM listeners** / **Stylesheet rules** return to roughly where they started) rather than as absolutes.
+Its own ~30 components, their listeners, and their per-instance rules are inside every framework number. Read the numbers as trends across an interaction (open a `Window` ten times, watch **Components** / **DOM listeners** / **Stylesheet rules** return to roughly where they started) rather than as absolutes. Its twelve rows' hover explanations add a further fixed 96 to **DOM listeners** while the overlay is open (12 rows × 2 targets × 4 listeners each), purged the same way on close.
 
 ## API surface
 
