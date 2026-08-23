@@ -75,8 +75,9 @@ export interface StyleBag {
  * would silently leak their unrelated defaults into this bag, since
  * `Component.applyStyle`'s default `getClassStyleDefaults()` passes
  * `_defaultOptions` through verbatim for every class that doesn't override
- * it. `Text.getClassStyleDefaults()` and `TextInput.getClassStyleDefaults()`
- * are the two methods that set `font`.
+ * it. `Text.getClassStyleDefaults()`, `TextInput.getClassStyleDefaults()`,
+ * and `ScrollArrowGlyph.getClassStyleDefaults()`
+ * (component/container/Scrollbar.ts) are the three methods that set `font`.
  */
 export interface TextStyleBag {
     fontFamily?:     string | null;

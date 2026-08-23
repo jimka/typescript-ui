@@ -224,7 +224,7 @@ describe('ScrollArrowButton static style hoisting', () => {
         expect(_ruleCacheHas('.ScrollArrowButton')).toBe(true);
     });
 
-    it('row 2: a rendered arrow glyph writes no min/max declaration to its own #id rule, but keeps its real font-size/line-height/text-align', () => {
+    it('row 2: a rendered arrow glyph writes no font/size declaration to its own #id rule at all', () => {
         const sink = installTestDOM(CONFIG);
 
         const bar = new Scrollbar('vertical', { arrowsEnabled: true });
@@ -233,20 +233,10 @@ describe('ScrollArrowButton static style hoisting', () => {
 
         const declarations = declarationsDuring(sink, idSelector(glyph), () => bar.getElement(true));
 
-        // The four size keys are present but every one is an explicit null
-        // removal — the rule still materialises because fontSize/lineHeight/
-        // textAlign (below) are always real, non-reconciled writes that force
-        // it; the size keys ride along in the same flush. Mirrors the
-        // corrected `unicode-arrow-up` case in
-        // plans/implemented/glyph-preferredsize-reconciled-write-path.md's
-        // Implementation Notes.
-        expect(declarations.minWidth).toBeNull();
-        expect(declarations.minHeight).toBeNull();
-        expect(declarations.maxWidth).toBeNull();
-        expect(declarations.maxHeight).toBeNull();
-        expect(declarations.fontSize).toBe('10px');
-        expect(declarations.lineHeight).toBe('1');
-        expect(declarations.textAlign).toBe('center');
+        // All seven hoistable keys (four size + font-size/line-height/text-align)
+        // now match the shared .ScrollArrowGlyph class rule, so nothing forces
+        // this instance's own #id rule to materialise at all.
+        expect(declarations).toEqual({});
         expect(_ruleCacheHas('.ScrollArrowGlyph')).toBe(true);
     });
 });
