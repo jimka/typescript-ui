@@ -5,6 +5,7 @@ import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { xmark } from "~/glyphs/solid/xmark.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 Glyph.register(xmark);
 
@@ -34,6 +35,14 @@ const _defaultTabCloseButtonOptions: Partial<TabCloseButtonOptions> = {
  * @category Components
  */
 class TabCloseButton extends Button<TabCloseButtonOptions> {
+
+    // Opts the resting tier into the hierarchy-aware class cascade — see
+    // plans/implemented/class-hierarchy-cascade.md. The same constant this
+    // class's constructor forwards as part of `subclassDefaults`, exposed at
+    // the class level so `.TabCloseButton`'s rule carries only its own
+    // deviation from `.Button`'s. The constructor's extra `glyph: "xmark"`
+    // key is not hoistable and is correctly absent here.
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultTabCloseButtonOptions;
 
     /**
      * Creates a TabCloseButton seeded with the `xmark` glyph and sized for use in a tab toolbar.

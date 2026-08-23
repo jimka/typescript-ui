@@ -7,12 +7,13 @@
 // `writeRuleDeclaration`. See
 // plans/implemented/class-scoped-style-rules.md for the rationale.
 //
-// Also backs Button/ToggleButton's state-rule (`.pressed` / `:hover` /
-// `.selected`) dedup, via the `ensureClassStateRule` / `writeClassStateDeclaration`
-// / `writeManyClassStateDeclarations` sibling mechanism below — see
-// plans/implemented/hoist-button-tabbar-state-chrome-rules.md. This module
-// also exposes `StateStyleRule`, the wrapper `Component.createStateStyleRule`
-// returns — see plans/implemented/state-style-rule-auto-dedup.md.
+// Also backs the state tier (`.pressed` / `:hover` / `.selected` / …) —
+// `ownStyleStates`'s hierarchy-aware per-level content walk
+// (`resolveStateLevels`/`resolveStyleStates`) for the shared class-tier
+// rules, and `ensureClassStateRule` for the handful of sites that only ever
+// publish a shared rule and never write per-instance (reached through
+// `Component.ensureSharedStateRule`) — see
+// plans/implemented/state-tier-full-unification.md.
 
 import { StyleRule }   from "~/core/StyleTarget.js";
 import { DOM }         from "~/core/DOM.js";
@@ -568,123 +569,6 @@ function resolveClassLevel(rawCtor: Function): ResolvedClassLevel {
     return level;
 }
 
-/** A class's own resolved declarations for one state suffix — see
- *  {@link resolveClassStateLevel}. */
-interface ResolvedClassStateLevel {
-    resolved: ResolvedStyleBag;
-}
-
-/** A `protected static` extraction method's shape — e.g.
- *  `Button.extractPressedClassDeclarations`. Takes a plain defaults bag
- *  (never an instance) so the hierarchy walk can call it against any
- *  ancestor's own `ownClassStyleDefaults`, not just a live instance's
- *  merged `_defaultOptions`. */
-type StaticExtractor = (defaults: StyleBag) => Record<string, string | null>;
-
-// (ctor -> (suffix -> resolved level)). State-tier sibling of `_levels`,
-// memoizing `resolveClassStateLevel`'s walk per class *and* per suffix,
-// since one class can own several state rules (Button: .pressed,
-// :hover:not(.pressed)).
-const _stateLevels: Map<Function, Map<string, ResolvedClassStateLevel>> = new Map();
-
-/**
- * Hierarchy-aware resolution of `ctor`'s class-tier declarations for one
- * state suffix (`.pressed`, `.selected:not(:hover)`, …) — the state-tier
- * sibling of {@link resolveClassLevel}, mirroring its recursive shape
- * (resolve the parent first, merge this level's own contribution over it,
- * diff, insert only a genuine deviation) and reusing its `_owners`
- * collision registry, so a name claimed by one tier is respected by the
- * other regardless of which one claims it first.
- *
- * The one place this walk cannot simply reuse {@link resolveClassLevel}'s
- * shape verbatim: "this level's own contribution" is not a fixed field
- * (`ownClassStyleDefaults`) but a *named* `protected static` method
- * (`extractorMethodName`) that only some levels declare, and — critically —
- * whether a level declares a *resting*-tier `ownClassStyleDefaults` is
- * independent of whether it declares a *state*-tier extractor for a given
- * suffix (`ToggleButton` declares `extractSelectedClassDeclarations` but no
- * `ownClassStyleDefaults` of its own — it contributes nothing new to the
- * resting tier, see `button-family-hierarchy-cascade.md`'s Architecture
- * Decisions). Gating a level's own contribution on `ownClassStyleDefaults`
- * being non-null (as well as owning the extractor) would therefore wrongly
- * report `ToggleButton` as having no `.selected` contribution at all. The
- * own-property check on `extractorMethodName` is the *sole* gate for
- * whether this level contributes; `ownDefaultsOf(ctor) ?? {}` is only the
- * *argument* handed to that extractor (empty when this level has no
- * resting-tier defaults of its own to read from) — never a second
- * precondition.
- */
-function resolveClassStateLevel(
-    rawCtor: Function,
-    suffix: string,
-    extractorMethodName: string,
-): ResolvedClassStateLevel {
-    const ctor = canonicalCtor(rawCtor);
-
-    let bySuffix = _stateLevels.get(ctor);
-    if (!bySuffix) {
-        bySuffix = new Map();
-        _stateLevels.set(ctor, bySuffix);
-    }
-
-    const cached = bySuffix.get(suffix);
-    if (cached) {
-        return cached;
-    }
-
-    // `_rootCtor` (Component) is a terminal node for this walk too, exactly
-    // like `resolveClassLevel` — Component and whatever it extends never
-    // declare a state extractor, so there is nothing to gain by walking
-    // further, and stopping here keeps the two tiers' walks symmetric.
-    const rawParentCtor = ctor === _rootCtor ? null : (Object.getPrototypeOf(ctor) as Function | null);
-    const parentCtor = rawParentCtor ? canonicalCtor(rawParentCtor) : null;
-    const parent = (typeof parentCtor === "function" && parentCtor.name)
-        ? resolveClassStateLevel(parentCtor, suffix, extractorMethodName)
-        : { resolved: Object.freeze({}) as ResolvedStyleBag };
-
-    const name    = ctor.name;
-    const owner   = _owners.get(name);
-    const collides = !name || (owner !== undefined && owner !== ctor);
-
-    // Own-property checked, exactly like `ownDefaultsOf` — a level that
-    // doesn't declare `extractorMethodName` itself contributes nothing for
-    // this suffix, regardless of what an ancestor or a same-named method
-    // inherited from further up the static prototype chain would answer.
-    const hasOwnExtractor = !collides && Object.prototype.hasOwnProperty.call(ctor, extractorMethodName);
-    const own: Record<string, string | null> = hasOwnExtractor
-        ? (ctor as unknown as Record<string, StaticExtractor>)[extractorMethodName](ownDefaultsOf(ctor) ?? {})
-        : {};
-
-    if (Object.keys(own).length === 0) {
-        const level = { resolved: parent.resolved };
-
-        bySuffix.set(suffix, level);
-
-        // Every level, participating or not, still claims its own name in
-        // `_owners` (when unclaimed) so a later same-named class is
-        // detected as colliding even if this level itself inserted no
-        // rule — mirrors `resolveClassLevel`'s pass-through branch.
-        if (!collides && name) {
-            _owners.set(name, ctor);
-        }
-
-        return level;
-    }
-
-    const resolved   = { ...parent.resolved, ...own };
-    const deviations = deviationsFrom(resolved, parent.resolved);
-
-    _owners.set(name, ctor);
-    if (Object.keys(deviations).length > 0) {
-        new StyleRule({ scope: "class", name, suffix, styles: deviations });
-    }
-
-    const level = Object.freeze({ resolved: Object.freeze(resolved) });
-
-    bySuffix.set(suffix, level);
-
-    return level;
-}
 
 /**
  * One declared toggle state (`.pressed`, `:hover`, `.selected`, …). Array
@@ -746,11 +630,116 @@ function guardedSuffixFor(selector: string, specs: readonly StyleStateSpec[], in
     return suffix;
 }
 
-// (declaring ctor -> its resolved states). Keyed on whichever class's own
-// `ownStyleStates` a lookup resolves to (see `resolveStyleStates`) — several
-// concrete subclasses sharing one non-overriding ancestor all resolve to,
-// and share, the same cached array.
+// (concrete ctor -> its resolved states). Keyed on the concrete class a
+// lookup was made for — not the declaring class the order list resolves
+// to — since two subclasses that share one declaring ancestor's order can
+// still resolve different *content* per level (see `resolveStateLevels`).
 const _resolvedStates: Map<Function, readonly ResolvedStyleState[]> = new Map();
+
+// (ctor -> (order signature -> per-selector resolved layers for that one
+// class level)). State-tier sibling of `_levels`, but keyed on a second axis
+// — the resolving order's signature — since `ownStyleStates` content, unlike
+// `ownClassStyleDefaults`, is read against whichever order the *leaf* of a
+// given resolution declared; two subclasses whose lists differ never share a
+// cache entry here, because their guard suffixes (computed against their own
+// order) differ too.
+const _stateLevelLayers: Map<Function, Map<string, ReadonlyMap<string, StyleLayer>>> = new Map();
+
+/**
+ * Per-selector resolved layers for one class level — the state-tier sibling
+ * of {@link resolveClassLevel}, mirroring its recursive shape (resolve the
+ * parent first, merge this level's own contribution over it, diff, insert
+ * only a genuine deviation) but producing a map of layers (one per declared
+ * selector) instead of a single merged bag, and reading *content* from every
+ * level that declares its own `ownStyleStates`, not only the level `order`
+ * was found on.
+ *
+ * `order` is the full declared list the *leaf* of this resolution resolved
+ * (whichever class nearest the concrete constructor declares `ownStyleStates`
+ * — see {@link resolveStyleStates}), fixed for the whole recursive walk: it
+ * is what `guardedSuffixFor` guards every level's own contribution against,
+ * so two classes can never disagree on where a shared selector sits in the
+ * `:not(...)` chain. `signature` is `order`'s own cache key (its selectors,
+ * joined) — passed down unchanged so every level of one resolution shares it.
+ *
+ * A level that declares no `ownStyleStates` of its own (own-property check,
+ * exactly like `ownDefaultsOf`) — or whose name collides with a different
+ * constructor already registered under it — contributes nothing: its parent's
+ * map is memoized and returned unchanged. Otherwise, for each of *this*
+ * level's own declared specs that also appears in `order`, this level's
+ * authored bag is its parent's authored bag (if any) for that selector,
+ * overlaid with `spec.extract(ownDefaultsOf(ctor) ?? {})` — the same
+ * `defaults` shape `resolveClassLevel`'s own walk feeds its per-level
+ * contribution. Only a genuine deviation from the parent's resolved bag
+ * inserts this level's own `.ClassName<guardedSuffix>` rule and claims
+ * `ctor`'s name in the shared `_owners` registry — a spec restated unchanged
+ * (`ToggleButton`'s `.pressed`/`:hover`, restated from `Button` verbatim)
+ * shares its parent's rule instead of getting its own.
+ */
+function resolveStateLevels(
+    rawCtor:   Function,
+    order:     readonly StyleStateSpec[],
+    signature: string,
+): ReadonlyMap<string, StyleLayer> {
+    const ctor = canonicalCtor(rawCtor);
+
+    let bySignature = _stateLevelLayers.get(ctor);
+    if (!bySignature) {
+        bySignature = new Map();
+        _stateLevelLayers.set(ctor, bySignature);
+    }
+
+    const cached = bySignature.get(signature);
+    if (cached) {
+        return cached;
+    }
+
+    // `_rootCtor` (Component) is a terminal node for this walk too, exactly
+    // like `resolveClassLevel` — Component never declares `ownStyleStates`,
+    // so there is nothing to gain by walking further.
+    const rawParentCtor = ctor === _rootCtor ? null : (Object.getPrototypeOf(ctor) as Function | null);
+    const parentCtor = rawParentCtor ? canonicalCtor(rawParentCtor) : null;
+    const parentLayers = (typeof parentCtor === "function" && parentCtor.name)
+        ? resolveStateLevels(parentCtor, order, signature)
+        : (new Map() as ReadonlyMap<string, StyleLayer>);
+
+    const own      = ownStyleStatesOf(ctor);
+    const name     = ctor.name;
+    const owner    = _owners.get(name);
+    const collides = !name || (owner !== undefined && owner !== ctor);
+
+    if (!own || collides) {
+        bySignature.set(signature, parentLayers);
+
+        return parentLayers;
+    }
+
+    const layers = new Map(parentLayers);
+
+    for (const spec of own) {
+        const index = order.findIndex((s) => s.selector === spec.selector);
+        if (index < 0) {
+            continue;
+        }
+
+        const guarded     = guardedSuffixFor(spec.selector, order, index);
+        const parentLayer = parentLayers.get(spec.selector);
+        const authored    = { ...parentLayer?.authored, ...spec.extract(ownDefaultsOf(ctor) ?? {}) };
+        const resolved    = resolvePartialDeclarations(authored);
+        const delta       = deviationsFrom(resolved, parentLayer?.resolved ?? {});
+
+        if (Object.keys(delta).length > 0) {
+            _owners.set(name, ctor);
+            new StyleRule({ scope: "class", name, suffix: guarded, styles: delta });
+        }
+
+        layers.set(spec.selector, { authored, resolved });
+    }
+
+    bySignature.set(signature, layers);
+
+    return layers;
+}
 
 /**
  * A class's declared toggle states, resolved and ordered highest-priority
@@ -760,13 +749,16 @@ const _resolvedStates: Map<Function, readonly ResolvedStyleState[]> = new Map();
  *
  * Unlike `ownClassStyleDefaults` (merged down through every participating
  * ancestor — see `resolveClassLevel`), `ownStyleStates` is a whole-list,
- * own-property declaration: whichever class in `ctor`'s chain nearest
- * declares it (own-property-checked exactly like `ownDefaultsOf`) owns the
- * *entire* list for this whole subtree, until some deeper subclass
- * redeclares its own (typically restating the inherited entries and
+ * own-property declaration for **order**: whichever class in `ctor`'s chain
+ * nearest declares it (own-property-checked exactly like `ownDefaultsOf`)
+ * owns the entire list's *order* for this whole subtree, until some deeper
+ * subclass redeclares its own (typically restating the inherited entries and
  * appending its own — see `ToggleButton`, which restates `Button`'s
  * `.pressed`/`:hover` and appends `.selected`). A class that declares no
- * `ownStyleStates` anywhere in its chain resolves to `[]`.
+ * `ownStyleStates` anywhere in its chain resolves to `[]`. **Content**, by
+ * contrast, is a per-level merge — see {@link resolveStateLevels} — so a
+ * subclass that restates an entry unchanged shares its ancestor's rule for
+ * that selector rather than getting its own.
  *
  * Each entry's `extract` runs against the *declaring* class's own
  * `ownDefaultsOf(...)` bag (`{}` when that class has none) — the same
@@ -780,28 +772,26 @@ const _resolvedStates: Map<Function, readonly ResolvedStyleState[]> = new Map();
  * `ownClassStyleDefaults` to read from, not as a requirement every
  * extractor must use.
  *
- * Registers each entry's `.ClassName<guardedSuffix>` rule the first time a
- * given declaring class is resolved (idempotent per class, mirroring every
- * other tier's `ensureXRule` shape) — empty declarations register no rule,
- * matching `resolveClassLevel`'s own "no genuine deviation, no rule" case.
- * Shares the `_owners` name-collision registry with every other tier, so a
- * name already claimed by the resting or group tier is respected here too,
- * and vice versa.
+ * Cached per **concrete** constructor (not the declaring one), since two
+ * subclasses sharing one declaring ancestor's order can still resolve
+ * different per-level content through {@link resolveStateLevels}.
  */
 export function resolveStyleStates(rawCtor: Function): readonly ResolvedStyleState[] {
-    let cur: Function | null = canonicalCtor(rawCtor);
+    const concreteCtor = canonicalCtor(rawCtor);
+
+    const cachedForConcrete = _resolvedStates.get(concreteCtor);
+    if (cachedForConcrete) {
+        return cachedForConcrete;
+    }
+
+    let cur: Function | null = concreteCtor;
 
     while (typeof cur === "function" && cur.name) {
         const specs = ownStyleStatesOf(cur);
 
         if (specs) {
-            const cached = _resolvedStates.get(cur);
-            if (cached) {
-                return cached;
-            }
-
             const resolved = buildResolvedStates(cur, specs);
-            _resolvedStates.set(cur, resolved);
+            _resolvedStates.set(concreteCtor, resolved);
 
             return resolved;
         }
@@ -809,10 +799,13 @@ export function resolveStyleStates(rawCtor: Function): readonly ResolvedStyleSta
         cur = cur === _rootCtor ? null : canonicalCtor(Object.getPrototypeOf(cur) as Function);
     }
 
+    _resolvedStates.set(concreteCtor, []);
+
     return [];
 }
 
-/** The one-time resolution `resolveStyleStates` memoizes per declaring class. */
+/** The one-time resolution `resolveStyleStates` memoizes per concrete class —
+ *  a thin assembler over {@link resolveStateLevels}'s per-selector map. */
 function buildResolvedStates(declaringCtor: Function, specs: readonly StyleStateSpec[]): readonly ResolvedStyleState[] {
     const name     = declaringCtor.name;
     const owner    = _owners.get(name);
@@ -832,21 +825,14 @@ function buildResolvedStates(declaringCtor: Function, specs: readonly StyleState
         }));
     }
 
-    _owners.set(name, declaringCtor);
+    const signature = specs.map((spec) => spec.selector).join(",");
+    const layers    = resolveStateLevels(declaringCtor, specs, signature);
 
-    const defaults = ownDefaultsOf(declaringCtor) ?? {};
-
-    return specs.map((spec, i) => {
-        const guardedSuffix = guardedSuffixFor(spec.selector, specs, i);
-        const authored      = spec.extract(defaults);
-        const resolved      = resolvePartialDeclarations(authored);
-
-        if (Object.keys(resolved).length > 0) {
-            new StyleRule({ scope: "class", name, suffix: guardedSuffix, styles: resolved });
-        }
-
-        return { selector: spec.selector, guardedSuffix, layer: { authored, resolved } };
-    });
+    return specs.map((spec, i) => ({
+        selector:      spec.selector,
+        guardedSuffix: guardedSuffixFor(spec.selector, specs, i),
+        layer:         layers.get(spec.selector) ?? { authored: {}, resolved: {} },
+    }));
 }
 
 /**
@@ -959,21 +945,16 @@ const _classChains: Map<Function, readonly string[]> = new Map();
  *
  * Gated on `chainParticipates`, though, at the top: a chain with **no**
  * `ownClassStyleDefaults` *anywhere* keeps today's exact pre-hierarchy
- * behaviour — this class's own name only, not its ancestors'. Widening such
- * a chain would be actively unsafe, not merely useless: `Button` /
- * `ToggleButton` / `TabButton` / `SpinButton` (and `MenuButton` /
- * `PopupButton`) each still have their own independent flat `.ClassName`
- * rule (including an independently-created state-tier `.pressed` rule) via
- * the pre-hierarchy mechanism, at the same `(0,1,0)` specificity as every
- * other level's rule. Widening their DOM classes without also making the
- * state tier hierarchy-aware would let two same-specificity rules start
- * matching one element, with the winner decided by stylesheet insertion
- * order — the exact hazard `plans/implemented/class-hierarchy-cascade.md`'s
- * "Rollout is scoped to the confirmed-safe chains" decision documents for
- * that family specifically; `chainParticipates` generalises the exclusion to
- * every non-participating chain rather than naming `Button`'s family only,
- * since the same hazard recurs for any other pre-existing multi-level flat
- * hierarchy this plan doesn't touch.
+ * behaviour — this class's own name only, not its ancestors'. The gate is
+ * for chains like that, not for the Button family: `Button` / `ToggleButton`
+ * / `TabButton` / `SpinButton` (and `MenuButton` / `PopupButton`) all declare
+ * or inherit `ownClassStyleDefaults` somewhere in the chain, so
+ * `chainParticipates` returns true and their DOM classes widen like any
+ * other participating chain (`plans/implemented/button-family-hierarchy-cascade.md`).
+ * `chainParticipates` still generalises the exclusion to every
+ * non-participating chain rather than a hand-picked list, since the same
+ * unsafe-widening hazard this gate exists to avoid recurs for any other
+ * pre-existing multi-level flat hierarchy that opts in nowhere.
  */
 export function getStyleClassChain(rawCtor: Function): readonly string[] {
     const ctor = canonicalCtor(rawCtor);
@@ -1035,21 +1016,7 @@ const _stateBags: Map<Function, Map<string, ResolvedStyleBag | null>> = new Map(
  *   `":hover:not(.pressed)"`), matching whatever the instance rule's own
  *   `createStyleRule(suffix)` call uses.
  * @param declarations - This class's resolved declarations for the
- *   suffixed state — the non-hierarchy-aware fallback bag, used only when
- *   `extractorMethodName` is omitted or `ctor`'s chain doesn't participate
- *   in the hierarchy mechanism (see `extractorMethodName` below).
- * @param extractorMethodName - The name of the `protected static`
- *   extraction method (e.g. `"extractPressedClassDeclarations"`) each
- *   participating ancestor may declare its own copy of. When supplied and
- *   `ctor`'s chain participates in the hierarchy mechanism (i.e.
- *   {@link chainParticipates}), resolution delegates to
- *   {@link resolveClassStateLevel} instead of the flat per-`(ctor, suffix)`
- *   cache below — this is what makes a subclass sharing its nearest
- *   contributing ancestor's rule (rather than always creating its own)
- *   safe now that `class-hierarchy-cascade.md`'s DOM widening applies to
- *   this chain too. Omitted (or `ctor` non-participating) keeps today's
- *   exact flat behaviour, so every other `createStateStyleRule` call site
- *   in the library needs no change.
+ *   suffixed state.
  *
  * @returns The declarations bag, or `null` when `ctor`'s name is empty or
  *   already claimed by a different constructor (the same name-collision
@@ -1060,19 +1027,7 @@ export function ensureClassStateRule(
     ctor: Function,
     suffix: string,
     declarations: Record<string, string | null>,
-    extractorMethodName?: string,
 ): ResolvedStyleBag | null {
-    if (extractorMethodName && chainParticipates(ctor)) {
-        const name  = ctor.name;
-        const owner = _owners.get(name);
-
-        if (!name || (owner !== undefined && owner !== ctor)) {
-            return null;
-        }
-
-        return resolveClassStateLevel(ctor, suffix, extractorMethodName).resolved;
-    }
-
     let bySuffix = _stateBags.get(ctor);
     if (!bySuffix) {
         bySuffix = new Map();
@@ -1210,129 +1165,3 @@ export function ensureStyleGroupRule(
     return layer;
 }
 
-/**
- * Routes one state-rule declaration to the rule that should carry it:
- * dropped when `bag` already delivers the same key/value, written to `rule`
- * otherwise. `writeRuleDeclaration`'s shape, generalised to take the target
- * rule and comparison bag as parameters instead of reading `this._styleRule`
- * / `this._classLayer` — a state-rule setter can fire from many call
- * sites (construction, a runtime setter, a chrome-mode toggle), not from one
- * `applyStyle` pass, so there is no single per-render cache to read from.
- *
- * @remarks A `null` write can never itself win the cascade over a *non-null*
- * class-bag value for `key`: `null` maps to a CSSOM `removeProperty`, and a
- * declaration block that never declares `key` doesn't compete for it at
- * all — an unmaterialised (or materialised-but-empty) instance rule leaves
- * the class-tier rule's value in sole possession of the property regardless
- * of the instance rule's higher specificity. This routing function cannot
- * fix that generically (it has no per-property "neutral value" table to
- * substitute); the one concrete case this surfaces (`Button`'s
- * `pressedShadow`/`pressedBackgroundColor`/`pressedBackgroundImage`, cleared
- * by `SpinButton`/`Dialog`/`Notification`'s close buttons) stays correct by
- * having each caller pin the current resting value instead of writing
- * `null` — see `Button.clearPressedShadow`, `clearPressedBackgroundColor`,
- * and `clearPressedBackgroundImage`.
- */
-export function writeClassStateDeclaration(
-    rule: StyleRule,
-    bag: ResolvedStyleBag | null,
-    key: string,
-    value: string | null,
-): void {
-    if (bag !== null && bag[key] === value) {
-        return;
-    }
-
-    rule.set(key, value);
-}
-
-/** Bulk form of {@link writeClassStateDeclaration}, one call per key of `values`. */
-export function writeManyClassStateDeclarations(
-    rule: StyleRule,
-    bag: ResolvedStyleBag | null,
-    values: Record<string, string | null>,
-): void {
-    for (const key of Object.keys(values)) {
-        writeClassStateDeclaration(rule, bag, key, values[key]);
-    }
-}
-
-/**
- * Wraps a per-instance state `StyleRule` together with the class-tier
- * comparison bag `ensureClassStateRule` resolves for it. `set()` / `setMany()`
- * skip a write that already matches the class rule and materialise the
- * underlying rule when a real write just queued on an already-rendered
- * component — exactly like `writeClassStateDeclaration` /
- * `writeManyClassStateDeclarations` plus a materialisation nudge — so a
- * caller gets both by calling the object's own write methods, with nothing
- * else to opt into.
- *
- * Constructed via `Component.createStateStyleRule`; not intended for direct
- * construction elsewhere.
- */
-export class StateStyleRule {
-    private readonly _rule:       StyleRule;
-    private readonly _bag:        ResolvedStyleBag | null;
-    private readonly _hasElement: () => boolean;
-
-    constructor(
-        ctor: Function,
-        suffix: string,
-        rule: StyleRule,
-        resolveDefaults: () => Record<string, string | null>,
-        hasElement: () => boolean,
-        extractorMethodName?: string,
-    ) {
-        this._rule       = rule;
-        this._bag        = ensureClassStateRule(ctor, suffix, resolveDefaults(), extractorMethodName);
-        this._hasElement = hasElement;
-    }
-
-    /**
-     * The resolved class-tier bag `set()` / `setMany()` compare against;
-     * `null` when this class opted out of dedup (see `ensureClassStateRule`).
-     * Read-only — a caller that needs the bag's own keys (`Button.pinPressedToResting`
-     * is the one in-repo example) reads this instead of bypassing the
-     * comparison `set()` / `setMany()` perform.
-     */
-    get classBag(): ResolvedStyleBag | null {
-        return this._bag;
-    }
-
-    /**
-     * Writes a single state-rule declaration, deduping against the class-tier
-     * bag and materialising the underlying rule when this write just queued a
-     * real declaration on an already-rendered component.
-     *
-     * @param key - The CSS property name (camelCase).
-     * @param value - The value to set, or null to remove the property.
-     */
-    set(key: string, value: string | null): void {
-        writeClassStateDeclaration(this._rule, this._bag, key, value);
-        this._materialise();
-    }
-
-    /**
-     * Bulk variant of {@link StateStyleRule.set}.
-     *
-     * @param values - Camel-cased property keys mapped to string values (or null to clear).
-     */
-    setMany(values: Record<string, string | null>): void {
-        writeManyClassStateDeclarations(this._rule, this._bag, values);
-        this._materialise();
-    }
-
-    /**
-     * Inserts the rule when a write just queued a real declaration and the
-     * component is already rendered — the choke point `Button`'s
-     * `materialisePressedRule` used to be, generalised so no future caller
-     * can forget it. A rule that never queued anything real (every write so
-     * far matched the class bag) is left unmaterialised, same as any other
-     * deferred rule.
-     */
-    private _materialise(): void {
-        if (this._hasElement() && this._rule.hasQueuedDeclarations()) {
-            this._rule.ensure();
-        }
-    }
-}

@@ -205,10 +205,10 @@ describe('HeaderCellText style hoisting', () => {
     });
 });
 
-// HeaderCell-specific coverage for the state-tier dedup introduced by
-// plans/implemented/state-tier-rule-dedup-followups.md: the `:active` box-shadow
-// now writes through `createStateStyleRule` instead of the older, non-deduping
-// `createStyleRule`.
+// HeaderCell-specific coverage for the state-tier dedup: the `:active`
+// box-shadow is a declared `ownStyleStates` entry
+// (plans/implemented/layered-style-bag.md), sharing one class-tier rule
+// across every instance via `resolveStyleStates`.
 //
 // Since plans/layered-style-bag.md's Stage 5, `HeaderCell.ownStyleStates`
 // restates `Cell`'s own three background/cursor/shadow states

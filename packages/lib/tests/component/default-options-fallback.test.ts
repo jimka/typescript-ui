@@ -289,6 +289,14 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'TabButton hoverShadow',        resolve: () => new TabButton('x').getHoverShadow(),                        expected: 'none' },
     { label: 'MenuBarButton chromeless',     resolve: () => new MenuBarButton('File', NOOP, NOOP).isChromeless(),       expected: true },
     { label: 'MenuBarButton insets',         resolve: () => insetsTuple(new MenuBarButton('File', NOOP, NOOP).getInsets()), expected: [0, 10, 0, 10] },
+    // Render before reading — before first render, `styleLayers()` still uses
+    // the `getClassStyleDefaults()` virtual layer, which resolves this
+    // correctly even against the pre-fix defect (see the plan's `[^leaf-loss]`
+    // note); only the rendered class-tier rule exposed the bug.
+    { label: 'MenuBarButton backgroundColor (rendered)', resolve: () => { const b = new MenuBarButton('File', NOOP, NOOP); b.getElement(true); return b.getBackgroundColor(); }, expected: 'var(--ts-ui-menu-bar-btn-bg, transparent)' },
+    { label: 'MenuBarButton foregroundColor (rendered)', resolve: () => { const b = new MenuBarButton('File', NOOP, NOOP); b.getElement(true); return b.getForegroundColor(); }, expected: 'var(--ts-ui-menu-bar-btn-fg, inherit)' },
+    { label: 'MenuBarButton cursor (rendered)',          resolve: () => { const b = new MenuBarButton('File', NOOP, NOOP); b.getElement(true); return b.getCursor(); },          expected: 'pointer' },
+    { label: 'TabCloseButton foregroundColor (rendered)', resolve: () => { const b = new TabCloseButton(); b.getElement(true); return b.getForegroundColor(); }, expected: 'var(--ts-ui-close-button-fg, #555)' },
     // ToggleButton itself has no backgroundColor default of its own; the value
     // below now comes from `Button`'s own `_defaultButtonOptions.backgroundColor`
     // entry — this plan's fix folds it through the getter instead of an

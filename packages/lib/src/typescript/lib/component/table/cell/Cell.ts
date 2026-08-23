@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import type { StateStyleRule, StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -94,21 +94,6 @@ export class Cell<T> extends Component {
         },
     ];
 
-    // Lazy shared `.Cell.focused` rule for the keyboard-focus ring —
-    // `outline` plus its `outline-offset` sibling (which has no `StyleBag`
-    // key of its own: a shorthand-less longhand no framework declaration
-    // covers). Unguarded — see `ownStyleStates`' own comment for why
-    // `.focused` stays out of that list, and therefore needs no `:not(...)`
-    // suffix of its own to layer correctly on top of any of the three
-    // declared states.
-    private declare _focusedStyleRule?: StateStyleRule;
-    private get focusedStyleRule(): StateStyleRule {
-        return this._focusedStyleRule ??= this.createStateStyleRule(".focused", () => ({
-            outline:       "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))",
-            outlineOffset: "-1px",
-        }));
-    }
-
     private _readOnly: boolean;
     private _requiredEmpty: boolean = false;
     private _rangeSelected: boolean = false;
@@ -149,11 +134,17 @@ export class Cell<T> extends Component {
         // the cached value rather than reading through the folding getter.
         this.setBackgroundColor('var(--ts-ui-table-cell-bg, transparent)');
 
-        // Warms the shared `.Cell.focused` rule (see `focusedStyleRule`'s
-        // own comment) from construction, without queuing a per-instance
-        // write of its own — mirrors `ToggleButton`'s identical
-        // `void this.selectedStyleRule;`.
-        void this.focusedStyleRule;
+        // Ensures the shared `.Cell.focused` rule for the keyboard-focus
+        // ring — `outline` plus its `outline-offset` sibling (which has no
+        // `StyleBag` key of its own: a shorthand-less longhand no framework
+        // declaration covers). Unguarded — see `ownStyleStates`' own comment
+        // for why `.focused` stays out of that list, and therefore needs no
+        // `:not(...)` suffix of its own to layer correctly on top of any of
+        // the three declared states.
+        this.ensureSharedStateRule(".focused", {
+            outline:       "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))",
+            outlineOffset: "-1px",
+        });
 
         this.addComponent(renderer, rendererConstraints);
 

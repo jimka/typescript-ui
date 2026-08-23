@@ -3,7 +3,7 @@
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
-import type { StateStyleRule, StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
@@ -61,20 +61,6 @@ class TreeRow extends Component {
         },
     ];
 
-    // Lazy shared `.TreeRow.focused` rule for the keyboard-focus ring —
-    // `outline` plus its `outline-offset` sibling (which has no `StyleBag`
-    // key of its own: a shorthand-less longhand no framework declaration
-    // covers). Unguarded — see `ownStyleStates`' own comment for why
-    // `.focused` stays out of that list, and therefore needs no `:not(...)`
-    // suffix of its own to layer correctly on top of `.selected`.
-    private declare _focusedStyleRule?: StateStyleRule;
-    private get focusedStyleRule(): StateStyleRule {
-        return this._focusedStyleRule ??= this.createStateStyleRule(".focused", () => ({
-            outline:       "2px solid var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))",
-            outlineOffset: "-2px",
-        }));
-    }
-
     private _toggle:   Glyph | null           = null;
     private _spinner:  ProgressSpinner | null = null;
     private _renderer: TreeNodeRenderer;
@@ -88,10 +74,16 @@ class TreeRow extends Component {
 
         this._renderer = rendererFactory();
 
-        // Warms the shared `.TreeRow.focused` rule from construction,
-        // without queuing a per-instance write of its own — mirrors
-        // `Cell`'s identical `void this.focusedStyleRule;`.
-        void this.focusedStyleRule;
+        // Ensures the shared `.TreeRow.focused` rule for the keyboard-focus
+        // ring — `outline` plus its `outline-offset` sibling (which has no
+        // `StyleBag` key of its own: a shorthand-less longhand no framework
+        // declaration covers). Unguarded — see `ownStyleStates`' own comment
+        // for why `.focused` stays out of that list, and therefore needs no
+        // `:not(...)` suffix of its own to layer correctly on top of `.selected`.
+        this.ensureSharedStateRule(".focused", {
+            outline:       "2px solid var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))",
+            outlineOffset: "-2px",
+        });
     }
 
     /**

@@ -199,7 +199,7 @@ describe('Button resting-chrome state isolation', () => {
         expect(declarations.boxShadow).toBe('none');
     });
 
-    it('row 11: setFlat(true) then setFlat(false) forces all four pressed keys back onto #id.pressed at their class-default values, even though each matches the class bag', () => {
+    it('row 11: setFlat(true) then setFlat(false) writes null for all four pressed keys back onto #id.pressed, clearing the flat pin and handing them back to the class bag', () => {
         new Button('Warmup').getElement(true); // materialises .Button.pressed with all four keys
 
         const btn = new Button('X');
@@ -208,10 +208,15 @@ describe('Button resting-chrome state isolation', () => {
 
         const declarations = declarationsDuring(sink, idSelector(btn) + '.pressed', () => btn.setFlat(false));
 
-        expect(declarations.color).toBe('var(--ts-ui-button-pressed-fg, rgb(150, 150, 150))');
-        expect(declarations.backgroundColor).toBe('var(--ts-ui-button-pressed-bg, rgb(200, 200, 200))');
-        expect(declarations.backgroundImage).toBe('var(--ts-ui-button-pressed-bg, none)');
-        expect(declarations.boxShadow).toBe('var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2) inset)');
+        // `flushStateStyleBag` queues an explicit `null` when a restored
+        // value matches the class-tier bag, rather than restating the
+        // literal token (see plans/implemented/state-tier-full-unification.md's
+        // `[^restore-chrome]` note) — the removal hands the property back to
+        // `.Button.pressed`'s own rule instead of re-asserting its value here.
+        expect(declarations.color).toBeNull();
+        expect(declarations.backgroundColor).toBeNull();
+        expect(declarations.backgroundImage).toBeNull();
+        expect(declarations.boxShadow).toBeNull();
     });
 
     it('a runtime setPressedBackgroundColor call on an already-rendered, previously-default Button reaches the stylesheet, not just the dirty queue', () => {

@@ -11,8 +11,8 @@ import { Tooltip } from "~/overlay/Tooltip.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
-import type { StyleBag, StateStyleRule, StyleStateSpec } from "~/core/ClassStyleRules.js";
-import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
+import { BorderOptions } from "~/primitive/Border.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
@@ -216,9 +216,9 @@ const BUTTON_RESTING_BACKGROUND: string = "var(--ts-ui-button-bg, transparent)";
  * User-overridable visual defaults forwarded to `super` via the options bag.
  * The cascade in `Component`'s constructor dispatches each setter once with
  * the final value, so any field the caller supplied wins. Includes the
- * `pressedX` and `hoverX` defaults because both `pressedStyleRule` and
- * `hoverStyleRule` are lazy getters — those setters are safe to fire during
- * the super cascade and queue their writes until the rule materialises.
+ * `pressedX` and `hoverX` defaults because their setters route through
+ * `writeStateStyle`, which — like `writeStyle` — is safe to fire during the
+ * super cascade and queues its write until an element exists.
  */
 const _defaultButtonOptions: Partial<ButtonOptions> = {
     tag:                    "button",
@@ -307,20 +307,21 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
 
     // Declares the two states `styleLayers()` / `restingGuardSuffix` know
     // about — pressed beats hover (see the plan's `[^toggle-cycle]` note).
-    // Both extractors close over `_defaultButtonOptions` directly rather
-    // than reading the `defaults` parameter `resolveStyleStates` passes:
-    // Button's chrome fields live in that module constant, not in a static
+    // Both extracts close over `_defaultButtonOptions` directly rather than
+    // reading the `defaults` parameter `resolveStyleStates` passes: Button's
+    // chrome fields live in that module constant, not in a static
     // `ownClassStyleDefaults`-reachable per-level bag the way a
-    // hierarchy-cascade-participating class's own extractor would need
-    // (`resolveStyleStates` has no per-*instance* hierarchy walk the way
-    // the retired `resolveClassStateLevel`/`extractorMethodName` mechanism
-    // did — see this plan's Implementation Notes for why a chromeless
-    // *instance* of a chromeful class, and a chromeless-by-*default*
-    // subclass like `MenuBarButton`, both still rely on `suppressIsolation`
-    // rather than an empty state layer). `:hover` stays empty — unlike
-    // `.pressed`, hover chrome is never deduped onto a shared class rule
-    // (see `extractHoverClassDeclarations`'s own comment for why); this
-    // still widens the *resting* guard to `:not(.pressed):not(:hover)`,
+    // hierarchy-cascade-participating class's own extract would need — see
+    // this plan's Implementation Notes for why a chromeless *instance* of a
+    // chromeful class, and a chromeless-by-*default* subclass like
+    // `MenuBarButton`, both still rely on `suppressIsolation` rather than an
+    // empty state layer. `:hover` stays empty — unlike `.pressed`, hover
+    // chrome is never deduped onto a shared class rule: a class-tier hover
+    // rule would sit at `(0,3,0)` (`.ClassName:hover:not(.pressed)`), which
+    // loses to a deviating instance's isolated resting rule at `(1,1,0)` —
+    // the opposite of the pressed tier, where the class rule `(0,2,0)` wins
+    // because isolation removes the competing instance declaration entirely.
+    // This still widens the *resting* guard to `:not(.pressed):not(:hover)`,
     // which is the actual fix `ownStyleStates` contributes for hover.
     protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
         {
@@ -615,36 +616,6 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this._updatePressedClass();
     };
 
-    // Lazy `.pressed` rule. The slot is a fast-path cache, not a correctness
-    // dependency: `createStateStyleRule` allocates a fresh `StateStyleRule`
-    // wrapper on every call (see `Component.createStateStyleRule`), so a slot
-    // reset between calls (e.g. by TypeScript class-field init after super
-    // returns) returns a *different* wrapper object — but one built from the
-    // same underlying `StyleRule` (`createStyleRule` dedupes by selector
-    // suffix) and the same resolved class bag (`ensureClassStateRule` caches
-    // by `(ctor, suffix)`), so behaviour is unaffected; only `resolveDefaults`
-    // pays an extra, wasted call. `declare` keeps the slot off the runtime
-    // class so the fast-path doesn't pay an unnecessary Map lookup after
-    // construction.
-    private declare _pressedStyleRule?: StateStyleRule;
-    private get pressedStyleRule(): StateStyleRule {
-        return this._pressedStyleRule ??= this.createStateStyleRule(".pressed", () => this.getPressedClassDeclarations(), "extractPressedClassDeclarations");
-    }
-    private _pressedBorder: BorderOptions | null = null;
-
-    // Lazy `:hover:not(.pressed)` rule. The `:not(.pressed)` guard makes the
-    // cascade unambiguous regardless of source order — the moment `.pressed`
-    // is added, hover stops matching, so the pressed treatment always wins.
-    // Since `.pressed` is only ever added for a primary-button press or a
-    // held Space key (see `_onPointerDown` / `_onSpaceDown`), a right-/
-    // middle-click hold never sets it, so hover keeps matching for the whole
-    // hold instead of falling through to the plain resting look.
-    private declare _hoverStyleRule?: StateStyleRule;
-    private get hoverStyleRule(): StateStyleRule {
-        return this._hoverStyleRule ??= this.createStateStyleRule(":hover:not(.pressed)", () => this.getHoverClassDeclarations(), "extractHoverClassDeclarations");
-    }
-    private _hoverBorder: BorderOptions | null = null;
-
     /**
      * Routes the `background` shorthand — the one isolated key whose setters
      * still use Component's plain single-key write path — through the
@@ -668,61 +639,6 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this.writeGuardedCSSRule("background", null);
 
         return this;
-    }
-
-    /**
-     * This class's resolved `.pressed`-state declarations, derived from
-     * `_defaultOptions` — the same frozen, per-concrete-class bag the base `#id`
-     * tier reads.
-     *
-     * @remarks All four pressed-chrome fields are included — `color`,
-     * `backgroundColor`, `backgroundImage`, and `boxShadow`. A deviating
-     * *resting* value for the latter three no longer competes with this
-     * class rule: `reconcileRuleDeclaration` / `setReconciledCSSRules` route
-     * it onto the instance's own `#id:not(.pressed)` rule instead of the
-     * bare `#id` rule, so `:not(.pressed)` and `.pressed` never match the
-     * same element at once and there is nothing left to arbitrate on
-     * specificity. A class whose own defaults are chromeless (e.g.
-     * `MenuBarButton`) never dispatches pressed chrome, so it publishes no
-     * shared rule at all — see `isRestingChromeIsolated` and the chromeless
-     * branch of `applyChromeOptions` for the instance-level counterpart of
-     * this exclusion.
-     */
-    protected static extractPressedClassDeclarations(defaults: Partial<ButtonOptions>): Record<string, string | null> {
-        if (defaults.chromeless) {
-            return {};
-        }
-
-        const out: Record<string, string | null> = {};
-
-        if (defaults.pressedForegroundColor !== undefined) out.color           = defaults.pressedForegroundColor;
-        if (defaults.pressedBackgroundColor !== undefined) out.backgroundColor = defaults.pressedBackgroundColor;
-        if (defaults.pressedBackgroundImage !== undefined) out.backgroundImage = defaults.pressedBackgroundImage;
-        if (defaults.pressedShadow          !== undefined) out.boxShadow       = defaults.pressedShadow;
-
-        return out;
-    }
-
-    protected getPressedClassDeclarations(): Record<string, string | null> {
-        return (this.constructor as typeof Button).extractPressedClassDeclarations(this._defaultOptions);
-    }
-
-    /**
-     * Hover-state counterpart of {@link extractPressedClassDeclarations}. Always
-     * empty: unlike the pressed tier, hover is never deduped onto the class
-     * rule. A class-tier hover rule would sit at `(0,3,0)` (`.ClassName:hover:not(.pressed)`),
-     * which loses to a deviating instance's isolated resting rule at
-     * `(1,1,0)` — the opposite of the pressed tier, where the class rule
-     * `(0,2,0)` wins because isolation removes the competing instance
-     * declaration entirely. `hoverForegroundColor` also carries no class
-     * default to begin with.
-     */
-    protected static extractHoverClassDeclarations(_defaults: Partial<ButtonOptions>): Record<string, string | null> {
-        return {};
-    }
-
-    protected getHoverClassDeclarations(): Record<string, string | null> {
-        return (this.constructor as typeof Button).extractHoverClassDeclarations(this._defaultOptions);
     }
 
     /**
@@ -1992,7 +1908,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this.clearShadow();
         this.clearBackgroundImage();
 
-        if (this._pressedStyleRule !== undefined) {
+        if (this.instanceStateLayer(".pressed") !== null) {
             this.clearPressedBackgroundColor();
             this.clearPressedBackgroundImage();
             // Pin, don't clear: `clearPressedForegroundColor()` writes `null`
@@ -2009,7 +1925,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this.clearPressedBorder();
         }
 
-        if (this._hoverStyleRule !== undefined) {
+        if (this.instanceStateLayer(":hover") !== null) {
             this.clearHoverBackgroundColor();
             this.clearHoverBackgroundImage();
             this.clearHoverForegroundColor();
@@ -2044,35 +1960,10 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (d.shadow                 !== undefined) this.setShadow(d.shadow);
         if (d.backgroundImage        !== undefined) this.setBackgroundImage(d.backgroundImage);
 
-        if (d.pressedForegroundColor !== undefined) {
-            this.setPressedForegroundColor(d.pressedForegroundColor);
-
-            // `setPressedX` routes through `writeClassStateDeclaration`, which
-            // silently skips the write whenever the value matches the shared
-            // class bag — correct for a fresh instance, but wrong here: a
-            // button restoring from chromeless (or flat) may have a *stale*
-            // pinned value still sitting on its own `#id.pressed` rule (see
-            // `applyChromeOptions`'s chromeless branch and `_clearChrome`),
-            // and that pin's higher specificity would keep outranking
-            // `.Button.pressed`'s correct token forever unless explicitly
-            // overwritten. Force a real write here — for each of the four
-            // widened keys below — since `_restoreChrome` is specifically
-            // the "undo a prior pin" path, not the common fresh-default path
-            // the skip optimisation targets.
-            this.createStyleRule(".pressed").set("color", d.pressedForegroundColor);
-        }
-        if (d.pressedBackgroundColor !== undefined) {
-            this.setPressedBackgroundColor(d.pressedBackgroundColor);
-            this.createStyleRule(".pressed").set("backgroundColor", d.pressedBackgroundColor);
-        }
-        if (d.pressedBackgroundImage !== undefined) {
-            this.setPressedBackgroundImage(d.pressedBackgroundImage);
-            this.createStyleRule(".pressed").set("backgroundImage", d.pressedBackgroundImage);
-        }
-        if (d.pressedShadow          !== undefined) {
-            this.setPressedShadow(d.pressedShadow);
-            this.createStyleRule(".pressed").set("boxShadow", d.pressedShadow);
-        }
+        if (d.pressedForegroundColor !== undefined) this.setPressedForegroundColor(d.pressedForegroundColor);
+        if (d.pressedBackgroundColor !== undefined) this.setPressedBackgroundColor(d.pressedBackgroundColor);
+        if (d.pressedBackgroundImage !== undefined) this.setPressedBackgroundImage(d.pressedBackgroundImage);
+        if (d.pressedShadow          !== undefined) this.setPressedShadow         (d.pressedShadow);
         if (d.pressedBorder          !== undefined) this.setPressedBorder         (d.pressedBorder);
         else                                        this.clearPressedBorder      ();
         if (d.pressedBorderRadius    !== undefined) this.setPressedBorderRadius   (d.pressedBorderRadius);
@@ -2091,29 +1982,25 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * this instance's own `#id.pressed` rule, at this instance's resting value.
      * A chromeless button never dispatches pressed chrome, so without this the
      * shared rule — materialised by any chromeful sibling of the same class —
-     * would show through on press. Writes straight to the rule rather than
-     * through `writeClassStateDeclaration`, because the point is to outrank the
-     * class rule even when the two values coincide.
+     * would show through on press. Goes through `pinStateStyle`, not
+     * `writeStateStyle`, because the point is to outrank the class rule even
+     * when the two values coincide.
      */
     private pinPressedToResting(): void {
-        const bag = this.pressedStyleRule.classBag;
+        const bag = this.classStateLayer(".pressed")?.resolved;
 
         if (!bag) {
             return;
         }
 
-        const resting: Record<string, string> = {
-            color:           this.getForegroundColor() ?? "inherit",
-            backgroundColor: this.getBackgroundColor() ?? "transparent",
-            backgroundImage: this.getBackgroundImage() ?? "none",
-            boxShadow:       this.getShadow()          ?? "none",
-        };
+        const patch: StyleBag = {};
 
-        for (const key of Object.keys(bag)) {
-            if (resting[key] !== undefined) {
-                this.createStyleRule(".pressed").set(key, resting[key]);
-            }
-        }
+        if ("color"           in bag) patch.foregroundColor = this.getForegroundColor() ?? "inherit";
+        if ("backgroundColor" in bag) patch.backgroundColor = this.getBackgroundColor() ?? "transparent";
+        if ("backgroundImage" in bag) patch.backgroundImage = this.getBackgroundImage() ?? "none";
+        if ("boxShadow"       in bag) patch.shadow          = this.getShadow()          ?? "none";
+
+        this.pinStateStyle(".pressed", patch);
     }
 
     /**
@@ -2439,7 +2326,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS color string, or null if not set.
      */
     getPressedBackgroundColor(): string | null {
-        return this._options.pressedBackgroundColor ?? this._defaultOptions.pressedBackgroundColor ?? null;
+        return this.resolveStateStyleValue(".pressed", "backgroundColor")
+            ?? this._defaultOptions.pressedBackgroundColor ?? null;
     }
 
     /**
@@ -2450,8 +2338,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setPressedBackgroundColor(backgroundColor: string): this {
-        this._options.pressedBackgroundColor = backgroundColor;
-        this.pressedStyleRule.set("backgroundColor", backgroundColor);
+        this.writeStateStyle(".pressed", { backgroundColor });
 
         return this;
     }
@@ -2463,8 +2350,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearPressedBackgroundColor(): this {
-        this._options.pressedBackgroundColor = undefined;
-        this.pressedStyleRule.set("backgroundColor", this.getBackgroundColor() ?? "transparent");
+        this.writeStateStyle(".pressed", { backgroundColor: this.getBackgroundColor() ?? "transparent" });
 
         return this;
     }
@@ -2475,7 +2361,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS background-image string, or null if not set.
      */
     getPressedBackgroundImage(): string | null {
-        return this._options.pressedBackgroundImage ?? this._defaultOptions.pressedBackgroundImage ?? null;
+        return this.resolveStateStyleValue(".pressed", "backgroundImage")
+            ?? this._defaultOptions.pressedBackgroundImage ?? null;
     }
 
     /**
@@ -2486,8 +2373,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setPressedBackgroundImage(backgroundImage: string): this {
-        this._options.pressedBackgroundImage = backgroundImage;
-        this.pressedStyleRule.set("backgroundImage", backgroundImage);
+        this.writeStateStyle(".pressed", { backgroundImage });
 
         return this;
     }
@@ -2499,8 +2385,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearPressedBackgroundImage(): this {
-        this._options.pressedBackgroundImage = undefined;
-        this.pressedStyleRule.set("backgroundImage", this.getBackgroundImage() ?? "none");
+        this.writeStateStyle(".pressed", { backgroundImage: this.getBackgroundImage() ?? "none" });
 
         return this;
     }
@@ -2511,7 +2396,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS color string, or null if not set.
      */
     getPressedForegroundColor(): string | null {
-        return this._options.pressedForegroundColor ?? this._defaultOptions.pressedForegroundColor ?? null;
+        return this.resolveStateStyleValue(".pressed", "foregroundColor")
+            ?? this._defaultOptions.pressedForegroundColor ?? null;
     }
 
     /**
@@ -2522,8 +2408,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setPressedForegroundColor(foregroundColor: string): this {
-        this._options.pressedForegroundColor = foregroundColor;
-        this.pressedStyleRule.set("color", foregroundColor);
+        this.writeStateStyle(".pressed", { foregroundColor });
 
         return this;
     }
@@ -2534,8 +2419,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearPressedForegroundColor(): this {
-        this._options.pressedForegroundColor = undefined;
-        this.pressedStyleRule.set("color", null);
+        this.writeStateStyle(".pressed", { foregroundColor: null });
 
         return this;
     }
@@ -2546,7 +2430,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The {@link BorderOptions} for the `.pressed` state, or null if not set.
      */
     getPressedBorder(): BorderOptions | null {
-        return this._pressedBorder;
+        return this.resolveStateStyleValue(".pressed", "border") as BorderOptions | null;
     }
 
     /**
@@ -2558,8 +2442,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setPressedBorder(options?: BorderOptions | string): this {
-        this._pressedBorder = typeof options === "string" ? { border: options } : (options ?? {});
-        this.pressedStyleRule.setMany(borderToStyle(this._pressedBorder));
+        this.writeStateStyle(".pressed", { border: typeof options === "string" ? { border: options } : (options ?? {}) });
 
         return this;
     }
@@ -2572,13 +2455,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearPressedBorder(): this {
-        this._pressedBorder = null;
-        this.pressedStyleRule.setMany({
-            borderTop:    null,
-            borderRight:  null,
-            borderBottom: null,
-            borderLeft:   null,
-        });
+        this.writeStateStyle(".pressed", { border: null });
 
         return this;
     }
@@ -2589,7 +2466,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS border-radius string, or null if not set.
      */
     getPressedBorderRadius(): string | null {
-        return this._options.pressedBorderRadius ?? null;
+        return this.resolveStateStyleValue(".pressed", "borderRadius")
+            ?? this._defaultOptions.pressedBorderRadius ?? null;
     }
 
     /**
@@ -2600,8 +2478,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setPressedBorderRadius(borderRadius: string): this {
-        this._options.pressedBorderRadius = borderRadius;
-        this.pressedStyleRule.set("borderRadius", borderRadius);
+        this.writeStateStyle(".pressed", { borderRadius });
 
         return this;
     }
@@ -2612,8 +2489,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearPressedBorderRadius(): this {
-        this._options.pressedBorderRadius = undefined;
-        this.pressedStyleRule.set("borderRadius", null);
+        this.writeStateStyle(".pressed", { borderRadius: null });
 
         return this;
     }
@@ -2624,7 +2500,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS box-shadow string, or null if not set.
      */
     getPressedShadow(): string | null {
-        return this._options.pressedShadow ?? this._defaultOptions.pressedShadow ?? null;
+        return this.resolveStateStyleValue(".pressed", "shadow")
+            ?? this._defaultOptions.pressedShadow ?? null;
     }
 
     /**
@@ -2635,8 +2512,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setPressedShadow(shadow: string): this {
-        this._options.pressedShadow = shadow;
-        this.pressedStyleRule.set("boxShadow", shadow);
+        this.writeStateStyle(".pressed", { shadow });
 
         return this;
     }
@@ -2648,8 +2524,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearPressedShadow(): this {
-        this._options.pressedShadow = undefined;
-        this.pressedStyleRule.set("boxShadow", this.getShadow() ?? "none");
+        this.writeStateStyle(".pressed", { shadow: this.getShadow() ?? "none" });
 
         return this;
     }
@@ -2660,7 +2535,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS color string, or null if not set.
      */
     getHoverBackgroundColor(): string | null {
-        return this._options.hoverBackgroundColor ?? this._defaultOptions.hoverBackgroundColor ?? null;
+        return this.resolveStateStyleValue(":hover", "backgroundColor")
+            ?? this._defaultOptions.hoverBackgroundColor ?? null;
     }
 
     /**
@@ -2671,8 +2547,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setHoverBackgroundColor(backgroundColor: string): this {
-        this._options.hoverBackgroundColor = backgroundColor;
-        this.hoverStyleRule.set("backgroundColor", backgroundColor);
+        this.writeStateStyle(":hover", { backgroundColor });
 
         return this;
     }
@@ -2683,8 +2558,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearHoverBackgroundColor(): this {
-        this._options.hoverBackgroundColor = undefined;
-        this.hoverStyleRule.set("backgroundColor", null);
+        this.writeStateStyle(":hover", { backgroundColor: null });
 
         return this;
     }
@@ -2695,7 +2569,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS background-image string, or null if not set.
      */
     getHoverBackgroundImage(): string | null {
-        return this._options.hoverBackgroundImage ?? this._defaultOptions.hoverBackgroundImage ?? null;
+        return this.resolveStateStyleValue(":hover", "backgroundImage")
+            ?? this._defaultOptions.hoverBackgroundImage ?? null;
     }
 
     /**
@@ -2706,8 +2581,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setHoverBackgroundImage(backgroundImage: string): this {
-        this._options.hoverBackgroundImage = backgroundImage;
-        this.hoverStyleRule.set("backgroundImage", backgroundImage);
+        this.writeStateStyle(":hover", { backgroundImage });
 
         return this;
     }
@@ -2718,8 +2592,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearHoverBackgroundImage(): this {
-        this._options.hoverBackgroundImage = undefined;
-        this.hoverStyleRule.set("backgroundImage", null);
+        this.writeStateStyle(":hover", { backgroundImage: null });
 
         return this;
     }
@@ -2730,7 +2603,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS color string, or null if not set.
      */
     getHoverForegroundColor(): string | null {
-        return this._options.hoverForegroundColor ?? null;
+        return this.resolveStateStyleValue(":hover", "foregroundColor")
+            ?? this._defaultOptions.hoverForegroundColor ?? null;
     }
 
     /**
@@ -2741,8 +2615,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setHoverForegroundColor(foregroundColor: string): this {
-        this._options.hoverForegroundColor = foregroundColor;
-        this.hoverStyleRule.set("color", foregroundColor);
+        this.writeStateStyle(":hover", { foregroundColor });
 
         return this;
     }
@@ -2753,8 +2626,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearHoverForegroundColor(): this {
-        this._options.hoverForegroundColor = undefined;
-        this.hoverStyleRule.set("color", null);
+        this.writeStateStyle(":hover", { foregroundColor: null });
 
         return this;
     }
@@ -2765,7 +2637,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The {@link BorderOptions} for the hover state, or null if not set.
      */
     getHoverBorder(): BorderOptions | null {
-        return this._hoverBorder;
+        return this.resolveStateStyleValue(":hover", "border") as BorderOptions | null;
     }
 
     /**
@@ -2779,8 +2651,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setHoverBorder(options?: BorderOptions | string): this {
-        this._hoverBorder = typeof options === "string" ? { border: options } : (options ?? {});
-        this.hoverStyleRule.setMany(borderToStyle(this._hoverBorder));
+        this.writeStateStyle(":hover", { border: typeof options === "string" ? { border: options } : (options ?? {}) });
 
         return this;
     }
@@ -2793,13 +2664,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearHoverBorder(): this {
-        this._hoverBorder = null;
-        this.hoverStyleRule.setMany({
-            borderTop:    null,
-            borderRight:  null,
-            borderBottom: null,
-            borderLeft:   null,
-        });
+        this.writeStateStyle(":hover", { border: null });
 
         return this;
     }
@@ -2810,7 +2675,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS border-radius string, or null if not set.
      */
     getHoverBorderRadius(): string | null {
-        return this._options.hoverBorderRadius ?? null;
+        return this.resolveStateStyleValue(":hover", "borderRadius")
+            ?? this._defaultOptions.hoverBorderRadius ?? null;
     }
 
     /**
@@ -2821,8 +2687,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setHoverBorderRadius(borderRadius: string): this {
-        this._options.hoverBorderRadius = borderRadius;
-        this.hoverStyleRule.set("borderRadius", borderRadius);
+        this.writeStateStyle(":hover", { borderRadius });
 
         return this;
     }
@@ -2833,8 +2698,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearHoverBorderRadius(): this {
-        this._options.hoverBorderRadius = undefined;
-        this.hoverStyleRule.set("borderRadius", null);
+        this.writeStateStyle(":hover", { borderRadius: null });
 
         return this;
     }
@@ -2845,7 +2709,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS box-shadow string, or null if not set.
      */
     getHoverShadow(): string | null {
-        return this._options.hoverShadow ?? this._defaultOptions.hoverShadow ?? null;
+        return this.resolveStateStyleValue(":hover", "shadow")
+            ?? this._defaultOptions.hoverShadow ?? null;
     }
 
     /**
@@ -2856,8 +2721,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setHoverShadow(shadow: string): this {
-        this._options.hoverShadow = shadow;
-        this.hoverStyleRule.set("boxShadow", shadow);
+        this.writeStateStyle(":hover", { shadow });
 
         return this;
     }
@@ -2868,8 +2732,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearHoverShadow(): this {
-        this._options.hoverShadow = undefined;
-        this.hoverStyleRule.set("boxShadow", null);
+        this.writeStateStyle(":hover", { shadow: null });
 
         return this;
     }

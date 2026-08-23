@@ -108,8 +108,7 @@ class DiagramNode extends Panel<DiagramNodeOptions> {
             ...(subclassDefaults ?? {}),
         });
 
-        this.selectedStyleRule.set("borderColor",     "var(--ts-ui-accent-color, rgb(30, 100, 200))");
-        this.selectedStyleRule.set("backgroundColor", DIAGRAM_NODE_SELECTED_BACKGROUND_COLOR);
+        this.selectedStyleRule.set("borderColor", "var(--ts-ui-accent-color, rgb(30, 100, 200))");
 
         // Content children are built here (not during super's cascade), so the
         // label/glyph/badge/selected values cached pure in `applyOptions` are

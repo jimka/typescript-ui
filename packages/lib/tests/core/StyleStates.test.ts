@@ -10,8 +10,8 @@
 // `Component` subclass (same convention as `InstanceStyleLayer.test.ts` and
 // `RestingChromeIsolation.test.ts`) rather than `Button`: `Button`'s own
 // `:hover` entry deliberately extracts an empty bag (hover chrome is never
-// deduped onto Button's class tier — see `Button.getHoverClassDeclarations`'s
-// own comment), so a `Button`-based probe could never show a materialised
+// deduped onto Button's class tier — see the comment above
+// `Button.ownStyleStates`), so a `Button`-based probe could never show a materialised
 // `.Button:hover:not(.pressed)` *state* rule the way row 9 describes; a probe
 // where both declared states carry real declarations demonstrates the
 // mechanism row 9 is actually about. Rows 11-13 name `Button`/`ToggleButton`

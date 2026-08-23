@@ -5,6 +5,7 @@ import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link MenuBarButton}.
@@ -64,6 +65,13 @@ export const MENU_BAR_BUTTON_HEIGHT: number = 28;
  * @category Components
  */
 class MenuBarButton extends Button<MenuBarButtonOptions> {
+
+    // Opts the resting tier into the hierarchy-aware class cascade — see
+    // plans/implemented/class-hierarchy-cascade.md. The same constant this
+    // class's constructor forwards as `subclassDefaults`, exposed at the
+    // class level so `.MenuBarButton`'s rule carries only its own deviation
+    // from `.Button`'s.
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultMenuBarButtonOptions;
 
     private readonly _onClickHandler:     () => void;
     private readonly _onMouseOverHandler: () => void;

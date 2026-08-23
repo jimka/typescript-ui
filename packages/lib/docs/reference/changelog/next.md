@@ -35,6 +35,19 @@ action is needed.
 
 ## Fixed
 
+### Components
+
+- **`MenuBarButton` and `TabCloseButton` regain their own background /
+  foreground tokens.** Both forwarded a hoistable colour default through
+  `subclassDefaults` without registering their own `ownClassStyleDefaults`,
+  so the hierarchy-aware class tier silently replaced their colours with
+  `Button`'s once the shared class rule resolved at first render. No
+  consumer action is needed.
+- **A selected `TabButton` now reports its own white fill from
+  `getBackgroundColor()`, instead of `ToggleButton`'s grey.** The CSS
+  already painted the correct colour; the JS-side layer stack now agrees
+  with it. No consumer action is needed.
+
 ### Table
 
 Selecting text inside a single cell works again, and Ctrl/Cmd+C copies that
@@ -71,6 +84,21 @@ another cell.
   always answered the resting one regardless of press state. No consumer
   action is needed unless code reads one of these getters and assumed it
   ignored active toggle state.
+- **A per-instance state override (`Button`'s `setPressedX`/`setHoverX`,
+  `ToggleButton`'s `setSelectedX`, and similar) now resolves through the
+  same layer stack as every other property**, instead of a separate
+  per-property cache: `button.getBackgroundColor()` on a pressed button now
+  reports a `setPressedBackgroundColor` override while `.pressed` is
+  active, where it previously always answered the resting value regardless
+  of press state. Two consumer-visible consequences: a state override
+  written at exactly the class-tier token now emits an explicit removal
+  rather than being silently skipped, so it still clears an earlier,
+  differently-valued override on the same property; and a `clearPressedX`
+  getter (e.g. `getPressedBackgroundColor()` after
+  `clearPressedBackgroundColor()`) now reports the pinned resting value it
+  just wrote, not the class-tier default. No consumer action is needed
+  unless code reads one of these getters and assumed it ignored active
+  toggle state, or relied on a matching write being silently dropped.
 
 ### Components
 

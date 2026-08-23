@@ -117,8 +117,8 @@ describe('Checkbox delegate state-class hoisting', () => {
         expect(restingDeclarations.borderBottom).toBeUndefined();
         expect(restingDeclarations.borderLeft).toBeUndefined();
 
-        // Checked/indeterminate: border is now part of getSelectedClassDeclarations()/
-        // getIndeterminateClassDeclarations(), so it dedupes onto the shared
+        // Checked/indeterminate: border is now part of `ownStyleStates`'
+        // `.selected`/`.indeterminate` extracts, so it dedupes onto the shared
         // .CheckboxBox.selected/.indeterminate class rule the same way backgroundColor
         // does — nothing reaches the instance rule.
         const selectedDeclarations = declarationsDuring(sink, idSelector(box) + '.selected', () => {

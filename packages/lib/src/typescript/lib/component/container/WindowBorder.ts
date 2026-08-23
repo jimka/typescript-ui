@@ -2,7 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
-import type { StateStyleRule, StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { Event } from "~/core/Event.js";
 import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -64,7 +64,7 @@ const _defaultWindowBorderOptions: Partial<WindowBorderOptions> = {
     tag: "div",
 };
 
-/** `.snap-target`'s box-shadow declaration. One source of truth for both `snapTargetStyleRule`'s resolver and the constructor's write. */
+/** `.snap-target`'s box-shadow declaration, read by `ownStyleStates`' entry below. */
 const WINDOW_BORDER_SNAP_TARGET_DECLARATIONS: Readonly<Record<string, string>> = Object.freeze({
     boxShadow: "var(--ts-ui-window-snap-glow, 0 0 0 2px rgba(30, 100, 200, 0.7))",
 });
@@ -81,9 +81,7 @@ const WINDOW_BORDER_SNAP_TARGET_DECLARATIONS: Readonly<Record<string, string>> =
 class WindowBorder extends Component<WindowBorderOptions> {
 
     // Declares `.snap-target` so `styleLayers()`/`restingGuardSuffix` know
-    // about it — see `Button`'s `ownStyleStates` for the full mechanism. The
-    // extract mirrors `WINDOW_BORDER_SNAP_TARGET_DECLARATIONS`, the same
-    // source `snapTargetStyleRule` below resolves from.
+    // about it — see `Button`'s `ownStyleStates` for the full mechanism.
     protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
         {
             selector: "." + SNAP_TARGET_CLASS,
@@ -97,19 +95,6 @@ class WindowBorder extends Component<WindowBorderOptions> {
     private _dragStopListener: Event.Listener;
     private _fireDragListener: Event.Listener;
     private _snapTarget: boolean = false;
-
-    // Lazy `.snap-target` rule. The slot is a fast-path cache for the wrapper
-    // returned by Component's `createStateStyleRule` builder, which dedupes
-    // across every WindowBorder instance via the shared `.WindowBorder.snap-target`
-    // class-tier rule — see Button's `_pressedStyleRule` for the full
-    // explanation.
-    private declare _snapTargetStyleRule?: StateStyleRule;
-    private get snapTargetStyleRule(): StateStyleRule {
-        return this._snapTargetStyleRule ??= this.createStateStyleRule(
-            "." + SNAP_TARGET_CLASS,
-            () => ({ boxShadow: WINDOW_BORDER_SNAP_TARGET_DECLARATIONS.boxShadow }),
-        );
-    }
 
     /**
      * @param direction - Which window edge (or corner) this border drives.
@@ -150,10 +135,6 @@ class WindowBorder extends Component<WindowBorderOptions> {
         Event.addListener(this, 'mousedown', this._dragStartListener);
 
         this.applyListeners(options?.listeners);
-
-        // Queue the snap-target highlight into the lazy state rule. Materialises
-        // at render time through Component's batched style channel.
-        this.snapTargetStyleRule.set("boxShadow", WINDOW_BORDER_SNAP_TARGET_DECLARATIONS.boxShadow);
     }
 
     /**

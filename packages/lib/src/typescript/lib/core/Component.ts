@@ -21,7 +21,7 @@ import { ElementAttributes } from "~/core/ElementAttributes.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
-import { COMPONENT_CLASS, ensureClassStyleRule, ensureStyleGroupRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, resolvePartialDeclarations, resolveStyleStates, restingGuardSuffix, styleGroupClassSuffix, type StyleBag, type StyleLayer, type TextStyleBag, StateStyleRule } from "~/core/ClassStyleRules.js";
+import { COMPONENT_CLASS, ensureClassStateRule, ensureClassStyleRule, ensureStyleGroupRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, resolvePartialDeclarations, resolveStyleStates, restingGuardSuffix, styleGroupClassSuffix, type StyleBag, type StyleLayer, type TextStyleBag } from "~/core/ClassStyleRules.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
 import { measureBorderWidths } from "~/core/BorderWidths.js";
 
@@ -542,6 +542,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // which re-derived every hoistable property unconditionally on every
     // render) rather than only what changed since the last flush.
     private _pendingStyleKeys     : Set<string> | null = null;
+    // Per-selector twin of `_instanceStyle` / `_pendingStyleKeys` for the
+    // state tier: this instance's own authored override bag for each
+    // declared state (`.pressed`, `.selected`, …) it has written to via
+    // `writeStateStyle`, and the CSS keys `flushStateStyleBag` still owes a
+    // write for. `null` until the first `writeStateStyle` call — most
+    // instances never override a state, so this stays unallocated.
+    private _instanceStateStyle   : Map<string, StyleBag>    | null = null;
+    private _pendingStateKeys     : Map<string, Set<string>> | null = null;
     // Currently-active declared states (`.pressed`, `:hover`, `.selected`,
     // …) — the selectors from this class's own `ownStyleStates` this
     // instance has toggled on via `setStyleState`. Scanned by `styleLayers()`
@@ -1121,44 +1129,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         return rule;
-    }
-
-    /**
-     * Sibling of {@link createStyleRule} for a per-instance state rule that has
-     * class-level defaults to dedupe against. `resolveDefaults` is called once,
-     * eagerly, at this call site — matching how `applyStyle` eagerly calls
-     * `getClassStyleDefaults()` on every render regardless of whether the class
-     * rule already exists. Cache the returned wrapper in a private `??=` getter,
-     * the same idiom `createStyleRule` callers already use (see `Button.pressedStyleRule`),
-     * so `resolveDefaults` runs at most once per instance.
-     *
-     * @param selectorSuffix - CSS selector text appended to `#<id>` to form
-     *                         the instance rule's selector, and to `.ClassName`
-     *                         to form the shared class-tier rule's selector.
-     * @param resolveDefaults - Returns this class's resolved declarations for
-     *                          the suffixed state, e.g. `() => this.getPressedClassDeclarations()`.
-     * @param extractorMethodName - Name of the `protected static` extraction
-     *                          method (e.g. `"extractPressedClassDeclarations"`)
-     *                          each hierarchy-participating ancestor may
-     *                          declare its own copy of. Omit to keep the flat,
-     *                          non-hierarchy-aware behaviour every existing
-     *                          caller already gets.
-     *
-     * @returns The `StateStyleRule` wrapper.
-     */
-    protected createStateStyleRule(
-        selectorSuffix: string,
-        resolveDefaults: () => Record<string, string | null>,
-        extractorMethodName?: string,
-    ): StateStyleRule {
-        return new StateStyleRule(
-            this.constructor,
-            selectorSuffix,
-            this.createStyleRule(selectorSuffix),
-            resolveDefaults,
-            () => !!this.getElement(),
-            extractorMethodName,
-        );
     }
 
     /**
@@ -4901,6 +4871,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         for (const state of resolveStyleStates(this.constructor)) {
             if (this._activeStates.has(state.selector)) {
+                const own = this.instanceStateLayer(state.selector);
+                if (own) layers.push(own);
                 layers.push(state.layer);
             }
         }
@@ -4921,6 +4893,23 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *  `_resolvedCache` for the per-key memo that *is* worth caching. */
     protected instanceLayer(): StyleLayer {
         return { authored: this._instanceStyle, resolved: resolvePartialDeclarations(this._instanceStyle) };
+    }
+
+    /** This instance's own override bag for one declared state, and the CSS
+     *  it resolves to — `writeStateStyle`'s per-selector twin of
+     *  {@link instanceLayer}. `null` when this instance has never written an
+     *  override for `selector` (never allocates `_instanceStateStyle` just
+     *  to answer this). */
+    protected instanceStateLayer(selector: string): StyleLayer | null {
+        const authored = this._instanceStateStyle?.get(selector);
+
+        return authored ? { authored, resolved: resolvePartialDeclarations(authored) } : null;
+    }
+
+    /** The class-tier layer `ownStyleStates` resolves for one declared
+     *  state, or `null` when `selector` isn't a state this class declares. */
+    protected classStateLayer(selector: string): StyleLayer | null {
+        return resolveStyleStates(this.constructor).find((state) => state.selector === selector)?.layer ?? null;
     }
 
     /** The layers *below* the instance layer — group (if any), then class —
@@ -5136,6 +5125,104 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Writes `patch` into this instance's own layer for `selector` — the
+     * state-tier twin of {@link writeStyle}. Writes unconditionally; dedup
+     * against the class-tier state layer happens at flush, exactly as
+     * {@link flushStyleBag} does for the resting tier.
+     *
+     * @param selector - The declared state's selector, e.g. `".pressed"`.
+     * @param patch - The `StyleBag` key(s) this write touches.
+     */
+    protected writeStateStyle(selector: string, patch: StyleBag): void {
+        const bags     = this._instanceStateStyle ??= new Map();
+        const existing = bags.get(selector);
+
+        bags.set(selector, patch.font
+            ? { ...existing, ...patch, font: { ...existing?.font, ...patch.font } }
+            : { ...existing, ...patch });
+
+        this._resolvedCache = null;
+
+        const pending = this._pendingStateKeys ??= new Map();
+        const keys    = pending.get(selector) ?? new Set<string>();
+        for (const key of Object.keys(resolvePartialDeclarations(patch))) {
+            keys.add(key);
+        }
+        pending.set(selector, keys);
+
+        if (this.getElement()) {
+            this.flushStateStyleBag();
+        }
+    }
+
+    /**
+     * Like {@link writeStateStyle}, but queues every declaration verbatim —
+     * never deduped against the class-tier state layer. For a write whose
+     * whole purpose is to outrank that rule even when the two values happen
+     * to coincide (e.g. `Button.pinPressedToResting`). Flushes immediately,
+     * independent of {@link flushStateStyleBag}'s batched, deduped writes.
+     *
+     * @param selector - The declared state's selector, e.g. `".pressed"`.
+     * @param patch - The `StyleBag` key(s) this write touches.
+     */
+    protected pinStateStyle(selector: string, patch: StyleBag): void {
+        const bags     = this._instanceStateStyle ??= new Map();
+        const existing = bags.get(selector);
+
+        bags.set(selector, patch.font
+            ? { ...existing, ...patch, font: { ...existing?.font, ...patch.font } }
+            : { ...existing, ...patch });
+
+        this._resolvedCache = null;
+
+        const state = resolveStyleStates(this.constructor).find((s) => s.selector === selector);
+        if (!state) {
+            return;
+        }
+
+        const rule = this.createStyleRule(state.guardedSuffix);
+        rule.setMany(resolvePartialDeclarations(patch));
+
+        if (this.getElement() && rule.hasQueuedDeclarations()) {
+            rule.ensure();
+        }
+    }
+
+    /**
+     * Resolves one declared state's authored value: the first of
+     * [{@link instanceStateLayer}, {@link classStateLayer}] whose authored
+     * bag *contains* `key` wins — presence, not truthiness, so a `clearX()`
+     * that writes `null` suppresses the class-tier token rather than falling
+     * through to it. Never falls through to the resting tiers (instance,
+     * group, class) `resolveStyleValue` walks. Memoized in `_resolvedCache`
+     * under `"state." + selector + "." + key`.
+     *
+     * @param selector - The declared state's selector, e.g. `".pressed"`.
+     * @param key - The `StyleBag` key to resolve.
+     * @returns The resolved authored value, or `null` when neither layer declares `key`.
+     */
+    protected resolveStateStyleValue<K extends keyof StyleBag>(selector: string, key: K): NonNullable<StyleBag[K]> | null {
+        const cacheKey = "state." + selector + "." + key;
+
+        if (this._resolvedCache?.has(cacheKey)) {
+            return this._resolvedCache.get(cacheKey) as NonNullable<StyleBag[K]> | null;
+        }
+
+        let result: NonNullable<StyleBag[K]> | null = null;
+
+        for (const layer of [this.instanceStateLayer(selector), this.classStateLayer(selector)]) {
+            if (layer && key in layer.authored) {
+                result = (layer.authored[key] ?? null) as NonNullable<StyleBag[K]> | null;
+                break;
+            }
+        }
+
+        (this._resolvedCache ??= new Map()).set(cacheKey, result);
+
+        return result;
+    }
+
+    /**
      * Drains the pending CSS-key set. A key the instance layer never
      * declared (a class-default-only value, added to the pending set by
      * `applyStyle`'s full sweep so `onStyleResolved` still fires for it) is
@@ -5308,12 +5395,67 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
     }
 
+    /**
+     * Drains the pending per-state CSS keys onto `#id<guardedSuffix>` — the
+     * state-tier twin of {@link flushStyleBag}. For each pending
+     * `(selector, keys)` pair, a key that matches the class-tier state
+     * layer's own resolved value queues a `null` (a removal, not a skip —
+     * unlike `flushStyleBag`'s match branch, a matching write here still
+     * clears whatever stale value this instance's own rule was holding),
+     * everything else queues its real value.
+     */
+    protected flushStateStyleBag(): void {
+        if (!this._pendingStateKeys || this._pendingStateKeys.size === 0) {
+            return;
+        }
+
+        const pending = this._pendingStateKeys;
+        this._pendingStateKeys = null;
+
+        for (const [selector, keys] of pending) {
+            const state = resolveStyleStates(this.constructor).find((s) => s.selector === selector);
+            if (!state) {
+                continue;
+            }
+
+            const rule     = this.createStyleRule(state.guardedSuffix);
+            const declared = resolvePartialDeclarations(this._instanceStateStyle!.get(selector)!);
+            const classBag = state.layer.resolved;
+            const queued: Record<string, string | null> = {};
+
+            for (const key of keys) {
+                const value = declared[key] ?? null;
+                queued[key] = (key in classBag && classBag[key] === value) ? null : value;
+            }
+
+            rule.setMany(queued);
+
+            if (this.getElement() && rule.hasQueuedDeclarations()) {
+                rule.ensure();
+            }
+        }
+    }
+
+    /**
+     * Ensures a shared `.ClassName<selectorSuffix>` rule carrying
+     * `declarations` — a one-line forwarder to {@link ensureClassStateRule}
+     * for the three call sites (`Cell.focusedStyleRule`, `TreeRow.focusedStyleRule`,
+     * `Component.setValueStyleState`) that only ever publish a shared
+     * class-tier state rule and never write per-instance.
+     *
+     * @param selectorSuffix - The class-tier rule's own suffix, e.g. `".focused"`.
+     * @param declarations - This class's resolved declarations for the suffixed state.
+     */
+    protected ensureSharedStateRule(selectorSuffix: string, declarations: Record<string, string | null>): void {
+        ensureClassStateRule(this.constructor, selectorSuffix, declarations);
+    }
+
     // An instance-level opt-out for a class whose own construction-time
     // defaults publish no state-tier chrome to isolate from (e.g. a
     // chromeless Button) — `resolveStyleStates` is memoized once per
     // *class*, so it cannot know that *this* instance's own defaults happen
-    // to be chromeless the way the pre-migration per-instance
-    // `extractPressedClassDeclarations(this._defaultOptions)` check could.
+    // to be chromeless the way a per-*instance* check against
+    // `this._defaultOptions` could.
     // `declare` because a subclass may write it during the `super()`
     // cascade (Button's chromeless branch runs inside `applyChromeOptions`,
     // itself dispatched from `super()`); a plain initializer would run
@@ -5478,7 +5620,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const token = prefix + cssValue.replace(/[^a-zA-Z0-9]/g, "_");
         const declarations = resolvePartialDeclarations(patch);
 
-        this.createStateStyleRule("." + token, () => declarations).setMany(declarations);
+        this.ensureSharedStateRule("." + token, declarations);
 
         const element = this.getElement();
         const previous = this._valueStyleTokens.get(prefix);
@@ -5596,7 +5738,23 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             }
         }
 
+        // Same full-replay seeding as above, per declared state this
+        // instance has its own override bag for — a render pass replays
+        // every key that bag declares, not only what changed since the last
+        // flush.
+        if (this._instanceStateStyle) {
+            const statePending = this._pendingStateKeys ??= new Map();
+            for (const [selector, bag] of this._instanceStateStyle) {
+                const keys = statePending.get(selector) ?? new Set<string>();
+                for (const key of Object.keys(resolvePartialDeclarations(bag))) {
+                    keys.add(key);
+                }
+                statePending.set(selector, keys);
+            }
+        }
+
         this.flushStyleBag();
+        this.flushStateStyleBag();
         this.replayGeometryStyles();
         this.applyMiscInlineStyles();
         this.applySubclassStyles();
