@@ -825,4 +825,44 @@ export namespace Event {
             DOM.sink.removeListener(DOM.source.getWindow(), type, baseViewportListener, captureOpts(type));
         }
     }
+
+    /** Per-registration-surface listener counts returned by {@link listenerCounts}. */
+    export interface ListenerCounts {
+        exact:    number;
+        subtree:  number;
+        viewport: number;
+        total:    number;
+    }
+
+    /**
+     * Sums every registered listener's `listeners.length` across every type and
+     * component in `map`. Shared by {@link listenerCounts} since `listenerMap`,
+     * `subtreeListenerMap`, and `viewportListenerMap` share the same
+     * `Map<type, Map<componentId, CompFunc>>` shape.
+     */
+    function sumListeners(map: Map<String, Map<String, CompFunc>>): number {
+        let total = 0;
+
+        for (const typeMap of map.values()) {
+            for (const compFunc of typeMap.values()) {
+                total += compFunc.listeners.length;
+            }
+        }
+
+        return total;
+    }
+
+    /**
+     * Reads the current DOM-routed listener counts, split by registration
+     * surface.
+     *
+     * @returns The live {@link ListenerCounts}.
+     */
+    export function listenerCounts(): ListenerCounts {
+        const exact    = sumListeners(listenerMap);
+        const subtree  = sumListeners(subtreeListenerMap);
+        const viewport = sumListeners(viewportListenerMap);
+
+        return { exact, subtree, viewport, total: exact + subtree + viewport };
+    }
 }

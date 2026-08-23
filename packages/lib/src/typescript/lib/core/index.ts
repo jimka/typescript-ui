@@ -40,9 +40,12 @@ export type { FocusHistoryOptions, FocusHistoryKeyCombo, FocusHistoryEvent, Focu
 export { ThemeManager, BaseTheme, ClassicTheme, DarkTheme, ModernTheme, defineTheme } from '~/core/Theme.js';
 export type { Theme, DeepPartial, ScaleToken, ResolvedScale, FontSizeToken } from '~/core/Theme.js';
 
-export { StyleTarget, StyleRule, InlineStyle } from '~/core/StyleTarget.js';
-export type { StyleRuleScope, StyleRuleSpec } from '~/core/StyleTarget.js';
+export { StyleTarget, StyleRule, InlineStyle, styleRuleCounts } from '~/core/StyleTarget.js';
+export type { StyleRuleScope, StyleRuleSpec, StyleRuleCounts } from '~/core/StyleTarget.js';
 export { ElementAttributes } from '~/core/ElementAttributes.js';
+
+export { Diagnostics } from '~/core/Diagnostics.js';
+export type { DiagnosticsCounters } from '~/core/Diagnostics.js';
 
 export { Binding } from '~/core/Binding.js';
 export type { BeforeRecordListener, BindingEvent } from '~/core/Binding.js';

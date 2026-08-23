@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { StyleRule, _ruleCacheHas } from '~/core/StyleTarget';
+import { StyleRule, _ruleCacheHas, styleRuleCounts } from '~/core/StyleTarget';
 import { DOM, ProductionDOMSink } from '~/core/DOM';
 import type { RecordingDOMSink } from '../dom/TestDOM';
 
@@ -98,5 +98,41 @@ describe('ProductionDOMSink.deleteStyleRule — headless resilience', () => {
         const sink = new ProductionDOMSink();
 
         expect(() => sink.deleteStyleRule('#some-component-id')).not.toThrow();
+    });
+});
+
+// Diagnostics overlay support (plans/implemented/debug-diagnostics-overlay.md,
+// Expected Behaviour rows 12-13). `_ruleCache` is module state that outlives
+// every test in this file, so both cases diff against a before/after snapshot
+// rather than asserting an absolute count.
+describe('styleRuleCounts', () => {
+    it('12. buckets a materialised rule by its selector shape', () => {
+        const before = styleRuleCounts();
+
+        const instanceRule = new StyleRule({ scope: 'component', name: 'diag-count-instance' });
+        const classRule    = new StyleRule({ scope: 'class', name: 'DiagCountFoo', suffix: '.pressed' });
+        const otherRule    = new StyleRule({ scope: 'selector', name: ':where(.diag-count-other)' });
+
+        const after = styleRuleCounts();
+
+        expect(after.instance - before.instance).toBe(1);
+        expect(after.class - before.class).toBe(1);
+        expect(after.other - before.other).toBe(1);
+        expect(after.total - before.total).toBe(3);
+
+        instanceRule.dispose();
+        classRule.dispose();
+        otherRule.dispose();
+    });
+
+    it('13. disposing a rule removes it from the counts', () => {
+        const before = styleRuleCounts();
+        const rule   = new StyleRule({ scope: 'selector', name: '.diag-count-dispose-test' });
+
+        expect(styleRuleCounts().total).toBe(before.total + 1);
+
+        rule.dispose();
+
+        expect(styleRuleCounts()).toEqual(before);
     });
 });

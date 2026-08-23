@@ -25,6 +25,7 @@ export default defineConfig({
       { find: '@jimka/typescript-ui/data',                replacement: sub('data/index.ts') },
       { find: '@jimka/typescript-ui/validation',          replacement: sub('validation/index.ts') },
       { find: '@jimka/typescript-ui/router',              replacement: sub('router/index.ts') },
+      { find: '@jimka/typescript-ui/diagnostics',         replacement: sub('diagnostics/index.ts') },
       { find: /^@jimka\/typescript-ui\/glyphs\/(solid|regular|brands)$/, replacement: sub('glyphs/$1/index.ts') },
       { find: /^@jimka\/typescript-ui\/glyphs\/(.+)$/,    replacement: sub('glyphs/$1.ts') },
       { find: '@jimka/typescript-ui/glyphs',              replacement: sub('glyphs/index.ts') },

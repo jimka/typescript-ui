@@ -104,6 +104,7 @@ import { filter }        from '@jimka/typescript-ui/glyphs/solid/filter';
 import { circle_info }   from '@jimka/typescript-ui/glyphs/solid/circle_info';
 import { exclamation_triangle } from '@jimka/typescript-ui/glyphs/solid/exclamation_triangle';
 import { ToolBar } from '~/component/menubar/ToolBar';
+import { DiagnosticsOverlay } from '@jimka/typescript-ui/diagnostics';
 import { VBoxPanel } from './VBoxPanel';
 
 Glyph.register(xmark, arrow_right, arrow_down, folder, file, file_code, file_lines, floppy_disk, filter, circle_info,
@@ -231,6 +232,12 @@ class MiscPanel extends Panel {
             win.show();
         });
         leftColumn.addComponent(buttonWindowImage);
+
+        let buttonDiagnosticsOverlay = new Button("Show diagnostics overlay", { flat: true });
+        buttonDiagnosticsOverlay.on("action", function () {
+            DiagnosticsOverlay.open();
+        });
+        leftColumn.addComponent(buttonDiagnosticsOverlay);
 
         // A window whose content opens another window. Each window registers
         // with the central LayerManager as an independent tree root (see

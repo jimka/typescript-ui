@@ -1219,6 +1219,17 @@ export interface DOMSource {
     querySelectorAll(root: Handle, selector: string): Handle[];
 
     /**
+     * Total element count in the document, for the diagnostics overlay's DOM
+     * node reading. A raw count rather than a {@link querySelectorAll} call so
+     * a twice-a-second sample never interns thousands of elements into the
+     * handle registry — see {@link DOMSource.querySelectorAll}.
+     *
+     * @returns The number of elements in the document. `0` when no selector
+     *   engine is available (offline).
+     */
+    countElements(): number;
+
+    /**
      * Whether an element itself matches a selector. The self-test counterpart to
      * {@link DOMSource.querySelector}, which only sees descendants — needed when
      * a component's own root element is the candidate (a `TextField` renders as
@@ -2383,6 +2394,11 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     querySelectorAll(root: Handle, selector: string): Handle[] {
         return Array.from((_registry.resolve(root) as ParentNode).querySelectorAll(selector), (node) => _registry.intern(node));
+    }
+
+    /** @inheritDoc */
+    countElements(): number {
+        return document.querySelectorAll("*").length;
     }
 
     /** @inheritDoc */

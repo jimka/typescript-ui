@@ -17,6 +17,7 @@
             "@jimka/typescript-ui/data":                ["./src/typescript/lib/data/index.ts"],
             "@jimka/typescript-ui/validation":          ["./src/typescript/lib/validation/index.ts"],
             "@jimka/typescript-ui/router":              ["./src/typescript/lib/router/index.ts"],
+            "@jimka/typescript-ui/diagnostics":         ["./src/typescript/lib/diagnostics/index.ts"],
             "@jimka/typescript-ui/component/input":     ["./src/typescript/lib/component/input/index.ts"],
             "@jimka/typescript-ui/component/button":    ["./src/typescript/lib/component/button/index.ts"],
             "@jimka/typescript-ui/component/display":   ["./src/typescript/lib/component/display/index.ts"],

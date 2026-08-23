@@ -17,6 +17,7 @@ import { Aria } from "~/core/Aria.js";
 import { Event } from "~/core/Event.js";
 import { SmoothScroller, consumeWheel, type ScrollAxis } from "~/core/SmoothScroller.js";
 import { StyleRule, InlineStyle, disposeStyleRule } from "~/core/StyleTarget.js";
+import { Diagnostics } from "~/core/Diagnostics.js";
 import { ElementAttributes } from "~/core/ElementAttributes.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
@@ -198,6 +199,9 @@ function flushPendingLayouts() {
         return;
     }
 
+    const timed   = Diagnostics.isTimingEnabled();
+    const started = timed ? performance.now() : 0;
+
     // Snapshot and clear both queues so re-entrant scheduleLayout / afterNextLayout
     // calls (from a doLayout side effect or a post-layout callback) queue into the
     // next frame instead of mutating these during iteration.
@@ -236,6 +240,10 @@ function flushPendingLayouts() {
     // can act on the final geometry — e.g. focus a now-laid-out element.
     for (const cb of callbacks) {
         cb();
+    }
+
+    if (timed) {
+        Diagnostics.noteLayoutFlush(performance.now() - started);
     }
 }
 
@@ -491,6 +499,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _pendingRematerialize   : boolean = false;
     // Captured at release(), consumed by restoreReleasedState() on rebuild.
     private _refocusOnRematerialize : boolean = false;
+    // Guards Diagnostics.noteComponentDestroyed() against destructor()'s
+    // documented idempotency — a bare decrement would double-count a component
+    // whose destructor legitimately runs twice (an explicit dispose() on a
+    // child a parent later destroys). Plain initializer: only destructor()
+    // writes it, never a cascade setter.
+    private _destroyed              : boolean = false;
     // Cache for setAnimationPlayState. Plain initializer for the same reason.
     private _animationPlayState   : string | null            = null;
     private _appearance           : string | null           = null;
@@ -691,6 +705,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `applyOptions` is `!== undefined` gated per-field, so omitting
         // `options` is safe and produces zero setter calls.
         this.applyOptions((options ?? ({} as TOptions)));
+
+        Diagnostics.noteComponentConstructed();
     }
 
     /**
@@ -890,6 +906,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // covered by the child recursion below, which reaches this same line for
         // each of them.
         pendingLayouts.delete(this);
+
+        if (!this._destroyed) {
+            this._destroyed = true;
+            Diagnostics.noteComponentDestroyed();
+        }
 
         // Same reason as the line above: a module-level registration keyed by this
         // component's id outlives it, and each entry holds the component itself. An
@@ -6455,6 +6476,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (this.isLayoutPaused()) {
             return this;
         }
+
+        Diagnostics.noteLayoutPass();
 
         const lm = this.getLayoutManager();
         if (!lm) {
