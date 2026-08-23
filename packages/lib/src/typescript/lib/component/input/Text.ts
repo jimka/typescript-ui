@@ -812,12 +812,27 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @param text - The new text to display.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks The layout schedule is skipped while {@link setAutoMeasure} is
+     * `false`: `calculateSize` returns before touching the preferred size, the
+     * minimum size, or the baseline in that mode, so the new text cannot move
+     * anything the parent's layout reads and the scheduled pass would recompute
+     * an identical rectangle. That case is the whole pooled-row rebind path —
+     * every cell/list/tree renderer's `Text` opts out of auto-measure — where
+     * one scroll tick would otherwise queue a next-frame layout for every
+     * renderer it rebinds. See `CellRenderer.setValue`'s contract: "an
+     * implementation that only writes text needs no layout". A renderer that
+     * *does* need one (it swapped a child) lays itself out, and a caller that
+     * needs a fresh measurement calls {@link measure}.
      */
     setText(text: String): this {
         this._options.text = (text || "") as TOptions["text"];
 
         this._measurementDirty = true;
-        (this.getParentComponent() ?? this).scheduleLayout();
+
+        if (this._autoMeasure) {
+            (this.getParentComponent() ?? this).scheduleLayout();
+        }
 
         let element = this.getElement();
         if (!element) {
