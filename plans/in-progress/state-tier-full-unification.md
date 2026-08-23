@@ -1015,3 +1015,55 @@ API docs. `typedoc.json`, the barrels and `packages/lib/llms.txt` are unaffected
     and hands the property back to `.Button.pressed`. That is the same
     write-null-on-match rule `flushStyleBag` already applies to the resting
     tier, so the forced re-write and its eleven-line comment become dead.
+
+---
+
+## Implementation Notes
+
+- **Step 10's Check understated the intermediate-state test failures.**
+  After steps 6-9 (before Stage 3 replaced `pressedStyleRule`/`hoverStyleRule`
+  with the instance state layer), the plan's Check predicted failures only in
+  `Header.test.ts` and `TabButton.stateClassHoisting.test.ts`. In practice
+  `Button.pressedHoverClassHoisting.test.ts` and
+  `Button.restingChromeIsolation.test.ts` also went red for that same window:
+  step 8's `() => ({})` placeholder `resolveDefaults` made every
+  `pressedStyleRule`/`hoverStyleRule` write skip its class-bag comparison
+  entirely, so writes that used to dedupe away now went through. This is the
+  expected, self-correcting cost of the intermediate state the plan itself
+  calls for — Stage 3 (steps 13-15) restores real dedup via
+  `resolveStateStyleValue`/`flushStateStyleBag`, and both files are green
+  again once Stage 3 lands. `Button.restingChromeIsolation.test.ts` was
+  updated but was never listed in the plan's `## Files to Create / Modify /
+  Delete` table; its row 11 and the "setChromeless(false) overwrites a stale
+  pinned pressed color" case in `Button.pressedHoverClassHoisting.test.ts`
+  both asserted the *old* forced-literal-rewrite behaviour `_restoreChrome`
+  used before `[^restore-chrome]`'s write-null-on-match fix, so both were
+  updated to assert `null` (a removal) instead of the literal class token —
+  the documented, intended post-fix contract, not a new assertion invented
+  to match the code.
+- **`ClassStateRules.test.ts`'s cases 1-6 collapsed to four cases, not six,
+  when re-pointed at `ensureSharedStateRule`.** The old cases 3 ("a deviating
+  instance still writes its own rule") and 4 ("a key absent from the class
+  bag always writes") exercised `writeClassStateDeclaration`'s per-write
+  class-bag comparison — a concern that doesn't exist in
+  `ensureSharedStateRule`'s reduced surface, which only ever ensures a shared
+  rule and never writes per-instance. The four surviving cases (rule
+  creation with declarations, idempotent re-ensure, name-collision opt-out,
+  disposal leaving the class rule intact) cover everything
+  `ensureClassStateRule`'s shared-rule path still does; `InstanceStateLayer.test.ts`
+  covers the per-instance write-and-dedupe behaviour the old cases 3/4 stood
+  in for, through the real `writeStateStyle`/`flushStateStyleBag` mechanism.
+- **Steps 11 and 13–15 landed as one commit** (`65fbb4ef`, "Make
+  `ownStyleStates` hierarchy-aware and give it a real instance layer"),
+  not the three separate, independently-verified commits `## Potential
+  Challenges` called for across 13–15. Stage 2's hierarchy-aware
+  `resolveStyleStates` and Stage 3's instance state layer fix the same two
+  live bugs together — the duplicated `.Button.pressed` write and a
+  selected `TabButton` reporting `ToggleButton`'s grey while painting
+  white — and `Button`/`ToggleButton`/`TabButton`'s setter migrations are
+  what exercises `resolveStyleStates`'s new hierarchy walk end-to-end, so
+  there was no independently-green intermediate point between introducing
+  the walk and updating its callers to prove it worked. The full suite was
+  still run green before this commit landed, and again before every commit
+  after it — this note records the commit-count deviation, not a gap in
+  verification.
