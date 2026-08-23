@@ -271,6 +271,12 @@ Manual verification (hover, timing and rendered position are outside the harness
 
 ---
 
+## Implementation Notes
+
+**`ROW_DESCRIPTIONS` copy dropped the markdown backticks the plan's table used.** The table in *Internal Structure* wrote each string with backtick code spans (e.g. `` `performance.memory` ``, `` `doLayout()` ``). `Tooltip.show` renders its text into a plain `Text` component via `setText`, which writes `textContent` — there is no markdown rendering step, so a backtick shipped verbatim would appear as a literal character in the hover tooltip. The doc table in `docs/components/DiagnosticsOverlay.md` is unaffected and keeps its backticks, since VitePress renders those as real markdown. The wording is otherwise unchanged from the plan's table.
+
+---
+
 ## Notes
 
 [^tooltip-not-subtext]: Three mechanisms were weighed. A permanent subtext line under each label is the most discoverable, and was rejected on the overlay's own stated design constraint: `plans/implemented/debug-diagnostics-overlay.md` lists "the overlay perturbs layout timing" as a live concern and answers it by keeping the tree to labels only and sampling at 2 Hz. Twelve wrapped explanation lines would add twelve components, triple the scroll height and add real per-sample layout cost to the instrument measuring layout cost. A `?` glyph per row costs the same twelve components plus twelve grid cells and still needs a tooltip behind it. A tooltip costs zero components, zero DOM nodes and zero layout — only listener registrations, which are constant and purged on close. `title` attributes were not considered a candidate: the library routes every hover hint through `Tooltip`, and a native `title` would be the only one in the codebase.
