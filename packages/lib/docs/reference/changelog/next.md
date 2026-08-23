@@ -177,3 +177,13 @@ another cell.
   what these getters report on a flat instance. No consumer action is
   needed unless code reads one of these getters on a flat instance and
   assumed it returned the flat token.
+- **`TextField`, `TextArea`, `PasswordField`, `UsernameField`, and the picker
+  fields' inner input no longer repeat their font declarations on every
+  instance's own CSS rule.** `font-family`, `font-size`, and `line-height`
+  now come from one shared `.TextInput` rule. Nothing changes visually. Two
+  consumer-visible consequences for `getTextAlign()` on a text input: it now
+  resolves the class-tier default when its class declares one (no built-in
+  class did before, so every existing class answers as it did), and
+  `clearTextAlign()` on such a class reverts to that default rather than
+  removing alignment entirely — matching `clearCursor` and every other
+  layered `clearX`.
