@@ -257,7 +257,7 @@ describe('ScrollArrowButton static style hoisting', () => {
 // override exists for this class: `color` (the CSS key `setForegroundColor`
 // writes under) is not a `RESTING_ISOLATION_KEYS` member, so a resting `color`
 // write always lands on the bare `#id` rule regardless of any override — see
-// the comment at Scrollbar.ts's `getDisabledClassDeclarations` for the detail.
+// the comment above `ScrollArrowButton.ownStyleStates` (Scrollbar.ts) for the detail.
 describe('ScrollArrowButton disabled state-class hoisting', () => {
     afterEach(() => DOM.reset());
 

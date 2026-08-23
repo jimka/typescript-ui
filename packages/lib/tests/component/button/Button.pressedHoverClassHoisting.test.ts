@@ -7,17 +7,18 @@
 // this plan also adds.
 //
 // IMPORTANT SCOPE NOTE: `plans/implemented/button-resting-chrome-state-isolation.md`
-// widened `getPressedClassDeclarations()` to all four pressed-chrome keys —
-// `color`, `backgroundColor`, `backgroundImage`, and `boxShadow` are now all
-// deduped onto `.Button.pressed`. A deviating *resting* `background-color` /
-// `background-image` / `box-shadow` no longer competes with that class rule:
-// it now routes onto the instance's own `#id:not(.pressed)` rule instead of
-// the bare `#id` rule, so the two selectors never match the same element at
-// once. See `Button.restingChromeIsolation.test.ts` for that plan's own
-// coverage. `getHoverClassDeclarations()` is still always empty — hover is
-// never deduped, because a class-tier hover rule would sit at `(0,3,0)`,
-// which loses to a deviating instance's isolated resting rule at `(1,1,0)`
-// — and no `.Button:hover:not(.pressed)` class rule is ever created.
+// widened `.pressed`'s `ownStyleStates` extract to all four pressed-chrome
+// keys — `color`, `backgroundColor`, `backgroundImage`, and `boxShadow` are
+// now all deduped onto `.Button.pressed`. A deviating *resting*
+// `background-color` / `background-image` / `box-shadow` no longer competes
+// with that class rule: it now routes onto the instance's own
+// `#id:not(.pressed)` rule instead of the bare `#id` rule, so the two
+// selectors never match the same element at once. See
+// `Button.restingChromeIsolation.test.ts` for that plan's own coverage.
+// `:hover`'s `ownStyleStates` extract is still always empty — hover is never
+// deduped, because a class-tier hover rule would sit at `(0,3,0)`, which
+// loses to a deviating instance's isolated resting rule at `(1,1,0)` — and
+// no `.Button:hover:not(.pressed)` class rule is ever created.
 //
 // Same module-state caveat as `ClassStyleRules.test.ts`: `.Button.pressed`
 // is process-module state (fresh per test *file*, not per test),

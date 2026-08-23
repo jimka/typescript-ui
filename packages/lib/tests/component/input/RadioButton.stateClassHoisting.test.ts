@@ -104,9 +104,9 @@ describe('RadioButton delegate state-class hoisting', () => {
         expect(restingDeclarations.borderLeft).toBeUndefined();
         expect(_ruleCacheHas(idSelector(ring) + ':not(.selected)')).toBe(false);
 
-        // Selected: border is now part of getSelectedClassDeclarations(), so it
-        // dedupes onto the shared .RadioButtonRing.selected class rule the same
-        // way backgroundColor does — nothing reaches the instance rule.
+        // Selected: border is now part of `ownStyleStates`' `.selected` extract,
+        // so it dedupes onto the shared .RadioButtonRing.selected class rule the
+        // same way backgroundColor does — nothing reaches the instance rule.
         const selectedDeclarations = declarationsDuring(sink, idSelector(ring) + '.selected', () => {
             rb.setSelected(true);
         });

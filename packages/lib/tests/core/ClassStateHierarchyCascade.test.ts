@@ -308,15 +308,12 @@ describe('Class-hierarchy state-tier cascade', () => {
         const sink = DOM.sink as RecordingDOMSink;
         // The class-tier rules are shared (`.ClassName<suffix>`, not
         // `#id<suffix>`) and materialise the moment they're first resolved —
-        // no element required. `HeaderCell`'s own constructor eagerly warms
-        // its lazy `activeStyleRule` getter (`this.activeStyleRule.set(...)`),
-        // which is what walks `resolveStyleStates` and creates the rule, so
-        // the write happens at construction, before any render.
-        let header: HeaderCell;
-        const activeDeclarations = declarationsDuring(sink, activeSelector, () => {
-            header = new HeaderCell('Name', 'name');
-        });
-        header!.getElement(true);
+        // no element required. `applyStyle`'s own full-replay seeding loop
+        // (`for (const layer of this.styleLayers())`) is what walks
+        // `resolveStyleStates` and creates the rule, so the write happens at
+        // this first render.
+        const header = new HeaderCell('Name', 'name');
+        const activeDeclarations = declarationsDuring(sink, activeSelector, () => header.getElement(true));
 
         expect(_ruleCacheHas('.HeaderCell.rangeSelected')).toBe(false);
         expect(_ruleCacheHas('.HeaderCell.readOnly:not(.rangeSelected)')).toBe(false);

@@ -55,14 +55,6 @@ class RailHandle extends Button<RailHandleOptions> {
         },
     ];
 
-    // Lazy `.selected` rule — the selected (target-open) wash. The slot is a
-    // fast-path cache for the wrapper `createStyleRule` dedupes by suffix; see
-    // Button's `_pressedStyleRule` for the full explanation.
-    private declare _selectedRule?: StyleRule;
-    private get selectedRule(): StyleRule {
-        return this._selectedRule ??= this.createStyleRule(".selected");
-    }
-
     // Lazy hover rule. `:not(.selected)` keeps the brighter selected wash
     // winning while the pointer is over an already-open handle.
     private declare _railHoverRule?: StyleRule;
@@ -80,7 +72,6 @@ class RailHandle extends Button<RailHandleOptions> {
         super(options.text, options, { chromeless: true });
 
         this.railHoverRule.set("backgroundColor", "var(--ts-ui-rail-handle-hover-bg)");
-        this.selectedRule.set("backgroundColor", RAIL_HANDLE_SELECTED_BACKGROUND_COLOR);
     }
 
     /**

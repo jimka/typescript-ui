@@ -8,17 +8,20 @@
 // ToggleButton.selectedClassHoisting.test.ts. Naming mirrors the existing
 // TabButton.styleRuleDisposal.test.ts convention.
 //
-// SCOPE NOTE (see plans/implemented/button-resting-chrome-state-isolation.md
-// and, for the `.selected` half, plans/implemented/state-chrome-isolation-generalization.md):
-// TabButton still doesn't override `getHoverClassDeclarations()` — hover
-// stays un-deduped, every field always writing to the instance, and no
+// SCOPE NOTE (see plans/implemented/button-resting-chrome-state-isolation.md,
+// plans/implemented/state-chrome-isolation-generalization.md, and, for the
+// hierarchy-aware content walk, plans/implemented/state-tier-full-unification.md):
+// TabButton still declares no `:hover` entry of its own — hover stays
+// un-deduped, every field always writing to the instance, and no
 // `.TabButton:hover:not(.pressed)` class rule is ever created. `.selected`
-// is different now: TabButton overrides `getSelectedClassDeclarations()`
-// with its own tab-specific tokens, so `backgroundColor` / `backgroundImage`
-// / `boxShadow` / the four border longhands (mirroring the border the
-// constructor's `applyTabStyling` separately writes via `setSelectedBorder`)
-// all dedupe onto the shared `.TabButton.selected:not(.pressed):not(:hover)` class rule the
-// same way `.pressed` already does.
+// is different now: TabButton's own `ownStyleStates` entry supplies its own
+// tab-specific `backgroundColor` / `backgroundImage` / `boxShadow`, so those
+// three dedupe onto the shared `.TabButton.selected:not(.pressed):not(:hover)`
+// class rule the same way `.pressed` already does. The four border longhands
+// stay a deliberate per-instance write (`applyTabStyling`'s `setSelectedBorder`
+// call) — never deduped, since border isn't part of that `ownStyleStates`
+// entry (see the plan's "TabButton's selected border stays a per-instance
+// write" Architecture Decision).
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TabButton } from '~/component/button/TabButton';
 import { DOM } from '~/core/DOM';

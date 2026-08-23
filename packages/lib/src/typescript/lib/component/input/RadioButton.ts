@@ -7,8 +7,7 @@ import { DOM, type Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
-import { type StateStyleRule, type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
-import { borderToStyle } from "~/primitive/Border.js";
+import { type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { callable } from "~/core/Callable.js";
 import { circle } from "~/glyphs/solid/circle.js";
 
@@ -25,7 +24,7 @@ const _defaultRadioButtonRingOptions: Partial<ComponentOptions> = {
     border:          "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))",
 };
 
-/** `_ring`'s selected-state declarations. Read by both `getSelectedClassDeclarations` and `applyState`. */
+/** `_ring`'s selected-state declarations, read by `ownStyleStates`' `.selected` entry. */
 const RADIO_SELECTED_DECLARATIONS: Readonly<Record<string, string>> = Object.freeze({
     backgroundColor: "var(--ts-ui-radio-bg-selected, rgb(30, 100, 200))",
     border:          "1px solid var(--ts-ui-radio-bg-selected, rgb(30, 100, 200))",
@@ -35,14 +34,14 @@ const RADIO_SELECTED_DECLARATIONS: Readonly<Record<string, string>> = Object.fre
  * The ring graphic behind a {@link RadioButton}. See `CheckboxBox`'s doc
  * comment (Checkbox.ts) for the shape this mirrors — static geometry/cursor
  * and the resting backgroundColor/border are class defaults; the selected
- * background and border write through a `createStateStyleRule`-backed state
+ * background and border come from this class's own declared `ownStyleStates`
+ * entry below, resolved onto the shared `.RadioButtonRing.selected` class-tier
  * rule — see `plans/implemented/checkbox-radio-delegate-state-style-defaults.md`.
  */
 class RadioButtonRing extends Component {
     // Single-entry list: with only one declared state, its guarded suffix
     // is just its own selector (no `:not(...)` to add against a
-    // higher-priority entry that doesn't exist) — the same `.selected`
-    // `createStateStyleRule` already used.
+    // higher-priority entry that doesn't exist).
     protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
         {
             selector: ".selected",
@@ -55,20 +54,8 @@ class RadioButtonRing extends Component {
 
     private _selected: boolean = false;
 
-    private declare _selectedStyleRule?: StateStyleRule;
-    private get selectedStyleRule(): StateStyleRule {
-        return this._selectedStyleRule ??= this.createStateStyleRule(".selected", () => this.getSelectedClassDeclarations());
-    }
-
     constructor() {
         super(undefined, _defaultRadioButtonRingOptions);
-    }
-
-    protected getSelectedClassDeclarations(): Record<string, string | null> {
-        return {
-            backgroundColor: RADIO_SELECTED_DECLARATIONS.backgroundColor,
-            ...borderToStyle({ border: RADIO_SELECTED_DECLARATIONS.border }),
-        };
     }
 
     /** See `CheckboxBox.applyState`'s doc comment (Checkbox.ts) — identical reasoning, one state instead of two. */
@@ -80,13 +67,6 @@ class RadioButtonRing extends Component {
         // yet — see `Checkbox.ts`'s `CheckboxBox.applyState` for the same
         // reasoning.
         this.setStyleState(".selected", selected);
-
-        if (selected) {
-            this.selectedStyleRule.setMany({
-                backgroundColor: RADIO_SELECTED_DECLARATIONS.backgroundColor,
-                ...borderToStyle({ border: RADIO_SELECTED_DECLARATIONS.border }),
-            });
-        }
     }
 
     protected render(): Handle {

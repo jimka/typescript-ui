@@ -10,7 +10,7 @@ import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { beginPointerDrag, endPointerDrag } from "~/core/PointerDrag.js";
 import { StyleRule } from "~/core/StyleTarget.js";
-import { resolveStyleStates, type StyleBag, type StateStyleRule, type StyleStateSpec } from "~/core/ClassStyleRules.js";
+import { type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
 import type { ComponentOptions } from "~/core/Component.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -190,27 +190,6 @@ class HeaderCell extends DefaultCell {
     private _columnFocused: boolean = false;
     private _required: boolean = false;
 
-    // Lazy `:active` rule. The slot is a fast-path cache for the wrapper
-    // returned by Component's `createStateStyleRule` builder, which dedupes
-    // across every HeaderCell instance via the shared `.HeaderCell<guard>`
-    // class-tier rule — see Button's `_pressedStyleRule` for the full
-    // explanation. The suffix is read off `ownStyleStates`'s own generated
-    // guard (`activeGuardedSuffix`) rather than the bare `":active"` this
-    // used before Cell's own four states pushed `:active` off index 0, so
-    // it can never drift from what `restingGuardSuffix` derives for the
-    // resting tier's own isolation — mirrors `ToggleButton.selectedStyleRule`.
-    private declare _activeStyleRule?: StateStyleRule;
-    private get activeStyleRule(): StateStyleRule {
-        return this._activeStyleRule ??= this.createStateStyleRule(
-            this.activeGuardedSuffix(),
-            () => ({ boxShadow: HEADER_CELL_ACTIVE_DECLARATIONS.boxShadow }),
-        );
-    }
-
-    private activeGuardedSuffix(): string {
-        return resolveStyleStates(this.constructor).find((state) => state.selector === ":active")!.guardedSuffix;
-    }
-
     /**
      * Creates a header cell with bold text and wires up the sort click listener.
      *
@@ -230,15 +209,6 @@ class HeaderCell extends DefaultCell {
 
         let renderer = this.getRenderer();
         renderer.getText().setText(text);
-
-        // DefaultCell's `(tag?: string)` super-signature cannot carry the
-        // `styleRules` options bag, so the rule is allocated here via the
-        // protected `createStyleRule` builder — same dedupe-and-defer path
-        // the options-bag dispatch uses, just spelled imperatively. The
-        // render-time `applyStyle` flushes the queued `boxShadow` onto the
-        // stylesheet, matching ARCHITECTURE.md's "construction stays
-        // JS-only" rule.
-        this.activeStyleRule.set("boxShadow", HEADER_CELL_ACTIVE_DECLARATIONS.boxShadow);
 
         // Wire the resize-handle drag lifecycle: mousedown installs viewport
         // mousemove/mouseup listeners that forward through the handle's

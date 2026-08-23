@@ -7,8 +7,7 @@ import { DOM, type Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
-import { resolveStyleStates, type StateStyleRule, type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
-import { borderToStyle } from "~/primitive/Border.js";
+import { type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { callable } from "~/core/Callable.js";
 import { check } from "~/glyphs/solid/check.js";
 
@@ -27,7 +26,7 @@ const _defaultCheckboxBoxOptions: Partial<ComponentOptions> = {
     borderRadius:    "var(--ts-ui-checkbox-radius, 3px)",
 };
 
-/** `_box`'s checked-state declarations. Read by both `getSelectedClassDeclarations` and `applyState` — one source of truth, mirroring `ToggleButton`'s `TOGGLE_SELECTED_DECLARATIONS`. */
+/** `_box`'s checked-state declarations, read by `ownStyleStates`' `.selected` entry — one source of truth, mirroring `ToggleButton`'s `TOGGLE_SELECTED_DECLARATIONS`. */
 const CHECKBOX_SELECTED_DECLARATIONS: Readonly<Record<string, string>> = Object.freeze({
     backgroundColor: "var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))",
     border:          "1px solid var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))",
@@ -45,8 +44,10 @@ const CHECKBOX_INDETERMINATE_DECLARATIONS: Readonly<Record<string, string>> = Ob
  * geometry, cursor, and border-radius are class defaults so every instance
  * shares one `.CheckboxBox` CSS rule instead of repeating them; the resting
  * backgroundColor/border are class defaults too, and the checked/indeterminate
- * background and border write through `createStateStyleRule`-backed state
- * rules — see `plans/implemented/checkbox-radio-delegate-state-style-defaults.md`.
+ * background and border come from this class's own declared `ownStyleStates`
+ * entries below, resolved onto the shared `.CheckboxBox.selected` /
+ * `.CheckboxBox.indeterminate` class-tier rules — see
+ * `plans/implemented/checkbox-radio-delegate-state-style-defaults.md`.
  */
 class CheckboxBox extends Component {
     // Indeterminate wins when a box is (transiently) both — see `applyState`'s
@@ -71,46 +72,18 @@ class CheckboxBox extends Component {
     private _selected:      boolean = false;
     private _indeterminate: boolean = false;
 
-    private declare _selectedStyleRule?: StateStyleRule;
-    private get selectedStyleRule(): StateStyleRule {
-        return this._selectedStyleRule ??= this.createStateStyleRule(this.guardedSuffixFor(".selected"), () => this.getSelectedClassDeclarations());
-    }
-
-    private declare _indeterminateStyleRule?: StateStyleRule;
-    private get indeterminateStyleRule(): StateStyleRule {
-        return this._indeterminateStyleRule ??= this.createStateStyleRule(this.guardedSuffixFor(".indeterminate"), () => this.getIndeterminateClassDeclarations());
-    }
-
-    private guardedSuffixFor(selector: string): string {
-        return resolveStyleStates(this.constructor).find((state) => state.selector === selector)!.guardedSuffix;
-    }
-
     constructor() {
         super(undefined, _defaultCheckboxBoxOptions);
     }
 
-    protected getSelectedClassDeclarations(): Record<string, string | null> {
-        return {
-            backgroundColor: CHECKBOX_SELECTED_DECLARATIONS.backgroundColor,
-            ...borderToStyle({ border: CHECKBOX_SELECTED_DECLARATIONS.border }),
-        };
-    }
-
-    protected getIndeterminateClassDeclarations(): Record<string, string | null> {
-        return {
-            backgroundColor: CHECKBOX_INDETERMINATE_DECLARATIONS.backgroundColor,
-            ...borderToStyle({ border: CHECKBOX_INDETERMINATE_DECLARATIONS.border }),
-        };
-    }
-
     /**
      * Applies the checked/indeterminate visual state: toggles the CSS state
-     * classes and, for a non-resting state, writes background + border
-     * through the matching state-tier rule. The resting branch writes
-     * nothing — `_box`'s base rule is never touched after construction (its
-     * `backgroundColor`/`border` come from `_defaultCheckboxBoxOptions`
-     * alone), so there is nothing to restore when a non-resting class is
-     * removed; see this plan's Architecture Decisions.
+     * classes. The declared states' own background + border come from this
+     * class's `ownStyleStates` entries above, resolved onto the shared
+     * class-tier rule — nothing to write here, and nothing to restore when a
+     * non-resting class is removed, since `_box`'s base rule is never
+     * touched after construction (its `backgroundColor`/`border` come from
+     * `_defaultCheckboxBoxOptions` alone).
      *
      * `selected` and `indeterminate` are not mutually exclusive as *passed
      * in* — `Checkbox.setIndeterminate` deliberately leaves `selected`
@@ -119,8 +92,8 @@ class CheckboxBox extends Component {
      * ever toggled on when `!indeterminate`, so the resting-isolation
      * selector's `:not(.selected):not(.indeterminate)` premise (the two CSS
      * classes themselves are mutually exclusive) holds regardless, and the
-     * DOM matches the same indeterminate-wins priority the branch below
-     * already applies to the style write.
+     * DOM matches the same indeterminate-wins priority `ownStyleStates`'
+     * declared order already gives the style resolution.
      */
     applyState(selected: boolean, indeterminate: boolean): void {
         this._selected      = selected;
@@ -134,18 +107,6 @@ class CheckboxBox extends Component {
         // exists.
         this.setStyleState(".selected", selected && !indeterminate);
         this.setStyleState(".indeterminate", indeterminate);
-
-        if (indeterminate) {
-            this.indeterminateStyleRule.setMany({
-                backgroundColor: CHECKBOX_INDETERMINATE_DECLARATIONS.backgroundColor,
-                ...borderToStyle({ border: CHECKBOX_INDETERMINATE_DECLARATIONS.border }),
-            });
-        } else if (selected) {
-            this.selectedStyleRule.setMany({
-                backgroundColor: CHECKBOX_SELECTED_DECLARATIONS.backgroundColor,
-                ...borderToStyle({ border: CHECKBOX_SELECTED_DECLARATIONS.border }),
-            });
-        }
     }
 
     /** Re-applies the cached state classes at render, for a state set before mount. */
