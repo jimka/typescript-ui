@@ -29,6 +29,19 @@ const TOGGLE_SELECTED_DECLARATIONS: Readonly<Record<string, string | null>> = Ob
 });
 
 /**
+ * Shared `.flat.selected:not(.pressed):not(:hover)` declarations, published
+ * once via `ensureSharedStateRule` from `applyOptions`'s flat branch and
+ * `setFlat`'s true branch — the same `.flat` DOM token `Button` already
+ * toggles, reused here per plans/implemented/button-meta-class-dedup.md.
+ * Never varies per instance, so — like {@link TOGGLE_SELECTED_DECLARATIONS} —
+ * this is a plain module constant rather than an `_defaultOptions` read.
+ */
+const TOGGLE_FLAT_SELECTED_DECLARATIONS: Readonly<Record<string, string | null>> = Object.freeze({
+    boxShadow:       "var(--ts-ui-button-flat-pressed-shadow, inset 1px 1px 3px rgba(0, 0, 0, 0.25))",
+    backgroundColor: "var(--ts-ui-button-flat-pressed-bg, rgba(0, 0, 0, 0.10))",
+});
+
+/**
  * A toggle button component that switches between selected and unselected states on each click.
  *
  * Maintains a separate CSS rule for the `.selected` class to allow independent styling of
@@ -97,11 +110,13 @@ class ToggleButton extends Button<ToggleButtonOptions> {
 
         // Button's flat branch runs in `applyChromeOptions` and re-points only
         // Button's own hover/pressed rules — it never touches this toggle's
-        // `.selected` rule. Re-point it here so a `new ToggleButton(text,
-        // { flat: true })` reads depressed when selected, mirroring `setFlat`.
+        // `.selected` rule. Publish the flat-selected class rule here so a
+        // `new ToggleButton(text, { flat: true })` reads depressed when
+        // selected, mirroring `setFlat`. `.flat`'s DOM token is already
+        // present on the element (toggled by `Button`'s own flat handling),
+        // so only the one additional shared rule is needed.
         if (this.isFlat()) {
-            this.setSelectedShadow("var(--ts-ui-button-flat-pressed-shadow, inset 1px 1px 3px rgba(0, 0, 0, 0.25))");
-            this.setSelectedBackgroundColor("var(--ts-ui-button-flat-pressed-bg, rgba(0, 0, 0, 0.10))");
+            this.ensureSharedStateRule(".flat.selected:not(.pressed):not(:hover)", TOGGLE_FLAT_SELECTED_DECLARATIONS);
         }
 
         return this;
@@ -251,8 +266,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
         // can refuse the flip (chromeless wins) or no-op on an unchanged value,
         // and the selected rule must track whatever flat state actually holds.
         if (this.isFlat()) {
-            this.setSelectedShadow("var(--ts-ui-button-flat-pressed-shadow, inset 1px 1px 3px rgba(0, 0, 0, 0.25))");
-            this.setSelectedBackgroundColor("var(--ts-ui-button-flat-pressed-bg, rgba(0, 0, 0, 0.10))");
+            this.ensureSharedStateRule(".flat.selected:not(.pressed):not(:hover)", TOGGLE_FLAT_SELECTED_DECLARATIONS);
         } else {
             this.setSelectedShadow("var(--ts-ui-toggle-selected-shadow, 2px 2px 1px inset grey)");
             this.setSelectedBackgroundColor("var(--ts-ui-toggle-selected-bg, rgb(200, 200, 200))");

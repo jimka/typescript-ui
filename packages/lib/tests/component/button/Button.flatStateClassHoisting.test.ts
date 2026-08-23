@@ -17,6 +17,8 @@
 // relies on being the first Button/ToggleButton use of its kind in the file.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Button } from '~/component/button/Button';
+import { ToggleButton } from '~/component/button/ToggleButton';
+import { TabButton } from '~/component/button/TabButton';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -133,5 +135,26 @@ describe('Button flat state-class hoisting', () => {
         const flatAdded = sink.writes.slice(start).some((w) => w.op === 'apply' && w.args[0] === handle
             && (w.args[1] as { toggleClass?: Record<string, boolean> }).toggleClass?.flat === true);
         expect(flatAdded).toBe(true);
+    });
+
+    it('row 12: a flat, selected ToggleButton writes no backgroundColor/boxShadow of its own to #id.selected:not(.pressed):not(:hover) — the flat-selected chrome lives on the shared .ToggleButton.flat.selected:not(.pressed):not(:hover) rule', () => {
+        new ToggleButton('Warmup', { selected: true }).getElement(true); // materialises .ToggleButton.selected:not(.pressed):not(:hover)
+
+        const toggle = new ToggleButton('FlatSelected', { flat: true, selected: true });
+        const selected = declarationsDuring(sink, idSelector(toggle) + '.selected:not(.pressed):not(:hover)', () => toggle.getElement(true));
+
+        expect(selected.backgroundColor).toBeUndefined();
+        expect(selected.boxShadow).toBeUndefined();
+
+        expect(_ruleCacheHas('.ToggleButton.flat.selected:not(.pressed):not(:hover)')).toBe(true);
+    });
+
+    it('row 12: a flat, selected TabButton shares its own separate .TabButton.flat.selected rule, not .ToggleButton.flat.selected', () => {
+        new TabButton('Warmup', { selected: true }).getElement(true);
+
+        const tab = new TabButton('FlatSelected', { flat: true, selected: true });
+        tab.getElement(true);
+
+        expect(_ruleCacheHas('.TabButton.flat.selected:not(.pressed):not(:hover)')).toBe(true);
     });
 });
