@@ -129,6 +129,20 @@ class WindowBorder extends Component<WindowBorderOptions> {
             this._direction = direction;
         }
 
+        // Set here, not in `render()`: a construction-time `writeStyle` (which
+        // `setCursor` funnels through) only caches into the instance style
+        // layer and defers its CSS write to the render pass's own
+        // `applyStyle` sweep. Calling it *after* `super.render()` instead —
+        // as this used to — writes through `getElement()`, which is not yet
+        // resolvable at that point (the element has no live-DOM id match and
+        // isn't cached as `_element` until `render()` returns to its caller),
+        // so the write silently deferred and, with no second `applyStyle()`
+        // pass ever running for a border strip, was dropped for good.
+        const cursor = this.dragCursor();
+        if (cursor) {
+            this.setCursor(cursor);
+        }
+
         this._dragStartListener = this.onDragStart.bind(this);
         this._dragStopListener = this.onDragStop.bind(this);
         this._fireDragListener = this._dispatchDrag.bind(this);
@@ -329,17 +343,13 @@ class WindowBorder extends Component<WindowBorderOptions> {
     }
 
     /**
-     * Renders the border element and sets the appropriate resize cursor based on direction.
+     * Renders the border element. The resize cursor is set at construction
+     * time (see the constructor) rather than here.
      *
-     * @returns The created element with the correct resize cursor applied.
+     * @returns The created element.
      */
     render() {
         let element = super.render();
-
-        const cursor = this.dragCursor();
-        if (cursor) {
-            this.setCursor(cursor);
-        }
 
         if (this._snapTarget) {
             DOM.sink.apply(element, { addClass: [SNAP_TARGET_CLASS] });
