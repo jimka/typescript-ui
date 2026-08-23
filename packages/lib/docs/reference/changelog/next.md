@@ -15,6 +15,9 @@ consumer implementing its own `DOMSink` is affected.
 `DOMSource` gains one required member: `countElements()`. Only a consumer
 implementing its own `DOMSource` is affected.
 
+`DOMSource` gains one required member: `getRuleCssText()`. Only a consumer
+implementing its own `DOMSource` is affected.
+
 ## Added
 
 ### Components
@@ -37,6 +40,18 @@ implementing its own `DOMSource` is affected.
   [`LabeledFieldSet`](/components/LabeledFieldSet) gain a matching optional
   `description` on `addField` / row descriptors, attached the same way. Both
   are additive — every existing call still compiles unchanged.
+- **[`StyleAuditOverlay`](/components/StyleAuditOverlay)**, a floating window
+  showing the stylesheet dedup audit: per-instance (`#id`-scoped) rules whose
+  declaration body duplicates another instance's, ranked by bytes wasted.
+  Open it with `StyleAuditOverlay.open()`, or from
+  [`DiagnosticsOverlay`](/components/DiagnosticsOverlay)'s new "Show style
+  audit" button. It ships as its own subpath, `@jimka/typescript-ui/diagnostics`,
+  alongside `DiagnosticsOverlay`. Unlike `DiagnosticsOverlay`'s live sampler,
+  it computes the audit once when opened and again only on an explicit
+  Refresh click. Because `DiagnosticsOverlay` imports it directly to wire that
+  button, an app that already bundles `DiagnosticsOverlay` now also bundles
+  `StyleAuditOverlay`'s `Table` and `MemoryStore` dependencies, whether or not
+  it ever calls `StyleAuditOverlay.open()` itself.
 
 ## Changed
 

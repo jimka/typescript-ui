@@ -95,6 +95,7 @@ Organized by task. Columns: task → symbol · import subpath · summary · docs
 - Transient toast notification → **Notification** · `@jimka/typescript-ui/overlay` · A lightweight toast-style notification that appears in the bottom-right corner of the viewport and auto-dismisses after a configurable dura… · docs/components/Notification.md
 - Browse / re-open past notifications → **NotificationHistoryButton** · `@jimka/typescript-ui/overlay` · A trigger button that opens a menu of recent notifications. The menu lists the in-session Notification history in chronological order (late… · docs/components/NotificationHistoryButton.md
 - Live runtime diagnostics window (FPS, heap, components, layout, listeners, CSS rules) → **DiagnosticsOverlay** · `@jimka/typescript-ui/diagnostics` · A floating window showing live runtime diagnostics: browser-level numbers (FPS, JS heap, DOM node count, long tasks) beside framework-inter… · docs/components/DiagnosticsOverlay.md
+- Stylesheet duplicate-rule audit window (per-instance rule dedup by wasted bytes) → **StyleAuditOverlay** · `@jimka/typescript-ui/diagnostics` · A floating window showing the stylesheet-dedup audit — the same view embedded in the demo app's own "Style Audit" tab, opened alongside Dia… · docs/components/StyleAuditOverlay.md
 
 ### Data layer
 - In-memory record collection backing a table/list → **Store** · `@jimka/typescript-ui/data` · A general-purpose concrete store that pairs a Model with an optional Proxy. Use this class when you do not need a dedicated store subclass. · docs/data/store.md
