@@ -40,8 +40,8 @@ export type { FocusHistoryOptions, FocusHistoryKeyCombo, FocusHistoryEvent, Focu
 export { ThemeManager, BaseTheme, ClassicTheme, DarkTheme, ModernTheme, defineTheme } from '~/core/Theme.js';
 export type { Theme, DeepPartial, ScaleToken, ResolvedScale, FontSizeToken } from '~/core/Theme.js';
 
-export { StyleTarget, StyleRule, InlineStyle, styleRuleCounts } from '~/core/StyleTarget.js';
-export type { StyleRuleScope, StyleRuleSpec, StyleRuleCounts } from '~/core/StyleTarget.js';
+export { StyleTarget, StyleRule, InlineStyle, styleRuleCounts, styleRuleEntries } from '~/core/StyleTarget.js';
+export type { StyleRuleScope, StyleRuleSpec, StyleRuleCounts, StyleRuleEntry } from '~/core/StyleTarget.js';
 export { ElementAttributes } from '~/core/ElementAttributes.js';
 
 export { Diagnostics } from '~/core/Diagnostics.js';

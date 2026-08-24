@@ -46,6 +46,7 @@ Its own ~30 components, their listeners, and their per-instance rules are inside
 - `DiagnosticsOverlay.close()` — closes it. A no-op while already closed.
 - `DiagnosticsOverlay.toggle()` — opens when closed, closes when open. Wire this to your own app shell's keyboard shortcut; the overlay has no built-in key binding (see [Events](/concepts/events) for why a library-owned global listener isn't the framework's pattern).
 - `DiagnosticsOverlay.isOpen()` — `true` between an `open()` and its matching `close()`.
+- A "Show style audit" button opens [`StyleAuditOverlay`](/components/StyleAuditOverlay), a second window showing the stylesheet dedup audit behind the "Stylesheet rules" row above.
 
 ## Notes
 

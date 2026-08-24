@@ -86,8 +86,13 @@ describe('DiagnosticsOverlay row description tooltips', () => {
         // exactly what case 10 does for the Header exclusion instead.
         const withTooltip = allComponents.filter((c) => hasTooltip(c.getId()));
 
-        // Twelve metric rows × 2 targets (label + value) = 24 attachments.
-        expect(withTooltip.length).toBe(24);
+        // Twelve metric rows × 2 targets (label + value) = 24 attachments,
+        // plus one more: the "Show style audit" Button (added by
+        // plans/implemented/diagnostics-overlay-style-audit-window.md) gets
+        // its own hover tooltip showing its title — every Button with
+        // non-empty text does, unrelated to this file's row-description
+        // mechanism.
+        expect(withTooltip.length).toBe(25);
 
         for (const c of withTooltip) {
             expect(tooltipText(c.getId())).toBeTruthy();

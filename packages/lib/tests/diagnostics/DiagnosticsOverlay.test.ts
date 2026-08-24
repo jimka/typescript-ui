@@ -141,3 +141,8 @@ describe('DiagnosticsOverlay — direct dispose()', () => {
         expect(second).not.toBe(first);
     });
 });
+
+// Case 19 (the "Show style audit" button) lives in its own file,
+// DiagnosticsOverlay.styleAuditButton.test.ts — driven via a real `.click()`,
+// which needs to be the only test in its file for the reason documented
+// there.

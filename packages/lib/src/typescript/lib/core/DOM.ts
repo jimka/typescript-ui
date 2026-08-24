@@ -1230,6 +1230,16 @@ export interface DOMSource {
     countElements(): number;
 
     /**
+     * Returns a materialised style rule's full CSS text (selector plus
+     * declaration body), e.g. `"#a3f2.pressed { color: red; }"`.
+     *
+     * @param rule - A `CSSStyleRule` obtained from `StyleTarget`'s rule cache.
+     * @returns The rule's `cssText`. Empty string when no selector engine is
+     *   available (the modelled source — matches `countElements()`'s stance).
+     */
+    getRuleCssText(rule: CSSStyleRule): string;
+
+    /**
      * Whether an element itself matches a selector. The self-test counterpart to
      * {@link DOMSource.querySelector}, which only sees descendants — needed when
      * a component's own root element is the candidate (a `TextField` renders as
@@ -2399,6 +2409,11 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     countElements(): number {
         return document.querySelectorAll("*").length;
+    }
+
+    /** @inheritDoc */
+    getRuleCssText(rule: CSSStyleRule): string {
+        return rule.cssText;
     }
 
     /** @inheritDoc */
