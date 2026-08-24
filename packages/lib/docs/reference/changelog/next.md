@@ -247,3 +247,15 @@ another cell.
   ToolBar`). A consumer stylesheet selector targeting bare `.Container` —
   previously matching no `ToolBar` element — now matches `ToolBar` too.
   Audit any such selector before upgrading.
+- **`Button`'s leading icon, a `ComboBox`'s chevron, and a `WindowHeader`'s
+  title icon no longer repeat their fixed size on every instance's own CSS
+  rule; a `NumberSpinner`'s arrows, a closeable tab's ✕, and a table's
+  header menu icon no longer repeat theirs either.** The first three now
+  share one class-level rule each (`.ButtonIconGlyph`,
+  `.ComboBoxCaretGlyph`, `.WindowHeaderTitleGlyph`); the second three now
+  use the `styleGroup` mechanism to share a rule per owner
+  (`.ButtonIconGlyph--spin-glyph`, `.ButtonIconGlyph--tab-close-glyph`,
+  `.ButtonIconGlyph--table-header-menu-glyph`) rather than a class default,
+  since the three compute their shared 8px size from unrelated formulas
+  that only coincidentally agree today. Nothing changes visually. No
+  consumer action is needed.
