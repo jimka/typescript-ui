@@ -14,7 +14,8 @@ import { Container } from '~/core/Container';
 import { Insets } from '~/primitive/Insets';
 import { UNBOUNDED } from '~/primitive/Size';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
+import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -300,5 +301,71 @@ describe('Slider valueAtPointer measures the content box', () => {
         expect(at(2)).toBe(0);
         expect(at(100)).toBe(50);
         expect(at(198)).toBe(100);
+    });
+});
+
+// The track, active-track, and thumb are each a dedicated file-local subclass
+// (SliderTrack / SliderActiveTrack / SliderThumb) rather than a bare
+// `Component`, so their static chrome hoists into a shared `.ClassName` rule
+// instead of repeating on every instance's own `#id` rule. Mirrors
+// Scrollbar.test.ts's "Scrollbar thumb static style hoisting" block.
+describe('SliderTrack/SliderActiveTrack/SliderThumb class-rule hoisting', () => {
+    afterEach(() => DOM.reset());
+
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    /**
+     * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+     * flattened into one key/value map. Copied from `Scrollbar.test.ts`.
+     */
+    function declarationsDuring(
+        sink: RecordingDOMSink,
+        selector: string,
+        fn: () => void,
+    ): Record<string, string | null> {
+        const start = sink.writes.length;
+        fn();
+
+        const out: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+                continue;
+            }
+
+            const styles = w.args[1] as Record<string, string | null>;
+            for (const key of Object.keys(styles)) {
+                out[key] = styles[key];
+            }
+        }
+
+        return out;
+    }
+
+    it('the track, active-track, and thumb carry no static backgroundColor/borderRadius declaration on their own #id rules, and the shared class rules exist once rendered', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const slider     = new Slider() as any;
+        const track      = slider._track;
+        const activeTrack = slider._activeTrack;
+        const thumb      = slider._thumb;
+
+        const trackDeclarations = declarationsDuring(sink, idSelector(track), () => track.getElement(true));
+        expect(trackDeclarations.backgroundColor).toBeUndefined();
+        expect(trackDeclarations.borderRadius).toBeUndefined();
+
+        const activeTrackDeclarations = declarationsDuring(sink, idSelector(activeTrack), () => activeTrack.getElement(true));
+        expect(activeTrackDeclarations.backgroundColor).toBeUndefined();
+        expect(activeTrackDeclarations.borderRadius).toBeUndefined();
+
+        const thumbDeclarations = declarationsDuring(sink, idSelector(thumb), () => thumb.getElement(true));
+        expect(thumbDeclarations.backgroundColor).toBeUndefined();
+        expect(thumbDeclarations.borderRadius).toBeUndefined();
+
+        expect(_ruleCacheHas('.SliderTrack')).toBe(true);
+        expect(_ruleCacheHas('.SliderActiveTrack')).toBe(true);
+        expect(_ruleCacheHas('.SliderThumb')).toBe(true);
     });
 });
