@@ -340,6 +340,7 @@ class TabButton extends ToggleButton {
         closeButton.setWidth(closeScale.tabClose);
         closeButton.setHeight(closeScale.tabClose);
         closeButton.pinGlyphSize(closeScale.tabCloseGlyph);
+        closeButton.getGlyph()?.setStyleGroup("tab-close-glyph");
 
         // Overlay it on this button's own element rather than enrolling it in a
         // layout (which would stretch it over the whole tab); TabBar pins it to

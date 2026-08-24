@@ -116,6 +116,7 @@ class SpinButton extends Button<SpinButtonOptions> {
         // line height; the 1px upward nudge corrects the centring rounding noted
         // above.
         this.pinGlyphSize(8);
+        this.getGlyph()?.setStyleGroup("spin-glyph");
         this.getGlyph()?.setTranslate(0, -1);
 
         this._repeat = new AutoRepeat({
