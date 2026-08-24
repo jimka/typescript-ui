@@ -2,9 +2,22 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { Component } from '~/core/Component';
 import { LabeledFieldSet } from '~/component/container/LabeledFieldSet';
 import { TextField } from '~/component/input/TextField';
+import { Tooltip } from '~/overlay/Tooltip';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
+
+// Reads the singleton's private attachment registry — the same `(Tooltip as any)`
+// escape hatch SplitGutter.tooltip.test.ts uses — to assert whether a component
+// currently carries a hover hint.
+function hasTooltip(id: string): boolean {
+    return (Tooltip as any).attachments.has(id);
+}
+
+// Reads the attached hint's text via the same private attachment registry.
+function tooltipText(id: string): string | undefined {
+    return (Tooltip as any).attachments.get(id)?.text;
+}
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -97,6 +110,39 @@ describe('LabeledFieldSet field structure', () => {
         const form = new LabeledFieldSet('Form');
 
         expect(form.getComponents()).toContain(form.getGrid());
+    });
+});
+
+describe('LabeledFieldSet.addField description tooltip', () => {
+    afterEach(() => {
+        const timer = (Tooltip as any).showTimer;
+
+        if (timer !== null) {
+            clearTimeout(timer);
+            (Tooltip as any).showTimer = null;
+        }
+
+        (Tooltip as any).instance = null;
+        (Tooltip as any).watching = false;
+        (Tooltip as any).activeElement = null;
+
+        DOM.reset();
+    });
+
+    it('7. forwards the description to the internal grid, attaching it to both the label and the field', () => {
+        installTestDOM(CONFIG);
+
+        const form  = new LabeledFieldSet('Form');
+        const input = new Component();
+
+        form.addField('Name', input, 'What a name is');
+
+        const [label, field] = form.getGrid().getComponents();
+
+        expect(hasTooltip(label.getId())).toBe(true);
+        expect(hasTooltip(field.getId())).toBe(true);
+        expect(tooltipText(label.getId())).toBe('What a name is');
+        expect(tooltipText(field.getId())).toBe('What a name is');
     });
 });
 

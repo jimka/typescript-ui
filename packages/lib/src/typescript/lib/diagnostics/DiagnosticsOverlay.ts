@@ -16,6 +16,26 @@ const OVERLAY_WIDTH  = 320;
 const OVERLAY_HEIGHT = 460;
 
 /**
+ * The in-app copy for each metric row, shown as a hover tooltip on both the
+ * row's label and its value. A change here should be mirrored in
+ * `docs/components/DiagnosticsOverlay.md`'s row-by-row table.
+ */
+const ROW_DESCRIPTIONS = {
+    fps: "Frames completed in the last half-second, expressed per second. The overlay asks the browser for a frame every frame, so an idle app reads at the display's refresh rate — a drop is the signal, the absolute number is not.",
+    frameTime: "Average gap between frames over the last half-second, with the longest single gap in brackets. The average is just 1000 / FPS; the maximum is where a one-off stutter shows up.",
+    heap: "Used JavaScript heap against the engine's limit, from performance.memory. Chromium-only and quantised — read the trend across an interaction, not the digits. Shows 'unavailable' on engines that do not expose it.",
+    domNodes: "Elements in the document, counted with document.querySelectorAll('*'). Elements only — text and comment nodes are not counted. A count that does not return to its starting point after a repeated open/close means elements are outliving their components.",
+    longTasks: "Main-thread tasks longer than 50 ms, reported by PerformanceObserver: the total since the overlay opened, with the count from the last half-second in brackets. Stays at 0 on engines with no long-task reporting.",
+    components: "Live Component count — constructed minus disposed. A component dropped without dispose() is still counted, on purpose: that is the leak this number exists to expose. It is not garbage-collection aware.",
+    constructedDisposed: "The two running totals the Components figure is derived from. Both only ever rise. Rising together with a steady gap is ordinary churn; a gap that widens is a leak.",
+    layoutPasses: "doLayout() calls per second — a raw call count, not a measure of layout cost. A deep tree of cheap layouts scores higher than a shallow tree of expensive ones, so read Layout flush for cost. A rate that stays high while nothing is happening means something calls scheduleLayout() on every pass.",
+    layoutFlush: "Average and longest time one coalesced layout flush took, in milliseconds. Timed once per flush, never per component. Both figures reset each time the overlay opens: the average dilutes over a long session, the maximum only ever rises.",
+    domListeners: "Live DOM-event registrations across the framework's exact-target, subtree and viewport maps. Destroying a component purges its registrations, so a count that does not come back down after a repeated open/close means components are not being destroyed.",
+    semanticListeners: "Live ListenerBag registrations — the framework's own on() / off() subscriptions such as theme changes and model events, not DOM events. Added minus removed.",
+    styleRules: "Rules currently materialised on the framework's shared stylesheet, with the per-component (#id) and shared-class counts in brackets. The two bracketed figures do not add up to the total — verbatim selector rules make up the rest. Per-component rules should fall as their components are disposed.",
+} as const;
+
+/**
  * A floating window showing live runtime diagnostics: browser-level numbers
  * (FPS, JS heap, DOM node count, long tasks) beside framework-internal ones
  * (live `Component` count, layout passes and flush time, DOM/semantic
@@ -69,19 +89,19 @@ export class DiagnosticsOverlay extends Window {
 
         const rows: LabeledRowDescriptor[] = [
             { component: new Header("Browser"), fullWidth: true },
-            [{ title: "FPS",                    component: this._fps }],
-            [{ title: "Frame time",             component: this._frameTime }],
-            [{ title: "JS heap",                component: this._heap }],
-            [{ title: "DOM nodes",              component: this._domNodes }],
-            [{ title: "Long tasks",             component: this._longTasks }],
+            [{ title: "FPS",                    component: this._fps,                 description: ROW_DESCRIPTIONS.fps }],
+            [{ title: "Frame time",             component: this._frameTime,           description: ROW_DESCRIPTIONS.frameTime }],
+            [{ title: "JS heap",                component: this._heap,                description: ROW_DESCRIPTIONS.heap }],
+            [{ title: "DOM nodes",              component: this._domNodes,            description: ROW_DESCRIPTIONS.domNodes }],
+            [{ title: "Long tasks",             component: this._longTasks,           description: ROW_DESCRIPTIONS.longTasks }],
             { component: new Header("Framework"), fullWidth: true },
-            [{ title: "Components",             component: this._componentsText }],
-            [{ title: "Constructed / disposed", component: this._constructedDisposed }],
-            [{ title: "Layout passes",          component: this._layoutPasses }],
-            [{ title: "Layout flush",           component: this._layoutFlush }],
-            [{ title: "DOM listeners",          component: this._domListeners }],
-            [{ title: "Semantic listeners",     component: this._semanticListeners }],
-            [{ title: "Stylesheet rules",       component: this._styleRules }],
+            [{ title: "Components",             component: this._componentsText,      description: ROW_DESCRIPTIONS.components }],
+            [{ title: "Constructed / disposed", component: this._constructedDisposed, description: ROW_DESCRIPTIONS.constructedDisposed }],
+            [{ title: "Layout passes",          component: this._layoutPasses,        description: ROW_DESCRIPTIONS.layoutPasses }],
+            [{ title: "Layout flush",           component: this._layoutFlush,         description: ROW_DESCRIPTIONS.layoutFlush }],
+            [{ title: "DOM listeners",          component: this._domListeners,        description: ROW_DESCRIPTIONS.domListeners }],
+            [{ title: "Semantic listeners",     component: this._semanticListeners,   description: ROW_DESCRIPTIONS.semanticListeners }],
+            [{ title: "Stylesheet rules",       component: this._styleRules,          description: ROW_DESCRIPTIONS.styleRules }],
         ];
 
         const body = new Panel({
