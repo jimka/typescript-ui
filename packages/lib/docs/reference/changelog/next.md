@@ -18,6 +18,31 @@ implementing its own `DOMSource` is affected.
 `DOMSource` gains one required member: `getRuleCssText()`. Only a consumer
 implementing its own `DOMSource` is affected.
 
+### Components
+
+- **A table's row-viewport body now loses its old `Body` class and instead
+  carries `VirtualRowView` and `TableBody` in its rendered class list; a
+  tree table's body keeps its own `TreeBody` class but additionally gains
+  `VirtualRowView` and `TableBody` — this is a breaking change for a
+  consumer stylesheet selector that targets any of these names.** The
+  table-internal class was declared `class Body`, colliding with
+  `core/Body`'s app-root singleton (also `class Body`) in the class-tier
+  registry's name-keyed lookup; the singleton's eager construction always
+  won the name, so the table body always lost and fell back to the
+  registry's name-collision opt-out, repeating its full framework baseline
+  plus `backgroundColor` on every instance's own `#id` rule on every
+  render. The internal declaration is now `TableBody` — the name the docs
+  already recommend importing it as — which lets it join the
+  hierarchy-aware class tier the same way `Cell`'s built-in subclasses do,
+  so its rendered element additionally carries its own ancestor's name
+  (`VirtualRowView`), and no longer carries the old bare `Body` name since
+  the class actually rendered isn't named that any more. The public export
+  (`Body`, from `component/table/index.ts`) is unchanged — only the DOM
+  class list changes. **A consumer stylesheet selector targeting `.Body`
+  on a table's row-viewport body no longer matches; a new selector
+  targeting `.VirtualRowView` or `.TableBody` now does, on both a table's
+  and a tree table's body.** Audit any such selector before upgrading.
+
 ## Added
 
 ### Components
@@ -92,6 +117,18 @@ action is needed.
   highlight, and `TabCloseButton`'s resting/hover chrome now dedupe onto
   shared class rules instead of repeating on every instance.** No consumer
   action is needed; nothing renders differently.
+- **Every `Table`'s row-viewport body now dedupes its resting background
+  colour onto a shared `.TableBody` class rule instead of repeating the full
+  framework baseline plus `backgroundColor` on every instance's own `#id`
+  rule.** The table-internal class was declared `class Body`, colliding with
+  `core/Body`'s app-root singleton (also `class Body`) in the class-tier
+  registry's name-keyed lookup; the singleton's eager construction always
+  won the name, so the table body always lost and fell back to the
+  registry's name-collision opt-out. The internal declaration is now
+  `TableBody` — the name the docs already recommend importing it as — while
+  the public export (`Body`, from `component/table/index.ts`) is unchanged.
+  See **Breaking changes** above for the resulting rendered-DOM class list
+  change.
 
 ### Table
 
