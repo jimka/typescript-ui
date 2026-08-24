@@ -51,6 +51,7 @@ const table = Table(store, {
 | `minWidth` / `maxWidth` | Width constraints in pixels. |
 | `width` | Explicit starting width in pixels. Wins over the type policy and any sampled content, but is still clamped into `[minWidth, maxWidth]`. |
 | `maxContentLength` | Longest value this column can hold, in characters (e.g. a `varchar(60)` column passes `60`). For a `string`/`auto` column under `autoSizeColumns` this is used only when sampling the store yields no candidates; for a `number` column it outranks the sample. |
+| `preserveWidth` | When `true`, this column's width survives a container resize unchanged instead of scaling with the other flexible columns; the table scrolls horizontally if it no longer fits. Does not affect first render or a user drag-resize. |
 | `hidden` | Initial hidden state. |
 | `unhideable` | When `true`, the user cannot hide this column from the context menu. Takes precedence over `hidden`. |
 | `readOnly` | When `true`, every cell in this column is display-only — double-click does not start an editor, and the cell renders with a subtle grey tint sourced from `--ts-ui-table-cell-readonly-bg`. Selection, keyboard navigation, sort, resize, and export still work. |
@@ -91,6 +92,12 @@ the type policy's derived width (sampled content, for an auto-sized
 `autoSizeColumns` unset). A declared `minWidth` replaces the type's floor
 rather than competing with it, and the result is always clamped to
 `[minWidth, maxWidth]`.
+
+A container resize normally scales every `string`/`auto` column's width
+proportionally (`boolean`/`number`/`date` columns are always excluded).
+Setting `preserveWidth: true` on a column's config opts it out of that
+scaling, whatever its type — its width, however it was originally sized,
+survives every later resize unchanged.
 
 `ColumnSpec.rowReadOnly` is an optional predicate `(record) => boolean`. When it returns `true` for a record, every cell in that record's row renders read-only with the grey tint, regardless of the column's own `readOnly` flag. The predicate runs on every row rebind; it must be O(1) and pure. Mutating a store-owned record auto-refreshes the table; call [`store.notifyRecordChanged(record)`](/api/data/classes/AbstractStore#notifyRecordChanged) only for an unowned record or to force a refresh.
 

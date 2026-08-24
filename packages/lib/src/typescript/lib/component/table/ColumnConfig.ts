@@ -83,6 +83,23 @@ export interface ColumnConfig {
      * answer than what fifty rows happen to hold.
      */
     maxContentLength ?: number;
+    /**
+     * When `true`, this column's width is kept unchanged whenever the
+     * table's container resizes, instead of scaling proportionally with
+     * the other flexible columns the way a `string`/`auto` column does by
+     * default. The column is still sized normally on first render (or
+     * after a model swap) — from its own `width`, sampled content under
+     * {@link ColumnSpec.autoSizeColumns}, or a shared flex allotment — and
+     * a user drag still resizes it; this flag affects container resizes
+     * only.
+     *
+     * If the table no longer fits once this column keeps its width, the
+     * table scrolls horizontally instead of shrinking it — the same
+     * fallback `boolean` / `number` / `date` columns already get.
+     *
+     * Defaults to `false`.
+     */
+    preserveWidth ?: boolean;
     /** When `true` the column starts hidden; the user can still reveal it via the context menu. */
     hidden      ?: boolean;
     /**
