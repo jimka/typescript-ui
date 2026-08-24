@@ -156,6 +156,9 @@ action is needed.
   their resting, pressed, and hover chrome onto shared class rules instead of
   repeating on every instance.** No consumer action is needed; nothing
   renders differently.
+- **`NumberSpinner`'s up/down spin buttons now dedupe their border onto
+  shared class rules instead of repeating it on every instance.** No
+  consumer action is needed; nothing renders differently.
 
 ### Table
 
