@@ -88,6 +88,10 @@ action is needed.
   `getBackgroundColor()`, instead of `ToggleButton`'s grey.** The CSS
   already painted the correct colour; the JS-side layer stack now agrees
   with it. No consumer action is needed.
+- **The shared window-control button factory, `MenuBarButton`'s hover
+  highlight, and `TabCloseButton`'s resting/hover chrome now dedupe onto
+  shared class rules instead of repeating on every instance.** No consumer
+  action is needed; nothing renders differently.
 
 ### Table
 

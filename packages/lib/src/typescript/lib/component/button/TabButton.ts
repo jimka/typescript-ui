@@ -318,18 +318,10 @@ class TabButton extends ToggleButton {
     private buildCloseButton(): void {
         const closeButton = new TabCloseButton();
 
-        // Transparent so the tab's own background shows through; a faint rounded
-        // tint on hover gives the ✕ its affordance. `--ts-ui-tab-close-hover-bg`
-        // has no themeToVars entry, so the inline rgba fallback is the actual
-        // source of the value — keep it verbatim.
-        closeButton.setBackgroundColor("transparent");
-        closeButton.setBackgroundImage("none");
-        closeButton.setHoverBackgroundColor("var(--ts-ui-tab-close-hover-bg, rgba(0, 0, 0, 0.12))");
-        closeButton.setHoverBackgroundImage("none");
-        closeButton.setHoverShadow("none");
-        closeButton.setBorderRadius("3px");
-        closeButton.clearBorder();
-        closeButton.clearShadow();
+        // The flattened resting/hover chrome (transparent, borderless, faint
+        // rounded hover tint) comes from TabCloseButton's own class defaults
+        // now, not an imperative re-assert here — see TabCloseButton.ts's
+        // `_defaultTabCloseButtonOptions`.
         closeButton.setZIndex(1);
 
         // Shrink the ✕ glyph to roughly half the close-button hit box, centred —

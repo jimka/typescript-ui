@@ -423,6 +423,35 @@ No exported symbol added, removed, or changed in signature — `createWindowCont
 
 ---
 
+## Implementation Notes
+
+`WindowControlButton`/`WindowLeadGlyphButton`'s constructors gained a
+`subclassDefaults?: Partial<ButtonOptions>` parameter, spread over
+`_defaultWindowControlOptions`/`_defaultWindowLeadGlyphOptions` before being
+forwarded to `super()` — this plan's own `## Internal Structure` code sample
+passed the module constant straight through instead. `local/no-raw-dom`'s
+sibling lint rule `local/require-subclass-defaults` (ARCHITECTURE.md,
+*Constructors forward `subclassDefaults`*) mechanically forbids a constructor
+handing its `_default<Name>Options` constant straight to `super()`, since
+that leaves no seam for a further subclass to layer its own default —
+exactly the shape both new classes' constructors used. Neither class is
+subclassed today, but the rule fires on the shape regardless of whether a
+subclass currently exists, and carries no module-private exemption. Adding
+the parameter is purely additive (both constructors are only ever called
+with one argument today) and matches the same pattern `TabCloseButton`/
+`MenuBarButton` already use, so this is a mechanical conformance fix, not a
+design change.
+
+**Manual verification (`## Verification`'s non-negotiable browser check) was performed** against a dev server started from this worktree (`npx vite --port 8016` from `packages/lib`, confirmed via `readlink /proc/<pid>/cwd`), driven live through `chrome-devtools` MCP tools, covering `## Expected Behaviour` rows 9-13 across all three shipped themes (modern, classic, dark) via the `packages/lib` demo app's Misc/MenuBar/Tab panels:
+
+- A `Window`'s minimize/maximize/close controls (`WindowHeader`, via "Show window with image!") render correctly at rest, on hover, and pressed in all three themes; computed styles were read directly (`getComputedStyle`) to confirm resolved values, not just visual inspection. The classic theme's gradient — this plan's one flagged real cross-theme risk — was confirmed rendering as `linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))` via `background-image` (not blank, not a solid colour), with `background-color` correctly falling back to transparent since a gradient function is not a valid `<color>`; the classic theme's hover (`linear-gradient(rgb(252, 252, 252), rgb(220, 220, 220))`) and pressed (`linear-gradient(rgb(200, 200, 200), rgb(214, 214, 214))`, `color: rgb(0, 0, 0)`) tokens were confirmed the same way. The modern theme's flat-colour token correctly resolves via `background-color` alone (`background-image: none`), and the dark theme likewise.
+- Blurring a window (moving focus elsewhere) and refocusing it (`setWindowControlsActive`) was confirmed live: blur flattened the resting rule to `background-color: transparent; background-image: none` as a genuine per-instance deviation, and refocusing reverted it.
+- `MenuBarButton`'s hover highlight (MenuBar panel, "File" menu item) was confirmed live via `getComputedStyle`/`:hover` matching.
+- A closeable tab's ✕ (Tab panel, "Beta"/"Gamma" tabs) was confirmed at rest (`transparent`, `none`, `3px` radius, no border/shadow) and on hover (`rgba(0, 0, 0, 0.12)` tint) via `getComputedStyle`.
+- `WindowLeadGlyphButton` (row 11, `TabWindow`'s leading title glyph) was **not** live-verified — no demo panel constructs a `TabWindow` (it is only ever created via a strip-mode tab tear-off drag gesture, per `layout/Tab.ts`'s `detachTabToWindow`), and reproducing that gesture through the MCP browser tools was judged disproportionate to the risk: unlike the window-control buttons, `_defaultWindowLeadGlyphOptions` (`windowControls.ts`) carries no theme token at all — every value (`"transparent"`, `"none"`, `"1px solid transparent"`) is a theme-independent literal, so there is no cross-theme rendering question to answer live that the unit test (`## Expected Behaviour` row 4, `WindowControlButton.classStyleHoisting.test.ts`) does not already settle offline.
+
+---
+
 ## Notes
 
 [^base-branch]: `button-meta-class-dedup.md` is fully implemented, but only on its own unmerged branch `feature/button-meta-class-dedup` — not yet on `master`. This plan's line numbers and code shapes are cited from that branch (verified identical to `master` for every file this plan itself touches — `windowControls.ts`, `WindowHeader.ts`, `MenuBarButton.ts`, `TabCloseButton.ts` — via `diff`; only `Button.ts`/`TabButton.ts`/`ToggleButton.ts` differ, and this plan's citations into those three come from the `feature/button-meta-class-dedup` branch specifically). The `depends-on` frontmatter reflects this: implement `button-meta-class-dedup` first (or merge it to whatever base this plan lands on), then this plan.

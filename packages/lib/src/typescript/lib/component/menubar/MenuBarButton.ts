@@ -5,7 +5,7 @@ import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
-import type { StyleBag } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link MenuBarButton}.
@@ -37,6 +37,9 @@ const _defaultMenuBarButtonOptions: Partial<MenuBarButtonOptions> = {
     insets:          new Insets(0, HORIZONTAL_PAD, 0, HORIZONTAL_PAD),
 };
 
+/** Hover highlight token, shared by `ownStyleStates`' `:hover` entry and `setActive`. */
+const MENU_BAR_BUTTON_HOVER_BG = "var(--ts-ui-menu-bar-btn-hover-bg, rgba(30, 100, 200, 0.10))";
+
 /** Pixel gap between the leading glyph and the label in the content row. */
 const GLYPH_TEXT_GAP = 4;
 
@@ -57,7 +60,8 @@ export const MENU_BAR_BUTTON_HEIGHT: number = 28;
  * for the optional leading glyph + label pair, re-anchored to the west edge.
  * Adds menubar-specific ARIA (`role="menuitem"`, `aria-haspopup="menu"`,
  * `aria-expanded`) and the sticky `setActive` highlight for the
- * dropdown-open state. The `:hover` rule rides Button's `styleRules` bag.
+ * dropdown-open state. The `:hover` rule comes from this class's own
+ * `ownStyleStates`, matching `TabButton`'s pattern.
  *
  * Communicates open/close intent back to [`MenuBar`](/api/component/menubar/classes/MenuBar) via callbacks passed at
  * construction time.
@@ -72,6 +76,20 @@ class MenuBarButton extends Button<MenuBarButtonOptions> {
     // class level so `.MenuBarButton`'s rule carries only its own deviation
     // from `.Button`'s.
     protected static readonly ownClassStyleDefaults: StyleBag = _defaultMenuBarButtonOptions;
+
+    // Restates Button's `.pressed` entry unchanged and declares a real
+    // `:hover` entry — the menubar-specific highlight used to ride Button's
+    // `styleRules` bag (a per-instance write with no class-tier comparison);
+    // this dedupes it onto the shared `.MenuBarButton:hover:not(.pressed)`
+    // class rule instead, the same shape `TabButton`'s own hover fix uses —
+    // see plans/implemented/button-variant-chrome-dedup.md.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        Button.ownStyleStates[0],   // .pressed, restated unchanged
+        {
+            selector: ":hover",
+            extract: (): StyleBag => ({ backgroundColor: MENU_BAR_BUTTON_HOVER_BG }),
+        },
+    ];
 
     private readonly _onClickHandler:     () => void;
     private readonly _onMouseOverHandler: () => void;
@@ -94,22 +112,7 @@ class MenuBarButton extends Button<MenuBarButtonOptions> {
     ) {
         super(
             text,
-            {
-                ...options,
-                // Menubar-specific :hover highlight rides Button's styleRules
-                // bag so the cascade routes through createStyleRule's
-                // dedupe-and-defer machinery. Merge with any caller-supplied
-                // styleRules entries via the canonical array-spread idiom.
-                styleRules: [
-                    ...(options?.styleRules ?? []),
-                    {
-                        suffix: ":hover",
-                        styles: {
-                            backgroundColor: "var(--ts-ui-menu-bar-btn-hover-bg, rgba(30, 100, 200, 0.10))",
-                        },
-                    },
-                ],
-            },
+            { ...options },
             { ..._defaultMenuBarButtonOptions, ...(subclassDefaults ?? {}) },
         );
 
@@ -151,8 +154,8 @@ class MenuBarButton extends Button<MenuBarButtonOptions> {
     setActive(active: boolean): this {
         this.setBackgroundColor(
             active
-                ? "var(--ts-ui-menu-bar-btn-hover-bg, rgba(30, 100, 200, 0.10))"
-                : "var(--ts-ui-menu-bar-btn-bg, transparent)"
+                ? MENU_BAR_BUTTON_HOVER_BG
+                : _defaultMenuBarButtonOptions.backgroundColor!
         );
         this.getAria().setExpanded(active);
 
