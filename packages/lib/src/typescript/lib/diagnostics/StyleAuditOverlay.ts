@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Window } from "~/overlay/Window.js";
-import { Panel } from "~/core/Panel.js";
 import { VBox } from "~/layout/VBox.js";
 import { Placement } from "~/primitive/Placement.js";
 import { StyleAuditView } from "~/diagnostics/StyleAuditView.js";
+import { Container } from "../core";
 
 /** Overlay window size and starting position — see `## Internal Structure`. */
 const WINDOW_X      = 360;
 const WINDOW_Y      = 24;
-const WINDOW_WIDTH  = 760;
+const WINDOW_WIDTH  = 800;
 const WINDOW_HEIGHT = 520;
 
 /**
@@ -47,7 +47,7 @@ export class StyleAuditOverlay extends Window {
         this.setWidth(WINDOW_WIDTH);
         this.setHeight(WINDOW_HEIGHT);
 
-        const body = new Panel({
+        const body = new Container({
             autoScroll:    "y",
             layoutManager: new VBox({ stretching: true }),
         });

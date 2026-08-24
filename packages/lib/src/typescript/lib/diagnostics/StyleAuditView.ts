@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { callable } from "~/core/Callable.js";
-import { Panel } from "~/core/Panel.js";
 import { VBox } from "~/layout/VBox.js";
 import { MemoryStore } from "~/data/MemoryStore.js";
 import { Model } from "~/data/Model.js";
@@ -11,6 +10,8 @@ import { Text } from "~/component/input/Text.js";
 import { Button } from "~/component/button/Button.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { auditStyleRules } from "~/diagnostics/StyleAudit.js";
+import { Container } from "../core";
+import { UNBOUNDED } from "../primitive";
 
 /**
  * The embeddable stylesheet-dedup audit: an explanation, a Refresh button, a
@@ -25,7 +26,7 @@ import { auditStyleRules } from "~/diagnostics/StyleAudit.js";
  *
  * @category Core
  */
-class StyleAuditView extends Panel {
+class StyleAuditView extends Container {
 
     private readonly _summary:       Text  = new Text("", { whiteSpace: "normal" });
     private readonly _refreshButton: Button = new Button("Refresh");
@@ -59,12 +60,13 @@ class StyleAuditView extends Panel {
         this._store = new MemoryStore(model, []);
 
         const spec: ColumnSpec = {
+            autoSizeColumns: true,
             columns: [
-                { field: "count",     minWidth: 70,  readOnly: true },
-                { field: "wastedKB",  minWidth: 100, readOnly: true },
-                { field: "component", minWidth: 140, readOnly: true },
-                { field: "scope",     minWidth: 110, readOnly: true },
-                { field: "body",      minWidth: 420, readOnly: true },
+                { field: "count",     minWidth: 70                      ,  readOnly: true },
+                { field: "wastedKB",  minWidth: 100                     , readOnly: true },
+                { field: "component", minWidth: 140                     , readOnly: true },
+                { field: "scope",     minWidth: 110                     , readOnly: true },
+                { field: "body",      minWidth: 420, maxWidth: UNBOUNDED, readOnly: true },
             ],
         };
 
