@@ -152,6 +152,10 @@ action is needed.
   The button drops `flat` mode in favour of its own declared chrome (a new
   `TableHeaderMenuButton` subclass), which also dedupes its resting/pressed/
   hover chrome onto shared class rules. No consumer action is needed.
+- **`PickerButton` and `AccordionHeader`'s section title button now dedupe
+  their resting, pressed, and hover chrome onto shared class rules instead of
+  repeating on every instance.** No consumer action is needed; nothing
+  renders differently.
 
 ### Table
 
