@@ -199,24 +199,36 @@ describe('Button resting-chrome state isolation', () => {
         expect(declarations.boxShadow).toBe('none');
     });
 
-    it('row 11: setFlat(true) then setFlat(false) writes null for all four pressed keys back onto #id.pressed, clearing the flat pin and handing them back to the class bag', () => {
+    it('row 11: setFlat(true) writes no per-instance pressed declarations for the flat-affected keys — flat chrome lives on a shared .Button.flat.pressed rule instead, and the element carries the flat class; setFlat(false) drops the class but the rule stays cached', () => {
         new Button('Warmup').getElement(true); // materialises .Button.pressed with all four keys
 
         const btn = new Button('X');
-        btn.getElement(true);
-        btn.setFlat(true);
+        const handle = btn.getElement(true);
 
-        const declarations = declarationsDuring(sink, idSelector(btn) + '.pressed', () => btn.setFlat(false));
+        // The construction-time pressed/hover dispatch already deduped these
+        // against `.Button.pressed`'s class bag before flat ran — flat's own
+        // mechanism (`ensureSharedStateRule`) never writes to this instance's
+        // own `#id.pressed` rule at all, so nothing shows up here.
+        const trueWrites = writesDuring(sink, () => btn.setFlat(true));
+        const pressed = declarationsIn(trueWrites, idSelector(btn) + '.pressed');
+        expect(pressed.color).toBeUndefined();
+        expect(pressed.backgroundColor).toBeUndefined();
+        expect(pressed.backgroundImage).toBeUndefined();
+        expect(pressed.boxShadow).toBeUndefined();
 
-        // `flushStateStyleBag` queues an explicit `null` when a restored
-        // value matches the class-tier bag, rather than restating the
-        // literal token (see plans/implemented/state-tier-full-unification.md's
-        // `[^restore-chrome]` note) — the removal hands the property back to
-        // `.Button.pressed`'s own rule instead of re-asserting its value here.
-        expect(declarations.color).toBeNull();
-        expect(declarations.backgroundColor).toBeNull();
-        expect(declarations.backgroundImage).toBeNull();
-        expect(declarations.boxShadow).toBeNull();
+        expect(_ruleCacheHas('.Button.flat.pressed')).toBe(true);
+
+        const flatAdded = trueWrites.some((w) => w.op === 'apply' && w.args[0] === handle
+            && (w.args[1] as { addClass?: string[] }).addClass?.includes('flat'));
+        expect(flatAdded).toBe(true);
+
+        // Rules are never removed, only the DOM token is.
+        const falseWrites = writesDuring(sink, () => btn.setFlat(false));
+        expect(_ruleCacheHas('.Button.flat.pressed')).toBe(true);
+
+        const flatRemoved = falseWrites.some((w) => w.op === 'apply' && w.args[0] === handle
+            && (w.args[1] as { removeClass?: string[] }).removeClass?.includes('flat'));
+        expect(flatRemoved).toBe(true);
     });
 
     it('a runtime setPressedBackgroundColor call on an already-rendered, previously-default Button reaches the stylesheet, not just the dirty queue', () => {
