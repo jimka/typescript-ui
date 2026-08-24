@@ -16,7 +16,7 @@ import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
 import { List } from "~/component/list/List.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Fit } from "~/layout/Fit.js";
-import { Glyph } from "~/component/display/Glyph.js";
+import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { chevron_down } from "~/glyphs/solid/chevron_down.js";
 import { callable } from "~/core/Callable.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
@@ -536,6 +536,30 @@ class ComboBoxLabel extends Component {
     }
 }
 
+// The square size ComboBoxCaret's own ink resolves to under the shipped
+// default theme — Util.lineHeightPx({ linePadding: false }), the root theme
+// font size with no additive leading. ComboBoxCaret's constructor computes
+// this independently (it needs the live value to size its own box, not just
+// the glyph), so this is a hint the render-time reconciliation checks
+// against, not a hard override — matching ButtonIconGlyph's own default.
+const COMBOBOX_CARET_GLYPH_SIZE = { width: 14, height: 14 };
+
+const _defaultComboBoxCaretGlyphOptions: Partial<GlyphOptions> = {
+    minSize: COMBOBOX_CARET_GLYPH_SIZE,
+    maxSize: COMBOBOX_CARET_GLYPH_SIZE,
+};
+
+/**
+ * The chevron glyph inside a {@link ComboBoxCaret}. `minSize`/`maxSize` are
+ * a class default matching the caret's own ink size, so every ComboBox's
+ * chevron shares one `.ComboBoxCaretGlyph` CSS rule instead of repeating it.
+ */
+class ComboBoxCaretGlyph extends Glyph {
+    constructor() {
+        super("chevron-down", undefined, _defaultComboBoxCaretGlyphOptions);
+    }
+}
+
 /**
  * The fixed-size caret container inside a {@link ComboBox}. Framework-absolute
  * (the default) so the caret's own inline `left`/`top` from `ComboBox.doLayout`
@@ -544,7 +568,7 @@ class ComboBoxLabel extends Component {
  * caret past the right edge into `overflow: hidden`).
  */
 class ComboBoxCaret extends Component {
-    private _glyph: Glyph = new Glyph("chevron-down");
+    private _glyph: Glyph = new ComboBoxCaretGlyph();
     private _size:  number;
 
     constructor() {

@@ -8,7 +8,7 @@ import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { Text, TextOptions } from "~/component/input/Text.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
-import { Glyph } from "~/component/display/Glyph.js";
+import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import { resolvePartialDeclarations, type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
@@ -297,6 +297,40 @@ class ButtonLabelText extends Text {
     constructor() {
         super(undefined, undefined, _defaultButtonLabelTextOptions);
         this.setFontSize(BUTTON_LABEL_FONT_SIZE_VAR);
+    }
+}
+
+// The square size Button._syncGlyphSize's line-height auto-track resolves to
+// under the shipped default theme (root font.size 14px, button.font.size
+// -2px -> 12px, font.linePadding 2px -> 14px). A pinned icon, or an instance
+// under a theme that resolves a different line height, still writes its own
+// real per-instance size — this default is a hint the render-time
+// reconciliation checks against, not a hard override.
+const BUTTON_ICON_GLYPH_SIZE = { width: 14, height: 14 };
+
+const _defaultButtonIconGlyphOptions: Partial<GlyphOptions> = {
+    minSize: BUTTON_ICON_GLYPH_SIZE,
+    maxSize: BUTTON_ICON_GLYPH_SIZE,
+};
+
+/**
+ * The leading glyph inside a {@link Button}'s content row. `minSize`/
+ * `maxSize` are a class default matching the size `_syncGlyphSize`'s
+ * line-height auto-track resolves to under the shipped theme, so every
+ * unpinned Button icon shares one `.ButtonIconGlyph` CSS rule instead of
+ * repeating it. A pinned icon (`pinGlyphSize`) still writes its own real
+ * size, which reconciles against this default the same way any per-instance
+ * deviation does.
+ */
+class ButtonIconGlyph extends Glyph {
+    /**
+     * @param name - The glyph to render.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; forwarded so a subclass can seed a default without
+     *   editing this constant.
+     */
+    constructor(name: string, subclassDefaults?: Partial<GlyphOptions>) {
+        super(name, undefined, { ..._defaultButtonIconGlyphOptions, ...(subclassDefaults ?? {}) });
     }
 }
 
@@ -1624,7 +1658,11 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     /**
      * Sizes the leading glyph's box so its height matches the title's rendered
      * line-box height (the line of text it sits beside), instead of the
-     * Glyph's static 16×16 default. The lever is `setPreferredSize`, not
+     * un-synced 16×16 `Glyph` default — `ButtonIconGlyph`'s own 14×14 is a
+     * class-rule default the rendered value reconciles against, not this
+     * instance's own pre-sync size (`Glyph.applyOptions` re-pins an unset
+     * `minSize`/`maxSize` to `Glyph`'s base `preferredSize`, not to a
+     * `subclassDefaults` bag). The lever is `setPreferredSize`, not
      * `setFontSize` — a font-size token does not resize an SVG glyph's box.
      *
      * Theme-reactive: it reads `_text.getLineHeight()` (the button title's
@@ -1680,10 +1718,13 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * title's line height; a consumer can override by sizing the returned glyph
      * explicitly via `getGlyph().setPreferredSize(...)`. Empty text combined
      * with `setGlyph(name)` therefore renders as a glyph-only button with no
-     * visual artifacts at the default 0px spacing.
+     * visual artifacts at the default 0px spacing. The glyph is a dedicated
+     * `ButtonIconGlyph` (not a bare `Glyph`), so every unpinned icon's
+     * `minSize`/`maxSize` shares one `.ButtonIconGlyph` CSS rule instead of
+     * each carrying its own.
      */
     setGlyph(name: string): this {
-        const glyph = new Glyph(name);
+        const glyph = new ButtonIconGlyph(name);
         glyph.setPointerEvents("none");
 
         // Reassign before the rebuild; the rebuild empties the content

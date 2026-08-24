@@ -41,6 +41,7 @@ import { MenuSeparator } from '~/component/container/MenuSeparator';
 import { SortPriorityBadge } from '~/component/table/cell/SortPriorityBadge';
 import { FilterClauseBadge } from '~/component/table/cell/FilterClauseBadge';
 import { Scrollbar } from '~/component/container/Scrollbar';
+import { WindowHeader } from '~/component/container/WindowHeader';
 import { ResizeHandle } from '~/component/table/cell/ResizeHandle';
 import { ComboBox } from '~/component/input/ComboBox';
 import { List } from '~/component/list/List';
@@ -332,6 +333,17 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'ResizeHandle cursor',          resolve: () => new ResizeHandle().getCursor(),                             expected: 'var(--ts-ui-table-resize-handle-cursor, ew-resize)' },
     { label: 'ResizeHandle backgroundImage', resolve: () => new ResizeHandle().getBackgroundImage(),                    expected: 'linear-gradient(to right,transparent 80%,var(--ts-ui-table-resize-handle-color,rgba(0,0,0,0.2)) 80%)' },
     { label: 'ComboBoxCaret minSize',        resolve: () => (new ComboBox() as any)._caret.getMinSizeConstraint(),      expected: { width: 14, height: 14 } },
+    // Unlike its ComboBoxCaretGlyph/WindowHeaderTitleGlyph siblings below, an
+    // unrendered Button's icon hasn't been line-height-synced yet:
+    // Button._syncGlyphSize needs a real Text.getLineHeight() measurement,
+    // which this DOM-less registry harness never provides, so the glyph is
+    // still at Glyph's own un-re-pinned base default (16x16, matching the
+    // "Glyph minSize" row below) rather than ButtonIconGlyph's 14x14 class
+    // default. See Button.test.ts's "ButtonIconGlyph style hoisting" for the
+    // post-render 14x14 value this class default actually produces.
+    { label: 'ButtonIconGlyph minSize',      resolve: () => new Button({ glyph: 'unicode-arrow-up' }).getGlyph()!.getMinSizeConstraint(), expected: { width: 16, height: 16 } },
+    { label: 'ComboBoxCaretGlyph minSize',     resolve: () => (new ComboBox() as any)._caret.getGlyph().getMinSizeConstraint(),               expected: { width: 14, height: 14 } },
+    { label: 'WindowHeaderTitleGlyph minSize', resolve: () => new WindowHeader('Title').getGlyph()!.getMinSizeConstraint(),                    expected: { width: 14, height: 14 } },
     { label: 'SelectableListRow cursor',     resolve: () => (new List({ items: ['a'] }) as any)._rowPool[0].getCursor(), expected: 'pointer' },
     { label: 'SelectableListRow border',     resolve: () => (new List({ items: ['a'] }) as any)._rowPool[0].getBorder(), expected: { borderBottom: '1px solid var(--ts-ui-list-row-separator, transparent)' } },
     { label: 'HeaderCellRenderer cursor',    resolve: () => new HeaderCell('Name', 'name').getRenderer().getCursor(),   expected: 'default' },

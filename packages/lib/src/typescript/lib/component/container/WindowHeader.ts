@@ -6,7 +6,7 @@ import { Button, ClickListener } from "~/component/button/Button.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { ThemeManager } from "~/core/Theme.js";
-import { Glyph } from "~/component/display/Glyph.js";
+import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
 import { Fit } from "~/layout/Fit.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -43,6 +43,38 @@ export interface WindowHeaderOptions extends HeaderOptions {
     minimizable?: boolean;
     maximizable?: boolean;
     glyph?:       string;
+}
+
+// The square size the title glyph's ink resolves to under the shipped
+// default theme — ThemeManager.getResolvedScale().titleGlyph (the root theme
+// font size; titleGlyph's scale token is 1). WindowHeader's own
+// constructor/updatePreferredSize re-pins compute this independently via
+// resolveTitleGlyphInk(), so this is a hint the render-time reconciliation
+// checks against, not a hard override — matching ButtonIconGlyph's own
+// default.
+const WINDOW_HEADER_TITLE_GLYPH_SIZE = { width: 14, height: 14 };
+
+const _defaultWindowHeaderTitleGlyphOptions: Partial<GlyphOptions> = {
+    minSize: WINDOW_HEADER_TITLE_GLYPH_SIZE,
+    maxSize: WINDOW_HEADER_TITLE_GLYPH_SIZE,
+};
+
+/**
+ * The leading icon inside a {@link WindowHeader}'s title row. `minSize`/
+ * `maxSize` are a class default matching the title-glyph ink size under the
+ * shipped theme, so every window's title icon shares one
+ * `.WindowHeaderTitleGlyph` CSS rule instead of repeating it.
+ */
+class WindowHeaderTitleGlyph extends Glyph {
+    /**
+     * @param name - The glyph to render.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; forwarded so a subclass can seed a default without
+     *   editing this constant.
+     */
+    constructor(name: string, subclassDefaults?: Partial<GlyphOptions>) {
+        super(name, undefined, { ..._defaultWindowHeaderTitleGlyphOptions, ...(subclassDefaults ?? {}) });
+    }
 }
 
 /**
@@ -256,7 +288,7 @@ class WindowHeader extends Header {
         // the title text in this shared row (a taller control box would desync the
         // text's vertical centring); the leading inset on the title row supplies the
         // corner offset that mirrors the TabWindow's.
-        const glyph = new Glyph(name);
+        const glyph = new WindowHeaderTitleGlyph(name);
         const ink = this.resolveTitleGlyphInk();
         glyph.setPreferredSize({ width: ink, height: ink });
         glyph.setPointerEvents("none");

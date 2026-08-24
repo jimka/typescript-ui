@@ -7,6 +7,7 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { _ruleCacheHas } from '~/core/StyleTarget';
+import { Util } from '~/core/Util';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -429,5 +430,66 @@ describe('ButtonLabelText style hoisting', () => {
         btn.getElement(true);
 
         expect(_ruleCacheHas('.ButtonLabelText')).toBe(true);
+    });
+});
+
+describe('ButtonIconGlyph style hoisting', () => {
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    /**
+     * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+     * flattened into one key/value map. Copied from `ClassChromeRules.test.ts`.
+     */
+    function declarationsDuring(
+        sink: RecordingDOMSink,
+        selector: string,
+        fn: () => void,
+    ): Record<string, string | null> {
+        const start = sink.writes.length;
+        fn();
+
+        const out: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+                continue;
+            }
+
+            const styles = w.args[1] as Record<string, string | null>;
+            for (const key of Object.keys(styles)) {
+                out[key] = styles[key];
+            }
+        }
+
+        return out;
+    }
+
+    it("a rendered Button's unpinned leading glyph writes nothing to its own #id rule, and the shared .ButtonIconGlyph class rule exists", () => {
+        // `_syncGlyphSize` derives the glyph's real size from the button
+        // title's line height, which is theme-driven (button font-size − 2px
+        // + the line-padding leading — see BUTTON_ICON_GLYPH_SIZE's own
+        // comment). The outer describe blocks' default `themeVars: {}` leaves
+        // `--ts-ui-button-font-size` unset, so the label falls back to its
+        // CSS rule's own literal "14px" fallback instead of the shipped
+        // theme's derived 12px — a harness quirk, not a real deviation. Install
+        // the shipped theme's resolved button font-size locally and invalidate
+        // `Util`'s cached metrics (same pattern as `dom/baseline.test.ts`) so
+        // this test exercises the real themed value the class default targets.
+        const themedSink = installTestDOM({ ...CONFIG, themeVars: { '--ts-ui-button-font-size': '12px' } });
+        Util.invalidateTextMetricsCache();
+
+        const btn   = new Button({ glyph: 'xmark', text: 'Save' });
+        const glyph = btn.getGlyph()!;
+
+        const declarations = declarationsDuring(themedSink, idSelector(glyph), () => btn.getElement(true));
+
+        // Matching RadioButton.test.ts's row 8 (`_dot` writes nothing): once
+        // the real synced size matches `.ButtonIconGlyph`'s class default and
+        // nothing else forces the #id rule to materialise, no declaration —
+        // not even an explicit removal — is queued for it at all.
+        expect(declarations).toEqual({});
+        expect(_ruleCacheHas('.ButtonIconGlyph')).toBe(true);
     });
 });
