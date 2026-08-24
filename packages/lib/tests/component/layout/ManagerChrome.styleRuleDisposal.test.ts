@@ -190,7 +190,14 @@ describe('Split / Border / Accordion — gutter and chrome style-rule disposal',
         // A tool belongs to the caller, not to the accordion: `addTool` hands it
         // to each header, which registers it as a child of the header's tool
         // group. Disposing the header must therefore not take the tool with it.
-        const tool = new Button({ text: 'X' });
+        // `backgroundColor` forces a real per-instance rule the same way
+        // `renderedAccordionPanel`'s content children do (see its own comment)
+        // — `AccordionHeader.addTool` forces every Button tool `flat`, and
+        // since plans/button-flat-chrome-dedup.md a flat Button's own resting
+        // chrome lives entirely on the shared `.Button.flat` class rule, so a
+        // plain flat tool with no other deviation now materialises no
+        // per-instance rule of its own to probe here.
+        const tool = new Button({ text: 'X', backgroundColor: '#fff' });
 
         accordion.addTool(tool);
 
@@ -214,7 +221,9 @@ describe('Split / Border / Accordion — gutter and chrome style-rule disposal',
         // The second way a caller-owned tool reaches a header: `createSection`
         // registers every `AccordionConstraints.tools` entry on that section's
         // own header, independently of the global `addTool` registry.
-        const tool  = new Button({ text: 'X' });
+        // `backgroundColor` forces a real per-instance rule — see B1-12's
+        // comment above for why a plain flat tool no longer has one of its own.
+        const tool  = new Button({ text: 'X', backgroundColor: '#fff' });
         const panel = new Panel({ layoutManager: new Accordion() });
 
         panel.addComponent(new Component({ preferredSize: { width: 50, height: 50 } }), new AccordionConstraints('A', true, undefined, [tool]));

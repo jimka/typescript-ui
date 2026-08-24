@@ -70,6 +70,92 @@ function declarationsDuring(
 }
 
 describe('Button flat state-class hoisting', () => {
+    // Resting-tier coverage added by plans/button-flat-chrome-dedup.md — the
+    // resting twin of row 6-8/10/12 below. Flat's resting chrome (border,
+    // shadow, background) is now published once via `ensureSharedStateRule`
+    // onto a shared `.ClassName.flat` rule, mirroring the pressed/hover
+    // mechanism this file already covers. Placed first in the describe block
+    // (ahead of every other test that constructs a flat Button) so it is the
+    // first-ever flat Button in the module and observes .Button.flat's
+    // one-time materialisation — see the file's own module-state caveat above.
+    it('row 4: a default flat Button writes border/backgroundColor/backgroundImage/boxShadow onto .Button.flat (no borderRadius), and no per-instance resting declaration of its own', () => {
+        new Button('Warmup').getElement(true); // materialises .Button.pressed/:hover, unrelated to .flat
+
+        // The shared `.flat` class rule is a module-level `StyleRule`, published
+        // (and materialised — its constructor `ensure()`s by default) the moment
+        // `_applyFlatChrome` first runs, i.e. at construction — not deferred to
+        // this instance's own render like the per-instance dedup writes below.
+        let first!: Button;
+        const classDeclarations = declarationsDuring(sink, '.Button.flat', () => { first = new Button('FlatFirst', { flat: true }); });
+        first.getElement(true);
+
+        expect(classDeclarations.borderTop).toBe('1px solid transparent');
+        expect(classDeclarations.borderRight).toBe('1px solid transparent');
+        expect(classDeclarations.borderBottom).toBe('1px solid transparent');
+        expect(classDeclarations.borderLeft).toBe('1px solid transparent');
+        expect(classDeclarations.backgroundColor).toBe('transparent');
+        expect(classDeclarations.backgroundImage).toBe('none');
+        expect(classDeclarations.boxShadow).toBe('none');
+        expect(classDeclarations.borderRadius).toBeUndefined();
+
+        expect(_ruleCacheHas('.Button.flat')).toBe(true);
+
+        // No per-instance write of its own — the resting rule dedupes exactly
+        // like the pressed/hover rule does.
+        const instanceDeclarations = declarationsDuring(sink, idSelector(first) + ':not(.pressed):not(:hover)', () => { /* already rendered above */ });
+        expect(instanceDeclarations).toEqual({});
+    });
+
+    it('row 5: a second flat Button writes nothing further to .Button.flat', () => {
+        new Button('Warmup').getElement(true);
+        new Button('FlatFirst', { flat: true }).getElement(true); // materialises .Button.flat
+
+        const flatClassWrites = declarationsDuring(sink, '.Button.flat', () => {
+            new Button('FlatSecond', { flat: true }).getElement(true);
+        });
+        expect(flatClassWrites).toEqual({});
+    });
+
+    it('row 6: getBorder()/getBorderRadius()/getShadow()/getBackgroundImage()/getBackgroundColor() on a flat Button report the non-flat class default', () => {
+        const flat = new Button('Flat', { flat: true });
+
+        expect(flat.getBorder()).toEqual({ border: '2px ridge var(--ts-ui-button-border, rgb(200, 200, 200))' });
+        expect(flat.getBorderRadius()).toBe('var(--ts-ui-border-radius, 4px)');
+        expect(flat.getShadow()).toBe('var(--ts-ui-button-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2))');
+        expect(flat.getBackgroundImage()).toBe('var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))');
+        expect(flat.getBackgroundColor()).toBe('var(--ts-ui-button-bg, transparent)');
+    });
+
+    it('row 7: setBorder/setBackgroundColor explicitly on an already-flat Button still write a real per-instance deviation', () => {
+        new Button('Warmup').getElement(true);
+
+        const flat = new Button('Flat', { flat: true });
+        flat.getElement(true);
+
+        // `border` is not part of Button's own `ownStyleStates` extracts (see
+        // the plan's "Accepted consequence" note), so it is not a
+        // resting-isolation key — the write lands on the bare #id rule, same
+        // as every other Button, flat or not.
+        const borderDecl = declarationsDuring(sink, idSelector(flat), () => flat.setBorder('3px dashed green'));
+        expect(borderDecl.borderTop).toBe('3px dashed green');
+
+        // `backgroundColor` IS a resting-isolation key (both `.pressed` and
+        // `:hover` declare it), so it is guarded.
+        const bgDecl = declarationsDuring(sink, idSelector(flat) + ':not(.pressed):not(:hover)', () => flat.setBackgroundColor('blue'));
+        expect(bgDecl.backgroundColor).toBe('blue');
+    });
+
+    it('row 8: a flat ToggleButton and a flat TabButton each get their own separate .ToggleButton.flat / .TabButton.flat rule', () => {
+        new ToggleButton('Warmup').getElement(true);
+        new TabButton('Warmup').getElement(true);
+
+        new ToggleButton('FlatToggle', { flat: true }).getElement(true);
+        new TabButton('FlatTab', { flat: true }).getElement(true);
+
+        expect(_ruleCacheHas('.ToggleButton.flat')).toBe(true);
+        expect(_ruleCacheHas('.TabButton.flat')).toBe(true);
+    });
+
     it('row 6: two flat Buttons write no backgroundColor/backgroundImage/border/boxShadow declarations of their own to #id.pressed or #id:hover:not(.pressed) — flat chrome lives entirely on the shared .Button.flat.pressed / .Button.flat:hover:not(.pressed) rules', () => {
         new Button('Warmup').getElement(true); // materialises .Button.pressed / .Button:hover:not(.pressed)
 
