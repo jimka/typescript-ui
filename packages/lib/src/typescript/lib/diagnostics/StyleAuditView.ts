@@ -66,7 +66,7 @@ class StyleAuditView extends Container {
                 { field: "wastedKB",  minWidth: 100                     , readOnly: true },
                 { field: "component", minWidth: 140                     , readOnly: true },
                 { field: "scope",     minWidth: 110                     , readOnly: true },
-                { field: "body",      minWidth: 420, maxWidth: UNBOUNDED, readOnly: true },
+                { field: "body",      minWidth: 420, maxWidth: UNBOUNDED, preserveWidth: true, readOnly: true },
             ],
         };
 
