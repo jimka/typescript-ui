@@ -2395,11 +2395,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     clearBackgroundImage(): this {
         // Same reasoning as `clearBackgroundColor`: a defaulting class would
-        // repaint through a bare removal, so assert the CSS initial value.
+        // repaint through a bare removal, so assert the CSS initial value —
+        // routed through the resting-isolation-aware escape hatch (not the raw
+        // `setElementCSSRule` bypass) so an isolated Button-family instance gets
+        // the assertion on its guarded rule, not the bare `#id` rule. See
+        // plans/button-flat-chrome-dedup.md.
         this.writeStyle({ backgroundImage: null });
 
         if (this._defaultOptions.backgroundImage) {
-            this.setElementCSSRule("backgroundImage", "none");
+            this.writeGuardedCSSRule("backgroundImage", "none");
         }
 
         return this;

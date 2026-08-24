@@ -206,6 +206,8 @@ export class Notification extends Component {
         this._closeButton.setInsets(new Insets(0, 0, 0, 0));
         this._closeButton.setBorder("none");
         this._closeButton.clearBackgroundImage();
+        this._closeButton.clearHoverBackgroundImage();
+        this._closeButton.clearPressedBackgroundImage();
         this._closeButton.setBackgroundColor("transparent");
         this._closeButton.clearShadow();
         this._closeButton.clearPressedShadow();
