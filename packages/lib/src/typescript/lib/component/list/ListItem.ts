@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { Text } from "~/component/input/Text.js";
+import { Text, TextOptions } from "~/component/input/Text.js";
 import { HBox } from "~/layout/HBox.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link ListItem}.
@@ -31,6 +32,32 @@ const MARKER_GAP_PX = 4;
 const _defaultListItemOptions: Partial<ListItemOptions> = {
     tag: "li",
 };
+
+const LIST_ITEM_MARKER_TEXT_ALIGN = "right";
+
+const _defaultListItemMarkerTextOptions: Partial<TextOptions> = {
+    textAlign: LIST_ITEM_MARKER_TEXT_ALIGN,
+};
+
+/**
+ * The marker text for a {@link ListItem} — every marker in a list renders
+ * right-aligned by default, so without a shared class rule every item's
+ * marker would carry an identical `text-align: right` declaration on its own
+ * `#id` rule. Mirrors `NumberRendererText`
+ * (component/table/cell/renderer/Number.ts).
+ */
+class ListItemMarkerText extends Text {
+    protected static readonly ownClassStyleDefaults: StyleBag = {
+        font: {
+            ...Text.ownClassStyleDefaults.font,
+            textAlign: LIST_ITEM_MARKER_TEXT_ALIGN,
+        },
+    };
+
+    constructor() {
+        super(undefined, undefined, _defaultListItemMarkerTextOptions);
+    }
+}
 
 /**
  * A single list item component backed by a `<li>` element.
@@ -77,7 +104,7 @@ class ListItem extends Component<ListItemOptions> {
         // The marker sits in a slot shared with every other item in the list,
         // widened to the widest marker among them, so it hugs the slot's right
         // edge and the trailing full stops line up down the list.
-        this._marker = new Text(undefined, { textAlign: "right" });
+        this._marker = new ListItemMarkerText();
         this._text   = new Text();
 
         this.addComponent(this._marker);

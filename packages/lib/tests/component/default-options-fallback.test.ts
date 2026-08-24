@@ -372,6 +372,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'BulletedList layout spacing',  resolve: () => (new BulletedList().getLayoutManager() as VBox).getComponentSpacing(), expected: 0 },
     { label: 'ListItem tag',                 resolve: () => new ListItem('k', 'v').getTag(),                            expected: 'li' },
     { label: 'ListItem marker gap',          resolve: () => (new ListItem('k', 'v').getLayoutManager() as HBox).getComponentSpacing(), expected: 4 },
+    { label: 'ListItemMarkerText textAlign', resolve: () => (new ListItem('k', 'v') as any)._marker.getTextAlign(),     expected: 'right' },
     { label: 'NumberedList itemStyle',       resolve: () => new NumberedList().getStyle(),                              expected: NumberedListItemStyle.DECIMAL },
     { label: 'IconText gap',                 resolve: () => (new IconText('unicode-arrow-up', 'x').getLayoutManager() as HBox).getComponentSpacing(), expected: 2 },
     { label: 'Glyph tag (char entry)',       resolve: () => new Glyph('unicode-arrow-up').getTag(),                     expected: 'span' },
