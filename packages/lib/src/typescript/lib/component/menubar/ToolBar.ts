@@ -17,6 +17,7 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { ellipsis_v } from "~/glyphs/solid/ellipsis_v.js";
 import { callable } from "~/core/Callable.js";
 import type { AxisOrientation, AxisEnd } from "~/primitive/Axis.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 // Register the overflow trigger's chevron eagerly at module load — same pattern
 // as SplitButton registering its caret_down — so the lazily-created "more"
@@ -67,6 +68,9 @@ export interface ToolBarOptions extends ContainerOptions {
  * fallback that keeps the overflow arithmetic well-defined.
  */
 const TOOLBAR_GAP_DEFAULT: number = 4;
+
+/** Border colour token `applyOrientation` derives both border values from. */
+const TOOLBAR_BORDER_COLOR = "var(--ts-ui-toolbar-border, rgb(220, 220, 220))";
 
 /**
  * Registry glyph rendered on the overflow ("more") trigger button. Verified
@@ -125,6 +129,23 @@ const _defaultToolBarOptions: Partial<ToolBarOptions> = {
  * @category Components
  */
 class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Container<TOptions> {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. Opting in via
+    // ownClassStyleDefaults stops the class rule from consulting
+    // getClassStyleDefaults()/_defaultOptions at all (ClassStyleRules.ts's
+    // chainParticipates/resolveClassLevel), so this must mirror the whole
+    // of _defaultToolBarOptions — matching PickerInput.ts/Cell.ts's own
+    // ownClassStyleDefaults = _default<Name>Options shape — not just the
+    // field this plan is hoisting, or backgroundColor/overflow silently
+    // drop out of the class rule. border is layered on top: it's
+    // orientation-conditional and covers only the horizontal/default case
+    // — see ## Architecture Decisions for why a vertical instance still
+    // correctly diverges with no special-casing.
+    protected static readonly ownClassStyleDefaults: StyleBag = {
+        ..._defaultToolBarOptions,
+        border: { borderBottom: `1px solid ${TOOLBAR_BORDER_COLOR}` },
+    };
 
     declare private _orientation:  AxisOrientation;
     declare private _compact:      boolean;
@@ -265,12 +286,10 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
             return;
         }
 
-        const ruleColor = "var(--ts-ui-toolbar-border, rgb(220, 220, 220))";
-
         if (value === "horizontal") {
-            this.setBorder({ borderBottom: `1px solid ${ruleColor}` });
+            this.setBorder({ borderBottom: `1px solid ${TOOLBAR_BORDER_COLOR}` });
         } else {
-            this.setBorder({ borderRight: `1px solid ${ruleColor}` });
+            this.setBorder({ borderRight: `1px solid ${TOOLBAR_BORDER_COLOR}` });
         }
     }
 

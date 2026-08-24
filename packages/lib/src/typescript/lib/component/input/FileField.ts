@@ -41,7 +41,7 @@ class HiddenFileInput extends Component {
     private _accept:   string | null  = null;
 
     constructor() {
-        super({ tag: "input" });
+        super({ tag: "input" }, { displayed: false });
 
         // `setDisplayed(false)`, not `setDisplay("none")`: both render the element
         // `display: none`, but only the former marks the component undisplayed so
