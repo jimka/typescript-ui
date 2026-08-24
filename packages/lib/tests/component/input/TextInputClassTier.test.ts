@@ -1,0 +1,185 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+// Behavioural coverage for plans/text-input-class-tier-migration.md — dedups
+// TextInput's font baseline (and the two right-aligned inner fields' textAlign,
+// and TextArea's resize) onto the hierarchy-aware class tier. Covers Expected
+// Behaviour rows 1-8 (rows 9-12 are manual-verify, browser-only).
+//
+// Conventions mirrored from `ClassHierarchyCascade.test.ts` (the mechanism's
+// own coverage): `declarationsDuring`/`idSelector` copied verbatim below. But
+// unlike that file's locally-scoped Probe classes, these tests exercise the
+// real, already-named production classes (TextField, TextArea, NumberSpinner,
+// ...) — so `resolveClassLevel`'s per-ctor memoization (core/ClassStyleRules.ts)
+// means a class's shared `.ClassName` rule content is written only on the
+// FIRST construction+render of that class (or any of its subclasses) anywhere
+// in this file, module state that (like `_ruleCache`) survives `DOM.reset()`
+// between tests. The row-3 test below therefore MUST run before any other
+// test constructs a TextInput-family component — it is the one that captures
+// `.TextInput`'s one-time content write — and rows 5/6 each capture their
+// `.NumberSpinnerField` / `.NumberEditorField` content on that class's own
+// first construction, for the same reason. Every other row only inspects a
+// component's own `#id` rule, which is written on every render regardless of
+// priming, so those need no such ordering (though each still measures a
+// *second* instance, after a first throwaway, matching this repo's estab-
+// lished convention — see `CellTextSelection.test.ts`).
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { DOM } from '~/core/DOM';
+import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
+import fontMetrics from '../../dom/font-metrics.test-font.json';
+import { TextField } from '~/component/input/TextField';
+import { TextArea } from '~/component/input/TextArea';
+import { DateField } from '~/component/input/DateField';
+import { NumberSpinner } from '~/component/input/NumberSpinner';
+import { NumberEditor } from '~/component/table/cell/editor/Number';
+
+const DOM_CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
+
+beforeEach(() => installTestDOM(DOM_CONFIG));
+afterEach(() => DOM.reset());
+
+/**
+ * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+ * flattened into one key/value map (last write per key wins, matching
+ * cascade-within-a-rule semantics). Only `setRuleStyles` ops whose selector
+ * (`args[0]`) matches are counted.
+ */
+function declarationsDuring(
+    sink: RecordingDOMSink,
+    selector: string,
+    fn: () => void,
+): Record<string, string | null> {
+    const start = sink.writes.length;
+    fn();
+
+    const out: Record<string, string | null> = {};
+    for (const w of sink.writes.slice(start)) {
+        if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+            continue;
+        }
+
+        const styles = w.args[1] as Record<string, string | null>;
+        for (const key of Object.keys(styles)) {
+            out[key] = styles[key];
+        }
+    }
+
+    return out;
+}
+
+/** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+function idSelector(component: { getId(): string }): string {
+    return '#' + DOM.source.escapeSelector(component.getId());
+}
+
+/** The non-null (real) entries of a declarations map. */
+function realDeclarations(declarations: Record<string, string | null>): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(declarations)) {
+        if (value !== null) {
+            out[key] = value;
+        }
+    }
+
+    return out;
+}
+
+describe('TextInput class-tier style migration', () => {
+    it('row 3: the shared .TextInput class rule carries the font baseline alongside its chrome', () => {
+        // Must be the first TextInput-family construction+render in this file
+        // — see the file banner comment.
+        const sink = DOM.sink as RecordingDOMSink;
+        const declarations = declarationsDuring(sink, '.TextInput', () => new TextField().getElement(true));
+
+        expect(declarations.fontFamily).toBe('var(--ts-ui-font-family, sans-serif)');
+        expect(declarations.fontSize).toBe('var(--ts-ui-font-size, 14px)');
+        expect(declarations.lineHeight).toBe('calc(1em + var(--ts-ui-line-padding, 2px))');
+        expect(declarations.backgroundColor).toBe('var(--ts-ui-input-bg, rgb(255, 255, 255))');
+        expect(declarations.borderTop).toBe('var(--ts-ui-input-border)');
+        expect(declarations.borderRadius).toBe('var(--ts-ui-border-radius, 4px)');
+    });
+
+    it('row 1: a TextField renders with no font declaration on its own #id rule', () => {
+        new TextField().getElement(true); // throwaway, primes .TextField
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const field = new TextField();
+        const declarations = declarationsDuring(sink, idSelector(field), () => field.getElement(true));
+        const real = realDeclarations(declarations);
+
+        expect(Object.keys(real).sort()).toEqual(['maxHeight', 'minHeight']);
+        expect(declarations.fontFamily).toBeUndefined();
+        expect(declarations.fontSize).toBeUndefined();
+        expect(declarations.lineHeight).toBeUndefined();
+    });
+
+    it('row 2: a TextArea renders with no real declaration at all on its own #id rule', () => {
+        new TextArea().getElement(true); // throwaway, primes .TextArea
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const area = new TextArea();
+        const declarations = declarationsDuring(sink, idSelector(area), () => area.getElement(true));
+
+        expect(realDeclarations(declarations)).toEqual({});
+    });
+
+    it('row 4: a DateField\'s inner PickerInput renders with only padding on its own #id rule', () => {
+        new DateField().getElement(true); // throwaway, primes .DateField / .PickerInput
+
+        const sink = DOM.sink as RecordingDOMSink;
+        const field = new DateField();
+        const input = (field as any)._input;
+        const declarations = declarationsDuring(sink, idSelector(input), () => field.getElement(true));
+
+        expect(realDeclarations(declarations)).toEqual({ padding: '0px 3px 0px 3px' });
+    });
+
+    it('row 5: NumberSpinner\'s inner field has no per-instance textAlign, and .NumberSpinnerField carries exactly one declaration', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+
+        // First-ever NumberSpinner construction+render in this file: captures
+        // .NumberSpinnerField's one-time content write — see the file banner.
+        const primer = new NumberSpinner();
+        const classDeclarations = declarationsDuring(sink, '.NumberSpinnerField', () => primer.getElement(true));
+        expect(realDeclarations(classDeclarations)).toEqual({ textAlign: 'right' });
+
+        const spinner = new NumberSpinner();
+        const input = (spinner as any)._input;
+        const idDeclarations = declarationsDuring(sink, idSelector(input), () => spinner.getElement(true));
+        expect(idDeclarations.textAlign).toBeUndefined();
+    });
+
+    it('row 6: NumberEditor\'s inner field has no per-instance textAlign, and .NumberEditorField carries exactly one declaration', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+
+        // First-ever NumberEditor construction+render in this file: captures
+        // .NumberEditorField's one-time content write — see the file banner.
+        const primer = new NumberEditor();
+        const classDeclarations = declarationsDuring(sink, '.NumberEditorField', () => primer.getElement(true));
+        expect(realDeclarations(classDeclarations)).toEqual({ textAlign: 'right' });
+
+        const editor = new NumberEditor();
+        const textField = (editor as any)._textField;
+        const idDeclarations = declarationsDuring(sink, idSelector(textField), () => editor.getElement(true));
+        expect(idDeclarations.textAlign).toBeUndefined();
+    });
+
+    it('row 7: an unrendered inner field resolves textAlign from the class tier with no CSS involved', () => {
+        expect((new NumberSpinner() as any)._input.getTextAlign()).toBe('right');
+        expect((new NumberEditor() as any)._textField.getTextAlign()).toBe('right');
+        expect(new TextField().getTextAlign()).toBe(null);
+    });
+
+    it('row 8: a genuine per-instance textAlign override still wins on the instance\'s own #id rule', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const field = new TextField().setTextAlign('center');
+        const declarations = declarationsDuring(sink, idSelector(field), () => field.getElement(true));
+
+        expect(declarations.textAlign).toBe('center');
+    });
+});

@@ -2,9 +2,27 @@
 
 import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
 import { TextField } from "~/component/input/TextField.js";
+import { TextInput } from "~/component/input/TextInput.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import { Event } from "~/core/Event.js";
 import { callable } from "~/core/Callable.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
+
+const NUMBER_EDITOR_TEXT_ALIGN = "right";
+
+/**
+ * The inner text field of a {@link NumberEditor} — right-aligned by
+ * convention, so the alignment is a class default shared by every editor in
+ * the app rather than an imperative per-instance write. The `font` bag spreads
+ * `TextInput`'s own and overrides only `textAlign`; the hierarchy walk is a
+ * shallow merge, so declaring `textAlign` alone would replace the inherited
+ * font bag wholesale.
+ */
+class NumberEditorField extends TextField {
+    protected static readonly ownClassStyleDefaults: StyleBag = {
+        font: { ...TextInput.ownClassStyleDefaults.font, textAlign: NUMBER_EDITOR_TEXT_ALIGN },
+    };
+}
 
 /**
  * An in-place editor for numeric cell values.
@@ -19,7 +37,7 @@ import { callable } from "~/core/Callable.js";
  */
 class NumberEditor extends CellEditor<Number | null> {
 
-    private _textField: TextField     = new TextField();
+    private _textField: TextField     = new NumberEditorField();
     private _value:     Number | null = null;
 
     constructor() {
@@ -49,7 +67,6 @@ class NumberEditor extends CellEditor<Number | null> {
         this._textField.setBorder({ border: "0px solid transparent" });
         this._textField.setShadow('inset 0 0 0 1px var(--ts-ui-table-cell-editor-border, rgba(30, 100, 200, 0.6))');
         this._textField.setOutline('none');
-        this._textField.setTextAlign("right");
         this._textField.setText("");
 
         this.addComponent(this._textField, {

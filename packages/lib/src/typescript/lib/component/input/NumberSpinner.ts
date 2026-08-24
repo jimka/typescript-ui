@@ -4,6 +4,7 @@ import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractI
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { TextField } from "~/component/input/TextField.js";
+import { TextInput } from "~/component/input/TextInput.js";
 import { SpinButton } from "~/component/input/SpinButton.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
@@ -11,6 +12,7 @@ import { Insets } from "~/primitive/Insets.js";
 import { UNBOUNDED } from "~/primitive/Size.js";
 import { Util } from "~/core/Util.js";
 import { StyleRule } from "~/core/StyleTarget.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 import { registerFocusWithinRing } from "~/component/input/focusRing.js";
 import { callable } from "~/core/Callable.js";
 
@@ -63,6 +65,22 @@ const _defaultNumberSpinnerOptions: Partial<NumberSpinnerOptions> = {
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
 };
 
+const NUMBER_SPINNER_TEXT_ALIGN = "right";
+
+/**
+ * The inner numeric field of a {@link NumberSpinner} — right-aligned by
+ * convention, so the alignment is a class default shared by every spinner in
+ * the app rather than an imperative per-instance write. The `font` bag spreads
+ * `TextInput`'s own and overrides only `textAlign`; the hierarchy walk is a
+ * shallow merge, so declaring `textAlign` alone would replace the inherited
+ * font bag wholesale.
+ */
+class NumberSpinnerField extends TextField {
+    protected static readonly ownClassStyleDefaults: StyleBag = {
+        font: { ...TextInput.ownClassStyleDefaults.font, textAlign: NUMBER_SPINNER_TEXT_ALIGN },
+    };
+}
+
 /**
  * A numeric input field with flanking up/down spin buttons.
  *
@@ -92,8 +110,7 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
     constructor(options?: NumberSpinnerOptions, subclassDefaults?: Partial<NumberSpinnerOptions>) {
         super(options, { ..._defaultNumberSpinnerOptions, ...(subclassDefaults ?? {}) });
 
-        this._input = new TextField();
-        this._input.setTextAlign("right");
+        this._input = new NumberSpinnerField();
         this._input.setBorder("none");
         this._input.setBorderRadius("0");
         // Suppress the browser-default focus ring; the outer NumberSpinner's
