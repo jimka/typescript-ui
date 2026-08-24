@@ -69,8 +69,8 @@ describe('Panel — overlay scrollbar style-rule disposal', () => {
 
         const panel = renderedPanel();
         const bars  = panel as unknown as {
-            _scrollbarV: { getId(): string; _arrowStart: { _glyph: { getId(): string } } } | null;
-            _scrollbarH: { getId(): string; _arrowStart: { _glyph: { getId(): string } } } | null;
+            _scrollbarV: { getId(): string; _arrowStart: { _glyph: { getId(): string; setFontSize(px: number): void } } } | null;
+            _scrollbarH: { getId(): string; _arrowStart: { _glyph: { getId(): string; setFontSize(px: number): void } } } | null;
         };
 
         const originalVId      = bars._scrollbarV!.getId();
@@ -104,14 +104,19 @@ describe('Panel — overlay scrollbar style-rule disposal', () => {
         // plans/implemented/state-tier-rule-dedup-followups.md hoisted its
         // resting `foregroundColor` onto the shared `.ScrollArrowButton` class
         // rule too, so a never-disabled arrow now also materialises no `#id`
-        // rule of its own. Its glyph child is the reliable per-instance proxy
-        // instead: `Glyph.setFontSize` always writes its own `#id` rule
-        // directly (no class-default dedup for that property), and the glyph
-        // is only reachable through the scrollbar's own destructor recursion
-        // (Scrollbar -> ScrollArrowButton -> Glyph), which is what B1-1/B1-2
-        // actually guard.
+        // rule of its own. The glyph child is no longer reliable on its own
+        // default either — plans/implemented/glyph-class-tier-migration.md
+        // hoisted its char-mode font-size/line-height/text-align triple onto
+        // the shared `.ScrollArrowGlyph` class rule too, so an unmodified
+        // glyph now also materialises no `#id` rule. Forcing an explicit
+        // font-size deviation below gives it one, so the proxy no longer
+        // depends on some other property staying un-hoisted — which is what
+        // B1-1/B1-2 actually guard.
         expect(bars._scrollbarV).not.toBeNull();
         expect(bars._scrollbarH).not.toBeNull();
+
+        bars._scrollbarV!._arrowStart._glyph.setFontSize(11);
+        bars._scrollbarH!._arrowStart._glyph.setFontSize(11);
 
         const freshVId      = bars._scrollbarV!.getId();
         const freshHId      = bars._scrollbarH!.getId();

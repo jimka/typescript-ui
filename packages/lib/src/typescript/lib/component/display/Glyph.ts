@@ -355,7 +355,7 @@ class Glyph extends Component<GlyphOptions> {
      */
     setFontSize(value: number): this {
         this._options.fontSize = value;
-        this.setElementCSSRule("fontSize", value + "px");
+        this.writeStyle({ font: { fontSize: value + "px" } });
 
         return this;
     }
@@ -400,7 +400,7 @@ class Glyph extends Component<GlyphOptions> {
      */
     setLineHeight(value: number | string): this {
         this._options.lineHeight = value;
-        this.setElementCSSRule("lineHeight", typeof value === "number" ? value + "px" : value);
+        this.writeStyle({ font: { lineHeight: typeof value === "number" ? value + "px" : value } });
 
         return this;
     }
@@ -431,7 +431,7 @@ class Glyph extends Component<GlyphOptions> {
      */
     setTextAlign(value: string): this {
         this._options.textAlign = value;
-        this.setElementCSSRule("textAlign", value);
+        this.writeStyle({ font: { textAlign: value } });
 
         return this;
     }

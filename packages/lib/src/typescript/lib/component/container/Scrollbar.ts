@@ -133,19 +133,17 @@ const _defaultScrollArrowGlyphOptions: Partial<GlyphOptions> = {
 
 /**
  * The Unicode-triangle glyph inside a {@link ScrollArrowButton}. `minSize`/
- * `maxSize` are a class default (TRACK_WIDTH square), so every arrow across
- * every Scrollbar shares one `.ScrollArrowGlyph` CSS rule instead of each
- * repeating the same four declarations. `ScrollArrowButton`'s own constructor
- * still calls `setPreferredSize`/`setFontSize` imperatively (a `Glyph`'s
- * construction-time size pin cannot itself be deferred to a defaults bag —
- * see `Glyph.applyOptions`), but the size call now resolves to the same
- * TRACK_WIDTH value this class already defaults, so `Component.applyStyle`'s
- * render-time reconciliation (`reconcileRuleDeclaration`) turns it into a
- * removal instead of a redundant per-instance declaration. `fontSize`/
- * `lineHeight`/`textAlign` are NOT defaulted here: `Glyph`'s setters for
- * those three write through the raw, non-reconciled `setElementCSSRule`
- * path, so a class default for them would never be compared against and
- * would do nothing — they stay real per-instance declarations regardless.
+ * `maxSize` are a class default (TRACK_WIDTH square) via the constructor's
+ * `subclassDefaults` bag, and `fontSize`/`lineHeight`/`textAlign` are a class
+ * default too via `getClassStyleDefaults()` — so every arrow across every
+ * Scrollbar shares one `.ScrollArrowGlyph` CSS rule instead of each repeating
+ * all seven declarations. `ScrollArrowButton`'s own constructor still calls
+ * `setPreferredSize`/`setFontSize` imperatively (a `Glyph`'s
+ * construction-time size/font pins cannot themselves be deferred to a
+ * defaults bag — see `Glyph.applyOptions` and its char-mode constructor
+ * guard), but each call now resolves to the same value this class already
+ * defaults, so `Component.applyStyle`'s render-time reconciliation turns it
+ * into a removal instead of a redundant per-instance declaration.
  */
 class ScrollArrowGlyph extends Glyph {
     /**
@@ -156,6 +154,13 @@ class ScrollArrowGlyph extends Glyph {
      */
     constructor(direction: ArrowDirection, subclassDefaults?: Partial<GlyphOptions>) {
         super("unicode-arrow-" + direction, undefined, { ..._defaultScrollArrowGlyphOptions, ...(subclassDefaults ?? {}) });
+    }
+
+    protected getClassStyleDefaults(): StyleBag {
+        return {
+            ...super.getClassStyleDefaults(),
+            font: { fontSize: ARROW_GLYPH_FONT_SIZE + "px", lineHeight: "1", textAlign: "center" },
+        };
     }
 }
 

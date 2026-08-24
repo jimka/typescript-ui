@@ -63,14 +63,26 @@ function scrollbarsOf(tree: Tree): { v: Scrollbar; h: Scrollbar } {
  * its own at all. The arrow itself is no longer reliable either —
  * plans/implemented/state-tier-rule-dedup-followups.md hoisted its resting
  * `foregroundColor` onto the shared `.ScrollArrowButton` class rule too, so a
- * never-disabled arrow now also materialises no `#id` rule of its own. Its
- * glyph child still does: `Glyph.setFontSize` always writes its own `#id`
- * rule directly (no class-default dedup for that property), and the glyph is
- * only reachable through the scrollbar's own destructor recursion
- * (Scrollbar -> ScrollArrowButton -> Glyph).
+ * never-disabled arrow now also materialises no `#id` rule of its own. The
+ * glyph child is no longer reliable on its own default either —
+ * plans/implemented/glyph-class-tier-migration.md hoisted its char-mode
+ * font-size/line-height/text-align triple onto the shared `.ScrollArrowGlyph`
+ * class rule too, so an unmodified glyph now also materialises no `#id`
+ * rule. `forceArrowGlyphDeviation` below gives it one explicitly, so the
+ * proxy no longer depends on some other property staying un-hoisted.
  */
 function arrowIdOf(bar: Scrollbar): string {
     return (bar as unknown as { _arrowStart: { _glyph: { getId(): string } } })._arrowStart._glyph.getId();
+}
+
+/**
+ * Forces a genuine per-instance deviation on a scrollbar's start-arrow glyph
+ * — a font-size distinct from `ScrollArrowGlyph`'s own class default — so a
+ * real `#id` rule exists to canary on regardless of what the class tier
+ * hoists elsewhere. See `arrowIdOf`'s doc comment.
+ */
+function forceArrowGlyphDeviation(bar: Scrollbar): void {
+    (bar as unknown as { _arrowStart: { _glyph: { setFontSize(px: number): void } } })._arrowStart._glyph.setFontSize(11);
 }
 
 describe('VirtualScroller — overlay scrollbar style-rule disposal', () => {
@@ -79,6 +91,9 @@ describe('VirtualScroller — overlay scrollbar style-rule disposal', () => {
 
         const tree = renderedTree();
         const { v, h } = scrollbarsOf(tree);
+
+        forceArrowGlyphDeviation(v);
+        forceArrowGlyphDeviation(h);
 
         const vId = v.getId();
         const hId = h.getId();
