@@ -45,6 +45,10 @@
       "import": "./dist/lib/router.es.js",
       "types": "./dist/lib/types/router/index.d.ts"
     },
+    "./diagnostics": {
+      "import": "./dist/lib/diagnostics.es.js",
+      "types": "./dist/lib/types/diagnostics/index.d.ts"
+    },
     "./component/input": {
       "import": "./dist/lib/component/input.es.js",
       "types": "./dist/lib/types/component/input/index.d.ts"

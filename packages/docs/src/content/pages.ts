@@ -167,6 +167,7 @@ export function getNav(): NavGroup[] {
         { path: '/components/Rail',                  label: 'Rail' },
         { path: '/components/Dock',                  label: 'Dock' },
         { path: '/components/Tooltip',                label: 'Tooltip' },
+        { path: '/components/DiagnosticsOverlay',      label: 'DiagnosticsOverlay' },
         { path: '/components/Popover',                label: 'Popover' },
         { path: '/components/PopupPanel',              label: 'PopupPanel' },
         { path: '/components/Notification',           label: 'Notification' },

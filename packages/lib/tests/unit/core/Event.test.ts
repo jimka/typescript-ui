@@ -311,3 +311,51 @@ describe('Event.purgeComponent', () => {
         expect(Event._registeredComponentIds()).not.toContain(child.getId());
     });
 });
+
+// Diagnostics overlay support (plans/implemented/debug-diagnostics-overlay.md,
+// Expected Behaviour rows 10-11). `listenerCounts()` sums module-level state
+// that outlives every test, so both cases diff against a before/after snapshot
+// rather than asserting an absolute count.
+describe('Event.listenerCounts', () => {
+    afterEach(() => DOM.reset());
+
+    it('10. rises on registration and falls back on removal', () => {
+        installTestDOM(CONFIG);
+        const exactType   = uniqueType();
+        const subtreeType = uniqueType();
+        const exactFn      = (): void => {};
+        const subtreeFn    = (): void => {};
+        const comp = new Component({});
+
+        const before = Event.listenerCounts();
+
+        Event.addListener(comp, exactType, exactFn);
+        Event.addSubtreeListener(comp, subtreeType, subtreeFn);
+
+        const during = Event.listenerCounts();
+        expect(during.exact - before.exact).toBe(1);
+        expect(during.subtree - before.subtree).toBe(1);
+        expect(during.total - before.total).toBe(2);
+
+        Event.removeListener(comp, exactType, exactFn);
+        Event.removeSubtreeListener(comp, subtreeType, subtreeFn);
+
+        const after = Event.listenerCounts();
+        expect(after).toEqual(before);
+    });
+
+    it('11. disposing a component clears its DOM listener registrations', () => {
+        installTestDOM(CONFIG);
+        const type = uniqueType();
+        const comp = new Component({});
+
+        const before = Event.listenerCounts();
+
+        Event.addListener(comp, type, () => {});
+        expect(Event.listenerCounts().total).toBe(before.total + 1);
+
+        comp.dispose();
+
+        expect(Event.listenerCounts()).toEqual(before);
+    });
+});

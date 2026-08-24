@@ -1190,6 +1190,11 @@ export class ModelledDOMSource implements DOMSource {
         return [];
     }
 
+    /** No selector engine offline; nothing to count. */
+    countElements(): number {
+        return 0;
+    }
+
     /** No selector engine offline; no element matches. */
     matches(_handle: Handle, _selector: string): boolean {
         return false;

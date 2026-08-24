@@ -244,6 +244,44 @@ export function _ruleCacheKeys(): readonly string[] {
 }
 
 /**
+ * Rule counts bucketed by selector shape, as read by the diagnostics overlay.
+ *
+ * @category Core
+ */
+export interface StyleRuleCounts {
+    /** Selectors starting `#` — a `scope: "component"` rule. */
+    instance: number;
+    /** Selectors starting `.` — a `scope: "class"` rule. */
+    class:    number;
+    /** Every other selector — a verbatim `scope: "selector"` rule. */
+    other:    number;
+    /** The sum of the three buckets. */
+    total:    number;
+}
+
+/**
+ * Buckets every currently-materialised rule in the module cache by the first
+ * character of its selector — `#` (instance), `.` (class), or anything else
+ * (a verbatim `scope: "selector"` rule, e.g. the framework tier's
+ * `:where(.ts-ui-component)`).
+ *
+ * @returns The bucketed {@link StyleRuleCounts}.
+ */
+export function styleRuleCounts(): StyleRuleCounts {
+    let instance = 0;
+    let cls      = 0;
+    let other    = 0;
+
+    for (const selector of _ruleCache.keys()) {
+        if      (selector.startsWith("#")) instance += 1;
+        else if (selector.startsWith(".")) cls      += 1;
+        else                               other    += 1;
+    }
+
+    return { instance, class: cls, other, total: instance + cls + other };
+}
+
+/**
  * Deferred-write buffer that materialises into a
  * [`CSSStyleRule`](https://developer.mozilla.org/en-US/docs/Web/API/CSSStyleRule)
  * on the framework's shared `<style id="Base">` stylesheet the first time

@@ -8,6 +8,18 @@ Setters call an internal `scheduleLayout()` rather than running `doLayout()` syn
 
 In practice this means you can call `setPreferredSize` on hundreds of components in a tight loop and pay for one layout pass, not hundreds.
 
+## Diagnostics overlay
+
+[`DiagnosticsOverlay`](/components/DiagnosticsOverlay) opens a floating window with live browser-level numbers (FPS, JS heap, DOM node count, long tasks) beside framework-internal ones (live `Component` count, layout passes and flush time, listener registrations, stylesheet rule count):
+
+```typescript
+import { DiagnosticsOverlay } from '@jimka/typescript-ui/diagnostics';
+
+DiagnosticsOverlay.open();
+```
+
+The two numbers most worth watching for a suspected regression: **layout passes per second**, for a relayout loop (a setter that unconditionally schedules layout on every pass); and **stylesheet rules**, for a rule leak (a component held outside the tree whose per-instance rule never gets disposed). It ships as its own subpath, so an app that never imports `@jimka/typescript-ui/diagnostics` bundles none of the overlay UI — see the component page for the full row-by-row breakdown and browser-support caveats.
+
 ## pauseLayout / resumeLayout
 
 For bulk mutations that span multiple frames or need explicit grouping:

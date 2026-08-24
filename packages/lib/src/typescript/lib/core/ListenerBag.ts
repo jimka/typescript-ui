@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { Diagnostics } from "~/core/Diagnostics.js";
+
 /**
  * Private multi-listener bag owned by an event-emitting host.
  *
@@ -38,6 +40,7 @@ export class ListenerBag<TEvent extends string> {
         }
 
         bucket.push(listener);
+        Diagnostics.noteBagListenerAdded();
     }
 
     /**
@@ -58,6 +61,7 @@ export class ListenerBag<TEvent extends string> {
 
         if (idx >= 0) {
             bucket.splice(idx, 1);
+            Diagnostics.noteBagListenerRemoved();
         }
     }
 

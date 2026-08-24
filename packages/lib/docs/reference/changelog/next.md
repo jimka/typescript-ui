@@ -12,6 +12,25 @@ page resets to empty.
 `DOMSink` gains one required member: `clearDocumentSelection()`. Only a
 consumer implementing its own `DOMSink` is affected.
 
+`DOMSource` gains one required member: `countElements()`. Only a consumer
+implementing its own `DOMSource` is affected.
+
+## Added
+
+### Components
+
+- **[`DiagnosticsOverlay`](/components/DiagnosticsOverlay)**, a floating
+  window showing live runtime diagnostics — FPS, JS heap, DOM node count and
+  long tasks alongside framework-internal numbers (live `Component` count,
+  layout passes and flush time, DOM/semantic listener registrations,
+  per-instance stylesheet rule count). Open it with
+  `DiagnosticsOverlay.open()`. It ships as its own subpath,
+  `@jimka/typescript-ui/diagnostics`, so an app that never imports it never
+  bundles a byte of the overlay UI. The pushed counters it reads live in the
+  always-loaded core chunk — one integer increment at seams the framework
+  already runs on every request, so the always-on cost is negligible even
+  when the overlay is never opened.
+
 ## Changed
 
 ### Components

@@ -114,6 +114,7 @@ export const groups = [
         { task: "Hover tooltip", symbol: "Tooltip" },
         { task: "Transient toast notification", symbol: "Notification" },
         { task: "Browse / re-open past notifications", symbol: "NotificationHistoryButton" },
+        { task: "Live runtime diagnostics window (FPS, heap, components, layout, listeners, CSS rules)", symbol: "DiagnosticsOverlay" },
     ] },
 
     { name: "Data layer", entries: [
