@@ -17,12 +17,12 @@ import { columnFilterOperators, buildColumnFilter, columnFilterStatesEqual, colu
 import type { ColumnFilterState, ColumnFilterTarget } from "~/component/table/ColumnFilter.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { CellTextResolver } from "~/component/table/cell/CellText.js";
-import { Button } from "~/component/button/Button.js";
+import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { ellipsis_v } from "~/glyphs/solid/ellipsis_v.js";
 import { callable } from "~/core/Callable.js";
 import { TRACK_WIDTH } from "~/component/container/Scrollbar.js";
-import type { StyleBag } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 
 // Register the column-menu button's glyph eagerly at module load — same
 // pattern as ToolBar registering its overflow chevron — so the button always
@@ -35,13 +35,13 @@ const MENU_BUTTON_GLYPH = "ellipsis-v";
 /** Accessible name / tooltip for the column-menu button. */
 const MENU_BUTTON_LABEL = "Column options";
 
-// A flat, compact, glyph-only `Button` reserves `glyph + MENU_BUTTON_CHROME_PX`
-// per axis around the glyph — 2px of compact insets on each side. The
-// button's own border is cleared in the constructor (`clearBorder()` and its
-// hover/pressed twins), so it contributes no width here. The button fills
-// the vertical-scrollbar reservation band exactly (see the constructor,
-// which pins the glyph to `TRACK_WIDTH - MENU_BUTTON_CHROME_PX`), so this is
-// the fixed per-side overhead subtracted from that fixed track width.
+// A compact, glyph-only `TableHeaderMenuButton` reserves `glyph +
+// MENU_BUTTON_CHROME_PX` per axis around the glyph — 2px of compact insets
+// on each side. The button's own border is `"none"` (its own declared chrome
+// default), so it contributes no width here. The button fills the vertical-
+// scrollbar reservation band exactly (see the constructor, which pins the
+// glyph to `TRACK_WIDTH - MENU_BUTTON_CHROME_PX`), so this is the fixed
+// per-side overhead subtracted from that fixed track width.
 const MENU_BUTTON_CHROME_PX = 4;
 
 // Needs to beat the header's inner rows, which are Components at `z-index:
@@ -72,6 +72,85 @@ function range(a: number, b: number): number[] {
 // the previous behaviour — left the surface transparent under a flat-colour
 // theme, which surfaced as a see-through scrollbar-cover band.
 const TABLE_HEADER_BG = "var(--ts-ui-table-header-bg, var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))))";
+
+/** Left-edge divider — an inset shadow rather than a border, since flat
+ *  chrome's own 1px transparent border reservation was removed along with
+ *  the rest of flat mode; see the class's own doc comment. */
+const MENU_BUTTON_DIVIDER_SHADOW = "inset 1px 0 0 0 var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))";
+
+/** Non-flat hover/pressed background tokens — see the class's own doc
+ *  comment for why these, not flat's generic translucent overlay, are
+ *  the intended look. */
+const MENU_BUTTON_HOVER_BG   = "var(--ts-ui-button-hover-bg, rgb(252, 252, 252))";
+const MENU_BUTTON_PRESSED_BG = "var(--ts-ui-button-pressed-bg, rgb(200, 200, 200))";
+
+const _defaultTableHeaderMenuButtonOptions: Partial<ButtonOptions> = {
+    border:          "none",
+    borderRadius:    undefined,   // explicit key wins over Button's own default in the subclassDefaults spread merge — mirrors WindowControlButton's/TabCloseButton's identical trick.
+    backgroundColor: TABLE_HEADER_BG,
+    backgroundImage: TABLE_HEADER_BG,
+    shadow:          MENU_BUTTON_DIVIDER_SHADOW,
+};
+
+/**
+ * The table header's column-options menu trigger. A real declared-chrome
+ * subclass rather than a bare `Button({flat: true, ...})` with imperative
+ * overrides — see plans/button-flat-chrome-dedup.md's Architecture
+ * Decisions for why `flat` was dropped, and why the hover/pressed
+ * backgrounds below are the tokens `Header.ts` always intended (previously
+ * masked by flat's own more-specific state rules). Module-private, not
+ * exported, not wrapped in `callable()` — same treatment as
+ * `WindowControlButton` in `windowControls.ts`.
+ */
+class TableHeaderMenuButton extends Button {
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultTableHeaderMenuButtonOptions;
+
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".pressed",
+            extract: (): StyleBag => ({
+                backgroundColor: MENU_BUTTON_PRESSED_BG,
+                backgroundImage: MENU_BUTTON_PRESSED_BG,
+                shadow:          MENU_BUTTON_DIVIDER_SHADOW,
+            }),
+        },
+        {
+            selector: ":hover",
+            extract: (): StyleBag => ({
+                backgroundColor: MENU_BUTTON_HOVER_BG,
+                backgroundImage: MENU_BUTTON_HOVER_BG,
+                shadow:          MENU_BUTTON_DIVIDER_SHADOW,
+            }),
+        },
+    ];
+
+    constructor(onAction: () => void, subclassDefaults?: Partial<ButtonOptions>) {
+        super(
+            undefined,
+            {
+                glyph:    MENU_BUTTON_GLYPH,
+                text:     MENU_BUTTON_LABEL,
+                showText: false,
+                compact:  true,
+                zIndex:   MENU_BUTTON_Z_INDEX,
+            },
+            { ..._defaultTableHeaderMenuButtonOptions, ...(subclassDefaults ?? {}) },
+        );
+        // Button's own constructor only auto-wires an options `listeners` bag
+        // for a plain `Button` instance, never a subclass (see its own
+        // comment) — wire `action` directly here instead, the same way
+        // `PopupButton`/`MenuButton` do from their own constructor bodies.
+        this.on("action", onAction);
+        this.pinGlyphSize(Math.max(1, TRACK_WIDTH - MENU_BUTTON_CHROME_PX));
+        // Three unrelated owners (this button, SpinButton, TabCloseButton) all
+        // pin their glyph to 8px via unrelated formulas that only coincidentally
+        // agree today — see plans/implemented/glyph-icon-size-dedup.md's
+        // Architecture Decisions for why a class default is unsafe here and a
+        // styleGroup token is used instead.
+        this.getGlyph()?.setStyleGroup("table-header-menu-glyph");
+        this.getAria().setHasPopup("menu");
+    }
+}
 
 /**
  * String-literal union of the events emitted by the table {@link TableHeader}.
@@ -235,60 +314,7 @@ class TableHeader extends Component {
         // the reserved band's boundary. Its glyph is pinned to exactly fill
         // that band — `TRACK_WIDTH` is a fixed compile-time constant, so this
         // costs nothing at runtime.
-        const glyphPx = Math.max(1, TRACK_WIDTH - MENU_BUTTON_CHROME_PX);
-
-        this._menuButton = new Button({
-            glyph:     MENU_BUTTON_GLYPH,
-            text:      MENU_BUTTON_LABEL,
-            showText:  false,
-            flat:      true,
-            compact:   true,
-            zIndex:    MENU_BUTTON_Z_INDEX,
-            listeners: { action: this._boundOnMenuButtonAction },
-        });
-        this._menuButton.pinGlyphSize(glyphPx);
-        this._menuButton.getGlyph()?.setStyleGroup("table-header-menu-glyph");
-        this._menuButton.setBackgroundColor(TABLE_HEADER_BG);
-        this._menuButton.setBackgroundImage(TABLE_HEADER_BG);
-        // Flat chrome's hover/pressed treatment (installed by the `super()`
-        // cascade above) overrides `background-color` with a translucent
-        // black tint, meant to composite against an ambient page background
-        // showing through a transparent resting state. This button's resting
-        // background is opaque instead (the masking colour above), so swap in
-        // the *non-flat* hover/pressed tokens for the usual darker-on-press
-        // look. Depending on the theme, those tokens can resolve to either a
-        // plain colour or a gradient — the same ambiguity `TABLE_HEADER_BG`
-        // has above — so, as above, write each token to both
-        // `background-color` and `background-image`: whichever is invalid
-        // for the resolved value drops out silently, leaving exactly one
-        // opaque paint layer instead of the transparent gap a colour-only
-        // write leaves when the token turns out to be a gradient.
-        const hoverBg   = "var(--ts-ui-button-hover-bg, rgb(252, 252, 252))";
-        const pressedBg = "var(--ts-ui-button-pressed-bg, rgb(200, 200, 200))";
-
-        this._menuButton.setHoverBackgroundColor(hoverBg);
-        this._menuButton.setHoverBackgroundImage(hoverBg);
-        this._menuButton.setPressedBackgroundColor(pressedBg);
-        this._menuButton.setPressedBackgroundImage(pressedBg);
-        // Flat chrome (installed by the `super()` cascade above) reserves a
-        // 1px transparent border on every side, at rest and on hover/pressed,
-        // so its own border-colour swap doesn't nudge the glyph. An `inset`
-        // box-shadow always clips to the padding edge — *inside* the border —
-        // regardless of the border's colour, so that reservation would leave
-        // the divider below 1px short on every edge it touches (top, bottom,
-        // and the left edge it's meant to sit flush against). The hover/
-        // pressed background swap above already carries the interaction
-        // feedback flat chrome's border swap was for, so clear the border in
-        // every state rather than work around the clip: with no border
-        // reserved, the padding edge coincides with the button's true edges
-        // and the shadow below reaches them exactly.
-        this._menuButton.clearBorder();
-        this._menuButton.clearHoverBorder();
-        this._menuButton.clearPressedBorder();
-        // `ParentHeaderCell` uses the same inset-shadow technique for its own
-        // dividers.
-        this._menuButton.setShadow("inset 1px 0 0 0 var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))");
-        this._menuButton.getAria().setHasPopup("menu");
+        this._menuButton = new TableHeaderMenuButton(this._boundOnMenuButtonAction);
         super.addComponent(this._menuButton);
 
         this.rebuildCells();
