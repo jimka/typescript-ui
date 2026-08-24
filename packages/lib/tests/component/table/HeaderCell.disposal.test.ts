@@ -99,6 +99,20 @@ describe('HeaderCell — side-loaded child disposal', () => {
 
         // Three columns, each side-loading a handle and a badge.
         expect(children.length).toBeGreaterThanOrEqual(6);
+
+        // A real per-instance declaration on each child, so the precondition
+        // below has something to find regardless of internal state: the
+        // priority badge's construction-time `setVisible(false)`
+        // (SortPriorityBadge.ts, no active sort by default) used to leave a
+        // transient `visibility` declaration on its own rule, but the
+        // state-tier dedup plan (component-setvisible-state-tier-dedup.md)
+        // routes that through the shared `.ts-ui-component.invisible` class
+        // rule instead, so a hidden badge no longer has any residual rule of
+        // its own.
+        for (const child of children) {
+            (child as unknown as { setBackgroundColor(v: string): unknown }).setBackgroundColor('red');
+        }
+
         expect(survivingRulesFor(children).length).toBeGreaterThan(0);
 
         destroy(table);

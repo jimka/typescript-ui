@@ -63,7 +63,14 @@ describe('Text — theme subscription released on dispose', () => {
         // deviation from the framework rule, so its shared `.Text` class rule
         // is created on this file's first rendered `Text` — permanent,
         // class-scoped state, not a per-instance leak.
-        const leaked = _ruleCacheKeys().filter((key) => !before.has(key) && key !== ':where(.ts-ui-component)' && key !== '.Text');
+        // `.ts-ui-component.invisible` is excluded for the same reason again,
+        // new as of component-setvisible-state-tier-dedup.md: `Component`'s
+        // own `.invisible` declared state is resolved — and its shared class
+        // rule materialised — by `styleLayers()` on every render, regardless
+        // of whether the instance is ever hidden, the same eager,
+        // once-per-class, module-scoped creation every class-tier rule uses.
+        const leaked = _ruleCacheKeys().filter((key) =>
+            !before.has(key) && key !== ':where(.ts-ui-component)' && key !== '.Text' && key !== '.ts-ui-component.invisible');
         expect(leaked).toEqual([]);
     });
 

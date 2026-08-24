@@ -56,9 +56,19 @@ const FRAMEWORK_SELECTOR = ':where(.ts-ui-component)';
 // selector above.
 const BUSY_INDICATOR_SELECTOR = '.TabBusyIndicator';
 
+// `Component`'s own `.invisible` declared state (state-tier dedup plan,
+// component-setvisible-state-tier-dedup.md) is resolved — and its shared
+// `.ts-ui-component.invisible` class rule materialised — by `styleLayers()`
+// on every render, regardless of whether the instance is ever hidden: the
+// same eager, once-per-class, module-scoped creation every class-tier rule
+// uses. Since `Component` is the root, whichever test in this file renders
+// any `Component` first legitimately sees it appear; not a per-instance leak.
+const INVISIBLE_STATE_SELECTOR = '.ts-ui-component.invisible';
+
 /** Rule-cache keys present now that were absent from `before`, excluding permanent shared rules. */
 function leakedKeys(before: Set<string>): string[] {
-    return _ruleCacheKeys().filter((key) => !before.has(key) && key !== FRAMEWORK_SELECTOR && key !== BUSY_INDICATOR_SELECTOR);
+    return _ruleCacheKeys().filter((key) =>
+        !before.has(key) && key !== FRAMEWORK_SELECTOR && key !== BUSY_INDICATOR_SELECTOR && key !== INVISIBLE_STATE_SELECTOR);
 }
 
 /**

@@ -86,6 +86,15 @@ describe('Tab close disposal', () => {
 
         content.addComponent(child);
         host.addComponent(content);
+        // A real per-instance declaration, so the precondition below has
+        // something to find: Tab's own hide-then-activate dance used to
+        // leave a transient `visibility` declaration on `content`'s `#id`
+        // rule, but the state-tier dedup plan
+        // (component-setvisible-state-tier-dedup.md) routes that through
+        // the shared `.ts-ui-component.invisible` class rule instead, so an
+        // activated tab's content no longer has any residual rule of its
+        // own by the time this assertion runs.
+        content.setBackgroundColor('red');
         host.doLayout();
 
         const ids = collectIds(content);
@@ -106,6 +115,10 @@ describe('Tab close disposal', () => {
         const content = new Component({});
 
         host.addComponent(content, keepAlive());
+        // See T1's comment: a real declaration so `content` has its own
+        // rule to find after `closeTab` — its transient hide/show-driven
+        // `visibility` declaration no longer leaves one.
+        content.setBackgroundColor('red');
         host.doLayout();
 
         const ownRule = `#${content.getId()}`;
@@ -134,6 +147,10 @@ describe('Tab close disposal', () => {
         const other   = new Component({});
 
         host.addComponent(content);
+        // See T1's comment: a real declaration so `content` has its own
+        // rule to find after `closeTab` — its transient hide/show-driven
+        // `visibility` declaration no longer leaves one.
+        content.setBackgroundColor('red');
         other.getElement(true);
         host.doLayout();
 
@@ -154,6 +171,10 @@ describe('Tab close disposal', () => {
         const content = new Component({});
 
         host.addComponent(content);
+        // See T1's comment: a real declaration so `content` has its own
+        // rule to find after the tear-off — its transient hide/show-driven
+        // `visibility` declaration no longer leaves one.
+        content.setBackgroundColor('red');
         host.doLayout();
 
         const entry  = barEntries(tab)[0];

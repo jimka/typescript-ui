@@ -124,6 +124,13 @@ describe('Dock close disposal', () => {
 
         const frame = priv(dock)._frames.get('a') as Component;
         const frameRule = `#${frame.getId()}`;
+        // A real per-instance declaration, matching D1's own rationale: the
+        // frame's activation dance used to leave a transient `visibility`
+        // declaration on its own rule, but the state-tier dedup plan
+        // (component-setvisible-state-tier-dedup.md) routes that through
+        // the shared `.ts-ui-component.invisible` class rule instead, so an
+        // active frame no longer has any residual rule of its own.
+        frame.setBackgroundColor('#fff');
         let ruleDuringClose: boolean | null = null;
 
         dock.on('close', () => {
@@ -141,7 +148,14 @@ describe('Dock close disposal', () => {
         installTestDOM(CONFIG);
         captureRaf();
 
-        const placeholder = new Component({});
+        // A real per-instance declaration (see D1's rationale): this test
+        // uses `_ruleCacheKeys()` to prove the *same* placeholder instance
+        // survives being hidden while the dock is populated, but hiding it
+        // now routes through the shared `.ts-ui-component.invisible` class
+        // rule (component-setvisible-state-tier-dedup.md) and leaves no
+        // residual rule of its own — a stock `Component({})` would read as
+        // "disposed" here even while merely hidden.
+        const placeholder = new Component({ backgroundColor: '#fff' });
         const dock = new Dock({ emptyContent: placeholder });
 
         dock.getElement(true);

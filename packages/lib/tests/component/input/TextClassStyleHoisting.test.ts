@@ -163,7 +163,16 @@ describe('Text applyStyle class-rule hoisting', () => {
         const sink = DOM.sink as RecordingDOMSink;
         const b = new Text('x', { truncate: false });
 
-        const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+        // `writeGuardedCSSRule` (which `textOverflow`'s reconciliation routes
+        // through) now isolates onto `#id:not(.invisible)` rather than the
+        // bare `#id` rule: `Component`'s own `.invisible` state (the
+        // state-tier dedup plan) makes `isRestingChromeIsolated()` true for
+        // every class, `Text` included, even though `.invisible` shares no
+        // property with `textOverflow` — see that plan's Potential
+        // Challenges / Implementation Notes. `:not(.invisible)` still beats
+        // the class-tier rule and still matches a non-hidden instance, so
+        // the override still wins the cascade; only the selector moved.
+        const declarations = declarationsDuring(sink, idSelector(b) + ':not(.invisible)', () => b.getElement(true));
 
         expect(b.getTextOverflow()).toBeNull();
         expect(declarations.textOverflow).toBe('clip');
@@ -179,7 +188,9 @@ describe('Text applyStyle class-rule hoisting', () => {
         const b = new Text('x');
         b.getElement(true);
 
-        const declarations = declarationsDuring(sink, idSelector(b), () => b.setTruncate(false));
+        // See the construction-time case above for why this is now
+        // `:not(.invisible)`, not the bare `#id` selector.
+        const declarations = declarationsDuring(sink, idSelector(b) + ':not(.invisible)', () => b.setTruncate(false));
 
         expect(b.getTextOverflow()).toBeNull();
         expect(declarations.textOverflow).toBe('clip');

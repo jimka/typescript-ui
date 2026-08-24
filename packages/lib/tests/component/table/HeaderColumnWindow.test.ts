@@ -546,17 +546,21 @@ describe('Header column window — teardown', () => {
         // id: plans/implemented/state-tier-rule-dedup-followups.md moved its
         // `:active` box-shadow onto the shared `.HeaderCell:active` class rule,
         // which was the cell's only per-instance rule. Its side-loaded
-        // `_priorityBadge` child is the reliable proxy instead — `SortPriorityBadge`'s
-        // constructor always writes its own `visibility: hidden` rule
-        // (unaffected by this plan, and not itself a hoisted class default),
-        // and the badge is raw-appended (not `addComponent`-registered — see
+        // `_priorityBadge` child is the reliable proxy instead, and the badge
+        // is raw-appended (not `addComponent`-registered — see
         // `HeaderCell.destructor`'s own doc comment), so it is only disposed
         // when the reconciler correctly calls `dispose()` on the dropped cell,
-        // which is exactly what this test guards.
+        // which is exactly what this test guards. `SortPriorityBadge`'s
+        // construction-time `setVisible(false)` (no active sort by default)
+        // no longer leaves a rule of its own — the state-tier dedup plan
+        // (component-setvisible-state-tier-dedup.md) routes that through the
+        // shared `.ts-ui-component.invisible` class rule instead — so a real
+        // declaration is forced onto the badge directly, as its own proxy.
         const dropped = cells(table).find(c => c.getFieldName() === 'c2')! as unknown as {
             getId(): string;
-            _priorityBadge: { getId(): string };
+            _priorityBadge: { getId(): string; setBackgroundColor(v: string): unknown };
         };
+        dropped._priorityBadge.setBackgroundColor('red');
         const badgeId = dropped._priorityBadge.getId();
         const survivingBefore = _ruleCacheKeys().filter(key => key.includes(badgeId));
         expect(survivingBefore.length).toBeGreaterThan(0);

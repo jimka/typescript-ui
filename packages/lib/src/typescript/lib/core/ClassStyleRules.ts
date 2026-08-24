@@ -647,6 +647,17 @@ const _resolvedStates: Map<Function, readonly ResolvedStyleState[]> = new Map();
 // order) differ too.
 const _stateLevelLayers: Map<Function, Map<string, ReadonlyMap<string, StyleLayer>>> = new Map();
 
+/** The `scope:"class"` rule-name a state-tier level resolves under —
+ *  `ctor.name` for a normal class, but the universal `COMPONENT_CLASS`
+ *  token for `_rootCtor` itself. `getStyleClassChain` never adds
+ *  `_rootCtor`'s own name to any element's DOM classList, so a state
+ *  `Component` declares directly needs a rule anchored to the one class
+ *  token every rendered element actually carries — `ts-ui-component` — or
+ *  the generated `.Component.<suffix>` selector would never match anything. */
+function stateRuleName(ctor: Function): string {
+    return ctor === _rootCtor ? COMPONENT_CLASS : ctor.name;
+}
+
 /**
  * Per-selector resolved layers for one class level — the state-tier sibling
  * of {@link resolveClassLevel}, mirroring its recursive shape (resolve the
@@ -697,8 +708,10 @@ function resolveStateLevels(
     }
 
     // `_rootCtor` (Component) is a terminal node for this walk too, exactly
-    // like `resolveClassLevel` — Component never declares `ownStyleStates`,
-    // so there is nothing to gain by walking further.
+    // like `resolveClassLevel` — it has no parent level this mechanism
+    // covers, so there is nothing to gain by walking further, regardless of
+    // whether Component itself declares an `ownStyleStates` entry (it does,
+    // as of `.invisible` — see `stateRuleName`).
     const rawParentCtor = ctor === _rootCtor ? null : (Object.getPrototypeOf(ctor) as Function | null);
     const parentCtor = rawParentCtor ? canonicalCtor(rawParentCtor) : null;
     const parentLayers = (typeof parentCtor === "function" && parentCtor.name)
@@ -706,7 +719,7 @@ function resolveStateLevels(
         : (new Map() as ReadonlyMap<string, StyleLayer>);
 
     const own      = ownStyleStatesOf(ctor);
-    const name     = ctor.name;
+    const name     = stateRuleName(ctor);
     const owner    = _owners.get(name);
     const collides = !name || (owner !== undefined && owner !== ctor);
 
@@ -809,7 +822,7 @@ export function resolveStyleStates(rawCtor: Function): readonly ResolvedStyleSta
 /** The one-time resolution `resolveStyleStates` memoizes per concrete class —
  *  a thin assembler over {@link resolveStateLevels}'s per-selector map. */
 function buildResolvedStates(declaringCtor: Function, specs: readonly StyleStateSpec[]): readonly ResolvedStyleState[] {
-    const name     = declaringCtor.name;
+    const name     = stateRuleName(declaringCtor);
     const owner    = _owners.get(name);
     const collides = !name || (owner !== undefined && owner !== declaringCtor);
 
