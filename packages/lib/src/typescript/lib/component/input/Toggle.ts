@@ -2,7 +2,9 @@
 
 import { Animation } from "~/core/Animation.js";
 import { AbstractBooleanInput, AbstractBooleanInputOptions } from "~/component/input/AbstractBooleanInput.js";
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
+import { DOM, type Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
 import { callable } from "~/core/Callable.js";
@@ -20,6 +22,83 @@ const _defaultToggleOptions: Partial<ToggleOptions> = {
     outline: "none",
 };
 
+// The track owns the click + cursor surface so the pointer/click area
+// matches the visible pill exactly. The root stays inert (default
+// cursor, no click listener), so clicks on the label or in any
+// stretched empty space don't toggle and don't show the pointer cursor.
+const _defaultToggleTrackOptions: Partial<ComponentOptions> = {
+    backgroundColor: "var(--ts-ui-toggle-track-bg-off, rgb(200, 200, 200))",
+    borderRadius:    "999px",
+    minSize:         { width: 36, height: 20 },
+    maxSize:         { width: 36, height: 20 },
+    cursor:          "pointer",
+};
+
+/** `.selected`'s backgroundColor declaration (the "on" fill), read by `ownStyleStates`' `.selected` entry — mirrors `CheckboxBox`'s `CHECKBOX_SELECTED_DECLARATIONS`. */
+const TOGGLE_TRACK_SELECTED_DECLARATIONS: Readonly<Record<string, string>> = Object.freeze({
+    backgroundColor: "var(--ts-ui-toggle-track-bg-on, rgb(30, 100, 200))",
+});
+
+/**
+ * The pill graphic behind a {@link Toggle}'s thumb — the click + cursor
+ * surface (see the comment above `_defaultToggleTrackOptions`). File-local —
+ * not exported from the input barrel because it is a Toggle implementation
+ * detail. Static geometry/cursor and the resting backgroundColor are class
+ * defaults so every instance shares one `.ToggleTrack` CSS rule instead of
+ * repeating them; the checked "on" fill comes from this class's own declared
+ * `ownStyleStates` entry below, resolved onto the shared
+ * `.ToggleTrack.selected` class-tier rule — mirrors `CheckboxBox`
+ * (Checkbox.ts).
+ */
+class ToggleTrack extends Component {
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".selected",
+            extract: (): StyleBag => ({ backgroundColor: TOGGLE_TRACK_SELECTED_DECLARATIONS.backgroundColor }),
+        },
+    ];
+
+    private _checked: boolean = false;
+
+    constructor() {
+        super(undefined, _defaultToggleTrackOptions);
+    }
+
+    /** Applies the checked visual state. The `.selected` background comes from
+     *  `ownStyleStates` above, resolved onto the shared class-tier rule. */
+    applySelected(checked: boolean): void {
+        this._checked = checked;
+        this.setStyleState(".selected", checked);
+    }
+
+    /** Re-applies the cached checked state at render, for a state set before mount. */
+    protected render(): Handle {
+        const element = super.render();
+        DOM.sink.apply(element, { toggleClass: { selected: this._checked } });
+        return element;
+    }
+}
+
+const _defaultToggleThumbOptions: Partial<ComponentOptions> = {
+    backgroundColor: "var(--ts-ui-toggle-thumb-bg, rgb(255, 255, 255))",
+    borderRadius:    "999px",
+    maxSize:         { width: 16, height: 16 },
+    shadow:          "0 1px 2px rgba(0, 0, 0, 0.25)",
+};
+
+/**
+ * The sliding handle inside a {@link Toggle}'s track. File-local — not
+ * exported from the input barrel because it is a Toggle implementation
+ * detail. Its backgroundColor/borderRadius/maxSize/shadow are class defaults
+ * so every instance shares one `.ToggleThumb` CSS rule instead of repeating
+ * them.
+ */
+class ToggleThumb extends Component {
+    constructor() {
+        super(undefined, _defaultToggleThumbOptions);
+    }
+}
+
 /**
  * A custom-drawn on/off switch widget rendered as a focusable `<div>` with
  * `role="switch"`.
@@ -36,8 +115,8 @@ const _defaultToggleOptions: Partial<ToggleOptions> = {
 class Toggle<TOptions extends ToggleOptions = ToggleOptions>
     extends AbstractBooleanInput<TOptions>
 {
-    private _track: Component;
-    private _thumb: Component;
+    private _track: ToggleTrack;
+    private _thumb: ToggleThumb;
 
     /**
      * Constructs a Toggle.
@@ -56,30 +135,17 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
 
         this.setLayoutManager(new HBox());
 
-        this._track = new Component();
-        this._track.setBackgroundColor("var(--ts-ui-toggle-track-bg-off, rgb(200, 200, 200))");
-        this._track.setBorderRadius("999px");
-        this._track.setPreferredSize({ width: 36, height: 20 });
+        this._track = new ToggleTrack();
         // Min = preferred = max so the outer HBox shrink-on-overallocation
         // can't collapse the pill when the Toggle is packed alongside
         // flexible siblings.
-        this._track.setMinSize({ width: 36, height: 20 });
-        this._track.setMaxSize({ width: 36, height: 20 });
-        // The track owns the click + cursor surface so the pointer/click area
-        // matches the visible pill exactly. The root stays inert (default
-        // cursor, no click listener), so clicks on the label or in any
-        // stretched empty space don't toggle and don't show the pointer cursor.
-        this._track.setCursor("pointer");
+        this._track.setPreferredSize({ width: 36, height: 20 });
 
-        this._thumb = new Component();
-        this._thumb.setBackgroundColor("var(--ts-ui-toggle-thumb-bg, rgb(255, 255, 255))");
-        this._thumb.setBorderRadius("999px");
+        this._thumb = new ToggleThumb();
         this._thumb.setPreferredSize({ width: 16, height: 16 });
-        this._thumb.setMaxSize({ width: 16, height: 16 });
         // The track's default Absolute layout never sizes its children, so the
         // thumb collapses to 0 × 0 unless we set the rendered size explicitly.
         this._thumb.setSize({ width: 16, height: 16 });
-        this._thumb.setShadow("0 1px 2px rgba(0, 0, 0, 0.25)");
         this._thumb.setX(2);
         this._thumb.setY(2);
         // Pass-through so clicks on the thumb still hit the track underneath.
@@ -301,10 +367,7 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
         // Thumb travel: track width 36, thumb size 16, 2px inset on each side =>
         // off at x=2, on at x=36-16-2=18 => translate 16px to the right.
         this._thumb.setTransform(value ? "translateX(16px)" : "translateX(0px)");
-
-        this._track.setBackgroundColor(value
-            ? "var(--ts-ui-toggle-track-bg-on, rgb(30, 100, 200))"
-            : "var(--ts-ui-toggle-track-bg-off, rgb(200, 200, 200))");
+        this._track.applySelected(value);
     }
 
 }
