@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { Button } from "~/component/button/Button.js";
+import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { AccordionIndicator } from "~/component/container/AccordionIndicator.js";
 import { HBox } from "~/layout/HBox.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
@@ -9,6 +9,7 @@ import { AnchorType } from "~/layout/AnchorType.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 import type { AxisEnd } from "~/primitive/Axis.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 
 /**
  * Left padding of the header row, in pixels. Reproduces the 8px gap the former
@@ -41,6 +42,73 @@ const COMPACT_PADDING_RIGHT: number = 6;
 const COMPACT_CELL_SPACING:  number = 2;
 
 /**
+ * Resting + pressed + hover defaults for {@link AccordionHeaderTitleButton} —
+ * transparent background, no border, no shadow, matching what
+ * `chromeless: true` used to compute imperatively. Same shape as
+ * `PickerButton`'s own defaults (`component/input/PickerButton.ts`) — see
+ * plans/implemented/button-chromeless-followup-dedup.md's Implementation
+ * Notes for why the hover pin is needed despite the plan's Architecture
+ * Decisions originally concluding otherwise.
+ */
+const _defaultAccordionHeaderTitleButtonOptions: Partial<ButtonOptions> = {
+    backgroundColor:        "transparent",
+    backgroundImage:        "none",
+    border:                 "none",
+    borderRadius:           undefined,
+    shadow:                 "none",
+    pressedForegroundColor: "var(--ts-ui-text-color, black)",
+    pressedBackgroundColor: "transparent",
+    pressedBackgroundImage: "none",
+    pressedShadow:          "none",
+    hoverBackgroundColor:   "transparent",
+    hoverBackgroundImage:   "none",
+    hoverShadow:            "none",
+};
+
+/**
+ * The section-label title button built inline by every {@link AccordionHeader}
+ * — the clickable toggle target and focusable element. Declares its own
+ * resting chrome instead of `chromeless: true`, for the same reason and in
+ * the same shape as `PickerButton` (see
+ * plans/implemented/button-chromeless-followup-dedup.md). Both the `.pressed`
+ * and `:hover` states are pinned to the same resting values, so neither
+ * shows any visual change — identical to its previous chromeless behaviour
+ * (see that plan's Implementation Notes for why the hover pin is needed).
+ * Module-private: built only by `AccordionHeader`'s own constructor.
+ */
+class AccordionHeaderTitleButton extends Button {
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultAccordionHeaderTitleButtonOptions;
+
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".pressed",
+            extract: (): StyleBag => ({
+                foregroundColor: _defaultAccordionHeaderTitleButtonOptions.pressedForegroundColor,
+                backgroundColor: _defaultAccordionHeaderTitleButtonOptions.pressedBackgroundColor,
+                backgroundImage: _defaultAccordionHeaderTitleButtonOptions.pressedBackgroundImage,
+                shadow:          _defaultAccordionHeaderTitleButtonOptions.pressedShadow,
+            }),
+        },
+        {
+            selector: ":hover",
+            extract: (): StyleBag => ({
+                backgroundColor: _defaultAccordionHeaderTitleButtonOptions.hoverBackgroundColor,
+                backgroundImage: _defaultAccordionHeaderTitleButtonOptions.hoverBackgroundImage,
+                shadow:          _defaultAccordionHeaderTitleButtonOptions.hoverShadow,
+            }),
+        },
+    ];
+
+    constructor(label: string, glyph?: string, subclassDefaults?: Partial<ButtonOptions>) {
+        super(
+            label,
+            { anchor: AnchorType.WEST, glyph },
+            { ..._defaultAccordionHeaderTitleButtonOptions, ...(subclassDefaults ?? {}) },
+        );
+    }
+}
+
+/**
  * Construction-time options for {@link AccordionHeader}.
  *
  * @category Components
@@ -66,7 +134,7 @@ export interface AccordionHeaderOptions extends ComponentOptions {
  * an {@link HBox} row, left-to-right:
  *
  * 1. the {@link AccordionIndicator} chevron — **only** when `chevronSide` is `"start"`;
- * 2. a `chromeless` title {@link Button} (the section label, the clickable toggle
+ * 2. the title {@link Button} (the section label, the clickable toggle
  *    target and the focusable element), given a flex `weight` so it spans the
  *    whole clickable region while its label stays left-anchored;
  * 3. the tool group container (an `HBox` row of per-section / re-parented tools);
@@ -97,7 +165,7 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
         // The chevron, title and tool group are independent child Components in
         // an HBox row — one DOM element per class, no side-loaded overlay.
         this._indicator = new AccordionIndicator({ character: options?.chevronGlyph });
-        this._title     = new Button(label, { chromeless: true, anchor: AnchorType.WEST, glyph: options?.glyph });
+        this._title     = new AccordionHeaderTitleButton(label, options?.glyph);
         this._toolGroup = new Component();
 
         this._toolGroup.setLayoutManager(new HBox({ spacing: HEADER_CELL_SPACING, stretching: true }));
