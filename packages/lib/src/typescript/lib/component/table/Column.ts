@@ -21,6 +21,7 @@ export class Column {
     private _maxWidth    : number | undefined;
     private _width       : number | undefined;
     private _maxContentLength: number | undefined;
+    private _preserveWidth: boolean;
     private _hidden      : boolean;
     private _unhideable  : boolean;
     private _readOnly    : boolean;
@@ -46,6 +47,7 @@ export class Column {
         this._maxWidth    = config?.maxWidth;
         this._width       = config?.width;
         this._maxContentLength = config?.maxContentLength;
+        this._preserveWidth = config?.preserveWidth ?? false;
         this._hidden      = config?.hidden ?? false;
         this._unhideable  = config?.unhideable ?? false;
         this._readOnly    = config?.readOnly ?? false;
@@ -101,6 +103,16 @@ export class Column {
      */
     getMaxContentLength(): number | undefined {
         return this._maxContentLength;
+    }
+
+    /**
+     * Returns whether this column's width is exempt from resize-driven
+     * proportional rescaling, as declared in the spec.
+     *
+     * @returns `true` when the spec declared `preserveWidth: true`.
+     */
+    isWidthPreserved(): boolean {
+        return this._preserveWidth;
     }
 
     /**

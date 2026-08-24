@@ -66,7 +66,8 @@ interface TableGeometry {
  * receive a type-derived width floored at the header text width; string and auto columns
  * either share the remaining space equally or, under `autoSizeColumns`, size to their
  * sampled content, clamped to their constraints either way. On container resize
- * `boolean` / `number` / `date` columns keep their width unchanged; every other column
+ * `boolean` / `number` / `date` columns keep their width unchanged, and so does any
+ * column declaring `preserveWidth`, regardless of type; every other column
  * (including `glyph`, `time`, and `datetime`) scales proportionally like a flexible
  * column, again clamped to their per-column constraints. Every per-column minimum
  * is read through [`getColumnMinWidth`](/api/component/table/classes/Table#getColumnMinWidth),
@@ -477,8 +478,9 @@ class Table extends LayoutManager {
 
     /**
      * Rescales existing flexible column widths to fit the new available width,
-     * keeping fixed-type columns at their current size and clamping all columns
-     * to their per-column constraints.
+     * keeping fixed-type columns and any column declaring `preserveWidth` at
+     * their current size, and clamping all other columns to their per-column
+     * constraints.
      *
      * @param container      - The Table component whose columns are being sized.
      * @param columns        - The visible resolved columns.
@@ -487,11 +489,7 @@ class Table extends LayoutManager {
      * @returns The updated width array, or the original if no rescaling was needed.
      */
     private rescaleWidths(container: TableComponent, columns: Column[], columnWidths: number[], availableWidth: number): number[] {
-        const isFixed = columns.map(col => {
-            const t = col.getField().getType();
-
-            return t === 'boolean' || t === 'number' || t === 'date';
-        });
+        const isFixed = columns.map(col => this.isFixedColumn(col));
 
         const fixedTotal    = columnWidths.reduce((s: number, w, i) => s + (isFixed[i] ? w : 0), 0);
         const prevFlexTotal = columnWidths.reduce((s: number, w, i) => s + (isFixed[i] ? 0 : w), 0);
@@ -525,9 +523,9 @@ class Table extends LayoutManager {
      * Adds any positive leftover width — space freed when a flexible column
      * clamped to its `maxWidth` — to the flexible columns that declare no
      * `maxWidth`, so an unbounded "filler" column grows to fill the table
-     * instead of leaving dead space at the right edge. A no-op when the columns
-     * already fill the width (the common case: no flexible column is capped) or
-     * overflow it.
+     * instead of leaving dead space at the right edge — never a fixed-type or
+     * `preserveWidth` column. A no-op when the columns already fill the width
+     * (the common case: no flexible column is capped) or overflow it.
      *
      * @param columns        - The visible resolved columns.
      * @param widths         - The per-column widths computed so far.
@@ -544,8 +542,7 @@ class Table extends LayoutManager {
         const greedy: number[] = [];
 
         columns.forEach((col, i) => {
-            const t      = col.getField().getType();
-            const isFlex = t !== 'boolean' && t !== 'number' && t !== 'date';
+            const isFlex = !this.isFixedColumn(col);
 
             if (isFlex && col.getMaxWidth() === undefined) {
                 greedy.push(i);
@@ -564,6 +561,24 @@ class Table extends LayoutManager {
         }
 
         return result;
+    }
+
+    /**
+     * Returns whether a column is excluded from resize-driven
+     * proportional rescaling: its width stays exactly as it is on every
+     * container resize, and it never receives absorbed slack. True for
+     * every `boolean` / `number` / `date` column (their content has a
+     * fixed shape) and for any column declaring `preserveWidth`,
+     * regardless of type.
+     *
+     * @param col - The column to classify.
+     * @returns `true` when {@link Table.rescaleWidths} and
+     *   {@link Table.absorbSlackIntoGreedy} should leave this column alone.
+     */
+    private isFixedColumn(col: Column): boolean {
+        const t = col.getField().getType();
+
+        return t === 'boolean' || t === 'number' || t === 'date' || col.isWidthPreserved();
     }
 
     /**

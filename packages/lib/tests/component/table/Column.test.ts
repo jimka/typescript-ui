@@ -21,6 +21,7 @@ describe('Column constructor defaults', () => {
         expect(col.getGroup()).toBe(null);
         expect(col.getGroupColor()).toBe(null);
         expect(col.isRequired()).toBe(false);
+        expect(col.isWidthPreserved()).toBe(false);
     });
 
     it('round-trips every provided config field through its getter', () => {
@@ -35,6 +36,7 @@ describe('Column constructor defaults', () => {
             group:       'g1',
             groupColor:  '#abc',
             required:    true,
+            preserveWidth: true,
         };
         const col = new Column(new Field({ name: 'x' }), config);
 
@@ -47,6 +49,7 @@ describe('Column constructor defaults', () => {
         expect(col.getGroup()).toBe('g1');
         expect(col.getGroupColor()).toBe('#abc');
         expect(col.isRequired()).toBe(true);
+        expect(col.isWidthPreserved()).toBe(true);
     });
 
     it('isRequired() reflects required:false explicitly, distinct from omitted', () => {
