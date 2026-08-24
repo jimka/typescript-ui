@@ -31,6 +31,10 @@ import { TextArea } from '~/component/input/TextArea';
 import { DateField } from '~/component/input/DateField';
 import { NumberSpinner } from '~/component/input/NumberSpinner';
 import { NumberEditor } from '~/component/table/cell/editor/Number';
+import { PasswordField } from '~/component/input/PasswordField';
+import { UsernameField } from '~/component/input/UsernameField';
+import { ComboBox } from '~/component/input/ComboBox';
+import { AutoCompleteField } from '~/component/input/AutoCompleteField';
 
 const DOM_CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -139,19 +143,30 @@ describe('TextInput class-tier style migration', () => {
         expect(realDeclarations(declarations)).toEqual({ padding: '0px 3px 0px 3px' });
     });
 
-    it('row 5: NumberSpinner\'s inner field has no per-instance textAlign, and .NumberSpinnerField carries exactly one declaration', () => {
+    it('row 5: NumberSpinner\'s inner field has no per-instance textAlign/border/borderRadius/outline, and .NumberSpinnerField carries exactly seven declarations', () => {
         const sink = DOM.sink as RecordingDOMSink;
 
         // First-ever NumberSpinner construction+render in this file: captures
         // .NumberSpinnerField's one-time content write — see the file banner.
         const primer = new NumberSpinner();
         const classDeclarations = declarationsDuring(sink, '.NumberSpinnerField', () => primer.getElement(true));
-        expect(realDeclarations(classDeclarations)).toEqual({ textAlign: 'right' });
+        expect(realDeclarations(classDeclarations)).toEqual({
+            textAlign:    'right',
+            borderTop:    'none',
+            borderRight:  'none',
+            borderBottom: 'none',
+            borderLeft:   'none',
+            borderRadius: '0',
+            outline:      'none',
+        });
 
         const spinner = new NumberSpinner();
         const input = (spinner as any)._input;
         const idDeclarations = declarationsDuring(sink, idSelector(input), () => spinner.getElement(true));
         expect(idDeclarations.textAlign).toBeUndefined();
+        expect(realDeclarations(idDeclarations).borderTop).toBeUndefined();
+        expect(realDeclarations(idDeclarations).borderRadius).toBeUndefined();
+        expect(realDeclarations(idDeclarations).outline).toBeUndefined();
     });
 
     it('row 6: NumberEditor\'s inner field has no per-instance textAlign, and .NumberEditorField carries exactly one declaration', () => {
@@ -181,5 +196,68 @@ describe('TextInput class-tier style migration', () => {
         const declarations = declarationsDuring(sink, idSelector(field), () => field.getElement(true));
 
         expect(declarations.textAlign).toBe('center');
+    });
+
+    it('a new .AutoCompleteTextField class rule carries the borderless chrome, and AutoCompleteField\'s inner field has none of it on its own #id rule', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+
+        // First-ever AutoCompleteField construction+render in this file: captures
+        // .AutoCompleteTextField's one-time content write — see the file banner.
+        // MUST run before the leaf-ordering test below, which also renders an
+        // AutoCompleteField inner field and would otherwise consume this
+        // class rule's one-time content write first.
+        const primer = new AutoCompleteField();
+        const classDeclarations = declarationsDuring(sink, '.AutoCompleteTextField', () => primer.getElement(true));
+        expect(realDeclarations(classDeclarations)).toEqual({
+            borderTop: 'none', borderRight: 'none', borderBottom: 'none', borderLeft: 'none',
+            borderRadius: '0',
+            outline: 'none',
+        });
+
+        const field = new AutoCompleteField();
+        const textField = (field as any)._textField;
+        const idDeclarations = declarationsDuring(sink, idSelector(textField), () => field.getElement(true));
+        expect(realDeclarations(idDeclarations).borderTop).toBeUndefined();
+        expect(realDeclarations(idDeclarations).borderRadius).toBeUndefined();
+        expect(realDeclarations(idDeclarations).outline).toBeUndefined();
+    });
+
+    it('every single-line AbstractInput leaf writes maxHeight before minHeight on its own #id rule', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+
+        const leaves: Array<[string, () => { getElement(createIfMissing?: boolean): unknown; getId(): string }]> = [
+            ['TextField',                     () => new TextField()],
+            ['PasswordField',                 () => new PasswordField()],
+            ['UsernameField',                 () => new UsernameField()],
+            ['ComboBox',                      () => new ComboBox()],
+            ['DateField',                     () => new DateField()],
+            ['NumberSpinner inner field',     () => (new NumberSpinner() as any)._input],
+            ['AutoCompleteField inner field', () => (new AutoCompleteField() as any)._textField],
+        ];
+
+        for (const [label, make] of leaves) {
+            (make() as any).getElement(true); // throwaway, primes this class's shared rule
+
+            const instance = make() as any;
+            const declarations = declarationsDuring(sink, idSelector(instance), () => instance.getElement(true));
+            const heightOrder  = Object.keys(realDeclarations(declarations))
+                .filter((k) => k === 'minHeight' || k === 'maxHeight');
+
+            expect(heightOrder, label).toEqual(['maxHeight', 'minHeight']);
+        }
+    });
+
+    it('an unrendered NumberSpinner inner field resolves border/borderRadius/outline from the class tier with no CSS involved (regression guard — already true before this plan, via the imperative setter)', () => {
+        const input = (new NumberSpinner() as any)._input;
+        expect(input.getBorder()).toEqual({ border: 'none' });
+        expect(input.getBorderRadius()).toBe('0');
+        expect(input.getOutline()).toBe('none');
+    });
+
+    it('an unrendered AutoCompleteField inner field resolves border/borderRadius/outline from the class tier with no CSS involved', () => {
+        const field = (new AutoCompleteField() as any)._textField;
+        expect(field.getBorder()).toEqual({ border: 'none' });
+        expect(field.getBorderRadius()).toBe('0');
+        expect(field.getOutline()).toBe('none');
     });
 });

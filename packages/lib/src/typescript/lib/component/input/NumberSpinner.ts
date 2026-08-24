@@ -3,7 +3,7 @@
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
-import { TextField } from "~/component/input/TextField.js";
+import { TextField, TextFieldOptions } from "~/component/input/TextField.js";
 import { TextInput } from "~/component/input/TextInput.js";
 import { SpinButton } from "~/component/input/SpinButton.js";
 import { HBox } from "~/layout/HBox.js";
@@ -67,18 +67,41 @@ const _defaultNumberSpinnerOptions: Partial<NumberSpinnerOptions> = {
 
 const NUMBER_SPINNER_TEXT_ALIGN = "right";
 
+// Chrome deviation shared by every NumberSpinner's inner field: borderless
+// and square-cornered so the outer NumberSpinner's own border reads as the
+// control's only edge, and no browser-default focus ring — the outer
+// NumberSpinner's `:focus-within::after` rule shows the framework focus
+// indicator instead, and the `.NumberSpinner .TextField:focus` rule at
+// module top separately suppresses the inner box-shadow that would otherwise
+// paint a stripe between the text and the spin-button column.
+// `Partial<TextFieldOptions>`-typed (not `StyleBag`) so it can double as the
+// constructor's `subclassDefaults` forward, per ARCHITECTURE.md's "Class-
+// level defaults must survive the getter" — without that forward, `_options`
+// never sees these values and a pre-render `getBorder()`/`getOutline()` would
+// answer the inherited `TextInput` default instead.
+const NUMBER_SPINNER_FIELD_CHROME: Partial<TextFieldOptions> = {
+    border:       "none",
+    borderRadius: "0",
+    outline:      "none",
+};
+
 /**
- * The inner numeric field of a {@link NumberSpinner} — right-aligned by
- * convention, so the alignment is a class default shared by every spinner in
- * the app rather than an imperative per-instance write. The `font` bag spreads
- * `TextInput`'s own and overrides only `textAlign`; the hierarchy walk is a
- * shallow merge, so declaring `textAlign` alone would replace the inherited
- * font bag wholesale.
+ * The inner numeric field of a {@link NumberSpinner} — right-aligned and
+ * chromeless by convention, so both are class defaults shared by every
+ * spinner in the app rather than imperative per-instance writes. The `font`
+ * bag spreads `TextInput`'s own and overrides only `textAlign`; the hierarchy
+ * walk is a shallow merge, so declaring `textAlign` alone would replace the
+ * inherited font bag wholesale.
  */
 class NumberSpinnerField extends TextField {
     protected static readonly ownClassStyleDefaults: StyleBag = {
+        ...NUMBER_SPINNER_FIELD_CHROME,
         font: { ...TextInput.ownClassStyleDefaults.font, textAlign: NUMBER_SPINNER_TEXT_ALIGN },
     };
+
+    constructor() {
+        super(undefined, NUMBER_SPINNER_FIELD_CHROME);
+    }
 }
 
 /**
@@ -111,14 +134,6 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
         super(options, { ..._defaultNumberSpinnerOptions, ...(subclassDefaults ?? {}) });
 
         this._input = new NumberSpinnerField();
-        this._input.setBorder("none");
-        this._input.setBorderRadius("0");
-        // Suppress the browser-default focus ring; the outer NumberSpinner's
-        // `:focus-within::after` rule shows the framework focus indicator
-        // instead. The matching `.NumberSpinner .TextField:focus` rule at
-        // module top suppresses the inner box-shadow that would otherwise
-        // paint a stripe between the text and the spin-button column.
-        this._input.setOutline("none");
         this._input.setText(this.formatValue(0));
 
         this._upBtn   = new SpinButton("▲");
