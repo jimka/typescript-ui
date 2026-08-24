@@ -5,7 +5,7 @@ import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { TextField, TextFieldOptions } from "~/component/input/TextField.js";
 import { TextInput } from "~/component/input/TextInput.js";
-import { SpinButton } from "~/component/input/SpinButton.js";
+import { SpinButton, SpinButtonOptions } from "~/component/input/SpinButton.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -105,6 +105,52 @@ class NumberSpinnerField extends TextField {
 }
 
 /**
+ * Resting border for a NumberSpinner's up-arrow SpinButton: a transparent
+ * top border reserves the same border-box height a real divider would take,
+ * so the up/down pair line up pixel-for-pixel with the down button's real
+ * divider below.
+ */
+const _defaultSpinButtonUpOptions: Partial<SpinButtonOptions> = {
+    border: { borderTop: "1px solid transparent" },
+};
+
+/**
+ * The up-arrow half of a NumberSpinner's spin-button pair. Every instance
+ * gets the same transparent top border, so it is a class-tier default rather
+ * than a per-instance `setBorder` call — see
+ * plans/implemented/numberspinner-spinbutton-dedup.md's Architecture
+ * Decisions for why this needs its own constructor rather than an
+ * instance-varying option on `SpinButton` itself.
+ */
+class SpinButtonUp extends SpinButton {
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultSpinButtonUpOptions;
+
+    constructor() {
+        super("▲", undefined, _defaultSpinButtonUpOptions);
+    }
+}
+
+/**
+ * Resting border for a NumberSpinner's down-arrow SpinButton: the visible
+ * divider line between the two stacked buttons.
+ */
+const _defaultSpinButtonDownOptions: Partial<SpinButtonOptions> = {
+    border: { borderTop: "1px solid var(--ts-ui-spinner-divider, rgb(180, 180, 180))" },
+};
+
+/**
+ * The down-arrow half of a NumberSpinner's spin-button pair. Same shape as
+ * {@link SpinButtonUp} — see its doc comment.
+ */
+class SpinButtonDown extends SpinButton {
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultSpinButtonDownOptions;
+
+    constructor() {
+        super("▼", undefined, _defaultSpinButtonDownOptions);
+    }
+}
+
+/**
  * A numeric input field with flanking up/down spin buttons.
  *
  * Combines a borderless [`TextField`](/api/component/input/classes/TextField) and a vertical strip of two [`SpinButton`](/api/component/input/classes/SpinButton)s
@@ -136,12 +182,8 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
         this._input = new NumberSpinnerField();
         this._input.setText(this.formatValue(0));
 
-        this._upBtn   = new SpinButton("▲");
-        this._downBtn = new SpinButton("▼");
-        this._upBtn.setBorder({ borderTop: "1px solid transparent" });
-        this._upBtn.setBorderRadius("0");
-        this._downBtn.setBorder({ borderTop: "1px solid var(--ts-ui-spinner-divider, rgb(180, 180, 180))" });
-        this._downBtn.setBorderRadius("0");
+        this._upBtn   = new SpinButtonUp();
+        this._downBtn = new SpinButtonDown();
 
         this._btnBox = new Component();
 
