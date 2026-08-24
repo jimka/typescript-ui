@@ -333,3 +333,31 @@ describe('TreeBody copy — inherits Body cell-range copy without any TreeBody-s
         expect(writes[0].args[0]).toBe('a\tx');
     });
 });
+
+// Regression coverage for the table Body / core Body class-name collision
+// fix — see plans/implemented/table-body-class-collision-fix.md and
+// Body.test.ts's own "class-name collision fix" block, which this mirrors
+// (per ClassHierarchyCascade.test.ts's case 2 precedent). TreeBody shares
+// TableBody's rule (declares no ownClassStyleDefaults of its own), but the
+// hierarchy widening still applies to its own rendered class list.
+describe('TreeBody — class-name collision fix', () => {
+    it('carries VirtualRowView, TableBody, and its own TreeBody name in its rendered class list', () => {
+        const sink   = DOM.sink as RecordingDOMSink;
+        const tb     = tree([{ id: 1, parent: null, name: 'a' }]);
+        const start  = sink.writes.length;
+        const handle = tb.getElement(true);
+
+        const addClassOps = sink.writes.slice(start).filter((w) => {
+            if (w.op !== 'apply' || w.args[0] !== handle) {
+                return false;
+            }
+            const patch = w.args[1] as { addClass?: string[] };
+            return Array.isArray(patch.addClass) && patch.addClass.includes('ts-ui-component');
+        });
+
+        expect(addClassOps.length).toBe(1);
+        expect((addClassOps[0].args[1] as { addClass: string[] }).addClass).toEqual([
+            'ts-ui-component', 'VirtualRowView', 'TableBody', 'TreeBody',
+        ]);
+    });
+});
