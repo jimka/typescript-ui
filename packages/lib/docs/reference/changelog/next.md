@@ -150,6 +150,10 @@ neither needs no change.
 - **`SelectableListRow` no longer duplicates its fixed padding on every
   instance's own CSS rule.** It now shares one CSS rule across every
   instance in the app. Nothing changes visually; no consumer action needed.
+- **Every `AccordionHeader` in a themed accordion now shares one CSS rule
+  for its background, text colour, and border instead of repeating them on
+  every instance's own `#id` rule.** Nothing changes visually; no consumer
+  action needed.
 - **`TextField`, `TextArea`, `PasswordField`, `UsernameField`,
   `AbstractPickerField` (`DateField`/`TimeField`/`DateTimeField`), and
   `BulletedList`/`NumberedList` now render with the padding they were always
