@@ -619,11 +619,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // initialized by the time Component's constructor makes that call,
     // regardless of which subclass is being built.
     private _activeStates         : Set<string> = new Set();
-    // Per-prefix DOM class token currently pointing this instance at a shared
-    // `.ClassName.<prefix><value>` value-class rule (see `setValueStyleState`)
-    // — e.g. `"lh" -> "lh18px"` for `Text`'s line-height dedup. Plain
-    // initializer for the same reason as `_activeStates` above.
-    private _valueStyleTokens     : Map<string, string> = new Map();
+    // Per-prefix value-class state: the DOM class token this instance
+    // currently carries, pointing it at a shared `.ClassName.<prefix><value>`
+    // rule (see `setValueStyleState`) — e.g. `"lh" -> "lh18px"` for `Text`'s
+    // line-height dedup — plus the `StyleLayer` that shared rule publishes,
+    // so `layersBelowInstance()` can recognise the value as already
+    // delivered. Plain initializer for the same reason as `_activeStates`
+    // above.
+    private _valueStyleTokens     : Map<string, { token: string; layer: StyleLayer }> = new Map();
     // Optional clip frame: a presentational wrapper element interposed between
     // this component's element and its DOM parent, sized to a cell rect with
     // `overflow: hidden` so a layout manager can visually clip an element that
@@ -5128,18 +5131,25 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /** The layers *below* the instance layer — instance-level trait (if any),
-     *  class-level traits (if any), group (if any), then class — built
-     *  directly from the cached fields rather than by slicing `styleLayers()`,
-     *  since that array's prefix (zero or more active meta-class layers) has
-     *  no fixed length to slice past. Used by `matchesLowerTier` and
+     *  class-level traits (if any), every active value-class tier (see
+     *  `setValueStyleState`), group (if any), then class — built directly
+     *  from the cached fields rather than by slicing `styleLayers()`, since
+     *  that array's prefix (zero or more active meta-class layers) has no
+     *  fixed length to slice past. Used by `matchesLowerTier` and
      *  `flushStyleBag`'s per-key dedup, both of which need "does a tier
      *  *other than this instance's own* already supply this value", never a
-     *  meta-class layer's. */
+     *  meta-class layer's. Value-class layers rank above group and class
+     *  here because their `.ClassName.<token>` selector outranks both on
+     *  specificity. */
     protected layersBelowInstance(): ReadonlyArray<StyleLayer> {
         const layers: StyleLayer[] = [];
 
         if (this._instanceTraitLayer) layers.push(this._instanceTraitLayer);
         layers.push(...(this._classTraitLayers ?? []));
+
+        for (const entry of this._valueStyleTokens.values()) {
+            layers.push(entry.layer);
+        }
 
         if (this._groupLayer) layers.push(this._groupLayer);
 
@@ -5824,10 +5834,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * toggle (a different property, or a different class) needs no bespoke
      * per-property machinery of its own — see `## Architecture Decisions`.
      *
-     * Bypasses the instance layer entirely: `patch`'s declarations live only
-     * on the shared class-tier rule, never in `_instanceStyle`, which is
-     * what lets every instance resolving the same value share one rule
-     * instead of each contributing its own `#id` deviation.
+     * The shared rule is recorded as a layer below the instance layer (see
+     * `layersBelowInstance`), so `flushStyleBag` recognises the value as
+     * already delivered by a lower tier and queues a removal for any
+     * matching instance-layer declaration instead of writing it per
+     * instance — which is what lets every instance resolving the same value
+     * share one rule instead of each contributing its own `#id` deviation.
      *
      * @param prefix - Namespaces this value-class's token from any other one
      *   this class declares (e.g. `"lh"`).
@@ -5836,19 +5848,45 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param patch - The `StyleBag` key(s) the shared rule declares.
      */
     protected setValueStyleState(prefix: string, cssValue: string, patch: StyleBag): void {
-        const token = prefix + cssValue.replace(/[^a-zA-Z0-9]/g, "_");
+        const token        = prefix + cssValue.replace(/[^a-zA-Z0-9]/g, "_");
         const declarations = resolvePartialDeclarations(patch);
+        const guard        = this.valueClassGuardSuffix(declarations);
 
-        this.ensureSharedStateRule("." + token, declarations);
+        this.ensureSharedStateRule("." + token + guard, declarations);
 
-        const element = this.getElement();
-        const previous = this._valueStyleTokens.get(prefix);
+        const element  = this.getElement();
+        const previous = this._valueStyleTokens.get(prefix)?.token;
         if (element) {
             const removeClass = (previous && previous !== token) ? [previous] : [];
             DOM.sink.apply(element, { removeClass, addClass: [token] });
         }
 
-        this._valueStyleTokens.set(prefix, token);
+        this._valueStyleTokens.set(prefix, { token, layer: { authored: patch, resolved: declarations } });
+    }
+
+    /**
+     * The selector suffix `setValueStyleState` appends to a shared value-class
+     * rule when its declarations touch one of this instance's own
+     * resting-isolation keys (see `restingIsolationKeys`) — empty otherwise.
+     * Without it, a value class serving such a key would tie on specificity
+     * with this class's own state rule (e.g. `.Cell.rangeSelected`), and
+     * source order — which cell happens to render first — would decide which
+     * one paints. Matches `restingIsolationKeys()`'s own test for whether a
+     * key belongs on the guarded resting rule or the bare one, so the value
+     * tier and the resting tier route identically.
+     *
+     * @param declarations - The shared rule's resolved declarations.
+     */
+    private valueClassGuardSuffix(declarations: Record<string, string | null>): string {
+        if (!this.isRestingChromeIsolated()) {
+            return "";
+        }
+
+        const isolated = this.restingIsolationKeys();
+
+        return Object.keys(declarations).some((key) => isolated.has(key))
+            ? restingGuardSuffix(this.constructor)
+            : "";
     }
 
     /**
@@ -5863,7 +5901,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param prefix - The same namespace a prior `setValueStyleState` call used.
      */
     protected getValueStyleToken(prefix: string): string | null {
-        return this._valueStyleTokens.get(prefix) ?? null;
+        return this._valueStyleTokens.get(prefix)?.token ?? null;
     }
 
     /**
@@ -5873,7 +5911,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param prefix - The same namespace a prior `setValueStyleState` call used.
      */
     protected clearValueStyleState(prefix: string): void {
-        const previous = this._valueStyleTokens.get(prefix);
+        const previous = this._valueStyleTokens.get(prefix)?.token;
         if (!previous) {
             return;
         }

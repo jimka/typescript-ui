@@ -248,8 +248,129 @@ describe('Cell background/cursor/outline state precedence', () => {
             { removeClass: ['bgrgb_4_5_6_'] },                                    // setBaseBackground(null)
         ]);
 
-        expect(_ruleCacheHas('.Cell.bgrgb_1_2_3_')).toBe(true);
-        expect(_ruleCacheHas('.Cell.bgrgb_4_5_6_')).toBe(true);
+        // Guarded: `backgroundColor` is one of `Cell`'s own resting-isolation
+        // keys (`ownStyleStates` declares it for `.readOnly`), so the shared
+        // rule's selector carries the same `:not(...)` guard the per-instance
+        // resting rule uses — otherwise it would tie on specificity with
+        // `.Cell.readOnly` and source order would decide which one paints.
+        expect(_ruleCacheHas('.Cell.bgrgb_1_2_3_:not(.rangeSelected):not(.readOnly):not(.requiredEmpty)')).toBe(true);
+        expect(_ruleCacheHas('.Cell.bgrgb_4_5_6_:not(.rangeSelected):not(.readOnly):not(.requiredEmpty)')).toBe(true);
+        expect(_ruleCacheHas('.Cell.bgrgb_1_2_3_')).toBe(false);
+        expect(_ruleCacheHas('.Cell.bgrgb_4_5_6_')).toBe(false);
+    });
+
+    // Production order (Row/Header): setBaseBackground runs before the cell
+    // ever renders. This is the ordering the pre-fix defect actually hit —
+    // the pre-existing "rebind" test above renders first, which is why it
+    // passed even with the bug (see plan's "Why ordering hides it from the
+    // existing test").
+    it('a base background set before first render writes no per-instance backgroundColor declaration', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const cell = new Cell<String | null>('td', new StringRenderer(), new StringEditor());
+
+        cell.setBaseBackground('rgb(1,2,3)');
+        cell.getElement(true);
+
+        // `startsWith`, not `===`: `Cell` isolates its resting chrome (see
+        // `ownStyleStates`), so its own instance-tier rule for
+        // `backgroundColor` materialises under the guarded selector
+        // (`#<id>:not(.rangeSelected):not(.readOnly):not(.requiredEmpty)`),
+        // not the bare `#<id>`.
+        const cellSelector = '#' + cell.getId();
+        const idBackgroundValues = sink.writes
+            .filter((w) => w.op === 'setRuleStyles' && (w.args[0] as string).startsWith(cellSelector))
+            .flatMap((w) => Object.entries(w.args[1] as Record<string, string | null>))
+            .filter(([key, value]) => key === 'backgroundColor' && value !== null)
+            .map(([, value]) => value);
+
+        expect(idBackgroundValues).toEqual([]);
+        expect(_ruleCacheHas('.Cell.bgrgb_1_2_3_:not(.rangeSelected):not(.readOnly):not(.requiredEmpty)')).toBe(true);
+    });
+
+    it('two cells resolving the same pre-render base background share one shared-rule creation', () => {
+        const sink  = DOM.sink as RecordingDOMSink;
+        const start = sink.writes.length;
+
+        const a = new Cell<String | null>('td', new StringRenderer(), new StringEditor());
+        a.setBaseBackground('rgb(7,8,9)');
+        a.getElement(true);
+
+        const b = new Cell<String | null>('td', new StringRenderer(), new StringEditor());
+        b.setBaseBackground('rgb(7,8,9)');
+        b.getElement(true);
+
+        const guardedSelector = '.Cell.bgrgb_7_8_9_:not(.rangeSelected):not(.readOnly):not(.requiredEmpty)';
+        const ensureCalls = sink.writes
+            .slice(start)
+            .filter((w) => w.op === 'ensureStyleRule' && w.args[0] === guardedSelector);
+
+        expect(ensureCalls).toHaveLength(1);
+    });
+
+    // The stale-declaration defect the plan's dedup fix removes at the
+    // source: with a base background set BEFORE render, a later rebind and a
+    // final clear must never leave (or re-create) a per-instance
+    // backgroundColor declaration, and getBackgroundColor() must settle back
+    // to the class default once cleared.
+    it('a pre-render base background, rebound and then cleared after render, never touches #id and settles back to the class default', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const cell = new Cell<String | null>('td', new StringRenderer(), new StringEditor());
+
+        cell.setBaseBackground('rgb(1,2,3)');
+        cell.getElement(true);
+
+        const cellSelector = '#' + cell.getId();
+        const before = sink.writes.length;
+
+        cell.setBaseBackground('rgb(4,5,6)');
+        expect(cell.getBackgroundColor()).toBe('rgb(4,5,6)');
+
+        cell.setBaseBackground(null);
+        expect(cell.getBackgroundColor()).toBe('var(--ts-ui-table-cell-bg, transparent)');
+
+        // Checked across the whole test, not just the post-first-render
+        // window, and matched with `startsWith` (see the previous test's
+        // comment on the guarded selector): this is what catches the
+        // stale-declaration defect, where the first (pre-render)
+        // setBaseBackground call writes a real backgroundColor to #id at
+        // flush time and nothing afterwards ever rewrites or clears it.
+        const idBackgroundValues = ruleStyleWrites(sink)
+            .filter((w) => w.selector.startsWith(cellSelector) && w.key === 'backgroundColor')
+            .map((w) => w.value);
+
+        expect(idBackgroundValues.every((value) => value === null)).toBe(true);
+
+        const toggles = sink.writes.slice(before)
+            .filter((w) => w.op === 'apply' && w.args[0] === cell.getElement())
+            .map((w) => w.args[1] as { addClass?: string[]; removeClass?: string[] })
+            .filter((patch) => patch.addClass !== undefined || patch.removeClass !== undefined);
+
+        expect(toggles).toEqual([
+            { removeClass: ['bgrgb_1_2_3_'], addClass: ['bgrgb_4_5_6_'] },  // setBaseBackground('rgb(4,5,6)')
+            { removeClass: ['bgrgb_4_5_6_'] },                              // setBaseBackground(null)
+        ]);
+    });
+
+    // A genuine per-instance deviation — no value class involved — must
+    // still reach #id: widening `layersBelowInstance()` to include the
+    // value-class tier must not change `flushStyleBag`'s outcome for a
+    // caller that never goes through `setValueStyleState` at all.
+    // `setBackgroundColor` directly is exactly what `FilterCell`'s
+    // constructor does (Filter.ts) — that class isn't exported, so this
+    // pins the same code path through the base `Cell` instead.
+    it('a genuine per-instance backgroundColor deviation (no value class involved) still reaches its own #id rule', () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const cell = new Cell<String | null>('td', new StringRenderer(), new StringEditor());
+
+        cell.setBackgroundColor('rgb(9,9,9)');
+        cell.getElement(true);
+
+        const cellSelector = '#' + cell.getId();
+        const idBackgroundValues = ruleStyleWrites(sink)
+            .filter((w) => w.selector.startsWith(cellSelector) && w.key === 'backgroundColor')
+            .map((w) => w.value);
+
+        expect(idBackgroundValues).toContain('rgb(9,9,9)');
     });
 
     it('a read-only cell shows the default cursor; requiredEmpty and base both clear the cursor', () => {
