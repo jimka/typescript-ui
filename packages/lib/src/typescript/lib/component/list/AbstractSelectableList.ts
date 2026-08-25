@@ -258,8 +258,9 @@ const _defaultAbstractSelectableListOptions: Partial<AbstractSelectableListOptio
 })();
 
 const _defaultSelectableListRowOptions: Partial<ComponentOptions> = {
-    cursor: "pointer",
-    border: { borderBottom: "1px solid var(--ts-ui-list-row-separator, transparent)" },
+    cursor:  "pointer",
+    border:  { borderBottom: "1px solid var(--ts-ui-list-row-separator, transparent)" },
+    padding: new Insets(0, ROW_PADDING_X_PX, 0, ROW_PADDING_X_PX),
 };
 
 /**
