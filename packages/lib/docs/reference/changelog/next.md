@@ -410,14 +410,16 @@ another cell.
   chrome, flat-mode pressed/hover chrome, and `TabButton`'s hover/selected
   borders, the same way `.pressed` already deduped.** No consumer action is
   needed.
-- **`Component.setVisible(false)` and `Scrollbar`'s overflow-driven
-  `setDisplayed(false)` now share one class-tier CSS rule (`.invisible`,
-  `.undisplayed`) across every hidden or undisplayed instance, instead of
-  each instance's `#id` rule repeating its own `visibility`/`display`
-  declaration.** These were the Style Audit's single biggest duplicate-body
-  rows, since roughly half of all live instances are hidden or undisplayed
-  at any moment. The rendered result is unchanged. No consumer action is
-  needed.
+- **`Component.setVisible(false)` and `Component.setDisplayed(false)` now
+  share one class-tier CSS rule (`.invisible`, `.undisplayed`) across every
+  hidden or undisplayed instance, instead of each instance's `#id` rule
+  repeating its own `visibility`/`display` declaration.** These were the
+  Style Audit's single biggest duplicate-body rows, since roughly half of all
+  live instances are hidden or undisplayed at any moment. `setDisplayed`'s
+  dedup now applies to every component, not only `Scrollbar`'s
+  overflow-driven hide/show — `Scrollbar`'s own copy of the mechanism has
+  been removed in favour of the inherited base implementation. The rendered
+  result is unchanged. No consumer action is needed.
 - **The CSS `background` shorthand now participates in the layered style
   bag, the same way `backgroundColor` / `backgroundImage` already do.**
   `getBackground()` now folds the class and group tiers instead of
