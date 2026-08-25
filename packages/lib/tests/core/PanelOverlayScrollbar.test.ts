@@ -493,4 +493,111 @@ describe('Panel — scroll-shadow overlay is inset by the overlay-scrollbar gutt
         expect(lastStyle(sink, overlay!, 'width')).toBe('400px');   // full client box, no inset
         expect(lastStyle(sink, overlay!, 'height')).toBe('300px');
     });
+
+    // Style Audit dedup: in overlay mode the panel's own element never
+    // scrolls (real scrolling happens on the inner element created above),
+    // so its own overflow/scrollbar-width CSS is provably inert — see
+    // Panel.applyOwnOverflow's own doc comment. These pin the two outcomes
+    // that fix has to hold: an overlay panel's own #id rule stays clear of
+    // the dead declarations, while a "native" panel's own #id rule still
+    // carries the real ones (native scrolling happens on the panel element
+    // itself, so this write is load-bearing there), exactly as before.
+    describe('own-element overflow/scrollbar-width dedup (overlay vs native)', () => {
+        it('an overlay-mode (default) scrolling panel writes no REAL overflow value to its own #id rule', () => {
+            const sink = installTestDOM(CONFIG);
+
+            const panel = new _Panel({ autoScroll: 'both' });
+            panel.getElement(true);
+
+            // The overlay install's own scrollbarWidth: "none" write (a real,
+            // load-bearing write — covered by "hides the native scrollbar via
+            // the deferred CSS seam on install" above) keeps this #id rule's
+            // batch materialising, so overflowX/overflowY (framework-baseline
+            // keys neither this instance nor any class tier ever authors)
+            // still ride along as harmless `null` removals — see
+            // FooterRow.classStyleDefaults.test.ts for the same "riding
+            // along" shape. What matters is that neither ever carries the
+            // real "scroll"/"scroll" value autoScroll: "both" would
+            // otherwise duplicate onto every overlay panel's own rule.
+            const ownOverflowWrites = ruleStyleWrites(sink).filter(
+                (w) => w.key === 'overflowX' || w.key === 'overflowY'
+            );
+            expect(ownOverflowWrites.every((w) => w.value === null)).toBe(true);
+        });
+
+        it('a non-scrolling (autoScroll: "none") overlay-default panel writes no overflow/scrollbar-width to its own #id rule at all', () => {
+            const sink = installTestDOM(CONFIG);
+
+            const panel = new _Panel();   // autoScroll defaults to "none", scrollbarStyle to "overlay"
+            panel.getElement(true);
+
+            const ownOverflowWrites = ruleStyleWrites(sink).filter(
+                (w) => w.key === 'overflowX' || w.key === 'overflowY'
+            );
+            expect(ownOverflowWrites).toEqual([]);
+
+            const scrollbarWidthWrites = ruleStyleWrites(sink).filter((w) => w.key === 'scrollbarWidth');
+            expect(scrollbarWidthWrites).toEqual([]);
+        });
+
+        it('a scrollbarStyle: "native" panel still writes real overflow declarations matching its autoScroll mode to its own #id rule', () => {
+            const sink = installTestDOM(CONFIG);
+
+            const panel = new _Panel({ autoScroll: 'both', scrollbarStyle: 'native' });
+            panel.getElement(true);
+
+            const lastOverflow = (key: string): string | null | undefined =>
+                ruleStyleWrites(sink).filter((w) => w.key === key).at(-1)?.value;
+
+            expect(lastOverflow('overflowX')).toBe('scroll');
+            expect(lastOverflow('overflowY')).toBe('scroll');
+        });
+
+        it('a scrollbarStyle: "native" panel constructed with both fields in one options bag still gets its own overflow applied (construction-ordering case)', () => {
+            // setAutoScroll dispatches before scrollbarStyle resolves to its
+            // final value in the construction cascade (Panel.applyOptions),
+            // so this exercises the exact ordering gap applyOwnOverflow's own
+            // doc comment describes — a single `{ autoScroll, scrollbarStyle:
+            // "native" }` bag must not silently end up with no overflow set.
+            const sink = installTestDOM(CONFIG);
+
+            const panel = new _Panel({ autoScroll: 'y', scrollbarStyle: 'native' });
+            panel.getElement(true);
+
+            const lastOverflow = (key: string): string | null | undefined =>
+                ruleStyleWrites(sink).filter((w) => w.key === key).at(-1)?.value;
+
+            // "y" mode's overflowX is "hidden", which matches the framework's
+            // own baseline and so dedupes to a `null` removal — overflowY's
+            // real "auto" is the one that proves the write actually landed.
+            expect(lastOverflow('overflowX')).toBeNull();
+            expect(lastOverflow('overflowY')).toBe('auto');
+        });
+
+        it('switching an existing overlay panel to scrollbarStyle: "native" at runtime applies its own overflow', () => {
+            const sink = installTestDOM(CONFIG);
+
+            const panel = new _Panel({ autoScroll: 'x' });   // overlay by default
+            panel.getElement(true);
+
+            // Before switching: overlay mode never writes a REAL overflow
+            // value — at most a harmless riding-along `null` (see the first
+            // test in this block).
+            const beforeSwitch = ruleStyleWrites(sink).filter(
+                (w) => w.key === 'overflowX' || w.key === 'overflowY'
+            );
+            expect(beforeSwitch.every((w) => w.value === null)).toBe(true);
+
+            panel.setScrollbarStyle('native');
+
+            const lastOverflow = (key: string): string | null | undefined =>
+                ruleStyleWrites(sink).filter((w) => w.key === key).at(-1)?.value;
+
+            // "x" mode's overflowY is "hidden", which dedupes to `null`
+            // against the framework baseline — overflowX's real "auto" is
+            // the one load-bearing for native scrolling.
+            expect(lastOverflow('overflowX')).toBe('auto');
+            expect(lastOverflow('overflowY')).toBeNull();
+        });
+    });
 });
