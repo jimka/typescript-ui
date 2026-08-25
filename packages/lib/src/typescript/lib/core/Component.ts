@@ -5755,6 +5755,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             keys.add("background");
         }
 
+        // Each side longhand carries that side's colour, so a bare
+        // `#id { border-top: … }` would outrank a state rule declaring
+        // `border-color`. Isolate all four whenever a declared state
+        // touches the colour.
+        if (keys.has("borderColor")) {
+            keys.add("borderTop");
+            keys.add("borderRight");
+            keys.add("borderBottom");
+            keys.add("borderLeft");
+        }
+
         return keys;
     }
 
