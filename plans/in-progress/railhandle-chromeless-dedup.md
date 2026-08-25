@@ -301,6 +301,53 @@ Run from the repo root unless noted.
 
 ---
 
+## Implementation Notes
+
+The code and tests match the plan's design exactly, with no deviation from
+`## Internal Structure` or `## Architecture Decisions`.
+
+**Manual verification (`## Verification`'s required browser check, `##
+Expected Behaviour` rows 7-10) was performed** against a dev server started
+from this worktree (`npx vite --port 8123` from `packages/lib`, confirmed via
+`readlink /proc/<pid>/cwd`), driven live through `chrome-devtools` MCP tools,
+covering the `Misc` demo panel's `Rail` (the "Filters" and "Info" handles)
+across all three shipped themes (modern, classic, dark):
+
+- **Row 7.** Clicking "Filters" opened its drawer and added the `selected`
+  class to the handle; `getComputedStyle(...).backgroundColor` read
+  `rgba(30, 100, 200, 0.16)` in modern and classic, `rgba(120, 170, 240,
+  0.22)` in dark — the `--ts-ui-rail-handle-selected-bg` token's resolved
+  value in each theme, confirming the wash renders where it was previously
+  masked. Clicking the drawer's own "Close" button removed the `selected`
+  class and the background reverted to `rgba(0, 0, 0, 0)` (transparent) in
+  all three themes.
+- **Row 8.** With the drawer closed, a real pointer hover (via the MCP
+  `hover` tool, verified with `Element.matches(':hover')`) over the
+  unselected "Filters" handle read `rgba(30, 100, 200, 0.08)` in modern/
+  classic and `rgba(120, 170, 240, 0.12)` in dark — the hover token, not the
+  selected token. Because the drawer overlay covers the rail's own screen
+  coordinates while open (`elementFromPoint` at the handle's position
+  resolves to the `Drawer` div, not the handle, so a real hover can't be
+  driven there), the selected+hover combination was verified by toggling the
+  `selected` class directly on the live DOM node (bypassing only the click
+  handler, not the CSS) while a real hover was active: the background stayed
+  at the selected value in every theme, confirming
+  `:hover:not(.pressed):not(.selected)` stays guarded out and the selected
+  rule keeps winning.
+- **Row 9.** `getComputedStyle` on a resting handle read `border: 0px none`,
+  `box-shadow: none`, and `border-radius: 4px` (inherited from `.Button`,
+  unchanged from before this plan) in all three themes. A real
+  `pointerdown`/`pointerup` dispatch (`Button`'s actual pressed-state
+  mechanism) showed `backgroundColor` staying `rgba(0, 0, 0, 0)` throughout
+  the press, in all three themes — no visual change while held down.
+- **Row 10.** After exercising both rail handles (open/close/hover/press),
+  the Style Audit panel's ranked duplicate-rule table was scanned via
+  `document.body.innerText` for `"RailHandle"` both before and after
+  clicking its "Refresh" button — no match either time, confirming no
+  `RailHandle` duplicate-rule rows exist.
+
+---
+
 ## Notes
 
 [^probe-evidence]: The three per-instance rules were captured directly, not inferred: a throwaway Vitest probe in `packages/lib/tests/overlay/` primed the `.Button` class rules with one chromeful `Button`, then constructed and rendered two `RailHandle`s against `RecordingDOMSink`, dumping every `setRuleStyles` write. Each handle produced its own `#id.pressed` (`color`/`backgroundColor`/`backgroundImage`/`boxShadow`), its own bare `#id` (four border longhands, `boxShadow: none`, `backgroundImage: none`, `backgroundColor: transparent`, `borderRadius: null`), and its own `#id:hover:not(.selected)` (`backgroundColor: var(--ts-ui-rail-handle-hover-bg)`). Only `.RailHandle.selected:not(.pressed):not(:hover)` was shared. The probe file was deleted after the capture; it is not part of this plan's changes.
