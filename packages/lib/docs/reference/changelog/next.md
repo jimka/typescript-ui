@@ -262,6 +262,12 @@ action is needed.
   their resting, pressed, and hover chrome onto shared class rules instead of
   repeating on every instance.** No consumer action is needed; nothing
   renders differently.
+- **A `Rail`'s handles now show their selected tint when the handle's
+  drawer is open or its window is restored — previously the tint was
+  masked by the handle's own resting rule and never rendered.** The
+  handles also dedupe their resting, pressed, hover, and selected chrome
+  onto shared class rules instead of repeating on every instance. No
+  consumer action is needed.
 - **`NumberSpinner`'s up/down spin buttons now dedupe their border onto
   shared class rules instead of repeating it on every instance.** No
   consumer action is needed; nothing renders differently.
