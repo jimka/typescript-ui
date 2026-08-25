@@ -54,6 +54,10 @@ export interface StyleBag {
     outline?:         string | null;
     foregroundColor?: string | null;
     font?:            TextStyleBag | null;
+    /** CSS `background` shorthand. An alternative to `backgroundColor` /
+     *  `backgroundImage`: one bag declares the shorthand or the longhands,
+     *  never both. */
+    background?:      string | null;
     backgroundColor?: string | null;
     backgroundImage?: string | null;
     shadow?:          string | null;
@@ -240,6 +244,11 @@ export function resolveDeclarations(defaults: StyleBag): Record<string, string |
     if (defaults.outline)         declarations.outline = defaults.outline;
     if (defaults.foregroundColor) declarations.color   = defaults.foregroundColor;
 
+    // `background` is emitted first: the shorthand resets both longhands it
+    // covers, so a bag that declared both (none does — see StyleBag's own
+    // comment) would want the longhands as the refinement, not wiped by
+    // declaration order.
+    if (defaults.background)      declarations.background      = defaults.background;
     if (defaults.backgroundColor) declarations.backgroundColor = defaults.backgroundColor;
     if (defaults.backgroundImage) declarations.backgroundImage = defaults.backgroundImage;
     if (defaults.shadow)          declarations.boxShadow       = defaults.shadow;
@@ -306,6 +315,7 @@ const STYLE_WRITERS: { [K in keyof StyleBag]-?: (v: StyleBag[K]) => Record<strin
     outline:         (v) => ({ outline: v ?? null }),
     foregroundColor: (v) => ({ color: v ?? null }),
     font:            (v) => resolvePartialFontDeclarations(v),
+    background:      (v) => ({ background: v ?? null }),
     backgroundColor: (v) => ({ backgroundColor: v ?? null }),
     backgroundImage: (v) => ({ backgroundImage: v ?? null }),
     shadow:          (v) => ({ boxShadow: v ?? null }),
