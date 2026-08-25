@@ -142,3 +142,43 @@ describe('SpinButton class-hierarchy cascade', () => {
         ]);
     });
 });
+
+// Plan glyph-icon-size-dedup.md, 8px group: SpinButton opts its chevron
+// glyph into the "spin-glyph" styleGroup right after pinGlyphSize(8), so
+// every SpinButton's chevron shares one .ButtonIconGlyph--spin-glyph rule
+// instead of each repeating the same size on its own #id rule.
+describe('SpinButton chevron glyph style hoisting', () => {
+    const DOM_CONFIG = {
+        rootMountOffset: { x: 0, y: 0 },
+        viewport:        { width: 1280, height: 800 },
+        scrollBarWidth:  15,
+        fontMetrics,
+        themeVars:       {},
+    };
+
+    let sink: RecordingDOMSink;
+
+    beforeEach(() => { sink = installTestDOM(DOM_CONFIG); });
+    afterEach(() => DOM.reset());
+
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    it("a second SpinButton's chevron glyph writes no size declaration to its own #id rule, and the shared .ButtonIconGlyph--spin-glyph group rule exists", () => {
+        // Seed the group with a first render before the capture window opens.
+        new SpinButton('▲').getElement(true);
+
+        const second = new SpinButton('▼');
+        const glyph  = second.getGlyph()!;
+
+        const declarations = declarationsDuring(sink, idSelector(glyph), () => second.getElement(true));
+
+        expect(declarations.minWidth).toBeUndefined();
+        expect(declarations.minHeight).toBeUndefined();
+        expect(declarations.maxWidth).toBeUndefined();
+        expect(declarations.maxHeight).toBeUndefined();
+        expect(_ruleCacheHas('.ButtonIconGlyph--spin-glyph')).toBe(true);
+    });
+});

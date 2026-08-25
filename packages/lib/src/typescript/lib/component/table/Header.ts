@@ -247,6 +247,7 @@ class TableHeader extends Component {
             listeners: { action: this._boundOnMenuButtonAction },
         });
         this._menuButton.pinGlyphSize(glyphPx);
+        this._menuButton.getGlyph()?.setStyleGroup("table-header-menu-glyph");
         this._menuButton.setBackgroundColor(TABLE_HEADER_BG);
         this._menuButton.setBackgroundImage(TABLE_HEADER_BG);
         // Flat chrome's hover/pressed treatment (installed by the `super()`

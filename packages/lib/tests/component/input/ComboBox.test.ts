@@ -281,4 +281,18 @@ describe('ComboBoxCaret static style hoisting', () => {
         expect(declarations.maxHeight).toBeUndefined();
         expect(_ruleCacheHas('.ComboBoxCaret')).toBe(true);
     });
+
+    it("the caret's own chevron glyph carries no static min/max size declaration on its own #id rule, and the shared .ComboBoxCaretGlyph class rule exists once rendered", () => {
+        const sink  = installTestDOM(CONFIG);
+        const combo = new ComboBox() as any;
+        const glyph = combo._caret.getGlyph();
+
+        const declarations = declarationsDuring(sink, idSelector(glyph), () => combo.getElement(true));
+
+        expect(declarations.minWidth).toBeUndefined();
+        expect(declarations.minHeight).toBeUndefined();
+        expect(declarations.maxWidth).toBeUndefined();
+        expect(declarations.maxHeight).toBeUndefined();
+        expect(_ruleCacheHas('.ComboBoxCaretGlyph')).toBe(true);
+    });
 });

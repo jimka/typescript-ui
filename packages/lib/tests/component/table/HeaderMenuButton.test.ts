@@ -4,13 +4,14 @@ import { DOM } from '~/core/DOM';
 import { Event } from '~/core/Event';
 import type { Component } from '~/core/Component';
 import { Insets } from '~/primitive/Insets';
-import { installTestDOM, makeEvent } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ColumnSpec } from '~/component/table/ColumnConfig';
 import { TRACK_WIDTH } from '~/component/container/Scrollbar';
+import { _ruleCacheHas } from '~/core/StyleTarget';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -253,5 +254,52 @@ describe('TableHeader menu button', () => {
 
         expect(button.getAria().getLabel()).toBe('Column options');
         expect(button.getAria().getHasPopup()).toBe('menu');
+    });
+
+    // Plan glyph-icon-size-dedup.md, 8px group: TableHeader opts its menu
+    // button's glyph into the "table-header-menu-glyph" styleGroup right
+    // after pinGlyphSize, so every table's header menu icon shares one
+    // .ButtonIconGlyph--table-header-menu-glyph rule instead of each
+    // repeating the same size on its own #id rule.
+
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    /** Flattens every `setRuleStyles` write to `selector` found in `writes` into one key/value map. */
+    function declarationsFor(writes: RecordingDOMSink['writes'], selector: string): Record<string, string | null> {
+        const out: Record<string, string | null> = {};
+        for (const w of writes) {
+            if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+                continue;
+            }
+
+            const styles = w.args[1] as Record<string, string | null>;
+            for (const key of Object.keys(styles)) {
+                out[key] = styles[key];
+            }
+        }
+
+        return out;
+    }
+
+    it("a second table's header menu button glyph writes no size declaration to its own #id rule, and the shared .ButtonIconGlyph--table-header-menu-glyph group rule exists", () => {
+        const sink = installTestDOM(CONFIG);
+
+        layOut(makeTable()); // seed the group
+
+        const secondStart  = sink.writes.length;
+        const second       = layOut(makeTable());
+        const secondWrites = sink.writes.slice(secondStart);
+
+        const glyph        = second.getHeader().getMenuButton().getGlyph()!;
+        const declarations = declarationsFor(secondWrites, idSelector(glyph));
+
+        expect(declarations.minWidth).toBeUndefined();
+        expect(declarations.minHeight).toBeUndefined();
+        expect(declarations.maxWidth).toBeUndefined();
+        expect(declarations.maxHeight).toBeUndefined();
+        expect(_ruleCacheHas('.ButtonIconGlyph--table-header-menu-glyph')).toBe(true);
     });
 });
