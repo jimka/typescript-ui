@@ -22,6 +22,7 @@ const _defaultRadioButtonRingOptions: Partial<ComponentOptions> = {
     cursor:          "pointer",
     backgroundColor: "var(--ts-ui-radio-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))",
     border:          "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))",
+    borderRadius:    "50%",
 };
 
 /** `_ring`'s selected-state declarations, read by `ownStyleStates`' `.selected` entry. */

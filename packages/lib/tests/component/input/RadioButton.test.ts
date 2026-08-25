@@ -151,26 +151,32 @@ describe('RadioButton label round-trip', () => {
 describe('RadioButton delegate static style hoisting', () => {
     afterEach(() => DOM.reset());
 
-    it('row 7: a rendered _ring carries no static size/cursor declaration on its own #id rule', () => {
+    it('row 7: a rendered _ring carries no static size/cursor/border-radius declaration on its own #id rule', () => {
         const sink = installTestDOM(CONFIG);
         const rb   = new RadioButton() as any;
         const ring = rb._ring;
 
         const declarations = declarationsDuring(sink, idSelector(ring), () => rb.getElement(true));
 
-        // `_ring`'s real backgroundColor/border/borderRadius force #id to
-        // materialise regardless, so since
-        // plans/implemented/reconciled-write-path-widening.md, minWidth/
-        // minHeight/maxWidth/maxHeight — which match RadioButtonRing's own
-        // class defaults — surface as explicit removals in the same batch
-        // rather than being skipped in silence; the net rendered CSS (no
-        // declaration on #id, the class rule supplies the value) is unchanged.
-        expect(declarations.minWidth).toBeNull();
-        expect(declarations.minHeight).toBeNull();
-        expect(declarations.maxWidth).toBeNull();
-        expect(declarations.maxHeight).toBeNull();
-        // cursor is untouched by that plan — still skip-based — so a match
-        // still leaves no trace at all.
+        // backgroundColor/border are isolation keys (declared by
+        // RadioButtonRing's own `.selected` ownStyleStates entry), so they
+        // route to the isolated `:not(.selected)` resting rule, not this
+        // bare #id rule — see RadioButton.stateClassHoisting.test.ts's row
+        // 7 for that half. borderRadius now also matches a class default
+        // (RadioButtonRing.classStyleDefaults.test.ts), so nothing real is
+        // left to force this bare #id rule to materialise: minWidth/
+        // minHeight/maxWidth/maxHeight/borderRadius/cursor all dedupe to a
+        // matching class default, and the whole batch is dirty-only nulls —
+        // `StyleTarget.hasQueuedDeclarations` (core/StyleTarget.ts) never
+        // flushes the rule at all, leaving every key absent rather than an
+        // explicit `null` (see FooterRow.classStyleDefaults.test.ts for the
+        // same shape). The net rendered CSS (no declaration on #id, the
+        // class rule supplies every value) is unchanged.
+        expect(declarations.minWidth).toBeUndefined();
+        expect(declarations.minHeight).toBeUndefined();
+        expect(declarations.maxWidth).toBeUndefined();
+        expect(declarations.maxHeight).toBeUndefined();
+        expect(declarations.borderRadius).toBeUndefined();
         expect(declarations.cursor).toBeUndefined();
     });
 

@@ -466,6 +466,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'RadioButton _ring cursor',     resolve: () => (new RadioButton() as any)._ring.getCursor(),               expected: 'pointer' },
     { label: 'RadioButton _ring backgroundColor', resolve: () => (new RadioButton() as any)._ring.getBackgroundColor(), expected: 'var(--ts-ui-radio-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))' },
     { label: 'RadioButton _ring border',     resolve: () => (new RadioButton() as any)._ring.getBorder(),               expected: { border: '1px solid var(--ts-ui-form-border, rgb(160, 160, 160))' } },
+    { label: 'RadioButton _ring borderRadius', resolve: () => (new RadioButton() as any)._ring.getBorderRadius(),       expected: '50%' },
     { label: 'RadioButton _dot minSize',     resolve: () => (new RadioButton() as any)._dot.getMinSizeConstraint(),     expected: { width: 8, height: 8 } },
     { label: 'Toggle outline',               resolve: () => new Toggle().getOutline(),                                  expected: 'none' },
     { label: 'ToggleTrack backgroundColor (off)', resolve: () => (new Toggle() as any)._track.getBackgroundColor(),     expected: 'var(--ts-ui-toggle-track-bg-off, rgb(200, 200, 200))' },
