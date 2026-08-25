@@ -128,6 +128,17 @@ class ButtonGroup {
     }
 
     /**
+     * Releases this group's own event-listener bag. The buttons this group
+     * manages, and any container passed to {@link setContainer}, each own
+     * their registrations independently and release them on their own
+     * teardown, so this only needs to clear the group's own `"selection"`
+     * listeners.
+     */
+    dispose(): void {
+        this._listeners.clear();
+    }
+
+    /**
      * Registers a listener for one of this group's events.
      *
      * @param event - `"selection"` fires whenever the group's selection changes,

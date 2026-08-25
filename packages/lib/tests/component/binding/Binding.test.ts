@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Binding } from '~/core/Binding';
 import { Model } from '~/data/Model';
 import { ModelRecord } from '~/data/ModelRecord';
@@ -77,5 +77,42 @@ describe('Binding', () => {
     it('clearValidation() does not throw', () => {
         const binding = new Binding();
         expect(() => binding.clearValidation()).not.toThrow();
+    });
+});
+
+describe('Binding.dispose()', () => {
+    it('deactivates bound fields so a subsequent accessor edit is a no-op', () => {
+        const w = new FakeWidget();
+        const record = new ModelRecord(MODEL, { name: 'Alice' });
+        const binding = new Binding().bind('name', w, accessors(w));
+        binding.setRecord(record);
+
+        binding.dispose();
+        w.edit('Bob');
+
+        expect(record.get('name')).toBe('Alice');
+    });
+
+    it('clears its own emitted-event bag so a subsequent commit() does not fire it', () => {
+        const w = new FakeWidget();
+        const record = new ModelRecord(MODEL, { name: 'Alice' });
+        const binding = new Binding().bind('name', w, accessors(w));
+        binding.setRecord(record);
+
+        const onCommit = vi.fn();
+        binding.on('commit', onCommit);
+
+        binding.dispose();
+        binding.commit();
+
+        expect(onCommit).not.toHaveBeenCalled();
+    });
+
+    it('is idempotent, including with no bound fields and no listeners', () => {
+        const binding = new Binding();
+
+        binding.dispose();
+
+        expect(() => binding.dispose()).not.toThrow();
     });
 });

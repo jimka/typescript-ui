@@ -293,6 +293,26 @@ export class Binding extends BaseObject {
         this._listeners.fire(event, ...payload);
     }
 
+    // ── Disposal ────────────────────────────────────────────────────────────
+
+    /**
+     * Releases this binding's own resources: detaches every field registered
+     * via {@link bind} — mirroring {@link unbind}, so a bound component's
+     * still-registered "binding"/"change" listener becomes a permanent
+     * no-op instead of writing into a dead binding — then clears the
+     * emitted-event listener bag.
+     *
+     * @remarks Does not touch validation state; see {@link clearValidation}
+     *   for that.
+     */
+    dispose(): void {
+        for (const fieldName of [...this._entries.keys()]) {
+            this.unbind(fieldName);
+        }
+
+        this._listeners.clear();
+    }
+
     // ── Validation ───────────────────────────────────────────────────────────
 
     /**
