@@ -50,9 +50,6 @@ class ParentHeaderCellText extends SelectableText {
     constructor() {
         super(undefined, undefined, _defaultParentHeaderCellTextOptions);
         this.setFontSize(PARENT_HEADER_CELL_TEXT_FONT_SIZE_VAR);
-        this.setFontWeight("bold");
-        this.setTextAlign("center");
-        this.setUserSelect("none");
     }
 }
 
