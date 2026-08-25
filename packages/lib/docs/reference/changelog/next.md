@@ -172,6 +172,23 @@ action is needed.
   declaration onto a shared class rule, instead of repeating on every list
   item's own `#id` rule.** No consumer action is needed; nothing renders
   differently.
+- **`RadioButtonRing`'s round corner, `BulletedList`/`NumberedList`'s marker
+  suppression, `Legend`'s in-flow positioning, and `ParentHeaderCell`'s
+  group-label styling (bold/centered/unselectable) no longer duplicate their
+  fixed styling on every instance's own CSS rule.** Each now shares one CSS
+  rule per piece across every instance in the app — `RadioButtonRing` and
+  `Legend` through the class-tier default mechanism, the two marker lists
+  through a new shared `.MarkerList` class rule, and `ParentHeaderCell`
+  through two new internal subclasses mirroring `HeaderCell`'s own text/
+  renderer shape. Nothing changes visually; no consumer action needed.
+- **A `Panel`'s own element no longer writes a static `overflow`/
+  `scrollbar-width` declaration when its `scrollbarStyle` is `"overlay"`
+  (the default).** In overlay mode the panel's own element never scrolls —
+  the separate inner element created for the overlay scrollbars does — so
+  this write was dead weight, duplicated across roughly 20 unrelated `Panel`
+  subclasses. A `scrollbarStyle: "native"` panel is unaffected: its own
+  element still gets the real `overflow` write, since that's what actually
+  scrolls there. No consumer action is needed; nothing renders differently.
 
 ### Table
 
