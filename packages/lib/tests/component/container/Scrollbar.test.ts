@@ -603,15 +603,18 @@ describe('ScrollbarThumb hover state-class hoisting', () => {
     });
 });
 
-// Scrollbar.setMetrics / setDisplayed state-tier dedup
-// (component-setvisible-state-tier-dedup.md) — Expected Behaviour row 9.
-// `Scrollbar.setDisplayed` deliberately does not delegate to
-// `super.setDisplayed` — a naive delegating override would get its own
-// idempotency check stuck on a stale `_instanceStyle.displayed` after a
-// hide→show→hide→show sequence and silently skip the second show's write
-// and reconcile (see the plan's Architecture Decisions and its
-// stale-idempotency-trace footnote). This test exercises exactly that
-// sequence to prove the fix.
+// Scrollbar.setMetrics / setDisplayed state-tier dedup — Expected Behaviour
+// row 9. Originally written against `Scrollbar`'s own `setDisplayed`
+// override (component-setvisible-state-tier-dedup.md), which deliberately
+// did not delegate to `super.setDisplayed`, since a naive delegating design
+// would get its idempotency check stuck on a stale `_instanceStyle.displayed`
+// after a hide→show→hide→show sequence and silently skip the second show's
+// write and reconcile. component-setdisplayed-state-tier-dedup.md hoisted
+// that exact shape onto the base `Component.setDisplayed`/`isDisplayed` and
+// deleted `Scrollbar`'s own copy, so this test now exercises the inherited
+// base implementation instead — kept unchanged (still against a `Scrollbar`,
+// still driven via `setMetrics`) as the regression check that the inherited
+// version reproduces the same hide→show→hide→show sequence correctly.
 describe('Scrollbar.setMetrics undisplayed state-tier dedup', () => {
     afterEach(() => DOM.reset());
 

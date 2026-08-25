@@ -63,14 +63,20 @@ describe('Text — theme subscription released on dispose', () => {
         // deviation from the framework rule, so its shared `.Text` class rule
         // is created on this file's first rendered `Text` — permanent,
         // class-scoped state, not a per-instance leak.
-        // `.ts-ui-component.invisible` is excluded for the same reason again,
-        // new as of component-setvisible-state-tier-dedup.md: `Component`'s
-        // own `.invisible` declared state is resolved — and its shared class
-        // rule materialised — by `styleLayers()` on every render, regardless
-        // of whether the instance is ever hidden, the same eager,
-        // once-per-class, module-scoped creation every class-tier rule uses.
+        // `.ts-ui-component.invisible:not(.undisplayed)` and
+        // `.ts-ui-component.undisplayed` are excluded for the same reason
+        // again, new as of component-setvisible-state-tier-dedup.md and
+        // component-setdisplayed-state-tier-dedup.md respectively:
+        // `Component`'s own `.invisible`/`.undisplayed` declared states are
+        // resolved — and their shared class rules materialised — by
+        // `styleLayers()` on every render, regardless of whether the
+        // instance is ever hidden, the same eager, once-per-class,
+        // module-scoped creation every class-tier rule uses. `.invisible`'s
+        // selector gained `:not(.undisplayed)` because `.undisplayed` is
+        // declared ahead of it in `ownStyleStates`.
         const leaked = _ruleCacheKeys().filter((key) =>
-            !before.has(key) && key !== ':where(.ts-ui-component)' && key !== '.Text' && key !== '.ts-ui-component.invisible');
+            !before.has(key) && key !== ':where(.ts-ui-component)' && key !== '.Text'
+            && key !== '.ts-ui-component.invisible:not(.undisplayed)' && key !== '.ts-ui-component.undisplayed');
         expect(leaked).toEqual([]);
     });
 

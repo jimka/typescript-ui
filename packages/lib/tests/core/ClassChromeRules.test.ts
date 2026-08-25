@@ -255,11 +255,12 @@ describe('Component chrome base-tier hoisting', () => {
         b.getElement(true);
 
         const sink = DOM.sink as RecordingDOMSink;
-        // Every Component now inherits the root-level `.invisible` declared
-        // state (see plans/implemented/component-setvisible-state-tier-dedup.md),
-        // so isRestingChromeIsolated() is true here too — writeGuardedCSSRule's
+        // Every Component now inherits the root-level `.undisplayed`/`.invisible`
+        // declared states (see component-setdisplayed-state-tier-dedup.md and
+        // plans/implemented/component-setvisible-state-tier-dedup.md), so
+        // isRestingChromeIsolated() is true here too — writeGuardedCSSRule's
         // assertion lands on the guarded rule, not the bare #id one.
-        const declarations = declarationsDuring(sink, idSelector(b) + ':not(.invisible)', () => b.clearBackgroundImage());
+        const declarations = declarationsDuring(sink, idSelector(b) + ':not(.undisplayed):not(.invisible)', () => b.clearBackgroundImage());
         expect(declarations.backgroundImage).toBe('none');
     });
 
@@ -286,14 +287,16 @@ describe('Component chrome base-tier hoisting', () => {
 
         const sink = DOM.sink as RecordingDOMSink;
         // `writeGuardedCSSRule` (which `clearShadow`'s "none" neutral routes
-        // through) now isolates onto `#id:not(.invisible)` rather than the
-        // bare `#id` rule: `Component`'s own `.invisible` state (the
-        // state-tier dedup plan) makes `isRestingChromeIsolated()` true for
-        // every class, `ShadowProbeRow12` included, even though `.invisible`
-        // shares no property with `boxShadow`. `:not(.invisible)` still
-        // beats the class-tier rule and still matches a non-hidden instance,
-        // so the override still wins the cascade; only the selector moved.
-        const declarations = declarationsDuring(sink, idSelector(b) + ':not(.invisible)', () => b.clearShadow());
+        // through) now isolates onto `#id:not(.undisplayed):not(.invisible)`
+        // rather than the bare `#id` rule: `Component`'s own
+        // `.undisplayed`/`.invisible` states (the state-tier dedup plans)
+        // make `isRestingChromeIsolated()` true for every class,
+        // `ShadowProbeRow12` included, even though neither state shares a
+        // property with `boxShadow`. `:not(.undisplayed):not(.invisible)`
+        // still beats the class-tier rule and still matches a non-hidden
+        // instance, so the override still wins the cascade; only the
+        // selector moved.
+        const declarations = declarationsDuring(sink, idSelector(b) + ':not(.undisplayed):not(.invisible)', () => b.clearShadow());
         expect(declarations.boxShadow).toBe('none');
     });
 
