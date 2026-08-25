@@ -225,8 +225,9 @@ class CollapseButton extends Component<CollapseButtonOptions> {
     /**
      * Toggles the handle between its expanded-grip and collapsed-strip widths.
      * Collapsed, it widens to the collapse-strip size so the restore handle
-     * fills the entire width of the gutter's strip; expanded, it returns to the
-     * narrow grip. The width rides the per-instance rule
+     * fills the entire width of the gutter's strip; expanded, it removes its
+     * own `width` entry and falls back to the shared `.CollapseButton` rule's
+     * grip width. The width rides the per-instance rule
      * (replayed by `applyStyle`) so it survives a render. The rotation maps this
      * `width` to the across-gutter axis for every chevron direction.
      *
@@ -234,7 +235,11 @@ class CollapseButton extends Component<CollapseButtonOptions> {
      * @returns This component, for method chaining.
      */
     setStripMode(filled: boolean): this {
-        this.createStyleRule("").set("width", `${filled ? COLLAPSE_STRIP_SIZE : GRIP_ACROSS}px`);
+        // Expanded, the width entry is removed rather than rewritten: the shared
+        // `.CollapseButton` rule already declares `width: ${GRIP_ACROSS}px`, and the
+        // per-instance `#id` rule outranks it, so repeating the value here would put
+        // an identical declaration on every instance for nothing.
+        this.createStyleRule("").set("width", filled ? `${COLLAPSE_STRIP_SIZE}px` : null);
 
         return this;
     }
