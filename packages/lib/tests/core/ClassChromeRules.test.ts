@@ -255,7 +255,11 @@ describe('Component chrome base-tier hoisting', () => {
         b.getElement(true);
 
         const sink = DOM.sink as RecordingDOMSink;
-        const declarations = declarationsDuring(sink, idSelector(b), () => b.clearBackgroundImage());
+        // Every Component now inherits the root-level `.invisible` declared
+        // state (see plans/implemented/component-setvisible-state-tier-dedup.md),
+        // so isRestingChromeIsolated() is true here too — writeGuardedCSSRule's
+        // assertion lands on the guarded rule, not the bare #id one.
+        const declarations = declarationsDuring(sink, idSelector(b) + ':not(.invisible)', () => b.clearBackgroundImage());
         expect(declarations.backgroundImage).toBe('none');
     });
 
