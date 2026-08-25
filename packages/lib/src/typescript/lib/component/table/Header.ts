@@ -22,6 +22,7 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { ellipsis_v } from "~/glyphs/solid/ellipsis_v.js";
 import { callable } from "~/core/Callable.js";
 import { TRACK_WIDTH } from "~/component/container/Scrollbar.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 // Register the column-menu button's glyph eagerly at module load — same
 // pattern as ToolBar registering its overflow chevron — so the button always
@@ -116,6 +117,15 @@ export interface HeaderColumnGeometry {
  */
 class TableHeader extends Component {
 
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. Mirrors what the
+    // constructor below already writes imperatively.
+    protected static readonly ownClassStyleDefaults: StyleBag = {
+        border:          { borderBottom: "1px solid var(--ts-ui-table-header-border, black)" },
+        backgroundColor: TABLE_HEADER_BG,
+        backgroundImage: TABLE_HEADER_BG,
+    };
+
     private _model: AbstractModel;
     private _store: AbstractStore;
     private _hiddenColumns: Set<string> = new Set();
@@ -176,7 +186,15 @@ class TableHeader extends Component {
     private _cellText     : CellTextResolver          = new CellTextResolver();
 
     constructor(model: AbstractModel, store: AbstractStore) {
-        super({ tag: "thead" });
+        // backgroundColor/backgroundImage also go through subclassDefaults
+        // (into _defaultOptions), not just ownClassStyleDefaults: Component's
+        // clearBackgroundColor()/clearBackgroundImage() gate their explicit
+        // "transparent"/"none" override on this._defaultOptions having the
+        // property, since a bare removal alone would hand the property back
+        // to a class-defaulting rule instead of clearing it. border doesn't
+        // need the same treatment — clearBorder() always asserts a real
+        // "none" override regardless of _defaultOptions.
+        super({ tag: "thead" }, { backgroundColor: TABLE_HEADER_BG, backgroundImage: TABLE_HEADER_BG });
 
         this.getAria().setRole("rowgroup");
         this.setBorder({ borderBottom: "1px solid var(--ts-ui-table-header-border, black)" });

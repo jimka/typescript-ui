@@ -3,6 +3,14 @@
 import { Component } from "~/core/Component.js";
 import { Row } from "~/component/table/Row.js";
 import { callable } from "~/core/Callable.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
+
+// Apply the surface as both a colour and an image so a flat-colour theme
+// (e.g. ModernTheme, where --ts-ui-button-bg is a solid colour) paints via
+// the colour and a gradient theme via the image. Setting only
+// background-image left the footer transparent under a flat-colour theme,
+// since a colour is invalid as a background-image.
+const FOOTER_BG = "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))";
 
 /**
  * The footer section of a table, rendered as a `<tfoot>` element.
@@ -15,18 +23,29 @@ import { callable } from "~/core/Callable.js";
  */
 class FooterRow extends Component {
 
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. Mirrors what the
+    // constructor below already writes imperatively.
+    protected static readonly ownClassStyleDefaults: StyleBag = {
+        border:          { borderTop: "1px solid var(--ts-ui-border-color, black)" },
+        backgroundColor: FOOTER_BG,
+        backgroundImage: FOOTER_BG,
+    };
+
     constructor() {
-        super({ tag: "tfoot" });
+        // backgroundColor/backgroundImage also go through subclassDefaults
+        // (into _defaultOptions), not just ownClassStyleDefaults: Component's
+        // clearBackgroundColor()/clearBackgroundImage() gate their explicit
+        // "transparent"/"none" override on this._defaultOptions having the
+        // property, since a bare removal alone would hand the property back
+        // to a class-defaulting rule instead of clearing it. border doesn't
+        // need the same treatment — clearBorder() always asserts a real
+        // "none" override regardless of _defaultOptions.
+        super({ tag: "tfoot" }, { backgroundColor: FOOTER_BG, backgroundImage: FOOTER_BG });
 
         this.setBorder({ borderTop: "1px solid var(--ts-ui-border-color, black)" });
-        // Apply the surface as both a colour and an image so a flat-colour
-        // theme (e.g. ModernTheme, where --ts-ui-button-bg is a solid colour)
-        // paints via the colour and a gradient theme via the image. Setting
-        // only background-image left the footer transparent under a flat-colour
-        // theme, since a colour is invalid as a background-image.
-        const footerBg = "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))";
-        this.setBackgroundColor(footerBg);
-        this.setBackgroundImage(footerBg);
+        this.setBackgroundColor(FOOTER_BG);
+        this.setBackgroundImage(FOOTER_BG);
 
         let row = new Row();
         this.addRow(row);

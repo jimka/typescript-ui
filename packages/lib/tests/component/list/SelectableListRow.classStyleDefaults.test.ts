@@ -2,8 +2,14 @@
 // imperative constructor setters into a registered
 // `_defaultSelectableListRowOptions` class default — see
 // plans/implemented/delegate-class-style-defaults-followups.md row 5.
-// `setPadding` stays imperative (padding is not a `StyleBag`
-// member — see the plan's `## Non-Goals`), so it is not asserted here.
+// `setPadding` stays imperative: `padding` is now a `StyleBag` member
+// (`layered-style-bag.md` added its `STYLE_WRITERS` entry), but
+// `ClassStyleRules.ts`'s `resolveDeclarations` — the function that builds
+// every class's resolved CSS bag for the tier comparison — never gained a
+// matching case, so a class-tier `padding` default still can't dedupe
+// against an instance's own value. See
+// plans/implemented/class-tier-default-hoists-batch.md's Implementation
+// Notes; not attempted here.
 import { describe, it, expect, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';

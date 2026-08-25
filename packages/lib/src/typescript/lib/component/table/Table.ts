@@ -30,6 +30,7 @@ import type { CellType, ColumnConfig, ComboOption } from "~/component/table/Colu
 import { ColumnSpec, normalizeComboOptions } from "~/component/table/ColumnConfig.js";
 import { columnFilterOperators } from "~/component/table/ColumnFilter.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 import { Util } from "~/core/Util.js";
 import { TableExporter, ExportOptions } from "~/component/table/TableExporter.js";
 import { CellTextResolver } from "~/component/table/cell/CellText.js";
@@ -195,6 +196,16 @@ export interface TableOptions extends ComponentOptions {
  * @category Components
  */
 class Table extends Component<TableOptions> {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. Mirrors what the
+    // constructor below already writes imperatively. TreeTable (Table's
+    // only subclass) declares no field of its own and shares this rule
+    // outright.
+    protected static readonly ownClassStyleDefaults: StyleBag = {
+        border:  { border: "1px solid var(--ts-ui-border-color, black)" },
+        minSize: { width: 100, height: 100 },
+    };
 
     private _store            : AbstractStore;
     private _spec             : ColumnSpec | undefined;

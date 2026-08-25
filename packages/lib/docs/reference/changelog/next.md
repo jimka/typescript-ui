@@ -232,3 +232,18 @@ another cell.
   arrows render identically — the shared `.ScrollArrowGlyph` rule grows by
   three declarations and every instance's own rule shrinks by the same
   three. No consumer action is needed.
+- **`FileField`'s hidden native input, `FooterRow`, `TableHeader`, `Table`,
+  and `ToolBar` (horizontal/default orientation) no longer duplicate their
+  fixed styling on every instance's own CSS rule.** Each now shares one CSS
+  rule per piece across every instance in the app. Nothing changes visually;
+  no consumer action needed.
+- **A rendered `TreeTable` element now additionally carries the `Table`
+  class** (`ts-ui-component Table TreeTable`, previously `ts-ui-component
+  TreeTable`). A consumer stylesheet selector targeting bare `.Table` —
+  previously matching no `TreeTable` element — now matches `TreeTable` too.
+  Audit any such selector before upgrading.
+- **A rendered `ToolBar` element now additionally carries the `Container`
+  class** (`ts-ui-component Container ToolBar`, previously `ts-ui-component
+  ToolBar`). A consumer stylesheet selector targeting bare `.Container` —
+  previously matching no `ToolBar` element — now matches `ToolBar` too.
+  Audit any such selector before upgrading.
