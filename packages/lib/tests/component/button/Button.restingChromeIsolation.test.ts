@@ -192,11 +192,11 @@ describe('Button resting-chrome state isolation', () => {
         expect(_ruleCacheHas(idSelector(btn) + ':not(.pressed):not(:hover)')).toBe(false);
     });
 
-    it("row 10: SpinButton's constructor-time clearPressedShadow() writes boxShadow: 'none' to #id.pressed, never null", () => {
+    it("row 10: SpinButton's constructor-time clearPressedShadow() dedupes against the shared .SpinButton.pressed class rule, writing no boxShadow to #id.pressed", () => {
         const spin = new SpinButton('▲');
         const declarations = declarationsDuring(sink, idSelector(spin) + '.pressed', () => spin.getElement(true));
 
-        expect(declarations.boxShadow).toBe('none');
+        expect(declarations.boxShadow).toBeUndefined();
     });
 
     it('row 11: setFlat(true) writes no per-instance pressed declarations for the flat-affected keys — flat chrome lives on a shared .Button.flat.pressed rule instead, and the element carries the flat class; setFlat(false) drops the class but the rule stays cached', () => {
