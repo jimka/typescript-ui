@@ -1028,15 +1028,6 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             this.animateRailExpand();
         }
 
-        // The dock branch below relaxes the window's normal-resize min size (see
-        // its comment) so `animateRect`/`relayoutMinimizedStack` can shrink the
-        // window to the compact strip. Restore it before the window leaves the
-        // minimized state, ahead of the growth tween the branches below start.
-        if (from === "minimized" && this._normalMinSize !== null) {
-            this.setMinSize(this._normalMinSize);
-            this._normalMinSize = null;
-        }
-
         if (state === "normal") {
             // Restore body visibility BEFORE the tween starts so the
             // animation plays against the body content, not against an
@@ -1048,7 +1039,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             this._restoreRect = null;
 
             this.detachViewportResizeListener();
-            this.animateRect(target, () => AbstractWindow.relayoutMinimizedStack());
+            this.animateRect(target, () => {
+                this.restoreNormalMinSize();
+                AbstractWindow.relayoutMinimizedStack();
+            });
         } else if (state === "minimized") {
             if (from === "normal") {
                 this._restoreRect = this.currentRect();
@@ -1072,9 +1066,16 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
                 // `initChrome` seeds) is enforced independently of `chromeMinSize`
                 // (see `setWidth`/`setHeight`), so it would otherwise stop the dock
                 // animation from ever reaching the strip's compact height. Relax it
-                // for as long as the window stays docked; the `from === "minimized"`
-                // branch above restores it before the window can grow back.
-                this._normalMinSize = this.getMinSizeConstraint();
+                // for as long as the window stays docked; `restoreNormalMinSize`
+                // reinstates it once a later growth tween actually reaches it — not
+                // up front, which would clamp the still-shrunk box back up to the
+                // floor via CSS for a visible flicker before the growth catches up.
+                // Guarded so an interrupted restore (grow tween cancelled before its
+                // own restore ran) doesn't clobber the real floor with the
+                // still-relaxed 0x0 it left behind.
+                if (this._normalMinSize === null) {
+                    this._normalMinSize = this.getMinSizeConstraint();
+                }
                 this.setMinSize({ width: 0, height: 0 });
 
                 const target = this.computeDockRect();
@@ -1095,6 +1096,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
             const target = this.computeMaximizeRect();
             this.animateRect(target, () => {
+                this.restoreNormalMinSize();
                 this.attachViewportResizeListener();
                 AbstractWindow.relayoutMinimizedStack();
             });
@@ -1108,6 +1110,24 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         }
 
         return this;
+    }
+
+    /**
+     * Reinstates the normal-resize min size relaxed while docked (see
+     * {@link AbstractWindow.setWindowState}'s `"minimized"` branch), once a
+     * growth tween away from `"minimized"` has actually reached its target —
+     * so the floor is only ever applied when the window's live size is
+     * already at or above it. No-ops when nothing is relaxed, which covers
+     * both a rail-docked window (geometry, and so this floor, is never
+     * touched) and a growth tween that already restored it.
+     */
+    private restoreNormalMinSize(): void {
+        if (this._normalMinSize === null) {
+            return;
+        }
+
+        this.setMinSize(this._normalMinSize);
+        this._normalMinSize = null;
     }
 
     /**

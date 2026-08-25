@@ -6,8 +6,17 @@
 // window could never actually collapse below it: it stayed pinned at its
 // normal-resize minimum (mostly off-screen, since it is still positioned at
 // the dock strip's y) instead of reaching the intended strip height. Fixed by
-// relaxing the explicit minSize to 0x0 while minimized and restoring it
-// before the window is allowed to grow back.
+// relaxing the explicit minSize to 0x0 while minimized.
+//
+// A second regression sits on the way back out: the floor used to be
+// restored synchronously, before the growth tween away from "minimized" had
+// moved the window at all. Since the window's live size is still down at the
+// dock strip's height at that point, reinstating a 200px CSS min-height
+// instantly snapped the box back up to 200 — a visible flicker — before the
+// tween's own interpolated values caught up past it. Fixed by deferring the
+// restore to the growth tween's completion (AbstractWindow.restoreNormalMinSize),
+// guarded so an interrupted restore can't clobber the real floor with the
+// still-relaxed 0x0 it left behind.
 import { describe, it, expect, afterEach } from 'vitest';
 import { Window } from '~/overlay/Window';
 import { DOM } from '~/core/DOM';
@@ -22,10 +31,12 @@ const CONFIG = {
     themeVars:       {},
 };
 
+type WithNormalMinSize = { _normalMinSize: { width: number; height: number } | null };
+
 describe('AbstractWindow minimize — normal-resize min size must not block the dock shrink', () => {
     afterEach(() => DOM.reset());
 
-    it('relaxes the explicit min size while minimized, and restores it on un-minimize', () => {
+    it('relaxes the explicit min size while minimized', () => {
         installTestDOM(CONFIG);
 
         const win = new Window('W');
@@ -35,9 +46,6 @@ describe('AbstractWindow minimize — normal-resize min size must not block the 
 
         win.minimize();
         expect(win.getMinSizeConstraint()).toEqual({ width: 0, height: 0 });
-
-        win.toggleMinimize(); // back to "normal"
-        expect(win.getMinSizeConstraint()).toEqual(normalMin);
     });
 
     it('lets setHeight/setWidth shrink below the normal floor once minimized', () => {
@@ -57,14 +65,35 @@ describe('AbstractWindow minimize — normal-resize min size must not block the 
         expect(win.getWidth()).toBe(120);
     });
 
-    it('re-enforces the normal floor once the window leaves the minimized state', () => {
+    it('does not restore the floor synchronously when leaving the minimized state', () => {
         installTestDOM(CONFIG);
 
         const win = new Window('W');
         win.minimize();
-        win.toggleMinimize(); // back to "normal"
+        win.toggleMinimize(); // starts the "normal" growth tween
+
+        // The floor must stay relaxed until the growth tween's own completion
+        // reinstates it — restoring it here, before the tween has grown the
+        // window back past 200px, is exactly the flicker this test guards.
+        expect(win.getMinSizeConstraint()).toEqual({ width: 0, height: 0 });
 
         win.setHeight(10);
-        expect(win.getHeight()).toBe(200);
+        expect(win.getHeight()).toBe(10);
+    });
+
+    it('preserves the true floor across an interrupted restore, instead of re-capturing the still-relaxed 0x0', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W');
+        const normalMin = win.getMinSizeConstraint();
+
+        win.minimize();
+        win.toggleMinimize(); // restore started; never completes offline (rAF is never driven)
+        win.minimize();       // interrupts the restore before its own tween finished
+
+        // Re-entering "minimized" must not re-capture getMinSizeConstraint() —
+        // which would read back the still-relaxed 0x0 the interrupted restore
+        // left in place — over the real floor a later restore needs to reinstate.
+        expect((win as unknown as WithNormalMinSize)._normalMinSize).toEqual(normalMin);
     });
 });
