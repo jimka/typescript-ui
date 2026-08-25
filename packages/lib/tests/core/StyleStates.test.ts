@@ -206,3 +206,60 @@ describe('Declared-state (meta-class) layers (Stage 3)', () => {
         expect(toggle.getBackgroundColor()).not.toBe(selectedBg);
     });
 });
+
+// Component `setVisible`/`isVisible` state-tier dedup — plan
+// component-setvisible-state-tier-dedup.md's Expected Behaviour rows 3, 4, 7.
+// Rows 1, 2, 5, 6, 8 live in `tests/component/EffectiveVisibility.test.ts`
+// instead, alongside that file's existing `isVisible`/effective-visibility
+// coverage.
+describe('Component.setVisible routes through the shared .invisible class-tier rule', () => {
+    it('row 3: hiding a rendered, initially-visible Component adds the invisible class and writes no visibility declaration to its own #id rule', () => {
+        const c = new Component({});
+        const element = c.getElement(true)!;
+
+        const start = sink.writes.length;
+        const declarations = declarationsDuring(sink, idSelector(c), () => c.setVisible(false));
+        expect(declarations.visibility).toBeUndefined();
+
+        const gainedInvisibleClass = sink.writes.slice(start).some(w =>
+            w.op === 'apply' && w.args[0] === element && touchesToken(w, 'invisible')
+        );
+        expect(gainedInvisibleClass).toBe(true);
+    });
+
+    it('row 4: two separate Component instances hidden at once share one class-tier rule and carry no per-instance visibility declaration', () => {
+        const first = new Component({});
+        const second = new Component({});
+        first.getElement(true);
+        second.getElement(true);
+
+        const firstDeclarations  = declarationsDuring(sink, idSelector(first),  () => first.setVisible(false));
+        const secondDeclarations = declarationsDuring(sink, idSelector(second), () => second.setVisible(false));
+
+        expect(firstDeclarations.visibility).toBeUndefined();
+        expect(secondDeclarations.visibility).toBeUndefined();
+        expect(_ruleCacheHas('.ts-ui-component.invisible')).toBe(true);
+    });
+
+    it('row 7: a Button (which declares its own ownStyleStates without restating .invisible) still reports isVisible() false and stays visually hidden', () => {
+        const btn = new Button('x', { visible: false });
+
+        // `_activeStates` is read directly by `isVisible()`, not through
+        // `resolveStyleStates(Button)` — which does not carry `.invisible`,
+        // since `Button` declares its own whole-list `ownStyleStates` that
+        // doesn't restate it (see the plan's Architecture Decisions).
+        expect(btn.isVisible()).toBe(false);
+
+        const element = btn.getElement(true)!;
+        const addClassOps = sink.writes.filter(w =>
+            w.op === 'apply' && w.args[0] === element
+            && (w.args[1] as { addClass?: readonly string[] }).addClass?.includes('invisible')
+        );
+        expect(addClassOps.length).toBeGreaterThan(0);
+
+        // The shared `.ts-ui-component.invisible` rule matches on the
+        // universal component token, not `Button`'s own class name, so it
+        // still applies visually with no restatement.
+        expect(_ruleCacheHas('.ts-ui-component.invisible')).toBe(true);
+    });
+});

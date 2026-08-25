@@ -132,19 +132,28 @@ describe('Component borderRadius write-path reconciliation', () => {
 });
 
 describe('Component visibility write-path reconciliation', () => {
-    it('row 5: setVisible on an already-rendered plain component writes hidden for real, then a removal on restore', () => {
+    it('row 5: setVisible no longer writes a real visibility declaration on either leg — the state-tier dedup plan routes it through the shared .invisible class instead (component-setvisible-state-tier-dedup.md)', () => {
         const b = new Component({});
         b.getElement(true);
 
         const sink = DOM.sink as RecordingDOMSink;
+        // setVisible(false) now skips writeStyle entirely — see the
+        // state-tier dedup plan's "`_instanceStyle` is never written"
+        // decision — so #id never carries a `visibility` declaration for
+        // the false leg; `.invisible` class-toggle coverage lives in
+        // StyleStates.test.ts / EffectiveVisibility.test.ts instead.
         const row5a = declarationsDuring(sink, idSelector(b), () => b.setVisible(false));
-        expect(row5a.visibility).toBe('hidden');
+        expect(row5a.visibility).toBeUndefined();
 
+        // The restore leg's `writeStyle({ visible: true })` resolves to the
+        // class/framework tier's own "inherit" default — a matching value
+        // that never materialises #id in the first place, so this write is
+        // silent too, not a `null` removal.
         const row5b = declarationsDuring(sink, idSelector(b), () => b.setVisible(true));
-        expect(row5b.visibility).toBeNull();
+        expect(row5b.visibility).toBeUndefined();
     });
 
-    it('row 6: a construction option equal to the class default is queued for real by applyOptions, then corrected to a removal by the first render', () => {
+    it('row 6: a construction option equal to the class default no longer touches the write-path queue at all — setVisible(false) skips writeStyle entirely (component-setvisible-state-tier-dedup.md)', () => {
         class VisibleFalseProbeRow6 extends Component {
             constructor(options?: ComponentOptions) {
                 super(options, { visible: false });
@@ -160,6 +169,11 @@ describe('Component visibility write-path reconciliation', () => {
         const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
 
         expect(declarations.backgroundColor).toBe('red'); // sanity: #id did materialise
-        expect(declarations.visibility).toBeNull();
+        // setVisible(false) (dispatched by applyOptions above) never calls
+        // writeStyle any more — it only toggles the shared `.invisible`
+        // state class — so there is no "queued for real, then corrected to
+        // a removal" dance left to observe for `visibility`; #id never
+        // carries the key in the first place.
+        expect(declarations.visibility).toBeUndefined();
     });
 });

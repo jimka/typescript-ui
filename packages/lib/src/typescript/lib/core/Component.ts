@@ -22,7 +22,7 @@ import { ElementAttributes } from "~/core/ElementAttributes.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
-import { COMPONENT_CLASS, ensureClassStateRule, ensureClassStyleRule, ensureStyleGroupRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, resolvePartialDeclarations, resolveStyleStates, restingGuardSuffix, styleGroupClassSuffix, type StyleBag, type StyleLayer, type TextStyleBag } from "~/core/ClassStyleRules.js";
+import { COMPONENT_CLASS, ensureClassStateRule, ensureClassStyleRule, ensureStyleGroupRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, resolvePartialDeclarations, resolveStyleStates, restingGuardSuffix, styleGroupClassSuffix, type StyleBag, type StyleLayer, type StyleStateSpec, type TextStyleBag } from "~/core/ClassStyleRules.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
 import { measureBorderWidths } from "~/core/BorderWidths.js";
 
@@ -411,6 +411,21 @@ const FRAMEWORK_BASELINE_KEYS: ReadonlySet<string> = new Set([
 
 class Component<TOptions extends ComponentOptions = ComponentOptions> extends BaseObject {
 
+    // The one state Component itself declares — see ARCHITECTURE.md's
+    // "Component CSS tiers and state-rule dedup". setVisible(false) toggles
+    // it instead of writing a per-instance `visibility: hidden` declaration.
+    // Declared on the root class, not a concrete leaf — see the
+    // `stateRuleName` fix in ClassStyleRules.ts this relies on. A subclass
+    // that declares its own `ownStyleStates` (a whole-list override, see
+    // ARCHITECTURE.md) does not inherit this entry and is not required to
+    // restate it — see `isVisible()`'s `_activeStates` direct-read below.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".invisible",
+            extract: (): StyleBag => ({ visible: false }),
+        },
+    ];
+
     // Structural state that is NOT option-backed — runtime references, render
     // caches, lifecycle flags, and constants. Option-backed values (border,
     // layoutManager, insets, padding, ...) live in `this._options` instead.
@@ -565,12 +580,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _instanceStateStyle   : Map<string, StyleBag>    | null = null;
     private _pendingStateKeys     : Map<string, Set<string>> | null = null;
     // Currently-active declared states (`.pressed`, `:hover`, `.selected`,
-    // …) — the selectors from this class's own `ownStyleStates` this
-    // instance has toggled on via `setStyleState`. Scanned by `styleLayers()`
-    // ahead of the instance layer, in declared order, so the first active
-    // entry wins. Plain initializer: `setStyleState` is never called before
-    // `super()` returns (unlike `_instanceStyle`, which cascade-dispatched
-    // setters can reach mid-`super()`).
+    // `.invisible`, ...) — the selectors from this class's own `ownStyleStates`
+    // this instance has toggled on via `setStyleState`. Scanned by
+    // `styleLayers()` ahead of the instance layer, in declared order, so the
+    // first active entry wins. Plain initializer is safe even though
+    // `setVisible` (dispatched by `applyOptions`, itself called from
+    // Component's own constructor body, after `super()`) can reach
+    // `setStyleState` mid-cascade for any subclass under construction:
+    // `_activeStates` is one of Component's own fields, so it is already
+    // initialized by the time Component's constructor makes that call,
+    // regardless of which subclass is being built.
     private _activeStates         : Set<string> = new Set();
     // Per-prefix DOM class token currently pointing this instance at a shared
     // `.ClassName.<prefix><value>` value-class rule (see `setValueStyleState`)
@@ -1959,6 +1978,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns True if explicitly visible, false if explicitly hidden, null if inheriting from the parent.
      */
     isVisible(): boolean | null {
+        // `.invisible` is read from `_activeStates` directly rather than
+        // through `resolveStyleValue`'s layer walk: a subclass that declares
+        // its own `ownStyleStates` (Button, ToggleButton, ...) does not
+        // inherit Component's `.invisible` entry into its own resolved list,
+        // so `styleLayers()` never pushes that layer for such an instance.
+        // The shared CSS rule still applies regardless (it matches on the
+        // universal `ts-ui-component` token, not the concrete class name) —
+        // this check only keeps the *getter* correct uniformly across every
+        // subclass.
+        if (this._activeStates.has(".invisible")) {
+            return false;
+        }
+
         return this.resolveStyleValue("visible");
     }
 
@@ -1989,11 +2021,21 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // and the element exists. A detached component (no element) falls
         // through to record the value, so the intended state is never lost.
         const authored = normalized ?? null;
-        if (this._instanceStyle.visible === authored && this.getElement()) {
+        if (this.isVisible() === authored && this.getElement()) {
             return this;
         }
 
-        this.writeStyle({ visible: authored });
+        // Route the CSS side through the shared `.ts-ui-component.invisible`
+        // class-tier rule instead of a per-instance `#id` declaration.
+        // `_instanceStyle` is deliberately left untouched on the `false`
+        // branch — caching it there would make a later full-sweep re-render
+        // treat it as a genuine per-instance override again, reproducing the
+        // exact duplicate rule this change removes.
+        this.setStyleState(".invisible", authored === false);
+
+        if (authored !== false) {
+            this.writeStyle({ visible: authored });
+        }
 
         if (this.getElement()) {
             this.scheduleEffectiveVisibilityReconcile();
@@ -2149,7 +2191,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * mirroring `scheduleLayout`. Called by `setVisible` / `setDisplayed` after
      * a real state change.
      */
-    private scheduleEffectiveVisibilityReconcile(): void {
+    protected scheduleEffectiveVisibilityReconcile(): void {
         pendingVisibility.add(this);
         ensureVisibilityFlushScheduled();
     }
@@ -6821,7 +6863,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // CSS-escaping (used only for the class-tier selector) does not
         // remove whitespace.
         const groupClass = group ? [this.constructor.name + "--" + styleGroupClassSuffix(group)] : [];
-        DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, ...getStyleClassChain(this.constructor), ...groupClass] });
+        // Re-applies any declared state's DOM class token recorded before this
+        // element existed (e.g. setVisible(false) via the construction-time
+        // `visible` option) — setStyleState's own DOM write is gated on
+        // getElement(), so a state toggled during construction only updates
+        // `_activeStates` until this first render catches it up. Mirrors the
+        // per-class render() catch-up ToggleButton/ScrollArrowButton/ScrollbarThumb
+        // already do for their own states, generalised once here since `.invisible`
+        // is reachable from every concrete class.
+        const activeStateTokens = Array.from(this._activeStates)
+            .filter((selector) => selector.startsWith("."))
+            .map((selector) => selector.slice(1));
+        DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, ...getStyleClassChain(this.constructor), ...groupClass, ...activeStateTokens] });
 
         this.applyStyle(element);
 

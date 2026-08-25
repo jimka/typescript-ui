@@ -183,21 +183,25 @@ describe('Nested-hidden is not resumed (case 5)', () => {
 });
 
 describe('Idempotent setVisible (cases 13-15)', () => {
-    it('writes the visibility rule at most once for repeated setVisible(false) (case 13)', () => {
+    it('toggles the invisible state class at most once for repeated setVisible(false) (case 13)', () => {
         const c = new Component({});
-        c.getElement(true);
+        const element = c.getElement(true)!;
 
-        // Baseline after render (which already writes an initial "inherit"
-        // visibility rule via applyBoxAndVisibilityStyles) — count only writes
-        // caused by the two setVisible(false) calls below.
-        const visWritesBefore = ruleStyleWrites(DOM.sink as RecordingDOMSink).filter(w => w.key === 'visibility').length;
+        // setVisible(false) now routes through the shared `.invisible`
+        // state-tier class instead of a per-instance `visibility` rule (see
+        // the state-tier dedup plan), so idempotency shows up as the DOM
+        // class token being toggled at most once, not as a rule write count.
+        const writesBefore = (DOM.sink as RecordingDOMSink).writes.length;
         const spy = vi.spyOn(hookTarget(c), 'onEffectiveVisibilityChange');
 
         c.setVisible(false);
         c.setVisible(false);
 
-        const visWritesAfter = ruleStyleWrites(DOM.sink as RecordingDOMSink).filter(w => w.key === 'visibility').length;
-        expect(visWritesAfter - visWritesBefore).toBe(1);
+        const invisibleAdds = (DOM.sink as RecordingDOMSink).writes.slice(writesBefore).filter(w =>
+            w.op === 'apply' && w.args[0] === element
+            && (w.args[1] as { addClass?: readonly string[] }).addClass?.includes('invisible')
+        );
+        expect(invisibleAdds).toHaveLength(1);
 
         Component.flushEffectiveVisibility();
 
@@ -229,6 +233,13 @@ describe('Idempotent setVisible (cases 13-15)', () => {
         const c = new Component({});
         c.getElement(true);
 
+        // Neither leg writes a real `visibility` declaration any more:
+        // `setVisible(false)` toggles the `.invisible` state class instead
+        // of calling `writeStyle`, and `setVisible(true)`'s `writeStyle({
+        // visible: true })` resolves to the class/framework tier's own
+        // "inherit" default — a matching value, so `flushStyleBag` only ever
+        // queues a removal, which never materialises this never-yet-written
+        // `#id` rule (see the plan's Architecture Decisions).
         const visWritesBefore = ruleStyleWrites(DOM.sink as RecordingDOMSink).filter(w => w.key === 'visibility').length;
         const spy = vi.spyOn(hookTarget(c), 'onEffectiveVisibilityChange');
 
@@ -236,11 +247,91 @@ describe('Idempotent setVisible (cases 13-15)', () => {
         c.setVisible(true);
 
         const visWritesAfter = ruleStyleWrites(DOM.sink as RecordingDOMSink).filter(w => w.key === 'visibility').length;
-        expect(visWritesAfter - visWritesBefore).toBe(2);
+        expect(visWritesAfter - visWritesBefore).toBe(0);
 
         Component.flushEffectiveVisibility();
 
         expect(spy).toHaveBeenCalledTimes(1);
         expect(spy).toHaveBeenCalledWith(true);
+    });
+});
+
+// Component `setVisible`/`isVisible` state-tier dedup — plan
+// component-setvisible-state-tier-dedup.md's Expected Behaviour rows 1, 2,
+// 5, 6, 8. Row 3, 4, 7 (the CSS-write-dedup assertions, which need the
+// `declarationsDuring`/`_ruleCacheHas` helpers) live in
+// `tests/core/StyleStates.test.ts` instead, alongside that file's existing
+// declared-state coverage.
+describe('Component.setVisible routes through the .invisible state tier', () => {
+    it('row 1: a never-rendered Component constructed with visible:false reports isVisible() false', () => {
+        const c = new Component({ visible: false });
+
+        expect(c.isVisible()).toBe(false);
+    });
+
+    it('row 2: the first render catches up the invisible class token, and isVisible() still reports false', () => {
+        const c = new Component({ visible: false });
+        const element = c.getElement(true)!;
+
+        // `setStyleState`'s own DOM write is gated on `getElement()`, so the
+        // construction-time toggle (case row 1, before any element exists)
+        // only reaches the classList via `Component.init()`'s render-time
+        // catch-up sweep — assert that sweep actually added the token.
+        const addClassOps = (DOM.sink as RecordingDOMSink).writes.filter(w =>
+            w.op === 'apply' && w.args[0] === element
+            && (w.args[1] as { addClass?: readonly string[] }).addClass?.includes('invisible')
+        );
+        expect(addClassOps.length).toBeGreaterThan(0);
+        expect(c.isVisible()).toBe(false);
+    });
+
+    it('row 5: setVisible(true) after setVisible(false) removes the invisible class, reports true, and writes no real visibility declaration', () => {
+        const c = new Component({});
+        const element = c.getElement(true)!;
+        c.setVisible(false);
+
+        const writesBefore = (DOM.sink as RecordingDOMSink).writes.length;
+        c.setVisible(true);
+        const writesAfter = (DOM.sink as RecordingDOMSink).writes.slice(writesBefore);
+
+        const removedInvisible = writesAfter.some(w =>
+            w.op === 'apply' && w.args[0] === element
+            && (w.args[1] as { removeClass?: readonly string[] }).removeClass?.includes('invisible')
+        );
+        expect(removedInvisible).toBe(true);
+        expect(c.isVisible()).toBe(true);
+
+        // `writeStyle({ visible: true })` on this branch resolves to the
+        // class/framework tier's own "inherit" default, so per
+        // `flushStyleBag`'s own dedup it only ever queues a matching removal
+        // (`null`) — never a real `visibility: hidden` declaration.
+        const hiddenDecls = ruleStyleWrites(DOM.sink as RecordingDOMSink)
+            .filter(w => w.key === 'visibility' && w.value === 'hidden');
+        expect(hiddenDecls).toEqual([]);
+    });
+
+    it('row 6: setVisible(null) reports isVisible() null with the same no-real-declaration behavior as row 5', () => {
+        const c = new Component({});
+        c.getElement(true);
+        c.setVisible(false);
+
+        c.setVisible(null);
+
+        expect(c.isVisible()).toBeNull();
+
+        const hiddenDecls = ruleStyleWrites(DOM.sink as RecordingDOMSink)
+            .filter(w => w.key === 'visibility' && w.value === 'hidden');
+        expect(hiddenDecls).toEqual([]);
+    });
+
+    it('row 8: isEffectivelyVisible() picks up a component hidden via the new .invisible path with no test-side change needed', () => {
+        const c = new Component({});
+        c.getElement(true);
+
+        expect(c.isEffectivelyVisible()).toBe(true);
+
+        c.setVisible(false);
+
+        expect(c.isEffectivelyVisible()).toBe(false);
     });
 });

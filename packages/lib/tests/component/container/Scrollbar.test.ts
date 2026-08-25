@@ -4,7 +4,7 @@ import { Scrollbar, isScrollbarTarget, TRACK_WIDTH } from '~/component/container
 import { Event } from '~/core/Event';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
-import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent, ruleStyleWrites, RecordingDOMSink } from '../../dom/TestDOM';
 import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -600,6 +600,78 @@ describe('ScrollbarThumb hover state-class hoisting', () => {
         });
 
         expect(declarations.backgroundColor).toBeUndefined();
+    });
+});
+
+// Scrollbar.setMetrics / setDisplayed state-tier dedup
+// (component-setvisible-state-tier-dedup.md) — Expected Behaviour row 9.
+// `Scrollbar.setDisplayed` deliberately does not delegate to
+// `super.setDisplayed` — a naive delegating override would get its own
+// idempotency check stuck on a stale `_instanceStyle.displayed` after a
+// hide→show→hide→show sequence and silently skip the second show's write
+// and reconcile (see the plan's Architecture Decisions and its
+// stale-idempotency-trace footnote). This test exercises exactly that
+// sequence to prove the fix.
+describe('Scrollbar.setMetrics undisplayed state-tier dedup', () => {
+    afterEach(() => DOM.reset());
+
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    /** Reads the protected hook off an arbitrary component for spying. */
+    function hookTarget(c: Component): { onEffectiveVisibilityChange(effective: boolean): void } {
+        return c as unknown as { onEffectiveVisibilityChange(effective: boolean): void };
+    }
+
+    it('row 9: overflow false -> true -> false -> true each toggles isDisplayed(), writes no display declaration to #id, and reconciles on every real transition', () => {
+        const sink = installTestDOM(CONFIG);
+
+        const bar = new Scrollbar('vertical');
+        bar.getElement(true);
+        bar.setMetrics(200, 800, 0); // overflow: true — matches the default, establishes the "displayed" baseline with no real transition
+
+        const spy = vi.spyOn(hookTarget(bar), 'onEffectiveVisibilityChange');
+
+        // `Component.flushEffectiveVisibility()` after each call, not once at
+        // the end, so a transition that fails to *schedule* a reconcile at
+        // all (the bug a naive `super.setDisplayed`-delegating design would
+        // introduce) is caught at the call that drops it, rather than being
+        // masked by a coalesced net-zero flush across the whole sequence
+        // (see EffectiveVisibility.test.ts's case 15 for that coalescing
+        // behaviour applied deliberately, which is exactly why it can't be
+        // relied on here).
+        bar.setMetrics(200, 150, 0); // overflow: false — real transition 1
+        expect(bar.isDisplayed()).toBe(false);
+        Component.flushEffectiveVisibility();
+        expect(spy).toHaveBeenCalledTimes(1);
+
+        bar.setMetrics(200, 800, 0); // overflow: true — real transition 2
+        expect(bar.isDisplayed()).toBe(true);
+        Component.flushEffectiveVisibility();
+        expect(spy).toHaveBeenCalledTimes(2);
+
+        bar.setMetrics(200, 150, 0); // overflow: false — real transition 3
+        expect(bar.isDisplayed()).toBe(false);
+        Component.flushEffectiveVisibility();
+        expect(spy).toHaveBeenCalledTimes(3);
+
+        // Real transition 4, the second "show" — the exact call the plan's
+        // stale-idempotency-trace footnote proves a naive
+        // `super.setDisplayed`-delegating design would silently no-op: its
+        // own idempotency check would find `_instanceStyle.displayed`
+        // already `true` (stale from transition 2, never cleared by
+        // transition 3's hide) and skip both the write and the reconcile.
+        bar.setMetrics(200, 800, 0); // overflow: true — real transition 4
+        expect(bar.isDisplayed()).toBe(true);
+        Component.flushEffectiveVisibility();
+        expect(spy).toHaveBeenCalledTimes(4);
+
+        const displayWrites = ruleStyleWrites(sink).filter(
+            w => w.selector === idSelector(bar) && w.key === 'display'
+        );
+        expect(displayWrites).toEqual([]);
     });
 });
 

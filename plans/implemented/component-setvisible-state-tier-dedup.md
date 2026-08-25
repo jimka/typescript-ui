@@ -417,6 +417,93 @@ None. `setVisible`/`isVisible`/`setDisplayed`/`isDisplayed`'s public signatures 
 
 ---
 
+## Implementation Notes
+
+The plan's `## Files to Create / Modify / Delete` table lists three test files
+to extend (`EffectiveVisibility.test.ts`, `StyleStates.test.ts`,
+`Scrollbar.test.ts`). Running the full suite after the source changes
+surfaced ten further pre-existing test files whose assertions depended on
+write-path shapes this plan deliberately changes — not bugs in the
+implementation, but stale assumptions in tests the plan's own file list
+didn't anticipate. Each was root-caused against the current source (not
+patched to match whatever the code happened to emit) and fixed in place,
+following that file's own existing conventions:
+
+- **`isRestingChromeIsolated()` flipping universally true** (flagged
+  generically in `## Potential Challenges` but not traced to specific
+  breakage) makes `writeGuardedCSSRule` — used by `Text`'s `textOverflow`
+  reconciliation and `Component.clearShadow`'s `"none"` neutral — isolate
+  onto `#id:not(.invisible)` instead of the bare `#id` rule for every class,
+  not only classes that declare their own state. `TextClassStyleHoisting.test.ts`,
+  `TextTruncateWritePath.test.ts`, and `ClassChromeRules.test.ts` (row 12)
+  asserted against the bare `#id` selector; widened to
+  `#id:not(.invisible)`, with a comment explaining the routing change —
+  the override still wins the cascade, only the selector moved.
+- **The shared `.ts-ui-component.invisible` rule is created eagerly on the
+  first render of any `Component`**, mirroring every other class-tier rule's
+  eager creation — not only when something is actually hidden. Rule-cache
+  leak-detection tests that diff the cache before/after a dispose
+  (`ComponentDispose.test.ts`, `TextDispose.test.ts`) saw this permanent,
+  module-scoped rule as a false-positive leak; excluded it the same way
+  those files already exclude the framework-wide and `.Text` rules.
+- **A hidden component's own `#id` rule no longer carries a `visibility`
+  declaration**, so tests using a hidden child as a disposal proxy
+  (`HeaderCell.disposal.test.ts`, `HeaderColumnWindow.test.ts`,
+  `Tab.closeDisposal.test.ts`, `Dock.closeDisposal.test.ts`) lost the real
+  per-instance declaration their `survivingRulesFor`/rule-cache-key
+  assertions depended on; each now forces one with an unrelated
+  `setBackgroundColor` call, matching the pattern those files already used
+  elsewhere.
+- **`ComponentWritePathCleanup.test.ts` rows 5-6** (from an earlier,
+  unrelated plan) pinned the exact write-path shape this plan replaces for
+  `visible: false` — a real `"hidden"` declaration followed by a corrective
+  removal. Updated to assert the new behaviour: neither leg writes a
+  `visibility` declaration to `#id` at all.
+
+All ten fixes, plus the plan's own three listed test files, ride in this
+branch's single code commit — none is a distinct functionality.
+
+**`## Documentation Impact`'s "None" conclusion was wrong.** Every other plan
+in this same nine-plan Style-Audit-dedup batch that ships a purely internal,
+non-consumer-visible CSS dedup — `abstractinput-height-dedup.md`,
+`button-chromeless-followup-dedup.md`, `button-flat-chrome-dedup.md`,
+`class-tier-default-hoists-batch.md`, `glyph-icon-size-dedup.md`,
+`numberspinner-spinbutton-dedup.md` — adds a `packages/lib/docs/reference/changelog/next.md`
+entry despite "nothing renders differently. No consumer action is needed,"
+and `next.md` already documents the closest analog to this exact change (the
+declared-toggle-state class-tier dedup this plan builds on: "shrinks the
+generated stylesheet's size... The rendered result is unchanged... No
+consumer action is needed"). Added one entry to `next.md`'s second `## Changed`
+→ `### Core` list, appended after the existing "shared `<style id="Base">`"
+bullet, matching that precedent's phrasing.
+
+**Live browser verification (`## Ordered Implementation Steps` step 10 /
+`## Expected Behaviour` row 10 / `## Verification`'s manual row) was
+performed.** A dev server was started from `packages/lib` in this worktree
+on a spare port (8099), confirmed via `readlink /proc/<pid>/cwd` to resolve
+to this worktree's `packages/lib`. Navigated to `#/misc` and clicked
+"autoScroll: both" to render a `Panel` with a live, overflowing `Scrollbar`
+in both axes; a screenshot confirmed both scrollbars render correctly
+(track, thumb, and layout all visually unchanged). A direct `document.styleSheets`
+scan across the whole page (not only the Style Audit UI's own sampled table)
+found zero `#id`-prefixed rules anywhere carrying a `visibility` or
+`display: none` declaration, while confirming both the shared
+`.ts-ui-component.invisible` rule and a shared (non-`#id`) `Scrollbar`
+`display: none` rule exist — directly confirming rows 3/4/9's no-per-instance-leak
+claim live, not only under the offline harness. The shared browser instance
+was under heavy concurrent use by sibling plans' own manual-verification
+passes at the time (confirmed via `list_pages` showing several other
+worktrees' dev-server tabs, one explicitly `isolatedContext`-tagged for
+another plan's verification), which made a scripted resize-driven
+overflow-toggle interaction too unreliable to drive safely without risking
+interference with those other sessions; every check performed used an
+explicit page-identity guard (aborting rather than acting whenever the
+currently-targeted page didn't match this worktree's own URL) specifically
+to avoid touching another session's page. The dev server was stopped after
+verification.
+
+---
+
 ## Notes
 
 [^stale-plan]: `plans/implemented/state-tier-rule-dedup-followups.md` (an earlier, already-merged plan covering `WindowBorder`/`HeaderCell`/`ScrollArrowButton`/`ScrollbarThumb`) references `Component.createStateStyleRule`, `StateStyleRule`, and `getRestingExclusionSuffixes()` — none of which exist in the current source. `plans/implemented/state-tier-full-unification.md` retired that mechanism in favor of the current `ownStyleStates`/`writeStateStyle`/`isRestingChromeIsolated`/`restingIsolationKeys` shape this plan reads and extends. Confirmed by reading both plans and the current source directly; every citation in this plan is to current source or to `state-tier-full-unification.md`, never to the superseded plan's own code snippets.
