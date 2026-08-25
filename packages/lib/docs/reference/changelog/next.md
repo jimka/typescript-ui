@@ -173,6 +173,16 @@ set. A few more columns are rendered when the table is scrolled hard
 against either end — the same number it renders mid-scroll. No consumer
 action is needed.
 
+**A table with `autoSizeColumns: true` now re-samples its column widths on
+every later data change — a load, an add, a remove, or an in-cell edit —
+instead of freezing them after the first non-empty sample.** Widths widen to
+fit a longer value added later and narrow again once it is removed or
+edited down, coalesced to at most one layout pass per animation frame so a
+burst of changes still costs a single re-derivation. A column the user
+drag-resized is now pinned: it keeps the width the drag left it at through
+every later re-sample, instead of being overwritten by the next one. No
+consumer action is needed.
+
 ## Fixed
 
 ### Core

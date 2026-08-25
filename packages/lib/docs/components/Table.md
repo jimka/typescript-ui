@@ -51,7 +51,7 @@ const table = Table(store, {
 | `minWidth` / `maxWidth` | Width constraints in pixels. |
 | `width` | Explicit starting width in pixels. Wins over the type policy and any sampled content, but is still clamped into `[minWidth, maxWidth]`. |
 | `maxContentLength` | Longest value this column can hold, in characters (e.g. a `varchar(60)` column passes `60`). For a `string`/`auto` column under `autoSizeColumns` this is used only when sampling the store yields no candidates; for a `number` column it outranks the sample. |
-| `preserveWidth` | When `true`, this column's width survives a container resize unchanged instead of scaling with the other flexible columns; the table scrolls horizontally if it no longer fits. Does not affect first render or a user drag-resize. |
+| `preserveWidth` | When `true`, this column's width survives a container resize unchanged instead of scaling with the other flexible columns; the table scrolls horizontally if it no longer fits. Does not affect first render, a user drag-resize, or a data-driven re-sample. |
 | `hidden` | Initial hidden state. |
 | `unhideable` | When `true`, the user cannot hide this column from the context menu. Takes precedence over `hidden`. |
 | `readOnly` | When `true`, every cell in this column is display-only — double-click does not start an editor, and the cell renders with a subtle grey tint sourced from `--ts-ui-table-cell-readonly-bg`. Selection, keyboard navigation, sort, resize, and export still work. |
@@ -86,11 +86,13 @@ import { TablePanel } from '@jimka/typescript-ui/component/table';
 const panel = TablePanel(store, { columns: [], autoSizeColumns: true });
 ```
 
-For one column, the first rule that applies wins: an explicit `width` beats
-the type policy's derived width (sampled content, for an auto-sized
-`string`/`auto` column), which beats staying flex (`string`/`auto` with
-`autoSizeColumns` unset). A declared `minWidth` replaces the type's floor
-rather than competing with it, and the result is always clamped to
+For one column, the first rule that applies wins: a width the user
+drag-resized the column to beats everything else, returned verbatim with no
+re-clamping; then an explicit `width` beats the type policy's derived width
+(sampled content, for an auto-sized `string`/`auto` column), which beats
+staying flex (`string`/`auto` with `autoSizeColumns` unset). A declared
+`minWidth` replaces the type's floor rather than competing with it, and the
+result — other than a drag-resized width — is always clamped to
 `[minWidth, maxWidth]`.
 
 A container resize normally scales every `string`/`auto` column's width
@@ -471,9 +473,12 @@ total, regardless of column count — one for the shared reference strings
 (digit width, formatted reference date), one for the header labels, one for
 the sampled body text — because every string measured in a pass is batched
 into a single document reflow. The derivation runs on first layout, a store
-swap, a reset, and once more after data first arrives (see `autoSizeColumns`
-above) — never per row and never on scroll. In rotated display mode it also
-re-runs on every record switch and on every source-store event, since the
+swap, a reset, and on every source-store data change — load, add, remove, or
+an in-cell edit (see `autoSizeColumns` above) — coalesced to at most one pass
+per animation frame, so a burst of changes in one tick still costs a single
+derivation. A column the user drag-resized keeps the width the drag left it
+at through that re-derivation. In rotated display mode it also re-runs on
+every record switch and on every source-store event, since the
 `field`/`value` columns size to the currently displayed record. When
 `autoSizeColumns` is on, at most 50 records are read to size `string`/`auto`
 columns; `number` columns read the same sample for their digit count.
