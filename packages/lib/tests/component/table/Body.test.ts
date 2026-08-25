@@ -17,6 +17,7 @@ import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Body, resolveClickedColumn } from '~/component/table/Body';
 import type { CellClickEvent } from '~/component/table/Body';
+import { Body as CoreBody } from '~/core/Body';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import { Row } from '~/component/table/Row';
@@ -67,6 +68,100 @@ function body(viewportWidth: number, colWidths: number[]): Body {
 function scrollX(b: Body): number {
     return (b as any)._scroller.getScrollX();
 }
+
+/** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+function idSelector(component: Body): string {
+    return '#' + DOM.source.escapeSelector(component.getId());
+}
+
+/** Recorded `ensureStyleRule` ops for the given selector, in call order — mirrors `ClassHierarchyCascade.test.ts`'s own helper. */
+function ensureStyleRuleOpsFor(sink: RecordingDOMSink, selector: string): Array<{ op: string; args: unknown[] }> {
+    return sink.writes.filter((w) => w.op === 'ensureStyleRule' && w.args[0] === selector);
+}
+
+// Regression coverage for the table Body / core Body class-name collision fix
+// — see plans/implemented/table-body-class-collision-fix.md. Importing
+// `~/core/Body` above claims the "Body" name in ClassStyleRules.ts's `_owners`
+// registry the instant this file loads (the singleton constructs and calls
+// `init()` unconditionally at module evaluation — see core/Body.ts), which
+// reproduces the collision precondition before any test body below runs.
+//
+// `_owners`/`_bags` are module state that survives `DOM.reset()` and persists
+// for this whole file (Vitest isolates modules per file, not per test — see
+// ClassHierarchyCascade.test.ts's header comment), so the shared
+// `.TableBody` class-tier rule is created exactly once, by whichever test
+// constructs and renders the first table `Body`. This block is declared
+// before every other describe in this file — all of which construct table
+// `Body` instances via the `body()` / `bodyWith()` helpers below — so its own
+// construction is that first one; moving it later would make the
+// `ensureStyleRuleOpsFor(sink, '.TableBody')` counts below observe a cache
+// hit instead of the rule's actual creation.
+describe('Body — class-name collision fix', () => {
+    it('gets its own .TableBody class rule (backgroundColor hoisted), shared by a second table', () => {
+        // Sanity-checks the collision precondition this block's ordering
+        // comment depends on: the core Body singleton already exists.
+        expect(CoreBody.getInstance()).toBeInstanceOf(CoreBody);
+
+        const sink = DOM.sink as RecordingDOMSink;
+
+        const b1 = new Body(new MemoryStore(MODEL, []));
+        const declarations = declarationsDuring(sink, '.TableBody', () => b1.getElement(true));
+
+        expect(ensureStyleRuleOpsFor(sink, '.TableBody').length).toBe(1);
+        expect(declarations.backgroundColor).toBe('var(--ts-ui-input-bg, rgb(255, 255, 255))');
+
+        // A second table's Body shares the same rule — no duplicate created.
+        const b2 = new Body(new MemoryStore(MODEL, []));
+        b2.getElement(true);
+        expect(ensureStyleRuleOpsFor(sink, '.TableBody').length).toBe(1);
+    });
+
+    it("no longer writes the framework baseline or backgroundColor to its own #id rule", () => {
+        const sink = DOM.sink as RecordingDOMSink;
+        const b    = new Body(new MemoryStore(MODEL, []));
+
+        const declarations = declarationsDuring(sink, idSelector(b), () => b.getElement(true));
+
+        for (const key of [
+            'position', 'visibility', 'display', 'boxSizing', 'whiteSpace',
+            'userSelect', 'cursor', 'border', 'margin', 'minWidth', 'minHeight',
+            'maxWidth', 'maxHeight', 'overflowX', 'overflowY',
+        ]) {
+            expect(declarations[key]).toBeUndefined();
+        }
+        expect(declarations.backgroundColor).toBeUndefined();
+    });
+
+    // Pins the rendered class list itself — see
+    // ClassHierarchyCascade.test.ts's case 2 for the precedent this mirrors.
+    // The collision fix makes TableBody a participating hierarchy member, so
+    // its rendered element now carries its own ancestor's name (VirtualRowView)
+    // and the class actually declared (TableBody), instead of the old bare
+    // `Body` name — a breaking change for a consumer selector targeting
+    // `.Body`, documented in the changelog's Breaking changes section.
+    it("carries VirtualRowView and TableBody in its rendered class list, not the old Body name", () => {
+        const sink  = DOM.sink as RecordingDOMSink;
+        const b     = new Body(new MemoryStore(MODEL, []));
+        const start = sink.writes.length;
+
+        // Scope to the body's own element only — rendering also mounts row/
+        // scrollbar children, each with their own 'ts-ui-component' addClass.
+        const handle = b.getElement(true);
+
+        const addClassOps = sink.writes.slice(start).filter((w) => {
+            if (w.op !== 'apply' || w.args[0] !== handle) {
+                return false;
+            }
+            const patch = w.args[1] as { addClass?: string[] };
+            return Array.isArray(patch.addClass) && patch.addClass.includes('ts-ui-component');
+        });
+
+        expect(addClassOps.length).toBe(1);
+        expect((addClassOps[0].args[1] as { addClass: string[] }).addClass).toEqual([
+            'ts-ui-component', 'VirtualRowView', 'TableBody',
+        ]);
+    });
+});
 
 describe('Body.scrollColumnIntoView', () => {
     it('scrolls a right-edge column fully into view through the scroll model', () => {

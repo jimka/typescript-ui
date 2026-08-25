@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -252,6 +253,14 @@ interface CellRangeBounds {
     maxCol: number;
 }
 
+// Own contribution to the hierarchy-aware class tier — see
+// plans/implemented/class-hierarchy-cascade.md. Every Table's body resolves
+// the same resting background from theme tokens, so it is a class default
+// rather than a per-instance write.
+const _defaultTableBodyOptions: Partial<ComponentOptions> = {
+    backgroundColor: 'var(--ts-ui-input-bg, rgb(255, 255, 255))',
+};
+
 /**
  * Virtual-scrolling body for the Table component.
  *
@@ -269,11 +278,14 @@ interface CellRangeBounds {
  * rows-container transform, two custom scrollbar overlays, and the wheel/touch
  * handlers with fling momentum.
  *
- * Re-exported as `TableBody` from the package barrel.
+ * Exported as `Body`; commonly imported as `TableBody` to avoid colliding
+ * with other same-named exports — see docs/components/TableInternals.md.
  *
  * @category Components
  */
-class Body extends VirtualRowView<Row> {
+class TableBody extends VirtualRowView<Row> {
+
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultTableBodyOptions;
 
     private _store           : AbstractStore;
     private _hiddenColumns   : Set<string>               = new Set();
@@ -329,8 +341,8 @@ class Body extends VirtualRowView<Row> {
     private _header          : TableHeader | null             = null;
     private _listeners       : ListenerBag<BodyEvent>    = new ListenerBag<BodyEvent>();
 
-    constructor(store: AbstractStore) {
-        super({ tag: "tbody" });
+    constructor(store: AbstractStore, subclassDefaults?: Partial<ComponentOptions>) {
+        super({ tag: "tbody" }, { ..._defaultTableBodyOptions, ...(subclassDefaults ?? {}) });
 
         this.setOverflow("hidden");
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
@@ -2209,7 +2221,7 @@ class Body extends VirtualRowView<Row> {
             const config    = this._columnConfigs.get(fieldName);
             const required  = config?.required === true
                            || config?.requiredPredicate?.(record) === true;
-            const empty     = Body.isEmptyValue(record.get(fieldName));
+            const empty     = TableBody.isEmptyValue(record.get(fieldName));
 
             cells[i].setRequiredEmpty(required && empty);
         }
@@ -2592,9 +2604,9 @@ class Body extends VirtualRowView<Row> {
     }
 }
 
-const BodyCallable = callable(Body);
-type BodyCallable = Body;
+const BodyCallable = callable(TableBody);
+type BodyCallable = TableBody;
 export {
-    Body         as _Body,
+    TableBody    as _Body,
     BodyCallable as Body
 };
