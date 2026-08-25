@@ -162,6 +162,15 @@ neither needs no change.
   classes are unaffected in practice (their layout already accounted for the
   padding). If a consumer's own stylesheet compensated for the
   previously-missing padding, that compensation should be revisited.
+- **`Spacer`, `CollapseButton`, `ProgressSpinner`, and `ParentHeaderCell` no
+  longer duplicate their fixed styling on every instance's own CSS rule.**
+  Each now shares one rule per piece across every instance in the app.
+  Nothing changes visually; no consumer action needed.
+- **A progress spinner's inner arc element now carries a `ProgressSpinnerArc`
+  class** (`ts-ui-component ProgressSpinnerArc`, previously `ts-ui-component`
+  alone). This is additive — no existing class is removed — but a consumer
+  stylesheet selector written to match the arc by position rather than by
+  name may now also be matched by a more specific `.ProgressSpinnerArc` rule.
 
 ### Table
 
