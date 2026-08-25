@@ -86,6 +86,14 @@ describe('StyleAuditView', () => {
         mount(view);
         const ids  = collectIds(view);
 
+        // A vanilla Refresh button now dedupes its whole resting chrome onto
+        // shared class-tier rules and writes nothing to its own #id rule —
+        // proof the dedup work landed by this batch of plans is thorough, but
+        // it leaves nothing here to prove disposal actually cleans up. Force
+        // one genuine per-instance deviation so the precondition below (and
+        // the leak check that follows) still exercises a real #id rule.
+        internals(view)._refreshButton.setBackgroundColor('mediumpurple');
+
         expect(_ruleCacheKeys().some((key) => ids.some((id) => key.includes(id)))).toBe(true);
 
         view.dispose();
