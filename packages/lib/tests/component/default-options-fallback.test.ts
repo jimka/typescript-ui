@@ -48,6 +48,7 @@ import { ResizeHandle } from '~/component/table/cell/ResizeHandle';
 import { ComboBox } from '~/component/input/ComboBox';
 import { List } from '~/component/list/List';
 import { HeaderCell } from '~/component/table/cell/Header';
+import { ParentHeaderCell } from '~/component/table/cell/ParentHeader';
 import { ToolBarSeparator } from '~/component/menubar/ToolBarSeparator';
 import { ChartLegend } from '~/component/chart/ChartLegend';
 import { Drawer } from '~/overlay/Drawer';
@@ -362,6 +363,11 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'HeaderCellRenderer userSelect', resolve: () => new HeaderCell('Name', 'name').getRenderer().getUserSelect(), expected: 'none' },
     { label: 'HeaderCell renderer text fontWeight', resolve: () => new HeaderCell('Name', 'name').getRenderer().getText().getFontWeight(), expected: 'bold' },
     { label: 'HeaderCell renderer text userSelect', resolve: () => new HeaderCell('Name', 'name').getRenderer().getText().getUserSelect(), expected: 'none' },
+    { label: 'ParentHeaderCellRenderer cursor', resolve: () => new ParentHeaderCell('Group', null).getRenderer().getCursor(), expected: 'default' },
+    { label: 'ParentHeaderCellRenderer userSelect', resolve: () => new ParentHeaderCell('Group', null).getRenderer().getUserSelect(), expected: 'none' },
+    { label: 'ParentHeaderCell renderer text userSelect', resolve: () => new ParentHeaderCell('Group', null).getRenderer().getText().getUserSelect(), expected: 'none' },
+    { label: 'ParentHeaderCell renderer text fontWeight', resolve: () => new ParentHeaderCell('Group', null).getRenderer().getText().getFontWeight(), expected: 'bold' },
+    { label: 'ParentHeaderCell renderer text textAlign', resolve: () => new ParentHeaderCell('Group', null).getRenderer().getText().getTextAlign(), expected: 'center' },
     { label: 'ToolBarSeparator backgroundColor', resolve: () => new ToolBarSeparator().getBackgroundColor(),            expected: 'var(--ts-ui-toolbar-separator-color, rgb(220, 220, 220))' },
     { label: 'ChartLegend backgroundColor',  resolve: () => new ChartLegend().getBackgroundColor(),                     expected: 'transparent' },
     { label: 'Popover backgroundColor',      resolve: () => new Popover().getBackgroundColor(),                        expected: 'var(--ts-ui-popover-bg, rgb(255, 255, 255))' },
