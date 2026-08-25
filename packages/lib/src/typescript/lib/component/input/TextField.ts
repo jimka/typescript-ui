@@ -98,7 +98,13 @@ class TextField extends TextInput<TextFieldOptions> {
      * would otherwise keep claiming a height for a border it no longer has.
      *
      * @remarks Rewrites heights only, never a width, and leaves an *unbounded*
-     * maximum unbounded. `updateHeight` re-pins all three to the one-line box,
+     * maximum unbounded. All three writes now share one gate: before this
+     * field's own `updateHeight` has ever run (the one automatic call during
+     * construction, dispatched by `Component.applyChromeOptions` before the
+     * constructor body runs), `pref` is still `null` and the whole recompute
+     * is skipped, so this field's first-ever size write always comes from
+     * `updateHeight` itself — in the same order every sibling class already
+     * uses. `updateHeight` re-pins all three to the one-line box,
      * which is right at construction but wrong here: a caller that deliberately
      * unpinned the field so it can fill a taller container — the string and
      * number cell editors both do, then set a border — would have that undone by
@@ -119,14 +125,14 @@ class TextField extends TextInput<TextFieldOptions> {
 
         if (pref) {
             this.setPreferredSize({ width: pref.width, height: h });
-        }
 
-        if (min) {
-            this.setMinSize({ width: min.width, height: h });
-        }
+            if (max && !isUnbounded(max.height)) {
+                this.setMaxSize({ width: max.width, height: h });
+            }
 
-        if (max && !isUnbounded(max.height)) {
-            this.setMaxSize({ width: max.width, height: h });
+            if (min) {
+                this.setMinSize({ width: min.width, height: h });
+            }
         }
 
         return this;

@@ -293,3 +293,14 @@ another cell.
   since the three compute their shared 8px size from unrelated formulas
   that only coincidentally agree today. Nothing changes visually. No
   consumer action is needed.
+- **`TextField` and every class built on it no longer duplicate their
+  `min-height`/`max-height` CSS declarations in two different property
+  orders.** Every `AbstractInput` text control's own CSS rule now writes
+  `max-height` before `min-height`, matching `PasswordField`/`UsernameField`/
+  `ComboBox`/the picker fields, which already did. `NumberSpinner`'s and
+  `AutoCompleteField`'s inner fields also no longer repeat their borderless
+  chrome (`border: none`, `border-radius: 0`, `outline: none`) on every
+  instance's own rule — it now comes from one shared class rule each
+  (`.NumberSpinnerField`, and a new `.AutoCompleteTextField`). Nothing
+  changes visually; only which CSS rule supplies each declaration. No
+  consumer action is needed.

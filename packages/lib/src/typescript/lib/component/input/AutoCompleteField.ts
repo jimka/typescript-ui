@@ -4,16 +4,46 @@ import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractI
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
-import { TextField } from "~/component/input/TextField.js";
+import { TextField, TextFieldOptions } from "~/component/input/TextField.js";
 import { AutoCompleteDropdown } from "~/component/input/AutoCompleteDropdown.js";
 import { registerFocusWithinRing } from "~/component/input/focusRing.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { saturate } from "~/primitive/Size.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 import { callable } from "~/core/Callable.js";
 
 // Focus ring highlighting the composite root whenever the inner TextField is
 // focused (the helper appends the focus pseudo-element).
 registerFocusWithinRing(".AutoCompleteField");
+
+// Chrome deviation shared by every AutoCompleteField's inner field: the
+// composite root (below) owns the visible border, so the inner field is
+// borderless and square-cornered, with no browser-default focus ring (the
+// composite's own `:focus-within` ring, wired by `registerFocusWithinRing`
+// above, shows instead). `Partial<TextFieldOptions>`-typed (not `StyleBag`)
+// so it can double as the constructor's `subclassDefaults` forward, per
+// ARCHITECTURE.md's "Class-level defaults must survive the getter" — without
+// that forward, `_options` never sees these values and a pre-render
+// `getBorder()`/`getOutline()` would answer the inherited `TextInput`
+// default instead.
+const AUTOCOMPLETE_FIELD_CHROME: Partial<TextFieldOptions> = {
+    border:       "none",
+    borderRadius: "0",
+    outline:      "none",
+};
+
+/**
+ * The inner text field of an {@link AutoCompleteField} — borderless and
+ * chromeless by convention, so the composite root's own border reads as the
+ * control's only edge.
+ */
+class AutoCompleteTextField extends TextField {
+    protected static readonly ownClassStyleDefaults: StyleBag = AUTOCOMPLETE_FIELD_CHROME;
+
+    constructor() {
+        super(undefined, AUTOCOMPLETE_FIELD_CHROME);
+    }
+}
 
 /**
  * Controls how typed input is matched against suggestion strings.
@@ -111,10 +141,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
         this.setBorder("var(--ts-ui-input-border)");
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
 
-        this._textField = new TextField();
-        this._textField.setBorder("none");
-        this._textField.setBorderRadius("0");
-        this._textField.setOutline("none");
+        this._textField = new AutoCompleteTextField();
 
         this.addComponent(this._textField);
 

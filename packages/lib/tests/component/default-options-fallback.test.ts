@@ -22,6 +22,7 @@ import { ListItem } from '~/component/list/ListItem';
 import { TextField } from '~/component/input/TextField';
 import { NumberSpinner } from '~/component/input/NumberSpinner';
 import { NumberEditor } from '~/component/table/cell/editor/Number';
+import { AutoCompleteField } from '~/component/input/AutoCompleteField';
 import { Link } from '~/component/input/Link';
 import { PickerButton } from '~/component/input/PickerButton';
 import { NumberedList } from '~/component/list/NumberedList';
@@ -276,6 +277,12 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'Component overflow',           resolve: () => new Component({}).getOverflowX(),                           expected: 'hidden' },
     { label: 'TextField padding',            resolve: () => insetsTuple(new TextField().getPadding()),                  expected: [3, 3, 3, 3] },
     { label: 'NumberSpinner _input textAlign', resolve: () => (new NumberSpinner() as any)._input.getTextAlign(), expected: 'right' },
+    { label: 'NumberSpinner _input border',            resolve: () => (new NumberSpinner() as any)._input.getBorder(),            expected: { border: 'none' } },
+    { label: 'NumberSpinner _input borderRadius',       resolve: () => (new NumberSpinner() as any)._input.getBorderRadius(),      expected: '0' },
+    { label: 'NumberSpinner _input outline',            resolve: () => (new NumberSpinner() as any)._input.getOutline(),           expected: 'none' },
+    { label: 'AutoCompleteField _textField border',       resolve: () => (new AutoCompleteField() as any)._textField.getBorder(),       expected: { border: 'none' } },
+    { label: 'AutoCompleteField _textField borderRadius', resolve: () => (new AutoCompleteField() as any)._textField.getBorderRadius(), expected: '0' },
+    { label: 'AutoCompleteField _textField outline',      resolve: () => (new AutoCompleteField() as any)._textField.getOutline(),      expected: 'none' },
     { label: 'NumberEditor _textField textAlign', resolve: () => (new NumberEditor() as any)._textField.getTextAlign(), expected: 'right' },
     { label: 'ToolBar orientation',          resolve: () => new ToolBar().getOrientation(),                             expected: 'horizontal' },
     { label: 'ToolBar compact',              resolve: () => new ToolBar().isCompact(),                                  expected: true },
