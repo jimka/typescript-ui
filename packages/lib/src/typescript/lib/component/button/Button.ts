@@ -876,6 +876,26 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
+     * `_titleColumn`, `_innerRow`, `_outerColumn`, and `_description` are only
+     * *sometimes* registered children of `_content` — {@link _rebuildContentRow}
+     * empties and selectively re-populates `_content`'s tree on every rebuild,
+     * so whichever of these currently sits outside that tree (e.g.
+     * `_titleColumn` for any button that never shows a description, which is
+     * the common case) is unreachable by the base class's recursive `destructor()`
+     * teardown. Dispose each explicitly; `dispose()` is idempotent, so this is a
+     * harmless no-op for whichever one happens to be currently attached (and
+     * therefore already reached by the recursion below via `super.destructor()`).
+     */
+    protected destructor(): void {
+        this._titleColumn.dispose();
+        this._innerRow?.dispose();
+        this._outerColumn?.dispose();
+        this._description?.dispose();
+
+        super.destructor();
+    }
+
+    /**
      * Returns the content anchor used inside the button's `Fit` layout — the
      * caller value, else the class default ({@link AnchorType.CENTER}).
      *

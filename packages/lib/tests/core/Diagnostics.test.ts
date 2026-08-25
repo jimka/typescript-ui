@@ -11,6 +11,9 @@ import { Component } from '~/core/Component';
 import { Container } from '~/core/Container';
 import { ListenerBag } from '~/core/ListenerBag';
 import { DOM } from '~/core/DOM';
+import { Table } from '~/component/table/Table';
+import { Model } from '~/data/Model';
+import { MemoryStore } from '~/data/MemoryStore';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -68,6 +71,48 @@ describe('Diagnostics — Component construction/destruction', () => {
         const counters = Diagnostics.counters();
 
         expect(counters.componentsConstructed - counters.componentsDestroyed).toBe(1);
+    });
+
+    it('10. a Table construct/dispose cycle leaves construct/destroy balanced', () => {
+        // Returns this call's own contribution to the outstanding
+        // (constructed - destroyed) balance, i.e. the delta since the
+        // previous reading -- not the absolute cumulative balance, which
+        // would stay permanently offset by the Tooltip warm-up cost below
+        // once it's paid (that cost never reverses, since the singleton is
+        // never disposed).
+        let previousBalance = 0;
+        const buildAndDisposeDelta = (): number => {
+            const store = new MemoryStore(new Model([{ name: 'a', type: 'string', order: 0 }], 'a'), []);
+            const table = new Table(store);
+
+            table.getElement(true);
+            table.setWidth(600);
+            table.setHeight(400);
+            table.doLayout();
+            table.dispose();
+
+            const counters = Diagnostics.counters();
+            const balance  = counters.componentsConstructed - counters.componentsDestroyed;
+            const delta    = balance - previousBalance;
+
+            previousBalance = balance;
+
+            return delta;
+        };
+
+        // Warm-up: the first Button ever disposed in this suite lazily
+        // constructs the shared Tooltip singleton (the header's menu button's
+        // destructor calls Tooltip.detach() -> Tooltip.hide() ->
+        // Tooltip.getInstance(), even though the tooltip was never shown).
+        // That singleton is process-global and correctly never torn down by
+        // any one dispose() -- mirrors dispose-full-teardown.test.ts's own
+        // warm-up comment for this exact shared-state pattern -- so run one
+        // untested cycle first and track the balance from there, keeping
+        // that one-time cost out of the asserted per-cycle deltas below.
+        buildAndDisposeDelta();
+
+        expect(buildAndDisposeDelta()).toBe(0);
+        expect(buildAndDisposeDelta()).toBe(0);
     });
 });
 
