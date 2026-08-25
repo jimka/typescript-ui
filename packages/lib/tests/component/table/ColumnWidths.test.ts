@@ -26,6 +26,7 @@ import { CellTextResolver } from '~/component/table/cell/CellText';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ColumnSpec } from '~/component/table/ColumnConfig';
+import { expectNoSelfReschedule } from '../../helpers/layoutStability';
 
 const fontMetrics = {
     fonts: {
@@ -378,15 +379,12 @@ describe('Auto-size and content', () => {
         expect(after).toBeGreaterThan(floor);
     });
 
-    it('22. re-derivation happens once', async () => {
-        // Pins the one-shot guard (`_autoWidthsSampled`) on the table's
-        // committed layout state, not the pure `getIntrinsicColumnWidths`
-        // query (which always re-samples live data and would trivially
-        // "change" on any new load — the wrong tool for pinning a
-        // once-only side effect). `maybeResampleColumnWidths` clears
-        // `_columnWidths` and calls `doLayout()` itself on the first load
-        // that finds records; a real container size is needed for that
-        // internal `doLayout()` to do anything.
+    it('22. re-derivation happens on every load, not once', async () => {
+        // The one-shot guard (`_autoWidthsSampled`) is gone: a second load
+        // re-derives the widths instead of freezing them at the first
+        // non-empty sample. The pass is now queued onto the animation-frame
+        // layout queue (`scheduleLayout`), so each load needs its own
+        // `flushLayout()` before the committed widths can be observed.
         const model = new Model([{ name: 'name', type: 'string', order: 0 }]);
         const spec: ColumnSpec = { columns: [{ field: 'name' }], autoSizeColumns: true };
         const store = await makeStore(model, []);
@@ -397,12 +395,14 @@ describe('Auto-size and content', () => {
         table.doLayout();
 
         store.loadData([{ name: 'x'.repeat(30) }]);
+        table.flushLayout();
         const afterFirstLoad = table.getColumnWidths().slice();
 
         store.loadData([{ name: 'y'.repeat(2000) }]);
+        table.flushLayout();
         const afterSecondLoad = table.getColumnWidths().slice();
 
-        expect(afterSecondLoad).toEqual(afterFirstLoad);
+        expect(afterSecondLoad).not.toEqual(afterFirstLoad);
     });
 });
 
@@ -424,6 +424,7 @@ describe('Laid-out widths', () => {
         const before = table.getColumnWidths().slice();
 
         store.loadData([{ name: 'x'.repeat(40), other: 'y'.repeat(40), third: 'z'.repeat(40) }]);
+        table.flushLayout();
 
         expect(table.getColumnWidths()).not.toEqual(before);
     });
@@ -612,6 +613,321 @@ describe('Laid-out widths', () => {
         const dateCol = table.getColumns().find(c => c.getField().getName() === 'created')!;
 
         expect(table.getColumnMinWidth(dateCol)).toBeGreaterThan(MIN_COLUMN_WIDTH_PX);
+    });
+});
+
+// Offline coverage for plans/implemented/table-auto-size-column-resample.md's
+// `## Expected Behaviour` cases 1-8. `maybeResampleColumnWidths` now queues its
+// pass via `scheduleLayout()` instead of running `doLayout()` synchronously, so
+// every case that mutates the store and then reads `getColumnWidths()` needs a
+// `table.flushLayout()` in between — the offline `requestAnimationFrame` only
+// records its callback and never fires it.
+describe('Auto-size re-sampling on data change', () => {
+    it('RS1. a later load re-derives', async () => {
+        const model = new Model([{ name: 'name', type: 'string', order: 0 }]);
+        const spec: ColumnSpec = { columns: [{ field: 'name' }], autoSizeColumns: true };
+        const store = await makeStore(model, [{ name: 'x'.repeat(30) }]);
+        const table = makeTable(store, spec);
+
+        table.setWidth(300);
+        table.setHeight(200);
+        table.doLayout();
+
+        const before = table.getColumnWidths()[0];
+
+        store.loadData([{ name: 'y'.repeat(200) }]);
+        table.flushLayout();
+
+        expect(table.getColumnWidths()[0]).toBeGreaterThan(before);
+    });
+
+    it('RS2. an add widens', async () => {
+        const model = new Model([{ name: 'name', type: 'string', order: 0 }]);
+        const spec: ColumnSpec = { columns: [{ field: 'name' }], autoSizeColumns: true };
+        const store = await makeStore(model, [{ name: 'short' }]);
+        const table = makeTable(store, spec);
+
+        table.setWidth(300);
+        table.setHeight(200);
+        table.doLayout();
+
+        const before = table.getColumnWidths()[0];
+
+        store.add([{ name: 'z'.repeat(200) }]);
+        table.flushLayout();
+
+        expect(table.getColumnWidths()[0]).toBeGreaterThan(before);
+    });
+
+    it('RS3. a remove narrows', async () => {
+        const model = new Model([{ name: 'name', type: 'string', order: 0 }]);
+        const spec: ColumnSpec = { columns: [{ field: 'name' }], autoSizeColumns: true };
+        const store = await makeStore(model, [
+            { name: 'z'.repeat(200) },
+            { name: 'short1' },
+            { name: 'short2' },
+        ]);
+        const table = makeTable(store, spec);
+
+        table.setWidth(300);
+        table.setHeight(200);
+        table.doLayout();
+
+        const before = table.getColumnWidths()[0];
+        const long   = store.getRecords().find(r => String(r.get('name')).length > 100)!;
+
+        store.remove(long);
+        table.flushLayout();
+
+        expect(table.getColumnWidths()[0]).toBeLessThan(before);
+    });
+
+    it('RS4. an edit re-derives, with no update wiring of its own', async () => {
+        const model = new Model([{ name: 'name', type: 'string', order: 0 }]);
+        const spec: ColumnSpec = { columns: [{ field: 'name' }], autoSizeColumns: true };
+        const store = await makeStore(model, [{ name: 'short' }]);
+        const table = makeTable(store, spec);
+
+        table.setWidth(300);
+        table.setHeight(200);
+        table.doLayout();
+
+        const before  = table.getColumnWidths()[0];
+        const record  = store.getRecords()[0];
+
+        record.set('name', 'z'.repeat(200));
+        store.notifyRecordChanged(record);
+        table.flushLayout();
+
+        expect(table.getColumnWidths()[0]).toBeGreaterThan(before);
+    });
+
+    // RS5 ("a burst of mutations coalesces into one layout pass") lives in its
+    // own file, ColumnAutoSizeCoalescing.test.ts — see that file's header
+    // comment for why it cannot share this one.
+
+    // Same four-column, [200, 150, 100, 50] fixture and drag as
+    // ColumnResize.test.ts's case 1 ("the chain spills past the first
+    // neighbour"): dragging A's right edge 80px right grows A and shrinks C,
+    // B already sitting at its 100px floor.
+    type PrivDrag = {
+        onColumnResizeStart(colIndex: number, clientX: number): void;
+        onColumnResize(colIndex: number, clientX: number): void;
+    };
+
+    function makeDragFixture(): { table: Table; store: MemoryStore } {
+        const model = new Model([
+            { name: 'a', type: 'string', order: 0 },
+            { name: 'b', type: 'string', order: 1 },
+            { name: 'c', type: 'string', order: 2 },
+            { name: 'd', type: 'string', order: 3 },
+        ]);
+        const spec: ColumnSpec = {
+            columns: [
+                { field: 'a', minWidth: 60 },
+                { field: 'b', minWidth: 100 },
+                { field: 'c', minWidth: 40 },
+                { field: 'd', minWidth: 30 },
+            ],
+            autoSizeColumns: true,
+        };
+        const store = new MemoryStore(model, [{ a: 'x', b: 'x', c: 'x', d: 'x' }]);
+        const table = makeTable(store, spec);
+
+        table.setWidth(514);
+        table.setHeight(400);
+        table.doLayout();
+        table.setColumnWidths([200, 150, 100, 50]);
+
+        return { table, store };
+    }
+
+    it('RS6. a dragged column survives the next re-sample', async () => {
+        const { table, store } = makeDragFixture();
+        const priv = table as unknown as PrivDrag;
+
+        priv.onColumnResizeStart(0, 1000);
+        priv.onColumnResize(0, 1080);
+
+        expect(table.getColumnWidths()).toEqual([280, 100, 70, 50]);
+
+        store.add([{
+            a: 'z'.repeat(300), b: 'z'.repeat(300), c: 'z'.repeat(300), d: 'z'.repeat(300),
+        }]);
+        table.flushLayout();
+
+        const after = table.getColumnWidths();
+
+        expect(after[0]).toBe(280);   // dragged — pinned, not re-clamped
+        expect(after[1]).toBe(100);   // dragged — pinned
+        expect(after[2]).toBe(70);    // dragged — pinned
+        expect(after[3]).toBeGreaterThan(50);   // never dragged — re-derived
+    });
+
+    it('RS7. resetColumns releases the pin', async () => {
+        const { table } = makeDragFixture();
+        const priv = table as unknown as PrivDrag;
+
+        priv.onColumnResizeStart(0, 1000);
+        priv.onColumnResize(0, 1080);
+
+        expect(table.getColumnWidths()[0]).toBe(280);
+
+        (table as any).resetColumns();
+
+        // The pin is gone, so column A falls back to its freshly derived
+        // width from the ('x'-only) sample, not the dragged 280.
+        expect(table.getColumnWidths()[0]).not.toBe(280);
+    });
+
+    it('RS8a. autoSizeColumns unset leaves widths unchanged on a later load', async () => {
+        const model = new Model([{ name: 'name', type: 'string', order: 0 }]);
+        const spec: ColumnSpec = { columns: [{ field: 'name' }] };
+        const store = await makeStore(model, [{ name: 'short' }]);
+        const table = makeTable(store, spec);
+
+        table.setWidth(300);
+        table.setHeight(200);
+        table.doLayout();
+
+        const before = table.getColumnWidths().slice();
+
+        store.loadData([{ name: 'z'.repeat(200) }]);
+        table.flushLayout();
+
+        expect(table.getColumnWidths()).toEqual(before);
+    });
+
+    it('RS8b. a renderer column is never resampled on a later load', async () => {
+        const model = new Model([{ name: 'link', type: 'string', order: 0 }]);
+        const spec: ColumnSpec = {
+            columns:         [{ field: 'link', renderer: () => new LinkCellRenderer() }],
+            autoSizeColumns: true,
+        };
+        const store = await makeStore(model, [{ link: 'short' }]);
+        const table = makeTable(store, spec);
+
+        table.setWidth(300);
+        table.setHeight(200);
+        table.doLayout();
+
+        const before = table.getColumnWidths().slice();
+
+        store.loadData([{ link: 'x'.repeat(500) }]);
+        table.flushLayout();
+
+        expect(table.getColumnWidths()).toEqual(before);
+    });
+
+    it('RS8c. a values column is never resampled on a later load', async () => {
+        const model = new Model([{ name: 'status', type: 'string', order: 0 }]);
+        const spec: ColumnSpec = {
+            columns:         [{ field: 'status', values: ['open', 'shipped', 'cancelled'] }],
+            autoSizeColumns: true,
+        };
+        const store = await makeStore(model, [{ status: 'open' }]);
+        const table = makeTable(store, spec);
+
+        table.setWidth(300);
+        table.setHeight(200);
+        table.doLayout();
+
+        const before = table.getColumnWidths().slice();
+
+        store.loadData([{ status: 'x'.repeat(500) }]);
+        table.flushLayout();
+
+        expect(table.getColumnWidths()).toEqual(before);
+    });
+
+    it('RS8d. a declared width column still reports that width after a re-sample', async () => {
+        // A second column keeps this table from being a single-column table,
+        // where the sole column would stretch to fill the container and
+        // confound "does the declared width survive" with unrelated flex
+        // redistribution (see case 14, which sidesteps the same confound by
+        // reading getIntrinsicColumnWidths() instead of the laid-out widths).
+        const model = new Model([
+            { name: 'name',  type: 'string', order: 0 },
+            { name: 'other', type: 'string', order: 1 },
+        ]);
+        const spec: ColumnSpec = {
+            columns:         [{ field: 'name', width: 120 }, { field: 'other' }],
+            autoSizeColumns: true,
+        };
+        const store = await makeStore(model, [{ name: 'short', other: 'short' }]);
+        const table = makeTable(store, spec);
+
+        table.setWidth(400);
+        table.setHeight(200);
+        table.doLayout();
+
+        store.loadData([{ name: 'z'.repeat(500), other: 'y'.repeat(500) }]);
+        table.flushLayout();
+
+        expect(table.getColumnWidths()[0]).toBe(120);
+    });
+
+    it('RS8e. a store change in rotated mode leaves the projection columns within bounds', async () => {
+        const model = new Model([
+            { name: 'id',      type: 'number',  order: 0 },
+            { name: 'name',    type: 'string',  order: 1 },
+            { name: 'active',  type: 'boolean', order: 2 },
+            { name: 'created', type: 'date',    order: 3 },
+        ]);
+        const records = [
+            { id: 1, name: 'Alice', active: false, created: new Date(2024, 0, 1) },
+            { id: 2, name: 'Bob',   active: false, created: new Date(2024, 0, 2) },
+        ];
+        const store = await makeStore(model, records);
+        const table = makeTable(store, { columns: [], autoSizeColumns: true });
+
+        table.setWidth(600);
+        table.setHeight(400);
+        table.setDisplayMode('rotated');
+        table.doLayout();
+
+        store.add([{ id: 3, name: 'Carol'.repeat(50), active: true, created: new Date(2024, 0, 3) }]);
+        table.flushLayout();
+
+        const widths = table.getColumnWidths();
+
+        expect(widths.length).toBe(3);
+        expect(widths[0]).toBeGreaterThanOrEqual(80);
+        expect(widths[1]).toBeGreaterThanOrEqual(120);
+        expect(widths[0]).toBeLessThanOrEqual(200);
+        expect(widths[1]).toBeLessThanOrEqual(360);
+    });
+
+    it('RS8f. removing every record leaves the widths unchanged', async () => {
+        const model = new Model([{ name: 'name', type: 'string', order: 0 }]);
+        const spec: ColumnSpec = { columns: [{ field: 'name' }], autoSizeColumns: true };
+        const store = await makeStore(model, [{ name: 'a-fairly-long-value-string' }]);
+        const table = makeTable(store, spec);
+
+        table.setWidth(300);
+        table.setHeight(200);
+        table.doLayout();
+
+        const before = table.getColumnWidths().slice();
+        const record = store.getRecords()[0];
+
+        store.remove(record);
+        table.flushLayout();
+
+        expect(table.getColumnWidths()).toEqual(before);
+    });
+
+    it('RS8g. a settled auto-size table does not re-arm itself from inside a layout pass', async () => {
+        const model = new Model([{ name: 'name', type: 'string', order: 0 }]);
+        const spec: ColumnSpec = { columns: [{ field: 'name' }], autoSizeColumns: true };
+        const store = await makeStore(model, [{ name: 'a fairly long value' }]);
+        const table = makeTable(store, spec);
+
+        table.setWidth(300);
+        table.setHeight(200);
+        table.doLayout();
+
+        expectNoSelfReschedule(table);
     });
 });
 
