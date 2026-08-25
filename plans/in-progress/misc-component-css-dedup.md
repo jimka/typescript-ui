@@ -457,6 +457,82 @@ No other DOM class list changes: `Spacer` stays outside the hierarchy mechanism,
 
 ---
 
+## Implementation Notes
+
+- **`ParentHeader.classStyleDefaults.test.ts`'s two new cases could not be
+  appended after the existing four as literally written in step 8.**
+  `ensureClassStyleRule` caches each class's rule per-constructor for the
+  file's whole lifetime (a module-level cache that outlives `DOM.reset()`),
+  and `cell.getElement(true)` renders the entire cell subtree in one pass — so
+  the *first* full render of a `ParentHeaderCell` in the file establishes
+  both `.ParentHeaderCell`'s and `.ParentHeaderCellText`'s class rules
+  together, and only that one render's captured writes can observe either
+  rule's positive-half content. Appending the two new cases after the
+  existing first test (as step 8 specified) put them behind that already-
+  consumed first render, so their `classDeclarations` assertions saw nothing.
+  Reordering them earlier in the file just moved the same problem onto the
+  pre-existing test instead. The fix folds both class-content assertions (the
+  pre-existing `.ParentHeaderCellText` checks plus the new
+  `.ParentHeaderCell` checks) into one combined first test that captures a
+  single render's writes and checks every selector against that one capture;
+  the groupColor case, which only checks per-instance (`#id`-rule / getter)
+  behaviour, stays a separate, order-independent test. Net count is five
+  tests instead of six, covering the same behaviour.
+- **Two pre-existing tests broke and needed updates, neither listed in the
+  plan's Files to Create/Modify/Delete table.** Both are direct, correctly-
+  predicted consequences of this plan's own `## Architecture Decisions`
+  tables, not defects in the implementation:
+  - `tests/component/table/Header.disposal.test.ts` asserted that the first
+    grouped-column `ParentHeaderCell` in its fixture (no `groupColor`) had
+    its own `#id`-prefixed rule before a rebuild. Per this plan's own
+    before/after table, a no-`color` `ParentHeaderCell` now writes
+    `backgroundColor`/`shadow` as `null` (both match the new class default),
+    so `hasQueuedDeclarations` never materialises the rule at all — the
+    `[^all-null]` case, this time hitting a *different* file's assertion
+    than the one the plan already anticipated in its own new tests. Fixed by
+    giving the fixture's grouped columns a `groupColor`, which keeps a real
+    `#id` rule alive so the test still exercises its actual subject
+    (`rebuildParentCells` disposing replaced cells), without changing what
+    it's regression-testing.
+  - `tests/core/ComponentDispose.test.ts` asserted no new permanent
+    (never-disposed) rule-cache keys survive a spinner's disposal beyond an
+    explicit allowlist (`FRAMEWORK_SELECTOR`, `BUSY_INDICATOR_SELECTOR`,
+    `INVISIBLE_STATE_SELECTOR`). `.ProgressSpinnerArc` is exactly this same
+    shape — a module-scoped, first-use, never-disposed class rule, like
+    `TabBusyIndicator`'s `.TabBusyIndicator` before it — so it needed the
+    same allowlist treatment (`PROGRESS_SPINNER_ARC_SELECTOR`), following the
+    file's own established pattern for this exact situation.
+- **The plan's `grep -c 'ownClassStyleDefaults'` invariant for
+  `ParentHeader.ts` predicted 2, not the actual 3.** The file already
+  contained a second, pre-existing match the plan's count missed: line 43's
+  `...Text.ownClassStyleDefaults.font` (a *read* of `Text`'s field, inside
+  `ParentHeaderCellText`'s own `ownClassStyleDefaults` initializer), which
+  the substring grep counts alongside the two `protected static readonly
+  ownClassStyleDefaults` declarations. The code matches `## Internal
+  Structure` exactly; only the plan's own verification arithmetic was off.
+- **Manual verification (Expected Behaviour rows 9-10) performed.** Started a
+  dev server from this worktree on a spare port (8025, not the user's own
+  8015/8019 instances) and drove it via `mcp__chrome-devtools__*`. Row 9:
+  double-clicking a `Split` pane's `CollapseButton` chevron on `#/split`
+  collapsed it to the full collapse-strip width and restored it back to the
+  narrow grip on a second double-click, confirmed via screenshot both times;
+  the inline `ProgressSpinner` on `#/misc` rendered as a normal rotating blue
+  ring (screenshot); the grouped-wide-table window (`#/misc` → "Show window
+  with grouped wide table") rendered its four `ParentHeaderCell` group bands
+  ("Identity", "Activity", "Financials", "Metadata") with the divider shadow
+  visible at each group's right/bottom edge and no background-colour
+  mismatch against the header band's gradient (screenshot). Row 10: on
+  `#/style-audit`, after visiting `#/split` and the grouped-table window, the
+  refreshed audit table's ranked list contains no row for `Spacer`'s
+  `background-color: transparent`, `CollapseButton`'s `width: 10px`,
+  `ProgressSpinner`'s arc ring geometry, or `ParentHeaderCell`'s
+  background/shadow — confirmed by reading the full row list via an
+  accessibility-tree snapshot (`Total rules: 229 · Per-instance (#id) rules:
+  85 · Unique bodies: 46`). `CollapseButton` and `Glyph` each still appear in
+  the ranked list, but for different, out-of-scope bodies (`{ cursor:
+  pointer; transform: … }` and `{ animation-play-state: paused; }`
+  respectively) — not the ones this plan targeted.
+
 ## Notes
 
 [^bundle]: The four items touch four disjoint source files and four disjoint test files, and none depends on another's outcome, so they are four sequential steps in one plan rather than four plans. This mirrors `class-tier-default-hoists-batch.md`'s own framing of its six items as "six independently revertable steps".
