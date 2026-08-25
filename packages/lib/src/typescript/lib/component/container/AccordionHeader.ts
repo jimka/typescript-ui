@@ -12,6 +12,22 @@ import type { AxisEnd } from "~/primitive/Axis.js";
 import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 
 /**
+ * Themed-mode CSS values for the accordion theme tokens, with fallbacks
+ * mirroring the default light theme. Applied to each header only when the
+ * owning Accordion's `themed` option is on, so an un-themed accordion stays
+ * chromeless. The header border is a single bottom divider (not a four-side
+ * box): stacked headers then read as a flat list whose dividers never
+ * double, so no separate `flat`/collapse option is needed — the look is
+ * driven entirely by the `accordion.header.border` token. Declared here (not
+ * `layout/Accordion.ts`) and exported so this class's own `ownClassStyleDefaults`
+ * can share the same constant `Accordion.applySectionTheming` writes
+ * imperatively — see plans/implemented/class-hierarchy-cascade.md.
+ */
+export const THEMED_HEADER_BG:     string = "var(--ts-ui-accordion-header-bg, rgb(243,244,246))";
+export const THEMED_HEADER_BORDER: string = "var(--ts-ui-accordion-header-border, 1px solid rgb(214,217,222))";
+export const THEMED_HEADER_COLOR:  string = "var(--ts-ui-accordion-header-color, inherit)";
+
+/**
  * Left padding of the header row, in pixels. Reproduces the 8px gap the former
  * Button-based header added to its label's left inset, so the title text keeps
  * the same start offset under the new HBox structure.
@@ -127,6 +143,18 @@ export interface AccordionHeaderOptions extends ComponentOptions {
 }
 
 /**
+ * Themed resting chrome every {@link AccordionHeader} shares by default —
+ * mirrors what `Accordion.applySectionTheming` writes imperatively on every
+ * themed header. Fed to both `ownClassStyleDefaults` and the constructor's
+ * `super()` call, mirroring `Cell`/`PickerInput`'s identical shape.
+ */
+const _defaultAccordionHeaderOptions: Partial<AccordionHeaderOptions> = {
+    background:      THEMED_HEADER_BG,
+    foregroundColor: THEMED_HEADER_COLOR,
+    border:          { border: "none", borderBottom: THEMED_HEADER_BORDER },
+};
+
+/**
  * A section header used by [`Accordion`](/api/layout/classes/Accordion) (from `@jimka/typescript-ui/layout`)
  * to represent one collapsible section.
  *
@@ -149,6 +177,12 @@ export interface AccordionHeaderOptions extends ComponentOptions {
  */
 class AccordionHeader extends Component<AccordionHeaderOptions> {
 
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. Mirrors what the owning
+    // Accordion's applySectionTheming writes imperatively on every themed
+    // header; a non-themed accordion clears all three per instance.
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultAccordionHeaderOptions;
+
     declare private _indicator: AccordionIndicator;
     declare private _title:     Button;
     declare private _toolGroup: Component;
@@ -158,9 +192,13 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
     /**
      * @param label - Text displayed in the header's title button.
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Additional class defaults for a subclass to forward.
      */
-    constructor(label: string, options?: AccordionHeaderOptions) {
-        super({ tag: "div", ...options });
+    constructor(label: string, options?: AccordionHeaderOptions, subclassDefaults?: Partial<AccordionHeaderOptions>) {
+        super(
+            { tag: "div", ...options },
+            { ..._defaultAccordionHeaderOptions, ...(subclassDefaults ?? {}) },
+        );
 
         // The chevron, title and tool group are independent child Components in
         // an HBox row — one DOM element per class, no side-loaded overlay.
