@@ -123,7 +123,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     private _textField     : TextField;
     private _dropdown      : AutoCompleteDropdown;
     private _debounceTimer : ReturnType<typeof setTimeout> | null = null;
-    private _selectBag     : ListenerBag<AutoCompleteFieldEvent> = new ListenerBag<AutoCompleteFieldEvent>();
+    private _selectBag     : ListenerBag<AutoCompleteFieldEvent> = this.registerListenerBag(new ListenerBag<AutoCompleteFieldEvent>());
 
     /**
      * @param options - Optional construction-time options for suggestions, store, behaviour, and base Component styling.
@@ -697,6 +697,18 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
 
         this._dropdown.hide();
         this._textField.focus();
+    }
+
+    /**
+     * Disposes the dropdown, then runs the inherited teardown. `_dropdown`
+     * is a `Position.FIXED` overlay (see ARCHITECTURE.md's carve-out for
+     * `AnimatedDropdown`), never a registered child, so `super.destructor()`'s
+     * recursion cannot reach it on its own.
+     */
+    protected destructor(): void {
+        this._dropdown.dispose();
+
+        super.destructor();
     }
 }
 

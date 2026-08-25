@@ -186,7 +186,7 @@ class ScrollArrowButton extends Component {
 
     private _glyph:         Glyph;
     private _disabled:      boolean                              = false;
-    private _listeners:     ListenerBag<ScrollArrowEvent>        = new ListenerBag<ScrollArrowEvent>();
+    private _listeners:     ListenerBag<ScrollArrowEvent>        = this.registerListenerBag(new ListenerBag<ScrollArrowEvent>());
     private _repeat:        AutoRepeat;
 
     // `restingGuardSuffix`/`restingIsolationKeys` (core/Component.ts) are
@@ -531,7 +531,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
     // pointer strays outside the thumb's bounds and fires a native mouseout.
     private _thumbHovered    : boolean                  = false;
     private _thumbDragging   : boolean                  = false;
-    private _listeners       : ListenerBag<ScrollbarEvent> = new ListenerBag<ScrollbarEvent>();
+    private _listeners       : ListenerBag<ScrollbarEvent> = this.registerListenerBag(new ListenerBag<ScrollbarEvent>());
 
     private _arrowsEnabled   : boolean                  = true;
     private _arrowStep       : number                   = DEFAULT_ARROW_STEP_PX;

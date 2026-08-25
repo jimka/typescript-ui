@@ -20,6 +20,7 @@ import { StyleRule, InlineStyle, disposeStyleRule } from "~/core/StyleTarget.js"
 import { Diagnostics } from "~/core/Diagnostics.js";
 import { ElementAttributes } from "~/core/ElementAttributes.js";
 import { ThemeManager } from "~/core/Theme.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
 import { COMPONENT_CLASS, ensureClassStateRule, ensureClassStyleRule, ensureStyleGroupRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, resolvePartialDeclarations, resolveStyleStates, restingGuardSuffix, styleGroupClassSuffix, type StyleBag, type StyleLayer, type StyleStateSpec, type TextStyleBag } from "~/core/ClassStyleRules.js";
@@ -455,6 +456,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // field set before applyOptions runs, so no cascade-dispatched setter can
     // clobber it.
     private readonly _themeCleanups : Array<() => void>      = [];
+    // Callbacks registered via `onDestroy`, run once (in registration order)
+    // in destructor. The public, module-external counterpart of
+    // `_themeCleanups` — for state a module outside this component's own
+    // class hierarchy attaches keyed by component identity (e.g.
+    // `Tooltip.attach`) and must release on teardown without every call site
+    // remembering to call the matching teardown itself. Same plain-initializer
+    // safety rationale as `_ownedHandles` above.
+    private readonly _destroyCleanups : Array<() => void>    = [];
     private _tag                  : string                  = "div";
     // Every attribute the component currently intends its element to carry —
     // from setElementAttribute/removeElementAttribute, setDataAttribute/
@@ -883,13 +892,43 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Registers a callback to run once, when this component is destroyed.
+     * For a module outside this component's own class hierarchy that attaches
+     * state keyed by component identity (e.g. `Tooltip.attach`) and needs it
+     * released on teardown, without every attaching call site remembering to
+     * call the matching teardown itself.
+     *
+     * @param cleanup - Called with no arguments when this component is destroyed.
+     */
+    onDestroy(cleanup: () => void): void {
+        this._destroyCleanups.push(cleanup);
+    }
+
+    /**
+     * Registers `bag` — a `ListenerBag` this component owns as an event
+     * emitter — to be cleared when this component is destroyed, so every
+     * listener still registered on it (and the semantic-listener diagnostic
+     * counter it contributed to) is released even though no consumer called
+     * `off()`. Returns `bag` unchanged, so a class can wrap its own field
+     * initializer: `private _listeners = this.registerListenerBag(new ListenerBag())`.
+     *
+     * @param bag - The `ListenerBag` this component emits through.
+     * @returns `bag`, unchanged.
+     */
+    protected registerListenerBag<T extends string>(bag: ListenerBag<T>): ListenerBag<T> {
+        this.onDestroy(() => bag.clear());
+
+        return bag;
+    }
+
+    /**
      * Tears this component down: the public call entry point for teardown.
      * The entire body defers to `destructor()`, which recursively destroys
      * this component's children, releases every tracked theme subscription,
-     * unregisters every DOM listener it registered through the `Event` API,
-     * detaches its layout manager, removes the DOM element, deletes the
-     * component's per-instance stylesheet rules, and releases tracked
-     * handles.
+     * runs every callback registered via `onDestroy`, unregisters every DOM
+     * listener it registered through the `Event` API, detaches its layout
+     * manager, removes the DOM element, deletes the component's per-instance
+     * stylesheet rules, and releases tracked handles.
      *
      * @remarks Idempotent — calling this more than once is a harmless no-op.
      * Never override this method — override `destructor()` instead, so an
@@ -902,10 +941,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Destroys this component: recursively destroys its children, releases
-     * every tracked theme subscription, unregisters every DOM listener it
-     * registered through the `Event` API, detaches its layout manager,
-     * removes the DOM element, deletes the component's per-instance
-     * stylesheet rules, and releases tracked handles.
+     * every tracked theme subscription, runs every callback registered via
+     * `onDestroy`, unregisters every DOM listener it registered through the
+     * `Event` API, detaches its layout manager, removes the DOM element,
+     * deletes the component's per-instance stylesheet rules, and releases
+     * tracked handles.
      *
      * @remarks Idempotent — calling this more than once is a harmless no-op.
      * This is the override hook — a subclass releasing its own resources
@@ -1021,6 +1061,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             dispose();
         }
         this._themeCleanups.length = 0;
+
+        // Run every registered destroy hook (e.g. Tooltip.attach's
+        // component-keyed teardown) before the handle-release block below.
+        for (const cleanup of this._destroyCleanups) {
+            cleanup();
+        }
+        this._destroyCleanups.length = 0;
 
         // Dispose this component's own style rules before the handle-release
         // block below (rule disposal doesn't touch handles, so order relative

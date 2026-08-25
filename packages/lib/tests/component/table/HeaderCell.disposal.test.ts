@@ -26,6 +26,7 @@ import { Table } from '~/component/table/Table';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
+import { Tooltip } from '~/overlay/Tooltip';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -153,5 +154,42 @@ describe('HeaderCell — side-loaded child disposal', () => {
 
         expect(cell._headerGlyphInstance).not.toBe(first);
         expect(survivingRulesFor([first!])).toEqual([]);
+    });
+
+    it('releases the column-description tooltip attachment on teardown', async () => {
+        // Regression: HeaderCell wires its tooltip through
+        // `Tooltip.attachToElement`, keyed by the cell's raw element handle
+        // rather than the cell itself, because the cell's element has
+        // children (the label, the resize handle) that would otherwise
+        // receive the hover event as `evnt.target`. Nothing released that
+        // attachment on teardown, so it — and the DOM listeners it installed
+        // directly on the handle — outlived the cell.
+        const model = new Model([
+            { name: 'a', type: 'string', order: 0, description: 'Column A' },
+            { name: 'b', type: 'string', order: 1 },
+            { name: 'c', type: 'string', order: 2 },
+        ], 'a');
+        const store = new MemoryStore(model, [{ a: 'r1a', b: 'r1b', c: 'r1c' }]);
+
+        await store.load();
+
+        const table = new Table(store);
+
+        table.getElement(true);
+        table.setWidth(400);
+        table.setHeight(200);
+        table.doLayout();
+
+        const cell = headerCells(table)[0] as unknown as { getTooltip(): string; getElement(): unknown };
+
+        expect(cell.getTooltip()).toBe('Column A');
+
+        const el = cell.getElement();
+
+        expect((Tooltip as any).elementAttachments.has(el)).toBe(true);
+
+        destroy(table);
+
+        expect((Tooltip as any).elementAttachments.has(el)).toBe(false);
     });
 });

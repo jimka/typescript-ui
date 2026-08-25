@@ -102,4 +102,21 @@ export class ListenerBag<TEvent extends string> {
 
         return bucket ? bucket.slice() : [];
     }
+
+    /**
+     * Removes every listener from every bucket, balancing the diagnostics
+     * counter for each one removed. For the host's own teardown — once the
+     * host is gone it will never {@link fire} again, so any listener still
+     * registered on it is moot, whether or not the consumer that added it
+     * called {@link remove} first.
+     */
+    clear(): void {
+        for (const bucket of this._buckets.values()) {
+            for (let i = 0; i < bucket.length; i++) {
+                Diagnostics.noteBagListenerRemoved();
+            }
+        }
+
+        this._buckets.clear();
+    }
 }

@@ -186,7 +186,7 @@ class Accordion extends LayoutManager {
     private _tools: Component[] = [];
     private _toolsVisibility: "always" | "hover" = "hover";
     private _hoveredHeader: number = -1;
-    private _listeners: ListenerBag<AccordionEvent> = new ListenerBag<AccordionEvent>();
+    private _listeners: ListenerBag<AccordionEvent> = this.registerListenerBag(new ListenerBag<AccordionEvent>());
     private _resizable: boolean = false;
     // User-dragged (or fill-seeded) content heights per open section, absolute
     // px summing to the open budget when written. Keyed by Component

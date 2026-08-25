@@ -131,7 +131,7 @@ class Split extends LayoutManager {
     // resolvable from indices until the container has its children.
     private _pendingCollapsed: number[] = [];
 
-    private _listeners: ListenerBag<SplitEvent> = new ListenerBag<SplitEvent>();
+    private _listeners: ListenerBag<SplitEvent> = this.registerListenerBag(new ListenerBag<SplitEvent>());
 
     // The gutter right-click context menu, created lazily on first open (mirrors
     // MenuButton.toggleMenu's `??=`) and disposed + nulled in `detach()`. `Split`

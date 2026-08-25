@@ -789,7 +789,7 @@ abstract class AbstractSelectableList<
      * bus via {@link on}. Mirrors [`Tree`](/api/component/tree/classes/Tree)'s
      * `contextmenu` / `dblclick` wiring.
      */
-    private _rowListeners: ListenerBag<"contextmenu" | "dblclick"> = new ListenerBag();
+    private _rowListeners: ListenerBag<"contextmenu" | "dblclick"> = this.registerListenerBag(new ListenerBag());
 
     /**
      * @param options - Caller-supplied options bag.
@@ -879,6 +879,33 @@ abstract class AbstractSelectableList<
         if (this._options.emptyText !== undefined || this._options.emptyComponent !== undefined) {
             this.syncEmptyPlaceholder();
         }
+    }
+
+    /**
+     * Unsubscribes from the currently-bound store (see {@link setStore}),
+     * then runs the inherited teardown. The store is owned by the caller,
+     * not this list, and can outlive it, so an un-unsubscribed listener
+     * would pin this list in the store's own `ListenerBag` for as long as
+     * the store itself lives.
+     */
+    protected destructor(): void {
+        this.unbindStore(this._options.store);
+
+        super.destructor();
+    }
+
+    /**
+     * Unsubscribes the callbacks installed by {@link setStore} from `store`.
+     *
+     * @param store - The store to unsubscribe from, or `undefined` if none is bound.
+     */
+    private unbindStore(store: AbstractStore | undefined): void {
+        if (!this._storeRefresh || !store) {
+            return;
+        }
+
+        (['load', 'add', 'remove', 'datachange', 'sync'] as const)
+            .forEach(e => store.off(e, this._storeRefresh!));
     }
 
     /**
@@ -1246,12 +1273,7 @@ abstract class AbstractSelectableList<
      * @returns This component, for method chaining.
      */
     setStore(store: AbstractStore, displayField: string, valueField?: string, glyphField?: string, tooltipField?: string): this {
-        const oldStore = this._options.store;
-
-        if (this._storeRefresh && oldStore) {
-            (['load', 'add', 'remove', 'datachange', 'sync'] as const)
-                .forEach(e => oldStore.off(e, this._storeRefresh!));
-        }
+        this.unbindStore(this._options.store);
 
         this._options.store        = store;
         this._options.displayField = displayField;

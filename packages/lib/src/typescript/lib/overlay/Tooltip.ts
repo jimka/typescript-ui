@@ -81,6 +81,13 @@ export class Tooltip extends Component {
     private static elementAttachments: Map<Handle, ElementTooltipAttachment> = new Map();
     private static activeElement: Handle | null = null;
 
+    // Components with a destroy hook already registered to auto-detach on
+    // teardown. `attach` may be called many times over a component's life
+    // (e.g. Button re-deriving its tooltip text on every setTitle), and each
+    // call already replaces the previous attachment via the `detach` below —
+    // this guard keeps that from also registering a redundant hook per call.
+    private static teardownWired: WeakSet<Component> = new WeakSet();
+
     // True while the anchor-watch viewport listener is installed (only while a
     // tooltip is shown). See _onAnchorWatch.
     private static watching: boolean = false;
@@ -435,6 +442,15 @@ export class Tooltip extends Component {
         Tooltip.attachments.set(component.getId(), {
             text, colors, mouseoverFn, mousemoveFn, mouseoutFn, mousedownFn,
         });
+
+        // Auto-detach on teardown: without this, a destroyed component stays
+        // reachable forever through its listener closures, retained by this
+        // static attachments map — nothing else calls `detach` on the caller's
+        // behalf.
+        if (!Tooltip.teardownWired.has(component)) {
+            Tooltip.teardownWired.add(component);
+            component.onDestroy(() => Tooltip.detach(component));
+        }
     }
 
     /**

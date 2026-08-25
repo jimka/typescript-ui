@@ -1166,11 +1166,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         this._options.valueField   = valueField;
         this._options.glyphField   = glyphField;
 
-        if (this._boundStore) {
-            (['load', 'add', 'remove', 'datachange'] as const).forEach(e =>
-                this._boundStore!.off(e, this._onStoreRefresh)
-            );
-        }
+        this.unbindStore();
 
         // Bind the inner list first so its own store handler is registered —
         // and therefore fires — before the combo's `_onStoreRefresh`, which
@@ -1188,6 +1184,38 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         this.refreshLabel();
 
         return this;
+    }
+
+    /**
+     * Unsubscribes `_onStoreRefresh` from the currently-bound store, if any.
+     * Extracted from {@link setStore} so {@link destructor} can call the same
+     * unbind on teardown.
+     */
+    private unbindStore(): void {
+        if (!this._boundStore) {
+            return;
+        }
+
+        (['load', 'add', 'remove', 'datachange'] as const).forEach(e =>
+            this._boundStore!.off(e, this._onStoreRefresh)
+        );
+    }
+
+    /**
+     * Unsubscribes from the bound store (see {@link setStore}) and disposes
+     * the dropdown, then runs the inherited teardown. The store is owned by
+     * the caller, not this combo box, and can outlive it, so an
+     * un-unsubscribed listener would pin this component in the store's own
+     * `ListenerBag` for as long as the store itself lives. `_dropdown` is a
+     * `Position.FIXED` overlay (see ARCHITECTURE.md's carve-out for
+     * `AnimatedDropdown`), never a registered child, so `super.destructor()`'s
+     * recursion cannot reach it on its own.
+     */
+    protected destructor(): void {
+        this.unbindStore();
+        this._dropdown.dispose();
+
+        super.destructor();
     }
 
     /**

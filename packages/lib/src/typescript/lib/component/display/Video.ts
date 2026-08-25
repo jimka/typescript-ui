@@ -99,7 +99,7 @@ const _defaultVideoOptions: Partial<VideoOptions> = {
 class Video extends Component<VideoOptions> {
 
     /** Custom-event fan-out for the re-emitted media events. */
-    private _listeners: ListenerBag<VideoMediaEvent> = new ListenerBag<VideoMediaEvent>();
+    private _listeners: ListenerBag<VideoMediaEvent> = this.registerListenerBag(new ListenerBag<VideoMediaEvent>());
 
     /**
      * Per-type native handlers, held so the exact reference registered at render

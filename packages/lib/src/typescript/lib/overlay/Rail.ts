@@ -266,7 +266,7 @@ class Rail extends Component<RailOptions> {
     private _slideInAnimation:  Animation.CancelHandle | null = null;
 
     /** Typed-event fan-out for `"register"` / `"unregister"`. */
-    private _listeners: ListenerBag<RailEvent> = new ListenerBag<RailEvent>();
+    private _listeners: ListenerBag<RailEvent> = this.registerListenerBag(new ListenerBag<RailEvent>());
 
     /** Registered drawers, keyed by drawer, holding the handle + listener refs. */
     private _drawers: Map<Drawer, DrawerRegistration> = new Map();

@@ -261,3 +261,51 @@ describe('Tooltip.show', () => {
     // never soft-wraps, so wrappedHeight is always one line and lineCount stays
     // at the `\n`-split count. Width capping (above) is the assertable half.
 });
+
+describe('Tooltip.attach — teardown', () => {
+    afterEach(() => {
+        (Tooltip as any).instance = null;
+        (Tooltip as any).watching = false;
+        (Tooltip as any).activeElement = null;
+        DOM.reset();
+    });
+
+    it('releases the attachment when the attached component is destroyed', () => {
+        installTestDOM(CONFIG);
+
+        const c = new Component({});
+        c.getElement(true);
+
+        Tooltip.attach(c, 'Hi');
+        expect((Tooltip as any).attachments.has(c.getId())).toBe(true);
+
+        c.dispose();
+
+        // Regression: `Tooltip.attach` used to have no teardown hook at all,
+        // so a destroyed component's attachment — and the closures capturing
+        // it — lived in this static map forever, pinning the component (and,
+        // via `_parent`, its whole ancestor chain) off the heap permanently.
+        expect((Tooltip as any).attachments.has(c.getId())).toBe(false);
+    });
+
+    it('does not register a duplicate teardown hook across repeated attach() calls on the same component', () => {
+        installTestDOM(CONFIG);
+
+        const c = new Component({});
+        c.getElement(true);
+
+        Tooltip.attach(c, 'One');
+        Tooltip.attach(c, 'Two');
+        Tooltip.attach(c, 'Three');
+
+        // A second/third attach() replaces the map entry (via attach's own
+        // internal detach()) but must not stack extra onDestroy closures —
+        // detach() is idempotent, so a stacked duplicate would be harmless
+        // in effect but would still mean the guard isn't doing its job.
+        expect((c as any)._destroyCleanups.length).toBe(1);
+
+        c.dispose();
+
+        expect((Tooltip as any).attachments.has(c.getId())).toBe(false);
+    });
+});

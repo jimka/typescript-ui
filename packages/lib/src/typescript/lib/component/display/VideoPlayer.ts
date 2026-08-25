@@ -170,7 +170,7 @@ class VideoPlayer extends Component<VideoPlayerOptions> {
     private _syncing: boolean = false;
 
     /** Custom-event fan-out for the player's `play` / `pause` / `ended` events. */
-    private _listeners: ListenerBag<VideoPlayerEvent> = new ListenerBag<VideoPlayerEvent>();
+    private _listeners: ListenerBag<VideoPlayerEvent> = this.registerListenerBag(new ListenerBag<VideoPlayerEvent>());
 
     private readonly _onPlayButton:       () => void       = () => this.togglePlay();
     private readonly _onMuteButton:       () => void       = () => this.setMuted(!this.isMuted());

@@ -4,6 +4,7 @@
 // dedupe or re-wire regression.
 import { describe, it, expect } from 'vitest';
 import { ListenerBag } from '~/core/ListenerBag';
+import { Diagnostics } from '~/core/Diagnostics';
 
 type E = 'a' | 'b';
 
@@ -107,4 +108,47 @@ describe('ListenerBag.get', () => {
 
     // There is no `once` method on ListenerBag; "once" semantics belong to
     // host-level wrappers, not this class. Its absence is by design, not a gap.
+});
+
+describe('ListenerBag.clear', () => {
+    it('empties every bucket, so a subsequent fire is a no-op', () => {
+        const bag = new ListenerBag<E>();
+        let calls = 0;
+
+        bag.add('a', () => { calls += 1; });
+        bag.add('b', () => { calls += 1; });
+
+        bag.clear();
+
+        expect(bag.get('a')).toEqual([]);
+        expect(bag.get('b')).toEqual([]);
+
+        bag.fire('a');
+        bag.fire('b');
+
+        expect(calls).toBe(0);
+    });
+
+    it('balances the diagnostics counter for every listener it removes', () => {
+        Diagnostics._reset();
+
+        const bag = new ListenerBag<E>();
+
+        bag.add('a', () => {});
+        bag.add('a', () => {});
+        bag.add('b', () => {});
+
+        expect(Diagnostics.counters().bagListenersAdded - Diagnostics.counters().bagListenersRemoved).toBe(3);
+
+        bag.clear();
+
+        expect(Diagnostics.counters().bagListenersAdded - Diagnostics.counters().bagListenersRemoved).toBe(0);
+    });
+
+    it('is a harmless no-op on an already-empty bag', () => {
+        const bag = new ListenerBag<E>();
+
+        expect(() => bag.clear()).not.toThrow();
+        expect(() => bag.clear()).not.toThrow();
+    });
 });

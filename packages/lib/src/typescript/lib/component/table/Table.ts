@@ -235,7 +235,7 @@ class Table extends Component<TableOptions> {
     private _columnConfigs    : Map<string, ColumnConfig> = new Map();
     private _exportMenuEnabled: boolean = true;
     private _filterRowVisible : boolean = false;
-    private _listeners        : ListenerBag<TableEvent> = new ListenerBag<TableEvent>();
+    private _listeners        : ListenerBag<TableEvent> = this.registerListenerBag(new ListenerBag<TableEvent>());
     private _displayMode      : TableDisplayMode = "normal";
     private _rotatedRecord    : ModelRecord | null = null;
     private _rowVisible       : ((record: ModelRecord) => boolean) | null = null;
@@ -1629,13 +1629,19 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Disposes the column context menu and the column dialog (if open), then
+     * Unsubscribes from the source store (see {@link bindSourceStore}),
+     * disposes the column context menu and the column dialog (if open), then
      * runs the inherited teardown. `_columnContextMenu` and `_columnDialog`
      * are both LayerManager-mounted panels, never registered children (see
      * Menu.ts's class comment), so `super.destructor()`'s child recursion
-     * cannot reach either.
+     * cannot reach either. The store subscription needs its own explicit
+     * unbind for the same reason `Tooltip.attach` needed `onDestroy`: `_store`
+     * is owned by the caller, not by this `Table`, and can outlive it — an
+     * un-unsubscribed listener would pin this table in the store's own
+     * `ListenerBag` for as long as the store itself lives.
      */
     protected destructor(): void {
+        this.unbindSourceStore(this._store);
         this._columnDialog?.dispose();
         this._columnContextMenu.dispose();
         this._cellText.dispose();

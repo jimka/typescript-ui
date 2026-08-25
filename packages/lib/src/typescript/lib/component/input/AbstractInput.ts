@@ -55,7 +55,7 @@ abstract class AbstractInput<
     extends Component<TOptions>
     implements Bindable<TValue>
 {
-    private _listeners: ListenerBag<AbstractInputEvent> = new ListenerBag<AbstractInputEvent>();
+    private _listeners: ListenerBag<AbstractInputEvent> = this.registerListenerBag(new ListenerBag<AbstractInputEvent>());
 
     /**
      * @param options - Caller-supplied options bag.

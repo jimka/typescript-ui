@@ -243,7 +243,7 @@ class DiagramView extends Panel<DiagramViewOptions> {
     private _graphHeight: number = 0;
 
     /** Custom-event fan-out for `"selection"` / `"layout"` / `"contextmenu"`. */
-    private _listeners: ListenerBag<DiagramViewEvent> = new ListenerBag<DiagramViewEvent>();
+    private _listeners: ListenerBag<DiagramViewEvent> = this.registerListenerBag(new ListenerBag<DiagramViewEvent>());
 
     /** Edge ids of the last emitted "edgehover", joined, or null when not hovering. */
     private _hoveredEdgeKey: string | null = null;

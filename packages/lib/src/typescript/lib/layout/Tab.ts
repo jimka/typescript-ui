@@ -314,7 +314,7 @@ class Tab extends LayoutManager {
     // In-flight cross-tab fade, cancelled on detach so its fallback timer
     // cannot fire against a released content-element handle.
     private _tabFadeAnimation: Animation.CancelHandle | null = null;
-    private _listeners: ListenerBag<TabEvent> = new ListenerBag<TabEvent>();
+    private _listeners: ListenerBag<TabEvent> = this.registerListenerBag(new ListenerBag<TabEvent>());
 
     // When true, doLayout grows the bar to the container's outer edges and hands
     // it the absorbed parent inset as its own inset; the content stays inset.

@@ -108,7 +108,7 @@ export class Cell<T> extends Component {
     // event union without fighting TypeScript's invariant generic on
     // `ListenerBag.add`. The compile-time gate on event names lives on the
     // host's typed `on` / `off` / `emit` overloads, not on the bag field.
-    protected _listeners: ListenerBag<string> = new ListenerBag<string>();
+    protected _listeners: ListenerBag<string> = this.registerListenerBag(new ListenerBag<string>());
 
     constructor(tag: string, renderer: CellRenderer<T>, editor?: CellEditor<T>, rendererConstraints?: LayoutConstraints, editorContraints?: LayoutConstraints, subclassDefaults?: Partial<ComponentOptions>) {
         super({ tag: tag || "td" }, { ..._defaultCellOptions, ...(subclassDefaults ?? {}) });

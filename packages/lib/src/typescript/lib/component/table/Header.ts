@@ -209,7 +209,7 @@ class TableHeader extends Component {
     private _store: AbstractStore;
     private _hiddenColumns: Set<string> = new Set();
     private _columns: Column[] = [];
-    private _listeners: ListenerBag<TableHeaderEvent> = new ListenerBag<TableHeaderEvent>();
+    private _listeners: ListenerBag<TableHeaderEvent> = this.registerListenerBag(new ListenerBag<TableHeaderEvent>());
     private _menuButton: Button;
     private _boundOnMenuButtonAction: () => void = () => this.onMenuButtonAction();
 

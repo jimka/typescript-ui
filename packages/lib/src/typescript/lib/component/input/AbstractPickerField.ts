@@ -136,6 +136,19 @@ abstract class AbstractPickerField<
     }
 
     /**
+     * Disposes the dropdown (if built), then runs the inherited teardown.
+     * `_dropdown` is a `Position.FIXED` overlay (see ARCHITECTURE.md's
+     * carve-out for `AnimatedDropdown`), built lazily by {@link createDropdown}
+     * and never a registered child, so `super.destructor()`'s recursion
+     * cannot reach it on its own.
+     */
+    protected destructor(): void {
+        this._dropdown?.dispose();
+
+        super.destructor();
+    }
+
+    /**
      * Subclass hook: format a non-null value for display in the text input.
      *
      * @param value - The value to format.

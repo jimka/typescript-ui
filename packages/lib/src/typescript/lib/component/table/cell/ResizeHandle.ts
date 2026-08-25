@@ -97,7 +97,7 @@ function ensureResizeHandleClassRule(): void {
  */
 class ResizeHandle extends Component<ResizeHandleOptions> {
 
-    private _listeners: ListenerBag<ResizeHandleEvent> = new ListenerBag<ResizeHandleEvent>();
+    private _listeners: ListenerBag<ResizeHandleEvent> = this.registerListenerBag(new ListenerBag<ResizeHandleEvent>());
 
     /**
      * Constructs a resize handle. Callbacks default to none; consumers

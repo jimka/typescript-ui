@@ -495,7 +495,7 @@ class TabBar extends Container<TabBarOptions> {
     // stays correct across reorder/dock/close — see the class docs). `null` until
     // the first cell is created.
     private _activeId: string | null = null;
-    private _listeners: ListenerBag<TabBarEvent> = new ListenerBag<TabBarEvent>();
+    private _listeners: ListenerBag<TabBarEvent> = this.registerListenerBag(new ListenerBag<TabBarEvent>());
 
     private _widthMode: TabWidthMode = "equal";
     private _maxWidth: number | null = null;

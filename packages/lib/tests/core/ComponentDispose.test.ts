@@ -24,6 +24,7 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
+import { ListenerBag } from '~/core/ListenerBag';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -184,6 +185,61 @@ describe('Component.dispose()', () => {
         parent.dispose();
 
         expect(childCleanupRan).toBe(true);
+    });
+
+    it('runs an onDestroy callback when the component is disposed', () => {
+        const c = new Component({});
+        let ran = false;
+
+        c.onDestroy(() => { ran = true; });
+        c.dispose();
+
+        expect(ran).toBe(true);
+    });
+
+    it('runs onDestroy callbacks in registration order, and only once even across a second dispose()', () => {
+        const c = new Component({});
+        const order: number[] = [];
+
+        c.onDestroy(() => order.push(1));
+        c.onDestroy(() => order.push(2));
+        c.dispose();
+        c.dispose();
+
+        expect(order).toEqual([1, 2]);
+    });
+
+    it('reaches a descendant\'s onDestroy callback when an ancestor is disposed', () => {
+        // Mirrors "reaches a registered child's destructor() override" below —
+        // `onDestroy` is the public, module-external counterpart of the same
+        // recursive teardown contract (e.g. Tooltip.attach's auto-detach).
+        const parent = new Component({});
+        const child = new Component({});
+        let ran = false;
+
+        parent.addComponent(child);
+        child.onDestroy(() => { ran = true; });
+        parent.getElement(true);
+
+        parent.dispose();
+
+        expect(ran).toBe(true);
+    });
+
+    it('registerListenerBag clears the bag on destroy, releasing every listener', () => {
+        const c = new Component({});
+        const bag = new ListenerBag<'a'>();
+        let calls = 0;
+
+        (c as unknown as { registerListenerBag<T extends string>(b: ListenerBag<T>): ListenerBag<T> })
+            .registerListenerBag(bag);
+        bag.add('a', () => { calls += 1; });
+
+        c.dispose();
+
+        bag.fire('a');
+        expect(calls).toBe(0);
+        expect(bag.get('a')).toEqual([]);
     });
 
     it('runs a registered child\'s destructor() override exactly once', () => {

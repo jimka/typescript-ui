@@ -125,7 +125,7 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
     // plans/implemented/class-hierarchy-cascade.md.
     protected static readonly ownClassStyleDefaults: StyleBag = _defaultAbstractChartOptions;
 
-    private _listeners: ListenerBag<ChartEvent> = new ListenerBag<ChartEvent>();
+    private _listeners: ListenerBag<ChartEvent> = this.registerListenerBag(new ListenerBag<ChartEvent>());
 
     /** The resolved series model (points + hidden flag), rebuilt on data change. */
     protected _series: ChartSeriesModel[] = [];

@@ -99,6 +99,9 @@ class ParentHeaderCell extends DefaultCell {
     private _text: string;
     private _color: string | null;
     private _tooltipText: string = "";
+    // Guards the `onDestroy` registration below against `setTooltip` calling
+    // `attachToElement` more than once for the same stable element handle.
+    private _tooltipTeardownWired: boolean = false;
 
     /**
      * Constructs a parent header cell over a contiguous run of grouped
@@ -215,10 +218,29 @@ class ParentHeaderCell extends DefaultCell {
         const el = this.getElement();
 
         if (el) {
-            Tooltip.attachToElement(el, text);
+            this.attachTooltip(el, text);
         }
 
         return this;
+    }
+
+    /**
+     * Attaches the hover tooltip to this cell's element and, on the first
+     * call, registers the matching teardown so the attachment doesn't
+     * outlive this cell. `Tooltip.attachToElement` is keyed by the raw
+     * element handle rather than this component, so nothing else releases
+     * it when this cell is destroyed.
+     *
+     * @param el - This cell's element handle, stable for its whole life.
+     * @param text - The tooltip text to display.
+     */
+    private attachTooltip(el: Handle, text: string): void {
+        Tooltip.attachToElement(el, text);
+
+        if (!this._tooltipTeardownWired) {
+            this._tooltipTeardownWired = true;
+            this.onDestroy(() => Tooltip.detachElement(el));
+        }
     }
 
     /**
@@ -268,7 +290,7 @@ class ParentHeaderCell extends DefaultCell {
         Event.addSubtreeListener(this, "contextmenu", { prevent: true, handler: this.onContextMenu });
 
         if (this._tooltipText) {
-            Tooltip.attachToElement(el, this._tooltipText);
+            this.attachTooltip(el, this._tooltipText);
         }
 
         return this;

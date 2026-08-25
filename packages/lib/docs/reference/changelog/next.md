@@ -45,6 +45,27 @@ implementing its own `DOMSource` is affected.
 
 ## Added
 
+### Core
+
+- **`Component.onDestroy(cleanup)`** registers a callback that runs once,
+  in registration order, when the component is destroyed — the public
+  counterpart of the existing protected `subscribeTheme()` teardown bag,
+  for a module outside a component's own class hierarchy that attaches
+  state keyed by component identity (e.g.
+  [`Tooltip.attach`](/components/Tooltip)) and needs it released on
+  teardown. See [Component lifecycle](/concepts/component-lifecycle) for
+  the full contract.
+- **`Component.registerListenerBag(bag)` and its `LayoutManager` counterpart**
+  register a class's own emitted-event `ListenerBag` to be cleared
+  automatically on `destructor()` / `detach()`, wrapping the field's own
+  initializer (`private _listeners = this.registerListenerBag(new
+  ListenerBag())`). Every built-in component and layout manager that emits
+  custom events now opts in — see **Fixed** below. See [Component
+  lifecycle](/concepts/component-lifecycle) for the full contract.
+- **`ListenerBag.clear()`** removes every registered listener across every
+  event bucket, crediting the diagnostics overlay's *Semantic listeners*
+  count for each one — the primitive `registerListenerBag` is built on.
+
 ### Components
 
 - **[`DiagnosticsOverlay`](/components/DiagnosticsOverlay)**, a floating
@@ -111,6 +132,53 @@ action is needed.
   `Notification`'s close button, which gains the same hover/pressed
   background-image clears `Dialog`'s close button already had. No consumer
   action is needed.
+- **A component that had [`Tooltip.attach`](/components/Tooltip) (or
+  `attachToElement`) called on it now releases that attachment when the
+  component is destroyed, instead of leaking it — and everything it
+  retains — forever.** `Tooltip` had no teardown hook at all: every
+  `Button` with a title, every table header cell with a column
+  description, and several other built-in components attach a tooltip
+  with nothing to release it, so destroying any of them left the
+  attachment's listener closure (and, through it, the whole destroyed
+  subtree) permanently reachable from `Tooltip`'s static registry.
+  Confirmed live via heap snapshot: a table's header-menu-button tooltip
+  alone was enough to pin every disposed `Table`/`Row`/`Cell` under it.
+  Fixed via the new `Component.onDestroy()` hook (see **Added** above);
+  no consumer action is needed.
+- **`Table`, `TableBody`, `TablePanel`, `TreeTablePanel`,
+  `AbstractSelectableList` (`List` / `MultiSelectList`), and `ComboBox` now
+  unsubscribe from their bound `AbstractStore` when disposed, instead of
+  leaking the subscription for as long as the store lives.** A store is
+  owned by the caller, not the component displaying it, and routinely
+  outlives any one view of it (a shared data store, a re-opened dialog); an
+  un-unsubscribed `store.on('load', …)`-style listener kept the disposed
+  component (and everything it retains) reachable from the store's own
+  `ListenerBag` indefinitely. `Table` and `AbstractSelectableList` already
+  had the unbind logic wired for their own *re-bind* path (`setStore`) but
+  never called it from `destructor()`; `TableBody`, `TablePanel`,
+  `TreeTablePanel`, and `ComboBox` had no unbind at all. No consumer action
+  is needed.
+- **`ComboBox`, `AutoCompleteField`, and the picker-field family (`DateField`
+  / `DateTimeField` / `TimeField`, via `AbstractPickerField`) now dispose
+  their dropdown when the field itself is destroyed.** Each field's dropdown
+  is a `Position.FIXED` overlay — like `Tooltip`'s singleton, never a
+  registered child — that none of these classes had a `destructor()` for at
+  all, so it, its inner list, and (for `ComboBox`) that list's own store
+  subscription outlived the field. No consumer action is needed.
+- **Every built-in component or layout manager that emits its own custom
+  events (`Table`, `Header`, `Body`, `Cell`, `Tab`, `Tree`, `Scrollbar`,
+  `TabBar`, `AbstractChart`, `CodeEditor`, and roughly two dozen more) now
+  clears its `ListenerBag` when destroyed, via the new
+  `registerListenerBag` (see **Added** above), instead of leaving whatever a
+  consumer subscribed permanently counted as "added" with no matching
+  "removed."** This was invisible as a real memory leak — the listeners
+  were reclaimed by GC along with everything else once a subtree was truly
+  unreachable — but it permanently inflated the diagnostics overlay's
+  *Semantic listeners* count on every dispose, so the count no longer meant
+  "currently live," only "ever added." Confirmed live: 10 open/close cycles
+  of a 10,000-row `Table` (`bench.benchRowSelect()`) previously grew the
+  count by 1,790; it now returns to baseline every time. No consumer action
+  is needed.
 
 ### Components
 

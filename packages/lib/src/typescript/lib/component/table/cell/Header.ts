@@ -182,6 +182,9 @@ class HeaderCell extends DefaultCell {
     private _fieldName: string;
     private _isDragging: boolean = false;
     private _tooltipText: string = '';
+    // Guards the `onDestroy` registration below against `setTooltip` calling
+    // `attachToElement` more than once for the same stable element handle.
+    private _tooltipTeardownWired: boolean = false;
     declare private _resizeHandle: ResizeHandle;
     declare private _priorityBadge: SortPriorityBadge;
     private _sortState: { state: 'asc' | 'desc', priority: number | null } | null = null;
@@ -252,7 +255,7 @@ class HeaderCell extends DefaultCell {
         DOM.sink.appendChild(el, this._priorityBadge.getElement(true)!);
 
         if (this._tooltipText) {
-            Tooltip.attachToElement(el, this._tooltipText);
+            this.attachTooltip(el, this._tooltipText);
         }
 
         if (this._headerGlyph) {
@@ -555,10 +558,29 @@ class HeaderCell extends DefaultCell {
         const el = this.getElement();
 
         if (el) {
-            Tooltip.attachToElement(el, text);
+            this.attachTooltip(el, text);
         }
 
         return this;
+    }
+
+    /**
+     * Attaches the hover tooltip to this cell's element and, on the first
+     * call, registers the matching teardown so the attachment doesn't
+     * outlive this cell. `Tooltip.attachToElement` is keyed by the raw
+     * element handle rather than this component, so nothing else releases
+     * it when this cell is destroyed.
+     *
+     * @param el - This cell's element handle, stable for its whole life.
+     * @param text - The tooltip text to display.
+     */
+    private attachTooltip(el: Handle, text: string): void {
+        Tooltip.attachToElement(el, text);
+
+        if (!this._tooltipTeardownWired) {
+            this._tooltipTeardownWired = true;
+            this.onDestroy(() => Tooltip.detachElement(el));
+        }
     }
 
     /**

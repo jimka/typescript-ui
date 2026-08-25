@@ -345,7 +345,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     private _unregisterTableView: (() => void) | null = null;
 
     /** Custom-event fan-out for `"change"`. */
-    private readonly _listeners: ListenerBag<MarkdownEditorEvent> = new ListenerBag<MarkdownEditorEvent>();
+    private readonly _listeners: ListenerBag<MarkdownEditorEvent> = this.registerListenerBag(new ListenerBag<MarkdownEditorEvent>());
 
     /** The Card layout swapping the visible editing surface between WYSIWYG and source. */
     private readonly _card: Card;

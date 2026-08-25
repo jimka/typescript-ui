@@ -74,7 +74,7 @@ const _defaultChartLegendOptions: Partial<ChartLegendOptions> = {
  */
 class ChartLegend extends Panel<ChartLegendOptions> {
 
-    private _listeners: ListenerBag<ChartLegendEvent> = new ListenerBag<ChartLegendEvent>();
+    private _listeners: ListenerBag<ChartLegendEvent> = this.registerListenerBag(new ListenerBag<ChartLegendEvent>());
     private _rows: Component[] = [];
     private _entries: ChartLegendEntry[] = [];
     private _orientation: ChartLegendOrientation = "vertical";

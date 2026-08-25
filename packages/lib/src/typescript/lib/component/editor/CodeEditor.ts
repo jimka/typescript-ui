@@ -221,7 +221,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
     private readonly _themeCompartment: Compartment = new Compartment();
 
     /** Custom-event fan-out for `"change"`. */
-    private readonly _listeners: ListenerBag<CodeEditorEvent> = new ListenerBag<CodeEditorEvent>();
+    private readonly _listeners: ListenerBag<CodeEditorEvent> = this.registerListenerBag(new ListenerBag<CodeEditorEvent>());
 
     /** Handle to detach the {@link ThemeManager.onThemeChange} listener on {@link CodeEditor.dispose}. */
     private readonly _unsubscribeTheme: () => void;

@@ -125,7 +125,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
     private _collapseTrigger: CollapseTrigger = "dblclick";
     private _expandedBackground: string = "var(--ts-ui-gutter-bg, #AAAAAA)";
     private _tooltipText: string = "";
-    private _listeners: ListenerBag<SplitGutterEvent> = new ListenerBag<SplitGutterEvent>();
+    private _listeners: ListenerBag<SplitGutterEvent> = this.registerListenerBag(new ListenerBag<SplitGutterEvent>());
 
     /**
      * @param direction - Split orientation this gutter drags along.

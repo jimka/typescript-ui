@@ -90,7 +90,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
     ];
 
     private _direction: Direction = Direction.NORTH;
-    private _listeners: ListenerBag<WindowBorderEvent> = new ListenerBag<WindowBorderEvent>();
+    private _listeners: ListenerBag<WindowBorderEvent> = this.registerListenerBag(new ListenerBag<WindowBorderEvent>());
     private _dragStartListener: Event.Listener;
     private _dragStopListener: Event.Listener;
     private _fireDragListener: Event.Listener;

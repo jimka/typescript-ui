@@ -28,7 +28,7 @@ class BooleanEditor extends CellEditor<Boolean | null> {
 
     private _checkBox:        Checkbox                                       = new Checkbox();
     private _value:           Boolean | null                                 = null;
-    private _listeners:       ListenerBag<BooleanEditorEvent>                = new ListenerBag<BooleanEditorEvent>();
+    private _listeners:       ListenerBag<BooleanEditorEvent>                = this.registerListenerBag(new ListenerBag<BooleanEditorEvent>());
     private _suppressCommit:  boolean                                        = false;
 
     constructor() {

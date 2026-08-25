@@ -241,7 +241,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     /** Rail this window minimizes into, or null for the built-in bottom strip. */
     private _rail:              Rail | null = null;
     /** Typed-event fan-out for `"minimize"` / `"restore"` / `"close"`. */
-    private _windowListeners:   ListenerBag<WindowEvent> = new ListenerBag<WindowEvent>();
+    private _windowListeners:   ListenerBag<WindowEvent> = this.registerListenerBag(new ListenerBag<WindowEvent>());
     private _stateAnimHandle:   Animation.CancelHandle | null = null;
 
     // In-flight animations, cancelled on teardown so their fallback timers

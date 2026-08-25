@@ -129,7 +129,7 @@ const _defaultMarkdownMinimapOptions: Partial<MarkdownMinimapOptions> = {
 class MarkdownMinimap extends FloatingPanel<MarkdownMinimapOptions> {
 
     private readonly _tree: Tree;
-    private readonly _listeners: ListenerBag<MarkdownMinimapEvent> = new ListenerBag<MarkdownMinimapEvent>();
+    private readonly _listeners: ListenerBag<MarkdownMinimapEvent> = this.registerListenerBag(new ListenerBag<MarkdownMinimapEvent>());
     private readonly _scrollSource: HeadingScrollSource | null;
 
     /** Shown heading id -> its `TreeNode`. */

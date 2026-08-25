@@ -120,7 +120,7 @@ class MarkdownViewer extends Panel<MarkdownViewerOptions> implements HeadingScro
      */
     private _pendingClickScrollTop: number | null = null;
 
-    private readonly _listeners: ListenerBag<"activeheadingchange"> = new ListenerBag<"activeheadingchange">();
+    private readonly _listeners: ListenerBag<"activeheadingchange"> = this.registerListenerBag(new ListenerBag<"activeheadingchange">());
 
     private readonly handleNativeScroll:  () => void            = () => this.onNativeScroll();
     private readonly handleMinimapSelect: (id: string) => void  = (id) => this.scrollToHeading(id);

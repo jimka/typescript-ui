@@ -178,7 +178,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
     private _backdrop: DialogBackdrop | null = null;
 
     /** Typed-event fan-out for `"open"` / `"close"` / `"beforeclose"`. */
-    private _listeners: ListenerBag<DrawerEvent> = new ListenerBag<DrawerEvent>();
+    private _listeners: ListenerBag<DrawerEvent> = this.registerListenerBag(new ListenerBag<DrawerEvent>());
 
     /** Stable viewport-resize handler reference, for add/remove symmetry. */
     private _boundResizeHandler: () => void = (): void => this.onViewportResize();

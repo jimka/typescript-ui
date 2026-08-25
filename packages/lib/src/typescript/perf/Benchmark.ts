@@ -159,6 +159,7 @@ export class Benchmark {
             const body = table.getBody();
             if (!body.getElement()) {
                 console.warn("Benchmark: body element not present");
+                table.dispose();
                 document.body.removeChild(host);
                 resolve({ op: "tableScroll", rows: rowCount, iterations: 0, meanMs: 0, medianMs: null, maxMs: null });
                 return;
@@ -184,6 +185,7 @@ export class Benchmark {
                 if (step < STEPS) {
                     requestAnimationFrame(tick);
                 } else {
+                    table.dispose();
                     document.body.removeChild(host);
                     resolve(Benchmark.summarize("tableScroll", rowCount, frameTimes));
                 }
@@ -233,6 +235,7 @@ export class Benchmark {
             const body = table.getBody();
             if (!body.getElement()) {
                 console.warn("Benchmark: body element not present");
+                table.dispose();
                 document.body.removeChild(host);
                 resolve({ op: "tableRenderWindow", rows: rowCount, iterations: 0, meanMs: 0, medianMs: null, maxMs: null });
                 return;
@@ -256,6 +259,7 @@ export class Benchmark {
                     times[i] = performance.now() - start;
                 }
 
+                table.dispose();
                 document.body.removeChild(host);
                 resolve(Benchmark.summarize("tableRenderWindow", rowCount, times));
             });
@@ -296,6 +300,7 @@ export class Benchmark {
 
             samples[i] = elapsed;
 
+            table.dispose();
             document.body.removeChild(host);
         }
 

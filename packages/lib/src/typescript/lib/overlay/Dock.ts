@@ -237,7 +237,7 @@ class Dock extends Container<DockOptions> {
     // `listeners` option (no DockEvent is a build-time gesture — addPanel /
     // compileLayout run after super()), so it is never dispatched from
     // applyOptions. Consumers wire post-construction via on(...).
-    private _listeners:      ListenerBag<DockEvent> = new ListenerBag<DockEvent>();
+    private _listeners:      ListenerBag<DockEvent> = this.registerListenerBag(new ListenerBag<DockEvent>());
     // The dock-wide focused panel id, or null when nothing is focused. The single
     // source of truth gating every "focus" emit so a re-activation is silent.
     private _focusedPanelId: string | null = null;

@@ -339,7 +339,7 @@ class TableBody extends VirtualRowView<Row> {
     private _cellText        : CellTextResolver          = new CellTextResolver();
     private _editorPool      : CellEditorPool            = new CellEditorPool();
     private _header          : TableHeader | null             = null;
-    private _listeners       : ListenerBag<BodyEvent>    = new ListenerBag<BodyEvent>();
+    private _listeners       : ListenerBag<BodyEvent>    = this.registerListenerBag(new ListenerBag<BodyEvent>());
 
     constructor(store: AbstractStore, subclassDefaults?: Partial<ComponentOptions>) {
         super({ tag: "tbody" }, { ..._defaultTableBodyOptions, ...(subclassDefaults ?? {}) });
@@ -950,17 +950,31 @@ class TableBody extends VirtualRowView<Row> {
      * @param store - The new store to bind to the body.
      */
     private rebindStore(store: AbstractStore): void {
-        if (this._storeRefresh) {
-            const old = this._store;
-
-            (['load', 'add', 'remove', 'datachange', 'beforesync', 'sync'] as const).forEach(e =>
-                old.off(e, this._storeRefresh!)
-            );
-        }
+        this.unbindStore(this._store);
 
         this._store = store;
         this.bindStore(store);
         this.invalidateGeom();
+    }
+
+    /**
+     * Unsubscribes the callbacks installed by {@link bindStore} from `store`.
+     * Extracted from {@link rebindStore} so {@link destructor} can call the
+     * same unbind on teardown — `store` is owned by the caller, not this
+     * body, and can outlive it, so an un-unsubscribed listener would pin
+     * this body in the store's own `ListenerBag` for as long as the store
+     * itself lives.
+     *
+     * @param store - The store to unsubscribe from.
+     */
+    private unbindStore(store: AbstractStore): void {
+        if (!this._storeRefresh) {
+            return;
+        }
+
+        (['load', 'add', 'remove', 'datachange', 'beforesync', 'sync'] as const).forEach(e =>
+            store.off(e, this._storeRefresh!)
+        );
     }
 
     /**
@@ -1078,13 +1092,15 @@ class TableBody extends VirtualRowView<Row> {
     }
 
     /**
-     * Disposes the shared cell-editor pool, then runs the inherited teardown
-     * (which disposes the row pool and the scroller — see
+     * Unsubscribes from the store (see {@link bindStore}), disposes the
+     * shared cell-editor pool, then runs the inherited teardown (which
+     * disposes the row pool and the scroller — see
      * VirtualRowView.destructor()). `_editorPool`'s cached editors are held in
      * a private Map, never a registered child of this body, so the base
      * destructor's recursion cannot reach them.
      */
     protected destructor(): void {
+        this.unbindStore(this._store);
         this._editorPool.dispose();
         this._cellText.dispose();
 

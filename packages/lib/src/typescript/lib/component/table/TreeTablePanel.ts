@@ -43,6 +43,14 @@ class TreeTablePanel extends Container {
     private _rejectBtn: Button;
     private _spinner: ProgressSpinner | null = null;
     private _paginationBar: PaginationBar | undefined = undefined;
+    // The bound store and the exact listener references subscribed onto it
+    // in the constructor, kept so `destructor()` can unsubscribe the same
+    // references — `store` is owned by the caller, not this panel, and can
+    // outlive it, so an un-unsubscribed listener would pin this panel in the
+    // store's own `ListenerBag` for as long as the store itself lives.
+    private readonly _store: AbstractStore;
+    private readonly _handleLoadingChange: (payload: { loading: boolean }) => void;
+    private readonly _refreshSyncButtonsBound: () => void;
 
     /**
      * Constructs a TreeTablePanel bound to the given store, configured
@@ -53,6 +61,10 @@ class TreeTablePanel extends Container {
      */
     constructor(store: AbstractStore, spec: TreeTableSpec) {
         super();
+
+        this._store = store;
+        this._handleLoadingChange = (payload) => this.handleStoreLoadingChange(payload);
+        this._refreshSyncButtonsBound = () => this.refreshSyncButtons();
 
         this.setLayoutManager(new Border());
 
@@ -88,26 +100,50 @@ class TreeTablePanel extends Container {
         super.addComponent(this._toolbar,   { placement: Placement.NORTH });
         super.addComponent(this._treeTable, { placement: Placement.CENTER });
 
-        store.on('loadingchange', (payload: { loading: boolean }) => {
-            if (!this._spinner) {
-                this._spinner = new ProgressSpinner(24);
-            }
+        store.on('loadingchange', this._handleLoadingChange);
 
-            if (payload.loading) {
-                this._spinner.showOverlay(this._treeTable);
-            } else {
-                this._spinner.hideOverlay();
-            }
-        });
-
-        const refreshSyncButtons = (): void => this.refreshSyncButtons();
-        store.on('add', refreshSyncButtons);
-        store.on('remove', refreshSyncButtons);
-        store.on('datachange', refreshSyncButtons);
-        store.on('sync', refreshSyncButtons);
-        store.on('load', refreshSyncButtons);
+        store.on('add', this._refreshSyncButtonsBound);
+        store.on('remove', this._refreshSyncButtonsBound);
+        store.on('datachange', this._refreshSyncButtonsBound);
+        store.on('sync', this._refreshSyncButtonsBound);
+        store.on('load', this._refreshSyncButtonsBound);
 
         this.refreshSyncButtons();
+    }
+
+    /**
+     * Shows or hides the loading-overlay spinner over the tree table in
+     * response to the store's `loadingchange` event. Extracted from the
+     * constructor so the same bound reference (`_handleLoadingChange`) can
+     * be both subscribed here and unsubscribed in {@link destructor}.
+     *
+     * @param payload - Whether the store has just started or finished loading.
+     */
+    private handleStoreLoadingChange(payload: { loading: boolean }): void {
+        if (!this._spinner) {
+            this._spinner = new ProgressSpinner(24);
+        }
+
+        if (payload.loading) {
+            this._spinner.showOverlay(this._treeTable);
+        } else {
+            this._spinner.hideOverlay();
+        }
+    }
+
+    /**
+     * Unsubscribes this panel's store listeners, then runs the inherited
+     * teardown.
+     */
+    protected destructor(): void {
+        this._store.off('loadingchange', this._handleLoadingChange);
+        this._store.off('add', this._refreshSyncButtonsBound);
+        this._store.off('remove', this._refreshSyncButtonsBound);
+        this._store.off('datachange', this._refreshSyncButtonsBound);
+        this._store.off('sync', this._refreshSyncButtonsBound);
+        this._store.off('load', this._refreshSyncButtonsBound);
+
+        super.destructor();
     }
 
     /**

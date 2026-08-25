@@ -7,6 +7,7 @@ import { Size, UNBOUNDED } from "~/primitive/Size.js";
 import { Component } from "~/core/Component.js";
 import type { ComponentFactory } from "~/core/Component.js";
 import { BaseObject } from "~/core/BaseObject.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 
 /**
  * Construction-time options shared by every {@link LayoutManager}.
@@ -53,6 +54,12 @@ export abstract class LayoutManager extends BaseObject {
     // children's combined minSize exceeds it. Default `false` on both axes
     // matches today's clamp-and-clip behaviour.
     private _overflowing: { x: boolean; y: boolean } = { x: false, y: false };
+    // Callbacks registered via `registerListenerBag`, run once (in
+    // registration order) from `detach()` — the `LayoutManager` counterpart
+    // of `Component._destroyCleanups`. A manager subclass (`Tab`, `Split`,
+    // `Accordion`, …) is not a `Component`, so it cannot use `onDestroy`;
+    // `detach()` is its own equivalent teardown hook (see its doc comment).
+    private readonly _detachCleanups: Array<() => void> = [];
 
     constructor() {
         super();
@@ -99,12 +106,38 @@ export abstract class LayoutManager extends BaseObject {
     }
 
     /**
-     * Dissociates this layout manager from its container.
+     * Dissociates this layout manager from its container. A subclass that
+     * emits its own custom events through a `ListenerBag` it registered for
+     * automatic clearing (`Tab`, `Split`, `Accordion`) is torn down here, so
+     * an override MUST end with `super.detach()` or its share of the work is
+     * silently skipped.
      */
     detach() : this {
         this._container = null;
 
+        for (const cleanup of this._detachCleanups) {
+            cleanup();
+        }
+        this._detachCleanups.length = 0;
+
         return this;
+    }
+
+    /**
+     * Registers `bag` — a `ListenerBag` this layout manager owns as an event
+     * emitter — to be cleared when this manager is detached, so every
+     * listener still registered on it (and the semantic-listener diagnostic
+     * counter it contributed to) is released even though no consumer called
+     * `off()`. Mirrors `Component.registerListenerBag`; returns `bag`
+     * unchanged, so a subclass can wrap its own field initializer.
+     *
+     * @param bag - The `ListenerBag` this layout manager emits through.
+     * @returns `bag`, unchanged.
+     */
+    protected registerListenerBag<T extends string>(bag: ListenerBag<T>): ListenerBag<T> {
+        this._detachCleanups.push(() => bag.clear());
+
+        return bag;
     }
 
     /**

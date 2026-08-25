@@ -143,7 +143,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     private _pendingExpansions  : Map<TreeNode, Promise<boolean>>                         = new Map();
     private _anchorNode         : TreeNode | null                                         = null;
     private _focusNode          : TreeNode | null                                         = null;
-    private _listeners          : ListenerBag<TreeEvent>                                  = new ListenerBag<TreeEvent>();
+    private _listeners          : ListenerBag<TreeEvent>                                  = this.registerListenerBag(new ListenerBag<TreeEvent>());
     private _rendererFactory    : () => TreeNodeRenderer                                  = () => new LabelTreeNodeRenderer();
 
     constructor(options?: TreeOptions, subclassDefaults?: Partial<TreeOptions>) {

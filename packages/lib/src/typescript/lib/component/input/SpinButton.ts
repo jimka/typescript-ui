@@ -70,7 +70,7 @@ class SpinButton extends Button<SpinButtonOptions> {
     // (the flush `border`/`borderRadius`/`insets`) from `.Button`'s.
     protected static readonly ownClassStyleDefaults: StyleBag = _defaultSpinButtonOptions;
 
-    private _listeners    : ListenerBag<SpinButtonEvent> = new ListenerBag<SpinButtonEvent>();
+    private _listeners    : ListenerBag<SpinButtonEvent> = this.registerListenerBag(new ListenerBag<SpinButtonEvent>());
     private _repeat       : AutoRepeat;
 
     /**

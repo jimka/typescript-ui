@@ -145,7 +145,7 @@ class CollapseButton extends Component<CollapseButtonOptions> {
 
     declare private _direction: CollapseDirection;
     private _trigger: CollapseTrigger = "dblclick";
-    private _listeners: ListenerBag<CollapseButtonEvent> = new ListenerBag<CollapseButtonEvent>();
+    private _listeners: ListenerBag<CollapseButtonEvent> = this.registerListenerBag(new ListenerBag<CollapseButtonEvent>());
 
     /**
      * Constructs a collapse button. The chevron points east unless
