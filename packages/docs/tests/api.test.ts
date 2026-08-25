@@ -157,7 +157,7 @@ describe('getApiNav kind grouping', () => {
         const labels = getApiNav().map((node) => node.label);
 
         expect(labels).toEqual([
-            'component', 'core', 'data', 'layout', 'overlay', 'primitive', 'router', 'validation',
+            'component', 'core', 'data', 'diagnostics', 'layout', 'overlay', 'primitive', 'router', 'validation',
         ]);
     });
 
@@ -254,8 +254,8 @@ describe('getApiNav kind grouping', () => {
 });
 
 describe('MODULE_INDEX_FILES', () => {
-    it('has nineteen entries', () => {
-        expect(MODULE_INDEX_FILES.size).toBe(19);
+    it('has twenty entries', () => {
+        expect(MODULE_INDEX_FILES.size).toBe(20);
     });
 
     it('includes every real and synthesized module index', () => {
