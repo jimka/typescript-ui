@@ -1,12 +1,43 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Comparator, Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Insets } from "~/primitive/Insets.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { VBox } from "~/layout/VBox.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { BulletedListItemStyle } from "~/component/list/BulletedListItemStyle.js";
 import { NumberedListItemStyle } from "~/component/list/NumberedListItemStyle.js";
 import { ListItem } from "~/component/list/ListItem.js";
+
+/** Class applied to every marker list's own element — see {@link ensureMarkerListClassRule}. */
+const MARKER_LIST_CLASS = "MarkerList";
+
+// The shared class rule, retained once registered (mirrors the
+// PanelOverlayScroller / HeaderCellGlyph module-singleton pattern). The
+// variable doubles as the idempotency guard.
+let _markerListClassRule: StyleRule | null = null;
+
+/**
+ * Registers, once, the shared `.MarkerList` class rule suppressing the
+ * browser's own list marker — every item paints its own marker (see
+ * {@link AbstractMarkerList}'s doc comment), so a per-`#id` `list-style-type`
+ * write would otherwise repeat the same declaration on every instance.
+ * `listStyleType` is not a `StyleBag`/`ComponentOptions` field, so this can't
+ * route through the ordinary class-tier default mechanism.
+ */
+function ensureMarkerListClassRule(): void {
+    if (_markerListClassRule) {
+        return;
+    }
+
+    _markerListClassRule = new StyleRule({
+        scope:  "class",
+        name:   MARKER_LIST_CLASS,
+        styles: { listStyleType: "none" },
+    });
+}
 
 /**
  * Construction-time options for {@link AbstractMarkerList}.
@@ -62,9 +93,22 @@ export abstract class AbstractMarkerList<U extends BulletedListItemStyle | Numbe
         } as Partial<AbstractMarkerListOptions<U>>);
 
         // Each item paints its own marker, so the browser must not paint a
-        // second one beside it.
-        this.setElementCSSRule("listStyleType", "none");
+        // second one beside it — via the shared .MarkerList class rule (see
+        // ensureMarkerListClassRule), applied to this element in render().
+        ensureMarkerListClassRule();
         this.getAria().setRole("list");
+    }
+
+    /**
+     * Renders the list element and applies the shared `.MarkerList` class
+     * that suppresses the browser's own marker.
+     *
+     * @returns The rendered root element.
+     */
+    protected render(): Handle {
+        const element = super.render();
+        DOM.sink.apply(element, { addClass: [MARKER_LIST_CLASS] });
+        return element;
     }
 
     /**

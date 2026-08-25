@@ -9,6 +9,7 @@ import { _Text } from '~/component/input/Text';
 import { _VBox } from '~/layout/VBox';
 import { isUnbounded } from '~/primitive/Size';
 import { installTestDOM, ruleStyleWrites } from '../../dom/TestDOM';
+import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -726,16 +727,25 @@ describe('AbstractMarkerList — content-derived preferred size', () => {
 describe('AbstractMarkerList — CSS and semantics', () => {
     afterEach(() => DOM.reset());
 
-    it('suppresses the browser marker with listStyleType none', () => {
+    it('suppresses the browser marker with listStyleType none via the shared .MarkerList class rule', () => {
         const sink = installTestDOM(CONFIG);
         const list = new _BulletedList();
 
         list.getElement(true);
 
-        const writes = ruleStyleWrites(sink)
-            .filter(r => r.key === 'listStyleType' && r.selector.startsWith('#'));
+        // Every marker list shares one .MarkerList class rule instead of
+        // repeating listStyleType on each instance's own #id rule — see
+        // AbstractMarkerList.classStyleDefaults.test.ts for the dedicated
+        // coverage of the shared rule's actual declared value (this file's
+        // earlier tests already construct BulletedList/NumberedList
+        // instances, so by the time this test runs the module-level
+        // singleton rule may already be registered and produce no further
+        // write here).
+        expect(_ruleCacheHas('.MarkerList')).toBe(true);
 
-        expect(writes.map(r => r.value)).toContain('none');
+        const idWrites = ruleStyleWrites(sink)
+            .filter(r => r.key === 'listStyleType' && r.selector.startsWith('#'));
+        expect(idWrites).toEqual([]);
     });
 
     it('never writes an enum token as a list-style value', () => {

@@ -22,6 +22,7 @@ const _defaultRadioButtonRingOptions: Partial<ComponentOptions> = {
     cursor:          "pointer",
     backgroundColor: "var(--ts-ui-radio-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))",
     border:          "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))",
+    borderRadius:    "50%",
 };
 
 /** `_ring`'s selected-state declarations, read by `ownStyleStates`' `.selected` entry. */
@@ -171,7 +172,6 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
         // can't collapse the ring graphic when the radio is packed into a
         // tight container with siblings that have flexible widths.
         this._ring.setSize({ width: 16, height: 16 });
-        this._ring.setBorderRadius("50%");
 
         this._dot = new RadioButtonDot();
         this._dot.setPreferredSize(RADIO_DOT_SIZE);

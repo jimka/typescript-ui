@@ -172,6 +172,15 @@ action is needed.
   declaration onto a shared class rule, instead of repeating on every list
   item's own `#id` rule.** No consumer action is needed; nothing renders
   differently.
+- **`RadioButtonRing`'s round corner, `BulletedList`/`NumberedList`'s marker
+  suppression, `Legend`'s in-flow positioning, and `ParentHeaderCell`'s
+  group-label styling (bold/centered/unselectable) no longer duplicate their
+  fixed styling on every instance's own CSS rule.** Each now shares one CSS
+  rule per piece across every instance in the app — `RadioButtonRing` and
+  `Legend` through the class-tier default mechanism, the two marker lists
+  through a new shared `.MarkerList` class rule, and `ParentHeaderCell`
+  through two new internal subclasses mirroring `HeaderCell`'s own text/
+  renderer shape. Nothing changes visually; no consumer action needed.
 
 ### Table
 

@@ -55,9 +55,13 @@ export interface StyleBag {
     shadow?:          string | null;
     borderRadius?:    string | null;
     border?:          BorderOptions | string | null;
-    // The five properties `applyStyle` writes today outside the authored-bag
-    // path — from a raw field (`boxSizing`, `position`, `whiteSpace`), a
-    // hardcoded literal (`margin`), or its own options getter (`padding`).
+    // The four properties `applyStyle` writes today outside the authored-bag
+    // path — from a raw field (`boxSizing`, `whiteSpace`), a hardcoded
+    // literal (`margin`), or its own options getter (`padding`). `position`
+    // used to belong to this group too, but `resolveDeclarations` below now
+    // reads it (falling back to `Position.ABSOLUTE` when a class declares no
+    // deviation), so a class's `ownClassStyleDefaults` can author it like any
+    // other hoistable field — see `Legend.ownClassStyleDefaults`.
     boxSizing?:       string | null;
     position?:        Position;
     whiteSpace?:      string | null;
@@ -204,7 +208,7 @@ export function resolveDeclarations(defaults: StyleBag): Record<string, string |
 
     const declarations: Record<string, string | null> = {
         boxSizing:  "border-box",
-        position:   Position.ABSOLUTE,
+        position:   defaults.position ?? Position.ABSOLUTE,
         display:    (defaults.displayed ?? true) ? "block" : "none",
         visibility: (defaults.visible ?? null) === false ? "hidden" : "inherit",
         whiteSpace: "nowrap",

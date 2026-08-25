@@ -4,6 +4,7 @@ import { Text, TextOptions } from "~/component/input/Text.js"
 import { Position } from "~/primitive/Position.js";
 import { callable } from "~/core/Callable.js";
 import type { Handle } from "~/core/DOM.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link Legend}.
@@ -24,6 +25,15 @@ class Legend extends Text<LegendOptions> {
 
     /** Left inset (px) so the title clears the fieldset's left border corner. */
     private static readonly LEFT_MARGIN = 10;
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. Mirrors the constructor's
+    // own `setPosition(Position.STATIC)` call below, so every Legend instance
+    // dedupes its position declaration onto the shared `.Legend` class rule
+    // instead of repeating it on its own `#id` rule.
+    protected static readonly ownClassStyleDefaults: StyleBag = {
+        position: Position.STATIC,
+    };
 
     constructor(options?: LegendOptions) {
         // `tag` is structural — the element type is by definition `<legend>`.
