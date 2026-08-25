@@ -159,6 +159,19 @@ action is needed.
 - **`NumberSpinner`'s up/down spin buttons now dedupe their border onto
   shared class rules instead of repeating it on every instance.** No
   consumer action is needed; nothing renders differently.
+- **`Slider`'s track, active-track, and thumb now dedupe their static chrome
+  (`backgroundColor`/`borderRadius`/`border`/`shadow`/`maxSize`) onto shared
+  class rules instead of repeating on every instance's own `#id` rule.** No
+  consumer action is needed; nothing renders differently.
+- **`Toggle`'s track and thumb now dedupe their resting chrome onto shared
+  class rules the same way, and the track's checked "on" fill is now a
+  declared `.selected` style state on the shared rule instead of an
+  imperative background-colour write on every toggle.** No consumer action
+  is needed; nothing renders differently.
+- **`ListItem`'s marker text now dedupes its right-aligned `text-align`
+  declaration onto a shared class rule, instead of repeating on every list
+  item's own `#id` rule.** No consumer action is needed; nothing renders
+  differently.
 
 ### Table
 

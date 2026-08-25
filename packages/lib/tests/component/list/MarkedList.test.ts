@@ -5,7 +5,8 @@ import { _NumberedList } from '~/component/list/NumberedList';
 import { _ListItem } from '~/component/list/ListItem';
 import { BulletedListItemStyle } from '~/component/list/BulletedListItemStyle';
 import { NumberedListItemStyle } from '~/component/list/NumberedListItemStyle';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
+import { _ruleCacheHas } from '~/core/StyleTarget';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -135,5 +136,65 @@ describe('ListItem — key / value contract', () => {
 
         expect(textWrites).toContain('override');
         expect(textWrites).not.toContain('positional');
+    });
+});
+
+// The marker is a dedicated file-local subclass (ListItemMarkerText) rather
+// than a bare `Text`, so its `text-align: right` default hoists into a
+// shared `.ListItemMarkerText` rule instead of repeating on every item's own
+// `#id` rule. Mirrors CellTextSelection.test.ts's "a right-aligned
+// NumberRenderer's Text writes no per-instance declarations at all".
+describe('ListItemMarkerText class-rule hoisting', () => {
+    afterEach(() => DOM.reset());
+
+    /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+    function idSelector(component: { getId(): string }): string {
+        return '#' + DOM.source.escapeSelector(component.getId());
+    }
+
+    /**
+     * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+     * flattened into one key/value map. Copied from `Slider.test.ts`.
+     */
+    function declarationsDuring(
+        sink: RecordingDOMSink,
+        selector: string,
+        fn: () => void,
+    ): Record<string, string | null> {
+        const start = sink.writes.length;
+        fn();
+
+        const out: Record<string, string | null> = {};
+        for (const w of sink.writes.slice(start)) {
+            if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+                continue;
+            }
+
+            const styles = w.args[1] as Record<string, string | null>;
+            for (const key of Object.keys(styles)) {
+                out[key] = styles[key];
+            }
+        }
+
+        return out;
+    }
+
+    it('a rendered marker writes no per-instance textAlign declaration, and the shared class rule exists', () => {
+        const sink = installTestDOM(CONFIG);
+
+        // Warm the class-tier rule with a first item, mirroring the
+        // Scrollbar/Toggle "second, warmed instance" precedent shape.
+        new _ListItem('k0', 'v0').getElement(true);
+
+        const item   = new _ListItem('k', 'v') as any;
+        const marker = item._marker;
+
+        // Other baseline Text/Component declarations (whiteSpace, overflow,
+        // userSelect, min/maxSize, …) are still per-instance — this plan only
+        // moved textAlign — so only that key is asserted, not the whole bag.
+        const declarations = declarationsDuring(sink, idSelector(marker), () => item.getElement(true));
+
+        expect(declarations.textAlign).toBeUndefined();
+        expect(_ruleCacheHas('.ListItemMarkerText')).toBe(true);
     });
 });

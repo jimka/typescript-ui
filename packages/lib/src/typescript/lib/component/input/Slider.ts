@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { UNBOUNDED } from "~/primitive/Size.js";
 import { DOM } from "~/core/DOM.js";
@@ -49,6 +49,62 @@ const _defaultSliderOptions: Partial<SliderOptions> = {
     cursor:  "pointer",
 };
 
+const _defaultSliderTrackOptions: Partial<ComponentOptions> = {
+    backgroundColor: "var(--ts-ui-slider-track-bg, rgb(220, 220, 220))",
+    borderRadius:    "999px",
+};
+
+/**
+ * The track behind a {@link Slider}'s thumb — the resting groove. File-local
+ * — not exported from the input barrel because it is a Slider implementation
+ * detail. Its backgroundColor/borderRadius are class defaults so every
+ * instance shares one `.SliderTrack` CSS rule instead of repeating them.
+ */
+class SliderTrack extends Component {
+    constructor() {
+        super(undefined, _defaultSliderTrackOptions);
+    }
+}
+
+const _defaultSliderActiveTrackOptions: Partial<ComponentOptions> = {
+    backgroundColor: "var(--ts-ui-slider-track-active-bg, rgb(30, 100, 200))",
+    borderRadius:    "999px",
+};
+
+/**
+ * The filled portion of a {@link Slider}'s track, from the low end to the
+ * thumb. File-local — not exported from the input barrel because it is a
+ * Slider implementation detail. Its backgroundColor/borderRadius are class
+ * defaults so every instance shares one `.SliderActiveTrack` CSS rule
+ * instead of repeating them.
+ */
+class SliderActiveTrack extends Component {
+    constructor() {
+        super(undefined, _defaultSliderActiveTrackOptions);
+    }
+}
+
+const _defaultSliderThumbOptions: Partial<ComponentOptions> = {
+    backgroundColor: "var(--ts-ui-slider-thumb-bg, rgb(255, 255, 255))",
+    borderRadius:    "50%",
+    border:          "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))",
+    shadow:          "0 1px 2px rgba(0, 0, 0, 0.25)",
+    maxSize:         { width: THUMB_SIZE, height: THUMB_SIZE },
+};
+
+/**
+ * The draggable handle on a {@link Slider}'s track. File-local — not
+ * exported from the input barrel because it is a Slider implementation
+ * detail. Its backgroundColor/borderRadius/border/shadow/maxSize are class
+ * defaults so every instance shares one `.SliderThumb` CSS rule instead of
+ * repeating them.
+ */
+class SliderThumb extends Component {
+    constructor() {
+        super(undefined, _defaultSliderThumbOptions);
+    }
+}
+
 /**
  * A custom-drawn range slider rendered as a focusable `<div>` with
  * `role="slider"`.
@@ -64,9 +120,9 @@ const _defaultSliderOptions: Partial<SliderOptions> = {
 class Slider<TOptions extends SliderOptions = SliderOptions>
     extends AbstractInput<number, TOptions>
 {
-    private _track:           Component;
-    private _activeTrack:     Component;
-    private _thumb:           Component;
+    private _track:           SliderTrack;
+    private _activeTrack:     SliderActiveTrack;
+    private _thumb:           SliderThumb;
     private _draggingPointer: number | null = null;
 
     /**
@@ -84,26 +140,17 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             { ..._defaultSliderOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
         );
 
-        this._track = new Component();
-        this._track.setBackgroundColor("var(--ts-ui-slider-track-bg, rgb(220, 220, 220))");
-        this._track.setBorderRadius("999px");
+        this._track = new SliderTrack();
         // Pointer-events pass through to the slider root so `addListener`
         // matches by id on every press, and the root's cursor is what shows
         // on hover anywhere over the control.
         this._track.setPointerEvents("none");
 
-        this._activeTrack = new Component();
-        this._activeTrack.setBackgroundColor("var(--ts-ui-slider-track-active-bg, rgb(30, 100, 200))");
-        this._activeTrack.setBorderRadius("999px");
+        this._activeTrack = new SliderActiveTrack();
         this._activeTrack.setPointerEvents("none");
 
-        this._thumb = new Component();
-        this._thumb.setBackgroundColor("var(--ts-ui-slider-thumb-bg, rgb(255, 255, 255))");
-        this._thumb.setBorderRadius("50%");
-        this._thumb.setBorder("1px solid var(--ts-ui-form-border, rgb(160, 160, 160))");
-        this._thumb.setShadow("0 1px 2px rgba(0, 0, 0, 0.25)");
+        this._thumb = new SliderThumb();
         this._thumb.setPreferredSize({ width: THUMB_SIZE, height: THUMB_SIZE });
-        this._thumb.setMaxSize({ width: THUMB_SIZE, height: THUMB_SIZE });
         this._thumb.setPointerEvents("none");
 
         this._track.addComponent(this._activeTrack);
