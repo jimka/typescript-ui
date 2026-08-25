@@ -172,7 +172,6 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
         // can't collapse the ring graphic when the radio is packed into a
         // tight container with siblings that have flexible widths.
         this._ring.setSize({ width: 16, height: 16 });
-        this._ring.setBorderRadius("50%");
 
         this._dot = new RadioButtonDot();
         this._dot.setPreferredSize(RADIO_DOT_SIZE);

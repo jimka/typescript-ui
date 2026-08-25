@@ -55,7 +55,7 @@ export interface StyleBag {
     shadow?:          string | null;
     borderRadius?:    string | null;
     border?:          BorderOptions | string | null;
-    // The five properties `applyStyle` writes today outside the authored-bag
+    // The four properties `applyStyle` writes today outside the authored-bag
     // path — from a raw field (`boxSizing`, `whiteSpace`), a hardcoded
     // literal (`margin`), or its own options getter (`padding`). `position`
     // used to belong to this group too, but `resolveDeclarations` below now
