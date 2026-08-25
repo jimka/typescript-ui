@@ -55,34 +55,76 @@ function declarationsDuring(
 describe('ParentHeaderCellText style hoisting', () => {
     afterEach(() => DOM.reset());
 
-    it("a rendered ParentHeaderCell's renderer text carries no fontWeight/fontSize/textAlign/userSelect declaration on its own #id rule, and .ParentHeaderCellText carries all four", () => {
+    /** The cell's resting-isolation rule selector — Cell's states guard it. */
+    function restingSelector(cell: { getId(): string }): string {
+        return idSelector(cell) + ':not(.rangeSelected):not(.readOnly):not(.requiredEmpty)';
+    }
+
+    // `ensureClassStyleRule` caches each class's rule per-constructor for the
+    // file's lifetime (a module-level cache that outlives `DOM.reset()`), and
+    // `cell.getElement(true)` renders the whole cell subtree in one pass — so
+    // a single render establishes both .ParentHeaderCell's and
+    // .ParentHeaderCellText's rules together. This combined test is the one
+    // place in the file that observes both positive halves live; every other
+    // test below only re-renders the same classes, which is why they stick to
+    // per-instance (#id-rule / getter) assertions instead.
+    it("a rendered ParentHeaderCell's renderer text carries no fontWeight/fontSize/textAlign/userSelect declaration on its own #id rule, .ParentHeaderCellText carries all four, and .ParentHeaderCell carries the cell's background/shadow while the cell's own rule carries neither", () => {
         const sink = installTestDOM(CONFIG);
         const cell = new ParentHeaderCell('Group', null);
         const text = cell.getRenderer().getText();
 
-        const start        = sink.writes.length;
-        const declarations = declarationsDuring(sink, idSelector(text), () => cell.getElement(true));
+        const start = sink.writes.length;
+        cell.getElement(true);
+        const writesDuring = sink.writes.slice(start);
 
-        // Positive half: what .ParentHeaderCellText itself declares, read
-        // from the same render pass (a second declarationsDuring call would
-        // find the rule already materialised and emit nothing).
-        const classDeclarations: Record<string, string | null> = {};
-        for (const w of sink.writes.slice(start)) {
-            if (w.op === 'setRuleStyles' && w.args[0] === '.ParentHeaderCellText') {
-                Object.assign(classDeclarations, w.args[1]);
+        function declarationsFor(selector: string): Record<string, string | null> {
+            const out: Record<string, string | null> = {};
+            for (const w of writesDuring) {
+                if (w.op === 'setRuleStyles' && w.args[0] === selector) {
+                    Object.assign(out, w.args[1] as Record<string, string | null>);
+                }
             }
+
+            return out;
         }
-        expect(classDeclarations.fontWeight).toBe('bold');
-        expect(classDeclarations.fontSize).toBe('var(--ts-ui-table-header-font-size, 14px)');
-        expect(classDeclarations.textAlign).toBe('center');
-        expect(classDeclarations.userSelect).toBe('none');
+
+        const textDeclarations      = declarationsFor(idSelector(text));
+        const textClassDeclarations = declarationsFor('.ParentHeaderCellText');
+        const cellDeclarations      = declarationsFor(restingSelector(cell));
+        const cellClassDeclarations = declarationsFor('.ParentHeaderCell');
+
+        // Positive half: what .ParentHeaderCellText itself declares.
+        expect(textClassDeclarations.fontWeight).toBe('bold');
+        expect(textClassDeclarations.fontSize).toBe('var(--ts-ui-table-header-font-size, 14px)');
+        expect(textClassDeclarations.textAlign).toBe('center');
+        expect(textClassDeclarations.userSelect).toBe('none');
 
         // Negative half: none of the four reach the text's own #id rule.
-        expect(declarations.fontWeight).toBeUndefined();
-        expect(declarations.fontSize).toBeUndefined();
-        expect(declarations.textAlign).toBeUndefined();
-        expect(declarations.userSelect).toBeUndefined();
+        expect(textDeclarations.fontWeight).toBeUndefined();
+        expect(textDeclarations.fontSize).toBeUndefined();
+        expect(textDeclarations.textAlign).toBeUndefined();
+        expect(textDeclarations.userSelect).toBeUndefined();
         expect(_ruleCacheHas('.ParentHeaderCellText')).toBe(true);
+
+        // Positive half: what .ParentHeaderCell itself declares.
+        expect(cellClassDeclarations.backgroundColor).toBe('transparent');
+        expect(cellClassDeclarations.boxShadow).toContain('inset -1px 0 0 0');
+
+        // Negative half: neither reaches the cell's own resting rule.
+        expect(cellDeclarations.backgroundColor).toBeUndefined();
+        expect(cellDeclarations.boxShadow).toBeUndefined();
+        expect(cell.getBackgroundColor()).toBe('transparent');
+    });
+
+    it('a ParentHeaderCell with a groupColor still writes that colour, and only that', () => {
+        const sink = installTestDOM(CONFIG);
+        const cell = new ParentHeaderCell('Group', 'red');
+
+        const declarations = declarationsDuring(sink, restingSelector(cell), () => cell.getElement(true));
+
+        expect(declarations.backgroundColor).toBe('red');
+        expect(declarations.boxShadow).toBeNull();
+        expect(cell.getBackgroundColor()).toBe('red');
     });
 
     it("the renderer text's cursor is unchanged (still 'text', inherited from SelectableText)", () => {

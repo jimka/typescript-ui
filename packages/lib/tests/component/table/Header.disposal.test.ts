@@ -28,8 +28,12 @@ afterEach(() => DOM.reset());
 describe('TableHeader.rebuildParentCells — disposes replaced parent cells', () => {
     it('evicts the old ParentHeaderCell\'s style rule when setHiddenColumns rebuilds the row', async () => {
         const columns: ColumnConfig[] = [
-            { field: 'c0', group: 'A' },
-            { field: 'c1', group: 'A' },
+            // A `groupColor` keeps this cell's own `#id` rule materialised (a
+            // colourless group cell no longer writes a rule at all — its
+            // background/shadow both dedupe against `.ParentHeaderCell`'s
+            // class-tier defaults; see plans/implemented/misc-component-css-dedup.md).
+            { field: 'c0', group: 'A', groupColor: 'red' },
+            { field: 'c1', group: 'A', groupColor: 'red' },
             { field: 'c2' },
         ];
         const model = new Model([
