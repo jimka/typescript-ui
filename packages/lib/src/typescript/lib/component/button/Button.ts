@@ -263,6 +263,20 @@ const BUTTON_FLAT_HOVER_DECLARATIONS: StyleBag = {
     border:          "var(--ts-ui-button-flat-hover-border, 1px solid rgb(200, 200, 200))",
 };
 
+/**
+ * Shared `.flat` resting declarations, published once via `ensureSharedStateRule`
+ * from `_applyFlatChrome` — the resting-tier twin of
+ * `BUTTON_FLAT_PRESSED_DECLARATIONS`/`BUTTON_FLAT_HOVER_DECLARATIONS` above.
+ * `borderRadius` is deliberately absent — see
+ * plans/button-flat-chrome-dedup.md's Architecture Decisions for why.
+ */
+const BUTTON_FLAT_RESTING_DECLARATIONS: StyleBag = {
+    border:          "1px solid transparent",
+    shadow:          "none",
+    backgroundImage: "none",
+    backgroundColor: "transparent",
+};
+
 const BUTTON_LABEL_FONT_SIZE_VAR = "--ts-ui-button-font-size";
 
 // The CSS-ready form of BUTTON_LABEL_FONT_SIZE_VAR — its "14px" fallback is
@@ -2176,60 +2190,30 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Suppresses the resting frame (border / radius / shadow / gradient) the
-     * same way the chromeless branch does, then installs the flat hover and
-     * sunken-pressed treatments sourced from the `--ts-ui-button-flat-*`
-     * tokens as a shared `.flat.pressed` / `.flat:hover:not(.pressed)` class
-     * rule. Glyph-only buttons (a glyph with an empty label) tighten to a
-     * compact square inset so they read as toolbar icon buttons.
+     * Publishes flat's resting chrome (border / shadow / background) and its
+     * hover / sunken-pressed treatments as shared `.flat` / `.flat.pressed` /
+     * `.flat:hover:not(.pressed)` class rules instead of writing any of them
+     * through per-instance setters — flat's resting chrome never varies per
+     * instance, so it is the resting-tier twin of the already-shared
+     * pressed/hover rules below. See `## Architecture Decisions` in
+     * plans/button-flat-chrome-dedup.md. Glyph-only buttons (a glyph with an
+     * empty label) tighten to a compact square inset so they read as toolbar
+     * icon buttons.
      */
     private _applyFlatChrome(): void {
-        // Reserve the 1px frame at rest with a transparent border (rather than
-        // clearing it like the chromeless branch). Under `box-sizing: border-box`
-        // a border consumes content-box space, so a border that only appears on
-        // `:hover` / `.pressed` would nudge the centred label by 1px. Reserving it
-        // transparent keeps the geometry identical across states — the hover /
-        // pressed rules below only swap the border *colour*. Matches the 1px
-        // width of the `--ts-ui-button-flat-{hover,pressed}-border` tokens;
-        // widen this in lockstep if those ever exceed 1px.
-        this.setBorder("1px solid transparent");
+        // The border is painted entirely by the shared `.flat` rule below, but
+        // `getBorderSize()`'s layout math reads the component's own cached
+        // border spec, which a shared class rule can't update — sync it
+        // without writing CSS (a real `setBorder` write here would defeat the
+        // hoisting by duplicating the value onto every instance's own rule).
+        this.cacheBorderSpec(BUTTON_FLAT_RESTING_DECLARATIONS.border!);
 
-        // Clear (not just mask) the resting radius, shadow, and background image:
-        // the chromeful `super.applyChromeOptions` already wrote these defaults
-        // (`--ts-ui-border-radius`, `--ts-ui-button-shadow`, `--ts-ui-button-bg`)
-        // into the rules, so nulling only the options would leave them painting
-        // behind a "flat" button — a drop shadow ringing the button and rounded
-        // corners.
-        this.clearBorderRadius();
-        this.clearShadow();
-        this.clearBackgroundImage();
-
-        // Drop the resting background *colour* too — flat is transparent at
-        // rest. The chromeful path no longer writes the token into `_options`
-        // (it is a class default), so the value read here comes from
-        // `_defaultOptions` at construction and from `_options` only after a
-        // consumer set one — or after a previous flat pass wrote "transparent",
-        // which matches neither arm below and is left alone, keeping the method
-        // idempotent. Comparing against the *class* default (rather than the
-        // constant the chromeless branch uses) means a subclass that defaults
-        // its own fill is flattened too, while a genuine consumer colour is
-        // preserved. `_restoreChrome` is the inverse and restores the same
-        // value.
-        const restingBackground = this.getBackgroundColor();
-        const classDefault      = this._defaultOptions.backgroundColor ?? null;
-
-        if (restingBackground === null || restingBackground === classDefault) {
-            this.setBackgroundColor("transparent");
-        }
-
-        // Flat's pressed/hover chrome never varies per instance, so it is
-        // published once as a shared `.flat.pressed` / `.flat:hover:not(.pressed)`
-        // class rule instead of writing through the public per-instance
-        // setters — see `## Architecture Decisions` in
-        // plans/implemented/button-meta-class-dedup.md. `.flat` adds one more
-        // chained class, so `.Button.flat.pressed` sits at strictly higher
-        // specificity than `.Button.pressed` regardless of insertion order.
+        // `.flat` adds one more chained class than `.Button` alone, so
+        // `.Button.flat` (and `.Button.flat.pressed` / `.Button.flat:hover:not(.pressed)`
+        // below) sit at strictly higher specificity than `.Button` / `.Button.pressed`
+        // regardless of insertion order.
         this.setStyleState(".flat", true);
+        this.ensureSharedStateRule(".flat",                     resolvePartialDeclarations(BUTTON_FLAT_RESTING_DECLARATIONS));
         this.ensureSharedStateRule(".flat.pressed",             resolvePartialDeclarations(BUTTON_FLAT_PRESSED_DECLARATIONS));
         this.ensureSharedStateRule(".flat:hover:not(.pressed)", resolvePartialDeclarations(BUTTON_FLAT_HOVER_DECLARATIONS));
 

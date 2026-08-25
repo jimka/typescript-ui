@@ -101,6 +101,17 @@ action is needed.
 
 ## Fixed
 
+### Core
+
+- **`Component.clearBackgroundImage()` now respects a Button-family
+  instance's resting-chrome isolation instead of writing straight to the
+  bare instance rule.** The neutral assertion previously always landed on
+  the unguarded `#id` rule, which could silently override an isolated
+  instance's `.pressed`/`:hover` background-image — visible on
+  `Notification`'s close button, which gains the same hover/pressed
+  background-image clears `Dialog`'s close button already had. No consumer
+  action is needed.
+
 ### Components
 
 - **`MenuBarButton` and `TabCloseButton` regain their own background /
@@ -129,6 +140,18 @@ action is needed.
   the public export (`Body`, from `component/table/index.ts`) is unchanged.
   See **Breaking changes** above for the resulting rendered-DOM class list
   change.
+- **A flat `Button`'s resting chrome (border, shadow, background) now
+  dedupes onto one shared class rule instead of repeating on every
+  instance, matching the pressed/hover dedup already shipped.** A flat
+  button's border colour now correctly changes on hover/press — previously
+  it stayed transparent in every state because an unguarded per-instance
+  write silently outranked the state rules. No consumer action is needed,
+  beyond the corrected border colour.
+- **The table header's column-menu button's hover/pressed background now
+  shows the intended light-gray tint instead of a translucent overlay.**
+  The button drops `flat` mode in favour of its own declared chrome (a new
+  `TableHeaderMenuButton` subclass), which also dedupes its resting/pressed/
+  hover chrome onto shared class rules. No consumer action is needed.
 
 ### Table
 
@@ -214,6 +237,13 @@ another cell.
   what these getters report on a flat instance. No consumer action is
   needed unless code reads one of these getters on a flat instance and
   assumed it returned the flat token.
+- **On a flat `Button`, `getBorder()` / `getBorderRadius()` / `getShadow()`
+  / `getBackgroundImage()` / `getBackgroundColor()` now report the non-flat
+  class default rather than the flat token**, extending the same
+  class-default change above to the resting tier. The actual rendered
+  chrome is unaffected — only what these getters report on a flat instance.
+  No consumer action is needed unless code reads one of these getters on a
+  flat instance and assumed it returned the flat token.
 - **`TextField`, `TextArea`, `PasswordField`, `UsernameField`, and the picker
   fields' inner input no longer repeat their font declarations on every
   instance's own CSS rule.** `font-family`, `font-size`, and `line-height`

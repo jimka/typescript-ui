@@ -247,4 +247,17 @@ describe('Button resting-chrome state isolation', () => {
 
         expect(declarations.backgroundColor).toBe('purple');
     });
+
+    it('row 12: clearBackgroundImage on a rendered, chromeful Button asserts "none" on #id:not(.pressed):not(:hover), never the bare #id rule (plans/button-flat-chrome-dedup.md)', () => {
+        new Button('Warmup').getElement(true);
+
+        const btn = new Button('x');
+        btn.getElement(true);
+        btn.setBackgroundImage('red'); // establish a real deviation to isolate first
+
+        const writes = writesDuring(sink, () => btn.clearBackgroundImage());
+
+        expect(declarationsIn(writes, idSelector(btn) + ':not(.pressed):not(:hover)').backgroundImage).toBe('none');
+        expect(declarationsIn(writes, idSelector(btn)).backgroundImage).toBeUndefined();
+    });
 });

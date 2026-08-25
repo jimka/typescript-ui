@@ -136,18 +136,20 @@ describe('Button flat state', () => {
         // ignored with a dev-time warning, so isFlat() stays false.
         expect(btn.isFlat()).toBe(false);
     });
-    it('paints transparent at rest when built flat', () => {
-        // Behaviour change: `getBackgroundColor()` used to return `null` at
-        // construction (the old `=== undefined` guard never matched it), so
-        // the UA `<button>` face painted through. Seeding `backgroundColor`
-        // in `_defaultButtonOptions` makes the flat guard's `null` arm live.
-        expect(new Button('x', { flat: true }).getBackgroundColor()).toBe('transparent');
+    it('reports the non-flat class default background when built flat — the paint itself is transparent, but only .Button.flat carries that now', () => {
+        // Behaviour change (plans/button-flat-chrome-dedup.md): flat's resting
+        // background now lives only on the shared `.Button.flat` class rule,
+        // never written to the instance layer, so `getBackgroundColor()` on a
+        // flat Button falls through to `.Button`'s own (non-flat) class
+        // default instead of reporting "transparent" — the rendered paint is
+        // unaffected (`.Button.flat`'s higher-specificity rule still wins).
+        expect(new Button('x', { flat: true }).getBackgroundColor()).toBe('var(--ts-ui-button-bg, transparent)');
     });
-    it('round-trips the resting background across setFlat', () => {
+    it('getBackgroundColor is unchanged by setFlat — flat chrome lives on .Button.flat, not the instance layer', () => {
         const btn = new Button('x');
 
         btn.setFlat(true);
-        expect(btn.getBackgroundColor()).toBe('transparent');
+        expect(btn.getBackgroundColor()).toBe('var(--ts-ui-button-bg, transparent)');
 
         btn.setFlat(false);
         expect(btn.getBackgroundColor()).toBe('var(--ts-ui-button-bg, transparent)');

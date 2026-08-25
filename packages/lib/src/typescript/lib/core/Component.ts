@@ -2395,11 +2395,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     clearBackgroundImage(): this {
         // Same reasoning as `clearBackgroundColor`: a defaulting class would
-        // repaint through a bare removal, so assert the CSS initial value.
+        // repaint through a bare removal, so assert the CSS initial value —
+        // routed through the resting-isolation-aware escape hatch (not the raw
+        // `setElementCSSRule` bypass) so an isolated Button-family instance gets
+        // the assertion on its guarded rule, not the bare `#id` rule. See
+        // plans/button-flat-chrome-dedup.md.
         this.writeStyle({ backgroundImage: null });
 
         if (this._defaultOptions.backgroundImage) {
-            this.setElementCSSRule("backgroundImage", "none");
+            this.writeGuardedCSSRule("backgroundImage", "none");
         }
 
         return this;
@@ -2547,6 +2551,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this.writeStyle({ border: this._border });
 
         return this;
+    }
+
+    /**
+     * Updates the component's cached border specification — the geometry
+     * {@link getBorderSize} reads for layout math — without writing any CSS.
+     * For a subclass whose border is painted entirely by a shared class-tier
+     * rule rather than a per-instance write (e.g. a flat `Button`'s resting
+     * border, hoisted onto `.ClassName.flat` — see
+     * plans/button-flat-chrome-dedup.md), the instance still needs an
+     * accurate cached width for sizing even though nothing is written to its
+     * own `#id` rule; calling {@link setBorder} instead would defeat that
+     * hoisting by writing the same value to the instance rule anyway.
+     *
+     * @param options - Border configuration, or a CSS `border` shorthand string.
+     */
+    protected cacheBorderSpec(options: BorderOptions | string): void {
+        this._border       = typeof options === "string" ? { border: options } : options;
+        this._borderWidths = null;
     }
 
     /**
