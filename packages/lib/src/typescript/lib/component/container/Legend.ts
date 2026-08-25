@@ -3,7 +3,6 @@
 import { Text, TextOptions } from "~/component/input/Text.js"
 import { Position } from "~/primitive/Position.js";
 import { callable } from "~/core/Callable.js";
-import type { Handle } from "~/core/DOM.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
@@ -30,9 +29,12 @@ class Legend extends Text<LegendOptions> {
     // plans/implemented/class-hierarchy-cascade.md. Mirrors the constructor's
     // own `setPosition(Position.STATIC)` call below, so every Legend instance
     // dedupes its position declaration onto the shared `.Legend` class rule
-    // instead of repeating it on its own `#id` rule.
+    // instead of repeating it on its own `#id` rule. `marginLeft` overrides
+    // the framework rule's zeroed `margin` shorthand so the title clears the
+    // fieldset's left border corner instead of hugging it.
     protected static readonly ownClassStyleDefaults: StyleBag = {
-        position: Position.STATIC,
+        position:   Position.STATIC,
+        marginLeft: `${Legend.LEFT_MARGIN}px`,
     };
 
     constructor(options?: LegendOptions) {
@@ -48,23 +50,6 @@ class Legend extends Text<LegendOptions> {
         // exception alongside `FIXED` floating overlays. See
         // ARCHITECTURE.md §Positioning.
         this.setPosition(Position.STATIC);
-    }
-
-    /**
-     * Applies base styles, then re-asserts a left margin so the legend clears
-     * the fieldset's left border corner instead of hugging it. `Component`'s
-     * `applyStyle` zeroes the `margin` shorthand on every component, which
-     * strips the browser's default `<legend>` inset; this longhand write runs
-     * after `super` and overrides only the left side.
-     *
-     * @param element - The element handle to apply styles to.
-     */
-    applyStyle(element: Handle): this {
-        super.applyStyle(element);
-
-        this.setElementCSSRule("marginLeft", `${Legend.LEFT_MARGIN}px`);
-
-        return this;
     }
 }
 

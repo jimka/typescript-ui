@@ -1,11 +1,13 @@
-// Coverage for Legend's static `position: static` moving from an imperative
-// constructor setter into a registered `ownClassStyleDefaults` class default
-// — a Style Audit dedup finding (`diagnostics/StyleAudit.ts`). Legend is the
-// first class to author `position` through `ownClassStyleDefaults`, which
-// required widening `ClassStyleRules.ts`'s `resolveDeclarations` (previously
-// a hardcoded `Position.ABSOLUTE` literal that never consulted the bag) —
-// see that function's own comment. Conventions (idSelector/declarationsDuring)
-// copied from ToolBar.classStyleDefaults.test.ts.
+// Coverage for Legend's static `position: static` and `marginLeft` moving
+// from imperative constructor/applyStyle writes into a registered
+// `ownClassStyleDefaults` class default — a Style Audit dedup finding
+// (`diagnostics/StyleAudit.ts`). Legend is the first class to author
+// `position` through `ownClassStyleDefaults`, which required widening
+// `ClassStyleRules.ts`'s `resolveDeclarations` (previously a hardcoded
+// `Position.ABSOLUTE` literal that never consulted the bag) — see that
+// function's own comment. `marginLeft` later joined the same bag, adding a
+// truthy-gated conditional to `resolveDeclarations` instead. Conventions
+// (idSelector/declarationsDuring) copied from ToolBar.classStyleDefaults.test.ts.
 import { describe, it, expect, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
@@ -74,9 +76,14 @@ describe('Legend static style hoisting', () => {
             }
         }
         expect(classDeclarations.position).toBe('static');
+        expect(classDeclarations.marginLeft).toBe('10px');
 
-        // Negative half: no real "static" reaches the legend's own #id rule.
-        expect(declarations.position).toBeNull();
+        // Negative half: no real "static" or "marginLeft" reaches the
+        // legend's own #id rule. Both keys read back as absent (not
+        // present-with-`null`): once `marginLeft` leaves the `#id` rule, that
+        // rule holds nothing but `null` removals and is never materialised.
+        expect(declarations.position).toBeUndefined();
+        expect(declarations.marginLeft).toBeUndefined();
         expect(_ruleCacheHas('.Legend')).toBe(true);
         expect(legend.getPosition()).toBe('static');
     });

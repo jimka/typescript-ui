@@ -6188,7 +6188,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * class-tier-matching removal (see
      * plans/implemented/applystyle-flush-order-empty-rule-fix.md's Architecture
      * Decisions) — a subclass that only ever writes a real, always-present
-     * value (`Legend`'s `marginLeft`, `Markdown`'s `maxWidth`) has no need of
+     * value (`Markdown`'s `maxWidth`) has no need of
      * this hook and can keep overriding `applyStyle` directly, calling
      * `super.applyStyle()` first.
      */
