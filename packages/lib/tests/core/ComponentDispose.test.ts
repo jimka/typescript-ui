@@ -66,10 +66,18 @@ const BUSY_INDICATOR_SELECTOR = '.TabBusyIndicator';
 // any `Component` first legitimately sees it appear; not a per-instance leak.
 const INVISIBLE_STATE_SELECTOR = '.ts-ui-component.invisible';
 
+// `ProgressSpinnerArc`'s ring geometry (border/borderRadius) is likewise a
+// module-scoped, first-use, never-disposed class rule (misc-component-css-dedup.md)
+// — the same shape as `.TabBusyIndicator` above. The spinner-disposal test
+// below is this file's first render of a `ProgressSpinner`, so it legitimately
+// sees this appear; not a per-instance leak.
+const PROGRESS_SPINNER_ARC_SELECTOR = '.ProgressSpinnerArc';
+
 /** Rule-cache keys present now that were absent from `before`, excluding permanent shared rules. */
 function leakedKeys(before: Set<string>): string[] {
     return _ruleCacheKeys().filter((key) =>
-        !before.has(key) && key !== FRAMEWORK_SELECTOR && key !== BUSY_INDICATOR_SELECTOR && key !== INVISIBLE_STATE_SELECTOR);
+        !before.has(key) && key !== FRAMEWORK_SELECTOR && key !== BUSY_INDICATOR_SELECTOR && key !== INVISIBLE_STATE_SELECTOR
+        && key !== PROGRESS_SPINNER_ARC_SELECTOR);
 }
 
 /**
