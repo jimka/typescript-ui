@@ -217,6 +217,41 @@ Every other purely-internal CSS dedup in this Style-Audit batch adds such an ent
 
 ---
 
+## Implementation Notes
+
+The code and tests match the plan's design exactly, with no deviation from
+`## Internal Structure` or `## Architecture Decisions`.
+
+**Manual verification (`## Verification`'s required browser check, `##
+Expected Behaviour` row 7) was performed** against a dev server started from
+this worktree (`npx vite --port 8021` from `packages/lib`, confirmed via
+`readlink /proc/<pid>/cwd`), driven live through `chrome-devtools` MCP tools,
+covering the `Misc` demo panel's three `NumberSpinner` instances across all
+three shipped themes (modern, classic, dark):
+
+- In each theme, `document.styleSheets` was scanned directly for any rule
+  whose selector matches `SpinButton`+`pressed`: exactly one exists,
+  `.SpinButton.pressed { box-shadow: none; }`, unchanged across the three
+  theme switches (expected — `"none"` is a constant, not a themed token). A
+  second scan, keyed off the six live `.SpinButtonUp`/`.SpinButtonDown`
+  elements' own ids, confirmed no `#id.pressed` rule exists for any of them
+  — full dedup, matching row 3's `_ruleCacheHas` assertions live rather than
+  only in the recording-DOM test harness.
+- A `pointerdown`/`pointerup` dispatch on one spin button (`Button`'s actual
+  pressed-state mechanism — see `_onPointerDown`/`_onPointerRelease`,
+  `Button.ts:601-605`/`653-665`, not `mousedown`/`mouseup`) confirmed the
+  element gains the `pressed` DOM class and `getComputedStyle(...).boxShadow`
+  reads `"none"` while pressed, then loses the class on release — repeated
+  in all three themes with the same result each time.
+- The Style Audit panel, opened after visiting the `Misc` panel in all three
+  themes, shows no duplicated `box-shadow: none` row for `Button`/
+  `SpinButton` anywhere in its ranked list — the pre-existing unrelated
+  `Button` min/max-size duplicate (6 instances, `## Non-Goals`) is still
+  present and unaffected, confirming the fix removed exactly the targeted
+  duplicate and nothing else.
+
+---
+
 ## Notes
 
 [^order-is-whole-list]: `ownStyleStates` splits into two different rules for order and for content, and only the content half is inherited. `resolveStyleStates` ([ClassStyleRules.ts:798](packages/lib/src/typescript/lib/core/ClassStyleRules.ts#L798)) walks up the prototype chain to the *nearest* class with an own-property `ownStyleStates` and takes that class's entire list as the order for the whole subtree — it never merges lists. `guardedSuffixFor` ([:629](packages/lib/src/typescript/lib/core/ClassStyleRules.ts#L629)) then derives each entry's `:not(...)` chain from its index in that one list, and `restingGuardSuffix` ([:864](packages/lib/src/typescript/lib/core/ClassStyleRules.ts#L864)) joins every entry into the resting tier's own guard. A `SpinButton` list holding only `.pressed` would therefore resolve `SpinButton`'s states as `[.pressed]`, drop `:hover`'s class-tier layer and its dedup, and shrink the resting guard to `:not(.pressed)` — letting a per-instance resting write outrank `.Button:hover:not(.pressed)` again. Content, by contrast, *is* per-level: `resolveStateLevels` ([:696](packages/lib/src/typescript/lib/core/ClassStyleRules.ts#L696)) recurses to the parent, overlays this level's `extract` result on the parent's authored bag, and inserts a rule only for the delta — which is why the `.pressed` entry needs to name `shadow` alone.
