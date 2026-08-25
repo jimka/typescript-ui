@@ -1,10 +1,80 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DefaultCell } from "~/component/table/cell/Default.js";
+import { StringRenderer } from "~/component/table/cell/renderer/String.js";
+import { SelectableText, SelectableTextOptions } from "~/component/input/SelectableText.js";
+import { Text } from "~/component/input/Text.js";
+import type { ComponentOptions } from "~/core/Component.js";
 import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
 import { callable } from "~/core/Callable.js";
+import { type StyleBag } from "~/core/ClassStyleRules.js";
+
+// Same theme-tracking header font-size token `HeaderCell`'s own text uses
+// (component/table/cell/Header.ts's HEADER_CELL_TEXT_FONT_SIZE_VAR/_RULE) —
+// duplicated locally since the two files share no existing import
+// relationship and these are two short literals.
+const PARENT_HEADER_CELL_TEXT_FONT_SIZE_VAR = "--ts-ui-table-header-font-size";
+
+// The CSS-ready form of PARENT_HEADER_CELL_TEXT_FONT_SIZE_VAR — its "14px"
+// fallback is Text's own base font-size default (unmodified here), matching
+// exactly what Text.setFontSize resolves the constructor's call below to.
+const PARENT_HEADER_CELL_TEXT_FONT_SIZE_RULE = `var(${PARENT_HEADER_CELL_TEXT_FONT_SIZE_VAR}, 14px)`;
+
+const _defaultParentHeaderCellTextOptions: Partial<SelectableTextOptions> = {
+    userSelect: "none",
+    fontWeight: "bold",
+    textAlign:  "center",
+};
+
+/**
+ * {@link ParentHeaderCell}'s own group-label text. Extends `SelectableText`
+ * (not the base `Text`) so it keeps the same `cursor: "text"` every table
+ * cell's label already gets, deviating only on `userSelect` and the
+ * bold/centered/`--ts-ui-table-header-font-size` font — mirrors
+ * `HeaderCellText` (component/table/cell/Header.ts) plus a centered
+ * `textAlign`, which that class doesn't need.
+ */
+class ParentHeaderCellText extends SelectableText {
+    protected static readonly ownClassStyleDefaults: StyleBag = {
+        userSelect: "none",
+        font: {
+            ...Text.ownClassStyleDefaults.font,
+            fontWeight: "bold",
+            fontSize:   PARENT_HEADER_CELL_TEXT_FONT_SIZE_RULE,
+            textAlign:  "center",
+        },
+    };
+
+    constructor() {
+        super(undefined, undefined, _defaultParentHeaderCellTextOptions);
+        this.setFontSize(PARENT_HEADER_CELL_TEXT_FONT_SIZE_VAR);
+        this.setFontWeight("bold");
+        this.setTextAlign("center");
+        this.setUserSelect("none");
+    }
+}
+
+const _defaultParentHeaderCellRendererOptions: Partial<ComponentOptions> = {
+    cursor:     "default",
+    userSelect: "none",
+};
+
+/**
+ * {@link ParentHeaderCell}'s own text renderer. A group label is chrome, not
+ * data, so it stays unselectable with a default cursor — mirrors
+ * `HeaderCellRenderer` (component/table/cell/Header.ts).
+ */
+class ParentHeaderCellRenderer extends StringRenderer {
+    constructor() {
+        super(_defaultParentHeaderCellRendererOptions);
+    }
+
+    protected override createText(): Text {
+        return new ParentHeaderCellText();
+    }
+}
 
 /**
  * A non-interactive header cell that labels a contiguous run of columns in
@@ -44,7 +114,7 @@ class ParentHeaderCell extends DefaultCell {
      *   the `Header` parent.
      */
     constructor(text: string, color: string | null) {
-        super("th");
+        super("th", new ParentHeaderCellRenderer());
 
         this._text  = text;
         this._color = color;
@@ -52,13 +122,7 @@ class ParentHeaderCell extends DefaultCell {
         this.getAria().setRole("columnheader");
 
         const renderer = this.getRenderer();
-        renderer.getText().setFontSize("--ts-ui-table-header-font-size");
-        renderer.getText().setFontWeight("bold");
-        renderer.getText().setTextAlign("center");
         renderer.getText().setText(text);
-        renderer.setUserSelect("none");
-        renderer.getText().setUserSelect("none");
-        renderer.setCursor("default");
 
         // The cell's `Cell` base writes `var(--ts-ui-table-cell-bg, …)` into
         // backgroundColor; override to either the consumer-supplied
