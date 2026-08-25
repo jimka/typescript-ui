@@ -220,6 +220,71 @@ No exported symbol added, removed, or changed in signature — `SpinButtonUp`/`S
 
 ---
 
+## Implementation Notes
+
+Step 3's test file (`NumberSpinner.spinButtonClassStyleHoisting.test.ts`)
+needed two adjustments beyond what `## Ordered Implementation Steps` /
+`## Expected Behaviour` literally describe, both because the actual
+hierarchy-aware class-tier mechanism (`ClassStyleRules.ts`'s
+`deviationsFrom`, cited in `## Architecture Decisions`) behaves more
+precisely than a first read of Expected Behaviour rows 1-3 suggests — the
+code matches the plan's design exactly; only the *test's* verification
+technique had to account for the mechanism's actual write pattern:
+
+- **`.SpinButtonUp`/`.SpinButtonDown`'s own class rule carries only
+  `border-top`, not the full four-longhand body.** `borderRight`/
+  `borderBottom`/`borderLeft` resolve to `"none"` at both `.SpinButton`'s
+  level and `.SpinButtonUp`/`.SpinButtonDown`'s level, so
+  `deviationsFrom` correctly omits them from the subclass's own rule —
+  they're supplied by ordinary CSS inheritance from `.SpinButton`'s
+  already-published rule instead. The *effective*, fully-resolved
+  four-longhand value (`## Expected Behaviour` rows 2/3) is real and
+  correct, but only observable by reading `.SpinButton`'s rule and each
+  subclass's own rule together, not `.SpinButtonUp`/`.SpinButtonDown`
+  alone. The test captures both in one pass to verify this.
+- **A second instance's own `#id` rule writes an explicit `null` per
+  border longhand, not an omitted key.** `border` is part of `Button`'s
+  always-dispatched chrome group (`Component.applyChromeOptions`), so
+  every `SpinButtonUp`/`SpinButtonDown` instance calls `setBorder(...)`
+  during construction regardless of whether the value matches the class
+  default. `Component.flushStyleBag()` (footnote `[^flush-fallback]`)
+  therefore queues a `null` per longhand when the instance's declared
+  value matches the resolved class-tier value, rather than skipping the
+  key outright. This is still "no real declaration" — a no-op removal,
+  not a duplicated string — matching `## Expected Behaviour` row 1's
+  intent; the test asserts each key is `null` (or absent), not strictly
+  absent.
+
+**Manual verification (`## Verification`'s required browser check) was
+performed** against a dev server started from this worktree (`npx vite
+--port 8017` from `packages/lib`, confirmed via `readlink
+/proc/<pid>/cwd`), driven live through `chrome-devtools` MCP tools, covering
+`## Expected Behaviour` row 5 across all three shipped themes (modern,
+classic, dark) via the `packages/lib` demo app's Misc panel (three
+`NumberSpinner` instances):
+
+- In each theme, `getComputedStyle` on `.SpinButtonUp`/`.SpinButtonDown`
+  confirmed `border-top: 1px solid rgba(0, 0, 0, 0)` (up, transparent) and
+  `border-top: 1px solid <themed divider>` (down) for all three instances —
+  modern/classic both resolve the divider to the `rgb(180, 180, 180)`
+  fallback (neither theme defines `--ts-ui-spinner-divider`), and dark
+  resolves it to that theme's own override, `rgb(80, 80, 80)`.
+  `border-right`/`border-bottom`/`border-left` were confirmed `none` in all
+  cases.
+- The Style Audit panel, re-opened after visiting the Misc panel in all
+  three themes, confirmed the fix directly: the pre-existing two
+  duplicate-body rows for the spin buttons (`min`/`max` 18×11px *plus*
+  `border-top`, one per role) are now a single merged row — `component:
+  Button`, body `{ min-width: 18px; min-height: 11px; max-width: 18px;
+  max-height: 11px; }`, count 6 (3 spinners × 2 buttons) — with no
+  `border-top` in the body. Collapsing from two rows to one (rather than
+  just losing `border-top` from each) is a direct consequence of `up` and
+  `down`'s `#id` bodies no longer differing at all once `border-top` moved
+  to the class tier; the min/max-size portion remains, exactly as
+  `## Non-Goals` anticipates.
+
+---
+
 ## Notes
 
 [^linheight-runtime]: `Util.lineHeightPx()` ([Util.ts:174](packages/lib/src/typescript/lib/core/Util.ts#L174)) reads the document root font size (`rootFontSizePx()`) plus the theme's `--ts-ui-line-padding` custom property, both cached and explicitly documented as requiring `invalidateTextMetricsCache()` after a theme change to force a re-read ("The padding and root font size are cached; call `invalidateTextMetricsCache` after a theme change to force a re-read"). This is a JS-side cache with an explicit invalidation hook wired to `subscribeTheme` elsewhere in the codebase — a different, narrower cache than `ClassStyleRules.ts`'s own class-tier `Map`s, which have no invalidation hook at all. `SpinButton.updateSize()` re-reads `Util.lineHeightPx()` on every theme change (it is itself a `subscribeTheme` callback), so the *instance*'s own `minSize`/`maxSize` always reflects the current theme; it is only a *class-tier* default seeded from this value that would go stale, since nothing re-triggers `ensureClassStyleRule`'s cached-Map lookup on a theme change.
