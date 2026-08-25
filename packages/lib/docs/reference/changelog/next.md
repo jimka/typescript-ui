@@ -147,6 +147,17 @@ neither needs no change.
   tick. A resize, a column-set change, or a jump larger than the visible
   window still reconciles the whole window as before. No consumer action is
   needed.
+- **`SelectableListRow` no longer duplicates its fixed padding on every
+  instance's own CSS rule.** It now shares one CSS rule across every
+  instance in the app. Nothing changes visually; no consumer action needed.
+- **`TextField`, `TextArea`, `PasswordField`, `UsernameField`,
+  `AbstractPickerField` (`DateField`/`TimeField`/`DateTimeField`), and
+  `BulletedList`/`NumberedList` now render with the padding they were always
+  configured with, but which a resolver gap silently dropped.** Text fields
+  gain a 3px inset around their typed text on every side; the marker-list
+  classes are unaffected in practice (their layout already accounted for the
+  padding). If a consumer's own stylesheet compensated for the
+  previously-missing padding, that compensation should be revisited.
 
 ### Table
 
