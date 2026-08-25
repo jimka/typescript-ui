@@ -322,52 +322,6 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
-     * Applies (or, in overlay mode, skips) this panel's own element's
-     * per-axis `overflow` for `mode`. In overlay mode real scrolling happens
-     * entirely on the separate inner element `installOverlayScrollbars`
-     * creates — the panel's own element never scrolls (content is out of
-     * flow) — so this write is provably inert there and would only
-     * duplicate the same value onto every overlay-mode panel's own `#id`
-     * rule; only a `"native"` panel needs its own element's overflow set.
-     *
-     * Called from both `setAutoScroll` and `setScrollbarStyle`: the
-     * construction-time options cascade dispatches `setAutoScroll` before
-     * `setScrollbarStyle` resolves the final `scrollbarStyle` (the latter's
-     * own install path needs `_autoScroll` already set), so a single options
-     * bag combining both fields — e.g. `{ autoScroll: "both", scrollbarStyle:
-     * "native" }` — would otherwise see `setAutoScroll` skip the write while
-     * `scrollbarStyle` still resolves to its "overlay" fallback, then never
-     * get a second chance to apply it. Calling this from both setters again
-     * (idempotent either way) covers whichever one learns the final resolved
-     * `scrollbarStyle` last.
-     *
-     * @param mode - The {@link AutoScrollMode} to translate into `overflow`.
-     */
-    private applyOwnOverflow(mode: AutoScrollMode): void {
-        if (this.getScrollbarStyle() === "overlay") {
-            return;
-        }
-
-        switch (mode) {
-            case "none":
-                this.setOverflowX("hidden").setOverflowY("hidden");
-                break;
-            case "auto":
-                this.setOverflowX("auto").setOverflowY("auto");
-                break;
-            case "x":
-                this.setOverflowX("auto").setOverflowY("hidden");
-                break;
-            case "y":
-                this.setOverflowX("hidden").setOverflowY("auto");
-                break;
-            case "both":
-                this.setOverflowX("scroll").setOverflowY("scroll");
-                break;
-        }
-    }
-
-    /**
      * Selects the panel's native scroll behaviour. Translates `mode` to
      * per-axis `overflow` writes via [`Component.setOverflowX`](/api/core/classes/Component#setoverflowx) /
      * [`Component.setOverflowY`](/api/core/classes/Component#setoverflowy).
@@ -393,7 +347,23 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     setAutoScroll(mode: AutoScrollMode): this {
         this._autoScroll = mode;
 
-        this.applyOwnOverflow(mode);
+        switch (mode) {
+            case "none":
+                this.setOverflowX("hidden").setOverflowY("hidden");
+                break;
+            case "auto":
+                this.setOverflowX("auto").setOverflowY("auto");
+                break;
+            case "x":
+                this.setOverflowX("auto").setOverflowY("hidden");
+                break;
+            case "y":
+                this.setOverflowX("hidden").setOverflowY("auto");
+                break;
+            case "both":
+                this.setOverflowX("scroll").setOverflowY("scroll");
+                break;
+        }
 
         // Mode switched — drop any cached gutter from the previous mode so
         // the next `doLayout` re-measures against the new overflow setting.
@@ -503,15 +473,6 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      */
     setScrollbarStyle(style: ScrollbarStyle): this {
         this._scrollbarStyle = style;
-
-        // Covers the construction-time ordering gap `applyOwnOverflow`'s own
-        // doc comment explains: `setAutoScroll` (which normally applies this)
-        // already ran against the pre-resolution "overlay" fallback when both
-        // fields arrive in one options bag, so re-apply here now that
-        // `scrollbarStyle` has its final value. A no-op call when nothing
-        // actually changed (still overlay, or the native write already
-        // matches).
-        this.applyOwnOverflow(this.getAutoScroll());
 
         this.refreshOverlayScrollbars();
 
@@ -1172,9 +1133,8 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
     /**
      * Tears the overlay scrollbar down: unwires the native scroll listener,
-     * disposes both bars, removes the sticky host, un-hides the native bar
-     * (only when an overlay actually existed to undo — see below), and
-     * clears any reserved gutter. Each step is guarded so this is safe to
+     * disposes both bars, removes the sticky host, un-hides the native bar,
+     * and clears any reserved gutter. Each step is guarded so this is safe to
      * call before the overlay was ever created (e.g. during the construction
      * cascade). Disposing (rather than only detaching) is required because
      * each bar is appended straight onto the panel element with a raw
@@ -1220,18 +1180,9 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             // is needed for any future re-install (mirrors `_shadowOverlayStyle`
             // in `removeScrollShadows`).
             this._overlayScrollStyle = new InlineStyle();
-
-            // Only `installOverlayScrollbars` (reached exclusively in overlay
-            // mode) ever hides the native bar, so restoring it only makes a
-            // real difference when this teardown is undoing that — i.e. an
-            // inner scroll element actually existed. `refreshOverlayScrollbars`
-            // also reaches this method for a panel that has always been
-            // "native" (or "none") — nested inside this `if` skips the
-            // otherwise-inert restore write on every one of those calls,
-            // instead of repeating an identical `scrollbar-width: null`
-            // declaration on every such panel's own #id rule.
-            this.setNativeScrollbarHidden(false);
         }
+
+        this.setNativeScrollbarHidden(false);
 
         // Unconditional (rather than gated on the previous value, as
         // `setAutoScroll`'s native-path gutter-clear is): `setLayoutManager`
