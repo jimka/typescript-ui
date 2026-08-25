@@ -18,27 +18,47 @@ export interface MenuBarButtonOptions extends ButtonOptions {
 /** Horizontal padding inside the button, folded into the defaults bag below. */
 const HORIZONTAL_PAD = 10;
 
+/** Hover highlight token, shared by the defaults bag, `ownStyleStates`' `:hover` entry, and `setActive`. */
+const MENU_BAR_BUTTON_HOVER_BG = "var(--ts-ui-menu-bar-btn-hover-bg, rgba(30, 100, 200, 0.10))";
+
 /**
  * User-overridable visual defaults forwarded to `super` via the third
  * constructor arg. The cascade in `Component`'s constructor merges these
  * over Button's own defaults and dispatches each setter once with the
  * final value, so any field the caller supplied wins.
+ *
+ * The resting chrome fields (`backgroundImage` / `border` / `borderRadius` /
+ * `shadow`) declare the flat label-shaped surface the old imperative flag
+ * used to compute — see plans/menubarbutton-chromeless-migration.md's
+ * Architecture Decisions for why declared chrome dedupes and that flag
+ * cannot. `borderRadius: undefined` is an explicit key, not an omission: it
+ * suppresses Button's own radius default through the spread merge.
+ *
+ * The four `pressedX` fields restate this class's own resting values, so
+ * pressing a menu-bar button shows no visual change — exactly what
+ * `pinPressedToResting()` produced under the old flag. The three `hoverX`
+ * fields keep the menubar highlight while neutralising Button's raised hover
+ * gradient and shadow, which `ownStyleStates`' merge would otherwise inherit.
  */
 const _defaultMenuBarButtonOptions: Partial<MenuBarButtonOptions> = {
-    backgroundColor: "var(--ts-ui-menu-bar-btn-bg, transparent)",
-    foregroundColor: "var(--ts-ui-menu-bar-btn-fg, inherit)",
-    cursor:          "pointer",
-    // chromeless suppresses Button's ridge border, drop shadow, gradient
-    // background, and the pressed/hover treatments — the menubar wants a flat
-    // label-shaped surface.
-    chromeless:      true,
+    backgroundColor:        "var(--ts-ui-menu-bar-btn-bg, transparent)",
+    foregroundColor:        "var(--ts-ui-menu-bar-btn-fg, inherit)",
+    cursor:                 "pointer",
+    backgroundImage:        "none",
+    border:                 "none",
+    borderRadius:           undefined,
+    shadow:                 "none",
+    pressedForegroundColor: "var(--ts-ui-menu-bar-btn-fg, inherit)",
+    pressedBackgroundColor: "var(--ts-ui-menu-bar-btn-bg, transparent)",
+    pressedBackgroundImage: "none",
+    pressedShadow:          "none",
+    hoverBackgroundColor:   MENU_BAR_BUTTON_HOVER_BG,
+    hoverBackgroundImage:   "none",
+    hoverShadow:            "none",
     // Horizontal padding inside the button — replaces Button's 4-px insets
     // default.
-    insets:          new Insets(0, HORIZONTAL_PAD, 0, HORIZONTAL_PAD),
+    insets:                 new Insets(0, HORIZONTAL_PAD, 0, HORIZONTAL_PAD),
 };
-
-/** Hover highlight token, shared by `ownStyleStates`' `:hover` entry and `setActive`. */
-const MENU_BAR_BUTTON_HOVER_BG = "var(--ts-ui-menu-bar-btn-hover-bg, rgba(30, 100, 200, 0.10))";
 
 /** Pixel gap between the leading glyph and the label in the content row. */
 const GLYPH_TEXT_GAP = 4;
@@ -54,9 +74,10 @@ export const MENU_BAR_BUTTON_HEIGHT: number = 28;
 /**
  * A single top-level button in a [`MenuBar`](/api/component/menubar/classes/MenuBar) (e.g. "File", "Edit").
  *
- * Extends [`Button`](/api/component/button/classes/Button) with `chromeless: true`
- * so the menubar's flat label-style appearance dodges Button's ridge border,
- * drop shadow, and gradient defaults. Reuses Button's content-row machinery
+ * Extends [`Button`](/api/component/button/classes/Button) and declares its own
+ * flat resting chrome (no border, shadow, or gradient) through
+ * `ownClassStyleDefaults`, pinning `.pressed` to those same resting values so
+ * a press shows no visual change. Reuses Button's content-row machinery
  * for the optional leading glyph + label pair, re-anchored to the west edge.
  * Adds menubar-specific ARIA (`role="menuitem"`, `aria-haspopup="menu"`,
  * `aria-expanded`) and the sticky `setActive` highlight for the
@@ -77,17 +98,29 @@ class MenuBarButton extends Button<MenuBarButtonOptions> {
     // from `.Button`'s.
     protected static readonly ownClassStyleDefaults: StyleBag = _defaultMenuBarButtonOptions;
 
-    // Restates Button's `.pressed` entry unchanged and declares a real
-    // `:hover` entry — the menubar-specific highlight used to ride Button's
-    // `styleRules` bag (a per-instance write with no class-tier comparison);
-    // this dedupes it onto the shared `.MenuBarButton:hover:not(.pressed)`
-    // class rule instead, the same shape `TabButton`'s own hover fix uses —
-    // see plans/implemented/button-variant-chrome-dedup.md.
+    // Both entries carry real content pinned to this class's own tokens.
+    // `.pressed` restates the resting values so a press shows no visual
+    // change (what `pinPressedToResting()` produced under the old imperative
+    // flag); `:hover` keeps the menubar highlight and neutralises the
+    // gradient/shadow Button's own `:hover` entry would otherwise merge in.
+    // See plans/menubarbutton-chromeless-migration.md.
     protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
-        Button.ownStyleStates[0],   // .pressed, restated unchanged
+        {
+            selector: ".pressed",
+            extract: (): StyleBag => ({
+                foregroundColor: _defaultMenuBarButtonOptions.pressedForegroundColor,
+                backgroundColor: _defaultMenuBarButtonOptions.pressedBackgroundColor,
+                backgroundImage: _defaultMenuBarButtonOptions.pressedBackgroundImage,
+                shadow:          _defaultMenuBarButtonOptions.pressedShadow,
+            }),
+        },
         {
             selector: ":hover",
-            extract: (): StyleBag => ({ backgroundColor: MENU_BAR_BUTTON_HOVER_BG }),
+            extract: (): StyleBag => ({
+                backgroundColor: _defaultMenuBarButtonOptions.hoverBackgroundColor,
+                backgroundImage: _defaultMenuBarButtonOptions.hoverBackgroundImage,
+                shadow:          _defaultMenuBarButtonOptions.hoverShadow,
+            }),
         },
     ];
 

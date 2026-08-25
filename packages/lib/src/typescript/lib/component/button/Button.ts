@@ -120,7 +120,7 @@ export interface ButtonOptions extends ComponentOptions {
      * that want only the cursor, color, and inset behaviour of `Button`
      * without the ridge border, drop shadow, and gradient background.
      * Runtime-toggle counterpart is `setChromeless`; read with
-     * `isChromeless`. Used by [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton).
+     * `isChromeless`.
      *
      * `applyOptions({ chromeless: true })` on a previously-chromeful button
      * writes the flag pure into `_options` and gates future chrome

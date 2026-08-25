@@ -304,8 +304,11 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'TabButton hoverBackgroundColor', resolve: () => new TabButton('x').getHoverBackgroundColor(),             expected: 'var(--ts-ui-tab-button-hover-bg, #c4c4cf)' },
     { label: 'TabButton hoverBackgroundImage', resolve: () => new TabButton('x').getHoverBackgroundImage(),             expected: 'var(--ts-ui-tab-button-hover-bg, #c4c4cf)' },
     { label: 'TabButton hoverShadow',        resolve: () => new TabButton('x').getHoverShadow(),                        expected: 'none' },
-    { label: 'MenuBarButton chromeless',     resolve: () => new MenuBarButton('File', NOOP, NOOP).isChromeless(),       expected: true },
     { label: 'MenuBarButton insets',         resolve: () => insetsTuple(new MenuBarButton('File', NOOP, NOOP).getInsets()), expected: [0, 10, 0, 10] },
+    { label: 'MenuBarButton getShadow() (rendered)',            resolve: () => { const b = new MenuBarButton('File', NOOP, NOOP); b.getElement(true); return b.getShadow(); }, expected: 'none' },
+    { label: 'MenuBarButton getBackgroundImage() (rendered)',   resolve: () => { const b = new MenuBarButton('File', NOOP, NOOP); b.getElement(true); return b.getBackgroundImage(); }, expected: 'none' },
+    { label: 'MenuBarButton getPressedBackgroundColor() (rendered)', resolve: () => { const b = new MenuBarButton('File', NOOP, NOOP); b.getElement(true); return b.getPressedBackgroundColor(); }, expected: 'var(--ts-ui-menu-bar-btn-bg, transparent)' },
+    { label: 'MenuBarButton getHoverBackgroundColor() (rendered)',  resolve: () => { const b = new MenuBarButton('File', NOOP, NOOP); b.getElement(true); return b.getHoverBackgroundColor(); }, expected: 'var(--ts-ui-menu-bar-btn-hover-bg, rgba(30, 100, 200, 0.10))' },
     // Render before reading — before first render, `styleLayers()` still uses
     // the `getClassStyleDefaults()` virtual layer, which resolves this
     // correctly even against the pre-fix defect (see the plan's `[^leaf-loss]`
