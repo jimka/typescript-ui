@@ -23,6 +23,7 @@ import { TextField } from '~/component/input/TextField';
 import { NumberSpinner } from '~/component/input/NumberSpinner';
 import { NumberEditor } from '~/component/table/cell/editor/Number';
 import { Link } from '~/component/input/Link';
+import { PickerButton } from '~/component/input/PickerButton';
 import { NumberedList } from '~/component/list/NumberedList';
 import { NumberedListItemStyle } from '~/component/list/NumberedListItemStyle';
 import { TabCloseButton } from '~/component/button/TabCloseButton';
@@ -304,6 +305,8 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'TabCloseButton foregroundColor (rendered)', resolve: () => { const b = new TabCloseButton(); b.getElement(true); return b.getForegroundColor(); }, expected: 'var(--ts-ui-close-button-fg, #555)' },
     { label: 'TabCloseButton backgroundColor (rendered)', resolve: () => { const b = new TabCloseButton(); b.getElement(true); return b.getBackgroundColor(); }, expected: 'transparent' },
     { label: 'TabCloseButton borderRadius (rendered)',    resolve: () => { const b = new TabCloseButton(); b.getElement(true); return b.getBorderRadius(); },    expected: '3px' },
+    { label: 'PickerButton backgroundColor (rendered)',   resolve: () => { const b = new PickerButton(); b.getElement(true); return b.getBackgroundColor(); }, expected: 'transparent' },
+    { label: 'PickerButton shadow (rendered)',            resolve: () => { const b = new PickerButton(); b.getElement(true); return b.getShadow(); },           expected: 'none' },
     // ToggleButton itself has no backgroundColor default of its own; the value
     // below now comes from `Button`'s own `_defaultButtonOptions.backgroundColor`
     // entry — this plan's fix folds it through the getter instead of an
