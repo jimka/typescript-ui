@@ -230,6 +230,65 @@ protected destructor(): void {
 
 ---
 
+## Implementation Notes
+
+**Root cause found (Branch B):** `Button._titleColumn` (`Button.ts:790`), plus its lazily-created
+siblings `_innerRow`/`_outerColumn` and the lazily-created `_description`, are only *sometimes*
+registered children of `_content`. `_rebuildContentRow()` empties `_content`'s tree on every rebuild
+and selectively re-populates it based on the button's current description/orientation topology — for
+any button that never shows a description (the common case, including `TableHeaderMenuButton`, the
+table header's column-options trigger), `_titleColumn` never becomes a registered child at all, so
+the base `Component.destructor()`'s recursive `_components` teardown never reaches it. Confirmed via
+the plan's stack-trace instrumentation technique: a zero-record `Table` construct/dispose cycle left
+exactly one leftover live construction whose stack terminated at `Header.ts:317` → `new
+TableHeaderMenuButton` → `Button`'s constructor line `this._titleColumn = new Component();`.
+
+**Fix scope widened slightly beyond the single instrumented stack trace.** Step 6/7 evidenced
+`_titleColumn` specifically; reading `_rebuildContentRow()` in full (per `## Architecture Decisions`'
+"read the owning class's current construction and disposal code") showed `_innerRow`, `_outerColumn`,
+and `_description` share the exact same "conditionally detached, no owner disposal" shape in the same
+method — same mechanism, same owner, same one-line idempotent fix. Disposing only `_titleColumn`
+while knowingly leaving three structurally-identical siblings unfixed in the same commit would have
+been an incomplete patch, so `Button.destructor()` disposes all four.
+
+**Step 11's `dispose-full-teardown.test.ts` registry row was skipped, per the plan's own carve-out.**
+`_titleColumn` never acquires a DOM element in the failing topology (it's never added to the tree, so
+`getElement(true)` is never called on it) — the registry's stylesheet-rule-diff oracle (`_ruleCacheKeys`)
+is structurally blind to it regardless of whether a `Button` row exists, exactly as `## Architecture
+Decisions`' Branch B row anticipates ("if it never acquires an element, that registry's oracle cannot
+see it either way and a row there would prove nothing"). The regression coverage for this bug lives
+entirely in the new `Diagnostics.test.ts` case (raw counter deltas, not stylesheet residue). Left the
+file's re-derived `protected destructor(` count untouched too: it was already significantly stale
+before this change (comment says 35, `grep -rn '^\s*protected destructor(' packages/lib/src/typescript/lib`
+already returns 54 pre-fix) — a pre-existing gap the comment itself disclaims responsibility for
+("several later, unrelated plans... have added `destructor()` overrides without a corresponding row
+here... a pre-existing gap this plan did not introduce and did not close").
+
+**Diagnostics.test.ts case 10's methodology deviates from the plan's literal step-1/9 snippet.** The
+plan's illustrated before/after snapshot (captured *after* construction, *before* the select-loop/
+dispose) measures `M - K` (new constructions minus new destructions across that window), which
+evaluates to `leaks - N` where `N` is the live component count at the snapshot — dominated by `-N`
+regardless of leaks, so it can't distinguish a healthy cycle from a one-component leak by itself.
+The permanent test instead compares the *absolute* `componentsConstructed - componentsDestroyed`
+balance across consecutive full cycles (a healthy cycle contributes exactly 0 to that balance), which
+directly detects a per-cycle leak. It also needed a warm-up cycle (mirroring
+`dispose-full-teardown.test.ts`'s own warm-up-pass idiom) to absorb the Tooltip singleton's one-time,
+expected construction cost (any Button's `destructor()` calls `Tooltip.detach()` → `Tooltip.hide()`
+→ `Tooltip.getInstance()` unconditionally, even when the tooltip was never shown) out of the asserted
+per-cycle deltas — that singleton is intentionally never disposed, matching the same file's other
+process-global-state exemption.
+
+**No documentation/changelog commit** — matches `table-tab-close-residual-leak.md`'s own precedent
+for this exact class of fix and this plan's `## Non-Goals`.
+
+**Manual verification performed live**, per `## Expected Behaviour`: a worktree-local dev server
+(port 8019, separate from the user's own session on 8015) served this fix, and `window.bench
+.benchRowSelect()` was driven 13 times via `chrome-devtools` against the demo app's `DiagnosticsOverlay`.
+"Components" stayed flat at 821 throughout (constructed and destroyed both grew by identical amounts
+per batch), confirming the live symptom is gone.
+
+---
+
 ## Notes
 
 [^offline-risk]: The one place offline and live could legitimately diverge is text/geometry measurement: `Benchmark.mountTable` waits a real `requestAnimationFrame` and lets `TableLayout` run its first pass against real `getBoundingClientRect`/`measureText` results, while the offline harness's modelled `DOM.source` answers those calls synthetically from `installTestDOM`'s font-metrics fixture. If step 1's offline repro shows a zero delta where the live benchmark shows +1, the cause is somewhere in that measurement path specifically, and step 2's live fallback is not just a convenience — it is required to reach the actual bug.
