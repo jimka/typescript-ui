@@ -19,6 +19,7 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { PickerCell, PickerColumn } from "~/component/input/PickerColumn.js";
 import { isScrollbarTarget } from "~/component/container/Scrollbar.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
+import { ThemeManager } from "~/core/Theme.js";
 
 Glyph.register(chevron_left);
 Glyph.register(chevron_right);
@@ -41,8 +42,16 @@ const DAY_GRID_HEIGHT: number = 6 * CELL_HEIGHT + 5 * 2;
 /** Pixel gap between rows in the panel's outer VBox (header, weekday, grid, …). */
 const ROOT_GAP:        number = 4;
 
-/** Pixel size of the chevron Glyph inside a `PickerNavButton`. The 24-px button cell holds the click target; the glyph just paints. */
-const GLYPH_PX:        number = 12;
+/**
+ * Square edge length used for the chevron glyph inside a `PickerNavButton` —
+ * the theme's `glyphSm` icon step (12px at the shipped base): a small icon
+ * inside the larger 24-px button cell that holds the click target. Read per
+ * call, not frozen in a module constant, so a theme that raises `scale.base`
+ * moves the icon with it.
+ */
+function navGlyphPx(): number {
+    return ThemeManager.getResolvedScale().glyphSm;
+}
 
 /**
  * Index of the day-grid (or year-scroller) slot inside `_root`'s children
@@ -181,7 +190,8 @@ class PickerNavButton extends Component {
         glyph.setPointerEvents("none");
         // Constrain the glyph so the chevron stays a visual icon — the
         // surrounding 24-px button cell holds the click target.
-        glyph.setPreferredSize({ width: GLYPH_PX, height: GLYPH_PX });
+        const glyphPx = navGlyphPx();
+        glyph.setPreferredSize({ width: glyphPx, height: glyphPx });
         this.addComponent(glyph);
 
         Event.addListener(this, "pointerdown", { prevent: true, handler: this.onPointerDown });
@@ -1615,7 +1625,7 @@ export {
     CELL_HEIGHT,
     DAY_GRID_HEIGHT,
     ROOT_GAP,
-    GLYPH_PX,
+    navGlyphPx,
     DAY_GRID_INDEX,
     DEFAULT_YEAR_SPAN_BACK,
     DEFAULT_YEAR_SPAN_FORWARD,
