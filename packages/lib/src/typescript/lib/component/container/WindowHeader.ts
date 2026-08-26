@@ -7,6 +7,9 @@ import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
+import type { StyleTrait } from "~/core/ClassStyleRules.js";
+import { GLYPH_MD_INK_TRAIT } from "~/core/StyleTraits.js";
+import { UNBOUNDED } from "~/primitive/Size.js";
 import { HBox } from "~/layout/HBox.js";
 import { Fit } from "~/layout/Fit.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -45,37 +48,36 @@ export interface WindowHeaderOptions extends HeaderOptions {
     glyph?:       string;
 }
 
-// The square size the title glyph's ink resolves to — the theme's `glyphMd`
-// icon step (14x14 at the shipped base). Resolved per construction rather
-// than frozen in a module constant, so a `setTheme` that runs before a
-// WindowHeaderTitleGlyph is built is honoured. WindowHeader's own
-// constructor/updatePreferredSize re-pins compute this independently via
-// resolveTitleGlyphInk(), so this is a hint the render-time reconciliation
-// checks against, not a hard override — matching ButtonIconGlyph's own
-// default.
-function windowHeaderTitleGlyphSize(): { width: number; height: number } {
-    const px = ThemeManager.getResolvedScale().glyphMd;
-
-    return { width: px, height: px };
-}
+// Cancels `Glyph`'s own glyphLg-sized minSize/maxSize default (see
+// `glyphDefaultSize()` in Glyph.ts), which would otherwise still deviate from
+// the framework baseline and reinstate a `.WindowHeaderTitleGlyph` class rule
+// carrying the wrong (glyphLg, not glyphMd) size. These values resolve to
+// exactly the framework's own minWidth/minHeight ("0px") and maxWidth/
+// maxHeight ("none"), so this class contributes no CSS deviation of its own —
+// GLYPH_MD_INK_TRAIT alone supplies the shared size, and `updatePreferredSize`
+// still pins the real per-instance value on top of it every render.
+const NO_OWN_SIZE_DEFAULT: Partial<GlyphOptions> = {
+    minSize: { width: 0, height: 0 },
+    maxSize: { width: UNBOUNDED, height: UNBOUNDED },
+};
 
 /**
- * The leading icon inside a {@link WindowHeader}'s title row. `minSize`/
- * `maxSize` are a class default matching the title-glyph ink size under the
- * shipped theme, so every window's title icon shares one
- * `.WindowHeaderTitleGlyph` CSS rule instead of repeating it.
+ * The leading icon inside a {@link WindowHeader}'s title row. Opts into
+ * `GLYPH_MD_INK_TRAIT`, so every window's title icon shares one CSS rule
+ * with `ComboBoxCaretGlyph`'s chevron instead of each repeating the same
+ * theme-matched size on its own class rule.
  */
 class WindowHeaderTitleGlyph extends Glyph {
+    protected static readonly ownStyleTraits: readonly StyleTrait[] = [GLYPH_MD_INK_TRAIT];
+
     /**
      * @param name - The glyph to render.
      * @param subclassDefaults - Per-subclass default bag layered over this
      *   class's defaults; forwarded so a subclass can seed a default without
-     *   editing `windowHeaderTitleGlyphSize()`.
+     *   editing this constant.
      */
     constructor(name: string, subclassDefaults?: Partial<GlyphOptions>) {
-        const size = windowHeaderTitleGlyphSize();
-
-        super(name, undefined, { minSize: size, maxSize: size, ...(subclassDefaults ?? {}) });
+        super(name, undefined, { ...NO_OWN_SIZE_DEFAULT, ...(subclassDefaults ?? {}) });
     }
 }
 

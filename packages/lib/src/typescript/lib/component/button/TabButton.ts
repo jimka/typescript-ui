@@ -10,6 +10,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
 import { BorderOptions } from "~/primitive/Border.js";
 import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
+import { GLYPH_XS_INK_TRAIT } from "~/core/StyleTraits.js";
 
 /**
  * Construction-time options for {@link TabButton}.
@@ -340,7 +341,7 @@ class TabButton extends ToggleButton {
         closeButton.setWidth(closeScale.tabClose);
         closeButton.setHeight(closeScale.tabClose);
         closeButton.pinGlyphSize(closeScale.glyphXs);
-        closeButton.getGlyph()?.setStyleGroup("tab-close-glyph");
+        closeButton.getGlyph()?.setStyleTrait(GLYPH_XS_INK_TRAIT);
 
         // Overlay it on this button's own element rather than enrolling it in a
         // layout (which would stretch it over the whole tab); TabBar pins it to

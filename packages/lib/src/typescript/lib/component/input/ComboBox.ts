@@ -15,12 +15,13 @@ import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
 import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
 import { List } from "~/component/list/List.js";
 import { Insets } from "~/primitive/Insets.js";
+import { UNBOUNDED } from "~/primitive/Size.js";
 import { Fit } from "~/layout/Fit.js";
-import { Glyph } from "~/component/display/Glyph.js";
+import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { chevron_down } from "~/glyphs/solid/chevron_down.js";
 import { callable } from "~/core/Callable.js";
 import type { StyleBag, StyleTrait } from "~/core/ClassStyleRules.js";
-import { INPUT_CHROME_TRAIT } from "~/core/StyleTraits.js";
+import { GLYPH_MD_INK_TRAIT, INPUT_CHROME_TRAIT } from "~/core/StyleTraits.js";
 import { ThemeManager } from "~/core/Theme.js";
 
 Glyph.register(chevron_down);
@@ -536,30 +537,30 @@ class ComboBoxLabel extends Component {
     }
 }
 
-// The square size ComboBoxCaret's own ink resolves to — the theme's
-// text-matched `glyphMd` icon step (14×14 at the shipped base). Resolved per
-// construction rather than frozen in a module constant, so a `setTheme` that
-// runs before a ComboBoxCaretGlyph is built is honoured. ComboBoxCaret's
-// constructor computes this independently (it needs the live value to size
-// its own box, not just the glyph), so this is a hint the render-time
-// reconciliation checks against, not a hard override — matching
-// ButtonIconGlyph's own default.
-function comboBoxCaretGlyphSize(): { width: number; height: number } {
-    const px = ThemeManager.getResolvedScale().glyphMd;
-
-    return { width: px, height: px };
-}
+// Cancels `Glyph`'s own glyphLg-sized minSize/maxSize default (see
+// `glyphDefaultSize()` in Glyph.ts), which would otherwise still deviate from
+// the framework baseline and reinstate a `.ComboBoxCaretGlyph` class rule
+// carrying the wrong (glyphLg, not glyphMd) size. These values resolve to
+// exactly the framework's own minWidth/minHeight ("0px") and maxWidth/
+// maxHeight ("none"), so this class contributes no CSS deviation of its own —
+// GLYPH_MD_INK_TRAIT alone supplies the shared size, and `ComboBoxCaret`'s own
+// constructor still pins the real per-instance value on top of it.
+const NO_OWN_SIZE_DEFAULT: Partial<GlyphOptions> = {
+    minSize: { width: 0, height: 0 },
+    maxSize: { width: UNBOUNDED, height: UNBOUNDED },
+};
 
 /**
- * The chevron glyph inside a {@link ComboBoxCaret}. `minSize`/`maxSize` are
- * a class default matching the caret's own ink size, so every ComboBox's
- * chevron shares one `.ComboBoxCaretGlyph` CSS rule instead of repeating it.
+ * The chevron glyph inside a {@link ComboBoxCaret}. Opts into
+ * `GLYPH_MD_INK_TRAIT`, so every ComboBox's chevron shares one CSS rule
+ * with `WindowHeaderTitleGlyph`'s title icon instead of each repeating the
+ * same theme-matched size on its own class rule.
  */
 class ComboBoxCaretGlyph extends Glyph {
-    constructor() {
-        const size = comboBoxCaretGlyphSize();
+    protected static readonly ownStyleTraits: readonly StyleTrait[] = [GLYPH_MD_INK_TRAIT];
 
-        super("chevron-down", undefined, { minSize: size, maxSize: size });
+    constructor() {
+        super("chevron-down", undefined, NO_OWN_SIZE_DEFAULT);
     }
 }
 

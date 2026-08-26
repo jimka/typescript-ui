@@ -143,10 +143,11 @@ describe('SpinButton class-hierarchy cascade', () => {
     });
 });
 
-// Plan glyph-icon-size-dedup.md, 8px group: SpinButton opts its chevron
-// glyph into the "spin-glyph" styleGroup right after pinGlyphSize(8), so
-// every SpinButton's chevron shares one .ButtonIconGlyph--spin-glyph rule
-// instead of each repeating the same size on its own #id rule.
+// Plan glyph-icon-trait-dedup.md: SpinButton opts its chevron glyph into
+// GLYPH_XS_INK_TRAIT right after pinGlyphSize(8), so every SpinButton's
+// chevron shares one .ts-ui-trait-glyph-xs-ink rule (also shared with
+// TabButton's close-button chevron) instead of each repeating the same
+// size on its own #id rule.
 describe('SpinButton chevron glyph style hoisting', () => {
     const DOM_CONFIG = {
         rootMountOffset: { x: 0, y: 0 },
@@ -166,7 +167,7 @@ describe('SpinButton chevron glyph style hoisting', () => {
         return '#' + DOM.source.escapeSelector(component.getId());
     }
 
-    it("a second SpinButton's chevron glyph writes no size declaration to its own #id rule, and the shared .ButtonIconGlyph--spin-glyph group rule exists", () => {
+    it("a second SpinButton's chevron glyph writes no size declaration to its own #id rule, and the shared trait rule exists", () => {
         // Seed the group with a first render before the capture window opens.
         new SpinButton('▲').getElement(true);
 
@@ -179,6 +180,6 @@ describe('SpinButton chevron glyph style hoisting', () => {
         expect(declarations.minHeight).toBeUndefined();
         expect(declarations.maxWidth).toBeUndefined();
         expect(declarations.maxHeight).toBeUndefined();
-        expect(_ruleCacheHas('.ButtonIconGlyph--spin-glyph')).toBe(true);
+        expect(_ruleCacheHas('.ts-ui-component.ts-ui-trait-glyph-xs-ink')).toBe(true);
     });
 });
