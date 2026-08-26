@@ -14,6 +14,10 @@
 // publish a shared rule and never write per-instance (reached through
 // `Component.ensureSharedStateRule`) — see
 // plans/implemented/state-tier-full-unification.md.
+//
+// Also backs the trait tier — a named, hand-authored `StyleTrait` bag any
+// number of unrelated classes or instances can opt into and share one CSS
+// rule for, ranked above the class tier — see plans/cross-class-style-groups.md.
 
 import { StyleRule }   from "~/core/StyleTarget.js";
 import { DOM }         from "~/core/DOM.js";
@@ -142,7 +146,7 @@ const FRAMEWORK_DEFAULTS: StyleBag = Object.freeze({
 const _bags: Map<Function, StyleLayer | null> = new Map();
 
 // Selector owner, so a name shared by two classes is detected.
-const _owners: Map<string, Function> = new Map();
+const _owners: Map<string, object> = new Map();
 
 // The `Component` class itself, registered once by `core/Component.ts` at
 // module load via `registerStyleChainRoot` — this module cannot import
@@ -1182,5 +1186,218 @@ export function ensureStyleGroupRule(
     byGroup.set(normalizedGroup, layer);
 
     return layer;
+}
+
+// ---------------------------------------------------------------------------
+// Trait tier — a named, hand-authored bag of declarations any number of
+// unrelated component classes, or a single instance, can opt into. Every
+// opt-in for the same trait shares exactly one generated CSS rule. See
+// plans/cross-class-style-groups.md.
+// ---------------------------------------------------------------------------
+
+/** A named bag of declarations any class or instance can opt into. */
+export interface StyleTrait {
+    /** Kebab-case, no whitespace; becomes the `ts-ui-trait-<name>` DOM class. */
+    readonly name: string;
+    readonly declarations: StyleBag;
+}
+
+/** Prefix of every trait DOM class token and selector. */
+export const TRAIT_CLASS_PREFIX = "ts-ui-trait-";
+
+/** `TRAIT_CLASS_PREFIX + trait.name`. */
+export function traitClassName(trait: StyleTrait): string {
+    return TRAIT_CLASS_PREFIX + trait.name;
+}
+
+/** A class with no declared traits shares this single frozen bag, so
+ *  `resolveTraitStyleDefaults` is a no-op allocation for every component in
+ *  the framework that never opts into a trait. */
+const EMPTY_TRAIT_DEFAULTS: StyleBag = Object.freeze({});
+
+interface StyleTraitLevelHost {
+    ownStyleTraits?: readonly StyleTrait[];
+}
+
+/** Own-property read of a class's `ownStyleTraits` field — `null` when this
+ *  exact class doesn't declare one, regardless of what an ancestor declares.
+ *  Mirrors `ownDefaultsOf`'s own-property discipline (see its own comment). */
+function ownTraitsOf(ctor: Function): readonly StyleTrait[] | null {
+    return Object.prototype.hasOwnProperty.call(ctor, "ownStyleTraits")
+        ? ((ctor as unknown as StyleTraitLevelHost).ownStyleTraits ?? null)
+        : null;
+}
+
+// (ctor -> resolved trait list). Memoizes the hierarchy walk so a deep chain
+// is only ever traversed once per constructor across the whole process.
+const _resolvedTraits: Map<Function, readonly StyleTrait[]> = new Map();
+
+/** Every trait `ctor` declares through `ownStyleTraits`, ancestor-most first,
+ *  deduped by name. Memoized. No CSS side effect. */
+export function resolveStyleTraits(rawCtor: Function): readonly StyleTrait[] {
+    const ctor = canonicalCtor(rawCtor);
+    const cached = _resolvedTraits.get(ctor);
+
+    if (cached) {
+        return cached;
+    }
+
+    const rawParentCtor = ctor === _rootCtor ? null : (Object.getPrototypeOf(ctor) as Function | null);
+    const parentCtor    = rawParentCtor ? canonicalCtor(rawParentCtor) : null;
+    const parentTraits  = (typeof parentCtor === "function" && parentCtor.name)
+        ? resolveStyleTraits(parentCtor)
+        : [];
+
+    const own = ownTraitsOf(ctor);
+
+    if (!own || own.length === 0) {
+        _resolvedTraits.set(ctor, parentTraits);
+
+        return parentTraits;
+    }
+
+    const seen   = new Set(parentTraits.map((trait) => trait.name));
+    const merged = [...parentTraits];
+
+    for (const trait of own) {
+        if (!seen.has(trait.name)) {
+            merged.push(trait);
+            seen.add(trait.name);
+        }
+    }
+
+    const resolved = Object.freeze(merged);
+    _resolvedTraits.set(ctor, resolved);
+
+    return resolved;
+}
+
+// (ctor -> merged declared bag). Memoizes the merge so it is only ever
+// computed once per constructor across the whole process.
+const _traitStyleDefaults: Map<Function, StyleBag> = new Map();
+
+/** Every declared class-level trait's `declarations`, merged nearest-class-last.
+ *  Memoized. No CSS side effect. */
+export function resolveTraitStyleDefaults(rawCtor: Function): StyleBag {
+    const ctor = canonicalCtor(rawCtor);
+    const cached = _traitStyleDefaults.get(ctor);
+
+    if (cached) {
+        return cached;
+    }
+
+    const traits = resolveStyleTraits(ctor);
+
+    if (traits.length === 0) {
+        _traitStyleDefaults.set(ctor, EMPTY_TRAIT_DEFAULTS);
+
+        return EMPTY_TRAIT_DEFAULTS;
+    }
+
+    let merged: StyleBag = {};
+    for (const trait of traits) {
+        merged = { ...merged, ...trait.declarations };
+    }
+
+    const frozen = Object.freeze(merged);
+    _traitStyleDefaults.set(ctor, frozen);
+
+    return frozen;
+}
+
+// (trait object -> its resolved layer, or null on a name collision). Keyed
+// on the `StyleTrait` object's own identity — not its `name` string — so two
+// *different* trait objects that happen to share a `name` each still get
+// their own fresh evaluation (and therefore their own `_owners` check); a
+// string-keyed cache would let the first trait's cached result shadow the
+// second's lookup before its collision could ever be detected.
+const _traitBags: Map<StyleTrait, StyleLayer | null> = new Map();
+
+/**
+ * Ensures the shared `.ts-ui-component.ts-ui-trait-<name>` rule exists for
+ * `trait` and returns its layer. The rule itself is keyed on the trait's own
+ * name — not a constructor — so two unrelated classes, or a class and an
+ * unrelated instance, sharing the same `StyleTrait` object share one rule
+ * for free. Mirrors {@link ensureStyleGroupRule}'s cache/insert shape.
+ *
+ * @param trait - The declared trait to ensure a rule for.
+ *
+ * @returns The trait's style layer, or `null` when `trait.name` is already
+ *   owned by a different `StyleTrait` object — the same name-collision
+ *   opt-out every other tier uses.
+ */
+export function ensureTraitStyleRule(trait: StyleTrait): StyleLayer | null {
+    const existing = _traitBags.get(trait);
+
+    if (existing !== undefined) {
+        return existing;
+    }
+
+    const className = traitClassName(trait);
+    const owner     = _owners.get(className);
+    if (owner !== undefined && owner !== trait) {
+        _traitBags.set(trait, null);
+
+        return null;
+    }
+    _owners.set(className, trait);
+
+    // Seeded with `FRAMEWORK_DEFAULTS` for the same reason `resolveClassLevel`
+    // needs it: an absent `minSize`/`overflow` in `trait.declarations` would
+    // otherwise resolve against `resolveDeclarations`'s own fallbacks
+    // (`"auto"`/`"visible"`), which diverge from the framework baseline
+    // (`"0px"`/`"hidden"`), producing spurious deviations.
+    const resolved   = resolveDeclarations({ ...FRAMEWORK_DEFAULTS, ...trait.declarations });
+    const deviations = deviationsFrom(resolved, FRAMEWORK_DECLARATIONS);
+
+    if (Object.keys(deviations).length > 0) {
+        // Built via `scope: "selector"` (a verbatim selector string), not
+        // `scope: "class"` — a trait's rule is a compound selector
+        // (`.ts-ui-component.ts-ui-trait-<name>`), pairing the universal
+        // component token with the trait's own token so its specificity
+        // `(0,2,0)` beats the class tier's `(0,1,0)` regardless of
+        // stylesheet order (see the plan's Architecture Decisions).
+        new StyleRule({
+            scope:  "selector",
+            name:   "." + COMPONENT_CLASS + "." + DOM.source.escapeSelector(className),
+            styles: deviations,
+        });
+    }
+
+    const layer = Object.freeze({ authored: trait.declarations, resolved: Object.freeze(deviations) });
+    _traitBags.set(trait, layer);
+
+    return layer;
+}
+
+/**
+ * The real CSS property keys `trait`'s rule would paint that also appear in
+ * `ctor`'s own top-priority (unguarded) declared state, if it has one — the
+ * one case where a trait's `(0,2,0)` selector can tie in specificity with a
+ * declared state's own bare `.ClassName.state` selector (see the plan's
+ * Architecture Decisions on the state-tier specificity tie). At most one
+ * entry in `resolveStyleStates(ctor)` can lack a `:not(...)` guard —
+ * `guardedSuffixFor`'s own loop only skips entirely for index `0` — so
+ * `.find` never needs to consider more than the one real candidate.
+ *
+ * @param ctor - The concrete component class constructor.
+ * @param trait - The trait to check for a conflict against `ctor`'s own
+ *   top-priority declared state.
+ *
+ * @returns The conflicting CSS property keys, or an empty array when there
+ *   is no conflict (including when `ctor` declares no unguarded state at
+ *   all). Pure — never throws, never inserts CSS.
+ */
+export function traitTopStateConflictKeys(ctor: Function, trait: StyleTrait): readonly string[] {
+    const bare = resolveStyleStates(ctor).find((state) => !state.guardedSuffix.includes(":not("));
+
+    if (!bare) {
+        return [];
+    }
+
+    const resolved   = resolveDeclarations({ ...FRAMEWORK_DEFAULTS, ...trait.declarations });
+    const deviations = deviationsFrom(resolved, FRAMEWORK_DECLARATIONS);
+
+    return Object.keys(bare.layer.resolved).filter((key) => key in deviations);
 }
 

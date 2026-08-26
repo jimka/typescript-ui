@@ -23,7 +23,7 @@ import { ThemeManager } from "~/core/Theme.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
-import { COMPONENT_CLASS, ensureClassStateRule, ensureClassStyleRule, ensureStyleGroupRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, resolvePartialDeclarations, resolveStyleStates, restingGuardSuffix, styleGroupClassSuffix, type StyleBag, type StyleLayer, type StyleStateSpec, type TextStyleBag } from "~/core/ClassStyleRules.js";
+import { COMPONENT_CLASS, ensureClassStateRule, ensureClassStyleRule, ensureStyleGroupRule, ensureTraitStyleRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, resolvePartialDeclarations, resolveStyleStates, resolveStyleTraits, resolveTraitStyleDefaults, restingGuardSuffix, styleGroupClassSuffix, traitClassName, traitTopStateConflictKeys, type StyleBag, type StyleLayer, type StyleStateSpec, type StyleTrait, type TextStyleBag } from "~/core/ClassStyleRules.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
 import { measureBorderWidths } from "~/core/BorderWidths.js";
 
@@ -166,6 +166,9 @@ export interface ComponentOptions {
      * carrying its own.
      */
     styleGroup?:      string | null;
+    /** Attaches this single instance to a shared, declared `StyleTrait`
+     *  regardless of its class. `null` clears it. See `setStyleTrait`. */
+    styleTrait?:      StyleTrait | null;
 }
 
 // Module-level state for the rAF-coalesced layout queue. Setters and event handlers call
@@ -560,6 +563,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // group is set. Scanned by `styleLayers()` ahead of `_classLayer`; see
     // plans/implemented/shared-instance-style-groups.md.
     private _groupLayer           : StyleLayer | null = null;
+    // Per-render caches for the trait tier — a declared `StyleTrait` bag
+    // shared across unrelated classes/instances, ranked above the class tier
+    // (see plans/cross-class-style-groups.md). Instance-level opt-in
+    // (`setStyleTrait`) is dynamic, so `_instanceTraitLayer` is recomputed
+    // every render like `_groupLayer`; class-level opt-in (`ownStyleTraits`)
+    // is fixed for the life of the instance, but `_classTraitLayers` is
+    // still recomputed every render since `resolveStyleTraits`/
+    // `ensureTraitLayer` are both memoized and cheap to re-derive.
+    private _instanceTraitLayer   : StyleLayer | null = null;
+    private _classTraitLayers     : readonly StyleLayer[] | null = null;
+    // The DOM class token `applyStyle` most recently added for the instance-
+    // level trait, or `null` if none is currently applied — tracked
+    // separately from `_instanceTraitLayer` so a `setStyleTrait(null)` (or a
+    // switch to a different trait) can remove the *previous* token, which a
+    // check on the new value alone can't see.
+    private _instanceTraitToken   : string | null = null;
     // The instance's own authored style — the single cache for every
     // layering property (see ARCHITECTURE.md's *Always cache in memory*).
     // Written unconditionally by `writeStyle`; survives an `applyStyle`
@@ -786,6 +805,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (options.writingMode     !== undefined) this.setWritingMode(options.writingMode);
         if (options.touchAction     !== undefined) this.setTouchAction(options.touchAction);
         if (options.styleGroup      !== undefined) this.setStyleGroup(options.styleGroup);
+        if (options.styleTrait      !== undefined) this.setStyleTrait(options.styleTrait);
 
         if (options.attributes !== undefined) {
             // The options bag's `attributes` is a raw-HTML-attribute escape
@@ -832,7 +852,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *   (e.g. TabButton flattening Button's chrome) rather than fall back to it.
      *   None of these four fields is consulted by a `_options.X === undefined`
      *   guard, so dispatching their default does not violate the clean-bag
-     *   invariant.
+     *   invariant. A third fallback, `resolveTraitStyleDefaults(this.constructor)`,
+     *   sits below the class default so a class-level trait's declared value
+     *   (e.g. `INPUT_CHROME_TRAIT`'s border) still reaches `setBorder`/
+     *   `getBorderSize` for layout even once the class's own `_defaultOptions`
+     *   no longer carries it.
      *
      * @remarks
      * Subclasses override this hook when they need to gate or extend the
@@ -841,10 +865,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * fields after the base call.
      */
     protected applyChromeOptions(options: TOptions): void {
-        const border          = options.border          ?? this._defaultOptions.border;
-        const borderRadius    = options.borderRadius    ?? this._defaultOptions.borderRadius;
-        const shadow          = options.shadow          ?? this._defaultOptions.shadow;
-        const backgroundImage = options.backgroundImage ?? this._defaultOptions.backgroundImage;
+        const classTraits = resolveTraitStyleDefaults(this.constructor);
+
+        const border          = options.border          ?? this._defaultOptions.border          ?? classTraits.border          ?? undefined;
+        const borderRadius    = options.borderRadius    ?? this._defaultOptions.borderRadius    ?? classTraits.borderRadius    ?? undefined;
+        const shadow          = options.shadow          ?? this._defaultOptions.shadow          ?? classTraits.shadow          ?? undefined;
+        const backgroundImage = options.backgroundImage ?? this._defaultOptions.backgroundImage ?? classTraits.backgroundImage ?? undefined;
 
         if (border          !== undefined) this.setBorder(border);
         if (borderRadius    !== undefined) this.setBorderRadius(borderRadius);
@@ -1963,6 +1989,59 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._options.styleGroup = group;
 
         return this;
+    }
+
+    /** This instance's own `styleTrait`, or `null` when unset. */
+    getStyleTrait(): StyleTrait | null {
+        return this._options.styleTrait ?? null;
+    }
+
+    /**
+     * Attaches (or clears) this instance's own trait, independent of its
+     * class. A plain assignment — like `setStyleGroup`, it does not itself
+     * validate or touch CSS. If `trait`'s declared properties collide with
+     * this instance's class's own top-priority declared state, the *next
+     * render* throws instead of resolving the tie by stylesheet order — see
+     * plans/cross-class-style-groups.md's Architecture Decisions on the
+     * state-tier specificity tie.
+     *
+     * @param trait - The trait to attach, or `null` to clear it.
+     *
+     * @returns This component, for method chaining.
+     */
+    setStyleTrait(trait: StyleTrait | null): this {
+        this._options.styleTrait = trait;
+
+        return this;
+    }
+
+    /**
+     * Resolves `trait` for `ctor`, or throws if `trait`'s declared properties
+     * would tie in real CSS specificity with `ctor`'s own top-priority
+     * declared state (see plans/cross-class-style-groups.md's Architecture
+     * Decisions). Called by both opt-in surfaces (class-level in `init()`/
+     * `applyStyle`, instance-level in `applyStyle`) so neither can bypass
+     * the check.
+     *
+     * @param ctor - The concrete component class constructor `trait` is
+     *   being resolved for.
+     * @param trait - The trait to resolve.
+     *
+     * @returns `trait`'s shared style layer, or `null` on a name collision
+     *   with a different `StyleTrait` object (see `ensureTraitStyleRule`).
+     */
+    private ensureTraitLayer(ctor: Function, trait: StyleTrait): StyleLayer | null {
+        const conflicts = traitTopStateConflictKeys(ctor, trait);
+
+        if (conflicts.length > 0) {
+            throw new Error(
+                `${ctor.name} cannot use trait "${trait.name}": its own top-priority declared ` +
+                `state already sets ${conflicts.join(", ")}, which would tie in CSS specificity ` +
+                `with the trait's shared rule. Remove the overlapping property from one side.`
+            );
+        }
+
+        return ensureTraitStyleRule(trait);
     }
 
     /**
@@ -4983,8 +5062,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * The component's style layers, highest-priority first: every currently
      * active declared state (in declared order — see `ownStyleStates`),
-     * then this instance's own writes, then its `styleGroup` (if any), then
-     * its class tier.
+     * then this instance's own writes, then its instance-level trait (if
+     * any), then its class-level traits (if any), then its `styleGroup` (if
+     * any), then its class tier.
      *
      * @remarks `_classLayer` is only populated by `applyStyle`, i.e. once
      * this component has rendered at least once — but a getter like
@@ -5010,6 +5090,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         layers.push(this.instanceLayer());
+
+        if (this._instanceTraitLayer) layers.push(this._instanceTraitLayer);
+        layers.push(...(this._classTraitLayers ?? []));
 
         if (this._groupLayer) layers.push(this._groupLayer);
 
@@ -5044,15 +5127,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         return resolveStyleStates(this.constructor).find((state) => state.selector === selector)?.layer ?? null;
     }
 
-    /** The layers *below* the instance layer — group (if any), then class —
-     *  built directly from the cached fields rather than by slicing
-     *  `styleLayers()`, since that array's prefix (zero or more active
-     *  meta-class layers) has no fixed length to slice past. Used by
-     *  `matchesLowerTier` and `flushStyleBag`'s per-key dedup, both of
-     *  which need "does a tier *other than this instance's own* already
-     *  supply this value", never a meta-class layer's. */
+    /** The layers *below* the instance layer — instance-level trait (if any),
+     *  class-level traits (if any), group (if any), then class — built
+     *  directly from the cached fields rather than by slicing `styleLayers()`,
+     *  since that array's prefix (zero or more active meta-class layers) has
+     *  no fixed length to slice past. Used by `matchesLowerTier` and
+     *  `flushStyleBag`'s per-key dedup, both of which need "does a tier
+     *  *other than this instance's own* already supply this value", never a
+     *  meta-class layer's. */
     protected layersBelowInstance(): ReadonlyArray<StyleLayer> {
         const layers: StyleLayer[] = [];
+
+        if (this._instanceTraitLayer) layers.push(this._instanceTraitLayer);
+        layers.push(...(this._classTraitLayers ?? []));
 
         if (this._groupLayer) layers.push(this._groupLayer);
 
@@ -5853,6 +5940,33 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._groupLayer = group
             ? ensureStyleGroupRule(this.constructor, group, resolveInstanceStyleDeclarations(this))
             : null;
+
+        // Class-level: recomputed every render (both calls are memoized, so
+        // this is cheap), kept in lockstep with the tokens `init()` already
+        // wrote once.
+        this._classTraitLayers = resolveStyleTraits(this.constructor)
+            .map((trait) => this.ensureTraitLayer(this.constructor, trait))
+            .filter((layer): layer is StyleLayer => layer !== null);
+
+        // Instance-level: dynamic (unlike the class-level surface, this can
+        // change or clear over an instance's lifetime — Expected Behaviour
+        // row 10), so token and layer are decided together here. The
+        // previous token is tracked in `_instanceTraitToken` so clearing the
+        // trait (or switching to a different one) removes it — checking only
+        // the new value can't see what was there before.
+        const instanceTrait      = this.getStyleTrait();
+        this._instanceTraitLayer = instanceTrait ? this.ensureTraitLayer(this.constructor, instanceTrait) : null;
+
+        const previousToken = this._instanceTraitToken;
+        const nextToken     = this._instanceTraitLayer ? traitClassName(instanceTrait!) : null;
+
+        if (previousToken !== nextToken) {
+            const patch: { addClass?: string[]; removeClass?: string[] } = {};
+            if (previousToken) patch.removeClass = [previousToken];
+            if (nextToken)     patch.addClass    = [nextToken];
+            DOM.sink.apply(element, patch);
+        }
+        this._instanceTraitToken = nextToken;
 
         this._resolvedCache = null;
 
@@ -6921,7 +7035,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const activeStateTokens = Array.from(this._activeStates)
             .filter((selector) => selector.startsWith("."))
             .map((selector) => selector.slice(1));
-        DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, ...getStyleClassChain(this.constructor), ...groupClass, ...activeStateTokens] });
+        // Class-level trait tokens: every trait this class declares through
+        // `ownStyleTraits` (inherited down the chain), filtered to the ones
+        // that actually resolved a layer — a name collision with a different
+        // `StyleTrait` object is filtered out silently here, the same way
+        // every other tier's name collision is (only a *state* conflict
+        // throws, from `ensureTraitLayer` itself).
+        const classTraitTokens = resolveStyleTraits(this.constructor)
+            .filter((trait) => this.ensureTraitLayer(this.constructor, trait) !== null)
+            .map(traitClassName);
+        DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, ...getStyleClassChain(this.constructor), ...groupClass, ...activeStateTokens, ...classTraitTokens] });
 
         this.applyStyle(element);
 
