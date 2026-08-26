@@ -124,6 +124,8 @@ export interface WindowOptions extends ContainerOptions {
     closeable?:         boolean;
     minimizable?:       boolean;
     maximizable?:       boolean;
+    /** Enables the drag-to-resize border strips. Defaults to `true`. */
+    resizable?:         boolean;
     maximizeBounds?:    WindowMaximizeBounds;
     windowState?:       WindowState;
     snapResizeEnabled?: boolean;
@@ -154,6 +156,7 @@ const _defaultWindowOptions: Partial<WindowOptions> = {
     closeable:         true,
     minimizable:       true,
     maximizable:       true,
+    resizable:         true,
     maximizeBounds:    "viewport",
     windowState:       "normal",
     snapResizeEnabled: true,
@@ -368,6 +371,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.setCloseable(this.isCloseable());
         this.setMinimizable(this.isMinimizable());
         this.setMaximizable(this.isMaximizable());
+        this.setResizable(this.isResizable());
         this.setMaximizeBounds(this.getMaximizeBounds());
         this.setWindowState(this.getWindowState());
 
@@ -416,6 +420,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         if (options.closeable      !== undefined) this._options.closeable      = options.closeable;
         if (options.minimizable    !== undefined) this._options.minimizable    = options.minimizable;
         if (options.maximizable    !== undefined) this._options.maximizable    = options.maximizable;
+        if (options.resizable      !== undefined) this._options.resizable      = options.resizable;
         if (options.maximizeBounds !== undefined) this._options.maximizeBounds = options.maximizeBounds;
         if (options.windowState    !== undefined) this._options.windowState    = options.windowState;
 
@@ -1390,6 +1395,46 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
+     * Toggles the drag-to-resize border strips. Disabling hides all eight
+     * strips (no cursor, no hit test) and disarms any in-progress snap-resize
+     * session; it does not affect moving, minimizing, or maximizing.
+     *
+     * @param value - True to show and arm the resize border strips, false to
+     *   hide and disarm them.
+     *
+     * @returns This window, for method chaining.
+     */
+    setResizable(value: boolean): this {
+        this._options.resizable = value;
+
+        // Hidden strips take no cursor and no hit test, so a non-resizable
+        // edge shows the ordinary pointer instead of a resize cursor that
+        // silently does nothing. `null` (inherit), not `true`, on the restore
+        // branch — an explicit `visible: true` would override the window's
+        // own hidden state while it is still being constructed (`setVisible`
+        // is called with `false` before `show()` reveals it).
+        for (const border of Object.values(this._borderComponents)) {
+            border.setVisible(value ? null : false);
+        }
+
+        // Disarm a snap session that armed while the window was still resizable.
+        if (!value) {
+            this.clearSnapState();
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether the drag-to-resize border strips are enabled.
+     *
+     * @returns True when the resize border strips are shown and active.
+     */
+    isResizable(): boolean {
+        return this._options.resizable ?? this._defaultOptions.resizable!;
+    }
+
+    /**
      * Sets the rect the window fills when entering the `"maximized"` state.
      *
      * @param value - `"viewport"` to fill the browser viewport,
@@ -1603,6 +1648,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * listener clears the session flag when the drag ends.
      */
     onResize(border: WindowBorder, e: MouseEvent): void {
+        if (!this.isResizable()) {
+            return;
+        }
+
         if (this.getWindowState() !== "normal") {
             return;
         }
@@ -2496,11 +2545,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Arms snap detection when the watched modifier goes down while the window
-     * is normal and snap-resize is enabled.
+     * is resizable, normal, and snap-resize is enabled.
      *
      * @param e - The keydown event.
      */
     private onSnapKeyDown(e: KeyboardEvent): void {
+        if (!this.isResizable()) {
+            return;
+        }
+
         if (!this.isSnapResizeEnabled()) {
             return;
         }
