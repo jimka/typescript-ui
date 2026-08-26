@@ -120,3 +120,134 @@ describe('AbstractWindow resizable option', () => {
         expect(win.getHeight()).toBe(originalHeight);
     });
 });
+
+/** White-box access to TabWindow's trailing control tools. */
+function tools(win: TabWindow): { _minTool: { isVisible(): boolean | null }, _maxTool: { isVisible(): boolean | null } } {
+    return win as unknown as { _minTool: { isVisible(): boolean | null }, _maxTool: { isVisible(): boolean | null } };
+}
+
+describe('resizable supersedes minimizable/maximizable', () => {
+    afterEach(() => DOM.reset());
+
+    it('leaves both affordances enabled by default', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W');
+
+        expect(win.isMinimizable()).toBe(true);
+        expect(win.isMaximizable()).toBe(true);
+    });
+
+    it('disables both affordances when constructed non-resizable', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W', { resizable: false });
+
+        expect(win.isMinimizable()).toBe(false);
+        expect(win.isMaximizable()).toBe(false);
+    });
+
+    it('hides both header buttons when constructed non-resizable', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W', { resizable: false });
+
+        expect(win.getHeader().isMinimizable()).toBe(false);
+        expect(win.getHeader().isMaximizable()).toBe(false);
+    });
+
+    it('hides both TabWindow tools when constructed non-resizable', () => {
+        installTestDOM(CONFIG);
+
+        const win = new TabWindow({ resizable: false });
+
+        expect(win.isMinimizable()).toBe(false);
+        expect(win.isMaximizable()).toBe(false);
+        expect(tools(win)._minTool.isVisible()).toBe(false);
+        expect(tools(win)._maxTool.isVisible()).toBe(false);
+    });
+
+    it('restores both affordances when resizable is re-enabled', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W', { resizable: false });
+
+        win.setResizable(true);
+
+        expect(win.isMinimizable()).toBe(true);
+        expect(win.isMaximizable()).toBe(true);
+        expect(win.getHeader().isMinimizable()).toBe(true);
+        expect(win.getHeader().isMaximizable()).toBe(true);
+    });
+
+    it('remembers the caller\'s own minimizable setting through a resizable round-trip', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W', { resizable: false, minimizable: false });
+
+        win.setResizable(true);
+
+        expect(win.isMinimizable()).toBe(false);
+        expect(win.isMaximizable()).toBe(true);
+    });
+
+    it('re-reflects both affordances on a resizable-false-then-true round-trip', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W');
+
+        win.setResizable(false);
+        win.setResizable(true);
+
+        expect(win.isMinimizable()).toBe(true);
+        expect(win.isMaximizable()).toBe(true);
+        expect(win.getHeader().isMinimizable()).toBe(true);
+        expect(win.getHeader().isMaximizable()).toBe(true);
+    });
+
+    it('blocks toggleMinimize on a non-resizable window', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W', { resizable: false });
+
+        win.toggleMinimize();
+
+        expect(win.getWindowState()).toBe('normal');
+    });
+
+    it('blocks toggleMaximize on a non-resizable window', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W', { resizable: false });
+
+        win.toggleMaximize();
+
+        expect(win.getWindowState()).toBe('normal');
+    });
+
+    it('leaves the programmatic minimize() path open on a non-resizable window', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W', { resizable: false });
+
+        win.minimize();
+
+        expect(win.getWindowState()).toBe('minimized');
+    });
+
+    it('does not let setMinimizable(true) alone re-enable the affordance', () => {
+        installTestDOM(CONFIG);
+
+        const win = new Window('W', { resizable: false });
+
+        win.setMinimizable(true);
+
+        expect(win.isMinimizable()).toBe(false);
+        expect(win.getHeader().isMinimizable()).toBe(false);
+
+        win.setResizable(true);
+
+        expect(win.isMinimizable()).toBe(true);
+        expect(win.getHeader().isMinimizable()).toBe(true);
+    });
+});

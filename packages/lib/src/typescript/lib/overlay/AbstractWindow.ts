@@ -367,10 +367,13 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // built and the geometry fields are initialised.
         // All carry a class default, so dispatch the caller value (stashed in
         // `_options` by `applyOptions`) or the class default — never leave the
-        // chrome unbuilt.
+        // chrome unbuilt. Minimizable/maximizable reflect rather than re-set:
+        // `resizable` can veto the effective value, and routing through
+        // setMinimizable/setMaximizable would write that gated value back
+        // into `_options`, overwriting the caller's own setting.
         this.setCloseable(this.isCloseable());
-        this.setMinimizable(this.isMinimizable());
-        this.setMaximizable(this.isMaximizable());
+        this.reflectMinimizable(this.isMinimizable());
+        this.reflectMaximizable(this.isMaximizable());
         this.setResizable(this.isResizable());
         this.setMaximizeBounds(this.getMaximizeBounds());
         this.setWindowState(this.getWindowState());
@@ -1347,8 +1350,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Toggles whether the minimize affordance is shown. Stores the state and
-     * reflects it via `reflectMinimizable`.
+     * Toggles whether the minimize affordance is shown. Stores the caller's
+     * own value and reflects the *effective* value via `reflectMinimizable`:
+     * when the window is not resizable the affordance stays hidden regardless
+     * of `value`, but `value` is remembered and takes effect again once
+     * `resizable` is re-enabled.
      *
      * @param value - True to show the minimize affordance.
      *
@@ -1356,23 +1362,27 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     setMinimizable(value: boolean): this {
         this._options.minimizable = value;
-        this.reflectMinimizable(value);
+        this.reflectMinimizable(this.isMinimizable());
 
         return this;
     }
 
     /**
-     * Returns whether the minimize affordance is shown.
+     * Returns whether the minimize affordance is shown. `false` whenever the
+     * window is not resizable, regardless of the `minimizable` option.
      *
      * @returns True when the minimize affordance is shown.
      */
     isMinimizable(): boolean {
-        return this._options.minimizable ?? this._defaultOptions.minimizable!;
+        return this.isResizable() && (this._options.minimizable ?? this._defaultOptions.minimizable!);
     }
 
     /**
-     * Toggles whether the maximize affordance is shown. Stores the state and
-     * reflects it via `reflectMaximizable`.
+     * Toggles whether the maximize affordance is shown. Stores the caller's
+     * own value and reflects the *effective* value via `reflectMaximizable`:
+     * when the window is not resizable the affordance stays hidden regardless
+     * of `value`, but `value` is remembered and takes effect again once
+     * `resizable` is re-enabled.
      *
      * @param value - True to show the maximize affordance.
      *
@@ -1380,24 +1390,28 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     setMaximizable(value: boolean): this {
         this._options.maximizable = value;
-        this.reflectMaximizable(value);
+        this.reflectMaximizable(this.isMaximizable());
 
         return this;
     }
 
     /**
-     * Returns whether the maximize affordance is shown.
+     * Returns whether the maximize affordance is shown. `false` whenever the
+     * window is not resizable, regardless of the `maximizable` option.
      *
      * @returns True when the maximize affordance is shown.
      */
     isMaximizable(): boolean {
-        return this._options.maximizable ?? this._defaultOptions.maximizable!;
+        return this.isResizable() && (this._options.maximizable ?? this._defaultOptions.maximizable!);
     }
 
     /**
      * Toggles the drag-to-resize border strips. Disabling hides all eight
      * strips (no cursor, no hit test) and disarms any in-progress snap-resize
-     * session; it does not affect moving, minimizing, or maximizing.
+     * session; moving is unaffected, but disabling also hides the minimize
+     * and maximize affordances and blocks `toggleMinimize` / `toggleMaximize`
+     * — `resizable` is the master switch for both, see `isMinimizable` /
+     * `isMaximizable`.
      *
      * @param value - True to show and arm the resize border strips, false to
      *   hide and disarm them.
@@ -1421,6 +1435,13 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         if (!value) {
             this.clearSnapState();
         }
+
+        // `resizable` supersedes minimizable/maximizable, so both affordances
+        // re-reflect against their effective value. Straight to the reflect
+        // hooks: setMinimizable/setMaximizable would write the gated value
+        // into `_options` and destroy the caller's own setting.
+        this.reflectMinimizable(this.isMinimizable());
+        this.reflectMaximizable(this.isMaximizable());
 
         return this;
     }
