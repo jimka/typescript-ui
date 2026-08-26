@@ -156,7 +156,11 @@ describe('TextInput class-tier style migration', () => {
         const declarations = declarationsDuring(sink, idSelector(field), () => field.getElement(true));
         const real = realDeclarations(declarations);
 
-        expect(Object.keys(real).sort()).toEqual(['maxHeight', 'minHeight']);
+        // Since plans/abstractinput-height-value-class-mechanism.md, the
+        // min-height/max-height pair this test used to find here is deduped
+        // onto a shared `.TextField.h<h>px` value-class rule instead, so
+        // `#id` carries no real declaration at all.
+        expect(Object.keys(real)).toEqual([]);
         expect(declarations.fontFamily).toBeUndefined();
         expect(declarations.fontSize).toBeUndefined();
         expect(declarations.lineHeight).toBeUndefined();
@@ -289,28 +293,37 @@ describe('TextInput class-tier style migration', () => {
         expect(realDeclarations(idDeclarations).outline).toBeUndefined();
     });
 
-    it('every single-line AbstractInput leaf writes maxHeight before minHeight on its own #id rule', () => {
+    it('every single-line AbstractInput leaf writes its min-height/max-height pair per its opt-in status', () => {
+        // Since plans/abstractinput-height-value-class-mechanism.md,
+        // TextField/ComboBox/NumberSpinner (and every TextField subclass,
+        // e.g. the NumberSpinner/AutoCompleteField inner fields) dedup their
+        // height pair onto a shared `.ClassName.h<h>px` value-class rule
+        // instead of `#id`. PasswordField, UsernameField and
+        // AbstractPickerField (DateField's own `updateHeight`) are the
+        // plan's named Non-Goals — held back for a follow-up — so they keep
+        // writing the real pair straight to `#id`, in the order
+        // plans/implemented/abstractinput-height-dedup.md fixed.
         const sink = DOM.sink as RecordingDOMSink;
 
-        const leaves: Array<[string, () => { getElement(createIfMissing?: boolean): unknown; getId(): string }]> = [
-            ['TextField',                     () => new TextField()],
-            ['PasswordField',                 () => new PasswordField()],
-            ['UsernameField',                 () => new UsernameField()],
-            ['ComboBox',                      () => new ComboBox()],
-            ['DateField',                     () => new DateField()],
-            ['NumberSpinner inner field',     () => (new NumberSpinner() as any)._input],
-            ['AutoCompleteField inner field', () => (new AutoCompleteField() as any)._textField],
+        const leaves: Array<[string, () => { getElement(createIfMissing?: boolean): unknown; getId(): string }, string[]]> = [
+            ['TextField',                     () => new TextField(),                                     []],
+            ['PasswordField',                 () => new PasswordField(),                                 ['maxHeight', 'minHeight']],
+            ['UsernameField',                 () => new UsernameField(),                                 ['maxHeight', 'minHeight']],
+            ['ComboBox',                      () => new ComboBox(),                                      []],
+            ['DateField',                     () => new DateField(),                                     ['maxHeight', 'minHeight']],
+            ['NumberSpinner inner field',     () => (new NumberSpinner() as any)._input,                 []],
+            ['AutoCompleteField inner field', () => (new AutoCompleteField() as any)._textField,          []],
         ];
 
-        for (const [label, make] of leaves) {
+        for (const [label, make, expected] of leaves) {
             (make() as any).getElement(true); // throwaway, primes this class's shared rule
 
             const instance = make() as any;
             const declarations = declarationsDuring(sink, idSelector(instance), () => instance.getElement(true));
-            const heightOrder  = Object.keys(realDeclarations(declarations))
+            const heightKeys   = Object.keys(realDeclarations(declarations))
                 .filter((k) => k === 'minHeight' || k === 'maxHeight');
 
-            expect(heightOrder, label).toEqual(['maxHeight', 'minHeight']);
+            expect(heightKeys, label).toEqual(expected);
         }
     });
 
