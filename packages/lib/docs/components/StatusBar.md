@@ -30,7 +30,7 @@ A `StatusBar` wraps a single [`HBox`](/api/layout/classes/HBox) row: the message
 
 Every widget in the row is baseline-aligned to the message text: a widget exposing a real baseline (`Text`, `Glyph`, `IconText`, a labelled `Button`, `ProgressBar`, `ProgressSpinner`, or a container laid out by an ordinary — not full-height-filling — `HBox`/`VBox`) lines its baseline up with the message's; a baseline-less widget is centred in the message's text line instead.
 
-The strip height is fixed at `22px` (the `STATUS_BAR_HEIGHT` constant, mirrored by the `--ts-ui-statusbar-height` theme token), with a 1px top border, leaving a **21px** content band. Caller-added widgets must be no taller than 21px to fit without clipping. A stock `flat`+`compact` glyph-only `Button` is 22px and does not fit — call `pinGlyphSize(14)` to bring it to 20px before adding it.
+The strip height is fixed at `22px` (the `STATUS_BAR_HEIGHT` constant, mirrored by the `--ts-ui-statusbar-height` theme token), with a 1px top border, leaving a **21px** content band. Caller-added widgets must be no taller than 21px to fit without clipping. A stock `flat`+`compact` glyph-only `Button` is 22px and does not fit — call `pinGlyphSize(14)` (or `pinGlyphSize(ThemeManager.getResolvedScale().glyphMd)` to track the theme) to bring it to 20px before adding it.
 
 ## Common methods
 

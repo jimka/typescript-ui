@@ -141,21 +141,22 @@ The three structural widths are scheme-invariant, so they carry their base value
 Most theme sizes are CSS length strings, so they already scale with the font and the cascade. SVG glyphs are the exception: an SVG icon is sized by its px box, not by CSS `font-size`, so a `rem`/`em` length never reaches it. The `scale` block gives the framework one **base size in px** plus a set of ratios, exposed both as a CSS variable and — once resolved — as plain JS numbers, so layout math and SVG glyph boxes can size off `round(base × ratio)`.
 
 - **`--ts-ui-base-size`** is the scale root, emitted from `scale.base` (default `14px`). It is published for CSS `calc()` consumers; the JS side reads the resolved numbers, not this variable.
-- **The `scale.*` ratio tokens** are [`ScaleToken`](/api/core/type-aliases/ScaleToken) values. A token is either `{ scale: n }` — a **ratio of the base** that grows with it (`round(base × n)`) — or `{ fixed: px }` — an **absolute px** that opts out of scaling. The built-in tokens (`titleGlyph`, `tabClose`, `tabCloseGlyph`, `tabButtonInset`) are ratios tuned to recover their historic px at the default base, then scale up as you raise it.
+- **The `scale.*` ratio tokens** are [`ScaleToken`](/api/core/type-aliases/ScaleToken) values. A token is either `{ scale: n }` — a **ratio of the base** that grows with it (`round(base × n)`) — or `{ fixed: px }` — an **absolute px** that opts out of scaling. The built-in tokens (`tabClose`, `tabButtonInset`, plus the five `glyph*` icon steps below) are ratios tuned to recover their historic px at the default base, then scale up as you raise it.
+- **The `glyph*` members are an ordered icon-size scale.** Every framework icon reads one of five named steps instead of a pixel literal: `glyphXs` (8px at the default base — ink inside a compact interactive control), `glyphSm` (12px — a small icon inside a larger click target), `glyphMd` (14px — an icon matched to bare text with no leading), `glyphLg` (16px — the default icon size, on a full text line box), and `glyphXl` (20px — a standalone icon read on its own, not beside text).
 
 Resolution happens **once per `setTheme`**: the whole `scale` block is multiplied out to a numeric [`ResolvedScale`](/api/core/type-aliases/ResolvedScale) snapshot that layout code reads via [`ThemeManager.getResolvedScale()`](/api/core/classes/ThemeManager#getresolvedscale) — no per-layout token math, no `getComputedStyle`.
 
 ```typescript
 import { ThemeManager } from '@jimka/typescript-ui/core';
 
-const ink = ThemeManager.getResolvedScale().titleGlyph;
+const ink = ThemeManager.getResolvedScale().glyphMd;
 // ink === 14 with the default base; set a theme whose scale.base is 28 and it becomes 28.
 ```
 
-Raise `scale.base` (in a theme passed to `setTheme`) to scale the chrome that follows it — window and tab title glyphs, tab close buttons, and tab insets — or pin an individual token with the `{ fixed }` form to hold it constant while the rest grows. A base change is a theme change, so it goes through `setTheme`, which re-resolves the snapshot and re-runs layout. Text and char-mode glyphs keep sizing off `font.size` / `--ts-ui-font-size`, not the base, so this knob moves the SVG-and-layout chrome without touching the type scale.
+Raise `scale.base` (in a theme passed to `setTheme`) to scale the chrome that follows it — every framework icon, window and tab title glyphs, tab close buttons, and tab insets — or pin an individual token with the `{ fixed }` form to hold it constant while the rest grows. A base change is a theme change, so it goes through `setTheme`, which re-resolves the snapshot and re-runs layout. Text and char-mode glyphs keep sizing off `font.size` / `--ts-ui-font-size`, not the base, so this knob moves the SVG-and-layout chrome without touching the type scale.
 
 ::: warning Exactly-one is not type-enforced inside a theme literal
-`ScaleToken` is a `{ scale } | { fixed }` union, but a theme literal is a *deep-partial* of [`Theme`](/api/core/interfaces/Theme) (so you can override one token without restating the rest), and that weakens the union to `{ scale? } | { fixed? }` — `{}` or a both-present token is **not** a compile error where you author it. The resolution into the snapshot guards every arm: `scale` wins if both are present, and a token missing both falls back to the base size rather than producing `NaN`.
+`ScaleToken` is a `{ scale } | { fixed }` union, but a theme literal is a *deep-partial* of [`Theme`](/api/core/interfaces/Theme) (so you can override one token without restating the rest), and that weakens the union to `{ scale? } | { fixed? }` — `{}` or a both-present token is **not** a compile error where you author it. The resolution into the snapshot guards every arm: `fixed` wins if both are present (a `defineTheme` override pinning a step via `{ fixed }` on top of a base `{ scale }` token produces exactly this shape, and the override's explicit pin must win), and a token missing both falls back to the base size rather than producing `NaN`.
 :::
 
 ## Relative font sizes
