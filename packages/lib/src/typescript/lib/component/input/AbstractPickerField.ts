@@ -2,7 +2,7 @@
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { AnimatedDropdown } from "~/core/AnimatedDropdown.js";
-import type { StyleBag } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StyleTrait } from "~/core/ClassStyleRules.js";
 import type { Handle } from "~/core/DOM.js";
 import { PickerInput } from "~/component/input/PickerInput.js";
 import { PickerButton } from "~/component/input/PickerButton.js";
@@ -10,6 +10,7 @@ import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
 import { registerFocusWithinRing } from "~/component/input/focusRing.js";
 import { Util } from "~/core/Util.js";
+import { INPUT_CHROME_TRAIT } from "~/core/StyleTraits.js";
 
 // Focus ring highlighting the picker root whenever the inner PickerInput is
 // focused. The three concrete selectors share the one helper-registered overlay
@@ -45,8 +46,6 @@ const _defaultPickerFieldOptions: Partial<AbstractPickerFieldOptions> = {
     padding:         new Insets(3, 3, 3, 3),
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
     foregroundColor: "var(--ts-ui-text-color, black)",
-    border:          "var(--ts-ui-input-border)",
-    borderRadius:    "var(--ts-ui-border-radius, 4px)",
 };
 
 /**
@@ -76,6 +75,9 @@ abstract class AbstractPickerField<
     // Own contribution to the hierarchy-aware class tier — see
     // plans/implemented/class-hierarchy-cascade.md.
     protected static readonly ownClassStyleDefaults: StyleBag = _defaultPickerFieldOptions;
+    // Shares the border/borderRadius pair with TextInput, ComboBox, and
+    // FieldSet via one generated CSS rule — see plans/cross-class-style-groups.md.
+    protected static readonly ownStyleTraits: readonly StyleTrait[] = [INPUT_CHROME_TRAIT];
 
     protected _input:    PickerInput;
     protected _button:   PickerButton;
@@ -196,9 +198,15 @@ abstract class AbstractPickerField<
      * picker fields. The value is passed straight to {@link Component.setBorder}.
      *
      * @returns The default border shorthand string.
+     *
+     * @remarks Reads {@link INPUT_CHROME_TRAIT}'s declared border directly
+     * rather than `_defaultPickerFieldOptions.border` — the border/borderRadius
+     * pair moved onto the shared trait (see plans/cross-class-style-groups.md),
+     * so `_defaultPickerFieldOptions` no longer carries it and this method
+     * bypasses the options-merge pipeline entirely.
      */
     protected getDefaultBorder(): string {
-        return _defaultPickerFieldOptions.border as string;
+        return INPUT_CHROME_TRAIT.declarations.border as string;
     }
 
     /**

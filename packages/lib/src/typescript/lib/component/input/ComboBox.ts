@@ -19,7 +19,8 @@ import { Fit } from "~/layout/Fit.js";
 import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { chevron_down } from "~/glyphs/solid/chevron_down.js";
 import { callable } from "~/core/Callable.js";
-import type { StyleBag } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StyleTrait } from "~/core/ClassStyleRules.js";
+import { INPUT_CHROME_TRAIT } from "~/core/StyleTraits.js";
 
 Glyph.register(chevron_down);
 
@@ -83,8 +84,6 @@ const _defaultComboBoxOptions: Partial<ComboBoxOptions> = {
     tag:             "div",
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
     foregroundColor: "var(--ts-ui-text-color, black)",
-    border:          "var(--ts-ui-input-border)",
-    borderRadius:    "var(--ts-ui-border-radius, 4px)",
     cursor:          "pointer",
     insets:          new Insets(3, 6, 3, 6),
 };
@@ -633,6 +632,13 @@ class ComboBoxCaret extends Component {
  * @category Components
  */
 class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends AbstractInput<string, TOptions> {
+
+    // Shares the border/borderRadius pair with TextInput, AbstractPickerField,
+    // and FieldSet via one generated CSS rule — see
+    // plans/cross-class-style-groups.md. `ComboBox` has no `ownClassStyleDefaults`
+    // of its own, and declaring this alone does not make its chain participate
+    // in the hierarchy cascade (`chainParticipates` only reads `ownClassStyleDefaults`).
+    protected static readonly ownStyleTraits: readonly StyleTrait[] = [INPUT_CHROME_TRAIT];
 
     private readonly _dropdown:    ComboBoxDropdown;
     private _label:                ComboBoxLabel;
