@@ -7,14 +7,21 @@ import { Text } from "~/component/input/Text.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
 import { TreeNodeRenderer } from "~/component/tree/TreeNodeRenderer.js";
 import { TreeNodeRenderContext } from "~/component/tree/TreeNodeRenderContext.js";
+import { ThemeManager } from "~/core/Theme.js";
 
 /**
  * Pixel width reserved for the icon column (icon + small gap before the label).
  */
 const ICON_WIDTH = 20;
 
-/** Square edge length used for the icon glyph. */
-const ICON_SIZE = 16;
+/**
+ * Square edge length used for the icon glyph — the theme's `glyphLg` default
+ * icon step (16px at the shipped base). Read per call, not frozen in a module
+ * constant, so a theme that raises `scale.base` moves the icon with it.
+ */
+function iconSizePx(): number {
+    return ThemeManager.getResolvedScale().glyphLg;
+}
 
 /**
  * Resolves a [`Glyph`](/api/component/display/classes/Glyph) registry name for
@@ -131,11 +138,13 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
         const box = this.getContentBounds() ?? { x: 0, y: 0, width, height };
 
         if (this._icon) {
+            const iconSize = iconSizePx();
+
             this._icon.setAutoCommitStyle(false);
             this._icon.setX(box.x);
-            this._icon.setY(box.y + Math.max(0, (box.height - ICON_SIZE) / 2));
-            this._icon.setWidth(ICON_SIZE);
-            this._icon.setHeight(ICON_SIZE);
+            this._icon.setY(box.y + Math.max(0, (box.height - iconSize) / 2));
+            this._icon.setWidth(iconSize);
+            this._icon.setHeight(iconSize);
             this._icon.setAutoCommitStyle(true);
         }
 

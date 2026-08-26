@@ -7,6 +7,7 @@ import { Text } from "~/component/input/Text.js";
 import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
 import { ListItemRenderContext } from "~/component/list/ListItemRenderContext.js";
 import { callable } from "~/core/Callable.js";
+import { ThemeManager } from "~/core/Theme.js";
 
 /**
  * Pixel width reserved for the icon column (icon plus a small gap before the
@@ -15,8 +16,15 @@ import { callable } from "~/core/Callable.js";
  */
 const ICON_WIDTH = 20;
 
-/** Square edge length used for the icon glyph, matching the tree renderer. */
-const ICON_SIZE = 16;
+/**
+ * Square edge length used for the icon glyph, matching the tree renderer —
+ * the theme's `glyphLg` default icon step (16px at the shipped base). Read
+ * per call, not frozen in a module constant, so a theme that raises
+ * `scale.base` moves the icon with it.
+ */
+function iconSizePx(): number {
+    return ThemeManager.getResolvedScale().glyphLg;
+}
 
 /**
  * A [`ListItemRenderer`](/api/component/list/classes/ListItemRenderer) that
@@ -145,11 +153,13 @@ class GlyphListItemRenderer extends ListItemRenderer {
         const box = this.getContentBounds() ?? { x: 0, y: 0, width, height };
 
         if (this._icon) {
+            const iconSize = iconSizePx();
+
             this._icon.setAutoCommitStyle(false);
             this._icon.setX(box.x);
-            this._icon.setY(box.y + Math.max(0, (box.height - ICON_SIZE) / 2));
-            this._icon.setWidth(ICON_SIZE);
-            this._icon.setHeight(ICON_SIZE);
+            this._icon.setY(box.y + Math.max(0, (box.height - iconSize) / 2));
+            this._icon.setWidth(iconSize);
+            this._icon.setHeight(iconSize);
             this._icon.setAutoCommitStyle(true);
         }
 

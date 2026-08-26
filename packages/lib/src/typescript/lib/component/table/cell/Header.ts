@@ -29,15 +29,15 @@ import { SelectableText, SelectableTextOptions } from "~/component/input/Selecta
 export type HeaderCellEvent = CellEvent | "sortclick" | "contextmenu" | "resizestart" | "resizedrag";
 
 /**
- * Width (px) used both for the side-loaded `Glyph`'s preferred size and for
- * computing the renderer's left inset when a glyph is mounted.
+ * Square edge length (px) used both for the side-loaded `Glyph`'s preferred
+ * size and for computing the renderer's left inset when a glyph is mounted —
+ * the theme's `glyphLg` default icon step (16px at the shipped base). Read
+ * per call, not frozen in a module constant, so a theme that raises
+ * `scale.base` moves the icon with it.
  */
-const GLYPH_W = 16;
-
-/**
- * Height (px) used for the side-loaded `Glyph`'s preferred size.
- */
-const GLYPH_H = 16;
+function headerGlyphPx(): number {
+    return ThemeManager.getResolvedScale().glyphLg;
+}
 
 /**
  * Default gap (px) between the cell's left edge and the side-loaded glyph.
@@ -362,10 +362,11 @@ class HeaderCell extends DefaultCell {
 
         ensureHeaderCellGlyphClassRule();
 
-        const glyph = new Glyph(name);
+        const glyphPx = headerGlyphPx();
+        const glyph   = new Glyph(name);
 
         glyph.setTransform("translateY(-50%)");
-        glyph.setSize({ width: GLYPH_W, height: GLYPH_H });
+        glyph.setSize({ width: glyphPx, height: glyphPx });
         glyph.setForegroundColor("var(--ts-ui-table-header-glyph-color, currentColor)");
         glyph.setPointerEvents("none");
 
@@ -375,7 +376,7 @@ class HeaderCell extends DefaultCell {
         DOM.sink.appendChild(el, gEl);
         this._headerGlyphInstance = glyph;
 
-        const offset = GLYPH_W + GLYPH_GAP + themePad;
+        const offset = glyphPx + GLYPH_GAP + themePad;
         this.getRenderer().setInsets(new Insets(0, themePad, 0, offset));
     }
 
