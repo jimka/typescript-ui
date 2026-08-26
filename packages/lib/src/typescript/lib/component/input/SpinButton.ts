@@ -5,6 +5,7 @@ import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { AutoRepeat } from "~/core/AutoRepeat.js";
 import { Util } from "~/core/Util.js";
+import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -107,15 +108,16 @@ class SpinButton extends Button<SpinButtonOptions> {
             this.clearPressedShadow();
         }
 
-        // Shrink the glyph so it fits the half-height (≈11 px) spin-button.
-        // The 1 px upward translate compensates for sub-pixel rounding in the
-        // Button's centring math: the measured input height is often odd,
-        // making `(halfHeight - 8) / 2` a fractional value that the browser
-        // resolves toward the bottom of the cell.
+        // Shrink the glyph so it fits the half-height spin-button, to the
+        // theme's compact-control glyphXs icon step. The 1 px upward translate
+        // compensates for sub-pixel rounding in the Button's centring math:
+        // the measured input height is often odd, making `(halfHeight - ink) /
+        // 2` a fractional value that the browser resolves toward the bottom of
+        // the cell.
         // Pin the chevron so a theme change never re-tracks it to the title
         // line height; the 1px upward nudge corrects the centring rounding noted
         // above.
-        this.pinGlyphSize(8);
+        this.pinGlyphSize(ThemeManager.getResolvedScale().glyphXs);
         this.getGlyph()?.setStyleGroup("spin-glyph");
         this.getGlyph()?.setTranslate(0, -1);
 
