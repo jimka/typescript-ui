@@ -381,6 +381,45 @@ No exported symbol is added or removed except the `Theme["scale"]` members, whic
 
 ---
 
+## Implementation Notes
+
+- **Step 1's tests merge onto `ModernTheme`, not `BaseTheme`.** The plan's test
+  text calls for `ThemeManager.setTheme(defineTheme(BaseTheme, { scale: {
+  base: 28 } }))`. `BaseTheme` is a `DeepPartial<Theme>` structural scaffold
+  (its own doc comment: "Not a usable theme on its own") missing palette
+  fields such as `text.color` that `ThemeManager.setTheme`'s `themeToVars`
+  reads unconditionally, so calling `setTheme` against a `BaseTheme`-rooted
+  merge throws at runtime (`Cannot read properties of undefined (reading
+  'color')`) rather than producing the intended themed snapshot. The tests
+  (`tests/unit/core/Theme.test.ts`, `tests/component/display/Glyph.test.ts`,
+  `tests/component/GlyphIconScale.test.ts`) merge onto `ModernTheme` instead —
+  `ModernTheme` carries `BaseTheme`'s `scale` block unmodified (no shipped
+  theme overrides `scale`), so the ratios under test are identical either way.
+  This mirrors the codebase's own precedent: `HeaderThemeReflow.test.ts`'s
+  `paddedTheme()` helper spreads `...ModernTheme`, never `BaseTheme`, for the
+  same reason.
+- **`resolveScaleToken`'s both-present tie-break flips from `scale`-wins to
+  `fixed`-wins.** Plan step 1(c) / `## Expected Behaviour` row 3 requires that
+  `defineTheme(ModernTheme, { scale: { base: 28, glyphXl: { fixed: 20 } } })`
+  resolve `glyphXl` to `20`, pinned, while the other four steps still scale.
+  `deepMerge` (`core/Theme.ts`) only ever *adds* override keys onto a base
+  object — it never clears a sibling the base already set — so merging an
+  override's `{ fixed: 20 }` onto `BaseTheme`'s `glyphXl: { scale: 20 / 14 }`
+  produces the literal object `{ scale: 20 / 14, fixed: 20 }`, not a clean
+  replacement. `resolveScaleToken`'s pre-existing both-present rule was
+  "`scale` wins," which is exactly backwards for this case: it would silently
+  discard the override's explicit pin and resolve to `round(28 × 20 / 14) =
+  40`, failing the row-3 contract outright. The tie-break is flipped to check
+  `fixed` before `scale`, so an override's explicit pin always wins over an
+  inherited ratio — the only reading under which "override a token with
+  `{ fixed }`" can mean anything through `defineTheme`'s additive merge. No
+  shipped theme (`BaseTheme`/`ModernTheme`/`DarkTheme`/`ClassicTheme`) sets
+  `fixed` on any `scale.*` token today, so no existing resolution changes;
+  `docs/concepts/theming.md`'s "Exactly-one is not type-enforced" warning box
+  is updated to match the new tie-break.
+
+---
+
 ## Notes
 
 [^why-not-util]: The alternative was a `Util` family mirroring `lineHeightPx` / `rootFontSizePx` / `linePaddingPx` ([core/Util.ts:114-186](packages/lib/src/typescript/lib/core/Util.ts#L114)) — one exported function per step, reading `--ts-ui-base-size` through `DOM.source.getThemeVar`, caching the parse, and clearing on `invalidateTextMetricsCache`. Rejected on three counts. It would be a second path to a number `ThemeManager` already holds resolved, so the two could disagree after a theme change if the invalidation hook were ever missed. Those `Util` functions exist because a *text metric* genuinely has to be measured or parsed out of the cascade — a glyph box does not; `resolveScale` multiplies it out of a plain object at `setTheme` time with no probe and no cache to invalidate. And the `scale` block is already where two glyph sizes live, so putting three more of them somewhere else would split one concept across two modules. The `Util` pattern is still the right one for anything font-derived; this is not.
