@@ -40,6 +40,11 @@ const EDGE_MARGIN_PX:            number = 24;
 // default chrome height a `Window` header renders at, so a pre-layout geometry
 // calculation lands on the same footprint the laid-out window will have.
 const CHROME_HEIGHT_FLOOR_PX:   number = 26;
+// Clearance a normal-state window is refit inside of after a viewport resize
+// (see `fitNormalWindowToViewport`) — deliberately wider than `EDGE_MARGIN_PX`
+// since this refit can also shrink the window, so the margin doubles as
+// breathing room around the resized box rather than just a grab strip.
+const VIEWPORT_RESIZE_MARGIN_PX: number = 50;
 
 /**
  * Lifecycle state for an {@link AbstractWindow}. The three values are mutually
@@ -638,6 +643,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.bringToFront();
 
         AbstractWindow.openWindows.add(this);
+        this.attachViewportResizeListener();
 
         LayerManager.mount(el);
 
@@ -1038,7 +1044,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             const target = this._restoreRect ?? this.currentRect();
             this._restoreRect = null;
 
-            this.detachViewportResizeListener();
+            // Idempotent: already bound for a window restoring from a docked
+            // minimize, but a rail-minimized window never attached it (hidden
+            // while docked, so nothing to clamp) — re-attach here so the
+            // restored window resumes tracking viewport resizes.
+            this.attachViewportResizeListener();
             this.animateRect(target, () => {
                 this.restoreNormalMinSize();
                 AbstractWindow.relayoutMinimizedStack();
@@ -2302,12 +2312,13 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         });
     }
 
-    // ----- viewport-resize handling while maximized or docked-minimized -----
+    // ----- viewport-resize handling -----
 
     /**
      * Attaches the viewport-resize listener that keeps a maximized window
-     * filling the viewport, or a docked-minimized window's stack anchored to
-     * the bottom-left corner. Idempotent.
+     * filling the viewport, re-anchors a docked-minimized window's stack to
+     * the bottom-left corner, or refits a normal window back on-screen.
+     * Bound for the life of the window from {@link show}; idempotent.
      */
     private attachViewportResizeListener(): void {
         if (this._viewportResizeBound) {
@@ -2332,9 +2343,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Re-fills the viewport when the browser window resizes while this window
-     * is maximized, or re-anchors the whole minimized stack to the viewport's
-     * new bottom-left corner when this window is docked-minimized; a no-op in
-     * any other state.
+     * is maximized, re-anchors the whole minimized stack to the viewport's
+     * new bottom-left corner when this window is docked-minimized, or refits
+     * the window inside the viewport (see {@link fitNormalWindowToViewport})
+     * when it is in the normal state — so shrinking the viewport can never
+     * strand a window's header out of reach.
      */
     private onViewportResize(): void {
         const state = this.getWindowState();
@@ -2345,7 +2358,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
-        if (state !== "maximized") {
+        if (state === "normal") {
+            this.fitNormalWindowToViewport();
+
             return;
         }
 
@@ -2359,6 +2374,46 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.setAutoCommitStyle(true);
 
         AbstractWindow.relayoutMinimizedStack();
+    }
+
+    /**
+     * Refits a normal-state window inside the viewport shrunk by
+     * {@link VIEWPORT_RESIZE_MARGIN_PX} on every side, after a viewport resize.
+     * Shrinks the window down to that margin — never below its own min-size —
+     * when it no longer fits, then repositions it so every edge keeps the
+     * margin's clearance. When the window's min-size itself exceeds the
+     * margin-shrunk viewport, it is pinned {@link VIEWPORT_RESIZE_MARGIN_PX}
+     * from the top-left corner and left to spill past the bottom/right edge
+     * rather than forced below its floor.
+     */
+    private fitNormalWindowToViewport(): void {
+        const vp          = DOM.source.getViewportSize();
+        const availWidth  = Math.max(0, vp.width  - 2 * VIEWPORT_RESIZE_MARGIN_PX);
+        const availHeight = Math.max(0, vp.height - 2 * VIEWPORT_RESIZE_MARGIN_PX);
+
+        this.setAutoCommitStyle(false);
+
+        // Only ever shrinks — a window already inside the margin keeps its
+        // size. setWidth/setHeight clamp back up to the window's real
+        // min-size on their own, so a margin narrower/shorter than that floor
+        // still leaves the window at its min-size rather than forcing it down.
+        this.setWidth(Math.min(this.getWidth(), availWidth));
+        this.setHeight(Math.min(this.getHeight(), availHeight));
+
+        const width  = this.getWidth();
+        const height = this.getHeight();
+        const maxX   = vp.width  - VIEWPORT_RESIZE_MARGIN_PX - width;
+        const maxY   = vp.height - VIEWPORT_RESIZE_MARGIN_PX - height;
+
+        // High-first clamp (not Util.clamp): when the min-size exceeds the
+        // margin-shrunk viewport, maxX/maxY fall below the margin, and this
+        // must pin the window to the margin (spilling past the far edge)
+        // rather than the low-first form's off-screen trailing edge.
+        this.setX(Math.max(Math.min(this.getX(), maxX), VIEWPORT_RESIZE_MARGIN_PX));
+        this.setY(Math.max(Math.min(this.getY(), maxY), VIEWPORT_RESIZE_MARGIN_PX));
+
+        this.doLayout();
+        this.setAutoCommitStyle(true);
     }
 
     // ----- snap-resize listeners -----
