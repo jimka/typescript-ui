@@ -426,7 +426,16 @@ another cell.
   one of five named icon steps** (`glyphXs`/`glyphSm`/`glyphMd`/`glyphLg`/
   `glyphXl` — see **Breaking changes** above), so raising `scale.base` scales
   icons along with the rest of the chrome. Sizes under the shipped themes are
-  unchanged. The icons still sized against a fixed host graphic — a
-  checkbox's check, a radio button's dot, a scrollbar arrow, a table header's
-  menu icon — and a `Button`'s leading icon, which tracks its own label's
-  line box, are deliberately not on the scale.
+  unchanged. The icons still sized against a fixed host graphic — a scrollbar
+  arrow and a table header's menu icon, both pinned to `Scrollbar`'s
+  `TRACK_WIDTH` track-width constant, an ergonomic touch-target quantity
+  investigated and confirmed independent of the icon scale — and a `Button`'s
+  leading icon, which tracks its own label's line box, are deliberately not
+  on the scale.
+- **A `Checkbox`'s box and check mark, and a `RadioButton`'s ring and dot,
+  now read the `glyphLg`/`glyphSm`/`glyphXs` icon steps** instead of
+  hardcoded 16/12/8px literals, so both grow under a raised `scale.base`.
+  The ink-centring offset that places the check/dot (and, for `Checkbox`,
+  its indeterminate dash) inside the box is now computed from the box and
+  ink sizes rather than a fixed pixel, so it stays centred at any base.
+  Sizes under the shipped themes are unchanged.
