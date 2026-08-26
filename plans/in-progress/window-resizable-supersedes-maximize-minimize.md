@@ -254,6 +254,17 @@ This change alters consumer-visible behaviour, so **run the `document` skill aft
 
 ---
 
+## Implementation Notes
+
+**Manual-verify rows 12-15 (`## Expected Behaviour`) were walked in a real browser, with two adaptations from the plan's literal recipe:**
+
+- **Row 14's scratch edit was `windowState: "minimized"` at construction plus `resizable: false`, but this combination never visually docks.** `initChrome` dispatches `this.setWindowState(this.getWindowState())`; when `applyOptions` has already written `_options.windowState = "minimized"` before `initChrome` runs, `from` and `state` are both `"minimized"` and `setWindowState`'s `if (from === state) { return this; }` early-return skips the entire dock-geometry branch, so the window renders at its normal rect regardless. This is a pre-existing bug in `initChrome`'s construction-time state dispatch — it affects any window constructed directly into a non-`"normal"` `windowState`, independent of `resizable`/`minimizable`/`maximizable` — and is out of scope for this plan (untouched by either commit; no line in `## Ordered Implementation Steps` or `## Internal Structure` touches `setWindowState` or `initChrome`'s state dispatch). Row 14 was instead verified by constructing `new Window("Hello World!", { resizable: false })`, calling `.show()`, then `.minimize()` (a `"normal"` → `"minimized"` transition, not a no-op) — confirmed to dock correctly, hide both affordances, and restore to `"normal"` on a double-click of the docked header. Reported as a finding, not fixed.
+- **Row 15 has no existing `TabWindow` demo entry point in the app shell** (`MiscPanel.ts` and the rest of the demo surface construct only `Window`s). Verified instead via the running dev server's own module graph: `await import('/src/typescript/lib/overlay/TabWindow.ts')` in the browser console to construct a `TabWindow({ resizable: false })` directly, confirming `_minTool`/`_maxTool` both hidden and a dispatched `dblclick` on the bar's blank-area element leaves `getWindowState()` at `"normal"`. A positive control — the same dispatch against a default (resizable) `TabWindow` — reached `"maximized"`, confirming the dispatch genuinely exercises the handler rather than missing it. No demo file was added or changed; the improvised instances were closed via `requestClose()` before the browser tab was left.
+
+Both adaptations are manual-only; no test file or source file changed as a result of either.
+
+---
+
 ## Notes
 
 [^branch-mechanics]: The `feature/window-resizable-option` branch's tip commit is `572e469c "Move window-resizable-option plan to implemented"`, a bookkeeping commit that moved the plan file into `plans/implemented/`. The code commits from this plan belong before it. Non-interactive route, run from a worktree checked out on that branch (`git worktree add .worktrees/<slug> feature/window-resizable-option`): `git reset --mixed HEAD~1` to un-commit the plan move (the working tree keeps the file where the commit put it, as an unstaged rename), then implement and commit the code and test changes, then stage `plans/` and re-commit both plan moves as the final bookkeeping commit. `git rebase -i` is unavailable in this environment.
