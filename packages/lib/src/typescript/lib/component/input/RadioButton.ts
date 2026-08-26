@@ -8,6 +8,7 @@ import { Event } from "~/core/Event.js";
 import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
 import { type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
+import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { circle } from "~/glyphs/solid/circle.js";
 
@@ -15,10 +16,28 @@ import { circle } from "~/glyphs/solid/circle.js";
 // regardless of which control imports first.
 Glyph.register(circle);
 
+// Physical width of `_ring`'s own border on every side — fixed regardless
+// of theme; mirrors `Checkbox.ts`'s `CHECKBOX_BOX_BORDER_PX`.
+const RADIO_RING_BORDER_PX = 1;
+
+/**
+ * Square edge length of `_ring` — the theme's `glyphLg` icon step (16px at
+ * the shipped base). Resolved per construction; mirrors `Checkbox.ts`'s
+ * `checkboxBoxSizePx()`.
+ */
+function radioRingSizePx(): number {
+    return ThemeManager.getResolvedScale().glyphLg;
+}
+
+/**
+ * Square edge length of the dot's ink — the theme's `glyphXs` icon step
+ * (8px at the shipped base), fitted inside `_ring`'s `glyphLg` padding box.
+ */
+function radioDotSizePx(): number {
+    return ThemeManager.getResolvedScale().glyphXs;
+}
+
 const _defaultRadioButtonRingOptions: Partial<ComponentOptions> = {
-    preferredSize:   { width: 16, height: 16 },
-    minSize:         { width: 16, height: 16 },
-    maxSize:         { width: 16, height: 16 },
     cursor:          "pointer",
     backgroundColor: "var(--ts-ui-radio-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))",
     border:          "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))",
@@ -56,7 +75,14 @@ class RadioButtonRing extends Component {
     private _selected: boolean = false;
 
     constructor() {
-        super(undefined, _defaultRadioButtonRingOptions);
+        const size = radioRingSizePx();
+
+        super(undefined, {
+            ..._defaultRadioButtonRingOptions,
+            preferredSize: { width: size, height: size },
+            minSize:       { width: size, height: size },
+            maxSize:       { width: size, height: size },
+        });
     }
 
     /** See `CheckboxBox.applyState`'s doc comment (Checkbox.ts) — identical reasoning, one state instead of two. */
@@ -77,15 +103,8 @@ class RadioButtonRing extends Component {
     }
 }
 
-// The dot glyph's fitted size inside the ring (14×14 padding box, 1px
-// border): shared with RadioButton's own constructor below so the class
-// default and the imperative override can never drift apart.
-const RADIO_DOT_SIZE = { width: 8, height: 8 };
-
 const _defaultRadioButtonDotOptions: Partial<GlyphOptions> = {
     foregroundColor: "var(--ts-ui-radio-dot-color, rgb(255, 255, 255))",
-    minSize:         RADIO_DOT_SIZE,
-    maxSize:         RADIO_DOT_SIZE,
 };
 
 /**
@@ -102,7 +121,13 @@ const _defaultRadioButtonDotOptions: Partial<GlyphOptions> = {
  */
 class RadioButtonDot extends Glyph {
     constructor() {
-        super("circle", undefined, _defaultRadioButtonDotOptions);
+        const size = radioDotSizePx();
+
+        super("circle", undefined, {
+            ..._defaultRadioButtonDotOptions,
+            minSize: { width: size, height: size },
+            maxSize: { width: size, height: size },
+        });
     }
 }
 
@@ -167,17 +192,35 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
 
         this.setLayoutManager(new HBox());
 
+        const ringSize = radioRingSizePx();
+        const dotSize  = radioDotSizePx();
+
         this._ring = new RadioButtonRing();
         // Min = preferred = max so the outer HBox shrink-on-overallocation
         // can't collapse the ring graphic when the radio is packed into a
-        // tight container with siblings that have flexible widths.
-        this._ring.setSize({ width: 16, height: 16 });
+        // tight container with siblings that have flexible widths. The
+        // explicit setMinSize/setMaxSize calls (not just setSize) matter
+        // here: `RadioButtonRing`'s own constructor-time minSize/maxSize
+        // only ever materialises into `.RadioButtonRing`'s shared
+        // class-level CSS rule, which is cached from whichever instance is
+        // constructed first in the page's lifetime — a later instance built
+        // after a `setTheme` raises `scale.base` would still render clamped
+        // to that first-cached value without an explicit per-instance
+        // override here, the same reason `_dot`'s size is re-asserted
+        // imperatively below.
+        this._ring.setSize({ width: ringSize, height: ringSize });
+        this._ring.setMinSize({ width: ringSize, height: ringSize });
+        this._ring.setMaxSize({ width: ringSize, height: ringSize });
 
         this._dot = new RadioButtonDot();
-        this._dot.setPreferredSize(RADIO_DOT_SIZE);
-        this._dot.setMaxSize(RADIO_DOT_SIZE);
-        this._dot.setX(3);
-        this._dot.setY(3);
+        this._dot.setPreferredSize({ width: dotSize, height: dotSize });
+        this._dot.setMaxSize({ width: dotSize, height: dotSize });
+        // Centres the dot inside `_ring`'s padding box — same formula as
+        // `Checkbox.ts`'s `_check` offset. `ringSize` and `dotSize` come from the
+        // same live theme snapshot, so this stays correct at any `scale.base`.
+        const dotOffset = (ringSize - 2 * RADIO_RING_BORDER_PX - dotSize) / 2;
+        this._dot.setX(dotOffset);
+        this._dot.setY(dotOffset);
         this._dot.setOpacity(0);
         // Pass-through so clicks on the dot still hit the ring underneath.
         this._dot.setPointerEvents("none");
@@ -195,7 +238,7 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
         this.getAria().setChecked(false);
 
         // The ring owns the user-select click so the pointer/click + cursor
-        // surface is exactly the visible 16 × 16 graphic — clicks on a label or
+        // surface is exactly the visible ring graphic — clicks on a label or
         // in any stretched empty area pass through to the root, which has no
         // listener of its own. This pointer line stays per-subclass (a closure
         // over the widget `this`) because a listener registered on the child

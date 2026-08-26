@@ -3,10 +3,11 @@
 // End-to-end coverage for plans/in-progress/glyph-icon-size-scale.md: every
 // migrated call site should read its icon size off the theme's resolved
 // glyph-scale snapshot, so it grows under a raised scale.base, while the
-// sites deliberately left off the scale (a fixed-host fit, or Button's own
-// per-instance derivation) must NOT move. One describe per base; each test
-// constructs fresh so the per-construction reads (SpinButton, ComboBox) are
-// exercised, not just the per-layout re-pins (WindowHeader, TabButton).
+// sites deliberately left off the scale (Scrollbar's arrow, TableHeader's
+// menu glyph, or Button's own per-instance derivation) must NOT move. One
+// describe per base; each test constructs fresh so the per-construction
+// reads (SpinButton, ComboBox) are exercised, not just the per-layout
+// re-pins (WindowHeader, TabButton).
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
@@ -79,6 +80,20 @@ describe('glyph icon steps at the default base (14)', () => {
 
         expect(combo._caret.getCaretSize()).toBe(14);
     });
+
+    it("a Checkbox's check glyph is centred at the historical (1,1) offset", () => {
+        const checkbox = track(new Checkbox()) as unknown as { _check: Component };
+
+        expect(checkbox._check.getX()).toBe(1);
+        expect(checkbox._check.getY()).toBe(1);
+    });
+
+    it("a RadioButton's dot is centred at the historical (3,3) offset", () => {
+        const radio = track(new RadioButton()) as unknown as { _dot: Component };
+
+        expect(radio._dot.getX()).toBe(3);
+        expect(radio._dot.getY()).toBe(3);
+    });
 });
 
 describe('glyph icon steps after scale.base is raised to 28', () => {
@@ -107,29 +122,43 @@ describe('glyph icon steps after scale.base is raised to 28', () => {
 
         expect(tab.getCloseButton()!.getGlyph()!.getPreferredSize()).toEqual({ width: 16, height: 16 });
     });
+
+    it("a Checkbox's box and check glyph grow together (32 box, 24 ink, centred)", () => {
+        const checkbox = track(new Checkbox()) as unknown as { _box: Component; _check: Component };
+
+        expect(checkbox._box.getWidth()).toBe(32);
+        expect(checkbox._box.getHeight()).toBe(32);
+        expect(checkbox._check.getPreferredSize()).toEqual({ width: 24, height: 24 });
+        expect(checkbox._check.getX()).toBe(3);
+        expect(checkbox._check.getY()).toBe(3);
+    });
+
+    it("a Checkbox's indeterminate dash stays centred as the box grows", () => {
+        const checkbox = track(new Checkbox()) as unknown as { _dash: Component };
+
+        expect(checkbox._dash.getX()).toBe(11);
+        expect(checkbox._dash.getY()).toBe(14);
+    });
+
+    it("a RadioButton's ring and dot grow together (32 ring, 16 ink, centred)", () => {
+        const radio = track(new RadioButton()) as unknown as { _ring: Component; _dot: Component };
+
+        expect(radio._ring.getWidth()).toBe(32);
+        expect(radio._ring.getHeight()).toBe(32);
+        expect(radio._dot.getPreferredSize()).toEqual({ width: 16, height: 16 });
+        expect(radio._dot.getX()).toBe(7);
+        expect(radio._dot.getY()).toBe(7);
+    });
 });
 
-// The four fixed-host icons and Button's own per-instance icon are deliberate
+// The two fixed-host icons and Button's own per-instance icon are deliberate
 // Non-Goals of the plan — none of them is on the scale, so a raised base must
-// leave every one of these untouched.
+// leave every one of these untouched. Both remaining cases are pinned to
+// Scrollbar's TRACK_WIDTH, an ergonomic track-width constant distinct from
+// the icon scale (see plans/glyph-icon-host-box-migration.md), not a
+// fixed-host argument of their own.
 describe('fixed-host icons stay off the scale at base 28', () => {
     beforeEach(() => ThemeManager.setTheme(defineTheme(ModernTheme, { scale: { base: 28 } })));
-
-    it("a Checkbox's check glyph stays 12x12", () => {
-        const checkbox = track(new Checkbox());
-        const pref = (checkbox as unknown as { _check: { getPreferredSize(): { width: number; height: number } } })
-            ._check.getPreferredSize();
-
-        expect(pref).toEqual({ width: 12, height: 12 });
-    });
-
-    it("a RadioButton's dot stays 8x8", () => {
-        const radio = track(new RadioButton());
-        const pref = (radio as unknown as { _dot: { getPreferredSize(): { width: number; height: number } } })
-            ._dot.getPreferredSize();
-
-        expect(pref).toEqual({ width: 8, height: 8 });
-    });
 
     it("a Scrollbar arrow glyph stays 12x12", () => {
         const scrollbar = track(new Scrollbar('vertical', { arrowsEnabled: true }));
