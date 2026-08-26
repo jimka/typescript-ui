@@ -547,3 +547,10 @@ another cell.
   and style from the class default, rather than the caller's width and
   style with the accent colour.** Only a consumer who overrides `border`
   on a `DiagramNode` is affected; a stock node is unchanged.
+- **Single-line inputs no longer repeat their `min-height`/`max-height`
+  pair on every instance's own CSS rule.** `TextField`, `ComboBox` and
+  `NumberSpinner` (and every class built on them) now share one rule per
+  concrete class per resolved height, re-derived automatically when a
+  theme change moves the line box. Nothing changes visually or in any size
+  getter; only which CSS rule supplies the declaration. No consumer action
+  is needed.
