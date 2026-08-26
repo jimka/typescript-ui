@@ -410,18 +410,7 @@ another cell.
   ToolBar`). A consumer stylesheet selector targeting bare `.Container` —
   previously matching no `ToolBar` element — now matches `ToolBar` too.
   Audit any such selector before upgrading.
-- **`Button`'s leading icon, a `ComboBox`'s chevron, and a `WindowHeader`'s
-  title icon no longer repeat their fixed size on every instance's own CSS
-  rule; a `NumberSpinner`'s arrows, a closeable tab's ✕, and a table's
-  header menu icon no longer repeat theirs either.** The first three now
-  share one class-level rule each (`.ButtonIconGlyph`,
-  `.ComboBoxCaretGlyph`, `.WindowHeaderTitleGlyph`); the second three now
-  use the `styleGroup` mechanism to share a rule per owner
-  (`.ButtonIconGlyph--spin-glyph`, `.ButtonIconGlyph--tab-close-glyph`,
-  `.ButtonIconGlyph--table-header-menu-glyph`) rather than a class default,
-  since the three compute their shared 8px size from unrelated formulas
-  that only coincidentally agree today. Nothing changes visually. No
-  consumer action is needed.
+- **`Button`'s leading icon no longer repeats its fixed size on every instance's own CSS rule; a `NumberSpinner`'s arrows, a closeable tab's ✕, a `WindowHeader`'s title icon, and a `ComboBox`'s chevron no longer repeat theirs either.** The leading icon still shares one class-level rule (`.ButtonIconGlyph`). The spinner arrows and the tab ✕ now share one CSS rule across both — `.ts-ui-component.ts-ui-trait-glyph-xs-ink` — instead of each owning its own `styleGroup` rule (`.ButtonIconGlyph--spin-glyph`, `.ButtonIconGlyph--tab-close-glyph`); the window title icon and the combo chevron now share one CSS rule across both — `.ts-ui-component.ts-ui-trait-glyph-md-ink` — instead of each owning its own class rule (`.WindowHeaderTitleGlyph`, `.ComboBoxCaretGlyph`). A table's header menu icon is unchanged, still on its own `.ButtonIconGlyph--table-header-menu-glyph` `styleGroup` rule (its size comes from an unrelated, fixed-scrollbar-width formula, not a named icon step). Nothing changes visually. No consumer action is needed.
 - **`TextField` and every class built on it no longer duplicate their
   `min-height`/`max-height` CSS declarations in two different property
   orders.** Every `AbstractInput` text control's own CSS rule now writes
