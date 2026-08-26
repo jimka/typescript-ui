@@ -65,6 +65,14 @@ implementing its own `DOMSource` is affected.
 - **`ListenerBag.clear()`** removes every registered listener across every
   event bucket, crediting the diagnostics overlay's *Semantic listeners*
   count for each one — the primitive `registerListenerBag` is built on.
+- **Components can now share a declared style bag across unrelated classes**,
+  via `protected static readonly ownStyleTraits` (class-level, inherited down
+  the chain) or the new `styleTrait` construction option / `setStyleTrait`
+  (instance-level, independent of class). Every opt-in for the same trait
+  shares one generated CSS rule. The shared rule outranks a plain class
+  default by specificity, so overriding one of its properties on a specific
+  class or instance requires an explicit setter call (an authored instance
+  value), not just a class-tier default.
 
 ### Components
 
@@ -98,6 +106,19 @@ implementing its own `DOMSource` is affected.
   button, an app that already bundles `DiagnosticsOverlay` now also bundles
   `StyleAuditOverlay`'s `Table` and `MemoryStore` dependencies, whether or not
   it ever calls `StyleAuditOverlay.open()` itself.
+- **`TextField` (and `TextArea`/`PasswordField`/`UsernameField`/`PickerInput`,
+  via `TextInput`), `DateField`/`TimeField`/`DateTimeField` (via
+  `AbstractPickerField`), `ComboBox`, and `FieldSet` now additionally carry a
+  `ts-ui-trait-input-chrome` class on their rendered element**, and their
+  border/border-radius declarations move from each class's own rule onto one
+  shared rule (see the new trait mechanism above). **This inverts a
+  previously order-dependent case: a consumer stylesheet rule of the form
+  `.TextInput { border: … }` — previously a toss-up decided by stylesheet
+  load order, since both the framework's and a consumer's own `.TextInput`
+  rule sat at the same specificity — now reliably loses to the framework's
+  own, higher-specificity trait rule.** A consumer relying on overriding this
+  border via a plain class selector must raise its own selector's
+  specificity (e.g. two classes, or an id) to keep winning.
 
 ## Changed
 
