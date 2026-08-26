@@ -744,12 +744,18 @@ export interface Theme {
     scale: {
         /** Root base size in px; the global scale knob. Mirror of `--ts-ui-base-size`. */
         base          : number;
-        /** Window/tab title-glyph ink size. */
-        titleGlyph    : ScaleToken;
+        /** Icon step — ink inside a compact interactive control (spin arrow, tab close ✕). */
+        glyphXs       : ScaleToken;
+        /** Icon step — a small icon inside a larger click target (calendar nav chevron). */
+        glyphSm       : ScaleToken;
+        /** Icon step — an icon matched to bare text with no leading (combo-box caret, window title icon). */
+        glyphMd       : ScaleToken;
+        /** Icon step — the default icon size: an icon on a full text line box. */
+        glyphLg       : ScaleToken;
+        /** Icon step — a standalone icon read on its own, not beside text (notification severity badge). */
+        glyphXl       : ScaleToken;
         /** Tab close-button box. */
         tabClose      : ScaleToken;
-        /** Tab close-glyph ink size. */
-        tabCloseGlyph : ScaleToken;
         /** Tab-button inset (the compact inset derives as half of this). */
         tabButtonInset: ScaleToken;
     };
@@ -846,15 +852,21 @@ export type ResolvedScale = { readonly [K in keyof Theme["scale"]]: number };
  * Every arm is guarded because
  * [`DeepPartial`](/api/core/type-aliases/DeepPartial) weakens the union to
  * `{ scale? } | { fixed? }` inside a theme literal, so an authored token can be
- * malformed (`{}`, both-present) without a compile error. `scale` wins when both
- * are somehow present; a token missing both falls back to `base` so a malformed
- * theme degrades visibly (base px) rather than producing `NaN` or crashing.
+ * malformed (`{}`, both-present) without a compile error. `fixed` wins when both
+ * are somehow present: `deepMerge` only ever adds override keys onto a base
+ * object rather than clearing its siblings, so a `defineTheme` override that
+ * pins a step via `{ fixed }` on top of a base token already carrying `{ scale
+ * }` produces exactly this both-present shape — an explicit `fixed` pin is the
+ * override's clear intent and must win, or the pin would be silently absorbed
+ * by the inherited ratio. A token missing both falls back to `base` so a
+ * malformed theme degrades visibly (base px) rather than producing `NaN` or
+ * crashing.
  */
 function resolveScaleToken(token: ScaleToken, base: number): number {
     const t = token as { scale?: number; fixed?: number };
 
-    if (typeof t.scale === 'number') return Math.round(base * t.scale);
     if (typeof t.fixed === 'number') return t.fixed;
+    if (typeof t.scale === 'number') return Math.round(base * t.scale);
 
     return base;
 }
@@ -870,9 +882,12 @@ function resolveScale(theme: Theme): ResolvedScale {
 
     return {
         base,
-        titleGlyph    : resolveScaleToken(theme.scale.titleGlyph, base),
+        glyphXs       : resolveScaleToken(theme.scale.glyphXs, base),
+        glyphSm       : resolveScaleToken(theme.scale.glyphSm, base),
+        glyphMd       : resolveScaleToken(theme.scale.glyphMd, base),
+        glyphLg       : resolveScaleToken(theme.scale.glyphLg, base),
+        glyphXl       : resolveScaleToken(theme.scale.glyphXl, base),
         tabClose      : resolveScaleToken(theme.scale.tabClose, base),
-        tabCloseGlyph : resolveScaleToken(theme.scale.tabCloseGlyph, base),
         tabButtonInset: resolveScaleToken(theme.scale.tabButtonInset, base),
     };
 }
