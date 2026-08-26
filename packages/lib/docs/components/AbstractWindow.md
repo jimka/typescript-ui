@@ -8,7 +8,7 @@
 
 | Concern | What it covers |
 | --- | --- |
-| **Resize borders** | The eight border-strip overlays and the resize drag flow, appended and positioned generically. |
+| **Resize borders** | The eight border-strip overlays and the resize drag flow, appended and positioned generically. `setResizable` / `isResizable` toggle the whole affordance off — hiding all eight strips and disarming the Ctrl-snap detector — without affecting move, minimize, or maximize. |
 | **Move** | The drag-to-move flow — origin snapshot, viewport clamping, and the drag listeners. Subclasses only choose *where* the move gesture is installed. |
 | **Window state** | `setWindowState` / `getWindowState`, `toggleMinimize` / `toggleMaximize`, `isMaximized` / `isMinimized`, the maximize / minimize geometry, the restore-rect cache, and the minimized-window dock stack. |
 | **Closeable / minimizable / maximizable** | `setCloseable` / `isCloseable`, `setMinimizable` / `isMinimizable`, `setMaximizable` / `isMaximizable` — the base stores the state and delegates the UI reflection to a subclass hook. `requestClose` and the exit-action teardown. |

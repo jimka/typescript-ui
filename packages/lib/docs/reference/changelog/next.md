@@ -83,6 +83,7 @@ neither needs no change.
 
 ### Components
 
+- **[`Window`](/components/Window) and [`TabWindow`](/components/TabWindow) gain a `resizable` option**, plus the matching `setResizable(value)` / `isResizable()` pair on [`AbstractWindow`](/components/AbstractWindow). Defaults to `true`, so every existing window keeps behaving exactly as it does now. Setting it `false` hides all eight drag-to-resize border strips (no cursor, no hit test at the edges) and disarms the Ctrl-snap resize affordance, without affecting moving, minimizing, or maximizing.
 - **[`DiagnosticsOverlay`](/components/DiagnosticsOverlay)**, a floating
   window showing live runtime diagnostics — FPS, JS heap, DOM node count and
   long tasks alongside framework-internal numbers (live `Component` count,

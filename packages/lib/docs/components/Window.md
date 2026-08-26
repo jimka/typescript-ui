@@ -40,6 +40,7 @@ win.show();
 | `onReady` | `(component) => void` | Optional callback fired after the factory's component has been attached, laid out, and faded in. Use for work that must happen against a rendered subtree (e.g. `store.load()` for a TablePanel's loading overlay). |
 | `minimizable`    | `boolean` | Show the title-bar minimize button. Default `true`. |
 | `maximizable`    | `boolean` | Show the title-bar maximize button. Default `true`. |
+| `resizable`      | `boolean` | Enable the drag-to-resize border strips. Default `true`. |
 | `maximizeBounds` | `"viewport" \| "parent"` | Where to fill on maximize. Default `"viewport"`. |
 | `windowState`    | `"normal" \| "minimized" \| "maximized"` | Initial lifecycle state. Default `"normal"`. |
 | `snapResizeEnabled` | `boolean` | Enable Ctrl-snap resize detection. Default `true`. |

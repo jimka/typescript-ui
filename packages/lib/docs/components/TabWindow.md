@@ -34,6 +34,7 @@ Most code does not construct a `TabWindow` directly — it is produced automatic
 | `closeable` | `boolean` | Enables the trailing close control. Driven thereafter by the strip — the close control greys while any hosted tab is non-closeable. |
 | `minimizable` | `boolean` | Show the trailing minimize control. |
 | `maximizable` | `boolean` | Show the trailing maximize control. |
+| `resizable` | `boolean` | Enable the drag-to-resize border strips. Default `true`. |
 | `windowState` | `"normal" \| "minimized" \| "maximized"` | Initial lifecycle state. |
 | `snapResizeEnabled` / `snapThreshold` / `snapModifier` | — | Same Ctrl-snap-resize behaviour as [`Window`](/components/Window#snap-resize-modifier). |
 | `constrainToViewport` | `boolean` | Keep the window inside the viewport while dragging. |
