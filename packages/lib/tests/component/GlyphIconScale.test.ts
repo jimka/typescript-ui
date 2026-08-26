@@ -14,6 +14,7 @@ import fontMetrics from '../dom/font-metrics.test-font.json';
 import { ThemeManager, ModernTheme, defineTheme } from '~/core/Theme';
 import type { Component } from '~/core/Component';
 import { SpinButton } from '~/component/input/SpinButton';
+import { ComboBox } from '~/component/input/ComboBox';
 import { WindowHeader } from '~/component/container/WindowHeader';
 import { TabButton } from '~/component/button/TabButton';
 import { Checkbox } from '~/component/input/Checkbox';
@@ -72,6 +73,12 @@ describe('glyph icon steps at the default base (14)', () => {
 
         expect(pref).toEqual({ width: 14, height: 14 });
     });
+
+    it("ComboBox's caret box sits at the text-matched glyphMd step (14)", () => {
+        const combo = track(new ComboBox()) as unknown as { _caret: { getCaretSize(): number } };
+
+        expect(combo._caret.getCaretSize()).toBe(14);
+    });
 });
 
 describe('glyph icon steps after scale.base is raised to 28', () => {
@@ -87,6 +94,12 @@ describe('glyph icon steps after scale.base is raised to 28', () => {
         const pref = track(new WindowHeader('Title', { glyph: 'unicode-arrow-up' })).getGlyph()!.getPreferredSize()!;
 
         expect(pref).toEqual({ width: 28, height: 28 });
+    });
+
+    it("ComboBox's caret box grows with glyphMd (28)", () => {
+        const combo = track(new ComboBox()) as unknown as { _caret: { getCaretSize(): number } };
+
+        expect(combo._caret.getCaretSize()).toBe(28);
     });
 
     it("a closeable TabButton's close-button chevron grows with glyphXs (16x16)", () => {

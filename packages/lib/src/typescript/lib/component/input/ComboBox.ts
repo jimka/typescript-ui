@@ -16,11 +16,12 @@ import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
 import { List } from "~/component/list/List.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Fit } from "~/layout/Fit.js";
-import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
+import { Glyph } from "~/component/display/Glyph.js";
 import { chevron_down } from "~/glyphs/solid/chevron_down.js";
 import { callable } from "~/core/Callable.js";
 import type { StyleBag, StyleTrait } from "~/core/ClassStyleRules.js";
 import { INPUT_CHROME_TRAIT } from "~/core/StyleTraits.js";
+import { ThemeManager } from "~/core/Theme.js";
 
 Glyph.register(chevron_down);
 
@@ -535,18 +536,19 @@ class ComboBoxLabel extends Component {
     }
 }
 
-// The square size ComboBoxCaret's own ink resolves to under the shipped
-// default theme — Util.lineHeightPx({ linePadding: false }), the root theme
-// font size with no additive leading. ComboBoxCaret's constructor computes
-// this independently (it needs the live value to size its own box, not just
-// the glyph), so this is a hint the render-time reconciliation checks
-// against, not a hard override — matching ButtonIconGlyph's own default.
-const COMBOBOX_CARET_GLYPH_SIZE = { width: 14, height: 14 };
+// The square size ComboBoxCaret's own ink resolves to — the theme's
+// text-matched `glyphMd` icon step (14×14 at the shipped base). Resolved per
+// construction rather than frozen in a module constant, so a `setTheme` that
+// runs before a ComboBoxCaretGlyph is built is honoured. ComboBoxCaret's
+// constructor computes this independently (it needs the live value to size
+// its own box, not just the glyph), so this is a hint the render-time
+// reconciliation checks against, not a hard override — matching
+// ButtonIconGlyph's own default.
+function comboBoxCaretGlyphSize(): { width: number; height: number } {
+    const px = ThemeManager.getResolvedScale().glyphMd;
 
-const _defaultComboBoxCaretGlyphOptions: Partial<GlyphOptions> = {
-    minSize: COMBOBOX_CARET_GLYPH_SIZE,
-    maxSize: COMBOBOX_CARET_GLYPH_SIZE,
-};
+    return { width: px, height: px };
+}
 
 /**
  * The chevron glyph inside a {@link ComboBoxCaret}. `minSize`/`maxSize` are
@@ -555,7 +557,9 @@ const _defaultComboBoxCaretGlyphOptions: Partial<GlyphOptions> = {
  */
 class ComboBoxCaretGlyph extends Glyph {
     constructor() {
-        super("chevron-down", undefined, _defaultComboBoxCaretGlyphOptions);
+        const size = comboBoxCaretGlyphSize();
+
+        super("chevron-down", undefined, { minSize: size, maxSize: size });
     }
 }
 
@@ -571,14 +575,14 @@ class ComboBoxCaret extends Component {
     private _size:  number;
 
     constructor() {
-        // Size the caret to the field's text font so the chevron matches the
-        // trigger icons of sibling fields (DateField/TimeField), whose
-        // Button-hosted glyphs already sync to the text line. A bare Glyph
-        // otherwise keeps its static 16×16 default and renders visibly larger
-        // than every other field icon. Lock min == max so the box stays square
-        // regardless of content (the glyph child contributes no intrinsic
-        // height); the glyph fills the box so it centres trivially.
-        const size = Util.lineHeightPx({ linePadding: false });
+        // Size the caret to the theme's text-matched glyphMd icon step so the
+        // chevron matches the trigger icons of sibling fields (DateField/
+        // TimeField), whose Button-hosted glyphs already sync to the text
+        // line. A bare Glyph otherwise keeps its static default and renders
+        // visibly larger than every other field icon. Lock min == max so the
+        // box stays square regardless of content (the glyph child contributes
+        // no intrinsic height); the glyph fills the box so it centres trivially.
+        const size = ThemeManager.getResolvedScale().glyphMd;
 
         super({ tag: "span" }, { minSize: { width: size, height: size }, maxSize: { width: size, height: size } });
 
