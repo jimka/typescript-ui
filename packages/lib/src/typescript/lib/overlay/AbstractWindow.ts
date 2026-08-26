@@ -1081,6 +1081,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
                 const target = this.computeDockRect();
                 this.animateRect(target, () => {
                     this.setBodyHostDisplayed(false);
+                    this.attachViewportResizeListener();
                     AbstractWindow.relayoutMinimizedStack();
                 });
 
@@ -2301,11 +2302,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         });
     }
 
-    // ----- viewport-resize handling while maximized -----
+    // ----- viewport-resize handling while maximized or docked-minimized -----
 
     /**
      * Attaches the viewport-resize listener that keeps a maximized window
-     * filling the viewport. Idempotent.
+     * filling the viewport, or a docked-minimized window's stack anchored to
+     * the bottom-left corner. Idempotent.
      */
     private attachViewportResizeListener(): void {
         if (this._viewportResizeBound) {
@@ -2329,11 +2331,21 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Re-fills the viewport when the browser window resizes while this window is
-     * maximized; a no-op in any other state.
+     * Re-fills the viewport when the browser window resizes while this window
+     * is maximized, or re-anchors the whole minimized stack to the viewport's
+     * new bottom-left corner when this window is docked-minimized; a no-op in
+     * any other state.
      */
     private onViewportResize(): void {
-        if (this.getWindowState() !== "maximized") {
+        const state = this.getWindowState();
+
+        if (state === "minimized") {
+            AbstractWindow.relayoutMinimizedStack();
+
+            return;
+        }
+
+        if (state !== "maximized") {
             return;
         }
 
