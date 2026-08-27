@@ -3452,6 +3452,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Relays a constraint-size change up the ancestor chain — the same notify
+     * {@link setMinSize} and {@link setMaxSize} fire, for a subclass that
+     * overrides one of them to publish its CSS through a shared value-class
+     * rule instead of this instance's own `#id` rule. The slot itself is
+     * installed by the parent when the child is attached, so this is a no-op
+     * on a component with no wired parent.
+     */
+    protected notifyConstraintSizeChange(): void {
+        this._onConstraintSizeChange?.();
+    }
+
+    /**
      * Returns the usable inner size: component size minus insets and border widths.
      *
      * @returns The inner Size in pixels, or null if the element is not yet in the DOM.

@@ -250,6 +250,49 @@ grep -n 'notifyConstraintSizeChange' src/typescript/lib/core/Component.ts \
 
 ---
 
+## Implementation Notes
+
+The `grep -rn 'setMinSize' src/typescript/lib/component/list/` invariant above
+no longer finds a third, real match at `AbstractSelectableList.ts:841`. Since
+this plan was drafted, that file's empty-state floor moved from an explicit
+`setMinSize(...)` call to a declarative `minSize: { width: 100, height: 100 }`
+entry in `_defaultAbstractSelectableListOptions` (dispatched through the
+options-bag cascade instead) — its own comment now reads "a class default, not
+a constructor `setMinSize`". The grep now finds exactly two real call sites
+(`ListItem.ts`'s new override and its existing `setMarkerColumnWidth` call)
+plus one comment-only mention of the string `setMinSize` at
+`AbstractSelectableList.ts:162`. Unrelated codebase drift, not a defect in
+this plan's implementation — noted so a future reader of this invariant isn't
+surprised by the count.
+
+**Manual browser verification (rows 7-8) was performed**, from this worktree
+on a spare dev-server port (`vite --port 8021`, `node_modules` symlinked to
+the main tree so the page resolved this worktree's `packages/lib`), via
+Chrome DevTools. Findings:
+
+- **Row 7:** On `#/marker-lists`, every list's trailing marker punctuation
+  (`.`/`)`/etc.) lines up down the column and every label starts at the same
+  offset, for all twelve `NumberedListItemStyle` variants and all four
+  `BulletedListItemStyle` variants; no console errors. Inspecting a rendered
+  marker in DevTools confirmed `className` carries a `minsz<W>x0` token (e.g.
+  `minsz18x0`), `getComputedStyle(marker).minWidth` resolves to the expected
+  pixel value, and enumerating the stylesheet found **no** rule matching that
+  marker's own `#<id>` selector — its `min-width`/`min-height` come from the
+  shared `.ListItemMarkerText.minsz18x0` class rule alone. On `#/style-audit`,
+  after visiting `#/marker-lists` first to populate the shared stylesheet
+  (switching tabs in-page, not a hard reload, so the registered rules
+  persist) and clicking Refresh, no row's `body` column contains `min-width`
+  or `min-height` anywhere in the table (checked via
+  `document.body.innerText`) — the duplicate rows the plan's Overview
+  describes are gone.
+- **Row 8:** Resizing the browser window (1280×800 → 900×700) and navigating
+  back to `#/marker-lists` re-flowed every list correctly, markers still
+  aligned per list. Re-running the same DevTools check on a marker after the
+  resize showed the same result: `getComputedStyle` reports the shared rule's
+  `min-width`, and the marker's own `#<id>` rule still declares nothing.
+
+---
+
 ## Potential Challenges
 
 - **The per-instance `min-width` write does not disappear until `cell-base-background-value-class-dedup.md` has landed.** Without its value-class layer, `applyStyle`'s full-sweep seeding still reports the instance layer's `minWidth` as a deviation from the class tier and writes it to `#id` anyway — leaving the duplication in place *and* adding a dead shared rule. If row 1 fails with a real `minWidth` on `#id`, check that the dependency is actually merged before debugging anything else.

@@ -5,7 +5,9 @@ import { Text, TextOptions } from "~/component/input/Text.js";
 import { HBox } from "~/layout/HBox.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import type { StyleBag } from "~/core/ClassStyleRules.js";
+import type { Size } from "~/primitive/Size.js";
 
 /**
  * Construction-time options for {@link ListItem}.
@@ -23,6 +25,29 @@ export interface ListItemOptions extends ComponentOptions {
  * the same role `IconText`'s `gap` plays.
  */
 const MARKER_GAP_PX = 4;
+
+/** Value-class namespace for a marker's shared minimum-size rule. */
+const MARKER_MIN_SIZE_PREFIX = "minsz";
+
+/** The CSS keys a `minSize` write resolves to, for the style-resolved hook. */
+const MIN_SIZE_KEYS: ReadonlySet<string> = new Set(["minWidth", "minHeight"]);
+
+/**
+ * The value-class token body naming a marker's shared minimum-size rule —
+ * e.g. `12x0` for `{ width: 12, height: 0 }`.
+ *
+ * Both axes appear because the shared rule declares both. A token derived
+ * from one axis alone would let two different `{width, height}` pairs claim
+ * the same rule, and the first to ask would silently decide the CSS for the
+ * second — see the plan's Architecture Decisions. `setValueStyleState`
+ * sanitizes the result, so a fractional measurement (`12.5x0`) is safe.
+ *
+ * @param size - The minimum size being published.
+ * @returns The token body, without the prefix.
+ */
+function markerMinSizeToken(size: Size): string {
+    return `${size.width}x${size.height}`;
+}
 
 /**
  * Class-level defaults. Only `tag` is a genuine class default; the
@@ -56,6 +81,57 @@ class ListItemMarkerText extends Text {
 
     constructor() {
         super(undefined, undefined, _defaultListItemMarkerTextOptions);
+    }
+
+    /**
+     * Publishes the shared marker-column minimum through a per-class,
+     * per-value CSS rule instead of this instance's own `#id` rule. Every item
+     * in a list receives the same column width, so N items would otherwise
+     * write N identical `min-width`/`min-height` declarations.
+     *
+     * `cacheStyleValue` keeps the size getters resolving the constraint from
+     * the instance layer without queueing a CSS write of its own;
+     * `setValueStyleState` records the shared rule as a layer below the
+     * instance layer, so `flushStyleBag` sees the value already delivered and
+     * queues a removal rather than a per-instance declaration.
+     *
+     * @param size - The minimum size in pixels.
+     * @returns This component, for method chaining.
+     */
+    setMinSize(size: Size): this {
+        const current = this.getMinSizeConstraint();
+
+        if (current && current.width === size.width && current.height === size.height) {
+            return this;
+        }
+
+        const next: Size = { width: size.width, height: size.height };
+
+        this.cacheStyleValue("minSize", next);
+        this.setValueStyleState(MARKER_MIN_SIZE_PREFIX, markerMinSizeToken(next), { minSize: next });
+        this.onStyleResolved(MIN_SIZE_KEYS);
+        this.notifyConstraintSizeChange();
+
+        return this;
+    }
+
+    /**
+     * Re-applies a value-class token recorded before this element existed —
+     * `setValueStyleState`'s own DOM write is gated on `getElement()`. Mirrors
+     * `Text.render()`'s re-assert for its own `lh` token.
+     *
+     * @returns The created element.
+     */
+    protected render(): Handle {
+        const element = super.render();
+
+        const minSizeToken = this.getValueStyleToken(MARKER_MIN_SIZE_PREFIX);
+
+        if (minSizeToken) {
+            DOM.sink.apply(element, { addClass: [minSizeToken] });
+        }
+
+        return element;
     }
 }
 
