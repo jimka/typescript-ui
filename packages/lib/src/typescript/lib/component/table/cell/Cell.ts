@@ -455,9 +455,12 @@ export class Cell<T> extends Component {
         // answering `background` (see Cell.test.ts's background/cursor/
         // outline precedence block) without itself queuing a CSS write —
         // the actual paint routes through the shared `.Cell.bg<color>`
-        // value-class rule below instead, so cells sharing one groupColor
-        // (a whole grouped column, typically) share one rule rather than
-        // each materialising its own `#id` declaration.
+        // value-class rule below instead. That cached instance-layer value
+        // is deduped against the recorded value-class layer at flush time
+        // (see Component.layersBelowInstance), which is what keeps `#id`
+        // clear: cells sharing one groupColor (a whole grouped column,
+        // typically) share one rule rather than each materialising its own
+        // `#id` declaration.
         this.cacheStyleValue('backgroundColor', background);
 
         if (color === null) {

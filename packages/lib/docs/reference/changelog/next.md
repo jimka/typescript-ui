@@ -287,6 +287,18 @@ action is needed.
   through a new shared `.MarkerList` class rule, and `ParentHeaderCell`
   through two new internal subclasses mirroring `HeaderCell`'s own text/
   renderer shape. Nothing changes visually; no consumer action needed.
+- **A table `Cell`'s `setBaseBackground` tint (e.g. a grouped column's
+  `groupColor`) now actually dedupes onto its shared `.Cell.bg<color>` class
+  rule instead of also writing its own `#id` declaration on top of it.** The
+  shared rule was already created but never compared against, so the
+  per-instance declaration it was meant to replace kept winning on
+  specificity — the Style Audit's single largest duplicate-rule group. This
+  also fixes a real correctness bug: once a cell rendered with one base
+  colour, a later `setBaseBackground` rebind (as happens on every pooled
+  row/column recycle) never rewrote that per-instance declaration, so a
+  recycled cell could keep painting its first colour after being reused for
+  a different grouped column. No consumer action is needed, beyond the
+  corrected recycle-time colour.
 
 ### Table
 
