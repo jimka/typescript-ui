@@ -23,6 +23,12 @@ const CONFIG = {
 // breathing-room constant, not a positioning magic number.
 const VIEWPORT_MARGIN = 4;
 
+// MENU_ANIM_DURATION_MS (120) mirrored from Menu (private const), plus
+// Animation.play's default 40ms fallback buffer, plus headroom — comfortably
+// past the point a submenu's close() fade completes via the fallback timer
+// (TestDOM fires no real `transitionend`).
+const PAST_SUBMENU_FADE_MS = 200;
+
 /** Builds a full Rect from its four edges (width/height derived). Mirrors the
  *  idiom in tests/overlay/OverlayPosition.test.ts. */
 function rect(left: number, top: number, right: number, bottom: number): Rect {
@@ -103,6 +109,43 @@ describe('Menu rebuild-mode submenus', () => {
         // rebuild mode), which also tears the child submenu down.
         (menu as any)._openSubmenuPanel._onClose();
         expect((menu as any)._openSubmenuPanel).toBeNull();
+    });
+
+    it('disposes a closed submenu panel once its close fade completes, not before', () => {
+        installTestDOM(CONFIG);
+        vi.useFakeTimers();
+
+        try {
+            const menu = new Menu();
+
+            menu.show(0, 0, [
+                { text: 'Open', action: () => {} },
+                { text: 'Export', submenu: { label: 'Export', items: [{ text: 'CSV', action: () => {} }] } },
+            ]);
+
+            const exportItem = submenuItem(menu);
+
+            exportItem._onOpenSubmenu(exportItem);
+
+            const submenuPanel = (menu as any)._openSubmenuPanel;
+            expect(submenuPanel).toBeInstanceOf(Menu);
+
+            const disposeSpy = vi.spyOn(submenuPanel, 'dispose');
+
+            // Selecting a child leaf tears the submenu down (close(), a fade)
+            // — the parent forgets it synchronously, but the instance itself
+            // must not be disposed until its fade actually finishes: a
+            // one-shot submenu (fresh per open, never reused) that skipped
+            // its exit fade would visibly cut it short.
+            submenuPanel._onClose();
+            expect((menu as any)._openSubmenuPanel).toBeNull();
+            expect(disposeSpy).not.toHaveBeenCalled();
+
+            vi.advanceTimersByTime(PAST_SUBMENU_FADE_MS);
+            expect(disposeSpy).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('closes the open child submenu when a plain item is hovered', () => {

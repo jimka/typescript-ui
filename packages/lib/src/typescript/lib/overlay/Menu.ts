@@ -115,6 +115,12 @@ class Menu extends Component implements DismissableLayer {
     // Rebuild-mode: when true, each show() scrolls the menu to the bottom after
     // layout so the latest (bottom-most) items are visible on open.
     private _scrollToBottomOnShow: boolean = false;
+    // True for a submenu panel (set by handleItemOpenSubmenu right after
+    // construction): a submenu is single-use, a fresh instance built on every
+    // open, so once closed it is never reused — unlike a persistent top-level
+    // dropdown, its close() should dispose it once its fade completes rather
+    // than just fading-and-detaching it for reuse.
+    private _disposeOnClose: boolean = false;
 
     /**
      * Constructs a Menu. With no arguments, a rebuild-mode (right-click context)
@@ -612,7 +618,7 @@ class Menu extends Component implements DismissableLayer {
 
         LayerManager.unregister(this);
 
-        this.fadeOutAndDetach();
+        this.fadeOutAndDetach(this._disposeOnClose ? () => this.dispose() : undefined);
 
         return this;
     }
@@ -648,10 +654,14 @@ class Menu extends Component implements DismissableLayer {
      * Plays the standard menu-panel exit fade, then hides and detaches the
      * panel from the DOM when the transition completes. A fresh `show()` /
      * `open()` during the fade cancels the deferred detach.
+     *
+     * @param onComplete - Optional callback run once the fade-and-detach
+     *   finishes (see {@link _disposeOnClose}), after the panel is hidden and
+     *   detached.
      */
-    private fadeOutAndDetach(): void {
+    private fadeOutAndDetach(onComplete?: () => void): void {
         this._fadeHideAnimation?.cancel();
-        this._fadeHideAnimation = fadeHideAndDetach(this, { durationMs: MENU_ANIM_DURATION_MS });
+        this._fadeHideAnimation = fadeHideAndDetach(this, { durationMs: MENU_ANIM_DURATION_MS, onComplete });
     }
 
     /**
@@ -1120,6 +1130,12 @@ class Menu extends Component implements DismissableLayer {
             item.getSubmenuConfig()!.items,
             () => { this.dismissAll(); }
         );
+
+        // A submenu is single-use — see _disposeOnClose — so its own close()
+        // (via closeOpenSubmenu, below) disposes it once its fade completes
+        // instead of fading-and-detaching it for reuse like a persistent
+        // top-level dropdown.
+        submenuPanel._disposeOnClose = true;
 
         this._openSubmenuPanel = submenuPanel;
         this._openSubmenuItem = item;
