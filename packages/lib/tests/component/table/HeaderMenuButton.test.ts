@@ -256,11 +256,11 @@ describe('TableHeader menu button', () => {
         expect(button.getAria().getHasPopup()).toBe('menu');
     });
 
-    // Plan glyph-icon-size-dedup.md, 8px group: TableHeader opts its menu
-    // button's glyph into the "table-header-menu-glyph" styleGroup right
-    // after pinGlyphSize, so every table's header menu icon shares one
-    // .ButtonIconGlyph--table-header-menu-glyph rule instead of each
-    // repeating the same size on its own #id rule.
+    // Plan style-group-removal.md: TableHeader opts its menu button's glyph
+    // into the TABLE_HEADER_MENU_GLYPH_TRAIT StyleTrait right after
+    // pinGlyphSize, so every table's header menu icon shares one
+    // .ts-ui-component.ts-ui-trait-table-header-menu-glyph rule instead of
+    // each repeating the same size on its own #id rule.
 
     /** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
     function idSelector(component: { getId(): string }): string {
@@ -284,10 +284,22 @@ describe('TableHeader menu button', () => {
         return out;
     }
 
-    it("a second table's header menu button glyph writes no size declaration to its own #id rule, and the shared .ButtonIconGlyph--table-header-menu-glyph group rule exists", () => {
+    /** Every DOM class token any `apply` write in `writes` added via `addClass`. */
+    function addedClassesOf(writes: RecordingDOMSink['writes']): readonly string[] {
+        const out: string[] = [];
+        for (const w of writes) {
+            if (w.op !== 'apply') continue;
+            const addClass = (w.args[1] as { addClass?: string[] }).addClass;
+            if (Array.isArray(addClass)) out.push(...addClass);
+        }
+
+        return out;
+    }
+
+    it("a second table's header menu button glyph writes no size declaration to its own #id rule, and the shared .ts-ui-component.ts-ui-trait-table-header-menu-glyph trait rule exists", () => {
         const sink = installTestDOM(CONFIG);
 
-        layOut(makeTable()); // seed the group
+        layOut(makeTable()); // seed the trait rule
 
         const secondStart  = sink.writes.length;
         const second       = layOut(makeTable());
@@ -300,6 +312,19 @@ describe('TableHeader menu button', () => {
         expect(declarations.minHeight).toBeUndefined();
         expect(declarations.maxWidth).toBeUndefined();
         expect(declarations.maxHeight).toBeUndefined();
-        expect(_ruleCacheHas('.ButtonIconGlyph--table-header-menu-glyph')).toBe(true);
+        expect(_ruleCacheHas('.ts-ui-component.ts-ui-trait-table-header-menu-glyph')).toBe(true);
+        expect(_ruleCacheHas('.ButtonIconGlyph--table-header-menu-glyph')).toBe(false);
+    });
+
+    it("a rendered header menu button glyph's DOM class list carries the trait token and no legacy group token", () => {
+        const sink  = installTestDOM(CONFIG);
+        const start = sink.writes.length;
+
+        layOut(makeTable());
+
+        const classes = addedClassesOf(sink.writes.slice(start));
+
+        expect(classes).toContain('ts-ui-trait-table-header-menu-glyph');
+        expect(classes.some((token) => token.endsWith('--table-header-menu-glyph'))).toBe(false);
     });
 });
