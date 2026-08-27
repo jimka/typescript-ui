@@ -78,7 +78,7 @@ class Spacer extends Component<SpacerOptions> {
     constructor(options?: SpacerOptions);
 
     constructor(arg1?: number | SpacerOptions, arg2?: number) {
-        super();
+        super(undefined, { backgroundColor: "transparent" });
 
         let opts: SpacerOptions;
         if (typeof arg1 === "number") {

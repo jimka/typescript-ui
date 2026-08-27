@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { CollapseButton } from '~/component/container/CollapseButton';
 import { DOM } from '~/core/DOM';
 import { Event } from '~/core/Event';
-import { installTestDOM, makeEvent } from '../../dom/TestDOM';
+import { installTestDOM, makeEvent, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -12,6 +12,38 @@ const CONFIG = {
     fontMetrics,
     themeVars:       {},
 };
+
+/** This component's own `#id` rule selector, matching `Component`'s internal escaping. */
+function idSelector(component: { getId(): string }): string {
+    return '#' + DOM.source.escapeSelector(component.getId());
+}
+
+/**
+ * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
+ * flattened into one key/value map. Copied from `ParentHeader.classStyleDefaults.test.ts`.
+ */
+function declarationsDuring(
+    sink: RecordingDOMSink,
+    selector: string,
+    fn: () => void,
+): Record<string, string | null> {
+    const start = sink.writes.length;
+    fn();
+
+    const out: Record<string, string | null> = {};
+    for (const w of sink.writes.slice(start)) {
+        if (w.op !== 'setRuleStyles' || w.args[0] !== selector) {
+            continue;
+        }
+
+        const styles = w.args[1] as Record<string, string | null>;
+        for (const key of Object.keys(styles)) {
+            out[key] = styles[key];
+        }
+    }
+
+    return out;
+}
 
 // MUST be the first describe block in this file, and its one test the only
 // place a real dispatched click/dblclick DOM event is used. `Event`'s
@@ -108,10 +140,23 @@ describe('CollapseButton stripMode', () => {
 
         const button = new CollapseButton();
 
-        // The width write is a CSS-rule side effect; the contract worth
-        // asserting offline is no-throw + chainable `this` return.
+        // This button is never rendered here, so there's no sink to observe
+        // the write on; the declaration-level contract is pinned by the next
+        // test instead, against a rendered button. This one is chainability
+        // only.
         expect(button.setStripMode(true)).toBe(button);
         expect(button.setStripMode(false)).toBe(button);
+    });
+
+    it('writes the strip width when filled and removes its own width entry when not', () => {
+        const sink   = installTestDOM(CONFIG);
+        const button = new CollapseButton();
+        button.getElement(true);
+
+        expect(declarationsDuring(sink, idSelector(button), () => { button.setStripMode(true); }).width)
+            .toBe('18px');   // COLLAPSE_STRIP_SIZE
+        expect(declarationsDuring(sink, idSelector(button), () => { button.setStripMode(false); }).width)
+            .toBeNull();
     });
 });
 

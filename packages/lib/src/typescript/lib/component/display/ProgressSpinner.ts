@@ -4,6 +4,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
+import type { StyleBag } from "~/core/ClassStyleRules.js";
 
 /**
  * Construction-time options for {@link ProgressSpinner}.
@@ -20,6 +21,40 @@ StyleRule.ensureKeyframes(
 );
 
 const ARC_BORDER_WIDTH = 3;
+
+/** The arc's fixed ring geometry: a full circle with one transparent side,
+ *  which the rotation keyframe sweeps around. Identical on every spinner. */
+const _defaultProgressSpinnerArcOptions: Partial<ComponentOptions> = {
+    borderRadius: "50%",
+    border: {
+        border:    `${ARC_BORDER_WIDTH}px solid var(--ts-ui-progress-spinner-color, rgb(30, 100, 200))`,
+        borderTop: `${ARC_BORDER_WIDTH}px solid transparent`,
+    },
+};
+
+/**
+ * The rotating ring inside a {@link ProgressSpinner}. Its geometry never
+ * varies by instance, so it lives on the shared `.ProgressSpinnerArc` class
+ * rule; only the rotation animation stays a per-instance write, because
+ * `Component.onEffectiveVisibilityChange` pauses it by reading
+ * `getAnimation()`.
+ */
+class ProgressSpinnerArc extends Component {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. The same constant the
+    // constructor forwards as `subclassDefaults`, so both tiers agree.
+    protected static readonly ownClassStyleDefaults: StyleBag = _defaultProgressSpinnerArcOptions;
+
+    constructor(options?: ComponentOptions, subclassDefaults?: Partial<ComponentOptions>) {
+        super(options, {
+            ..._defaultProgressSpinnerArcOptions,
+            ...(subclassDefaults ?? {})
+        });
+
+        this.setAnimation("ts-ui-progress-spinner-rotate 0.8s linear infinite");
+    }
+}
 
 /**
  * Reads the active theme's `--ts-ui-font-size` as a pixel value.
@@ -46,7 +81,7 @@ function readThemeFontSizePx(): number {
  */
 class ProgressSpinner extends Component {
 
-    private _arc: Component;
+    private _arc: ProgressSpinnerArc;
     private _size: number;
     private _trackThemeFontSize: boolean;
     private _themeFontSizeResolved: boolean = false;
@@ -77,13 +112,7 @@ class ProgressSpinner extends Component {
         // and leaves 8 pixels of empty space around it.
         this.clearInsets();
 
-        this._arc = new Component();
-        this._arc.setBorderRadius("50%");
-        this._arc.setBorder({
-            border:    `${ARC_BORDER_WIDTH}px solid var(--ts-ui-progress-spinner-color, rgb(30, 100, 200))`,
-            borderTop: `${ARC_BORDER_WIDTH}px solid transparent`,
-        });
-        this._arc.setAnimation("ts-ui-progress-spinner-rotate 0.8s linear infinite");
+        this._arc = new ProgressSpinnerArc();
 
         super.addComponent(this._arc);
 

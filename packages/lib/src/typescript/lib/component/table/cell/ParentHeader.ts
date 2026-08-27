@@ -73,6 +73,15 @@ class ParentHeaderCellRenderer extends StringRenderer {
     }
 }
 
+/** Inter-group divider (right edge) and parent-row separator (bottom edge),
+ *  in the same resize-handle gray that paints the standard cell separators in
+ *  the column row beneath. Composed into one value so it rides `shadow`
+ *  rather than `border`, which `Cell`'s theme-change listener rewrites. */
+const PARENT_HEADER_CELL_DIVIDER_SHADOW = [
+    "inset -1px 0 0 0 var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))",
+    "inset 0 -1px 0 0 var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))",
+].join(", ");
+
 /**
  * A non-interactive header cell that labels a contiguous run of columns in
  * the parent-header row. Constructed once per visible group by the
@@ -95,6 +104,15 @@ class ParentHeaderCellRenderer extends StringRenderer {
  * @category Components
  */
 class ParentHeaderCell extends DefaultCell {
+
+    // Own contribution to the hierarchy-aware class tier — see
+    // plans/implemented/class-hierarchy-cascade.md. Both values are what the
+    // constructor below already writes for the no-`color` case; a cell given
+    // a real `groupColor` still writes its own background on top.
+    protected static readonly ownClassStyleDefaults: StyleBag = {
+        backgroundColor: "transparent",
+        shadow:          PARENT_HEADER_CELL_DIVIDER_SHADOW,
+    };
 
     private _text: string;
     private _color: string | null;
@@ -139,10 +157,7 @@ class ParentHeaderCell extends DefaultCell {
         // sidesteps `Cell`'s theme-change listener (which re-runs
         // `setBorder('var(--ts-ui-table-cell-border, none)')` and would
         // otherwise wipe a border-based divider on every theme toggle).
-        this.setShadow([
-            "inset -1px 0 0 0 var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))",
-            "inset 0 -1px 0 0 var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))",
-        ].join(", "));
+        this.setShadow(PARENT_HEADER_CELL_DIVIDER_SHADOW);
     }
 
     /**
