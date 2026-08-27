@@ -53,6 +53,7 @@ class Window extends AbstractWindow {
     private _headerDragComponentId: string = "";
     private readonly _boundCaptureHeaderShift: (e: MouseEvent) => void = (e: MouseEvent) => this.captureHeaderShift(e);
     private readonly _boundOnHeaderMouseDown: (e: MouseEvent) => void = (e: MouseEvent) => this.onHeaderMouseDown(e);
+    private readonly _boundOnTitleGlyphClick: () => void = () => this.onTitleGlyphClick();
 
     /**
      * Builds a header window: a `Border` layout with a {@link WindowHeader} in
@@ -84,6 +85,7 @@ class Window extends AbstractWindow {
         this._header.addMinimizeButtonListener(() => this.toggleMinimize());
         this._header.addMaximizeButtonListener(() => this.toggleMaximize());
         this._header.addHeaderDoubleClickListener((e: MouseEvent) => this.onHeaderDoubleClick(e));
+        this._header.addTitleGlyphClickListener(this._boundOnTitleGlyphClick);
 
         // Late-built state: the glyph field was written pure to `_options` by
         // the super-time cascade. Dispatch it now that `this._header` exists.
@@ -195,6 +197,16 @@ class Window extends AbstractWindow {
     }
 
     /**
+     * Reflects the maximize-availability gate onto the header maximize
+     * button's enabled state, without touching its visibility.
+     *
+     * @param value - True to enable the maximize button.
+     */
+    protected reflectMaximizeAvailability(value: boolean): void {
+        this._header.setMaximizeButtonEnabled(value);
+    }
+
+    /**
      * Swaps the header control glyphs to match the window state: the maximize
      * button shows `window-restore` when maximized (else `window-maximize`), and
      * the minimize button shows `window-restore` when minimized (else
@@ -275,7 +287,7 @@ class Window extends AbstractWindow {
      */
     private onHeaderMouseDown(e: MouseEvent): void {
         const target = e.target === null ? null : DOM.source.intern(e.target);
-        if (target && this.targetIsInTrailingButton(target)) {
+        if (target && this.targetIsInHeaderControl(target)) {
             return;
         }
 
@@ -292,7 +304,7 @@ class Window extends AbstractWindow {
      */
     private onHeaderDoubleClick(e: MouseEvent): void {
         const target = e.target === null ? null : DOM.source.intern(e.target);
-        if (target && this.targetIsInTrailingButton(target)) {
+        if (target && this.targetIsInHeaderControl(target)) {
             return;
         }
 
@@ -301,31 +313,46 @@ class Window extends AbstractWindow {
             return;
         }
 
-        if (!this.isMaximizable()) {
+        if (!this.canMaximize()) {
             return;
         }
         this.toggleMaximize();
     }
 
     /**
-     * Returns whether `target` lies inside one of the header's trailing
-     * (minimize / maximize / exit) buttons.
+     * Returns whether `target` lies inside one of the header's own controls —
+     * the trailing minimize / maximize / exit buttons, or the leading title
+     * icon — each of which owns its own click handler and must not also
+     * start a window move or trigger the header's double-click maximize.
      *
      * @param target - The event target handle to test.
-     * @returns True when the target is inside a trailing button.
+     * @returns True when the target is inside a header control.
      */
-    private targetIsInTrailingButton(target: Handle): boolean {
-        const buttons: Array<Handle | undefined> = [
+    private targetIsInHeaderControl(target: Handle): boolean {
+        const controls: Array<Handle | undefined> = [
             this._header.getMinimizeButtonElement(),
             this._header.getMaximizeButtonElement(),
             this._header.getExitButtonElement(),
+            this._header.getGlyph()?.getElement(),
         ];
-        for (const btn of buttons) {
-            if (btn && DOM.source.contains(btn, target)) {
+        for (const control of controls) {
+            if (control && DOM.source.contains(control, target)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Opens the window menu anchored under the header's title icon, in
+     * response to a click on it.
+     */
+    private onTitleGlyphClick(): void {
+        const glyph = this._header.getGlyph();
+
+        if (glyph) {
+            this.openWindowMenu(glyph);
+        }
     }
 
     /**

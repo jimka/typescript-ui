@@ -73,27 +73,59 @@ class WindowControlButton extends Button {
 }
 
 /**
- * Resting-only defaults for the decorative leading window glyph (title
- * icon) — transparent, so the bar/header surface shows through, with a
- * `1px solid transparent` border reserving the same border box the real
- * controls' themed border occupies (keeps it a size/inset peer).
+ * Resting + pressed/hover defaults for the window-menu-trigger leading glyph
+ * (title icon) — transparent at rest, so the bar/header surface shows
+ * through, with a `1px solid transparent` border reserving the same border
+ * box the real controls' themed border occupies (keeps it a size/inset
+ * peer). `pressedShadow` / `hoverShadow` are pinned to `"none"` (this
+ * button's own resting shadow), mirroring how `_defaultWindowControlOptions`
+ * pins its own pressed/hover shadow to its resting value — the icon now
+ * opens the window menu, so it needs the same active/hover background swap
+ * `WindowControlButton` declares, just never a shadow or foreground change.
  */
 const _defaultWindowLeadGlyphOptions: Partial<ButtonOptions> = {
-    backgroundColor: "transparent",
-    backgroundImage: "none",
-    border:          "1px solid transparent",
-    borderRadius:    undefined,
-    shadow:          "none",
+    backgroundColor:        "transparent",
+    backgroundImage:        "none",
+    border:                 "1px solid transparent",
+    borderRadius:           undefined,
+    shadow:                 "none",
+    pressedForegroundColor: "var(--ts-ui-text-color, black)",
+    pressedBackgroundColor: "var(--ts-ui-window-control-active-bg)",
+    pressedBackgroundImage: "var(--ts-ui-window-control-active-bg)",
+    pressedShadow:          "none",
+    hoverBackgroundColor:   "var(--ts-ui-window-control-hover-bg)",
+    hoverBackgroundImage:   "var(--ts-ui-window-control-hover-bg)",
+    hoverShadow:            "none",
 };
 
 /**
- * The decorative leading window glyph (title icon), pointer-events-disabled
- * so a press falls through to the window-move gesture — it never reaches
- * `.pressed`/`:hover`, so unlike `WindowControlButton` it needs no
- * `ownStyleStates` of its own.
+ * The window's leading glyph (title icon) and system-menu trigger. Real,
+ * declared chrome — the same `ownStyleStates` shape `WindowControlButton`
+ * declares — since a press now opens the window menu instead of falling
+ * through to the window-move gesture.
  */
 class WindowLeadGlyphButton extends Button {
     protected static readonly ownClassStyleDefaults: StyleBag = _defaultWindowLeadGlyphOptions;
+
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".pressed",
+            extract: (): StyleBag => ({
+                foregroundColor: _defaultWindowLeadGlyphOptions.pressedForegroundColor,
+                backgroundColor: _defaultWindowLeadGlyphOptions.pressedBackgroundColor,
+                backgroundImage: _defaultWindowLeadGlyphOptions.pressedBackgroundImage,
+                shadow:          _defaultWindowLeadGlyphOptions.pressedShadow,
+            }),
+        },
+        {
+            selector: ":hover",
+            extract: (): StyleBag => ({
+                backgroundColor: _defaultWindowLeadGlyphOptions.hoverBackgroundColor,
+                backgroundImage: _defaultWindowLeadGlyphOptions.hoverBackgroundImage,
+                shadow:          _defaultWindowLeadGlyphOptions.hoverShadow,
+            }),
+        },
+    ];
 
     constructor(glyph: string, subclassDefaults?: Partial<ButtonOptions>) {
         super(undefined, { glyph, insets: new Insets(2, 2, 2, 2) }, { ..._defaultWindowLeadGlyphOptions, ...(subclassDefaults ?? {}) });
@@ -115,18 +147,23 @@ export function createWindowControlButton(glyph: string): Button {
 }
 
 /**
- * Builds the decorative leading window glyph (title icon) shared by
- * `TabWindow` and `WindowHeader`. Same chromeless-looking control box as
- * {@link createWindowControlButton} so it is a size/inset peer, made
- * pointer-transparent so a press falls through to the window-move gesture.
+ * Builds the window's leading glyph (title icon) shared by `TabWindow` and
+ * `WindowHeader` — the window's system-menu trigger, not a decorative
+ * pass-through. Same size/inset box as {@link createWindowControlButton} so
+ * it is a peer of the trailing controls.
  *
  * @param glyph - The registry glyph name to show.
  *
- * @returns The configured decorative leading glyph button.
+ * @returns The configured leading glyph button.
  */
 export function createWindowLeadGlyphButton(glyph: string): Button {
     const button = new WindowLeadGlyphButton(glyph);
-    button.setPointerEvents("none");
+    // Button sets its whole `_content` row to `pointer-events: none` so face
+    // clicks fall through to the `<button>`; this button then sits inside
+    // `TabBar._leadGroup`'s own `pointer-events: none`, so with no declaration
+    // of its own it would stay un-hit-testable — see SplitButton's chevron
+    // for the identical inherited-none reason.
+    button.setPointerEvents("auto");
 
     return button;
 }

@@ -88,7 +88,8 @@ export interface DismissableLayer {
      * not a child of whatever happened to be topmost when it appeared. Such a
      * layer registers as a tree root, so raising it does not drag an unrelated
      * peer up with it (see {@link LayerManager.bringToFront}). Omitted surfaces
-     * register under the current topmost layer (the opened-from edge).
+     * register under the layer they were opened from (see
+     * {@link LayerManager.register}).
      */
     isLayerRoot?(): boolean;
 }
@@ -96,9 +97,9 @@ export interface DismissableLayer {
 /**
  * Node in the runtime layer tree. Generalizes the per-host `LayerEntry`
  * that `AnimatedDropdown` previously kept module-private: `children` are the
- * layers opened while this one was topmost, `band` is the z-index band base
- * the layer was assigned (inherited from its opener), and `zIndex` is the
- * band + counter stamp the manager assigned at register time.
+ * layers opened from this one, `band` is the z-index band base the layer was
+ * assigned (inherited from its opener), and `zIndex` is the band + counter
+ * stamp the manager assigned at register time.
  */
 interface LayerNode {
     layer:    DismissableLayer;
@@ -112,16 +113,22 @@ interface LayerNode {
 // anywhere today (Theme.ts carries no z-index tokens; the values were inline
 // per class). The bands reconcile the four historical bases into one
 // ascending allocator and preserve relative order between unrelated peers:
-//   Window 9000  <  Popover 9800  <  dropdowns 10000  <  Dialog 11000.
+//   Window 9000  <  PinnedWindow 9400  <  Popover 9800  <  dropdowns 10000  <
+//   Dialog 11000.
 // A nested child inherits its opener's band but always lands above it because
 // it registers later and so draws a higher counter. The 200-1000 gap between
 // bands leaves headroom for the monotonic `_zCounter`; it is not reset, on the
 // assumption a single session opens far fewer than 200 unrelated layers in the
 // same band before a reload — the historical inline values made the same bet.
-const Z_BAND_WINDOW:   number = 9000;
-const Z_BAND_POPOVER:  number = 9800;
-const Z_BAND_DROPDOWN: number = 10000;
-const Z_BAND_DIALOG:   number = 11000;
+const Z_BAND_WINDOW:        number = 9000;
+// Always-on-top windows, above ordinary windows and below Popover. Sits
+// midway in the 800-pixel Window→Popover gap, halving the counter headroom
+// that gap gave the Window band — see the plan's Potential Challenges note on
+// counter headroom.
+const Z_BAND_PINNED_WINDOW: number = 9400;
+const Z_BAND_POPOVER:       number = 9800;
+const Z_BAND_DROPDOWN:      number = 10000;
+const Z_BAND_DIALOG:        number = 11000;
 // Above every managed layer: a tooltip is a transient, non-interactive
 // affordance that must float over even a modal Dialog and its backdrop. Not a
 // registered layer band — exposed so the Tooltip singleton stamps itself here
@@ -141,17 +148,17 @@ const _listenerOwner: Component = new Component();
 /**
  * Central registry and document-level interaction broker for portaled overlay
  * surfaces. Owns one runtime layer tree (push-on-register /
- * link-under-current-topmost / pop-on-unregister), one z-index allocator with
+ * link-under-opener / pop-on-unregister), one z-index allocator with
  * reserved bands, and a single set of document-level `pointerdown` / `focusin`
  * / `keydown` listeners installed on the first register and removed on the
  * last unregister.
  *
  * The relationship the tree captures — the runtime "opened-from" edge (which
- * layer was topmost when this one opened) — is distinct from the static
- * component hierarchy and changes per activation, so it lives here rather than
- * in the component tree. Containment queries hop across portaled descendant
- * layers via {@link LayerManager.containsAcrossLayers}, which is the single
- * place cross-portal containment is reasoned about.
+ * layer this one was opened from) — is distinct from the static component
+ * hierarchy and changes per activation, so it lives here rather than in the
+ * component tree. Containment queries hop across portaled descendant layers
+ * via {@link LayerManager.containsAcrossLayers}, which is the single place
+ * cross-portal containment is reasoned about.
  *
  * @category Core
  */
@@ -173,18 +180,19 @@ export namespace LayerManager {
     let _listenersInstalled: boolean = false;
 
     /**
-     * The four z-index bands a surface returns from
+     * The five z-index bands a surface returns from
      * {@link DismissableLayer.getBand}. Exposed so each surface can tag itself
      * without re-declaring the constants. Reconciles the historical inline
      * bases (Window 9000, Popover 9998, dropdowns 10050, Dialog 10101) into
      * one ascending allocator.
      */
     export const Band = {
-        Window:   Z_BAND_WINDOW,
-        Popover:  Z_BAND_POPOVER,
-        Dropdown: Z_BAND_DROPDOWN,
-        Dialog:   Z_BAND_DIALOG,
-        Tooltip:  Z_BAND_TOOLTIP,
+        Window:       Z_BAND_WINDOW,
+        PinnedWindow: Z_BAND_PINNED_WINDOW,
+        Popover:      Z_BAND_POPOVER,
+        Dropdown:     Z_BAND_DROPDOWN,
+        Dialog:       Z_BAND_DIALOG,
+        Tooltip:      Z_BAND_TOOLTIP,
     } as const;
 
     /**
@@ -198,8 +206,9 @@ export namespace LayerManager {
     }
 
     /**
-     * Pushes `layer` as a child of the current topmost layer — unless it
-     * declares itself a top-level peer via
+     * Pushes `layer` as a child of the layer it was opened from — resolved
+     * via its anchor element, or the last-registered layer when it has none
+     * (see `resolveParent`) — unless it declares itself a top-level peer via
      * {@link DismissableLayer.isLayerRoot}, in which case it registers as a
      * tree root — assigns its band-based z-index, and installs the
      * document-level listeners on the first call. A duplicate register (e.g. a
@@ -213,9 +222,8 @@ export namespace LayerManager {
             return;
         }
 
-        const topmost = _stack.length > 0 ? _stack[_stack.length - 1] : null;
-        const parent  = layer.isLayerRoot?.() ? null : topmost;
-        const band    = bandFor(parent, layer.getBand?.() ?? Z_BAND_DROPDOWN);
+        const parent = layer.isLayerRoot?.() ? null : resolveParent(layer);
+        const band   = bandFor(parent, layer.getBand?.() ?? Z_BAND_DROPDOWN);
         const zIndex = band + (++_zCounter);
 
         const node: LayerNode = { layer, parent, children: [], band, zIndex };
@@ -387,6 +395,25 @@ export namespace LayerManager {
     }
 
     /**
+     * Moves an already-registered top-level layer (and every layer opened
+     * from it) into `band`, re-stamping each from the ascending counter so
+     * the moved subtree lands on top of its new band. No-op for an
+     * unregistered layer or one already in `band`.
+     *
+     * @param layer - The layer to move.
+     * @param band - The target band, one of {@link Band}'s values.
+     */
+    export function setBand(layer: DismissableLayer, band: number): void {
+        const node = _nodeByLayer.get(layer);
+
+        if (!node || node.band === band) {
+            return;
+        }
+
+        restampSubtree(node, band);
+    }
+
+    /**
      * Returns the z-index currently assigned to `layer`, for surfaces that
      * mirror it elsewhere. Falls back to the dropdown band when the layer is
      * not registered.
@@ -406,9 +433,16 @@ export namespace LayerManager {
      * relative order. Each re-stamped layer is notified via
      * {@link DismissableLayer.onZIndexChanged} so it can mirror the new value
      * through its own typed `setZIndex` (the manager never writes the DOM).
+     * `band`, when given, also moves every node into it — used by
+     * {@link setBand} to migrate a layer (and its descendants) into a
+     * different band.
      */
-    function restampSubtree(node: LayerNode): void {
+    function restampSubtree(node: LayerNode, band?: number): void {
         const walk = (n: LayerNode): void => {
+            if (band !== undefined) {
+                n.band = band;
+            }
+
             n.zIndex = n.band + (++_zCounter);
             n.layer.onZIndexChanged?.(n.zIndex);
 
@@ -418,6 +452,63 @@ export namespace LayerManager {
         };
 
         walk(node);
+    }
+
+    /**
+     * Finds the registered layer whose own element contains `target` — the
+     * layer `target` currently lives inside. Layers are portaled directly
+     * onto the document root (see {@link mount}) and never nest inside one
+     * another's DOM, so at most one entry's element can contain any given
+     * point and a flat scan of the stack (rather than a tree walk) is enough.
+     *
+     * @param target - The element to locate.
+     * @returns The owning layer's node, or `null` when `target` is not
+     *   inside any currently registered layer.
+     */
+    function nodeOwning(target: Handle): LayerNode | null {
+        for (const node of _stack) {
+            const el = node.layer.getLayerElement();
+
+            if (el && DOM.source.contains(el, target)) {
+                return node;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolves the layer a new (non-root) registration was opened from, for
+     * {@link register}'s parent lookup. A layer that tracks its own opener
+     * via {@link DismissableLayer.getAnchorElement} — a dropdown, popover, or
+     * rebuild-mode menu already does, for their own outside-click exclusion —
+     * links under whichever currently-registered layer's DOM subtree
+     * physically contains that anchor: the layer it was actually opened from,
+     * independent of registration order or which band currently paints in
+     * front. Neither a peer's registration order nor its z-index says
+     * anything about which layer a given anchor lives inside once more than
+     * one root band exists, which is why {@link setBand} broke the tree's
+     * old assumption that "last registered" and "paints in front" were the
+     * same layer.
+     *
+     * A layer with no anchor, or an anchor not (yet) inside any registered
+     * layer, falls back to the last-registered layer — the rule the tree
+     * used for every nested layer before {@link setBand} introduced a second
+     * root band, and still correct for such a layer today.
+     *
+     * @param layer - The layer being registered.
+     * @returns The node to link `layer` under, or `null` when the stack is
+     *   empty and there is nothing to fall back to.
+     */
+    function resolveParent(layer: DismissableLayer): LayerNode | null {
+        const anchor = layer.getAnchorElement?.();
+        const owner  = anchor ? nodeOwning(anchor) : null;
+
+        if (owner) {
+            return owner;
+        }
+
+        return _stack.length > 0 ? _stack[_stack.length - 1] : null;
     }
 
     /** True when `node` (or a descendant layer) contains `target`. */

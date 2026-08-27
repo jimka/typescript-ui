@@ -73,6 +73,119 @@ describe('Menu mode guards', () => {
         expect(() => menu.setMenuWidth(100)).toThrow(/rebuild mode/);
         expect(() => menu.setScrollToBottomOnShow(true)).toThrow(/rebuild mode/);
         expect(() => menu.toggleFor(DOM.sink.createElement('div'), rect(0, 0, 0, 0), [])).toThrow(/rebuild mode/);
+        expect(() => menu.setItemEnabled(0, false)).toThrow(/rebuild mode/);
+    });
+});
+
+describe('Menu.setItemEnabled — live row update on an already-open panel', () => {
+    afterEach(() => DOM.reset());
+
+    it('disables the row at index in place, without rebuilding the panel', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(0, 0, [{ text: 'A' }, { text: 'B' }]);
+
+        const row = (menu as any)._menuItems[1] as MenuItem;
+
+        menu.setItemEnabled(1, false);
+
+        expect(row.isEnabled()).toBe(false);
+        // Same instance — no rebuild happened.
+        expect((menu as any)._menuItems[1]).toBe(row);
+    });
+
+    it('re-enables a previously-disabled row', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(0, 0, [{ text: 'A', enabled: false }]);
+
+        const row = (menu as any)._menuItems[0] as MenuItem;
+        expect(row.isEnabled()).toBe(false);
+
+        menu.setItemEnabled(0, true);
+
+        expect(row.isEnabled()).toBe(true);
+    });
+
+    it('a disabled row no longer activates on click; a re-enabled one does', () => {
+        installTestDOM(CONFIG);
+
+        const action = vi.fn();
+        const menu = new Menu();
+        menu.show(0, 0, [{ text: 'A', action }]);
+
+        const row = (menu as any)._menuItems[0] as MenuItem;
+
+        menu.setItemEnabled(0, false);
+        row.activate();
+        expect(action).not.toHaveBeenCalled();
+
+        menu.setItemEnabled(0, true);
+        row.activate();
+        expect(action).toHaveBeenCalledOnce();
+    });
+
+    it("the row's own click listener reads live enabled state, not a construction-time snapshot", () => {
+        // Unlike activate() (which already read isEnabled() live pre-fix), this
+        // proves the actual bug: MenuItem's `_onClick` closure used to capture
+        // `enabled` once at construction, so a later setEnabled() call never
+        // reached it. Invoking the private closure directly — the same
+        // white-box idiom this file already uses for `_menuItems` — exercises
+        // that exact code, independent of whether a real DOM click event can
+        // round-trip through the harness's window-level listener for a menu
+        // built this late in the file (many earlier tests in this file leave
+        // their own rows' click listeners registered, so the harness's shared
+        // base listener may already be bound to a different, stale window).
+        installTestDOM(CONFIG);
+
+        const action = vi.fn();
+        const menu = new Menu();
+        menu.show(0, 0, [{ text: 'A', enabled: false, action }]);
+
+        const row = (menu as any)._menuItems[0] as MenuItem;
+
+        (row as any)._onClick();
+        expect(action).not.toHaveBeenCalled();
+
+        menu.setItemEnabled(0, true);
+        (row as any)._onClick();
+        expect(action).toHaveBeenCalledOnce();
+
+        menu.setItemEnabled(0, false);
+        (row as any)._onClick();
+        expect(action).toHaveBeenCalledOnce();
+    });
+
+    it('no-ops on a separator index', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(0, 0, [{ text: 'A' }, { separator: true }]);
+
+        expect(() => menu.setItemEnabled(1, false)).not.toThrow();
+    });
+
+    it('no-ops on a custom row() factory index — it owns its own enabled state', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(0, 0, [{ row: () => new CheckboxMenuRow({ text: 'Bold' }) }]);
+
+        const row = (menu as any)._menuItems[0] as InstanceType<typeof CheckboxMenuRow>;
+
+        expect(() => menu.setItemEnabled(0, false)).not.toThrow();
+        expect(row.isEnabled()).toBe(true);
+    });
+
+    it('no-ops on an out-of-range index', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        menu.show(0, 0, [{ text: 'A' }]);
+
+        expect(() => menu.setItemEnabled(5, false)).not.toThrow();
     });
 });
 

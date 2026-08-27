@@ -335,9 +335,12 @@ class MenuItem extends MenuRow {
         this._onMouseOver = () => {
             this.setFocused(true);
 
-            // A disabled item never opens its own submenu; it still signals the
-            // parent (the else branch) so hovering it closes any sibling submenu.
-            if (enabled && this.hasSubmenu()) {
+            // Reads the live `isEnabled()` (not the `enabled` captured above) so
+            // a later `setEnabled()` call takes effect on the next hover — see
+            // `setEnabled`'s own doc. A disabled item never opens its own
+            // submenu; it still signals the parent (the else branch) so
+            // hovering it closes any sibling submenu.
+            if (this.isEnabled() && this.hasSubmenu()) {
                 this._submenuTimer = setTimeout(() => {
                     this._submenuTimer = null;
                     this._onOpenSubmenu(this);
@@ -357,7 +360,9 @@ class MenuItem extends MenuRow {
         };
 
         this._onClick = () => {
-            if (enabled && !this.hasSubmenu()) {
+            // Reads the live `isEnabled()`, not the `enabled` captured above —
+            // see `setEnabled`'s own doc.
+            if (this.isEnabled() && !this.hasSubmenu()) {
                 this.activateLeaf();
             }
         };
@@ -496,6 +501,42 @@ class MenuItem extends MenuRow {
      */
     isEnabled(): boolean {
         return this._config.enabled !== false;
+    }
+
+    /**
+     * Updates the item's enabled state after construction — dims (or
+     * restores) the title colour, sets the aria-disabled flag and pointer
+     * cursor, and updates the flag {@link isEnabled} reads, which the
+     * `_onMouseOver` / `_onClick` handlers installed at construction consult
+     * live rather than a frozen construction-time value. Lets `Menu.setItemEnabled`
+     * push a live availability change into an already-open panel — e.g. a
+     * sibling row's own toggle that should immediately grey out this item —
+     * without closing or rebuilding the panel. No-op on a separator, which
+     * has no enabled state.
+     *
+     * @param value - True to enable the item.
+     *
+     * @returns This item, for method chaining.
+     */
+    setEnabled(value: boolean): this {
+        if (this._config.separator) {
+            return this;
+        }
+
+        this._config.enabled = value;
+
+        this.setCursor(value ? "pointer" : "default");
+        this.getAria().setDisabled(!value);
+
+        if (value) {
+            this.clearForegroundColor();
+        } else {
+            this.setForegroundColor(
+                `var(--ts-ui-${this.getCssVarPrefix()}-item-disabled-color, rgb(170, 170, 170))`
+            );
+        }
+
+        return this;
     }
 
     /**

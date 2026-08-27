@@ -492,6 +492,37 @@ class Menu extends Component implements DismissableLayer {
     }
 
     /**
+     * Updates the `enabled` state of the row at `index`, in place — without
+     * closing, rebuilding, or re-animating the panel. **Rebuild-mode only.**
+     *
+     * Lets a caller that deliberately keeps the panel open after an action
+     * (e.g. a `CheckboxMenuRow`'s own toggle, which never closes the menu —
+     * see `MenuItemConfig.closeOnActivate`) push a live availability change
+     * into a *different*, sibling row, rather than leaving it stale until the
+     * panel is next closed and reopened. No-op when `index` is out of range,
+     * or names a separator or a custom `row()` factory row — a `MenuRow`
+     * built from a factory owns its own enabled state (see
+     * `MenuRow.isEnabled`) and has no shared update surface to push into.
+     *
+     * @param index - Zero-based index into the `configs` array passed to the
+     *   `show()` / `toggleFor()` call that built the currently-displayed rows.
+     * @param enabled - The row's new enabled state.
+     *
+     * @returns This menu, for method chaining.
+     */
+    setItemEnabled(index: number, enabled: boolean): this {
+        this.assertRebuildMode("setItemEnabled");
+
+        const row = this._menuItems[index];
+
+        if (row instanceof MenuItem) {
+            row.setEnabled(enabled);
+        }
+
+        return this;
+    }
+
+    /**
      * Controls whether the menu scrolls to the bottom of its item list each time
      * it is shown. **Rebuild-mode only.**
      *

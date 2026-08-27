@@ -65,6 +65,8 @@ class TabWindow extends AbstractWindow {
     private _maxTool: Button;
     private _leadGlyphBtn: Button;
 
+    private readonly _boundOnLeadGlyphAction: () => void = () => this.onLeadGlyphAction();
+
     /**
      * Builds a headerless tab window: a reorderable {@link Tab} as the window's
      * own layout manager (flagged to close the window when its last tab
@@ -104,10 +106,11 @@ class TabWindow extends AbstractWindow {
 
         // Leading window icon at the start of the bar, mirroring the title glyph an
         // ordinary Window shows in its header: an explicit `glyph` option wins, else
-        // the `window-maximize` default. Built from the shared decorative leading-
-        // glyph factory (transparent, pointer-through, control-peer box) so it
+        // the `window-maximize` default. Built from the shared leading-glyph factory
+        // (transparent, clickable, control-peer box — it opens the window menu) so it
         // matches the header's title icon.
         this._leadGlyphBtn = createWindowLeadGlyphButton(this._options.glyph ?? "window-maximize");
+        this._leadGlyphBtn.on("action", this._boundOnLeadGlyphAction);
         this._tab.setBarLeadingWidget(this._leadGlyphBtn);
 
         this.initChrome(options);
@@ -129,8 +132,8 @@ class TabWindow extends AbstractWindow {
 
     /**
      * Sets the leading window glyph by swapping the glyph on the existing
-     * decorative leading control (a peer of the trailing min/max/close controls),
-     * mirroring {@link Window.setGlyph}.
+     * leading control (the window-menu trigger, a peer of the trailing
+     * min/max/close controls), mirroring {@link Window.setGlyph}.
      *
      * @param glyph - The glyph name to show at the start of the bar.
      *
@@ -170,11 +173,19 @@ class TabWindow extends AbstractWindow {
             return;
         }
 
-        if (!this.isMaximizable()) {
+        if (!this.canMaximize()) {
             return;
         }
 
         this.toggleMaximize();
+    }
+
+    /**
+     * Opens the window menu anchored under the leading glyph, in response to
+     * its `"action"` event.
+     */
+    private onLeadGlyphAction(): void {
+        this.openWindowMenu(this._leadGlyphBtn);
     }
 
     /**
@@ -203,6 +214,16 @@ class TabWindow extends AbstractWindow {
      */
     protected reflectMaximizable(value: boolean): void {
         this._maxTool.setVisible(value);
+    }
+
+    /**
+     * Reflects the maximize-availability gate onto the maximize tool's
+     * enabled state, without touching its visibility.
+     *
+     * @param value - True to enable the maximize tool.
+     */
+    protected reflectMaximizeAvailability(value: boolean): void {
+        this._maxTool.setEnabled(value);
     }
 
     /**

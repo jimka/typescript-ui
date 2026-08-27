@@ -17,6 +17,9 @@ import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
 import { Placement } from "~/primitive/Placement.js";
 import type { Rail } from "~/overlay/Rail.js";
+import { Menu } from "~/overlay/Menu.js";
+import { MenuItemConfig } from "~/component/container/MenuItem.js";
+import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
 
 // Window body inset in pixels, set explicitly now that the base is Container
 // (zero default insets) rather than Panel (which supplied this 4px implicitly).
@@ -126,6 +129,10 @@ export interface WindowOptions extends ContainerOptions {
     maximizable?:       boolean;
     /** Enables the drag-to-resize border strips. Defaults to `true`. */
     resizable?:         boolean;
+    /** Keeps the window above every unpinned window. Defaults to `false`. */
+    alwaysOnTop?:       boolean;
+    /** Freezes the window: no drag-to-move and no drag-to-resize. Defaults to `false`. */
+    locked?:            boolean;
     maximizeBounds?:    WindowMaximizeBounds;
     windowState?:       WindowState;
     snapResizeEnabled?: boolean;
@@ -157,6 +164,8 @@ const _defaultWindowOptions: Partial<WindowOptions> = {
     minimizable:       true,
     maximizable:       true,
     resizable:         true,
+    alwaysOnTop:       false,
+    locked:            false,
     maximizeBounds:    "viewport",
     windowState:       "normal",
     snapResizeEnabled: true,
@@ -248,6 +257,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /** Rail this window minimizes into, or null for the built-in bottom strip. */
     private _rail:              Rail | null = null;
+    /** Lazily-created rebuild-mode window menu — see `openWindowMenu`. */
+    private _windowMenu:        Menu | null = null;
     /** Typed-event fan-out for `"minimize"` / `"restore"` / `"close"`. */
     private _windowListeners:   ListenerBag<WindowEvent> = this.registerListenerBag(new ListenerBag<WindowEvent>());
     private _stateAnimHandle:   Animation.CancelHandle | null = null;
@@ -277,6 +288,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private readonly _boundOnSnapBlur:       () => void                = () => this.clearSnapState();
     private readonly _boundOnBorderResize:   (border: WindowBorder, e: MouseEvent) => void = (border, e) => this.onResize(border, e);
     private readonly _boundOnBringToFront:   () => void                = () => this.bringToFront();
+    // Bound `action` handlers for the window menu's Minimize/Maximize/Close
+    // rows — a lazily-created, rebuild-mode Menu (see `openWindowMenu`).
+    private readonly _boundToggleMinimize: () => void = () => this.toggleMinimize();
+    private readonly _boundToggleMaximize: () => void = () => this.toggleMaximize();
+    private readonly _boundRequestClose:   () => void = () => this.requestClose();
     // Schedules a layout pass on theme change, so every `Text` under this
     // window re-measures lazily against the new theme's metrics — windows
     // are appended to `document.documentElement`, not to `Body`, so they need
@@ -375,6 +391,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.reflectMinimizable(this.isMinimizable());
         this.reflectMaximizable(this.isMaximizable());
         this.setResizable(this.isResizable());
+        this.setLocked(this.isLocked());
         this.setMaximizeBounds(this.getMaximizeBounds());
         this.setWindowState(this.getWindowState());
 
@@ -424,6 +441,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         if (options.minimizable    !== undefined) this._options.minimizable    = options.minimizable;
         if (options.maximizable    !== undefined) this._options.maximizable    = options.maximizable;
         if (options.resizable      !== undefined) this._options.resizable      = options.resizable;
+        if (options.alwaysOnTop    !== undefined) this._options.alwaysOnTop    = options.alwaysOnTop;
+        if (options.locked         !== undefined) this._options.locked         = options.locked;
         if (options.maximizeBounds !== undefined) this._options.maximizeBounds = options.maximizeBounds;
         if (options.windowState    !== undefined) this._options.windowState    = options.windowState;
 
@@ -472,6 +491,20 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @param value - True when the maximize affordance is shown.
      */
     protected abstract reflectMaximizable(value: boolean): void;
+
+    /**
+     * Pushes the maximize *availability* into the subclass UI — disables
+     * (never hides) the maximize control while it is unusable, mirroring
+     * `reflectCloseable`'s disable-not-hide convention. Distinct from
+     * {@link reflectMaximizable}, which hides the control entirely when the
+     * window isn't maximizable at all: `locked` is a runtime-togglable state,
+     * not a construction-time capability, so it disables the still-visible
+     * control instead. Called by the non-virtual
+     * {@link AbstractWindow.applyMaximizeAvailability}.
+     *
+     * @param value - True when the maximize control should be enabled.
+     */
+    protected abstract reflectMaximizeAvailability(value: boolean): void;
 
     /**
      * Reflects a window-state transition into the subclass UI — typically the
@@ -823,12 +856,13 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Returns the window's z-index band so unrelated windows stack beneath
-     * popovers, dropdowns, and dialogs.
+     * popovers, dropdowns, and dialogs — the pinned band while
+     * {@link isAlwaysOnTop} is true, keeping the window above unpinned peers.
      *
      * @returns The window band base.
      */
     getBand(): number {
-        return LayerManager.Band.Window;
+        return this.isAlwaysOnTop() ? LayerManager.Band.PinnedWindow : LayerManager.Band.Window;
     }
 
     /**
@@ -938,6 +972,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         for (const border of Object.values(this._borderComponents)) {
             border.dispose();
         }
+
+        // `_windowMenu` is a LayerManager-mounted panel, never a registered
+        // child (see Menu.ts's class comment), so `super.destructor()`'s
+        // child recursion cannot reach it.
+        this._windowMenu?.dispose();
+        this._windowMenu = null;
 
         super.destructor();
     }
@@ -1396,6 +1436,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     setMaximizable(value: boolean): this {
         this._options.maximizable = value;
         this.reflectMaximizable(this.isMaximizable());
+        this.applyMaximizeAvailability();
 
         return this;
     }
@@ -1408,6 +1449,94 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     isMaximizable(): boolean {
         return this.isResizable() && (this._options.maximizable ?? this._defaultOptions.maximizable!);
+    }
+
+    /**
+     * True when a border drag may run: resizable and not frozen by the lock.
+     *
+     * @returns True when resize dragging is currently permitted.
+     */
+    private canResize(): boolean {
+        return this.isResizable() && !this.isLocked();
+    }
+
+    /**
+     * Shows or hides the eight resize-border strips from the effective
+     * resize gate ({@link canResize}), disarming a live snap session when
+     * they become hidden. The single place that writes the strips'
+     * visibility, shared by {@link setResizable} and {@link setLocked}.
+     */
+    private applyResizeBorderVisibility(): void {
+        const enabled = this.canResize();
+
+        // Hidden strips take no cursor and no hit test, so a frozen or
+        // non-resizable edge shows the ordinary pointer instead of a resize
+        // cursor that silently does nothing. `null` (inherit), not `true`, on
+        // the restore branch — an explicit `visible: true` would override the
+        // window's own hidden state while it is still being constructed
+        // (`setVisible` is called with `false` before `show()` reveals it).
+        for (const border of Object.values(this._borderComponents)) {
+            border.setVisible(enabled ? null : false);
+        }
+
+        if (!enabled) {
+            this.clearSnapState();
+        }
+    }
+
+    /**
+     * True when the maximize/restore affordance may be *used*: maximizable
+     * and not frozen by the lock. Unlike {@link canResize}, this does not
+     * gate {@link toggleMaximize} itself — a locked window's maximize state
+     * still changes programmatically (e.g. layout restore), matching the
+     * plan's Non-Goal that `locked` gates user drag gestures, not the API.
+     * It gates every *user-facing* maximize control instead: the header
+     * button, a `TabWindow`'s tool, the header/bar double-click gesture, and
+     * the window menu's Maximize/Restore row.
+     *
+     * @returns True when the maximize affordance is currently usable.
+     */
+    protected canMaximize(): boolean {
+        return this.isMaximizable() && !this.isLocked();
+    }
+
+    /**
+     * Pushes the effective maximize-availability gate ({@link canMaximize})
+     * into the subclass UI via {@link reflectMaximizeAvailability}, and
+     * refreshes the Maximize row of an already-open window menu (see
+     * {@link refreshWindowMenuMaximizeAvailability}). The single place that
+     * recomputes the gate, called whenever any of its inputs — resizable,
+     * maximizable, or locked — changes.
+     */
+    private applyMaximizeAvailability(): void {
+        this.reflectMaximizeAvailability(this.canMaximize());
+        this.refreshWindowMenuMaximizeAvailability();
+    }
+
+    /**
+     * Live-refreshes the Maximize/Restore row's `enabled` state in an
+     * already-open window menu, without closing, rebuilding, or
+     * re-animating the panel — so toggling "Lock position" from inside the
+     * still-open menu (that row's own action deliberately leaves the panel
+     * open, so both switches can be flipped in one visit) immediately greys
+     * out Maximize instead of leaving it clickable until the menu is next
+     * reopened. A no-op when no menu has ever been built, or when the
+     * window isn't maximizable at all (no Maximize row was ever built to
+     * refresh). The row's index mirrors {@link buildWindowMenuItems}'s own
+     * ordering — Minimize (when minimizable) precedes Maximize — which this
+     * assumes is unchanged since the menu was last (re)built; a capability
+     * change (`resizable` / `maximizable`) while the menu stays open would
+     * add or remove rows outright, which needs a full rebuild and is out of
+     * scope for this same-row nudge.
+     */
+    private refreshWindowMenuMaximizeAvailability(): void {
+        if (!this._windowMenu || !this.isMaximizable()) {
+            return;
+        }
+
+        const maximizeIndex = this.isMinimizable() ? 1 : 0;
+
+        this._windowMenu.setItemEnabled(maximizeIndex, this.canMaximize());
     }
 
     /**
@@ -1426,20 +1555,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     setResizable(value: boolean): this {
         this._options.resizable = value;
 
-        // Hidden strips take no cursor and no hit test, so a non-resizable
-        // edge shows the ordinary pointer instead of a resize cursor that
-        // silently does nothing. `null` (inherit), not `true`, on the restore
-        // branch — an explicit `visible: true` would override the window's
-        // own hidden state while it is still being constructed (`setVisible`
-        // is called with `false` before `show()` reveals it).
-        for (const border of Object.values(this._borderComponents)) {
-            border.setVisible(value ? null : false);
-        }
-
-        // Disarm a snap session that armed while the window was still resizable.
-        if (!value) {
-            this.clearSnapState();
-        }
+        this.applyResizeBorderVisibility();
 
         // `resizable` supersedes minimizable/maximizable, so both affordances
         // re-reflect against their effective value. Straight to the reflect
@@ -1447,6 +1563,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // into `_options` and destroy the caller's own setting.
         this.reflectMinimizable(this.isMinimizable());
         this.reflectMaximizable(this.isMaximizable());
+        this.applyMaximizeAvailability();
 
         return this;
     }
@@ -1458,6 +1575,154 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     isResizable(): boolean {
         return this._options.resizable ?? this._defaultOptions.resizable!;
+    }
+
+    /**
+     * Freezes or unfreezes the window: while locked, drag-to-move and
+     * drag-to-resize are both vetoed and the eight resize-border strips are
+     * hidden. Maximize (and un-maximizing) is itself a resize, so every
+     * user-facing maximize control is disabled too — see `canMaximize`
+     * — but minimize and close are left alone, since neither one resizes the
+     * window: `resizable` — not `locked` — stays their master switch (see
+     * `isMinimizable` / `isCloseable`).
+     *
+     * @param value - True to freeze the window; false to restore whatever
+     *   `resizable` allows.
+     *
+     * @returns This window, for method chaining.
+     */
+    setLocked(value: boolean): this {
+        this._options.locked = value;
+        this.applyResizeBorderVisibility();
+        this.applyMaximizeAvailability();
+
+        return this;
+    }
+
+    /**
+     * Returns whether the window is currently locked (frozen).
+     *
+     * @returns True when the window is locked.
+     */
+    isLocked(): boolean {
+        return this._options.locked ?? this._defaultOptions.locked!;
+    }
+
+    /**
+     * Toggles whether the window is kept above every unpinned window, by
+     * moving its registered layer between {@link LayerManager.Band.Window}
+     * and {@link LayerManager.Band.PinnedWindow}.
+     *
+     * @param value - True to pin the window above unpinned peers.
+     *
+     * @returns This window, for method chaining.
+     */
+    setAlwaysOnTop(value: boolean): this {
+        this._options.alwaysOnTop = value;
+        LayerManager.setBand(this, this.getBand());
+
+        return this;
+    }
+
+    /**
+     * Returns whether the window is pinned above unpinned peers.
+     *
+     * @returns True when the window is always-on-top.
+     */
+    isAlwaysOnTop(): boolean {
+        return this._options.alwaysOnTop ?? this._defaultOptions.alwaysOnTop!;
+    }
+
+    /**
+     * Builds the window menu's item list from the window's current state:
+     * Minimize / Maximize (omitted when not minimizable / maximizable, per
+     * `resizable`'s master-switch gating; Maximize additionally disabled —
+     * never omitted — while {@link canMaximize} is false, i.e. while locked),
+     * a separator, the "Always on top" and "Lock position" checkable rows,
+     * another separator, and Close (always present, disabled when not
+     * closeable). Minimize/Maximize/Close each carry a glyph that swaps to
+     * match the window state; on `Window` this always matches the header
+     * button's own glyph in the same state, but on `TabWindow` the trailing
+     * tool buttons never swap (`reflectMaximizeState` is a no-op there — see
+     * its own doc), so the menu row and the tool button can show different
+     * icons while minimized or maximized. The two checkable rows
+     * deliberately carry none — they stay plain `CheckboxMenuRow` factories,
+     * not icon-capable `MenuItem`s. Rebuilt on every open — see the plan's
+     * Architecture Decisions — so the checkable rows' `checked`, the
+     * Minimize/Maximize labels and glyphs, and the Maximize row's `enabled`
+     * always reflect live state.
+     *
+     * @returns The menu's item configs, in display order.
+     */
+    private buildWindowMenuItems(): MenuItemConfig[] {
+        const items: MenuItemConfig[] = [];
+        const state = this.getWindowState();
+
+        if (this.isMinimizable()) {
+            items.push({
+                text:   state === "minimized" ? "Restore" : "Minimize",
+                glyph:  state === "minimized" ? "window-restore" : "window-minimize",
+                action: this._boundToggleMinimize,
+            });
+        }
+
+        if (this.isMaximizable()) {
+            items.push({
+                text:    state === "maximized" ? "Restore" : "Maximize",
+                glyph:   state === "maximized" ? "window-restore" : "window-maximize",
+                enabled: this.canMaximize(),
+                action:  this._boundToggleMaximize,
+            });
+        }
+
+        if (items.length > 0) {
+            items.push({ separator: true });
+        }
+
+        items.push(
+            {
+                row: () => {
+                    const row = new CheckboxMenuRow({ text: "Always on top", checked: this.isAlwaysOnTop() });
+
+                    row.on("action", () => { this.setAlwaysOnTop(row.isChecked()); });
+
+                    return row;
+                },
+            },
+            {
+                row: () => {
+                    const row = new CheckboxMenuRow({ text: "Lock position", checked: this.isLocked() });
+
+                    row.on("action", () => { this.setLocked(row.isChecked()); });
+
+                    return row;
+                },
+            },
+            { separator: true },
+            { text: "Close", glyph: "xmark", enabled: this.isCloseable(), action: this._boundRequestClose },
+        );
+
+        return items;
+    }
+
+    /**
+     * Opens (or toggle-shuts) the window's system menu anchored under
+     * `opener` — the title icon in both concrete subclasses. No-ops when
+     * `opener` has no rendered element (e.g. a `Window` whose icon was
+     * removed via `clearGlyph`), so there is no anchor rect to open against.
+     *
+     * @param opener - The component the menu is anchored under and excluded
+     *   from outside-click dismissal (see `Menu.toggleFor`).
+     */
+    protected openWindowMenu(opener: Component): void {
+        const openerEl = opener.getElement();
+
+        if (!openerEl) {
+            return;
+        }
+
+        this._windowMenu ??= new Menu();
+        this._windowMenu.toggleFor(openerEl, DOM.source.getViewportRect(opener), this.buildWindowMenuItems());
     }
 
     /**
@@ -1629,6 +1894,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return;
         }
 
+        if (this.isLocked()) {
+            return;
+        }
+
         // Snapshot the start position and pointer origin so onDrag derives the move from
         // (current pointer - origin) absolutely rather than accumulating per-move deltas,
         // and onMouseUp can commit (start + delta) back to left/top.
@@ -1669,7 +1938,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * listener clears the session flag when the drag ends.
      */
     onResize(border: WindowBorder, e: MouseEvent): void {
-        if (!this.isResizable()) {
+        if (!this.canResize()) {
             return;
         }
 
@@ -2602,7 +2871,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @param e - The keydown event.
      */
     private onSnapKeyDown(e: KeyboardEvent): void {
-        if (!this.isResizable()) {
+        if (!this.canResize()) {
             return;
         }
 
