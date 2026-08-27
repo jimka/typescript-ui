@@ -401,6 +401,14 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
  */
 class ComboBoxLabel extends Component {
     private _lineHeight: string | null = null;
+    // True when `_lineHeight`'s current value was written through the
+    // instance layer (the string branch of setLineHeight). The numeric
+    // branch reads it to know whether it must clear a real #id
+    // declaration before pointing this instance at the shared
+    // `.ComboBoxLabel.lh<value>` rule, whose (0,2,0) specificity an #id
+    // declaration would otherwise outrank. False in the numeric-only
+    // lifetime every in-library caller actually produces.
+    private _lineHeightOnInstanceLayer = false;
     /** The renderer painting the selected entry on the collapsed control. */
     private _renderer:   ListItemRenderer;
 
@@ -466,16 +474,37 @@ class ComboBoxLabel extends Component {
      * with a `"px"` suffix; string values pass through unchanged. Retained
      * because `ComboBox.doLayout` still drives it; the hosted label renderer
      * also matches its own line-height to the box in `layoutChildren`, so the
-     * collapsed line stays centred either way.
+     * collapsed line stays centred either way. The numeric form paints
+     * through a shared `.ComboBoxLabel.lh<value>` rule rather than this
+     * instance's own `#id` rule, since the value is theme-derived and every
+     * ComboBox under one theme resolves the same line box.
      *
      * @param value - A pixel count (number) or a CSS line-height string.
      *
      * @returns This component, for method chaining.
      */
     setLineHeight(value: number | string): this {
-        this._lineHeight = typeof value === "number" ? value + "px" : value;
+        const numeric  = typeof value === "number";
+        const resolved = numeric ? value + "px" : value;
 
-        this.setElementCSSRule("lineHeight", this._lineHeight);
+        if (this._lineHeight === resolved && this._lineHeightOnInstanceLayer === !numeric) {
+            return this;
+        }
+
+        if (numeric) {
+            if (this._lineHeightOnInstanceLayer) {
+                this.writeStyle({ font: { lineHeight: null } });
+                this._lineHeightOnInstanceLayer = false;
+            }
+
+            this.setValueStyleState("lh", resolved, { font: { lineHeight: resolved } });
+        } else {
+            this.clearValueStyleState("lh");
+            this.writeStyle({ font: { lineHeight: resolved } });
+            this._lineHeightOnInstanceLayer = true;
+        }
+
+        this._lineHeight = resolved;
 
         return this;
     }
@@ -504,6 +533,15 @@ class ComboBoxLabel extends Component {
         const el = element || this.getElement();
         if (el) {
             DOM.sink.appendChild(el, this._renderer.getElement(true)!);
+
+            // Re-assert a value-class token recorded by setLineHeight before
+            // this element existed — setValueStyleState's own DOM write is
+            // gated on getElement(). Mirrors Text.render()'s catch-up and
+            // Component.init's own re-apply of declared state tokens.
+            const lineHeightToken = this.getValueStyleToken("lh");
+            if (lineHeightToken) {
+                DOM.sink.apply(el, { addClass: [lineHeightToken] });
+            }
         }
 
         return this;

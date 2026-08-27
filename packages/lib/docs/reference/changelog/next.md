@@ -477,6 +477,12 @@ another cell.
   arrows render identically — the shared `.ScrollArrowGlyph` rule grows by
   three declarations and every instance's own rule shrinks by the same
   three. No consumer action is needed.
+- **A `ComboBox`'s collapsed label now paints its `line-height` through a
+  CSS rule shared by every ComboBox resolving the same line box, instead
+  of each control writing its own.** The line box is theme-derived, so
+  every ComboBox on a page normally resolves the same value; previously
+  each one repeated that declaration in its own rule. No consumer action
+  needed; nothing changes visually.
 - **`FileField`'s hidden native input, `FooterRow`, `TableHeader`, `Table`,
   and `ToolBar` (horizontal/default orientation) no longer duplicate their
   fixed styling on every instance's own CSS rule.** Each now shares one CSS
