@@ -32,10 +32,10 @@ export const INPUT_CHROME_TRAIT: StyleTrait = {
  * would also hand this size to every other leading icon in the app — a
  * plain `Button`, `PickerButton`, `MenuButton`, none of which are
  * `glyphXs`-sized. Only these two specific instances opt in, via
- * `setStyleTrait`, replacing the two separate `styleGroup` tokens
- * (`"spin-glyph"`, `"tab-close-glyph"`) plans/implemented/glyph-icon-size-
- * dedup.md gave them back when their shared 8px size was still a
- * coincidence of two unrelated formulas. See plans/glyph-icon-trait-dedup.md.
+ * `setStyleTrait`, replacing the two separate per-owner tokens `spin-glyph`
+ * and `tab-close-glyph` that `plans/implemented/glyph-icon-size-dedup.md`
+ * gave them back when their shared 8px size was still a coincidence of two
+ * unrelated formulas. See plans/implemented/glyph-icon-trait-dedup.md.
  *
  * The `8` is the shipped default theme's `glyphXs` step
  * (`ThemeManager.getResolvedScale().glyphXs`), frozen as a literal rather

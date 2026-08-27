@@ -11,7 +11,7 @@
 // (`AbstractPickerField`, `ComboBox`, `FieldSet`), which no other test file
 // exercises at the class-tier level.
 //
-// Same module-state caveat as `StyleGroupRules.test.ts`/`ClassStyleRules.test.ts`:
+// Same module-state caveat as `ClassStyleRules.test.ts`:
 // the `_owners`/`_traitBags`/`_resolvedTraits`/`_traitStyleDefaults` maps in
 // `core/ClassStyleRules.ts` are module state that survives `DOM.reset()`
 // (though not a fresh test *file*) — so every locally-declared `Component`
@@ -55,7 +55,7 @@ function writesDuring(sink: RecordingDOMSink, fn: () => void): RecordingDOMSink[
 /**
  * Declarations written to `selector`'s stylesheet rule while `fn()` ran,
  * flattened into one key/value map (last write per key wins). Copied from
- * `StyleGroupRules.test.ts` — see that file for the full rationale.
+ * `ClassStyleRules.test.ts` — see that file for the full rationale.
  */
 function declarationsDuring(
     sink: RecordingDOMSink,

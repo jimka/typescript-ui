@@ -22,7 +22,7 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { ellipsis_v } from "~/glyphs/solid/ellipsis_v.js";
 import { callable } from "~/core/Callable.js";
 import { TRACK_WIDTH } from "~/component/container/Scrollbar.js";
-import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StyleStateSpec, StyleTrait } from "~/core/ClassStyleRules.js";
 
 // Register the column-menu button's glyph eagerly at module load — same
 // pattern as ToolBar registering its overflow chevron — so the button always
@@ -43,6 +43,32 @@ const MENU_BUTTON_LABEL = "Column options";
 // glyph to `TRACK_WIDTH - MENU_BUTTON_CHROME_PX`), so this is the fixed
 // per-side overhead subtracted from that fixed track width.
 const MENU_BUTTON_CHROME_PX = 4;
+
+/**
+ * The menu button's glyph edge, in px — the vertical-scrollbar reservation
+ * band (`TRACK_WIDTH`) minus the button's own compact insets. Both inputs are
+ * module constants, so this is fixed at import time.
+ */
+const MENU_BUTTON_GLYPH_PX = Math.max(1, TRACK_WIDTH - MENU_BUTTON_CHROME_PX);
+
+/**
+ * The min/max square-size pair every table header's menu icon shares, so all
+ * of them use one CSS rule instead of each repeating the same size on its own
+ * `#id` rule. `TableHeaderMenuButton` is the only owner, and the size derives
+ * from constants declared in this file and in `Scrollbar.ts`, so the trait is
+ * declared here rather than in `core/StyleTraits.ts` (which would make a
+ * `core/` module import from `component/`). Deliberately *not* folded into
+ * `GLYPH_XS_INK_TRAIT` despite resolving to the same 8px today: that trait
+ * tracks the theme's `glyphXs` icon step, while this one tracks a fixed
+ * scrollbar track width — see plans/implemented/glyph-icon-host-box-migration.md.
+ */
+const TABLE_HEADER_MENU_GLYPH_TRAIT: StyleTrait = {
+    name: "table-header-menu-glyph",
+    declarations: {
+        minSize: { width: MENU_BUTTON_GLYPH_PX, height: MENU_BUTTON_GLYPH_PX },
+        maxSize: { width: MENU_BUTTON_GLYPH_PX, height: MENU_BUTTON_GLYPH_PX },
+    },
+};
 
 // Needs to beat the header's inner rows, which are Components at `z-index:
 // 0` (an implicit stacking context) — a plain sibling with `z-index: auto`
@@ -141,13 +167,11 @@ class TableHeaderMenuButton extends Button {
         // comment) — wire `action` directly here instead, the same way
         // `PopupButton`/`MenuButton` do from their own constructor bodies.
         this.on("action", onAction);
-        this.pinGlyphSize(Math.max(1, TRACK_WIDTH - MENU_BUTTON_CHROME_PX));
-        // Three unrelated owners (this button, SpinButton, TabCloseButton) all
-        // pin their glyph to 8px via unrelated formulas that only coincidentally
-        // agree today — see plans/implemented/glyph-icon-size-dedup.md's
-        // Architecture Decisions for why a class default is unsafe here and a
-        // styleGroup token is used instead.
-        this.getGlyph()?.setStyleGroup("table-header-menu-glyph");
+        this.pinGlyphSize(MENU_BUTTON_GLYPH_PX);
+        // `pinGlyphSize` sets Button's `_glyphSizePinned` opt-out so a theme
+        // change never re-tracks this glyph to the title line height; the
+        // trait publishes the size as one shared CSS rule across every table.
+        this.getGlyph()?.setStyleTrait(TABLE_HEADER_MENU_GLYPH_TRAIT);
         this.getAria().setHasPopup("menu");
     }
 }

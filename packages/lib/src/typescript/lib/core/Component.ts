@@ -23,7 +23,7 @@ import { ThemeManager } from "~/core/Theme.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { resolveClassDefaults } from "~/core/ComponentDefaults.js";
-import { COMPONENT_CLASS, ensureClassStateRule, ensureClassStyleRule, ensureStyleGroupRule, ensureTraitStyleRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, resolvePartialDeclarations, resolveStyleStates, resolveStyleTraits, resolveTraitStyleDefaults, restingGuardSuffix, styleGroupClassSuffix, traitClassName, traitTopStateConflictKeys, type StyleBag, type StyleLayer, type StyleStateSpec, type StyleTrait, type TextStyleBag } from "~/core/ClassStyleRules.js";
+import { COMPONENT_CLASS, ensureClassStateRule, ensureClassStyleRule, ensureTraitStyleRule, getStyleClassChain, registerStyleChainRoot, resolveDeclarations, resolvePartialDeclarations, resolveStyleStates, resolveStyleTraits, resolveTraitStyleDefaults, restingGuardSuffix, traitClassName, traitTopStateConflictKeys, type StyleBag, type StyleLayer, type StyleStateSpec, type StyleTrait, type TextStyleBag } from "~/core/ClassStyleRules.js";
 import { cancelTransitions } from "~/core/PendingTransitions.js";
 import { measureBorderWidths } from "~/core/BorderWidths.js";
 
@@ -160,12 +160,6 @@ export interface ComponentOptions {
     attributes?:      Record<string, string>;
     components?:      Array<Component | ComponentFactory | ConstrainedComponent>;
     styleRules?:      ComponentStyleRuleSpec[];
-    /**
-     * Opt-in token that lets several instances of the same concrete class
-     * share one generated `.ClassName--<group>` CSS rule instead of each
-     * carrying its own.
-     */
-    styleGroup?:      string | null;
     /** Attaches this single instance to a shared, declared `StyleTrait`
      *  regardless of its class. `null` clears it. See `setStyleTrait`. */
     styleTrait?:      StyleTrait | null;
@@ -302,34 +296,6 @@ function formatSizeTerm(value: number): string {
  */
 function formatSizeAttr(width: number, height: number): string {
     return formatSizeTerm(width) + " " + formatSizeTerm(height);
-}
-
-/**
- * A specific instance's own resolved hoistable style, authored — read
- * through the same per-field getters a caller would use
- * (`getBackgroundColor()`, `getBorder()`, ...), in the same `StyleBag` shape
- * `getClassStyleDefaults()` returns for the class-only bag.
- * `ensureStyleGroupRule` resolves this through `resolveDeclarations` itself,
- * so this seeds it with what *this instance* would actually render, not the
- * class's plain default — see
- * plans/implemented/shared-instance-style-groups.md. Scoped to the same
- * fields the class tier hoists via `StyleBag`, minus
- * `backgroundImage`/`borderRadius`/`visible`/`displayed`/`font`, which a
- * `styleGroup` does not cover.
- */
-function resolveInstanceStyleDeclarations(component: Component): StyleBag {
-    return {
-        backgroundColor: component.getBackgroundColor(),
-        border:          component.getBorder(),
-        cursor:          component.getCursor(),
-        foregroundColor: component.getForegroundColor(),
-        outline:         component.getOutline(),
-        userSelect:      component.getUserSelect(),
-        shadow:          component.getShadow(),
-        minSize:         component.getMinSizeConstraint(),
-        maxSize:         component.getMaxSizeConstraint(),
-        overflow:        component.getOverflow(),
-    };
 }
 
 /**
@@ -568,19 +534,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // Set at the top of `applyStyle` and consulted by `flushStyleBag` so it
     // can skip a write already served by a lower tier.
     private _classLayer           : StyleLayer | null = null;
-    // Per-render cache of what this instance's `styleGroup` (if any) already
-    // delivers — the layer `ensureStyleGroupRule` returns, or `null` when no
-    // group is set. Scanned by `styleLayers()` ahead of `_classLayer`; see
-    // plans/implemented/shared-instance-style-groups.md.
-    private _groupLayer           : StyleLayer | null = null;
     // Per-render caches for the trait tier — a declared `StyleTrait` bag
     // shared across unrelated classes/instances, ranked above the class tier
     // (see plans/cross-class-style-groups.md). Instance-level opt-in
     // (`setStyleTrait`) is dynamic, so `_instanceTraitLayer` is recomputed
-    // every render like `_groupLayer`; class-level opt-in (`ownStyleTraits`)
-    // is fixed for the life of the instance, but `_classTraitLayers` is
-    // still recomputed every render since `resolveStyleTraits`/
-    // `ensureTraitLayer` are both memoized and cheap to re-derive.
+    // every render; class-level opt-in (`ownStyleTraits`) is fixed for the
+    // life of the instance, but `_classTraitLayers` is still recomputed
+    // every render since `resolveStyleTraits`/`ensureTraitLayer` are both
+    // memoized and cheap to re-derive.
     private _instanceTraitLayer   : StyleLayer | null = null;
     private _classTraitLayers     : readonly StyleLayer[] | null = null;
     // The DOM class token `applyStyle` most recently added for the instance-
@@ -598,9 +559,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // `resolveStyleValue`/`resolveFontValue`'s per-authored-key memo, keyed
     // on the `StyleBag` key name (a `"font."`-prefixed key for a font
     // sub-field). Cleared whenever a layer that could change an answer
-    // changes: an instance-layer write, a meta-class toggle, or
-    // `setStyleGroup`. Class and framework layers are immutable per process,
-    // so nothing else can invalidate an entry.
+    // changes: an instance-layer write or a meta-class toggle. Class and
+    // framework layers are immutable per process, so nothing else can
+    // invalidate an entry.
     private _resolvedCache        : Map<string, unknown> | null = null;
     // CSS keys `flushStyleBag` still needs to resolve and write. `writeStyle`
     // adds to it; `applyStyle` additionally seeds it with every key any
@@ -817,7 +778,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (options.pointerEvents   !== undefined) this.setPointerEvents(options.pointerEvents);
         if (options.writingMode     !== undefined) this.setWritingMode(options.writingMode);
         if (options.touchAction     !== undefined) this.setTouchAction(options.touchAction);
-        if (options.styleGroup      !== undefined) this.setStyleGroup(options.styleGroup);
         if (options.styleTrait      !== undefined) this.setStyleTrait(options.styleTrait);
 
         if (options.attributes !== undefined) {
@@ -1966,44 +1926,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         return this;
     }
 
-    /**
-     * Returns this component's `styleGroup` token — the caller-supplied
-     * string that lets several instances of the same concrete class share
-     * one generated `.ClassName--<group>` CSS rule instead of each carrying
-     * its own. `null` when unset.
-     *
-     * @returns The `styleGroup` token, or `null` when none has been set.
-     */
-    getStyleGroup(): string | null {
-        return this._options.styleGroup ?? null;
-    }
-
-    /**
-     * Sets this component's `styleGroup` token. Two instances of the same
-     * concrete class constructed with the same token compare their resolved
-     * hoistable style (background/border/cursor/foregroundColor/outline/
-     * userSelect/shadow/minSize/maxSize/overflow) and share one rule for
-     * whatever agrees; a genuine deviation still writes to that instance's
-     * own rule, exactly as an ungrouped instance would.
-     *
-     * @remarks The group's shared content is fixed by whichever instance in
-     * the group renders *first* — a later instance passing a different
-     * value under the same token is treated as a per-instance deviation
-     * (written to its own rule), not an error. Choose a token deliberately
-     * for instances that are meant to look identical; the group's exact
-     * resolved content is otherwise not predictable from source alone
-     * without knowing render order.
-     *
-     * @param group - The new token, or `null` to clear it.
-     *
-     * @returns This component, for method chaining.
-     */
-    setStyleGroup(group: string | null): this {
-        this._options.styleGroup = group;
-
-        return this;
-    }
-
     /** This instance's own `styleTrait`, or `null` when unset. */
     getStyleTrait(): StyleTrait | null {
         return this._options.styleTrait ?? null;
@@ -2011,8 +1933,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Attaches (or clears) this instance's own trait, independent of its
-     * class. A plain assignment — like `setStyleGroup`, it does not itself
-     * validate or touch CSS. If `trait`'s declared properties collide with
+     * class. A plain assignment — it does not itself validate or touch CSS.
+     * If `trait`'s declared properties collide with
      * this instance's class's own top-priority declared state, the *next
      * render* throws instead of resolving the tie by stylesheet order — see
      * plans/cross-class-style-groups.md's Architecture Decisions on the
@@ -5144,8 +5066,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * The component's style layers, highest-priority first: every currently
      * active declared state (in declared order — see `ownStyleStates`),
      * then this instance's own writes, then its instance-level trait (if
-     * any), then its class-level traits (if any), then its `styleGroup` (if
-     * any), then its class tier.
+     * any), then its class-level traits (if any), then its class tier.
      *
      * @remarks `_classLayer` is only populated by `applyStyle`, i.e. once
      * this component has rendered at least once — but a getter like
@@ -5174,8 +5095,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         if (this._instanceTraitLayer) layers.push(this._instanceTraitLayer);
         layers.push(...(this._classTraitLayers ?? []));
-
-        if (this._groupLayer) layers.push(this._groupLayer);
 
         layers.push(this._classLayer ?? { authored: this.getClassStyleDefaults(), resolved: {} });
 
@@ -5210,14 +5129,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /** The layers *below* the instance layer — instance-level trait (if any),
      *  class-level traits (if any), every active value-class tier (see
-     *  `setValueStyleState`), group (if any), then class — built directly
+     *  `setValueStyleState`), then class — built directly
      *  from the cached fields rather than by slicing `styleLayers()`, since
      *  that array's prefix (zero or more active meta-class layers) has no
      *  fixed length to slice past. Used by `matchesLowerTier` and
      *  `flushStyleBag`'s per-key dedup, both of which need "does a tier
      *  *other than this instance's own* already supply this value", never a
-     *  meta-class layer's. Value-class layers rank above group and class
-     *  here because their `.ClassName.<token>` selector outranks both on
+     *  meta-class layer's. Value-class layers rank above class
+     *  here because their `.ClassName.<token>` selector outranks it on
      *  specificity. */
     protected layersBelowInstance(): ReadonlyArray<StyleLayer> {
         const layers: StyleLayer[] = [];
@@ -5228,8 +5147,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         for (const entry of this._valueStyleTokens.values()) {
             layers.push(entry.layer);
         }
-
-        if (this._groupLayer) layers.push(this._groupLayer);
 
         layers.push(this._classLayer ?? { authored: this.getClassStyleDefaults(), resolved: {} });
 
@@ -5329,7 +5246,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Resolves one authored `StyleBag` value: the first layer (instance,
-     * then group, then class — see {@link styleLayers}) whose authored bag
+     * then class — see {@link styleLayers}) whose authored bag
      * *contains* `key` wins, even when its value is `null` — so a `clearX()`
      * (which writes the key with `null`) suppresses a lower layer's default
      * rather than falling through to it. Memoized in `_resolvedCache` until
@@ -5501,7 +5418,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * bag *contains* `key` wins — presence, not truthiness, so a `clearX()`
      * that writes `null` suppresses the class-tier token rather than falling
      * through to it. Never falls through to the resting tiers (instance,
-     * group, class) `resolveStyleValue` walks. Memoized in `_resolvedCache`
+     * class) `resolveStyleValue` walks. Memoized in `_resolvedCache`
      * under `"state." + selector + "." + key`.
      *
      * @param selector - The declared state's selector, e.g. `".pressed"`.
@@ -5542,8 +5459,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * way, and `reconciled-write-path-widening.md` for why at all.
      *
      * For a key the instance *did* declare, this instance's own value is
-     * checked against the layers *below* the instance layer (group, then
-     * class). A mismatch always queues the real value. A match always queues
+     * checked against the layers *below* the instance layer (class). A
+     * mismatch always queues the real value. A match always queues
      * an explicit `null` removal instead — `SKIP_ON_MATCH_KEYS` plays no part
      * here, only in the class-default-only case above: a value the instance
      * itself authored (typically via a runtime setter — e.g. `setDisplayed`
@@ -5586,7 +5503,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
             if (!declaredByInstance && SKIP_ON_MATCH_KEYS.has(key)) {
                 // A skip-on-match key the instance has no opinion on: a
-                // class/group-default-only value always "matches" its own
+                // class-default-only value always "matches" its own
                 // source, so this can never produce a write either way.
                 continue;
             }
@@ -6071,11 +5988,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (!this._classLayer) {
             this.setElementCSSRules(resolveDeclarations(this.getClassStyleDefaults()));
         }
-
-        const group = this.getStyleGroup();
-        this._groupLayer = group
-            ? ensureStyleGroupRule(this.constructor, group, resolveInstanceStyleDeclarations(this))
-            : null;
 
         // Class-level: recomputed every render (both calls are memoized, so
         // this is cheap), kept in lockstep with the tokens `init()` already
@@ -7153,13 +7065,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._inlineStyle.attach(element);
         this._elementAttributes.attach(element);
 
-        const group = this.getStyleGroup();
-        // Whitespace-normalised (see `styleGroupClassSuffix`) so this is
-        // always a valid single `classList` token — a raw caller-supplied
-        // token containing a space would otherwise throw here, since
-        // CSS-escaping (used only for the class-tier selector) does not
-        // remove whitespace.
-        const groupClass = group ? [this.constructor.name + "--" + styleGroupClassSuffix(group)] : [];
         // Re-applies any declared state's DOM class token recorded before this
         // element existed (e.g. setVisible(false) via the construction-time
         // `visible` option) — setStyleState's own DOM write is gated on
@@ -7185,7 +7090,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `getElement()`) — the same first-render catch-up `activeStateTokens`
         // above performs for a declared state.
         const valueClassTokens = Array.from(this._valueStyleTokens.values(), (entry) => entry.token);
-        DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, ...getStyleClassChain(this.constructor), ...groupClass, ...activeStateTokens, ...classTraitTokens, ...valueClassTokens] });
+        DOM.sink.apply(element, { addClass: [COMPONENT_CLASS, ...getStyleClassChain(this.constructor), ...activeStateTokens, ...classTraitTokens, ...valueClassTokens] });
 
         this.applyStyle(element);
 
