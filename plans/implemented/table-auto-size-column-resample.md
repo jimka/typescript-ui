@@ -580,3 +580,44 @@ sidebar entry changes.
     re-adding a row would expand them again — a visible jolt on a path where the
     user has no data to look at anyway. Keeping the existing early return leaves
     an emptied table looking exactly as it did with its last row in place.
+
+## Implementation Notes
+
+**Case 5 needed two corrections past the plan's literal wording, and ended up
+in its own file instead of alongside cases 1-4/6-8 in `ColumnWidths.test.ts`.**
+
+First: "exactly one frame is captured" does not hold. A `store.add()` also
+schedules a frame on `Component.ts`'s separate `pendingVisibility` queue
+(effective-visibility recompute for the new row), which shares the same
+`DOM.sink.requestAnimationFrame` sink as the layout queue this plan coalesces
+onto. Spying on that sink counts frames from two independent queues, not
+one — draining both is required, and the assertion that matters is that the
+*layout* queue's frame produces exactly one `doLayout()` call, not the raw
+frame count.
+
+Second, and the reason this case now lives in its own file,
+`ColumnAutoSizeCoalescing.test.ts`: the coalescing claim can only be proven by
+genuinely capturing and replaying the real `requestAnimationFrame` callback
+(`Component.flushLayout()`'s synchronous escape hatch bypasses the queue
+entirely and would pass even if every mutation ran its own `doLayout()` —
+verified by temporarily reverting `scheduleLayout()` to `doLayout()` in
+`maybeResampleColumnWidths` and confirming a spy-based version of this test
+still failed against the flushLayout-based one, which stayed green). Genuine
+capture-and-replay depends on `Component.ts`'s module-level `rafHandle`
+singleton being `null` when the test starts. `ColumnWidths.test.ts` already
+has dozens of pre-existing cases that call `scheduleLayout()` (any
+autoSizeColumns table reacting to a store event) and settle via
+`flushLayout()` without ever draining a captured frame; the offline
+`requestAnimationFrame` (`tests/dom/TestDOM.ts`) permanently drops whatever
+callback it's given, so the first such case to run in that file leaves
+`rafHandle` non-null for the rest of the file's lifetime — confirmed
+empirically: even scoping the run to only the new `describe` block's own
+cases 1-4 (which also settle via `flushLayout()`) was enough to reproduce the
+same poisoning before case 5 ever ran. `DOM.reset()` does not touch this
+singleton, and no public API resets it outside of a genuine frame replay.
+Case 5 is therefore isolated into its own file with a file-wide
+`beforeEach`/`afterEach` rAF spy-and-drain, mirroring `ColumnResize.test.ts`'s
+own "layout coalescing" cases (30/31) exactly — the same technique that file
+already uses to test the identical class of claim for the drag path. Cases
+1-4 and 6-8 stay in `ColumnWidths.test.ts` as the plan specifies; only case 5
+needed the isolated environment.

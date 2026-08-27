@@ -232,6 +232,12 @@ class Table extends Component<TableOptions> {
     // table sits at its available width. Backing field for `getColumnWidthTarget`.
     private _columnWidthTarget: number = 0;
     private _savedColumnWidths: Map<string, number> = new Map();
+    // Widths the user set by dragging a column edge, keyed by field name. A
+    // pinned column is exempt from the data-driven re-sample: getIntrinsicColumnWidths
+    // returns its entry verbatim. Framework-managed bookkeeping, never
+    // consumer-configurable, so per ARCHITECTURE.md it gets no TableOptions field
+    // and no public setter. Cleared only by resetColumns and setStore.
+    private _pinnedColumnWidths: Map<string, number> = new Map();
     private _columnConfigs    : Map<string, ColumnConfig> = new Map();
     private _exportMenuEnabled: boolean = true;
     private _filterRowVisible : boolean = false;
@@ -263,7 +269,6 @@ class Table extends Component<TableOptions> {
     private _sourceRefresh    : (() => void) | null = null;
     private _sourceUpdate     : ((event: StoreUpdateEvent) => void) | null = null;
     private _suppressSelectionForward: boolean = false;
-    private _autoWidthsSampled: boolean = false;
     private _widthRefs        : WidthReferences | null = null;
     // Longest sampled candidate strings from the last content derivation,
     // keyed by field name. Populated by `collectCandidates`; consulted by
@@ -695,8 +700,8 @@ class Table extends Component<TableOptions> {
         this._store = store;
         this._columnWidths = [];
         this._savedColumnWidths = new Map();
+        this._pinnedColumnWidths = new Map();
         this._columnWidthTarget = 0;
-        this._autoWidthsSampled = false;
         this._widthRefs = null;
         this._sampledCandidates = new Map();
         this._resolvedColumns = Column.resolve(store.model.getFields(), this._spec);
@@ -1284,7 +1289,7 @@ class Table extends Component<TableOptions> {
 
     /**
      * Keeps the rotated projection in sync with the source store. Also the
-     * hook for the one-shot auto-size re-derive (see
+     * hook for the auto-size re-derive (see
      * {@link maybeResampleColumnWidths}), which runs regardless of display
      * mode. Outside rotated mode this is otherwise a no-op. Re-targets
      * `_rotatedRecord` to the store's first record (firing `"selection"`)
@@ -2152,6 +2157,17 @@ class Table extends Component<TableOptions> {
         distributeDragChain(left,  widths, delta,    sign, mins, maxs, out);
         distributeDragChain(right, widths, absorbed, -sign, mins, maxs, out);
 
+        // A column the drag actually moved is now user-set: the data-driven
+        // re-sample must not overwrite it. `out` starts as a copy of `widths`, so
+        // an untouched entry is bit-identical and needs no epsilon.
+        if (this._displayMode !== "rotated") {
+            out.forEach((w, i) => {
+                if (w !== widths[i]) {
+                    this._pinnedColumnWidths.set(columns[i].getField().getName(), w);
+                }
+            });
+        }
+
         this._dragLastClientX += sign * delta;
         this._columnWidths     = out;
 
@@ -2172,6 +2188,7 @@ class Table extends Component<TableOptions> {
         this._hiddenColumns = new Set();
         this.initHiddenFromSpec();
         this._savedColumnWidths = new Map();
+        this._pinnedColumnWidths = new Map();
         this._columnWidthTarget = 0;
         // The visible column set may change shape (a spec-hidden temporal
         // column reappears, or vice versa), and `_widthRefs`'s date/time/
@@ -2224,6 +2241,8 @@ class Table extends Component<TableOptions> {
      * `minWidth` / `maxWidth`, and content — for `string`/`auto` columns
      * under {@link isAutoSizeColumns}, a bounded sample of the store; for
      * the rotated `field`/`value` columns, the currently displayed record.
+     * A column the user drag-resized returns its dragged width verbatim,
+     * ahead of a declared `width` or the sampled policy width.
      *
      * @returns One entry per visible column. A number is a definite
      *   starting width; `null` means "no definite width — share the
@@ -2236,6 +2255,13 @@ class Table extends Component<TableOptions> {
         const contentPx = this.measureContent(columns);
 
         return columns.map((col, i) => {
+            const pinned = this.pinnedWidth(col);
+
+            if (pinned !== null) {
+                return pinned;   // the drag already clamped it; re-clamping would
+                                 // snap a >AUTO_WIDTH_CAP_PX drag back to the cap
+            }
+
             const policy = this.columnWidthPolicy(col, headerPx[i], contentPx[i]);
             const raw    = col.getWidth() ?? policy.preferred;
 
@@ -2245,6 +2271,20 @@ class Table extends Component<TableOptions> {
 
             return this.clampColumnWidth(raw, col, policy);
         });
+    }
+
+    /**
+     * Returns the width the user drag-resized this column to, or `null` when
+     * the column has never been dragged. Always `null` in rotated mode: the
+     * projection's field names live in their own namespace and must never
+     * match a pin recorded against a source column of the same name.
+     */
+    private pinnedWidth(col: Column): number | null {
+        if (this._displayMode === "rotated") {
+            return null;
+        }
+
+        return this._pinnedColumnWidths.get(col.getField().getName()) ?? null;
     }
 
     /**
@@ -2488,10 +2528,6 @@ class Table extends Component<TableOptions> {
             });
         }
 
-        if (rows > 0) {
-            this._autoWidthsSampled = true;
-        }
-
         this._sampledCandidates = best;
     }
 
@@ -2632,9 +2668,8 @@ class Table extends Component<TableOptions> {
      * Returns the cached width-reference bundle, measuring it once (in one
      * batched call) the first time anything asks. `dateReferenceKeys` scans
      * only the currently visible columns, so this is cleared everywhere
-     * that set can change: `setStore`, `maybeResampleColumnWidths`,
-     * `bindView` (a display-mode switch), `setColumnVisible`, and
-     * `resetColumns`.
+     * that set can change: `setStore`, `bindView` (a display-mode switch),
+     * `setColumnVisible`, and `resetColumns`.
      */
     private ensureWidthReferences(): WidthReferences {
         if (this._widthRefs) {
@@ -2696,24 +2731,27 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Re-derives column widths once, the first time the source store's
-     * `'load'` / `'add'` / `'remove'` / `'datachange'` events find records —
-     * so a table built before its data arrives sizes itself against the
-     * data once it shows up. A no-op when auto-size is off, when the store
-     * is still empty, or after the first successful derivation for this
-     * store (see {@link Table.setStore}, which resets the guard).
+     * Re-derives column widths whenever the source store's `'load'` / `'add'` /
+     * `'remove'` / `'datachange'` events report data (an in-cell edit arrives as
+     * the `'datachange'` that `AbstractStore.notifyRecordChanged` fires right
+     * after its `'update'`). Clearing `_columnWidths` is what makes the layout
+     * manager re-run `initializeWidths`; columns the user drag-resized keep
+     * their width through `_pinnedColumnWidths`.
+     *
+     * A no-op when auto-size is off (rotated mode included) or the store is
+     * empty. The pass is queued onto the animation-frame layout queue rather
+     * than run synchronously, so a burst of adds, removes or edits collapses
+     * into one layout — mirroring `onColumnResize`.
      */
     private maybeResampleColumnWidths(): void {
-        if (!this.isAutoSizeColumns() || this._autoWidthsSampled || this._store.getCount() === 0) {
+        if (!this.isAutoSizeColumns() || this._store.getCount() === 0) {
             return;
         }
 
         this._columnWidths      = [];
         this._savedColumnWidths = new Map();
-        this._columnWidthTarget = 0;
-        this._widthRefs         = null;
 
-        this.doLayout();
+        this.scheduleLayout();
     }
 }
 

@@ -413,9 +413,50 @@ class MiscPanel extends Panel {
 
                 searchField.on("change", value => { widePanel.getTable().setQuickSearch(value); });
 
+                // Demos plans/implemented/table-auto-size-column-resample.md:
+                // "Add row" inserts a record whose first string column holds a
+                // deliberately long value, so that column visibly widens once
+                // the table re-samples; "Remove row" removes the most
+                // recently added record, narrowing it again.
+                let addedRows = 0;
+                const addedRecords: ModelRecord[] = [];
+
+                const addRowButton = new Button("Add row");
+
+                addRowButton.on("action", () => {
+                    addedRows++;
+
+                    const row: Record<string, unknown> = {};
+
+                    fields.forEach((f, i) => {
+                        switch (f.type) {
+                            case "number":  row[f.name] = addedRows * (i + 1);                          break;
+                            case "boolean": row[f.name] = addedRows % 2 === 0;                           break;
+                            case "date":    row[f.name] = new Date(2024, i % 12, (addedRows % 27) + 1);  break;
+                            default:        row[f.name] = `${NAMES[i % NAMES.length]} — a much longer added value ${addedRows}`;
+                        }
+                    });
+
+                    const [record] = wideStore.add(row);
+
+                    addedRecords.push(record);
+                });
+
+                const removeRowButton = new Button("Remove row");
+
+                removeRowButton.on("action", () => {
+                    const record = addedRecords.pop();
+
+                    if (record) {
+                        wideStore.remove(record);
+                    }
+                });
+
                 const searchRow = new Component({ layoutManager: new HBox({ spacing: 8 }) })
                     .addComponent(new Text("Filter:"))
-                    .addComponent(searchField);
+                    .addComponent(searchField)
+                    .addComponent(addRowButton)
+                    .addComponent(removeRowButton);
 
                 return Panel({
                     layoutManager: new VBox({ stretching: true }),

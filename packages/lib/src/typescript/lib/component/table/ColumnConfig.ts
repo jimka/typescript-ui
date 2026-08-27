@@ -87,11 +87,11 @@ export interface ColumnConfig {
      * When `true`, this column's width is kept unchanged whenever the
      * table's container resizes, instead of scaling proportionally with
      * the other flexible columns the way a `string`/`auto` column does by
-     * default. The column is still sized normally on first render (or
-     * after a model swap) — from its own `width`, sampled content under
-     * {@link ColumnSpec.autoSizeColumns}, or a shared flex allotment — and
-     * a user drag still resizes it; this flag affects container resizes
-     * only.
+     * default. The column is still sized normally on first render, after a
+     * model swap, and on every data-driven re-sample under
+     * {@link ColumnSpec.autoSizeColumns} — from its own `width`, sampled
+     * content, or a shared flex allotment — and a user drag still resizes
+     * it; this flag affects container resizes only.
      *
      * If the table no longer fits once this column keeps its width, the
      * table scrolls horizontally instead of shrinking it — the same
