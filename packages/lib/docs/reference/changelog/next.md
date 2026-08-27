@@ -83,6 +83,7 @@ neither needs no change.
 
 ### Components
 
+- **[`Window`](/components/Window) and [`TabWindow`](/components/TabWindow) gain a `resizable` option**, plus the matching `setResizable(value)` / `isResizable()` pair on [`AbstractWindow`](/components/AbstractWindow). Defaults to `true`, so every existing window keeps behaving exactly as it does now. Setting it `false` hides all eight drag-to-resize border strips (no cursor, no hit test at the edges) and disarms the Ctrl-snap resize affordance; moving is unaffected. `resizable` is also the master switch for `minimizable` / `maximizable`: a non-resizable window can be neither minimized nor maximized by the user regardless of those two flags, and `isMinimizable()` / `isMaximizable()` report this *effective* value. Each flag's own setting is remembered underneath and takes effect again once `resizable` is re-enabled.
 - **[`DiagnosticsOverlay`](/components/DiagnosticsOverlay)**, a floating
   window showing live runtime diagnostics — FPS, JS heap, DOM node count and
   long tasks alongside framework-internal numbers (live `Component` count,

@@ -8,10 +8,10 @@
 
 | Concern | What it covers |
 | --- | --- |
-| **Resize borders** | The eight border-strip overlays and the resize drag flow, appended and positioned generically. |
+| **Resize borders** | The eight border-strip overlays and the resize drag flow, appended and positioned generically. `setResizable` / `isResizable` toggle the whole affordance off — hiding all eight strips and disarming the Ctrl-snap detector. Move is unaffected, but `resizable` is the master switch for minimize/maximize too — see below. |
 | **Move** | The drag-to-move flow — origin snapshot, viewport clamping, and the drag listeners. Subclasses only choose *where* the move gesture is installed. |
 | **Window state** | `setWindowState` / `getWindowState`, `toggleMinimize` / `toggleMaximize`, `isMaximized` / `isMinimized`, the maximize / minimize geometry, the restore-rect cache, and the minimized-window dock stack. |
-| **Closeable / minimizable / maximizable** | `setCloseable` / `isCloseable`, `setMinimizable` / `isMinimizable`, `setMaximizable` / `isMaximizable` — the base stores the state and delegates the UI reflection to a subclass hook. `requestClose` and the exit-action teardown. |
+| **Closeable / minimizable / maximizable** | `setCloseable` / `isCloseable`, `setMinimizable` / `isMinimizable`, `setMaximizable` / `isMaximizable` — the base stores the state and delegates the UI reflection to a subclass hook. `requestClose` and the exit-action teardown. `isMinimizable` / `isMaximizable` report the *effective* value: `false` whenever `isResizable()` is `false`, whatever `minimizable` / `maximizable` were set to — `resizable` is the master switch. The caller's own setting is remembered underneath and takes effect again once `resizable` is re-enabled. |
 | **Active focus** | `onActivate` tracks the active state; the subclass paints it. |
 | **Z-order** | Stacking via the auto-managed `z-index` band, `bringToFront`, and the dismissable-layer contract. |
 | **Show / hide** | Visibility, the window element + overlay creation, and the body-host discovery used to hide content on minimize. |

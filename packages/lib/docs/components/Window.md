@@ -38,8 +38,9 @@ win.show();
 | `width` / `height` | `number` | Initial size in pixels. Default `400` / `300`. |
 | `contentFactory` | `() => Component` | Deferred content builder. When set, `show()` opens the window immediately with a spinner in the content area and runs the factory after a two-rAF yield via [`Animation.materialize`](/api/core/namespaces/Animation/functions/materialize). |
 | `onReady` | `(component) => void` | Optional callback fired after the factory's component has been attached, laid out, and faded in. Use for work that must happen against a rendered subtree (e.g. `store.load()` for a TablePanel's loading overlay). |
-| `minimizable`    | `boolean` | Show the title-bar minimize button. Default `true`. |
-| `maximizable`    | `boolean` | Show the title-bar maximize button. Default `true`. |
+| `minimizable`    | `boolean` | Show the title-bar minimize button. Default `true`. Hidden whenever `resizable` is `false`, regardless of this flag. |
+| `maximizable`    | `boolean` | Show the title-bar maximize button. Default `true`. Hidden whenever `resizable` is `false`, regardless of this flag. |
+| `resizable`      | `boolean` | Enable the drag-to-resize border strips. Default `true`. Also the master switch for `minimizable` / `maximizable` — setting it `false` hides and disables both, and setting it back to `true` restores whatever they were set to. |
 | `maximizeBounds` | `"viewport" \| "parent"` | Where to fill on maximize. Default `"viewport"`. |
 | `windowState`    | `"normal" \| "minimized" \| "maximized"` | Initial lifecycle state. Default `"normal"`. |
 | `snapResizeEnabled` | `boolean` | Enable Ctrl-snap resize detection. Default `true`. |

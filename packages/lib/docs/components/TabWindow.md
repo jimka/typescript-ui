@@ -32,8 +32,9 @@ Most code does not construct a `TabWindow` directly — it is produced automatic
 | `width` / `height` | `number` | Initial size in pixels. |
 | `glyph` | `string` | Leading window icon pinned to the start of the bar (a title icon, like [`Window`](/components/Window)'s). Defaults to `window-maximize`; change it at runtime with `setGlyph`. |
 | `closeable` | `boolean` | Enables the trailing close control. Driven thereafter by the strip — the close control greys while any hosted tab is non-closeable. |
-| `minimizable` | `boolean` | Show the trailing minimize control. |
-| `maximizable` | `boolean` | Show the trailing maximize control. |
+| `minimizable` | `boolean` | Show the trailing minimize control. Hidden whenever `resizable` is `false`, regardless of this flag. |
+| `maximizable` | `boolean` | Show the trailing maximize control. Hidden whenever `resizable` is `false`, regardless of this flag. |
+| `resizable` | `boolean` | Enable the drag-to-resize border strips. Default `true`. Also the master switch for `minimizable` / `maximizable` — setting it `false` hides and disables both, and setting it back to `true` restores whatever they were set to. |
 | `windowState` | `"normal" \| "minimized" \| "maximized"` | Initial lifecycle state. |
 | `snapResizeEnabled` / `snapThreshold` / `snapModifier` | — | Same Ctrl-snap-resize behaviour as [`Window`](/components/Window#snap-resize-modifier). |
 | `constrainToViewport` | `boolean` | Keep the window inside the viewport while dragging. |
@@ -70,7 +71,7 @@ The window has no `setHeaderText` / `getHeader` — there is no header. The titl
 - **Title** — derived, not set. [`AbstractWindow`](/components/AbstractWindow) exposes a read-only title concept used by serialization; `TabWindow` resolves it from the active tab's label. Switching the active tab changes the title.
 - **Window glyph** — a decorative leading icon pinned to the start of the bar (before the first tab), mirroring [`Window`](/components/Window)'s title icon. Defaults to `window-maximize`, overridable via the `glyph` option or `setGlyph` at runtime. It is `pointer-events: none`, so a press on it falls through to the move gesture.
 - **Move** — a press on the bar's blank area (not on a tab, a tool, or the scrollable tab clip) starts a window move. This is wired through the [`Tab`](/api/layout/classes/Tab) strip's empty-area move trigger, so a press on a tab still selects it and a press on a control still fires that control.
-- **Minimize / maximize / close** — three chromeless controls pinned to the trailing end of the bar, wired to `toggleMinimize()` / `toggleMaximize()` / `requestClose()`. `minimizable` / `maximizable` toggle their visibility; `closeable` toggles the close control's enabled state.
+- **Minimize / maximize / close** — three chromeless controls pinned to the trailing end of the bar, wired to `toggleMinimize()` / `toggleMaximize()` / `requestClose()`. `minimizable` / `maximizable` toggle their visibility, but `resizable` overrides both: a non-resizable `TabWindow` hides the minimize and maximize controls regardless of those flags. `closeable` toggles the close control's enabled state.
 - **Focus state** — on blur the whole bar flattens to the unfocused gutter fill (`--ts-ui-gutter-bg`) reaching the window edges, and the three controls flatten with it; refocus restores the themed toolbar fill and the opaque control backgrounds. This mirrors how [`Window`](/components/Window) flattens its header on blur.
 
 ## Non-closeable contract
