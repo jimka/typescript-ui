@@ -35,6 +35,19 @@ type ScrollArrowEvent = "tick";
 // column-width and header-button layout math) can read the value
 // directly — the same shape `CollapseSupport.ts` uses for
 // `COLLAPSE_STRIP_SIZE`.
+//
+// Deliberately not one of `Theme["scale"]`'s `glyph*` icon-size steps
+// (plans/implemented/glyph-icon-size-scale.md), even though it numerically
+// equals `glyphSm` in every shipped theme today. This value sizes the
+// scrollbar's own physical track/thumb/arrow-button geometry — an
+// ergonomic touch-target width, not a decorative icon size — and also sets
+// Table's column-width reservation (Table.ts:getAvailableColumnWidth) and
+// the header menu-button band width (layout/Table.ts). The arrow glyph
+// (ScrollArrowGlyph, below) and the table header's menu-button glyph
+// already size their ink directly off this constant, so both would follow
+// automatically if it ever became theme-relative — but that is a distinct
+// decision from the icon scale, investigated and rejected in
+// plans/glyph-icon-host-box-migration.md.
 export const TRACK_WIDTH = 12;
 const THUMB_INSET    = 2;
 const THUMB_MIN_SIZE = 30;

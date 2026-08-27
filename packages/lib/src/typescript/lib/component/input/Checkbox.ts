@@ -8,6 +8,7 @@ import { Event } from "~/core/Event.js";
 import { Glyph, GlyphOptions } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
 import { type StyleBag, type StyleStateSpec } from "~/core/ClassStyleRules.js";
+import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { check } from "~/glyphs/solid/check.js";
 
@@ -16,10 +17,32 @@ import { check } from "~/glyphs/solid/check.js";
 // without an outside-the-class `Glyph.register` call.
 Glyph.register(check);
 
+// Physical width of `_box`'s own border on every side — fixed regardless of
+// theme, matching the "1px" embedded in `_defaultCheckboxBoxOptions.border`
+// below. Named so the ink-centring formula in the constructor states its
+// intent instead of repeating a bare "1".
+const CHECKBOX_BOX_BORDER_PX = 1;
+
+/**
+ * Square edge length of `_box` — the theme's `glyphLg` icon step (16px at
+ * the shipped base). Resolved per construction, not frozen in a module
+ * constant, so a `setTheme` that runs before the box is built is honoured —
+ * mirrors `Glyph`'s own `glyphDefaultSize()` (component/display/Glyph.ts).
+ */
+function checkboxBoxSizePx(): number {
+    return ThemeManager.getResolvedScale().glyphLg;
+}
+
+/**
+ * Square edge length of the check glyph's ink — the theme's `glyphSm` icon
+ * step (12px at the shipped base), fitted inside `_box`'s `glyphLg` padding
+ * box.
+ */
+function checkboxCheckSizePx(): number {
+    return ThemeManager.getResolvedScale().glyphSm;
+}
+
 const _defaultCheckboxBoxOptions: Partial<ComponentOptions> = {
-    preferredSize:   { width: 16, height: 16 },
-    minSize:         { width: 16, height: 16 },
-    maxSize:         { width: 16, height: 16 },
     cursor:          "pointer",
     backgroundColor: "var(--ts-ui-checkbox-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))",
     border:          "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))",
@@ -73,7 +96,14 @@ class CheckboxBox extends Component {
     private _indeterminate: boolean = false;
 
     constructor() {
-        super(undefined, _defaultCheckboxBoxOptions);
+        const size = checkboxBoxSizePx();
+
+        super(undefined, {
+            ..._defaultCheckboxBoxOptions,
+            preferredSize: { width: size, height: size },
+            minSize:       { width: size, height: size },
+            maxSize:       { width: size, height: size },
+        });
     }
 
     /**
@@ -117,15 +147,8 @@ class CheckboxBox extends Component {
     }
 }
 
-// The check glyph's fitted size inside the box (14×14 padding box, 1px
-// border): shared with Checkbox's own constructor below so the class
-// default and the imperative override can never drift apart.
-const CHECKBOX_CHECK_SIZE = { width: 12, height: 12 };
-
 const _defaultCheckboxCheckGlyphOptions: Partial<GlyphOptions> = {
     foregroundColor: "var(--ts-ui-checkbox-check-color, rgb(255, 255, 255))",
-    minSize:         CHECKBOX_CHECK_SIZE,
-    maxSize:         CHECKBOX_CHECK_SIZE,
 };
 
 /**
@@ -144,7 +167,13 @@ const _defaultCheckboxCheckGlyphOptions: Partial<GlyphOptions> = {
  */
 class CheckboxCheckGlyph extends Glyph {
     constructor() {
-        super("check", undefined, _defaultCheckboxCheckGlyphOptions);
+        const size = checkboxCheckSizePx();
+
+        super("check", undefined, {
+            ..._defaultCheckboxCheckGlyphOptions,
+            minSize: { width: size, height: size },
+            maxSize: { width: size, height: size },
+        });
     }
 }
 
@@ -219,28 +248,49 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
 
         this.setLayoutManager(new HBox());
 
+        const boxSize   = checkboxBoxSizePx();
+        const checkSize = checkboxCheckSizePx();
+
         this._box = new CheckboxBox();
         // Min = preferred = max so the outer HBox shrink-on-overallocation
         // can't collapse the box graphic when the checkbox sits next to
-        // flexible siblings.
-        this._box.setSize({ width: 16, height: 16 });
+        // flexible siblings. The explicit setMinSize/setMaxSize calls (not
+        // just setSize) matter here: `CheckboxBox`'s own constructor-time
+        // minSize/maxSize only ever materialises into `.CheckboxBox`'s
+        // shared class-level CSS rule, which is cached from whichever
+        // instance is constructed first in the page's lifetime — a later
+        // instance built after a `setTheme` raises `scale.base` would still
+        // render clamped to that first-cached value without an explicit
+        // per-instance override here, the same reason `_check`'s size is
+        // re-asserted imperatively below.
+        this._box.setSize({ width: boxSize, height: boxSize });
+        this._box.setMinSize({ width: boxSize, height: boxSize });
+        this._box.setMaxSize({ width: boxSize, height: boxSize });
 
         this._check = new CheckboxCheckGlyph();
-        this._check.setPreferredSize(CHECKBOX_CHECK_SIZE);
-        this._check.setMaxSize(CHECKBOX_CHECK_SIZE);
-        // With box-sizing: border-box and the 1px box border, absolute children
-        // are positioned relative to the 14×14 padding edge — so centering a
-        // 12×12 glyph inside the 16×16 visible box means (14−12)/2 = 1, not 2.
-        this._check.setX(1);
-        this._check.setY(1);
+        this._check.setPreferredSize({ width: checkSize, height: checkSize });
+        this._check.setMaxSize({ width: checkSize, height: checkSize });
+        // With box-sizing: border-box and the CHECKBOX_BOX_BORDER_PX box border,
+        // absolute children are positioned relative to the box's padding edge —
+        // centring an inkSize graphic inside a boxSize box means
+        // (boxSize − 2 × CHECKBOX_BOX_BORDER_PX − inkSize) / 2. `boxSize` and
+        // `checkSize` both come from the same live theme snapshot, so this stays
+        // correct at any `scale.base`.
+        const checkOffset = (boxSize - 2 * CHECKBOX_BOX_BORDER_PX - checkSize) / 2;
+        this._check.setX(checkOffset);
+        this._check.setY(checkOffset);
         this._check.setOpacity(0);
         // Pass-through so clicks on the glyph still hit the box underneath.
         this._check.setPointerEvents("none");
 
         this._dash = new CheckboxDash();
         this._dash.setSize({ width: 8, height: 2 });
-        this._dash.setX(3);
-        this._dash.setY(6);
+        // Same centring formula as `_check`, against the dash's own fixed 8×2 size
+        // — the dash is a decorative bar, not a glyph icon, so its size stays a
+        // fixed pixel constant even though its position must still track the
+        // now-theme-relative box.
+        this._dash.setX((boxSize - 2 * CHECKBOX_BOX_BORDER_PX - 8) / 2);
+        this._dash.setY((boxSize - 2 * CHECKBOX_BOX_BORDER_PX - 2) / 2);
         this._dash.setOpacity(0);
         this._dash.setPointerEvents("none");
 
@@ -259,7 +309,7 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         this.getAria().setChecked(false);
 
         // The box owns the user-toggle click so the pointer/click + cursor
-        // surface is exactly the visible 16 × 16 graphic — clicks on a label or
+        // surface is exactly the visible box graphic — clicks on a label or
         // in any stretched empty area pass through to the root, which has no
         // listener of its own. This pointer line stays per-subclass (a closure
         // over the widget `this`) because a listener registered on the child
