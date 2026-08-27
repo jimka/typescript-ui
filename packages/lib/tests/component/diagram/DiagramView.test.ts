@@ -2795,6 +2795,12 @@ describe('DiagramView — incoming nodes mount only once placed', () => {
 
         const view = new StubDiagramView({ data: simpleGraph() }) as any;
 
+        // Sized: an unsized view now mounts nothing at all (node
+        // virtualization — see the plan's Expected Behaviour §B), so this
+        // "mounts everything" case needs a viewport whose residency rect
+        // covers the whole (small) graph to still observe that outcome.
+        view.setSize({ width: 1280, height: 800 });
+
         stubEngine.resolveDeferred(0, fixedResult());
         await flush();
 
@@ -2813,6 +2819,11 @@ describe('DiagramView — incoming nodes mount only once placed', () => {
         stubEngine = new StubEngine(fixedResult(), 'defer');
 
         const view = new StubDiagramView() as any;
+
+        // Sized for the same reason as the test above — the assertions below
+        // check content-host membership, which only reflects mounting on a
+        // sized view under node virtualization.
+        view.setSize({ width: 1280, height: 800 });
 
         view.setData({ nodes: [{ id: 'a' }], edges: [] }); // generation 1 → deferred[0]
         stubEngine.resolveDeferred(0, { nodes: [{ id: 'a', x: 1, y: 1, width: 10, height: 10 }], edges: [], width: 10, height: 10 });
@@ -2861,6 +2872,11 @@ describe('DiagramView — incoming nodes mount only once placed', () => {
         } as unknown as StubEngine;
 
         const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        // Sized for the same reason as the tests above — content-host
+        // membership only reflects mounting on a sized view under node
+        // virtualization.
+        view.setSize({ width: 1280, height: 800 });
         await flush();
 
         const shown = [...view._nodeComponents.values()];
@@ -2876,5 +2892,353 @@ describe('DiagramView — incoming nodes mount only once placed', () => {
         for (const component of shown) {
             expect(view._contentHost.getComponents()).toContain(component);
         }
+    });
+});
+
+/** A graph with one node near the origin and one node far enough away that a 1280×800 viewport never mounts both at once. */
+function farGraph(): DiagramData {
+    return {
+        nodes: [{ id: 'a', label: 'A' }, { id: 'far', label: 'Far' }],
+        edges: [],
+    };
+}
+
+/** The layout result for {@link farGraph}: `a` at (10, 20), `far` at (40000, 0), both 60×30. */
+function farResult(): DiagramLayoutResult {
+    return {
+        nodes: [
+            { id: 'a',   x: 10,    y: 20, width: 60, height: 30 },
+            { id: 'far', x: 40000, y: 0,  width: 60, height: 30 },
+        ],
+        edges: [],
+        width:  40060,
+        height: 230,
+    };
+}
+
+describe('DiagramView — node virtualization: only the resident set is mounted', () => {
+    it('a sized view mounts only the node near the viewport, both still in _nodeComponents at their laid-out coords', async () => {
+        stubEngine = new StubEngine(farResult());
+
+        const view = new StubDiagramView({ data: farGraph(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        // initialFocusNode centres node 'a' (10, 20, 60, 30) → pan (600, 365),
+        // matching the `initialFocusNode` describe block's own worked value.
+        expect(view._contentHost.getTransform()).toBe('translate(600px, 365px) scale(1)');
+
+        const hostComponents = view._contentHost.getComponents();
+        const nodeA = view._nodeComponents.get('a');
+        const nodeFar = view._nodeComponents.get('far');
+
+        expect(hostComponents).toContain(nodeA);
+        expect(hostComponents).not.toContain(nodeFar);
+
+        expect(nodeA.getX()).toBe(10);
+        expect(nodeA.getY()).toBe(20);
+        expect(nodeFar.getX()).toBe(40000);
+        expect(nodeFar.getY()).toBe(0);
+    });
+
+    it('an unsized view mounts nothing, while _nodeComponents still holds every node', async () => {
+        stubEngine = new StubEngine(farResult());
+
+        const view = new StubDiagramView({ data: farGraph() }) as any;
+
+        await flush();
+
+        expect(view._residentIds.size).toBe(0);
+        expect(view._nodeComponents.size).toBe(2);
+    });
+
+    it('panning past the trigger rect mounts the newly-near node and unmounts the one left behind; ' +
+       'a smaller pan that stays inside the trigger rect changes nothing', async () => {
+        // 'a' at (-100, 20, 60, 30), 'near' at (2000, 0, 60, 30): the initial
+        // centring on 'a' leaves 'near' outside the residency rect, a small
+        // drag stays inside the trigger rect, and a large enough drag both
+        // brings 'near' in and pushes 'a' out.
+        const data: DiagramData = { nodes: [{ id: 'a' }, { id: 'near' }], edges: [] };
+        const result: DiagramLayoutResult = {
+            nodes: [
+                { id: 'a',    x: -100, y: 20, width: 60, height: 30 },
+                { id: 'near', x: 2000, y: 0,  width: 60, height: 30 },
+            ],
+            edges: [], width: 2100, height: 230,
+        };
+
+        stubEngine = new StubEngine(result);
+
+        const view = new StubDiagramView({ data, initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        // Centred on 'a' (-100, 20, 60, 30) → centre (-70, 35) → pan (710, 365).
+        expect(view._contentHost.getTransform()).toBe('translate(710px, 365px) scale(1)');
+
+        const nodeA = view._nodeComponents.get('a');
+        const nodeNear = view._nodeComponents.get('near');
+        const initialResident = new Set(view._residentIds);
+
+        expect(initialResident).toEqual(new Set(['a']));
+
+        const empty: Handle = view.getElement(true);
+
+        view._handlePointerDown(makeEvent(empty, 'pointerdown', { button: 0, clientX: 1500, clientY: 800 }));
+
+        // A drag of +50px stays inside the trigger rect (committed inflated
+        // by half the margin) — the resident set must not change.
+        view._handlePointerMove(makeEvent(empty, 'pointermove', { clientX: 1550, clientY: 800, buttons: 1 }));
+
+        expect(view._residentIds).toEqual(initialResident);
+
+        // Continuing the same drag to a cumulative -1400px escapes the
+        // trigger rect: 'near' comes into range, 'a' falls out of it.
+        view._handlePointerMove(makeEvent(empty, 'pointermove', { clientX: 100, clientY: 800, buttons: 1 }));
+
+        expect(view._residentIds).toEqual(new Set(['near']));
+        expect(view._contentHost.getComponents()).toContain(nodeNear);
+        expect(view._contentHost.getComponents()).not.toContain(nodeA);
+    });
+
+    it('a zoom always recomputes the residency rect, even though the smaller pre-zoom rect would still be contained', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        const before = { ...view._residencyViewport };
+
+        view.zoomOut();
+
+        expect(view._residencyViewport.width).not.toBe(before.width);
+        expect(view._residencyViewport.height).not.toBe(before.height);
+    });
+
+    it('focusNode mounts its target', async () => {
+        stubEngine = new StubEngine(farResult());
+
+        const view = new StubDiagramView({ data: farGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        view.focusNode('far');
+
+        // Node 'far' is at (40000, 0, 60, 30) → centre (40030, 15).
+        expect(view._contentHost.getTransform()).toBe('translate(-39390px, 385px) scale(1)');
+        expect(view._contentHost.getComponents()).toContain(view._nodeComponents.get('far'));
+    });
+
+    it('zoomToFit needs no node mounted and leaves the residency set matching the new (whole-graph) viewport', async () => {
+        stubEngine = new StubEngine(farResult());
+
+        const view = new StubDiagramView({ data: farGraph(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        // 'far' is unmounted at this point (see the first test in this block).
+        expect(view._contentHost.getComponents()).not.toContain(view._nodeComponents.get('far'));
+
+        expect(() => view.zoomToFit()).not.toThrow();
+
+        // At fit-the-whole-graph zoom, every node is in view and therefore mounted.
+        expect(view._contentHost.getComponents()).toContain(view._nodeComponents.get('a'));
+        expect(view._contentHost.getComponents()).toContain(view._nodeComponents.get('far'));
+    });
+
+    it('resetView re-centres on, and mounts, an unmounted focus node', async () => {
+        stubEngine = new StubEngine(farResult());
+
+        const view = new StubDiagramView({ data: farGraph(), initialFocusNode: 'far' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._contentHost.getComponents()).toContain(view._nodeComponents.get('far'));
+
+        // Pan away to somewhere near 'a', unmounting 'far'.
+        view._panX = 0;
+        view._panY = 0;
+        view.applyTransformToHost();
+
+        expect(view._contentHost.getComponents()).not.toContain(view._nodeComponents.get('far'));
+
+        view.resetView();
+
+        expect(view._contentHost.getTransform()).toBe('translate(-39390px, 385px) scale(1)');
+        expect(view._contentHost.getComponents()).toContain(view._nodeComponents.get('far'));
+    });
+
+    it('selection survives an unmount / remount cycle', async () => {
+        stubEngine = new StubEngine(farResult());
+
+        const view = new StubDiagramView({ data: farGraph(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        expect(view._contentHost.getComponents()).not.toContain(view._nodeComponents.get('far'));
+
+        view.selectNode('far');
+
+        expect(view.getSelection()[0].id).toBe('far');
+
+        // Pan onto 'far', mounting it (and unmounting 'a').
+        view._panX = -39390;
+        view._panY = 385;
+        view.applyTransformToHost();
+
+        expect(view._contentHost.getComponents()).toContain(view._nodeComponents.get('far'));
+        expect(view._nodeComponents.get('far').isSelected()).toBe(true);
+        expect(view.getSelection()[0].id).toBe('far');
+    });
+
+    it('node emphasis survives the same unmount / remount cycle', async () => {
+        stubEngine = new StubEngine(farResult());
+
+        const view = new StubDiagramView({ data: farGraph(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        view.setNodeEmphasis(['a']);
+
+        expect(view._contentHost.getComponents()).not.toContain(view._nodeComponents.get('far'));
+
+        // Pan onto 'far', mounting it (and unmounting 'a').
+        view._panX = -39390;
+        view._panY = 385;
+        view.applyTransformToHost();
+
+        expect(view._nodeComponents.get('far').getOpacity()).toBe(0.35);
+        expect(view._nodeComponents.get('a').getOpacity()).toBeNull();
+    });
+
+    it('a replaced graph disposes every previous node component and rebuilds residency from scratch', async () => {
+        let call = 0;
+        const results = [farResult(), fixedResult()];
+
+        stubEngine = { layout: (): Promise<DiagramLayoutResult> => Promise.resolve(results[call++]), dispose: (): void => {} } as unknown as StubEngine;
+
+        const view = new StubDiagramView({ data: farGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        const oldA = view._nodeComponents.get('a');
+        const oldFar = view._nodeComponents.get('far');
+        const disposeA = vi.spyOn(oldA, 'dispose');
+        const disposeFar = vi.spyOn(oldFar, 'dispose');
+
+        // Reset the pan to the origin so the second (near-origin) graph's
+        // nodes land inside the residency rect once it's promoted.
+        view._panX = 0;
+        view._panY = 0;
+        view.applyTransformToHost();
+
+        view.setData(simpleGraph());
+        await flush();
+
+        expect(disposeA).toHaveBeenCalledTimes(1);
+        expect(disposeFar).toHaveBeenCalledTimes(1);
+
+        expect(view._residentIds).toEqual(new Set(['a', 'b']));
+
+        const hostComponents = view._contentHost.getComponents();
+        expect(hostComponents).toHaveLength(3);
+        expect(hostComponents).toContain(view._edgeLayer);
+        expect(hostComponents).toContain(view._nodeComponents.get('a'));
+        expect(hostComponents).toContain(view._nodeComponents.get('b'));
+    });
+
+    it('a failed re-layout leaves the mounted set exactly as the first graph left it', async () => {
+        let call = 0;
+
+        stubEngine = {
+            layout: (): Promise<DiagramLayoutResult> => {
+                call += 1;
+
+                return call === 1 ? Promise.resolve(farResult()) : Promise.reject(new Error('elkjs unavailable'));
+            },
+            dispose: (): void => {},
+        } as unknown as StubEngine;
+
+        const view = new StubDiagramView({ data: farGraph(), initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        const residentBefore = new Set(view._residentIds);
+        const hostBefore = [...view._contentHost.getComponents()];
+
+        view.setData(farGraph());
+        await flush();
+
+        expect(view._residentIds).toEqual(residentBefore);
+        expect(view._contentHost.getComponents()).toEqual(hostBefore);
+    });
+
+    it('disposal disposes both a node that was never mounted and one that was mounted then unmounted', async () => {
+        const data: DiagramData = { nodes: [{ id: 'a' }, { id: 'far' }, { id: 'other' }], edges: [] };
+        const result: DiagramLayoutResult = {
+            nodes: [
+                { id: 'a',     x: 10,     y: 20, width: 60, height: 30 },
+                { id: 'far',   x: 40000,  y: 0,  width: 60, height: 30 },
+                { id: 'other', x: -40000, y: 0,  width: 60, height: 30 },
+            ],
+            edges: [], width: 80120, height: 230,
+        };
+
+        stubEngine = new StubEngine(result);
+
+        const view = new StubDiagramView({ data, initialFocusNode: 'a' }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        // 'a' is mounted (the initial focus); 'far' has never been mounted.
+        expect(view._residentIds).toEqual(new Set(['a']));
+
+        // Pan onto 'other', which mounts it and unmounts 'a' — 'a' is now the
+        // "mounted then unmounted" case, 'far' stays the "never mounted" one.
+        view._panX = 40610;
+        view._panY = 385;
+        view.applyTransformToHost();
+
+        expect(view._residentIds).toEqual(new Set(['other']));
+
+        const nodeA = view._nodeComponents.get('a');
+        const nodeFar = view._nodeComponents.get('far');
+        const disposeA = vi.spyOn(nodeA, 'dispose');
+        const disposeFar = vi.spyOn(nodeFar, 'dispose');
+
+        view.dispose();
+
+        expect(disposeA).toHaveBeenCalledTimes(1);
+        expect(disposeFar).toHaveBeenCalledTimes(1);
+    });
+
+    it('a mounted node is sized before it renders, with no intervening layout pass', async () => {
+        stubEngine = new StubEngine(fixedResult());
+
+        const view = new StubDiagramView({ data: simpleGraph() }) as any;
+
+        view.setSize({ width: 1280, height: 800 });
+        await flush();
+
+        // No `view._contentHost.doLayout()` call here — the point of this
+        // test is that `mountNode` itself commits the size, without waiting
+        // for the (RAF-swallowed-in-tests) content host layout pass other
+        // tests in this file explicitly force.
+        const nodeA = view._nodeComponents.get('a');
+
+        expect(nodeA.getWidth()).toBe(60);
+        expect(nodeA.getHeight()).toBe(30);
     });
 });
