@@ -65,7 +65,7 @@ function declarationsIn(
 /** The `addClass`/`removeClass` patches an `apply` write to `handle` carries. */
 function classToggleWritesFor(
     writes: RecordingDOMSink['writes'],
-    handle: number,
+    handle: unknown,
 ): Array<{ removeClass?: string[]; addClass?: string[] }> {
     return writes
         .filter((w) => w.op === 'apply' && w.args[0] === handle)
