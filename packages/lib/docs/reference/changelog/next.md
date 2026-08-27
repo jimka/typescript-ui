@@ -265,6 +265,9 @@ action is needed.
 - **`NumberSpinner`'s up/down spin buttons now dedupe their border onto
   shared class rules instead of repeating it on every instance.** No
   consumer action is needed; nothing renders differently.
+- **`NumberSpinner`'s spin buttons now dedupe their pressed box-shadow onto a
+  shared class rule instead of repeating it on every instance.** No consumer
+  action is needed; nothing renders differently.
 - **`Slider`'s track, active-track, and thumb now dedupe their static chrome
   (`backgroundColor`/`borderRadius`/`border`/`shadow`/`maxSize`) onto shared
   class rules instead of repeating on every instance's own `#id` rule.** No

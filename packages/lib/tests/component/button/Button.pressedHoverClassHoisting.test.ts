@@ -28,12 +28,13 @@
 // every test below either warms up explicitly or relies on being the first
 // Button use in the file.
 //
-// Since plans/implemented/button-family-hierarchy-cascade.md, `SpinButton`
-// contributes nothing of its own to the pressed tier (it never overrides
-// `getPressedClassDeclarations()`), so its `.pressed` state resolves
-// entirely to `.Button.pressed` via the state-tier hierarchy walk — no
-// `.SpinButton.pressed` rule is ever created, the same way `.TabButton.pressed`
-// isn't (see `TabButton.stateClassHoisting.test.ts`).
+// Since plans/implemented/spinbutton-pressed-boxshadow-state-tier-dedup.md,
+// `SpinButton` declares its own `ownStyleStates`, restating `Button`'s
+// `:hover` entry unchanged and overriding `.pressed`'s `shadow` to `"none"`
+// — so `.SpinButton.pressed` IS created, carrying only that one deviating
+// declaration; `.pressed`'s other three keys still resolve from
+// `.Button.pressed`. See `SpinButton.pressedShadowClassHoisting.test.ts` for
+// that plan's own coverage.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Button } from '~/component/button/Button';
 import { SpinButton } from '~/component/input/SpinButton';
@@ -141,31 +142,33 @@ describe('Button pressed/hover state-class hoisting', () => {
         expect(classDeclarations).toEqual({});
     });
 
-    it("SpinButton's .pressed state resolves entirely to .Button.pressed — no .SpinButton.pressed class rule is ever created", () => {
+    it("SpinButton's .pressed state resolves color/backgroundColor/backgroundImage to .Button.pressed and shadow to its own .SpinButton.pressed class rule", () => {
         new SpinButton('▲').getElement(true);
 
         expect(_ruleCacheHas('.Button.pressed')).toBe(true);
-        expect(_ruleCacheHas('.SpinButton.pressed')).toBe(false);
+        expect(_ruleCacheHas('.SpinButton.pressed')).toBe(true);
     });
 
-    it("SpinButton's constructor-time clearPressedShadow pins boxShadow to 'none' on its own instance rule, not the class default it inherits from Button", () => {
+    it("SpinButton's constructor-time clearPressedShadow dedupes against the shared .SpinButton.pressed class rule instead of writing its own instance rule", () => {
         const spin = new SpinButton('▲');
 
-        // `.Button.pressed` (the rule SpinButton's `.pressed` state actually
-        // resolves to — see the case above) materialises eagerly, during
-        // construction (when the first setPressedX call resolves
-        // `pressedClassBag`) — well before this capture window starts, so
-        // nothing shows up here regardless of what the bag holds. `boxShadow`
-        // is IN that bag (SpinButton inherits Button's `pressedShadow`
-        // default), which is exactly why `clearPressedShadow` below must pin
-        // a real value rather than writing `null` — a `null` write can never
-        // outrank the class rule's shared boxShadow token.
+        // `.Button.pressed` (the rule SpinButton's `.pressed` state resolves
+        // color/backgroundColor/backgroundImage to — see the case above)
+        // materialises eagerly, during construction (when the first
+        // setPressedX call resolves `pressedClassBag`) — well before this
+        // capture window starts, so nothing shows up here regardless of what
+        // the bag holds.
         const classDeclarations = declarationsDuring(sink, '.Button.pressed', () => spin.getElement(true));
         expect(classDeclarations).toEqual({});
 
+        // `.SpinButton.pressed` carries `boxShadow: 'none'` — materialised by
+        // the first `SpinButton` above, same construction-time timing as
+        // `.Button.pressed`. `clearPressedShadow` on this second instance
+        // resolves to the same `"none"` value, so it dedupes to a no-op
+        // removal rather than a real per-instance declaration.
         const second = new SpinButton('▼');
         const instanceDeclarations = declarationsDuring(sink, idSelector(second) + '.pressed', () => second.getElement(true));
-        expect(instanceDeclarations.boxShadow).toBe('none');
+        expect(instanceDeclarations.boxShadow).toBeUndefined();
     });
 
     it('a chromeless Button pins its own pressed color instead of leaking the shared .Button.pressed class rule', () => {

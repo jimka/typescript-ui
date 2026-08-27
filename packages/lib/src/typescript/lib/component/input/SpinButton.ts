@@ -11,7 +11,7 @@ import { callable } from "~/core/Callable.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { chevron_up } from "~/glyphs/solid/chevron_up.js";
 import { chevron_down } from "~/glyphs/solid/chevron_down.js";
-import type { StyleBag } from "~/core/ClassStyleRules.js";
+import type { StyleBag, StyleStateSpec } from "~/core/ClassStyleRules.js";
 import { GLYPH_XS_INK_TRAIT } from "~/core/StyleTraits.js";
 
 /**
@@ -71,6 +71,25 @@ class SpinButton extends Button<SpinButtonOptions> {
     // the class level so `.SpinButton`'s rule carries only its own deviation
     // (the flush `border`/`borderRadius`/`insets`) from `.Button`'s.
     protected static readonly ownClassStyleDefaults: StyleBag = _defaultSpinButtonOptions;
+
+    // Restates Button's state list in Button's own order — the declared list
+    // governs order as a whole (see `resolveStyleStates`'s own comment), so
+    // naming only `.pressed` here would drop `:hover` from SpinButton's
+    // resolution and narrow the resting tier's `:not(...)` guard. Only
+    // `.pressed`'s shadow deviates: a spin button sits flush in its
+    // NumberSpinner cell with no resting shadow, so it has no pressed shadow
+    // either. Content merges per level, so `.pressed`'s colour and background
+    // keys still resolve from `.Button.pressed` and are not repeated here.
+    // The constructor's `clearPressedShadow()` call below now dedupes against
+    // this shared value instead of writing `box-shadow: none` on every
+    // instance's own `#id.pressed` rule.
+    protected static readonly ownStyleStates: readonly StyleStateSpec[] = [
+        {
+            selector: ".pressed",
+            extract: (): StyleBag => ({ shadow: "none" }),
+        },
+        Button.ownStyleStates[1],   // :hover, restated unchanged
+    ];
 
     private _listeners    : ListenerBag<SpinButtonEvent> = this.registerListenerBag(new ListenerBag<SpinButtonEvent>());
     private _repeat       : AutoRepeat;
