@@ -319,6 +319,12 @@ action is needed.
   recycled cell could keep painting its first colour after being reused for
   a different grouped column. No consumer action is needed, beyond the
   corrected recycle-time colour.
+- **`List` and `MultiSelectList` now dedupe their default 100×100 minimum
+  size onto the shared `.AbstractSelectableList` class rule instead of
+  repeating `min-width`/`min-height` on every list's own `#id` rule.** A
+  caller-supplied `minSize` still wins, and every list keeps the same
+  minimum it had before. No consumer action is needed; nothing renders
+  differently.
 
 ### Table
 

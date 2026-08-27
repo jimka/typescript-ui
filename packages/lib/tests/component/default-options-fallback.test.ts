@@ -362,6 +362,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'WindowHeaderTitleGlyph minSize', resolve: () => new WindowHeader('Title').getGlyph()!.getMinSizeConstraint(),                    expected: { width: 14, height: 14 } },
     { label: 'SelectableListRow cursor',     resolve: () => (new List({ items: ['a'] }) as any)._rowPool[0].getCursor(), expected: 'pointer' },
     { label: 'SelectableListRow border',     resolve: () => (new List({ items: ['a'] }) as any)._rowPool[0].getBorder(), expected: { borderBottom: '1px solid var(--ts-ui-list-row-separator, transparent)' } },
+    { label: 'AbstractSelectableList minSize (via List)', resolve: () => new List().getMinSizeConstraint(), expected: { width: 100, height: 100 } },
     { label: 'HeaderCellRenderer cursor',    resolve: () => new HeaderCell('Name', 'name').getRenderer().getCursor(),   expected: 'default' },
     { label: 'HeaderCellRenderer userSelect', resolve: () => new HeaderCell('Name', 'name').getRenderer().getUserSelect(), expected: 'none' },
     { label: 'HeaderCell renderer text fontWeight', resolve: () => new HeaderCell('Name', 'name').getRenderer().getText().getFontWeight(), expected: 'bold' },

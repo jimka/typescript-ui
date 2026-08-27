@@ -158,6 +158,12 @@ const _defaultAbstractSelectableListOptions: Partial<AbstractSelectableListOptio
     border:          "1px solid var(--ts-ui-list-border, rgb(200, 200, 200))",
     borderRadius:    "var(--ts-ui-border-radius, 4px)",
     preferredSize:   { width: 200, height: 200 },
+    // 100×100 keeps a short empty/placeholder list a usable size. A class
+    // default, not a constructor `setMinSize`, so the declaration lands once on
+    // the shared `.AbstractSelectableList` rule instead of on every list's own
+    // `#id` rule; a caller-supplied `minSize` still wins because it lands in the
+    // higher-priority instance layer.
+    minSize:         { width: 100, height: 100 },
     maxSize:         { width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER },
 };
 
@@ -831,16 +837,6 @@ abstract class AbstractSelectableList<
             insets:        new Insets(0, 0, 0, 0),
         });
         this.addComponent(this._innerPanel);
-
-        // Default floor, but let a caller-supplied minSize option win. The
-        // super() cascade writes the instance layer's minSize only when the
-        // caller passed one (the class default {0,0} lives in the defaults
-        // bag, resolved separately), so its presence means "caller set it".
-        // maxSize stays unbounded.
-        if (this.instanceLayer().authored.minSize === undefined) {
-            // 100×100 keeps a short empty/placeholder list a usable size.
-            this.setMinSize({ width: 100, height: 100 });
-        }
 
         Event.addListener(this, "keydown", this.handleKeyDown);
 
