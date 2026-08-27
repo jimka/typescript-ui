@@ -18,6 +18,8 @@ implementing its own `DOMSource` is affected.
 `DOMSource` gains one required member: `getRuleCssText()`. Only a consumer
 implementing its own `DOMSource` is affected.
 
+`ComponentOptions.styleGroup` is removed, together with `Component.getStyleGroup()` and `Component.setStyleGroup()`. The option let several instances of one concrete class share a generated `.ClassName--<token>` CSS rule, with the first instance to render fixing the shared content. Nothing in the library used it any more: its last consumer, a table header's menu icon, now declares its size as a shared `StyleTrait` instead, which publishes one rule for every owner without depending on render order. The `.ClassName--<token>` DOM class and its CSS rule are gone with it — a consumer stylesheet selector targeting one no longer matches. There is no replacement option and no migration shim: for instances of one class that should look alike, declare a `StyleTrait` and pass it as `styleTrait`, or give them a subclass with its own class defaults. This is a deliberate pre-1.0 cut of an unused mechanism, not an oversight.
+
 The theme `scale` block's `titleGlyph` and `tabCloseGlyph` tokens are gone,
 replaced by a five-step icon scale: `glyphXs` (8px at the default base),
 `glyphSm` (12px), `glyphMd` (14px, the old `titleGlyph`), `glyphLg` (16px,
@@ -428,12 +430,12 @@ another cell.
   result is unchanged. No consumer action is needed.
 - **The CSS `background` shorthand now participates in the layered style
   bag, the same way `backgroundColor` / `backgroundImage` already do.**
-  `getBackground()` now folds the class and group tiers instead of
-  reporting only what this instance set, `setBackground()` dedupes against
-  a class-level default, and `clearBackground()` asserts `background:
-  transparent` when the class declares one. A consumer that called
-  `getBackground()` on an instance of a class with a class-level
-  `background` and relied on the `null` return is affected.
+  `getBackground()` now folds the class tier instead of reporting only
+  what this instance set, `setBackground()` dedupes against a class-level
+  default, and `clearBackground()` asserts `background: transparent` when
+  the class declares one. A consumer that called `getBackground()` on an
+  instance of a class with a class-level `background` and relied on the
+  `null` return is affected.
 - **`borderColor` is now a style-bag key, so a class's declared toggle
   state can recolour a border without restating its width and style.** A
   state that declares it also isolates the four per-side border longhands
@@ -513,7 +515,7 @@ another cell.
   ToolBar`). A consumer stylesheet selector targeting bare `.Container` —
   previously matching no `ToolBar` element — now matches `ToolBar` too.
   Audit any such selector before upgrading.
-- **`Button`'s leading icon no longer repeats its fixed size on every instance's own CSS rule; a `NumberSpinner`'s arrows, a closeable tab's ✕, a `WindowHeader`'s title icon, and a `ComboBox`'s chevron no longer repeat theirs either.** The leading icon still shares one class-level rule (`.ButtonIconGlyph`). The spinner arrows and the tab ✕ now share one CSS rule across both — `.ts-ui-component.ts-ui-trait-glyph-xs-ink` — instead of each owning its own `styleGroup` rule (`.ButtonIconGlyph--spin-glyph`, `.ButtonIconGlyph--tab-close-glyph`); the window title icon and the combo chevron now share one CSS rule across both — `.ts-ui-component.ts-ui-trait-glyph-md-ink` — instead of each owning its own class rule (`.WindowHeaderTitleGlyph`, `.ComboBoxCaretGlyph`). A table's header menu icon is unchanged, still on its own `.ButtonIconGlyph--table-header-menu-glyph` `styleGroup` rule (its size comes from an unrelated, fixed-scrollbar-width formula, not a named icon step). Nothing changes visually. No consumer action is needed.
+- **`Button`'s leading icon no longer repeats its fixed size on every instance's own CSS rule; a `NumberSpinner`'s arrows, a closeable tab's ✕, a `WindowHeader`'s title icon, and a `ComboBox`'s chevron no longer repeat theirs either.** The leading icon still shares one class-level rule (`.ButtonIconGlyph`). The spinner arrows and the tab ✕ now share one CSS rule across both — `.ts-ui-component.ts-ui-trait-glyph-xs-ink` — instead of each owning its own `styleGroup` rule (`.ButtonIconGlyph--spin-glyph`, `.ButtonIconGlyph--tab-close-glyph`); the window title icon and the combo chevron now share one CSS rule across both — `.ts-ui-component.ts-ui-trait-glyph-md-ink` — instead of each owning its own class rule (`.WindowHeaderTitleGlyph`, `.ComboBoxCaretGlyph`). A table's header menu icon shares one CSS rule of its own — `.ts-ui-component.ts-ui-trait-table-header-menu-glyph` — kept separate from the `glyphXs` trait because its size comes from a fixed scrollbar track width, not a named icon step. Nothing changes visually. No consumer action is needed.
 - **`TextField` and every class built on it no longer duplicate their
   `min-height`/`max-height` CSS declarations in two different property
   orders.** Every `AbstractInput` text control's own CSS rule now writes
