@@ -1049,7 +1049,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             this.setBodyHostDisplayed(true);
             this.reflectMaximizeState("normal");
 
-            const target = this._restoreRect ?? this.currentRect();
+            // The stored rect was captured against whatever viewport size was
+            // current before this window left "normal" — clamp it back
+            // on-screen in case the viewport has shrunk since, mirroring the
+            // clamp a "normal" window would itself have received via
+            // fitNormalWindowToViewport over the same span.
+            const target = this._restoreRect ? this.clampRectToViewport(this._restoreRect) : this.currentRect();
             this._restoreRect = null;
 
             // Idempotent: already bound for a window restoring from a docked
@@ -2462,33 +2467,54 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * rather than forced below its floor.
      */
     private fitNormalWindowToViewport(): void {
+        const clamped = this.clampRectToViewport(this.currentRect());
+
+        this.setAutoCommitStyle(false);
+        this.setWidth(clamped.width);
+        this.setHeight(clamped.height);
+        this.setX(clamped.x);
+        this.setY(clamped.y);
+        this.doLayout();
+        this.setAutoCommitStyle(true);
+    }
+
+    /**
+     * Clamps an arbitrary rect into the viewport shrunk by
+     * {@link VIEWPORT_RESIZE_MARGIN_PX} on every side — the shared arithmetic
+     * behind {@link fitNormalWindowToViewport} (which clamps the window's own
+     * live geometry after a resize) and restoring from `"maximized"` /
+     * `"minimized"` (which must clamp the *stored* pre-maximize rect before
+     * animating to it, without first mutating the window's still-maximized
+     * live geometry). Only ever shrinks — a rect already inside the margin
+     * keeps its size — and never below the window's own min-size, mirroring
+     * `setWidth`/`setHeight`'s own clamp. When the min-size itself exceeds the
+     * margin-shrunk viewport, the rect is pinned {@link VIEWPORT_RESIZE_MARGIN_PX}
+     * from the top-left corner and left to spill past the bottom/right edge
+     * rather than forced below its floor.
+     *
+     * @param rect - The candidate rect to clamp.
+     * @returns The clamped rect.
+     */
+    private clampRectToViewport(rect: WindowRect): WindowRect {
         const vp          = DOM.source.getViewportSize();
         const availWidth  = Math.max(0, vp.width  - 2 * VIEWPORT_RESIZE_MARGIN_PX);
         const availHeight = Math.max(0, vp.height - 2 * VIEWPORT_RESIZE_MARGIN_PX);
+        const minSize     = this.getMinSize();
 
-        this.setAutoCommitStyle(false);
+        const width  = Math.max(Math.min(rect.width,  availWidth),  minSize?.width  ?? 0);
+        const height = Math.max(Math.min(rect.height, availHeight), minSize?.height ?? 0);
 
-        // Only ever shrinks — a window already inside the margin keeps its
-        // size. setWidth/setHeight clamp back up to the window's real
-        // min-size on their own, so a margin narrower/shorter than that floor
-        // still leaves the window at its min-size rather than forcing it down.
-        this.setWidth(Math.min(this.getWidth(), availWidth));
-        this.setHeight(Math.min(this.getHeight(), availHeight));
-
-        const width  = this.getWidth();
-        const height = this.getHeight();
-        const maxX   = vp.width  - VIEWPORT_RESIZE_MARGIN_PX - width;
-        const maxY   = vp.height - VIEWPORT_RESIZE_MARGIN_PX - height;
+        const maxX = vp.width  - VIEWPORT_RESIZE_MARGIN_PX - width;
+        const maxY = vp.height - VIEWPORT_RESIZE_MARGIN_PX - height;
 
         // High-first clamp (not Util.clamp): when the min-size exceeds the
         // margin-shrunk viewport, maxX/maxY fall below the margin, and this
-        // must pin the window to the margin (spilling past the far edge)
-        // rather than the low-first form's off-screen trailing edge.
-        this.setX(Math.max(Math.min(this.getX(), maxX), VIEWPORT_RESIZE_MARGIN_PX));
-        this.setY(Math.max(Math.min(this.getY(), maxY), VIEWPORT_RESIZE_MARGIN_PX));
+        // must pin the rect to the margin (spilling past the far edge) rather
+        // than the low-first form's off-screen trailing edge.
+        const x = Math.max(Math.min(rect.x, maxX), VIEWPORT_RESIZE_MARGIN_PX);
+        const y = Math.max(Math.min(rect.y, maxY), VIEWPORT_RESIZE_MARGIN_PX);
 
-        this.doLayout();
-        this.setAutoCommitStyle(true);
+        return { x, y, width, height };
     }
 
     // ----- snap-resize listeners -----
