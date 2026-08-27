@@ -63,6 +63,11 @@ export interface StyleBag {
     shadow?:          string | null;
     borderRadius?:    string | null;
     border?:          BorderOptions | string | null;
+    // Longhand override for the `margin` shorthand `resolveDeclarations`
+    // hardcodes below. Class-authored only — no `Component` setter writes it
+    // and no `ComponentOptions` field of this name exists. See
+    // `Legend.ownClassStyleDefaults`.
+    marginLeft?:      string | null;
     // The three properties `applyStyle` writes today outside the authored-bag
     // path — from a raw field (`boxSizing`, `whiteSpace`) or a hardcoded
     // literal (`margin`). `position` used to belong to this group too, but
@@ -254,6 +259,13 @@ export function resolveDeclarations(defaults: StyleBag): Record<string, string |
     if (defaults.shadow)          declarations.boxShadow       = defaults.shadow;
     if (defaults.borderRadius)    declarations.borderRadius    = defaults.borderRadius;
 
+    // Truthy-gated like the chrome group above: absent for every class that
+    // declares none, so no class gains a spurious deviation against the
+    // framework rule (which has no `marginLeft` key to compare against).
+    // Emitted after the `margin` shorthand in key order, so a rule that ever
+    // carried both would apply the longhand last.
+    if (defaults.marginLeft)      declarations.marginLeft      = defaults.marginLeft;
+
     const border = defaults.border;
     if (border) {
         // `borderToStyle` always yields all four longhands, resolving each side
@@ -327,6 +339,7 @@ const STYLE_WRITERS: { [K in keyof StyleBag]-?: (v: StyleBag[K]) => Record<strin
     position:        (v) => ({ position: v ?? null }),
     whiteSpace:      (v) => ({ whiteSpace: v ?? null }),
     margin:          (v) => ({ margin: v ?? null }),
+    marginLeft:      (v) => ({ marginLeft: v ?? null }),
     padding:         (v) => ({ padding: v ? (v.render() as string) : null }),
 };
 

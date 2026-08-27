@@ -276,22 +276,20 @@ describe('Text applyStyle class-rule hoisting', () => {
         expect(declarations.textAlign).toBe('center');
     });
 
-    it("Legend's #id rule is not empty even though the ten skippable font declarations are all skipped (lineHeight queues an explicit removal)", () => {
+    it("Legend's #id rule never materialises: the ten skippable font declarations are skipped and marginLeft now lives on .Legend", () => {
         const sink = DOM.sink as RecordingDOMSink;
         const legend = new Legend();
 
         const declarations = declarationsDuring(sink, idSelector(legend), () => legend.getElement(true));
 
-        // Legend's own applyStyle override always re-asserts marginLeft, so
-        // the #id rule is non-empty — proof the ten skippable keys are
-        // absent because they diverge on nothing, not because no rule
-        // materialised.
-        expect(declarations.marginLeft).toBe('10px');
-        for (const key of SKIPPABLE_FONT_KEYS) {
-            expect(declarations[key]).toBeUndefined();
-        }
-        expect(declarations.lineHeight).toBeNull();
-        expect(declarations.textOverflow).toBeNull();
+        // `marginLeft` moved onto the shared `.Legend` class rule (see
+        // plans/implemented/legend-margin-left-dedup.md), so no real
+        // deviation is left queued for the #id rule; with the ten skippable
+        // font keys skipped and lineHeight/textOverflow reconciling to
+        // null-only removals, the whole batch never materialises (see
+        // plans/implemented/applystyle-flush-order-empty-rule-fix.md) — the
+        // #id rule is empty, matching the plain-`Text` case above.
+        expect(declarations).toEqual({});
     });
 
     it('a pre-render setLineHeight call is honoured via a shared value-class rule, tracking the exact px value', () => {
