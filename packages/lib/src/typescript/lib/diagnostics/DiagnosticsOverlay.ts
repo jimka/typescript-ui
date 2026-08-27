@@ -86,7 +86,7 @@ export class DiagnosticsOverlay extends Window {
 
     /** Private — use the static methods; only one instance is ever created. */
     private constructor() {
-        super("Diagnostics");
+        super("Diagnostics", { resizable: false });
 
         this.setX(OVERLAY_X);
         this.setY(OVERLAY_Y);
